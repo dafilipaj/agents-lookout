@@ -1,4 +1,4 @@
-import type { LaunchRequest } from '@shared/types.ts';
+import type { LaunchRequest, SessionRow, Status } from '@shared/types.ts';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Launcher } from '@/components/Launcher';
 import { MainPane } from '@/components/MainPane';
@@ -9,6 +9,13 @@ import { type HarnessState, type LaunchDraft, initialDraft } from '@/lib/launch'
 import { useRoute } from '@/lib/router';
 import { listKnown, useLookout } from '@/lib/store';
 import { useNow } from '@/lib/time';
+
+/** A manual drawer toggle, valid while the Session keeps the Status it had then. */
+interface DrawerOverride {
+  open: boolean;
+  status: Status;
+  since: number | null;
+}
 
 function isTextField(t: EventTarget | null): boolean {
   if (!(t instanceof HTMLElement)) return false;
@@ -28,11 +35,41 @@ export function App({ client }: { client: LookoutClient }) {
     document.title = needsYou > 0 ? `(${needsYou}) Lookout` : 'Lookout';
   }, [needsYou]);
 
-  // A Codex Session's id changes once it gets a session id: keep it selected.
+  // VIEW: per-Session view state, kept here so it outlives switching and follows a Codex
+  // Session whose id changes. Drafts and in-flight sends are plain mutable records.
+  const [drafts] = useState(() => new Map<string, string>());
+  const inFlight = useRef(new Set<string>());
+  const [sending, setSending] = useState<ReadonlySet<string>>(new Set());
+  // VIEW-3.4: the last failed send per Session, so it shows whichever composer is mounted.
+  const [sendErrors, setSendErrors] = useState<ReadonlyMap<string, string>>(new Map());
+  const [overrides, setOverrides] = useState<ReadonlyMap<string, DrawerOverride>>(new Map());
+
+  // A Codex Session's id changes once it gets a session id: keep it selected, and move its
+  // view state to the new id.
   const successor = selectedId && !state.sessions.has(selectedId) ? state.aliases.get(selectedId) : undefined;
+  const successorRow = successor ? state.sessions.get(successor) : undefined;
+  if (selectedId && successorRow && overrides.has(selectedId)) {
+    const o = overrides.get(selectedId)!;
+    const next = new Map(overrides);
+    next.delete(selectedId);
+    // Same Status as before the id changed: the override still holds for the new id.
+    if (o.status === successorRow.status) next.set(successorRow.id, { ...o, since: successorRow.statusSince });
+    setOverrides(next);
+  }
+  if (selectedId && successor && sending.has(selectedId) && !sending.has(successor)) {
+    setSending(new Set(sending).add(successor));
+  }
+  if (selectedId && successor && sendErrors.has(selectedId) && !sendErrors.has(successor)) {
+    setSendErrors(new Map(sendErrors).set(successor, sendErrors.get(selectedId)!));
+  }
   useEffect(() => {
-    if (successor && state.sessions.has(successor)) navigate({ name: 'session', id: successor }, { replace: true });
-  }, [successor, state.sessions, navigate]);
+    if (!selectedId || !successor || !state.sessions.has(successor)) return;
+    const draft = drafts.get(selectedId);
+    if (draft !== undefined && !drafts.has(successor)) drafts.set(successor, draft);
+    drafts.delete(selectedId);
+    if (inFlight.current.has(selectedId)) inFlight.current.add(successor);
+    navigate({ name: 'session', id: successor }, { replace: true });
+  }, [selectedId, successor, state.sessions, navigate, drafts]);
 
   const onSelect = useCallback(
     (id: string, how: 'push' | 'replace') => navigate({ name: 'session', id }, { replace: how === 'replace' }),
@@ -95,6 +132,84 @@ export function App({ client }: { client: LookoutClient }) {
     [client],
   );
 
+  // VIEW-2.2: the drawer is open while the Session Needs you, unless you toggled it during the
+  // current Status (an override is tied to that Status and when it began).
+  const drawerOpen = useCallback(
+    (row: SessionRow) => {
+      const o = overrides.get(row.id);
+      return o && o.status === row.status && o.since === row.statusSince ? o.open : row.status === 'needs-you';
+    },
+    [overrides],
+  );
+  const toggleDrawer = useCallback(
+    (row: SessionRow, open: boolean) =>
+      setOverrides((m) => new Map(m).set(row.id, { open, status: row.status, since: row.statusSince })),
+    [],
+  );
+
+  // VIEW: tell the server what this tab views, and whether its drawer is open, so it follows
+  // only that. Derived here in one place; the client sends only the latest state. A new event
+  // stream (reconnect) has a new client id, so this re-runs.
+  const viewing = route.name === 'session' ? selectedId : null;
+  const viewedRow = viewing ? state.sessions.get(viewing) : undefined;
+  const previewing = !!viewedRow && viewedRow.controllable && drawerOpen(viewedRow);
+  useEffect(() => {
+    if (state.clientId) void client.watch(state.clientId, viewing, previewing);
+  }, [client, state.clientId, viewing, previewing]);
+
+  // VIEW-3: one send per Session at a time; on success, a draft is cleared only if it is still
+  // exactly what was sent (text typed meanwhile stays).
+  const aliases = useRef(state.aliases);
+  useEffect(() => {
+    aliases.current = state.aliases;
+  });
+  const sendMessage = useCallback(
+    async (sessionId: string, text: string): Promise<boolean> => {
+      if (inFlight.current.has(sessionId)) return false;
+      inFlight.current.add(sessionId);
+      setSending((s) => new Set(s).add(sessionId));
+      const ids = () => [sessionId, aliases.current.get(sessionId)].filter((x): x is string => !!x);
+      const setError = (message: string | null) =>
+        setSendErrors((m) => {
+          const next = new Map(m);
+          for (const id of ids()) {
+            if (message === null) next.delete(id);
+            else next.set(id, message);
+          }
+          return next;
+        });
+      setError(null);
+      try {
+        await client.sendMessage(sessionId, text);
+        for (const id of ids()) if (drafts.get(id) === text) drafts.delete(id);
+        return true;
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Sending failed.');
+        return false;
+      } finally {
+        const ids = [sessionId, aliases.current.get(sessionId)].filter((x): x is string => !!x);
+        for (const id of ids) inFlight.current.delete(id);
+        setSending((s) => {
+          const next = new Set(s);
+          for (const id of ids) next.delete(id);
+          return next;
+        });
+      }
+    },
+    [client, drafts],
+  );
+
+  const clearSendError = useCallback(
+    (sessionId: string) =>
+      setSendErrors((m) => {
+        if (!m.has(sessionId)) return m;
+        const next = new Map(m);
+        next.delete(sessionId);
+        return next;
+      }),
+    [],
+  );
+
   return (
     <div className="flex h-dvh overflow-hidden">
       <Sidebar
@@ -129,6 +244,14 @@ export function App({ client }: { client: LookoutClient }) {
                   : 'unavailable'
             }
             now={now}
+            preview={(selectedId && state.previews.get(selectedId)) || null}
+            drawerOpen={drawerOpen}
+            onToggleDrawer={toggleDrawer}
+            drafts={drafts}
+            sending={sending}
+            sendErrors={sendErrors}
+            onEdit={clearSendError}
+            onSend={sendMessage}
           />
         )}
       </main>

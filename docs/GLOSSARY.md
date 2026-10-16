@@ -10,6 +10,8 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Harness**: The agent CLI a Session runs: Claude Code or Codex. (Fleet also knows pi; not a goal for Lookout.)
 
+**Headless Session**: A Session started without a terminal to type into, such as `claude -p` or an Agent SDK run. History hides them by default.
+
 **History**: Past Sessions, found by searching their Transcripts, and resumable.
 
 **Host**: A machine that runs Sessions. For now only this Mac.

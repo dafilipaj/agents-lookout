@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { type IncomingMessage, type Server, type ServerResponse, createServer } from 'node:http';
 import { SettingsError } from '../shared/settings.ts';
 import type { HarnessOption, LaunchView, ServerEvent } from '../shared/types.ts';
@@ -6,6 +7,7 @@ import type { SessionMonitor } from './monitor.ts';
 import { type GuardConfig, guardRequest } from './security.ts';
 import type { SettingsStore } from './settings.ts';
 import { serveStatic } from './static.ts';
+import { MAX_MESSAGE, ViewError } from './viewer.ts';
 
 export interface AppOptions {
   guard: GuardConfig;
@@ -18,6 +20,11 @@ export interface AppOptions {
     start(input: unknown): Promise<LaunchView>;
     dismiss(id: string): boolean;
   };
+  viewer: {
+    watch(clientId: string, sessionId: string | null, preview: boolean): void;
+    drop(clientId: string): void;
+    send(sessionId: string, input: unknown): Promise<void>;
+  };
   /** Directory of the built UI; null in `pnpm dev`, where Vite serves it. */
   staticDir: string | null;
   keepAliveMs?: number;
@@ -27,11 +34,15 @@ export interface LookoutApp {
   server: Server;
   /** Pushes an event to every open UI. */
   broadcast(event: ServerEvent): void;
+  /** Pushes an event to one tab's stream. */
+  sendTo(clientId: string, event: ServerEvent): void;
 }
 
 const MAX_BODY = 16 * 1024;
 /** A launch carries a prompt of up to 100,000 characters: up to ~600 KB of JSON-escaped UTF-8. */
 const MAX_LAUNCH_BODY = 1024 * 1024;
+/** A message of up to MAX_MESSAGE characters, JSON-escaped. */
+const MAX_SEND_BODY = MAX_MESSAGE * 8;
 
 const SECURITY_HEADERS = {
   'x-content-type-options': 'nosniff',
@@ -42,13 +53,17 @@ const SECURITY_HEADERS = {
 };
 
 export function createApp(opts: AppOptions): LookoutApp {
-  const clients = new Set<ServerResponse>();
+  const clients = new Map<string, ServerResponse>();
 
   const send = (res: ServerResponse, event: ServerEvent) => {
     res.write(`data: ${JSON.stringify(event)}\n\n`);
   };
   const broadcast = (event: ServerEvent) => {
-    for (const res of clients) send(res, event);
+    for (const res of clients.values()) send(res, event);
+  };
+  const sendTo = (clientId: string, event: ServerEvent) => {
+    const res = clients.get(clientId);
+    if (res) send(res, event);
   };
   opts.settings.onChange((settings) => broadcast({ type: 'settings', settings }));
 
@@ -60,16 +75,19 @@ export function createApp(opts: AppOptions): LookoutApp {
       connection: 'keep-alive',
     });
     res.write('retry: 1000\n\n');
+    const clientId = randomUUID();
     const { sessions, fleet } = opts.monitor.snapshot();
     send(res, { type: 'snapshot', sessions, fleet, settings: opts.settings.get(), launches: opts.launcher.list(),
       started: opts.launcher.recentStarts(),
+      clientId,
     });
-    clients.add(res);
+    clients.set(clientId, res);
     const unwatch = opts.monitor.watch();
     const keepAlive = setInterval(() => res.write(': keep-alive\n\n'), opts.keepAliveMs ?? 15_000);
     req.on('close', () => {
       clearInterval(keepAlive);
-      clients.delete(res);
+      clients.delete(clientId);
+      opts.viewer.drop(clientId); // a tab that's gone stops what it was following
       unwatch();
     });
   };
@@ -115,6 +133,35 @@ export function createApp(opts: AppOptions): LookoutApp {
         }
       }
     }
+    if (route === 'PUT /api/watch') {
+      const body = await readJson(req, res, MAX_BODY, null);
+      if (body === NO_BODY) return;
+      const w = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
+      if (typeof w.clientId !== 'string' || !clients.has(w.clientId)) return json(res, 404, { error: 'unknown event stream' });
+      if (w.sessionId !== null && (typeof w.sessionId !== 'string' || w.sessionId.length > 200)) {
+        return json(res, 400, { error: 'invalid sessionId' });
+      }
+      opts.viewer.watch(w.clientId, w.sessionId, w.preview === true);
+      return json(res, 200, { ok: true });
+    }
+    const sendMatch = /^\/api\/sessions\/([^/]{1,200})\/send$/.exec(url.pathname);
+    if (sendMatch && req.method === 'POST') {
+      const body = await readJson(req, res, MAX_SEND_BODY, { error: 'The message is too long.', field: 'text' });
+      if (body === NO_BODY) return;
+      let sessionId: string;
+      try {
+        sessionId = decodeURIComponent(sendMatch[1]!);
+      } catch {
+        return json(res, 400, { error: 'invalid session id' });
+      }
+      try {
+        await opts.viewer.send(sessionId, body);
+        return json(res, 200, { ok: true });
+      } catch (err) {
+        if (err instanceof ViewError) return json(res, err.status, { error: err.message, field: err.field });
+        throw err;
+      }
+    }
     const dismiss = /^\/api\/launch\/([0-9a-f-]{36})$/.exec(url.pathname);
     if (dismiss && req.method === 'DELETE') {
       return opts.launcher.dismiss(dismiss[1]!) ? json(res, 200, { ok: true }) : json(res, 404, { error: 'no such failed launch' });
@@ -137,7 +184,7 @@ export function createApp(opts: AppOptions): LookoutApp {
       else res.end();
     });
   });
-  return { server, broadcast };
+  return { server, broadcast, sendTo };
 }
 
 function json(res: ServerResponse, status: number, body: unknown): void {

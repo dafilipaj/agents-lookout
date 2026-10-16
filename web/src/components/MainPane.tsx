@@ -1,12 +1,9 @@
 import type { SessionRow } from '@shared/types.ts';
-import { CircleSlash, FolderGit2, GitBranch } from 'lucide-react';
-import type { ReactNode } from 'react';
-import { HARNESS_LABEL, STATUS_LABEL } from '@/lib/sessions';
-import { formatAge } from '@/lib/time';
-import { cn } from '@/lib/utils';
-import { StatusMarker } from './StatusMarker';
+import type { Preview } from '@/lib/store';
+import { type SessionViewProps, SessionView } from './SessionView';
 
-interface Props {
+interface Props extends Omit<SessionViewProps, 'row' | 'ended' | 'now' | 'preview' | 'drawerOpen'> {
+  drawerOpen(row: SessionRow): boolean;
   /** The selected Session's id, or null when nothing is selected. */
   selectedId: string | null;
   /** The live row, when the Session is running. */
@@ -19,13 +16,11 @@ interface Props {
    */
   list: 'loading' | 'unavailable' | 'known';
   now: number;
+  preview: Preview | null;
 }
 
-/**
- * Placeholder main pane. The Session view (chat, composer, terminal preview) is the VIEW spec;
- * this only shows the selected Session's basic facts, and that it ended (SIDE-4.3).
- */
-export function MainPane({ selectedId, live, lastKnown, list, now }: Props) {
+/** The main pane: the selected Session (VIEW), or the hint when nothing is selected (VIEW-5.4). */
+export function MainPane({ selectedId, live, lastKnown, list, now, preview, drawerOpen, ...view }: Props) {
   if (!selectedId) return <Empty />;
   if (!live && list === 'loading') return <div className="p-8 text-sm text-muted-foreground">Loading…</div>;
   if (!live && list === 'unavailable') {
@@ -39,91 +34,26 @@ export function MainPane({ selectedId, live, lastKnown, list, now }: Props) {
     );
   }
   const row = live ?? lastKnown;
-  const ended = !live;
-
-  return (
-    <div className="mx-auto w-full max-w-3xl px-8 py-7">
-      {ended && (
-        <div role="status" className="mb-5 flex items-start gap-2.5 rounded-lg border border-border bg-muted/60 px-3.5 py-3">
-          <CircleSlash className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-          <div>
-            <p className="text-sm font-medium">This Session ended</p>
-            <p className="text-[13px] text-muted-foreground">Its process is gone. It stays here until you select another Session.</p>
-          </div>
+  if (!row) {
+    return (
+      <div className="mx-auto w-full max-w-3xl px-8 py-7">
+        <div role="status" className="rounded-lg border border-border bg-muted/60 px-3.5 py-3">
+          <p className="text-sm font-medium">This Session ended</p>
+          <p className="text-[13px] text-muted-foreground">Session {selectedId} isn&apos;t running.</p>
         </div>
-      )}
-      {row ? <Facts row={row} ended={ended} now={now} /> : <p className="text-sm text-muted-foreground">Session {selectedId}</p>}
-    </div>
-  );
-}
-
-function Facts({ row, ended, now }: { row: SessionRow; ended: boolean; now: number }) {
-  const age = row.statusSince !== null ? formatAge(now - row.statusSince) : null;
-  return (
-    <div className={cn(ended && 'opacity-60')}>
-      <div className="flex items-center gap-2.5">
-        {!ended && <StatusMarker status={row.status} />}
-        <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight" title={row.title}>
-          {row.title}
-        </h1>
       </div>
-      <p className="mt-0.5 text-[13px] text-muted-foreground">
-        {HARNESS_LABEL[row.harness]}
-        {row.model && <> · {row.model}</>}
-      </p>
-
-      <dl className="mt-6 grid grid-cols-[8.5rem_1fr] gap-x-4 gap-y-2.5 text-[13px]">
-        {!ended && (
-          <Fact label="Status">
-            {STATUS_LABEL[row.status]}
-            {age && <span className="text-muted-foreground"> · for {age}</span>}
-            {row.waitingFor && <div className="text-needs-you-text">{row.waitingFor}</div>}
-          </Fact>
-        )}
-        {row.git && <Fact label="Repo">{row.git.repo}</Fact>}
-        {row.git?.worktree && (
-          <Fact label="Worktree">
-            <span className="inline-flex items-center gap-1">
-              <FolderGit2 className="size-3.5" />
-              {row.git.worktree}
-            </span>
-          </Fact>
-        )}
-        {row.git?.branch && (
-          <Fact label="Branch">
-            <span className="inline-flex items-center gap-1">
-              <GitBranch className="size-3.5" />
-              {row.git.branch}
-            </span>
-          </Fact>
-        )}
-        {row.cwd && (
-          <Fact label="Directory">
-            <span className="font-mono text-[12px] break-all">{row.cwd}</span>
-          </Fact>
-        )}
-        {row.contextPct !== null && <Fact label="Context used">{row.contextPct}%</Fact>}
-        <Fact label="Terminal">
-          {/* Decision 0001: the UI never names tmux. */}
-          {row.controllable ? (row.backend === 'iterm' ? 'iTerm2 · Controllable' : 'Controllable') : 'Another app · not Controllable'}
-        </Fact>
-        <Fact label="Process">
-          <span className="font-mono text-[12px]">{row.pid}</span>
-        </Fact>
-        <Fact label="Session ID">
-          <span className="font-mono text-[12px] break-all">{row.id}</span>
-        </Fact>
-      </dl>
-    </div>
-  );
-}
-
-function Fact({ label, children }: { label: string; children: ReactNode }) {
+    );
+  }
   return (
-    <>
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className="min-w-0">{children}</dd>
-    </>
+    <SessionView
+      key={row.id}
+      row={row}
+      ended={!live}
+      now={now}
+      preview={preview}
+      drawerOpen={drawerOpen(row)}
+      {...view}
+    />
   );
 }
 

@@ -92,7 +92,11 @@ export type ServerEvent =
       launches: LaunchView[];
       /** Starts completed in the last 60 s, so a tab that reconnects can still select its Session. */
       started: { launchId: string; sessionId: string }[];
+      /** This event stream's id: the tab names it when it says what it views (`PUT /api/watch`). */
+      clientId: string;
     }
+  /** VIEW-2: what the Session's terminal shows, as plain text; sent only to tabs previewing it. */
+  | { type: 'preview'; sessionId: string; text: string | null; error: string | null }
   /** `started`: launches Fleet now reports, and the Session each became. */
   | { type: 'launches'; launches: LaunchView[]; started: { launchId: string; sessionId: string }[] }
   | { type: 'sessions'; upsert: SessionRow[]; remove: string[] }

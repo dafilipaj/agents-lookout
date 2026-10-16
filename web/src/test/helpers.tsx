@@ -57,6 +57,7 @@ export function launchView(over: Partial<LaunchView> & { id: string }): LaunchVi
 interface RenderOptions {
   harnesses?: () => Promise<HarnessOption[]>;
   launch?: (req: LaunchRequest) => Promise<LaunchView>;
+  sendMessage?: (sessionId: string, text: string) => Promise<void>;
 }
 
 /** Renders the whole app against a fake server the test drives. */
@@ -75,6 +76,8 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
     harnesses: vi.fn(options.harnesses ?? (async () => HARNESSES)),
     launch: vi.fn(options.launch ?? (async (req: LaunchRequest) => launchView({ id: 'l-1', title: req.name || 'New Session' }))),
     dismissLaunch: vi.fn(async () => {}),
+    watch: vi.fn(async () => {}),
+    sendMessage: vi.fn(options.sendMessage ?? (async () => {})),
   };
   const utils = render(<App client={client} />);
   const emit = (event: ServerEvent) =>
@@ -82,7 +85,7 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
       listener!.onEvent(event);
     });
   const snapshot = (sessions: SessionRow[], fleet: FleetHealth = { state: 'ok' }, current: Settings = settings()) =>
-    emit({ type: 'snapshot', sessions, fleet, settings: current, launches: [], started: [] });
+    emit({ type: 'snapshot', sessions, fleet, settings: current, launches: [], started: [], clientId: 'tab-1' });
   const connection = (connected: boolean) =>
     act(() => {
       listener!.onConnection(connected);

@@ -9,6 +9,7 @@ import { Launcher } from './launcher.ts';
 import { SessionMonitor } from './monitor.ts';
 import { localAllowLists } from './security.ts';
 import { SettingsStore, defaultSettingsPath } from './settings.ts';
+import { Viewer } from './viewer.ts';
 
 const env = process.env;
 const port = Number(env.LOOKOUT_PORT ?? DEFAULT_PORT);
@@ -40,11 +41,20 @@ const monitor = new SessionMonitor({
   onList: (rows) => launcher.observe(rows),
 });
 
+const viewer = new Viewer({
+  runner: run,
+  fleetBin: () => resolveFleetBin(env),
+  lookup: (id) => monitor.get(id),
+  freshList: () => fetchFleetList(run, resolveFleetBin(env)),
+  sendTo: (clientId, e) => app.sendTo(clientId, e),
+});
+
 const app = createApp({
   guard: { ...localAllowLists(port, extraOrigins), token },
   monitor,
   settings,
   launcher,
+  viewer,
   staticDir: production ? fileURLToPath(new URL('../dist/web', import.meta.url)) : null,
 });
 
@@ -57,6 +67,7 @@ app.server.listen(port, '127.0.0.1', () => {
 const shutdown = () => {
   monitor.stop();
   launcher.stop();
+  viewer.stop();
   app.server.close();
   app.server.closeAllConnections();
   process.exit(0);

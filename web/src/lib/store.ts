@@ -28,6 +28,15 @@ export interface LookoutState {
    * kept for matching until the list is known again.
    */
   orphans: readonly SessionRow[];
+  /** This tab's event stream, named when it says what it views. */
+  clientId: string | null;
+  /** VIEW-2: the latest terminal preview per Session this tab previews. */
+  previews: ReadonlyMap<string, Preview>;
+}
+
+export interface Preview {
+  text: string | null;
+  error: string | null;
 }
 
 export type Action = { type: 'event'; event: ServerEvent } | { type: 'connection'; connected: boolean };
@@ -43,6 +52,8 @@ export const initialState: LookoutState = {
   launches: [],
   started: new Map(),
   orphans: [],
+  clientId: null,
+  previews: new Map(),
 };
 
 export function reducer(state: LookoutState, action: Action): LookoutState {
@@ -76,6 +87,8 @@ export function reducer(state: LookoutState, action: Action): LookoutState {
         launches: e.launches,
         started,
         orphans,
+        clientId: e.clientId,
+        previews: new Map(), // a new stream: previews come again once it says what it views
       };
     }
     case 'sessions': {
@@ -98,6 +111,8 @@ export function reducer(state: LookoutState, action: Action): LookoutState {
     }
     case 'settings':
       return { ...state, settings: e.settings };
+    case 'preview':
+      return { ...state, previews: new Map(state.previews).set(e.sessionId, { text: e.text, error: e.error }) };
     case 'launches': {
       let started = state.started;
       if (e.started.length) {

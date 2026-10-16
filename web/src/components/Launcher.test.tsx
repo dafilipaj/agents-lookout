@@ -227,6 +227,7 @@ describe('the launcher', () => {
       settings: settings(),
       launches: [],
       started: [{ launchId: 'l-1', sessionId: 'new-session' }],
+      clientId: 'tab-2',
     });
     await waitFor(() => expect(window.location.pathname).toBe('/s/new-session'));
   });

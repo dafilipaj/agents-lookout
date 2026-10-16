@@ -1,0 +1,267 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ServerEvent, SessionRow } from '../shared/types.ts';
+import type { RunOptions } from './exec.ts';
+import type { FleetListResult, FleetRow } from './fleet.ts';
+import { MAX_MESSAGE, ViewError, Viewer, fleetTarget } from './viewer.ts';
+
+const fleetRow = (over: Partial<FleetRow>): FleetRow => ({
+  pid: 1,
+  session_id: null,
+  cwd: '/x',
+  status: 'idle',
+  waiting_for: null,
+  updated_at: 0,
+  backend: 'tmux',
+  display_title: 'x',
+  context: null,
+  harness: 'claude',
+  model: null,
+  ...over,
+});
+
+const row = (over: Partial<SessionRow> & { id: string }): SessionRow => ({
+  pid: 4242,
+  harness: 'claude',
+  title: over.id,
+  status: 'idle',
+  waitingFor: null,
+  statusSince: 0,
+  contextPct: null,
+  cwd: '/x',
+  git: null,
+  backend: 'tmux',
+  controllable: true,
+  model: null,
+  ...over,
+});
+
+type Call = { file: string; args: readonly string[]; opts: RunOptions };
+
+function setup(
+  over: { peek?: (call: Call) => Promise<string>; send?: (call: Call) => Promise<string>; fresh?: () => Promise<FleetListResult> } = {},
+) {
+  const rows = new Map<string, SessionRow>([
+    ['sess-a', row({ id: 'sess-a' })],
+    ['codex:77', row({ id: 'codex:77', pid: 77, harness: 'codex' })],
+    ['orca', row({ id: 'orca', backend: 'unknown', controllable: false })],
+  ]);
+  const calls: Call[] = [];
+  let screen = 'line 1\nline 2\n\n';
+  const runner = vi.fn(async (file: string, args: readonly string[], opts: RunOptions) => {
+    const call = { file, args, opts };
+    calls.push(call);
+    if (args.includes('peek')) return over.peek ? over.peek(call) : screen;
+    if (args.includes('send')) return over.send ? over.send(call) : 'sent\n';
+    throw new Error('unexpected');
+  });
+  const sent: { clientId: string; event: ServerEvent }[] = [];
+  const viewer = new Viewer({
+    runner,
+    fleetBin: () => '/bin/fleet',
+    lookup: (id) => rows.get(id) ?? null,
+    freshList: over.fresh ?? (async () => ({ kind: 'ok', rows: [fleetRow({ pid: 77, harness: 'codex', session_id: null })] })),
+    sendTo: (clientId, event) => sent.push({ clientId, event }),
+    env: { PATH: '/usr/bin', CLAUDECODE: '1', OTEL_X: '1' },
+  });
+  const peeks = () => calls.filter((c) => c.args.includes('peek')).length;
+  return { viewer, calls, sent, rows, peeks, setScreen: (s: string) => (screen = s) };
+}
+
+beforeEach(() => vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] }));
+afterEach(() => vi.useRealTimers());
+
+describe('terminal preview', () => {
+  it('VIEW-2.1: while a tab’s drawer is open, the last 40 lines are read every second and pushed to that tab', async () => {
+    const t = setup();
+    t.viewer.watch('tab-1', 'sess-a', true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(t.calls[0]).toMatchObject({ file: '/bin/fleet', args: ['--local', 'peek', '--lines', '40', '--', 'sess-a'] });
+    expect(t.sent).toEqual([{ clientId: 'tab-1', event: { type: 'preview', sessionId: 'sess-a', text: 'line 1\nline 2', error: null } }]);
+
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(t.peeks()).toBe(2);
+    expect(t.sent).toHaveLength(1); // unchanged screen: nothing new pushed
+
+    t.setScreen('line 1\nline 2\nline 3');
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(t.sent.at(-1)!.event).toMatchObject({ text: 'line 1\nline 2\nline 3' });
+  });
+
+  it('VIEW-2.1: no peeking while the drawer is closed, or once the tab is gone', async () => {
+    const t = setup();
+    t.viewer.watch('tab-1', 'sess-a', false);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(t.peeks()).toBe(0);
+
+    t.viewer.watch('tab-1', 'sess-a', true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(t.peeks()).toBe(1);
+    t.viewer.watch('tab-1', 'sess-a', false); // drawer closed
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(t.peeks()).toBe(1);
+
+    t.viewer.watch('tab-1', 'sess-a', true);
+    await vi.advanceTimersByTimeAsync(0);
+    t.viewer.drop('tab-1'); // tab closed
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(t.peeks()).toBe(2);
+    expect(t.viewer.previewing()).toEqual([]);
+  });
+
+  it('VIEW-2.1: two tabs on one Session share one peek; a tab that joins gets the latest screen at once', async () => {
+    const t = setup();
+    t.viewer.watch('tab-1', 'sess-a', true);
+    await vi.advanceTimersByTimeAsync(0);
+    t.viewer.watch('tab-2', 'sess-a', true);
+    expect(t.sent.map((s) => s.clientId)).toEqual(['tab-1', 'tab-2']);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(t.peeks()).toBe(2); // one per second, not one per tab
+    t.viewer.drop('tab-1');
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(t.peeks()).toBe(3); // tab-2 still previews
+  });
+
+  it('VIEW-2.3: never peeks a Session that is not Controllable', async () => {
+    const t = setup();
+    t.viewer.watch('tab-1', 'orca', true);
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(t.peeks()).toBe(0);
+    expect(t.sent[0]!.event).toMatchObject({ type: 'preview', text: null, error: expect.stringContaining('another app') });
+  });
+
+  it('a failing peek keeps the last screen, says so, and retries', async () => {
+    let fail = false;
+    const t = setup({
+      peek: async () => {
+        if (fail) throw Object.assign(new Error('x'), { code: 1, stderr: 'error: no such pane\n' });
+        return 'ok';
+      },
+    });
+    t.viewer.watch('tab-1', 'sess-a', true);
+    await vi.advanceTimersByTimeAsync(0);
+    fail = true;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(t.sent.at(-1)!.event).toEqual({ type: 'preview', sessionId: 'sess-a', text: 'ok', error: 'Preview failed: no such pane' });
+    fail = false;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(t.sent.at(-1)!.event).toMatchObject({ text: 'ok', error: null });
+  });
+
+  it('targets a Session by its full session id, or by pid when it has none', () => {
+    expect(fleetTarget(row({ id: '0b8a…-uuid' }))).toBe('0b8a…-uuid');
+    expect(fleetTarget(row({ id: 'codex:77', pid: 77, harness: 'codex' }))).toBe('77');
+  });
+});
+
+describe('pid targets (a pid Fleet no longer lists would match titles fuzzily)', () => {
+  it('VIEW-3.2: before sending to a pid, checks a fresh `fleet list` still has that pid with the same Harness', async () => {
+    const t = setup();
+    await t.viewer.send('codex:77', { text: 'OK' });
+    expect(t.calls.map((c) => c.args[1])).toEqual(['send']);
+
+    const gone = setup({ fresh: async () => ({ kind: 'ok', rows: [fleetRow({ pid: 78, harness: 'codex' })] }) });
+    await expect(gone.viewer.send('codex:77', { text: 'OK' })).rejects.toMatchObject({ status: 409, message: expect.stringContaining('no longer running') });
+    expect(gone.calls).toEqual([]);
+
+    const otherHarness = setup({ fresh: async () => ({ kind: 'ok', rows: [fleetRow({ pid: 77, harness: 'claude' })] }) });
+    await expect(otherHarness.viewer.send('codex:77', { text: 'OK' })).rejects.toMatchObject({ status: 409 });
+
+    const failing = setup({ fresh: async () => ({ kind: 'error', message: 'fleet list timed out after 4 s' }) });
+    await expect(failing.viewer.send('codex:77', { text: 'OK' })).rejects.toMatchObject({ status: 503 });
+    expect(failing.calls).toEqual([]);
+  });
+
+  it('VIEW-2.1: a pid preview is checked the same way before every peek', async () => {
+    const t = setup({ fresh: async () => ({ kind: 'ok', rows: [] }) });
+    t.viewer.watch('tab-1', 'codex:77', true);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(t.peeks()).toBe(0);
+    expect(t.sent[0]!.event).toMatchObject({ text: null, error: expect.stringContaining('no longer running') });
+  });
+
+  it('VIEW-2.1: when the fresh list fails, the preview keeps the last screen; only a pid that is gone blanks it', async () => {
+    let list: FleetListResult = { kind: 'ok', rows: [fleetRow({ pid: 77, harness: 'codex' })] };
+    const t = setup({ fresh: async () => list, peek: async () => 'codex screen' });
+    t.viewer.watch('tab-1', 'codex:77', true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(t.sent.at(-1)!.event).toMatchObject({ text: 'codex screen', error: null });
+
+    list = { kind: 'error', message: 'fleet list timed out after 4 s' };
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(t.sent.at(-1)!.event).toMatchObject({ text: 'codex screen', error: expect.stringContaining("Couldn't check") });
+
+    list = { kind: 'ok', rows: [] };
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(t.sent.at(-1)!.event).toMatchObject({ text: null, error: expect.stringContaining('no longer running') });
+  });
+
+  it('a session-id target needs no extra list: Fleet matches it exactly', async () => {
+    const fresh = vi.fn(async (): Promise<FleetListResult> => ({ kind: 'ok', rows: [] }));
+    const t = setup({ fresh });
+    await t.viewer.send('sess-a', { text: 'OK' });
+    expect(fresh).not.toHaveBeenCalled();
+    expect(t.calls).toHaveLength(1);
+  });
+});
+
+describe('composer', () => {
+  it('VIEW-3.2: sends the text through `fleet send`, line breaks included, as an argv entry after `--`', async () => {
+    const t = setup();
+    await t.viewer.send('sess-a', { text: '-rf line one\r\n  line two\n' });
+    expect(t.calls[0]).toMatchObject({ file: '/bin/fleet', args: ['--local', 'send', '--', 'sess-a', '-rf line one\n  line two\n'] });
+    expect(Object.keys(t.calls[0]!.opts.env!)).toEqual(['PATH']); // nothing inherited from a Claude Session
+    await t.viewer.send('codex:77', { text: 'OK' });
+    expect(t.calls[1]!.args).toEqual(['--local', 'send', '--', '77', 'OK']);
+  });
+
+  it('refuses Sessions it cannot type into, empty and oversized messages; nothing is typed', async () => {
+    const t = setup();
+    await expect(t.viewer.send('gone', { text: 'x' })).rejects.toMatchObject({ status: 404 });
+    await expect(t.viewer.send('orca', { text: 'x' })).rejects.toMatchObject({ status: 409 });
+    await expect(t.viewer.send('sess-a', { text: '  \n ' })).rejects.toMatchObject({ status: 400, field: 'text' });
+    await expect(t.viewer.send('sess-a', { text: 'x'.repeat(MAX_MESSAGE + 1) })).rejects.toMatchObject({ status: 413, field: 'text' });
+    await expect(t.viewer.send('sess-a', {})).rejects.toBeInstanceOf(ViewError);
+    expect(t.calls).toEqual([]);
+  });
+
+  it('VIEW-3.2: in one line a tab becomes spaces (typed, it would be a keypress); other control characters are refused', async () => {
+    const t = setup();
+    await t.viewer.send('sess-a', { text: '\tindented' });
+    expect(t.calls[0]!.args.at(-1)).toBe('    indented');
+    for (const bad of ['\u001b[A', 'a\u0003', 'bell\u0007', 'x\u007f']) {
+      await expect(t.viewer.send('sess-a', { text: bad })).rejects.toMatchObject({ status: 400, field: 'text' });
+    }
+    expect(t.calls).toHaveLength(1);
+  });
+
+  it('VIEW-3.2: multi-line text is pasted, so its tabs arrive intact (Makefiles, Go, TSV)', async () => {
+    const t = setup();
+    await t.viewer.send('sess-a', { text: 'all:\n\tgo build ./...\na\tb\tc\n' });
+    expect(t.calls[0]!.args.at(-1)).toBe('all:\n\tgo build ./...\na\tb\tc\n');
+    await expect(t.viewer.send('sess-a', { text: 'line\n\u001b[A' })).rejects.toMatchObject({ status: 400, field: 'text' });
+  });
+
+  it('VIEW-3.4: an error that comes from tmux is reworded, so the UI never names tmux (0001)', async () => {
+    const t = setup({
+      send: async () => {
+        throw Object.assign(new Error('x'), { code: 1, stderr: "error: tmux send-keys -t %3 -l: can't find pane: %3\n" });
+      },
+      peek: async () => {
+        throw Object.assign(new Error('x'), { code: 1, stderr: 'error: tmux capture-pane failed\n' });
+      },
+    });
+    await expect(t.viewer.send('sess-a', { text: 'hi' })).rejects.toMatchObject({ message: "Couldn't send: the Session host refused the message." });
+    t.viewer.watch('tab-1', 'sess-a', true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(t.sent[0]!.event).toMatchObject({ error: "Preview failed: the Session host couldn't be read." });
+  });
+
+  it('VIEW-3.4: a failed send is an error with Fleet’s reason', async () => {
+    const t = setup({
+      send: async () => {
+        throw Object.assign(new Error('x'), { code: 1, stderr: 'error: session has no terminal handle\n' });
+      },
+    });
+    await expect(t.viewer.send('sess-a', { text: 'hi' })).rejects.toMatchObject({ status: 502, message: "Couldn't send: session has no terminal handle" });
+  });
+});

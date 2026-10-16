@@ -42,6 +42,11 @@ export class SessionMonitor {
     this.now = opts.now ?? Date.now;
   }
 
+  /** A Session as Fleet listed it in the last poll. */
+  get(id: string): SessionRow | null {
+    return this.rows.get(id) ?? null;
+  }
+
   snapshot(): { sessions: SessionRow[]; fleet: FleetHealth } {
     return { sessions: [...this.rows.values()], fleet: this.health };
   }
