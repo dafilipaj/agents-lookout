@@ -41,7 +41,7 @@ Decisions are `Proposed`, `Accepted` or `Superseded by NNNN`. An accepted decisi
 
 ## Writing rules
 
-1. **Requirements are capabilities**, numbered `<CODE>-1`, `<CODE>-2`. Their acceptance criteria are `<CODE>-1.1`, `<CODE>-1.2`. IDs never change and are never reused; a dropped one is struck through, not deleted.
+1. **Requirements are capabilities**, numbered `<CODE>-1`, `<CODE>-2`. Their acceptance criteria are `<CODE>-1.1`, `<CODE>-1.2`. While a spec is Draft, renumber freely. From Ready on, IDs never change and are never reused; a dropped one is struck through, not deleted.
 2. **Every acceptance criterion is checkable.** Say when it holds, and how it's verified: `(test)` for an automated test, `(manual)` for looking at the running app.
 3. **Non-goals are mandatory.** This is where scope creep gets stopped, for you and for agents.
 4. **Use Glossary terms**, capitalized. A new concept goes into `GLOSSARY.md` in the same change.
