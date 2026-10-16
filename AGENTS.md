@@ -20,4 +20,5 @@ How specs work: `docs/README.md`. Terms: `docs/GLOSSARY.md`.
 - Never run `claude` or another Harness directly: start a login shell in tmux and type the command into it ([0002](docs/decisions/0002-start-sessions-through-a-login-shell.md)).
 - The local server binds `127.0.0.1` and checks `Origin` or a token ([0003](docs/decisions/0003-browser-first-react-stack.md)).
 - Use Fleet only through its CLI's `--json` output ([0004](docs/decisions/0004-fleet-cli-as-session-layer.md)).
+- Fleet comes from the fork `dafilipaj/fleet`, branch `lookout`. A missing Fleet capability is a commit there, not a workaround in Lookout ([0006](docs/decisions/0006-run-a-fork-of-fleet.md)).
 - Reusable logic belongs in a Building block in cli-toolbox, not in this repo ([0005](docs/decisions/0005-building-blocks-live-outside-lookout.md)).

@@ -24,6 +24,8 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Session host**: The tmux session a Session runs in. Lookout never shows tmux itself.
 
+**Start directory**: A directory listed in Settings where Lookout can start new Sessions. `~/Projects/work` by default.
+
 **Status**: What a Session is doing: *Busy* (working), *Needs you*, *Idle* (finished its turn), or *Dormant* (was running before a reboot and can be resumed). Comes from Fleet.
 
 **Transcript**: The JSONL log a Harness writes for a Session, for example under `~/.claude/projects/` or `~/.codex/sessions/`.

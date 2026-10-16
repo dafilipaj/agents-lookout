@@ -1,7 +1,7 @@
 ---
 title: Session sidebar
 code: SIDE
-status: Ready
+status: In Progress
 created: 2026-10-16
 updated: 2026-10-16
 ---
@@ -22,50 +22,50 @@ With many agents running across iTerm2 tabs and tmux panes, finding the one that
 
 The sidebar lists every live Session on this Host that Fleet finds, whichever terminal it runs in.
 
-- [ ] SIDE-1.1 A Session started anywhere (Lookout, an iTerm2 tab, a tmux pane) appears within 3 s of Fleet reporting it. (manual)
-- [ ] SIDE-1.2 A Session whose process exits disappears within 3 s. (manual)
-- [ ] SIDE-1.3 Claude Code and Codex Sessions both appear. (manual)
-- [ ] SIDE-1.4 Given a recorded `fleet list --json` output, the server produces the expected rows. (test)
-- [ ] SIDE-1.5 Sessions that aren't Controllable (e.g. Claude Desktop, IDE terminals) are shown greyed out, so you know they exist. (test)
+- [x] SIDE-1.1 A Session started anywhere (Lookout, an iTerm2 tab, a tmux pane) appears within 3 s of Fleet reporting it. (manual)
+- [x] SIDE-1.2 A Session whose process exits disappears within 3 s. (manual)
+- [x] SIDE-1.3 Claude Code and Codex Sessions both appear. (manual)
+- [x] SIDE-1.4 Given a recorded `fleet list --json` output, the server produces the expected rows. (test)
+- [x] SIDE-1.5 Sessions that aren't Controllable (e.g. Claude Desktop, IDE terminals) are shown greyed out, so you know they exist. (test)
 
 ### SIDE-2 One row per Session
 
-- [ ] SIDE-2.1 Each row shows the title, Harness, Status, repo name, where the Session works (SIDE-2.2), and time since the last status change. (test)
-- [ ] SIDE-2.2 When the working directory is a linked Worktree, the row shows the Worktree's name with a worktree icon; otherwise it shows the git branch with a branch icon. The two icons are clearly different. (test)
-- [ ] SIDE-2.3 A Needs you row also shows what it's waiting for, on one line. (test)
-- [ ] SIDE-2.4 Context usage shows as a percentage when Fleet reports it, and not at all when it doesn't. (test)
-- [ ] SIDE-2.5 Rows fit a 280 px sidebar without horizontal scrolling; long text is truncated, with the full text on hover. (manual)
+- [x] SIDE-2.1 Each row shows the title, Harness, Status, repo name, where the Session works (SIDE-2.2), and time since the last status change. (test)
+- [x] SIDE-2.2 When the working directory is a linked Worktree, the row shows the Worktree's name with a worktree icon; otherwise it shows the git branch with a branch icon. The two icons are clearly different. (test)
+- [x] SIDE-2.3 A Needs you row also shows what it's waiting for, on one line. (test)
+- [x] SIDE-2.4 Context usage shows as a percentage when Fleet reports it, and not at all when it doesn't. (test)
+- [x] SIDE-2.5 Rows fit a 280 px sidebar without horizontal scrolling; long text is truncated, with the full text on hover. (manual)
 
 ### SIDE-3 Status at a glance
 
-- [ ] SIDE-3.1 Rows are ordered Needs you → Busy → Idle → Unknown; within each Status, the most recent status change comes first. (test)
-- [ ] SIDE-3.2 Each Status has its own marker. Needs you is the most prominent, and is recognizable without colour. (manual)
-- [ ] SIDE-3.3 The browser tab title shows how many Sessions need you, e.g. "(2) Lookout", and no count when none do. (test)
-- [ ] SIDE-3.4 Status markers and row text update live, also while the pointer is over the sidebar. Only reordering waits: rows don't move while the pointer is over the sidebar, and pending moves apply once it leaves. (manual)
-- [ ] SIDE-3.5 A Session Idle for longer than the idle threshold (default 4 h, SIDE-7) is dimmed. It returns to normal as soon as its Status changes. (test)
+- [x] SIDE-3.1 Rows are ordered Needs you → Busy → Idle → Unknown; within each Status, the most recent status change comes first. (test)
+- [x] SIDE-3.2 Each Status has its own marker. Needs you is the most prominent, and is recognizable without colour. (manual)
+- [x] SIDE-3.3 The browser tab title shows how many Sessions need you, e.g. "(2) Lookout", and no count when none do. (test)
+- [x] SIDE-3.4 Status markers and row text update live, also while the pointer is over the sidebar. Only reordering waits: rows don't move while the pointer is over the sidebar, and pending moves apply once it leaves. (manual)
+- [x] SIDE-3.5 A Session Idle for longer than the idle threshold (default 4 h, SIDE-7) is dimmed. It returns to normal as soon as its Status changes. (test)
 
 ### SIDE-4 Switch Sessions
 
-- [ ] SIDE-4.1 Clicking a row selects that Session and shows it in the main pane (what the main pane contains is the VIEW spec). (manual)
-- [ ] SIDE-4.2 The selected Session is in the URL, so reload and back/forward keep it. (test)
-- [ ] SIDE-4.3 If the selected Session ends, it stays selected and the main pane says it ended, until you select another. (manual)
+- [x] SIDE-4.1 Clicking a row selects that Session and shows it in the main pane (what the main pane contains is the VIEW spec). (manual)
+- [x] SIDE-4.2 The selected Session is in the URL, so reload and back/forward keep it. (test)
+- [x] SIDE-4.3 If the selected Session ends, it stays selected and the main pane says it ended, until you select another. (manual)
 
 ### SIDE-5 Keyboard
 
-- [ ] SIDE-5.1 ↑/↓ and j/k move the selection. (manual)
-- [ ] SIDE-5.2 ⌘1–⌘9 select the first to ninth row. (manual)
-- [ ] SIDE-5.3 ⌘J selects the next Session that needs you. (manual)
-- [ ] SIDE-5.4 `/` focuses a filter box; typing filters rows by title, repo, Worktree or branch; Esc clears it. (test)
+- [x] SIDE-5.1 ↑/↓ and j/k move the selection. (manual)
+- [x] SIDE-5.2 ⌘1–⌘9 select the first to ninth row. (manual)
+- [x] SIDE-5.3 ⌘J selects the next Session that needs you. (manual)
+- [x] SIDE-5.4 `/` focuses a filter box; typing filters rows by title, repo, Worktree or branch; Esc clears it. (test)
 
 ### SIDE-6 When Fleet fails
 
-- [ ] SIDE-6.1 If `fleet` isn't installed, the sidebar says how to install it instead of showing an empty list. (test)
-- [ ] SIDE-6.2 If a `fleet list` call fails or times out, the last list stays visible, dimmed, with a banner saying how long it's been stale. It recovers on its own. (test)
+- [x] SIDE-6.1 If `fleet` isn't installed, the sidebar says how to install it instead of showing an empty list. (test)
+- [x] SIDE-6.2 If a `fleet list` call fails or times out, the last list stays visible, dimmed, with a banner saying how long it's been stale. It recovers on its own. (test)
 
 ### SIDE-7 Settings
 
-- [ ] SIDE-7.1 A Settings page, reachable from the sidebar, lets you change the idle threshold in hours. (manual)
-- [ ] SIDE-7.2 The server stores settings in a file, so they survive restarts and are the same in every browser tab. A changed value applies without reloading. (test)
+- [x] SIDE-7.1 A Settings page, reachable from the sidebar, lets you change the idle threshold in hours. (manual)
+- [x] SIDE-7.2 The server stores settings in a file, so they survive restarts and are the same in every browser tab. A changed value applies without reloading. (test)
 
 ## Non-goals
 
@@ -104,16 +104,22 @@ The sidebar lists every live Session on this Host that Fleet finds, whichever te
 ## Technical approach
 
 - **Polling:** the server calls `fleet list --json` every 2 s, compares the result with the previous one, and pushes changes to the UI over server-sent events. The UI never calls Fleet itself ([0003](../../decisions/0003-browser-first-react-stack.md), [0004](../../decisions/0004-fleet-cli-as-session-layer.md)).
-- **Fields used from Fleet:**
-  - `display_title`, `harness`, `updated_at`, `context.pct`, `cwd`.
-  - `status`: `waiting` becomes Needs you.
-  - `waiting_for`.
+- **Fields used from Fleet** (`fleet --local list --json`, checked against Fleet 38a461c's `docs/architecture.md` and real output on 2026-10-16):
+  - `display_title`, `harness`, `context.pct`, `cwd`, `model`.
+  - `status`: `waiting` → Needs you, `busy` → Busy, `idle` → Idle, anything else → Unknown.
+  - `waiting_for`, shown only on Needs you rows. For a Claude question it's the generic `input needed`.
   - `backend`: `tmux` or `iterm` means Controllable.
+  - `updated_at` isn't a status-change time for every Harness. For Claude it is (the registry's status change); for Codex it's the Transcript's last write, or the process start (which jitters by up to a second between calls). So the server tracks status changes itself: it keeps the time until the Status changes, then takes Fleet's `updated_at` if it falls after the previous change, otherwise the time it saw the change.
+  - Rows with Harness `pi` are dropped (Non-goal).
+- **Known Fleet gaps (38a461c):**
+  - A Codex approval prompt (Codex 0.162) is reported as `busy`, not `waiting`, so it doesn't show as Needs you.
+  - A Codex Session has no `session_id` before its first prompt; its id changes from `codex:<pid>` to the session id then. The UI keeps it selected by following the same pid.
 - **Repo, Worktree and branch:** Fleet doesn't report these, so the server reads them with `git -C <cwd>`, cached per directory and refreshed every 30 s.
   - It's a linked Worktree when `--git-dir` and `--git-common-dir` differ.
   - The Worktree's name is the basename of `--show-toplevel`.
-  - The repo name comes from the common git dir's parent.
-- **Settings:** stored by the server in `~/.config/lookout/settings.json`, not in browser storage.
+  - The repo name comes from the common git dir's parent (for a bare repo, the common dir's own name minus `.git`).
+  - Outside git, the row shows the working directory's name instead.
+- **Settings:** stored by the server in `~/.config/lookout/settings.json`, not in browser storage. A change is pushed to every open tab over the same event stream.
 - **Session identity:** `session_id` when present, otherwise `<harness>:<pid>`. Fleet's `session_id` is Claude's UUID, so Codex rows may not have one.
 - **Prerequisite:** Fleet installed and pinned with `cargo install --git https://github.com/ilucin/fleet --rev 38a461c --locked fleet`.
 - **Measured 2026-10-16:** `fleet list --json` takes 0.09–0.13 s with 3 live Sessions, so a 2 s poll is cheap. All 3 ran in Orca and came back with backend `unknown`, i.e. not Controllable.
@@ -136,3 +142,4 @@ None.
 - 2026-10-16: Answers from review: order by Status; Worktree name with branch as fallback; Sessions that aren't Controllable greyed out; Status updates live while reordering waits; idle dimming after 4 h, set in a new Settings page (SIDE-7).
 - 2026-10-16: Measured `fleet list` (0.1 s); no open questions left.
 - 2026-10-16: Ready.
+- 2026-10-16: In Progress. Technical approach checked against real Fleet output: the status mapping, `updated_at` meaning per Harness (server tracks status changes itself), pi rows dropped, and two Fleet gaps (Codex approvals read as Busy; Codex ids change after the first prompt).
