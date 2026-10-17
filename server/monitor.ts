@@ -81,6 +81,15 @@ export class SessionMonitor {
     return this.ticking;
   }
 
+  /**
+   * A poll that starts now: one already in flight may have listed Fleet before a change (a close,
+   * say), so it's waited for and a new one follows.
+   */
+  async pollNow(): Promise<void> {
+    if (this.ticking) await this.ticking.catch(() => {});
+    return this.tick();
+  }
+
   /** Re-derives rows from the last list, e.g. after git info for a directory arrived. */
   refreshDerived(): void {
     this.apply(this.lastRaw);

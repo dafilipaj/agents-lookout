@@ -15,7 +15,9 @@ const row = (id: string, status: Status, statusSince: number | null): SessionRow
   git: null,
   backend: 'tmux',
   controllable: true,
+  ownHost: true,
   model: null,
+  procStart: null,
 });
 
 describe('sidebar order', () => {

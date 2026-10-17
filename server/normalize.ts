@@ -21,9 +21,29 @@ function toBackend(b: string): Backend {
   return b === 'tmux' || b === 'iterm' ? b : 'unknown';
 }
 
+/** The tmux session a tmux-backed row lives in; null for any other. */
+function tmuxHost(r: FleetRow): string | null {
+  return r.backend === 'tmux' && typeof r.tmux_session === 'string' && r.tmux_session !== '' ? r.tmux_session : null;
+}
+
 /** `session_id` when present, otherwise `<harness>:<pid>`. */
 export function sessionId(row: Pick<FleetRow, 'session_id' | 'harness' | 'pid'>): string {
   return row.session_id ? row.session_id : `${row.harness}:${row.pid}`;
+}
+
+/** RFC 3339 in UTC, as the Fleet contract gives `proc_start`: seconds, optional fraction, `Z`. */
+const PROC_START = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/;
+const MAX_PROC_START = 40;
+
+/**
+ * VIEW-5.6: Fleet's `proc_start`, kept exactly as given (it goes back to `fleet close
+ * --expect-start` verbatim), or null when it's missing, too long, malformed or not a real time.
+ */
+export function procStart(value: unknown): string | null {
+  if (typeof value !== 'string' || value.length > MAX_PROC_START || !PROC_START.test(value)) return null;
+  const ms = Date.parse(value);
+  // A real calendar time: Date.parse rolls 02-30 over to March, so the seconds must round-trip.
+  return Number.isFinite(ms) && new Date(ms).toISOString().slice(0, 19) === value.slice(0, 19) ? value : null;
 }
 
 export interface NormalizeDeps {
@@ -36,6 +56,12 @@ export interface NormalizeDeps {
 /** Turns `fleet list --json` rows into sidebar rows. pi Sessions are a non-goal and dropped. */
 export function normalizeRows(rows: readonly FleetRow[], deps: NormalizeDeps): SessionRow[] {
   const out: SessionRow[] = [];
+  // VIEW-5.6: how many listed Sessions (pi included) each tmux session hosts.
+  const perHost = new Map<string, number>();
+  for (const r of rows) {
+    const host = tmuxHost(r);
+    if (host) perHost.set(host, (perHost.get(host) ?? 0) + 1);
+  }
   for (const r of rows) {
     if (!HARNESSES.includes(r.harness)) continue;
     const id = sessionId(r);
@@ -55,7 +81,9 @@ export function normalizeRows(rows: readonly FleetRow[], deps: NormalizeDeps): S
       git: r.cwd ? deps.git(r.cwd) : null,
       backend,
       controllable: backend !== 'unknown',
+      ownHost: perHost.get(tmuxHost(r) ?? '') === 1,
       model: r.model ?? null,
+      procStart: procStart(r.proc_start),
     });
   }
   return out;

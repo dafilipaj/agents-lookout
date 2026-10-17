@@ -1,4 +1,5 @@
 import * as React from "react"
+import { useModalRegistration } from "@/lib/modal"
 import { cn } from "@/lib/utils"
 import { XIcon } from "lucide-react"
 import { Dialog as DialogPrimitive } from "radix-ui"
@@ -45,6 +46,15 @@ function DialogOverlay({
   )
 }
 
+/**
+ * Mounted only while the content is (Radix renders it only when open), so background shortcuts
+ * stand down exactly while a modal is open (lib/modal).
+ */
+function OpenModal() {
+  useModalRegistration()
+  return null
+}
+
 function DialogContent({
   className,
   children,
@@ -64,6 +74,7 @@ function DialogContent({
         )}
         {...props}
       >
+        <OpenModal />
         {children}
         {showCloseButton && (
           <DialogPrimitive.Close

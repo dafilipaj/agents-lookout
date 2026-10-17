@@ -39,7 +39,18 @@ export interface SessionRow {
   git: GitLocation | null;
   backend: Backend;
   controllable: boolean;
+  /**
+   * VIEW-5.6: hosted in a tmux session of its own, as far as `fleet list` tells: backend tmux and
+   * no other listed Session in that tmux session. Fleet's `close` refuses a shared one anyway.
+   */
+  ownHost: boolean;
   model: string | null;
+  /**
+   * VIEW-5.6: the agent process's start time (RFC 3339, UTC) as Fleet read it; null when it
+   * couldn't. With `pid` it names this process generation, so End Session never closes a
+   * replacement (a resume under a new process, or a reused pid).
+   */
+  procStart: string | null;
 }
 
 /** The health of the `fleet list` poll. */
@@ -218,6 +229,21 @@ export interface HistoryDetail {
   preview: 'latest' | 'first' | 'all';
   /** How many messages the Session has, when tb-session says. */
   totalMessages: number | null;
+}
+
+/**
+ * VIEW-5.6: `POST /api/sessions/:id/end`'s body: the process the user confirmed ending, from the
+ * row the dialog opened on. Fleet closes only that process (`--expect-pid`, `--expect-start`).
+ */
+export interface EndTarget {
+  pid: number;
+  procStart: string | null;
+}
+
+/** VIEW-5.6: `POST /api/sessions/:id/end`: how the Session ended. */
+export interface EndResult {
+  /** `exit`: on its Harness's own exit command; `killed`: its Session host was closed with it. */
+  how: 'exit' | 'killed';
 }
 
 /** `POST /api/history/resume`: a start like LAUNCH's, or the live Session to select instead. */

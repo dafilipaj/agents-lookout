@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_PORT } from '../shared/defaults.ts';
 import { createApp } from './app.ts';
+import { endSession } from './closer.ts';
 import { run } from './exec.ts';
 import { fetchFleetList, resolveFleetBin } from './fleet.ts';
 import { GitCache, readGitLocation } from './git.ts';
@@ -72,6 +73,20 @@ const app = createApp({
   launcher,
   viewer,
   usage,
+  sessions: {
+    end: (id, target) =>
+      endSession(
+        {
+          runner: run,
+          fleetBin: () => resolveFleetBin(env),
+          lookup: (sid) => monitor.get(sid),
+          freshList: () => fetchFleetList(run, resolveFleetBin(env)),
+          refresh: () => monitor.pollNow(),
+        },
+        id,
+        target,
+      ),
+  },
   history: {
     find: (q) => history.find(q),
     detail: (id, harness) => history.detail(id, harness),

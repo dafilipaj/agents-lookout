@@ -33,6 +33,7 @@ Finding last week's Session means remembering its directory and running `claude 
 - [x] HIST-2.5 Headless Sessions are hidden by default. A toggle shows them. (test)
 - [x] HIST-2.6 Subagent Sessions and Sessions without a single prompt never appear. (test)
 - [x] HIST-2.7 ↑/↓ and j/k move through the results without resuming anything; Enter acts like a click. (manual)
+- [x] HIST-2.8 Claude Code and Codex filter buttons, each showing its Harness's logo, sit next to the headless toggle. Both are on by default; either can be switched off, but never both at once. The choice is remembered across reloads. (test)
 
 ### HIST-3 Click to resume
 
@@ -46,7 +47,7 @@ Finding last week's Session means remembering its directory and running `claude 
 - Deleting, renaming, exporting or tagging past Sessions.
 - Forking a Session (`--fork-session`), or resuming with a new first prompt (once it's live, use the composer, VIEW-3).
 - Recreating a removed Worktree so that a Session can be resumed.
-- Semantic or AI search; filters other than the headless toggle.
+- Semantic or AI search.
 - Grouping or a scope switch (Orca's Workspace / Project / All); everything is searched.
 - Other tabs in the right sidebar; it's built so PORTS can become one later.
 - Other Hosts, and the pi Harness.
@@ -57,7 +58,7 @@ Finding last week's Session means remembering its directory and running `claude 
 ┌───────────────┬──────────────────────────────────┬──────────────────────┐
 │ Sessions      │ main pane (VIEW)                 │ History          [×] │
 │ (SIDE)        │                                  │ [ search…          ] │
-│               │                                  │ ☐ Show headless      │
+│               │                                  │ ☐ Show headless [✳][◎]│
 │               │                                  │ ● fix-deal-rates live│
 │               │                                  │   work · main · 2h   │
 │               │                                  │ ○ kg-hook-review     │
@@ -68,6 +69,7 @@ Finding last week's Session means remembering its directory and running `claude 
 └───────────────┴──────────────────────────────────┴──────────────────────┘
 ```
 
+- [✳][◎]: the Claude Code and Codex filter buttons (HIST-2.8), drawn with the same Harness logos as the Session sidebar. A switched-off one is greyed out; the last one on can't be switched off.
 - Markers: ● live (click selects it), ○ resumable (click resumes it), ⊘ can't be resumed (click opens it read-only).
 - Empty states: "No past Sessions", and "Nothing matches" with the query.
 - Errors: tb-session missing shows how to install it, like SIDE-6.1.
@@ -115,7 +117,9 @@ Finding last week's Session means remembering its directory and running `claude 
   - Its `list` rows have no `first_prompt` (its `search` and `show` rows do), and it lists empty Sessions; it leaves out subagent ones. A `list` row without `first_prompt` is shown when its `message_count` is above 0, so no row needs a `show`. Its title is its `summary`, else "Untitled Session" and the id's first 8 characters.
   - `message_count` also counts assistant-only and empty (tool-result) messages, so with 0.2 a Session without a prompt can still appear in the list, until tb-session 0.3.0 is installed. A click checks it: the resume (HIST-3.1) and the read-only open (HIST-3.3) read its `show`, and one without `first_prompt` answers "This Session has no prompt." (422) instead of resuming or opening.
   - Lookout also drops rows it marks headless, subagent rows and rows without a prompt itself.
-- **Paging:** each page belongs to the query and toggle it answers. After either changes, the list doesn't page until the new first page has arrived, so an older request's next page can never land after it.
+- **Harness filter (HIST-2.8):** with one Harness switched off, the server passes tb-session 0.3.0's `--harness <h>` to `list` and `search`; with both on, no flag. tb-session 0.2.0 has no `--harness`: once it refuses the flag (as for `--headless`), the server filters the rows itself, and a row without `harness` counts as Claude Code, so Codex alone shows nothing there. Rows are filtered by Harness on the server either way, so a tb-session that ignores the flag can't leak rows.
+  - The choice is kept in this browser (`localStorage`, like HIST-1.3's layout); a stored value with both off, or one that can't be read, is both.
+- **Paging:** each page belongs to the query and toggles it answers (headless and Harness). After any of them changes, the list doesn't page until the new first page has arrived, so an older request's next page can never land after it.
   - A page can come back empty, or short, once rows are filtered (the newest 50 all empty Sessions, say), with more to come. A list that shows nothing or doesn't fill the panel can't be scrolled, so it fetches the next page itself, for the same query and toggle only, at most 5 pages in a row. Then a "Load more" button takes over; a click or a scroll starts a new count.
 - **Enter:** opens the highlighted result only from the search box or the result list; on Close History or the toggle it's theirs.
 - **Binary:** `LOOKOUT_TB_SESSION_BIN`, then `PATH`, then `~/.local/bin`, like Fleet's.
@@ -153,3 +157,4 @@ None.
 - 2026-10-17: In Progress. Built against tb-session 0.3.0 (0.2 still works) and the Fleet fork's `spawn --resume` contract through a fake `fleet`; LAUNCH moved to `spawn --json` so both share one spawn path. Technical approach notes the live check, the resume request, tb-session 0.2 and the read-only URL. HIST-3.4 waits for the real fork: the 15 s failure and the cleaned environment are tested, telemetry isn't seen yet.
 - 2026-10-17: Review round 1. Technical approach: Lookout never spawns a resume it already has under way, and handles Fleet's `session_starting`; a Session that can't be resumed after all opens read-only; tb-session 0.2's `list` rows (no `first_prompt`) and its first-20 preview; at most 50 rows; paging tied to its query; Enter only from the search box or the list; long Session host names.
 - 2026-10-17: Review round 2. Technical approach: an empty or short filtered page fetches the next ones itself (at most 5, then "Load more"); with tb-session 0.2 a listed Session without a prompt is refused on a click, not filtered from the list, until 0.3.0 is installed; a `session_starting` resume that times out says it's being started elsewhere; Fleet's `dir_missing` at spawn opens the Session read-only.
+- 2026-10-17: Added HIST-2.8, Claude Code and Codex filter buttons next to the headless toggle (tb-session 0.3.0's `--harness`, filtered on the server for 0.2.0). Non-goals no longer rule out filters other than the headless toggle; semantic search stays out.

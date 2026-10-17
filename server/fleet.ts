@@ -25,6 +25,8 @@ export interface FleetRow {
   /** `claude` | `codex` | `pi` */
   harness: string;
   model: string | null;
+  /** The agent process's start time, RFC 3339 UTC; null when Fleet can't read it (VIEW-5.6). */
+  proc_start?: string | null;
 }
 
 export type FleetListResult =

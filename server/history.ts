@@ -68,6 +68,8 @@ export interface FindQuery {
   page: number;
   /** HIST-2.5: include Headless Sessions. */
   headless: boolean;
+  /** HIST-2.8: only this Harness's Sessions; null for both. */
+  harness: Harness | null;
 }
 
 /** Reads a `GET /api/history` query string; anything odd is clamped, not refused. */
@@ -75,7 +77,8 @@ export function parseFindQuery(params: URLSearchParams): FindQuery {
   const query = (params.get('q') ?? '').replace(/[\0\r\n\t]+/g, ' ').trim().slice(0, MAX_QUERY);
   const n = Number(params.get('page') ?? '1');
   const page = Number.isInteger(n) ? Math.min(Math.max(n, 1), MAX_PAGE) : 1;
-  return { query, page, headless: params.get('headless') === '1' };
+  const h = params.get('harness');
+  return { query, page, headless: params.get('headless') === '1', harness: h === 'claude' || h === 'codex' ? h : null };
 }
 
 export interface HistoryOptions {
@@ -106,6 +109,8 @@ export class History {
         ? ['search', '--all-projects', '--json', '--limit', String(HISTORY_PAGE)]
         : ['list', '--all-projects', '--json', '--limit', String(HISTORY_PAGE), '--page', String(q.page)];
       if (!q.headless && !legacy) args.push('--headless', 'exclude');
+      // HIST-2.8: tb-session 0.3 filters by Harness; 0.2 can't, so the rows are filtered below.
+      if (q.harness && !legacy) args.push('--harness', q.harness);
       // After `--`, so a query that starts with `-` is still the query.
       if (q.query) args.push('--', q.query);
       return args;
@@ -119,7 +124,8 @@ export class History {
     const raw = (parsed.results as unknown[]).slice(0, HISTORY_PAGE);
     const rows = raw.map((r) => toRow(r)).filter((r): r is Row => r !== null);
     // HIST-2.5: tb-session 0.2 can't filter; `null` (unknown) stays, as with `--headless exclude`.
-    const shown = q.headless ? rows : rows.filter((r) => r.item.headless !== true);
+    // HIST-2.8: filtered here too, for tb-session 0.2, whose rows (no `harness`) are Claude Code.
+    const shown = rows.filter((r) => (q.headless || r.item.headless !== true) && (!q.harness || r.item.harness === q.harness));
     const items = await Promise.all(shown.map((r) => this.withBlock(r)));
     const total = typeof parsed.total_results === 'number' ? parsed.total_results : null;
     const hasMore = !q.query && (total !== null ? q.page * HISTORY_PAGE < total : raw.length >= HISTORY_PAGE);

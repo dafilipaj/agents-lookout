@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { type IncomingMessage, type Server, type ServerResponse, createServer } from 'node:http';
 import { SettingsError } from '../shared/settings.ts';
-import type { ChatPage, Harness, HarnessOption, HistoryDetail, HistoryPage, LaunchView, ResumeResult, ServerEvent } from '../shared/types.ts';
+import type { ChatPage, EndResult, EndTarget, Harness, HarnessOption, HistoryDetail, HistoryPage, LaunchView, ResumeResult, ServerEvent } from '../shared/types.ts';
 import type { UsageSnapshot } from '../shared/usage.ts';
+import { EndError, parseEndTarget } from './closer.ts';
 import { type FindQuery, HistoryError, parseFindQuery } from './history.ts';
 import { LaunchError } from './launcher.ts';
 import type { SessionMonitor } from './monitor.ts';
@@ -34,6 +35,10 @@ export interface AppOptions {
     send(sessionId: string, input: unknown): Promise<void>;
     earlier(sessionId: string, cursor: unknown): Promise<ChatPage>;
   };
+  /** VIEW-5.6: ends a Session through `fleet close`. */
+  sessions: {
+    end(sessionId: string, target: EndTarget): Promise<EndResult>;
+  };
   /** HIST: past Sessions through tb-session, and resuming one. */
   history: {
     find(q: FindQuery): Promise<HistoryPage>;
@@ -58,6 +63,8 @@ const MAX_BODY = 16 * 1024;
 const MAX_LAUNCH_BODY = 1024 * 1024;
 /** A message of up to MAX_MESSAGE characters, JSON-escaped. */
 const MAX_SEND_BODY = MAX_MESSAGE * 8;
+/** VIEW-5.6: `{ pid, procStart }`. */
+const MAX_END_BODY = 1024;
 
 const SECURITY_HEADERS = {
   'x-content-type-options': 'nosniff',
@@ -201,6 +208,26 @@ export function createApp(opts: AppOptions): LookoutApp {
         return json(res, 200, { ok: true });
       } catch (err) {
         if (err instanceof ViewError) return json(res, err.status, { error: err.message, field: err.field });
+        throw err;
+      }
+    }
+    // VIEW-5.6: ending a Session is a mutation: the token and Origin, as LAUNCH's start and
+    // HIST's resume (the guard checks every non-GET). The body names the process the user
+    // confirmed (`{ pid, procStart }`), so a replacement is never the one closed.
+    const endMatch = /^\/api\/sessions\/([^/]{1,200})\/end$/.exec(url.pathname);
+    if (endMatch && req.method === 'POST') {
+      let sessionId: string;
+      try {
+        sessionId = decodeURIComponent(endMatch[1]!);
+      } catch {
+        return json(res, 400, { error: 'invalid session id' });
+      }
+      const body = await readJson(req, res, MAX_END_BODY, null);
+      if (body === NO_BODY) return;
+      try {
+        return json(res, 200, await opts.sessions.end(sessionId, parseEndTarget(body)));
+      } catch (err) {
+        if (err instanceof EndError) return json(res, err.status, { error: err.message });
         throw err;
       }
     }

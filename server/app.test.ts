@@ -4,8 +4,9 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { ServerEvent } from '../shared/types.ts';
+import type { EndTarget, ServerEvent } from '../shared/types.ts';
 import { type LookoutApp, createApp } from './app.ts';
+import { EndError } from './closer.ts';
 import { HistoryError } from './history.ts';
 import { SettingsStore } from './settings.ts';
 import { ViewError } from './viewer.ts';
@@ -29,6 +30,7 @@ let sent: { sessionId: string; input: unknown }[] = [];
 let pages: { sessionId: string; cursor: unknown }[] = [];
 let finds: unknown[] = [];
 let resumes: unknown[] = [];
+let ended: { sessionId: string; target: EndTarget }[] = [];
 
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'lookout-app-'));
@@ -39,6 +41,7 @@ beforeEach(async () => {
   pages = [];
   finds = [];
   resumes = [];
+  ended = [];
   const settings = new SettingsStore(join(dir, 'settings.json'));
   await settings.load();
   app = createApp({
@@ -68,6 +71,13 @@ beforeEach(async () => {
         if (typeof cursor !== 'string') throw new ViewError(400, 'Invalid cursor.', 'before');
         pages.push({ sessionId, cursor });
         return { entries: [{ kind: 'user', cursor: 'c1', ts: null, text: 'older', queued: false }], before: null };
+      },
+    },
+    sessions: {
+      end: async (sessionId: string, target: EndTarget) => {
+        if (sessionId === 'busy') throw new EndError(409, 'Fleet is typing into it; try again.');
+        ended.push({ sessionId, target });
+        return { how: 'exit' };
       },
     },
     history: {
@@ -307,14 +317,56 @@ function openEvents() {
   };
 }
 
+describe('VIEW-5.6 route', () => {
+  it('VIEW-5.6: ending a Session is a mutation: it needs our Origin and the token, like LAUNCH’s start and HIST’s resume', async () => {
+    const target = JSON.stringify({ pid: 61001, procStart: '2026-10-14T08:12:03Z' });
+    const json = { 'content-type': 'application/json' };
+    const end = (id: string, headers: Record<string, string>, body = target) =>
+      call('POST', `/api/sessions/${encodeURIComponent(id)}/end`, { ...json, ...headers }, body);
+    expect((await end('abc', { 'x-lookout-token': TOKEN })).status).toBe(403); // no Origin
+    expect((await end('abc', { origin })).status).toBe(403); // no token
+    expect((await end('abc', { origin: 'https://evil.example', 'x-lookout-token': TOKEN })).status).toBe(403);
+    expect((await end('abc', { origin, 'x-lookout-token': TOKEN, 'sec-fetch-site': 'cross-site' })).status).toBe(403);
+    expect((await call('GET', '/api/sessions/abc/end', { origin })).status).toBe(404);
+    expect(ended).toEqual([]);
+
+    const res = await end('abc', { origin, 'x-lookout-token': TOKEN });
+    expect(res.status).toBe(200);
+    expect(JSON.parse(res.body)).toEqual({ how: 'exit' });
+    expect(ended).toEqual([{ sessionId: 'abc', target: { pid: 61001, procStart: '2026-10-14T08:12:03Z' } }]);
+
+    const busy = await end('busy', { origin, 'x-lookout-token': TOKEN });
+    expect(busy.status).toBe(409);
+    expect(JSON.parse(busy.body)).toEqual({ error: 'Fleet is typing into it; try again.' });
+    expect((await call('POST', '/api/sessions/%E0%A4%A/end', { ...json, origin, 'x-lookout-token': TOKEN }, target)).status).toBe(400);
+  });
+
+  it('VIEW-5.6: the body names the confirmed process; a missing or malformed one is refused before anything runs', async () => {
+    const headers = { 'content-type': 'application/json', origin, 'x-lookout-token': TOKEN };
+    const end = (body: string, h: Record<string, string> = headers) => call('POST', '/api/sessions/abc/end', h, body);
+    expect((await end('{"pid":61001,"procStart":"2026-10-14T08:12:03Z"}', { origin, 'x-lookout-token': TOKEN })).status).toBe(415);
+    expect((await end('not json')).status).toBe(400);
+    expect(JSON.parse((await end('{"procStart":"2026-10-14T08:12:03Z"}')).body)).toEqual({ error: 'Invalid process id.' });
+    expect(JSON.parse((await end('{"pid":61001,"procStart":"--json"}')).body)).toEqual({ error: 'Invalid process start time.' });
+    expect((await end(JSON.stringify({ pid: 1, procStart: 'x'.repeat(2000) }))).status).toBe(413);
+    expect(ended).toEqual([]);
+  });
+});
+
 describe('HIST routes', () => {
   it('HIST-2.2: GET /api/history passes the query, page and headless toggle, bounded', async () => {
     const res = await call('GET', '/api/history?q=%20rate%20card%0A&page=3&headless=1', { origin });
     expect(res.status).toBe(200);
-    expect(finds).toEqual([{ query: 'rate card', page: 3, headless: true }]);
+    expect(finds).toEqual([{ query: 'rate card', page: 3, headless: true, harness: null }]);
     await call('GET', `/api/history?q=${'x'.repeat(2000)}&page=-4`);
     expect(finds[1]).toMatchObject({ page: 1, headless: false });
     expect((finds[1] as { query: string }).query).toHaveLength(500);
+  });
+
+  it('HIST-2.8: GET /api/history passes one Harness, or none for both', async () => {
+    await call('GET', '/api/history?harness=codex');
+    await call('GET', '/api/history?harness=pi');
+    expect(finds).toEqual([expect.objectContaining({ harness: 'codex' }), expect.objectContaining({ harness: null })]);
   });
 
   it('HIST-3.3: GET /api/history/:harness/:id reads one past Session; odd ids never reach tb-session', async () => {

@@ -17,10 +17,21 @@ interface Props extends Omit<SessionViewProps, 'row' | 'ended' | 'now' | 'previe
   list: 'loading' | 'unavailable' | 'known';
   now: number;
   preview: Preview | null;
+  /** Old id -> new id of the same process (a Codex Session that got its session id). */
+  aliases: ReadonlyMap<string, string>;
+}
+
+/**
+ * The view's identity: the Session, kept across a Codex Session getting its session id, so the
+ * view (an open or pending End Session dialog included) isn't remounted by the id change.
+ */
+function viewKey(row: SessionRow, aliases: ReadonlyMap<string, string>): string {
+  const pidId = `${row.harness}:${row.pid}`;
+  return aliases.get(pidId) === row.id ? pidId : row.id;
 }
 
 /** The main pane: the selected Session (VIEW), or the hint when nothing is selected (VIEW-5.4). */
-export function MainPane({ selectedId, live, lastKnown, list, now, preview, drawerOpen, ...view }: Props) {
+export function MainPane({ selectedId, live, lastKnown, list, now, preview, drawerOpen, aliases, ...view }: Props) {
   if (!selectedId) return <Empty />;
   if (!live && list === 'loading') return <div className="p-8 text-sm text-muted-foreground">Loading…</div>;
   if (!live && list === 'unavailable') {
@@ -46,7 +57,7 @@ export function MainPane({ selectedId, live, lastKnown, list, now, preview, draw
   }
   return (
     <SessionView
-      key={row.id}
+      key={viewKey(row, aliases)}
       row={row}
       ended={!live}
       now={now}

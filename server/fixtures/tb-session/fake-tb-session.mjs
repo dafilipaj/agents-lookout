@@ -98,13 +98,20 @@ function listRow(s) {
   return out;
 }
 
+/** `--harness`, repeatable in tb-session; comma-separated here. */
+function harnessFilter(rows, ids) {
+  if (!ids) return rows;
+  const wanted = ids.split(',');
+  return rows.filter((s) => wanted.includes(s.harness));
+}
+
 const byRecent = (a, b) => (b.modified_at ?? '').localeCompare(a.modified_at ?? '');
 
 function list(rest) {
   const { opts } = parse(rest);
   const limit = Number(opts.limit ?? 20);
   const page = Number(opts.page ?? 1);
-  const rows = headlessFilter(listed(), opts.headless).sort(byRecent);
+  const rows = harnessFilter(headlessFilter(listed(), opts.headless), opts.harness).sort(byRecent);
   process.stdout.write(
     `${JSON.stringify({ total_results: rows.length, page, results: rows.slice((page - 1) * limit, page * limit).map(listRow) })}\n`,
   );
@@ -115,7 +122,7 @@ function search(rest) {
   const query = (pos[0] ?? '').toLowerCase();
   const limit = Number(opts.limit ?? 20);
   const hits = [];
-  for (const s of headlessFilter(visible(), opts.headless)) {
+  for (const s of harnessFilter(headlessFilter(visible(), opts.headless), opts.harness)) {
     let score = 0;
     let first = null;
     for (const m of s.messages ?? []) {

@@ -14,6 +14,7 @@
     },
     "harness": "claude",
     "model": "claude-opus-5-5",
+    "proc_start": "2026-10-14T08:12:03Z",
     "fake_screen": [
       "",
       " ☐ Next step",
@@ -43,7 +44,8 @@
       "pct": 18
     },
     "harness": "codex",
-    "model": "gpt-6-astra"
+    "model": "gpt-6-astra",
+    "proc_start": "2026-10-14T07:55:41Z"
   },
   {
     "pid": 61003,
@@ -59,7 +61,8 @@
       "pct": 63
     },
     "harness": "claude",
-    "model": "claude-sonnet-5-5"
+    "model": "claude-sonnet-5-5",
+    "proc_start": "2026-10-14T08:01:17.250Z"
   },
   {
     "pid": 61004,
@@ -73,7 +76,8 @@
     "display_title": "fresh-session",
     "context": null,
     "harness": "claude",
-    "model": "claude-opus-5-5"
+    "model": "claude-opus-5-5",
+    "proc_start": "2026-10-14T09:30:00Z"
   },
   {
     "pid": 61005,
@@ -87,6 +91,7 @@
     "display_title": "starting-claude",
     "context": null,
     "harness": "claude",
-    "model": "claude-opus-5-5"
+    "model": "claude-opus-5-5",
+    "proc_start": "2026-10-14T09:42:09Z"
   }
 ]

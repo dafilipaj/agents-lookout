@@ -1,13 +1,18 @@
 #!/usr/bin/env node
 /* global process */
 // A stand-in `fleet` for tests and manual runs. Implements `list`, `peek`, `send`, `spawn --json`
-// (with `--resume`, the HIST contract; it never starts anything) and
+// (with `--resume`, the HIST contract; it never starts anything), `close --json` (the End
+// Session contract, VIEW-5.6; it never closes anything, it only drops the row from list.json) and
 // `messages --json` per the VIEW-1 contract (docs/features/session-view/SPEC.md), from
 // hand-written fixtures; never real Transcripts.
 //
 //   FAKE_FLEET_DIR   fixture dir: list.json, sessions/<id>.json. Without it, the committed
 //                    fixtures next to this file are read, and nothing is ever written.
 //   FAKE_FLEET_LOG   when set, each call's argv is appended to it as one JSON line
+//   A list row's `fake_close` (`busy`, `host_shared`, `io`) makes `close` fail with that kind, and
+//   `fake_close_how` (`killed`) says how a close went; default `exit`. `close --expect-pid <n>
+//   --expect-start <t>` (both or neither) fails `target_changed` unless the row's `pid` and
+//   `proc_start` are exactly those, as the Fleet fork checks its live process.
 //   FAKE_FLEET_REGISTER  `later`: a spawned Session doesn't show in `list` until
 //                    `fake register`, as one stuck at a trust prompt; meanwhile a second
 //                    `spawn --resume` of it within 30 s is `session_starting` (the HIST contract)
@@ -32,7 +37,8 @@ const writable = !!process.env.FAKE_FLEET_DIR;
 const dir = process.env.FAKE_FLEET_DIR || dirname(fileURLToPath(import.meta.url));
 if (process.env.FAKE_FLEET_LOG) appendFileSync(process.env.FAKE_FLEET_LOG, `${JSON.stringify(process.argv.slice(2))}\n`);
 
-const argv = process.argv.slice(2).filter((a) => a !== '--local');
+const dryRun = process.argv.includes('-n');
+const argv = process.argv.slice(2).filter((a) => a !== '--local' && a !== '-n');
 const cmd = argv.shift();
 
 const list = () => JSON.parse(readFileSync(join(dir, 'list.json'), 'utf8'));
@@ -179,6 +185,36 @@ function peek(args) {
   process.stdout.write(`▼ ${row.display_title} (${row.backend}, ${row.status}) — ${row.cwd}\n${screen.join('\n')}\n`);
 }
 
+/**
+ * `close <target> --json` (the Fleet fork's contract for VIEW-5.6): an exact `id:<session_id>` or
+ * `pid:<n>` target only; only a Session alone in its own tmux session.
+ */
+function close(args) {
+  const { opts, pos } = parse(args);
+  if (!opts.json) fail('usage', 'close needs --json here');
+  const target = pos[0] ?? '';
+  const m = /^(?:id:([A-Za-z0-9][A-Za-z0-9-]*)|pid:([1-9][0-9]*))$/.exec(target);
+  if (!m) fail('usage', `'${target}' is not an exact target (id:<session_id> or pid:<n>)`);
+  const rows = list();
+  const row = m[1] !== undefined ? rows.find((r) => r.session_id === m[1]) : rows.find((r) => String(r.pid) === m[2]);
+  if (!row) fail('target_not_found', `no session matches '${target}'`);
+  const expectPid = opts['expect-pid'];
+  const expectStart = opts['expect-start'];
+  if ((expectPid === undefined) !== (expectStart === undefined)) fail('usage', '--expect-pid and --expect-start go together');
+  if (expectPid !== undefined && (String(row.pid) !== expectPid || row.proc_start == null || row.proc_start !== expectStart)) {
+    fail('target_changed', `the session's process is now pid ${row.pid} started ${row.proc_start ?? 'unknown'}`);
+  }
+  if (row.backend !== 'tmux') fail('backend_unsupported', `can't close a session on the ${row.backend} backend`);
+  if (row.fake_close) fail(row.fake_close, `fake ${row.fake_close}`);
+  if (!row.tmux_session || rows.some((r) => r !== row && r.tmux_session === row.tmux_session)) {
+    fail('host_shared', `tmux session '${row.tmux_session}' hosts more than this session`);
+  }
+  if (writable && !dryRun) writeFileSync(join(dir, 'list.json'), `${JSON.stringify(rows.filter((r) => r !== row), null, 2)}\n`);
+  process.stdout.write(
+    `${JSON.stringify({ ok: true, session_id: row.session_id, pid: row.pid, harness: row.harness, how: row.fake_close_how ?? 'exit', tmux_session: row.tmux_session, dry_run: dryRun })}\n`,
+  );
+}
+
 /** `spawn --json`'s failure: exit 1, one object on stdout, the message on stderr. */
 function spawnFail(kind, error, extra = {}) {
   process.stdout.write(`${JSON.stringify({ ok: false, host: 'fake', kind, error, partial: null, ...extra })}\n`);
@@ -230,6 +266,7 @@ function spawn(args) {
       context: null,
       harness,
       model: null,
+      proc_start: new Date().toISOString(),
     });
     if (later) writeFileSync(join(dir, 'pending.json'), `${JSON.stringify([...pending(), { at: Date.now(), row: all[0] }], null, 2)}\n`);
     else writeFileSync(join(dir, 'list.json'), `${JSON.stringify(rows, null, 2)}\n`);
@@ -292,6 +329,9 @@ switch (cmd) {
     break;
   case 'spawn':
     spawn(argv);
+    break;
+  case 'close':
+    close(argv);
     break;
   case 'harness':
     process.stdout.write('[]\n');

@@ -59,10 +59,14 @@ A plain-text view of what the Session's terminal shows right now.
 
 ### VIEW-5 Header and states
 
-- [x] VIEW-5.1 A header shows the title, Harness, model, Status, repo, Worktree or branch, and context usage, all updating live. (test)
+- [x] VIEW-5.1 A header shows the title, Harness and Status, updating live, and the Session's actions. Where it works, its model and its context usage are in the status line (VIEW-5.5). (test)
 - [x] VIEW-5.2 For a Session that isn't Controllable, the chat is read-only, with a note saying why there's no composer, preview or buttons. (test)
 - [x] VIEW-5.3 When the selected Session ends (SIDE-4.3), its chat stays readable, and the composer, preview and buttons are replaced by "This Session ended". (test)
 - [x] VIEW-5.4 With nothing selected, the existing "Select a Session" hint stays. (test)
+- [x] VIEW-5.5 A status line directly below the composer, like a terminal's, shows the repo, Worktree or branch, model and context usage, all updating live. Without a composer (a Session that isn't Controllable, or has ended) it sits at the bottom of the pane. It stays one line at any width: parts that don't fit are truncated, and its tooltip shows the whole line. (test)
+- [x] VIEW-5.6 An "End Session" action in the header ends a Controllable Session whose Session host is its own, after an in-app confirmation dialog (never `window.confirm`). Sessions that share their Session host, run in iTerm2 or run in another app don't get it. (test)
+- [x] VIEW-5.7 Once ended, the Session shows as ended (VIEW-5.3) with its chat still readable, and History can resume it (HIST-3.1). (test)
+- [x] VIEW-5.8 When it can't be ended, the dialog stays open and says why: "Fleet is typing into it; try again" while Fleet holds the Session; for a shared Session host, or a terminal Fleet can't close, why and to close it in the terminal instead. (test)
 
 ## Non-goals
 
@@ -74,7 +78,9 @@ A plain-text view of what the Session's terminal shows right now.
 - Slash-command autocomplete, file mentions, attachments and voice in the composer.
 - Editing, rewinding or forking a conversation.
 - Searching inside the chat, and past Sessions (HIST).
-- Renaming or closing Sessions.
+- Renaming Sessions.
+- Ending a Session that shares its Session host with other windows or panes, runs in iTerm2, or runs in another app (VIEW-5.8 says to close it in the terminal).
+- Stopping a Session's Local servers when it ends.
 - Opening the Session in iTerm2 (ITERM; the header leaves room for its button).
 - Several Sessions side by side.
 
@@ -82,8 +88,8 @@ A plain-text view of what the Session's terminal shows right now.
 
 ```
 ┌───────────────┬──────────────────────────────────────────────────────┐
-│ sidebar       │ fix-deal-rates · Claude · opus-5.5 · ◆ Needs you     │
-│ (SIDE)        │ work · [wt] crm-rates · 41%           [iTerm2] [Stop]│
+│ sidebar       │ fix-deal-rates · Claude        ◆ Needs you · 2m      │
+│ (SIDE)        │ Waiting for: question  [End Session] [iTerm2] [Stop] │
 │               ├──────────────────────────────────────────────────────┤
 │               │ You   Fix the rate rounding in deal totals …         │
 │               │ Claude  I'll start by reading …                      │
@@ -98,8 +104,13 @@ A plain-text view of what the Session's terminal shows right now.
 │               │   2. Yes, and don't ask again for rspec commands …   │
 │               ├──────────────────────────────────────────────────────┤
 │               │ Message…                                   ↵ Send    │
+│               ├──────────────────────────────────────────────────────┤
+│               │ work · [wt] crm-rates · opus-5.5 · 41% context       │
 └───────────────┴──────────────────────────────────────────────────────┘
 ```
+
+- Status line (VIEW-5.5): one line in the monospace font, the parts separated by `·`. At narrow widths each part truncates with `…`; hovering shows the whole line, and the Worktree or branch on its own.
+- End Session (VIEW-5.6): the dialog names the Session, says its Harness is asked to exit and its Session host closed, and that its chat stays readable and History can resume it. Buttons: Cancel and End Session (destructive). While Fleet works, End Session reads "Ending…".
 
 - Loading: a skeleton for the chat; the header shows at once from SIDE's data.
 - Errors: Transcript missing (VIEW-1.8), send failed (VIEW-3.4), answer refused (VIEW-4.3), and preview failed (the drawer says so and keeps retrying).
@@ -134,6 +145,15 @@ A plain-text view of what the Session's terminal shows right now.
   - In the tab: the chat in view plus the 3 most recently viewed are kept; those 3 are cut to their latest 100 entries (what the server's `reset` brings back anyway), so switching back is instant and never renders a long stale chat. A chat keeps at most 2,000 entries, trimming the oldest end only while you're at the bottom, so scrolling up and "Show earlier" pages are never pulled away.
   - `peek` every second only while a tab has the drawer open: one peek per Session however many tabs show it, the next one a second after the last ended, and pushed only to the tabs previewing it, only when the text changed.
 
+- **Ending a Session (VIEW-5.6–5.8).** Through the Fleet fork's `close` (contract agreed with the fork, being built there; Lookout consumes it through the fake `fleet` in `server/fixtures/fleet/messages/`, extended with `close`):
+  - **Command:** `fleet --local close <target> --json --expect-pid <n> --expect-start <proc_start>`, where the target is exact: `id:<session_id>`, or `pid:<n>` for a Session without one (a Codex Session before its first prompt). Fleet never matches a close by fragment; a bare or fuzzy target is `usage`.
+  - **Process identity (contract amended 2026-10-17):** every `fleet list --json` row carries `proc_start`, the agent process's start time as RFC 3339 UTC, or null when Fleet can't read it. Lookout keeps it as the row's `procStart` only when it's at most 40 characters of `YYYY-MM-DDTHH:MM:SS[.fraction]Z` naming a real calendar time, verbatim (it goes back to Fleet as is); anything else is null. With `--expect-pid` and `--expect-start` (both or neither, else `usage`), Fleet checks the resolved Session's live process has that pid and start time before any input and again right before the kill; a mismatch is the kind `target_changed`, and nothing is typed or killed. A pid alone can't tell a Session resumed under a new process, or a reused pid, from the one the user confirmed; pid plus start time can.
+  - **What Fleet does:** only a Session alone in its own tmux session (one window, one pane) is closed. Under the same per-Session lock as `send`, it presses Escape if the Session is busy or waiting, types the Harness's own exit command (`/exit`, `/quit`), waits up to 5 s, then kills that tmux session by its exact name. Success is `{ok: true, session_id, pid, harness, how: "exit" | "killed", tmux_session, dry_run}`; failure exits 1 with `{ok: false, kind, error}`, kinds `usage`, `target_not_found`, `target_ambiguous`, `target_invalid`, `target_changed`, `host_shared`, `backend_unsupported`, `busy` and `io`.
+  - **Who gets the button (decided 2026-10-17):** `fleet list --json` can't tell a tmux session that hosts only this Session from one that also holds other windows or panes: a row has `tmux_session`, `handle` (the pane id) and `tab` (the window name), but no window or pane count. What the list can tell is when two listed Sessions (pi included) share one `tmux_session`. So a row is `ownHost` when its backend is `tmux`, it has a `tmux_session`, and no other listed Session is in it; the button shows for those that are Controllable. A tmux session that also holds a plain shell window, like the user's `work`, still gets the button: Fleet's `host_shared` is the backstop, shown as VIEW-5.8's message. iTerm2 Sessions never get it (Fleet would answer `backend_unsupported`).
+  - **Request:** `POST /api/sessions/<id>/end` with the JSON body `{pid, procStart}` (at most 1 KB): the process the user confirmed, captured from the row when the dialog opened, not when End Session is pressed. It's a mutation, so the guard wants our `Origin` and the token, as LAUNCH's start and HIST's resume. The server never takes a target from the browser: it looks the id up in its last list, reads a fresh `fleet list` (the Session must still be there, Controllable and `ownHost`), and builds the target from that row. A pid id (`codex:<pid>`) whose Session has got its session id since (so the last list no longer has it) is matched in the fresh list by pid and Harness, and closed by `id:<session_id>`; the start-time check below keeps it the same process. That row's pid and `procStart` must equal the body's, or it's refused as `target_changed` before Fleet is asked; both go to Fleet as `--expect-pid` and `--expect-start`, so a replacement landing after that check is refused by Fleet atomically. A null `procStart`, from the body or the fresh row, is refused: Lookout can't confirm it's the same Session. A session id must match `^[A-Za-z0-9][A-Za-z0-9-]{0,127}$`, a pid be a positive integer and `procStart` pass the same check as the list's, all before argv is built. Fleet gets the same cleaned environment as LAUNCH, and 20 s.
+  - **The dialog:** it stays mounted while open or ending even when the button stops applying (another Session joins its Session host, it moves to iTerm2), so the refusal that follows is shown. It's mounted per view, and the view is keyed by the Session across a Codex Session getting its session id (the old pid id through the store's aliases), so that id change doesn't remount it and a pending request's result is still shown. Closing it returns focus to the End Session button through `onCloseAutoFocus` (the button sits outside Radix's trigger); after a successful end, or once the button is gone, to the header's title. While it, or any modal, is open, the page's background shortcuts stand down: Session list navigation, ⌘1–9, ⌘J, N, ⌘N and H. Each open `DialogContent` counts itself in `web/src/lib/modal.ts`, and App reads that.
+  - **Afterwards:** the server polls `fleet list` at once (waiting out a poll already in flight, which may predate the close, and then polling again), so the Session's removal reaches the tabs without waiting for the next 2 s poll; the view then shows it ended (VIEW-5.3), its chat stays as it was, and History marks it resumable since it's no longer live.
+  - **Failures (VIEW-5.8):** `busy` → "Fleet is typing into it; try again."; `host_shared` → "This Session shares its Session host with other windows, so Lookout won't end it. Close it in the terminal."; `backend_unsupported` → "Lookout can only end a Session that runs in a Session host of its own. Close this one in its terminal."; `target_not_found` → no longer running; `target_changed` → "This Session was restarted since you asked; nothing was closed."; no start time → "Lookout can't confirm it's the same Session, so it won't end it. Close it in the terminal." (in the dialog at once, with End Session disabled, and from the server as a backstop). A Fleet without `close` (clap's "unrecognized subcommand") says to update the fork. Anything else is Fleet's error on one line, redacted, with anything naming tmux reworded (0001).
 - **Activity row (VIEW-1.10).** Built in the tab from data it already has: the Session's Status from `fleet list` (every 2 s) and the chat feed. No Fleet change, no new polling. Its own component (`ChatActivity`) sits in a slot under the chat's last row; the chat follows it like a new message while you're at the bottom. The rules, in order:
   - **Never** for an ended Session. A view-only Session that's still running gets it like any other.
   - **Needs you**: Status is `needs-you`; the text adds Fleet's `waiting_for` when there is one.
@@ -153,6 +173,8 @@ A plain-text view of what the Session's terminal shows right now.
 - **The chat works for every Session; controls only for Controllable ones**: reading a Transcript doesn't control anything, and today most Sessions run in Orca.
 - **Tool calls fold into one row per run**: you see what the agent touched without long tool-heavy turns drowning the text.
 - **Enter sends**: it's what you type into the Claude Code and Codex terminals today; LAUNCH keeps ⌘Enter because its prompt sits in a form.
+- **End Session shows for own-host Sessions as `fleet list` sees them, with Fleet's `host_shared` as the backstop**: the list can't count windows or panes, and adding that to `list` would be a Fleet change for a check `close` already makes. A refusal that explains itself costs one click; hiding the button from every tmux Session would make it useless.
+- **The status line holds what describes the Session, the header what you act on**: the header stays short (title, Harness, Status, actions), and the line under the composer reads like a terminal's status line, where you look while typing.
 - **The terminal preview opens on its own on Needs you**: a permission prompt's choices, and screens such as the trust prompt, exist only on the terminal screen, not in the Transcript.
 
 ## Open questions
@@ -172,3 +194,6 @@ None.
 - 2026-10-17: VIEW-1.1 and 1.4 checked by Dario against live Sessions with the fork's Fleet (`lookout` 1f824eb).
 - 2026-10-17: VIEW-1.10 review fixes: whether a send is queued is decided when you send, and a queued send never restarts the timer; the send's time is kept per Session (survives switching, follows a Codex id change); a failed send puts back the earlier send's time.
 - 2026-10-17: VIEW-1.10 second review fixes: a send the feed shows answered no longer makes the next send look queued; send times follow a Codex id change even when another Session is selected; send times of ended Sessions and old ids are dropped.
+- 2026-10-17: Added VIEW-5.5, a status line under the composer with repo, Worktree or branch, model and context usage (moved out of the header; VIEW-5.1 amended), and VIEW-5.6–5.8, an "End Session" action through the Fleet fork's `fleet close` (built against its contract through the fake `fleet`). Non-goals no longer rule out closing Sessions, only those sharing their Session host. Technical approach: the close contract, who gets the button and why, the request guard and the failure messages.
+- 2026-10-17: End Session review fixes. Major: a close is bound to the process the user confirmed. The dialog captures the row's pid and `proc_start`, the request carries them, the server checks them against a fresh list and passes `--expect-pid`/`--expect-start` to Fleet (contract amended: `proc_start` on list rows, `target_changed`); a Session without a start time is refused. Minors: background shortcuts stand down while any modal is open; closing the dialog returns focus to End Session; an open or pending dialog stays when the button stops applying. Technical approach: process identity, the request body, the dialog's behaviour and the two new messages.
+- 2026-10-17: End Session second review fixes: the poll after a close never reuses one started before it; a Codex Session that gets its session id keeps an open or pending dialog, and the server finds it by pid and Harness; focus falls back to the header's title; tests for ⌘N, ⌘1–9 and ⌘J while the dialog is open. Technical approach updated.

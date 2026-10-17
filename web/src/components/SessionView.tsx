@@ -1,7 +1,8 @@
-import type { ChatPage, SessionRow } from '@shared/types.ts';
-import { ChevronDown, CircleSlash, FolderGit2, GitBranch, Info, SendHorizontal, TerminalSquare } from 'lucide-react';
+import type { ChatPage, EndTarget, SessionRow } from '@shared/types.ts';
+import { ChevronDown, CircleSlash, FolderGit2, GitBranch, Info, Power, SendHorizontal, TerminalSquare } from 'lucide-react';
 import { type KeyboardEvent, type ReactNode, type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '@/components/ui/dialog';
 import { turnRunning } from '@/lib/activity';
 import type { Chat as ChatState, Preview } from '@/lib/store';
 import { HARNESS_NAME, STATUS_LABEL, location } from '@/lib/sessions';
@@ -42,6 +43,8 @@ export interface SessionViewProps {
   sentAt: ReadonlyMap<string, number>;
   /** Sets a Session's send time from its current one; undefined clears it. */
   onSentAt(sessionId: string, update: (current: number | undefined) => number | undefined): void;
+  /** VIEW-5.6: ends the confirmed process of the Session; rejects with a message for people. */
+  onEnd(sessionId: string, target: EndTarget): Promise<void>;
 }
 
 /** VIEW: the selected Session. Mounted per Session (`key`), so its local state is its own. */
@@ -63,6 +66,7 @@ export function SessionView({
   onFollowing,
   sentAt: sentAtBySession,
   onSentAt,
+  onEnd,
 }: SessionViewProps) {
   const controls = row.controllable && !ended;
 
@@ -97,7 +101,7 @@ export function SessionView({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <Header row={row} ended={ended} now={now} />
+      <Header row={row} ended={ended} now={now} onEnd={onEnd} />
       <Chat
         sessionId={row.id}
         harness={row.harness}
@@ -133,25 +137,30 @@ export function SessionView({
           />
         </>
       )}
+      <StatusLine row={row} />
     </div>
   );
 }
 
-/** VIEW-5.1: title, Harness, model, Status, repo, Worktree or branch, context usage. */
-function Header({ row, ended, now }: { row: SessionRow; ended: boolean; now: number }) {
-  const loc = location(row);
+/** VIEW-5.1: title, Harness, Status and actions. Where it works, and its model, are in the status line (VIEW-5.5). */
+function Header({ row, ended, now, onEnd }: { row: SessionRow; ended: boolean; now: number; onEnd: SessionViewProps['onEnd'] }) {
   const age = row.statusSince !== null ? formatAge(now - row.statusSince) : null;
+  const title = useRef<HTMLHeadingElement>(null);
   return (
     <header className="shrink-0 border-b border-border px-5 py-3" aria-label="Session">
-      <div className="flex items-center gap-2.5">
+      <div className="flex min-w-0 items-center gap-2.5">
         {!ended && <StatusMarker status={row.status} />}
-        <h1 className={cn('min-w-0 truncate text-[15px] font-semibold tracking-tight', ended && 'text-muted-foreground')} title={row.title}>
+        <h1
+          ref={title}
+          tabIndex={-1}
+          className={cn('min-w-0 truncate text-[15px] font-semibold tracking-tight outline-none', ended && 'text-muted-foreground')}
+          title={row.title}
+        >
           {row.title}
         </h1>
-        <span className="flex shrink-0 items-center gap-1.5 text-[12.5px] text-muted-foreground" data-field="harness-model">
+        <span className="flex shrink-0 items-center gap-1.5 text-[12.5px] text-muted-foreground" data-field="harness">
           <HarnessIcon harness={row.harness} className="size-4" />
           {HARNESS_NAME[row.harness]}
-          {row.model && <> · {row.model}</>}
         </span>
         <span
           className={cn(
@@ -167,42 +176,10 @@ function Header({ row, ended, now }: { row: SessionRow; ended: boolean; now: num
           {ended ? 'Ended' : STATUS_LABEL[row.status]}
           {!ended && age && <span className="font-normal opacity-70"> · {age}</span>}
         </span>
-        {/* ITERM's "Open in iTerm2" and VIEW-4's Stop go here. */}
-        <div data-slot="header-actions" className="flex shrink-0 items-center gap-1.5 empty:hidden" />
-      </div>
-      <div className="mt-1 flex min-w-0 items-center gap-1.5 text-[12.5px] text-muted-foreground">
-        {row.git ? (
-          <span className="shrink-0" data-field="repo">
-            {row.git.repo}
-          </span>
-        ) : (
-          row.cwd && (
-            <span className="min-w-0 truncate" title={row.cwd}>
-              {row.cwd}
-            </span>
-          )
-        )}
-        {loc && (
-          <>
-            <span aria-hidden>·</span>
-            <span className="flex min-w-0 items-center gap-1" data-field="location">
-              {loc.kind === 'worktree' ? (
-                <FolderGit2 aria-label="Worktree" className="size-3.5 shrink-0" />
-              ) : (
-                <GitBranch aria-label="Branch" className="size-3.5 shrink-0" />
-              )}
-              <span className="truncate">{loc.name}</span>
-            </span>
-          </>
-        )}
-        {row.contextPct !== null && (
-          <>
-            <span aria-hidden>·</span>
-            <span className="shrink-0 whitespace-nowrap" data-field="context">
-              {row.contextPct}% context
-            </span>
-          </>
-        )}
+        {/* ITERM's "Open in iTerm2" and VIEW-4's Stop go here too. */}
+        <div data-slot="header-actions" className="flex shrink-0 items-center gap-1.5 empty:hidden">
+          <EndSession row={row} eligible={!ended && row.controllable && row.ownHost} onEnd={onEnd} fallbackFocus={title} />
+        </div>
       </div>
       {!ended && row.status === 'needs-you' && row.waitingFor && (
         <p className="mt-1 truncate text-[12.5px] font-medium text-needs-you-text" title={row.waitingFor}>
@@ -210,6 +187,166 @@ function Header({ row, ended, now }: { row: SessionRow; ended: boolean; now: num
         </p>
       )}
     </header>
+  );
+}
+
+/**
+ * VIEW-5.6: "End Session", for a Controllable Session in a Session host of its own, after an
+ * in-app confirmation. Once Fleet has closed it, the Session list drops it and the view shows it
+ * as ended (VIEW-5.3, VIEW-5.7).
+ *
+ * The dialog binds to the process it opened on (pid and start time), so a Session restarted
+ * meanwhile is never the one closed. It stays mounted while open or ending even when the button
+ * goes (another Session joins the host, say), so the refusal that follows is still shown. It is
+ * mounted per view, not per id, so a Codex Session getting its session id keeps it too.
+ *
+ * On close, focus goes back to the button; once it's gone, or about to go after a successful
+ * end, to the header's title.
+ */
+function EndSession({
+  row,
+  eligible,
+  onEnd,
+  fallbackFocus,
+}: {
+  row: SessionRow;
+  eligible: boolean;
+  onEnd: SessionViewProps['onEnd'];
+  fallbackFocus: RefObject<HTMLElement | null>;
+}) {
+  const [target, setTarget] = useState<EndTarget | null>(null);
+  const [ending, setEnding] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const endedHere = useRef(false);
+  const open = target !== null;
+  const unconfirmed = target?.procStart === null;
+  const close = () => setTarget(null);
+  const confirm = async () => {
+    if (ending || !target || unconfirmed) return;
+    setEnding(true);
+    setError(null);
+    try {
+      await onEnd(row.id, target);
+      endedHere.current = true;
+      close();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't end it.");
+    } finally {
+      setEnding(false);
+    }
+  };
+  return (
+    <>
+      {eligible && (
+        <Button
+          ref={trigger}
+          variant="outline"
+          size="xs"
+          className="h-7 gap-1.5 px-2 text-[12px]"
+          onClick={() => {
+            setError(null);
+            endedHere.current = false;
+            setTarget({ pid: row.pid, procStart: row.procStart });
+          }}
+        >
+          <Power className="size-3.5" />
+          End Session
+        </Button>
+      )}
+      <Dialog open={open} onOpenChange={(next) => !ending && !next && close()}>
+        <DialogContent
+          className="sm:max-w-md"
+          showCloseButton={false}
+          // The button opens it from outside Radix's trigger, so focus goes back to it by hand.
+          onCloseAutoFocus={(e) => {
+            e.preventDefault();
+            const back = !endedHere.current && trigger.current?.isConnected ? trigger.current : fallbackFocus.current;
+            back?.focus();
+          }}
+        >
+          <DialogTitle className="text-[15px]">End “{row.title}”?</DialogTitle>
+          <DialogDescription className="text-[13px] leading-5">
+            {HARNESS_NAME[row.harness]} is asked to exit, then its Session host is closed. Work it hasn&apos;t finished stops. Its chat stays
+            readable here, and you can resume it from History.
+          </DialogDescription>
+          {(unconfirmed || error) && (
+            <p role="alert" className="rounded-md border border-destructive/30 px-2.5 py-2 text-[12.5px] text-destructive">
+              {unconfirmed ? 'Lookout can’t confirm it’s the same Session, so it won’t end it. Close it in the terminal.' : error}
+            </p>
+          )}
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={close} disabled={ending}>
+              Cancel
+            </Button>
+            <Button variant="destructive" size="sm" onClick={() => void confirm()} disabled={ending || unconfirmed}>
+              {ending ? 'Ending…' : 'End Session'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+/**
+ * VIEW-5.5: where the Session works, its model and context use, on one line under the composer
+ * (at the bottom of the pane when there's none), like a terminal's status line. At narrow widths
+ * each part truncates; the whole line is in its tooltip.
+ */
+function StatusLine({ row }: { row: SessionRow }) {
+  const loc = location(row);
+  const where = row.git ? row.git.repo : row.cwd;
+  const context = row.contextPct !== null ? `${row.contextPct}% context` : null;
+  const parts = [where, loc?.name, row.model, context].filter((p): p is string => !!p);
+  if (!parts.length) return null;
+  const dot = (
+    <span aria-hidden className="shrink-0 opacity-60">
+      ·
+    </span>
+  );
+  return (
+    <div
+      role="group"
+      aria-label="Status line"
+      title={parts.join(' · ')}
+      className="flex h-7 min-w-0 shrink-0 items-center gap-1.5 overflow-hidden border-t border-border/70 bg-muted/30 px-5 font-mono text-[11.5px] whitespace-nowrap text-muted-foreground"
+    >
+      {where && (
+        <span className="min-w-0 truncate" data-field={row.git ? 'repo' : 'cwd'} title={row.cwd ?? undefined}>
+          {where}
+        </span>
+      )}
+      {loc && (
+        <>
+          {where && dot}
+          <span className="flex min-w-0 items-center gap-1" data-field="location" title={loc.name}>
+            {loc.kind === 'worktree' ? (
+              <FolderGit2 aria-label="Worktree" className="size-3.5 shrink-0" />
+            ) : (
+              <GitBranch aria-label="Branch" className="size-3.5 shrink-0" />
+            )}
+            <span className="truncate">{loc.name}</span>
+          </span>
+        </>
+      )}
+      {row.model && (
+        <>
+          {(where || loc) && dot}
+          <span className="min-w-0 truncate" data-field="model" title={row.model}>
+            {row.model}
+          </span>
+        </>
+      )}
+      {context && (
+        <>
+          {(where || loc || row.model) && dot}
+          <span className="shrink-0" data-field="context">
+            {context}
+          </span>
+        </>
+      )}
+    </div>
   );
 }
 

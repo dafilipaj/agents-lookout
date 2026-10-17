@@ -1,10 +1,10 @@
 import { BLOCK_REASON } from '@shared/history.ts';
-import type { HistoryItem, HistoryPage, SessionRow } from '@shared/types.ts';
+import type { Harness, HistoryItem, HistoryPage, SessionRow } from '@shared/types.ts';
 import { History as HistoryIcon, Search, X } from 'lucide-react';
 import { type KeyboardEvent, type MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import type { HistoryQuery } from '@/lib/client';
-import { clampWidth, isLive, itemKey, snippetParts } from '@/lib/history';
+import { type HarnessFilter, clampWidth, filterHarness, isLive, itemKey, loadHarnessFilter, saveHarnessFilter, snippetParts } from '@/lib/history';
 import { HARNESS_NAME } from '@/lib/sessions';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
@@ -49,6 +49,15 @@ type Results =
 export function HistoryPanel({ width, onResize, onClose, focusKey, sessions, now, search, onOpen }: HistoryPanelProps) {
   const [query, setQuery] = useState('');
   const [headless, setHeadless] = useState(false);
+  // HIST-2.8: both by default; one can be switched off, never both. Remembered across reloads.
+  const [harnesses, setHarnesses] = useState<HarnessFilter>(loadHarnessFilter);
+  const harness = filterHarness(harnesses);
+  const toggleHarness = (h: Harness) => {
+    const next = { ...harnesses, [h]: !harnesses[h] };
+    if (!next.claude && !next.codex) return;
+    setHarnesses(next);
+    saveHarnessFilter(next);
+  };
   const [results, setResults] = useState<Results>({ state: 'loading' });
   const [active, setActive] = useState(0);
   const [opening, setOpening] = useState<string | null>(null);
@@ -72,7 +81,7 @@ export function HistoryPanel({ width, onResize, onClose, focusKey, sessions, now
     const mine = ++seq.current;
     const timer = setTimeout(
       () => {
-        searchRef.current({ query: q, page: 1, headless }).then(
+        searchRef.current({ query: q, page: 1, headless, harness }).then(
           (page) => {
             if (seq.current !== mine) return;
             setActive(0);
@@ -90,7 +99,7 @@ export function HistoryPanel({ width, onResize, onClose, focusKey, sessions, now
       q ? SEARCH_DEBOUNCE_MS : 0,
     );
     return () => clearTimeout(timer);
-  }, [q, headless]);
+  }, [q, headless, harness]);
 
   // HIST-2.1: more as you scroll (listing only; a search returns its best matches). Results of an
   // older query or toggle never page: once either changes, paging waits for the new first page,
@@ -102,7 +111,7 @@ export function HistoryPanel({ width, onResize, onClose, focusKey, sessions, now
     const mine = results.gen;
     const next = results.page + 1;
     setResults({ ...results, loadingMore: true, auto: auto ? results.auto + 1 : 0 });
-    searchRef.current({ query: q, page: next, headless }).then(
+    searchRef.current({ query: q, page: next, headless, harness }).then(
       (page) => {
         if (seq.current !== mine) return;
         setResults((r) => {
@@ -269,10 +278,36 @@ export function HistoryPanel({ width, onResize, onClose, focusKey, sessions, now
             className="h-7 w-full min-w-0 rounded-md border border-input bg-background/60 pr-2 pl-7 text-[13px] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 dark:bg-input/20 [&::-webkit-search-cancel-button]:hidden"
           />
         </label>
-        <label className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
-          <input type="checkbox" checked={headless} onChange={(e) => setHeadless(e.target.checked)} className="size-3.5" />
-          Show Headless Sessions
-        </label>
+        <div className="flex min-w-0 items-center gap-2">
+          <label className="flex min-w-0 items-center gap-1.5 text-[12px] text-muted-foreground">
+            <input type="checkbox" checked={headless} onChange={(e) => setHeadless(e.target.checked)} className="size-3.5" />
+            <span className="truncate">Show Headless Sessions</span>
+          </label>
+          <div role="group" aria-label="Harnesses" className="ml-auto flex shrink-0 items-center gap-0.5">
+            {(['claude', 'codex'] as const).map((h) => {
+              const on = harnesses[h];
+              const last = on && !harnesses[h === 'claude' ? 'codex' : 'claude'];
+              return (
+                <button
+                  key={h}
+                  type="button"
+                  aria-pressed={on}
+                  aria-label={HARNESS_NAME[h]}
+                  aria-disabled={last || undefined}
+                  title={last ? `${HARNESS_NAME[h]}: at least one Harness stays on` : `${on ? 'Hide' : 'Show'} ${HARNESS_NAME[h]} Sessions`}
+                  onClick={() => toggleHarness(h)}
+                  className={cn(
+                    'flex size-6 items-center justify-center rounded-md border transition-colors',
+                    on ? 'border-border bg-background text-foreground dark:bg-input/30' : 'border-transparent text-muted-foreground opacity-45 grayscale hover:opacity-80',
+                    last && 'cursor-default',
+                  )}
+                >
+                  <HarnessIcon harness={h} className="size-3.5" />
+                </button>
+              );
+            })}
+          </div>
+        </div>
         {openError && (
           <p role="alert" className="rounded-md border border-destructive/30 px-2 py-1.5 text-[12px] text-destructive">
             {openError}

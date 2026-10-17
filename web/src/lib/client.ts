@@ -1,5 +1,5 @@
 import type { Settings } from '@shared/settings.ts';
-import type { ChatPage, Harness, HarnessOption, HistoryDetail, HistoryPage, LaunchRequest, LaunchView, ResumeResult, ServerEvent } from '@shared/types.ts';
+import type { ChatPage, EndResult, EndTarget, Harness, HarnessOption, HistoryDetail, HistoryPage, LaunchRequest, LaunchView, ResumeResult, ServerEvent } from '@shared/types.ts';
 
 export interface ClientListener {
   onEvent(event: ServerEvent): void;
@@ -19,6 +19,8 @@ export interface LookoutClient {
   watch(clientId: string, sessionId: string | null, preview: boolean): Promise<void>;
   /** VIEW-3: types a message into the Session and submits it. */
   sendMessage(sessionId: string, text: string): Promise<void>;
+  /** VIEW-5.6: ends the Session through Fleet (its Harness exits, its Session host closes). */
+  endSession(sessionId: string, target: EndTarget): Promise<EndResult>;
   /** USAGE-2.1: the details opened; have the server check Jev again. */
   refreshJev(): Promise<void>;
   /** USAGE-2.2: a window's reset passed; have the server read the limits again. */
@@ -36,6 +38,8 @@ export interface HistoryQuery {
   page: number;
   /** HIST-2.5: show Headless Sessions too. */
   headless: boolean;
+  /** HIST-2.8: only this Harness's Sessions; null for both. */
+  harness: Harness | null;
 }
 
 /** A request the server refused or couldn't answer; `message` is for people. */
@@ -195,14 +199,17 @@ export function createHttpClient(): LookoutClient {
     refreshJev: async () => {
       await call(() => send('POST', '/api/usage/jev'), 'Checking Jev');
     },
-    history: ({ query, page, headless }) =>
+    history: ({ query, page, headless, harness }) =>
       call<HistoryPage>(
-        () => fetch(`/api/history?${new URLSearchParams({ q: query, page: String(page), headless: headless ? '1' : '0' })}`),
+        () =>
+          fetch(`/api/history?${new URLSearchParams({ q: query, page: String(page), headless: headless ? '1' : '0', ...(harness ? { harness } : {}) })}`),
         'Searching History',
       ),
     pastSession: (harness, sessionId) =>
       call<HistoryDetail>(() => fetch(`/api/history/${harness}/${encodeURIComponent(sessionId)}`), 'Loading the Session'),
     resume: (harness, sessionId) => call<ResumeResult>(() => send('POST', '/api/history/resume', { sessionId, harness }), 'Resuming'),
+    endSession: (sessionId, target) =>
+      call<EndResult>(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/end`, target), 'Ending the Session'),
     sendMessage: async (sessionId, text) => {
       await call(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/send`, { text }), 'Sending');
     },

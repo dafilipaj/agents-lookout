@@ -16,7 +16,9 @@ const row = (over: Partial<SessionRow> & { id: string }): SessionRow => ({
   git: null,
   backend: 'tmux',
   controllable: true,
+  ownHost: true,
   model: null,
+  procStart: null,
   ...over,
 });
 

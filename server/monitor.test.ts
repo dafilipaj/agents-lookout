@@ -151,4 +151,32 @@ describe('SessionMonitor', () => {
       vi.useRealTimers();
     }
   });
+
+  it('VIEW-5.7: the poll after a close starts after it: one already in flight (listed before the close) is waited for, not reused', async () => {
+    const before = ok(recorded);
+    const after = ok(recorded.slice(1));
+    let release!: () => void;
+    const calls: string[] = [];
+    let closed = false;
+    const monitor = new SessionMonitor({
+      fetchList: async () => {
+        calls.push(closed ? 'after' : 'before');
+        if (!closed) await new Promise<void>((r) => (release = r));
+        return closed ? after : before;
+      },
+      git: { get: () => null, prune: () => {} },
+      onEvent: () => {},
+    });
+    const gone = recorded[0]!.session_id ?? `${recorded[0]!.harness}:${recorded[0]!.pid}`;
+    const inFlight = monitor.tick(); // started while Fleet was still closing the Session
+    closed = true;
+    const refreshed = monitor.pollNow();
+    release();
+    await Promise.all([inFlight, refreshed]);
+    expect(calls).toEqual(['before', 'after']);
+    expect(monitor.get(gone)).toBeNull();
+    // Without a poll in flight it polls at once.
+    await monitor.pollNow();
+    expect(calls).toEqual(['before', 'after', 'after']);
+  });
 });

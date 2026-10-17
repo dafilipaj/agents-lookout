@@ -22,6 +22,8 @@ export function row(over: Partial<SessionRow> & { id: string }): SessionRow {
     git: { repo: 'work', worktree: null, branch: 'main' },
     backend: 'tmux',
     controllable: true,
+    ownHost: false,
+    procStart: '2026-10-14T08:12:03Z',
     model: null,
     ...over,
   };
@@ -58,6 +60,7 @@ interface RenderOptions {
   harnesses?: () => Promise<HarnessOption[]>;
   launch?: (req: LaunchRequest) => Promise<LaunchView>;
   sendMessage?: (sessionId: string, text: string) => Promise<void>;
+  endSession?: LookoutClient['endSession'];
   earlierMessages?: (sessionId: string, before: string) => Promise<ChatPage>;
   history?: (q: HistoryQuery) => Promise<HistoryPage>;
   pastSession?: LookoutClient['pastSession'];
@@ -85,6 +88,7 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
     refreshJev: vi.fn(async () => {}),
     refreshUsage: vi.fn(async () => {}),
     sendMessage: vi.fn(options.sendMessage ?? (async () => {})),
+    endSession: vi.fn(options.endSession ?? (async () => ({ how: 'exit' as const }))),
     history: vi.fn(options.history ?? (async (): Promise<HistoryPage> => ({ state: 'ok', items: [], page: 1, hasMore: false }))),
     pastSession: vi.fn(
       options.pastSession ??

@@ -1,4 +1,4 @@
-import type { ChatPage, HistoryItem, LaunchRequest, SessionRow, Status } from '@shared/types.ts';
+import type { ChatPage, EndTarget, HistoryItem, LaunchRequest, SessionRow, Status } from '@shared/types.ts';
 import { History as HistoryIcon } from 'lucide-react';
 import { hasReset } from '@shared/usage.ts';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import type { LookoutClient } from '@/lib/client';
 import { tidySentAt } from '@/lib/activity';
 import { type HistoryLayout, loadLayout, saveLayout } from '@/lib/history';
+import { useAnyModalOpen } from '@/lib/modal';
 import { type HarnessState, type LaunchDraft, initialDraft } from '@/lib/launch';
 import { useRoute } from '@/lib/router';
 import { listKnown, useLookout } from '@/lib/store';
@@ -92,6 +93,8 @@ export function App({ client }: { client: LookoutClient }) {
 
   // LAUNCH: the launcher. Its draft outlives closing it (LAUNCH-1.3); null = start fresh.
   const [launcherOpen, setLauncherOpen] = useState(false);
+  // Background shortcuts stand down while any modal (the launcher, End Session) is open.
+  const modalOpen = useAnyModalOpen();
   const [draft, setDraft] = useState<LaunchDraft | null>(null);
   const [harnesses, setHarnesses] = useState<HarnessState>({ state: 'loading' });
   const harnessRequest = useRef(false);
@@ -113,13 +116,15 @@ export function App({ client }: { client: LookoutClient }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.isComposing || e.defaultPrevented || e.ctrlKey || e.altKey || e.shiftKey || e.key.toLowerCase() !== 'n') return;
-      if (!e.metaKey && (launcherOpen || isTextField(e.target))) return;
+      if (!e.metaKey && (modalOpen || isTextField(e.target))) return;
+      // ⌘N keeps working in the launcher, but never opens it over another dialog.
+      if (modalOpen && !launcherOpen) return;
       e.preventDefault();
       openLauncher();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [openLauncher, launcherOpen]);
+  }, [openLauncher, launcherOpen, modalOpen]);
 
   // LAUNCH-4.2: once Fleet reports a Session this tab started, select it.
   // Ownership is state, so whichever arrives last (the start's response or Fleet's report)
@@ -167,13 +172,13 @@ export function App({ client }: { client: LookoutClient }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.isComposing || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || e.key.toLowerCase() !== 'h') return;
-      if (launcherOpen || isTextField(e.target)) return;
+      if (modalOpen || isTextField(e.target)) return;
       e.preventDefault();
       toggleHistory();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [toggleHistory, launcherOpen]);
+  }, [toggleHistory, modalOpen]);
   const searchHistory = useCallback((q: Parameters<LookoutClient['history']>[0]) => client.history(q), [client]);
   const loadPast = useCallback((harness: HistoryItem['harness'], id: string) => client.pastSession(harness, id), [client]);
   // HIST-3: a live Session is selected (3.2); one that can't be resumed opens read-only (3.3);
@@ -261,6 +266,15 @@ export function App({ client }: { client: LookoutClient }) {
     [client, drafts],
   );
 
+  // VIEW-5.6: Fleet ends it; the Session list then drops it, so the view shows it ended (VIEW-5.7).
+  // `target` is the process the user confirmed, so a replacement is never the one closed.
+  const endSession = useCallback(
+    async (sessionId: string, target: EndTarget) => {
+      await client.endSession(sessionId, target);
+    },
+    [client],
+  );
+
   // USAGE-2.2: once a window's reset time passes, its numbers no longer hold: ask for new ones
   // (once per window and reset).
   const passedResets = (state.usage?.providers ?? [])
@@ -330,7 +344,7 @@ export function App({ client }: { client: LookoutClient }) {
         onNewSession={openLauncher}
         launches={state.launches}
         onDismissLaunch={(id) => void client.dismissLaunch(id).catch(() => {})}
-        keyboardEnabled={!launcherOpen}
+        keyboardEnabled={!modalOpen}
         usage={state.usage}
         onUsageOpen={() => void client.refreshJev().catch(() => {})}
       />
@@ -342,6 +356,7 @@ export function App({ client }: { client: LookoutClient }) {
         ) : (
           <MainPane
             selectedId={selectedId}
+            aliases={state.aliases}
             live={(selectedId && state.sessions.get(selectedId)) || null}
             lastKnown={(selectedId && state.lastKnown.get(selectedId)) || null}
             list={
@@ -366,6 +381,7 @@ export function App({ client }: { client: LookoutClient }) {
             onFollowing={onFollowing}
             sentAt={sentAt}
             onSentAt={updateSentAt}
+            onEnd={endSession}
           />
         )}
       </main>

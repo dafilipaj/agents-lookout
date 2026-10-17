@@ -47,8 +47,8 @@ const calls = (log: string): string[][] => {
     return [];
   }
 };
-const find = (h: History, query = '', over: Partial<{ page: number; headless: boolean }> = {}) =>
-  h.find({ query, page: 1, headless: false, ...over });
+const find = (h: History, query = '', over: Partial<{ page: number; headless: boolean; harness: 'claude' | 'codex' | null }> = {}) =>
+  h.find({ query, page: 1, headless: false, harness: null, ...over });
 const ok = async (p: ReturnType<History['find']>) => {
   const page = await p;
   if (page.state !== 'ok') throw new Error(page.state);
@@ -165,6 +165,37 @@ describe('finding past Sessions (HIST-2)', () => {
       bin: () => 'tb-session',
     });
     expect((await ok(find(unfiltered))).items.map((i) => i.sessionId)).toEqual(['i-1']);
+  });
+
+  it('HIST-2.8: one Harness only: tb-session 0.3 is passed `--harness`; 0.2, which has no such flag, is filtered here, its rows counting as Claude Code', async () => {
+    const h = history();
+    const codex = await ok(find(h, '', { harness: 'codex' }));
+    expect(codex.items.map((i) => i.sessionId)).toEqual([CODEX]);
+    expect(calls(tbLog)[0]).toEqual(['list', '--all-projects', '--json', '--limit', String(HISTORY_PAGE), '--page', '1', '--headless', 'exclude', '--harness', 'codex']);
+    const claude = await ok(find(h, '', { harness: 'claude' }));
+    expect(claude.items.length).toBeGreaterThan(0);
+    for (const i of claude.items) expect(i.harness).toBe('claude');
+    // A search keeps the query last, after `--`.
+    await ok(find(h, 'rate', { harness: 'claude' }));
+    expect(calls(tbLog)[2]!.slice(-4)).toEqual(['--harness', 'claude', '--', 'rate']);
+    // Both: no flag at all.
+    await ok(find(h));
+    expect(calls(tbLog)[3]).not.toContain('--harness');
+
+    // tb-session 0.2 refuses `--harness`: asked again without it, and the rows filtered here.
+    const legacy = history({ FAKE_TB_SESSION_VERSION: '0.2.0' });
+    const legacyClaude = await ok(find(legacy, '', { harness: 'claude' }));
+    expect(legacyClaude.items.length).toBeGreaterThan(0);
+    for (const i of legacyClaude.items) expect(i.harness).toBe('claude');
+    expect((await ok(find(legacy, '', { harness: 'codex' }))).items).toEqual([]);
+    expect(calls(tbLog).slice(4).filter((c) => c.includes('--harness'))).toHaveLength(1); // the one refusal
+    // Rows from a tb-session that ignored the flag are filtered too.
+    const unfiltered = new History({
+      runner: printing({ results: [{ session_id: 'c-1', harness: 'codex', first_prompt: 'x' }, { session_id: 'l-1', first_prompt: 'y' }] }),
+      bin: () => 'tb-session',
+    });
+    expect((await ok(find(unfiltered, '', { harness: 'claude' }))).items.map((i) => i.sessionId)).toEqual(['l-1']);
+    expect((await ok(find(unfiltered, '', { harness: 'codex' }))).items.map((i) => i.sessionId)).toEqual(['c-1']);
   });
 
   it('HIST-2.6: subagent Sessions and Sessions without a prompt never appear', async () => {
@@ -295,8 +326,8 @@ describe('finding past Sessions (HIST-2)', () => {
   });
 
   it('reads the query string, clamped', () => {
-    expect(parseFindQuery(new URLSearchParams('q=a%0Ab&page=2&headless=1'))).toEqual({ query: 'a b', page: 2, headless: true });
-    expect(parseFindQuery(new URLSearchParams('page=x'))).toEqual({ query: '', page: 1, headless: false });
+    expect(parseFindQuery(new URLSearchParams('q=a%0Ab&page=2&headless=1&harness=codex'))).toEqual({ query: 'a b', page: 2, headless: true, harness: 'codex' });
+    expect(parseFindQuery(new URLSearchParams('page=x&harness=pi'))).toEqual({ query: '', page: 1, headless: false, harness: null });
     expect(parseFindQuery(new URLSearchParams('page=99999')).page).toBe(1000);
   });
 

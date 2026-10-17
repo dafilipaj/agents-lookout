@@ -94,10 +94,10 @@ describe('finding past Sessions (HIST-2)', () => {
     app.snapshot([]);
     await openHistory(app);
     await waitFor(() => expect(titles()).toEqual(['fix-deal-rates', 'kg-hook-review']));
-    expect(history).toHaveBeenLastCalledWith({ query: '', page: 1, headless: false });
+    expect(history).toHaveBeenLastCalledWith({ query: '', page: 1, headless: false, harness: null });
     fireEvent.scroll(document.getElementById('history-results')!);
     await waitFor(() => expect(titles()).toEqual(['fix-deal-rates', 'kg-hook-review', 'pr641-review']));
-    expect(history).toHaveBeenLastCalledWith({ query: '', page: 2, headless: false });
+    expect(history).toHaveBeenLastCalledWith({ query: '', page: 2, headless: false, harness: null });
     fireEvent.scroll(document.getElementById('history-results')!);
     expect(history).toHaveBeenCalledTimes(2); // no more pages
   });
@@ -113,7 +113,7 @@ describe('finding past Sessions (HIST-2)', () => {
     await waitFor(() => expect(titles()).toEqual(['kg-hook-review', 'pr641-review']), { timeout: 1000 });
     expect(performance.now() - typed).toBeLessThan(1000 + 400); // typing itself takes a few ms per key
     // One search for the whole query, not one per keystroke.
-    expect(history.mock.calls.filter(([q]) => q.query)).toEqual([[{ query: 'hook fires', page: 1, headless: false }]]);
+    expect(history.mock.calls.filter(([q]) => q.query)).toEqual([[{ query: 'hook fires', page: 1, headless: false, harness: null }]]);
   });
 
   it('HIST-2.3: each result shows title, Harness, repo, branch, last activity and the snippet; a live one is marked', async () => {
@@ -162,7 +162,42 @@ describe('finding past Sessions (HIST-2)', () => {
     await waitFor(() => expect(titles()).toEqual(['fix-deal-rates']));
     await user.click(screen.getByRole('checkbox', { name: 'Show Headless Sessions' }));
     await waitFor(() => expect(titles()).toEqual(['fix-deal-rates', 'eval run']));
-    expect(history).toHaveBeenLastCalledWith({ query: '', page: 1, headless: true });
+    expect(history).toHaveBeenLastCalledWith({ query: '', page: 1, headless: true, harness: null });
+  });
+
+  it('HIST-2.8: Claude Code and Codex buttons with their logos, next to the headless toggle; both by default, never neither, remembered across reloads', async () => {
+    const history = vi.fn(async (q: HistoryQuery) => ok(q.harness === 'codex' ? [CODEX] : q.harness === 'claude' ? [LIVE] : [LIVE, CODEX]));
+    const app = renderApp('/', { history });
+    app.snapshot([]);
+    const user = await openHistory(app);
+    const group = screen.getByRole('group', { name: 'Harnesses' });
+    // Next to the headless toggle, each with its Harness's logo.
+    expect(group.parentElement).toContainElement(screen.getByRole('checkbox', { name: 'Show Headless Sessions' }));
+    const claude = within(group).getByRole('button', { name: 'Claude Code' });
+    const codex = within(group).getByRole('button', { name: 'Codex' });
+    expect(claude.querySelector('svg[data-harness="claude"]')).not.toBeNull();
+    expect(codex.querySelector('svg[data-harness="codex"]')).not.toBeNull();
+    expect(claude).toHaveAttribute('aria-pressed', 'true');
+    expect(codex).toHaveAttribute('aria-pressed', 'true');
+    await waitFor(() => expect(titles()).toEqual(['fix-deal-rates', 'kg-hook-review']));
+    expect(history).toHaveBeenLastCalledWith({ query: '', page: 1, headless: false, harness: null });
+
+    await user.click(claude);
+    expect(claude).toHaveAttribute('aria-pressed', 'false');
+    await waitFor(() => expect(titles()).toEqual(['kg-hook-review']));
+    expect(history).toHaveBeenLastCalledWith({ query: '', page: 1, headless: false, harness: 'codex' });
+    // Codex is the only one on: it can't be switched off.
+    expect(codex).toHaveAttribute('aria-disabled', 'true');
+    await user.click(codex);
+    expect(codex).toHaveAttribute('aria-pressed', 'true');
+    expect(claude).toHaveAttribute('aria-pressed', 'false');
+
+    // A reload keeps the choice.
+    app.unmount();
+    const again = renderApp('/', { history });
+    again.snapshot([]); // History stays open across the reload too (HIST-1.3)
+    expect(within(screen.getByRole('group', { name: 'Harnesses' })).getByRole('button', { name: 'Claude Code' })).toHaveAttribute('aria-pressed', 'false');
+    await waitFor(() => expect(history).toHaveBeenLastCalledWith({ query: '', page: 1, headless: false, harness: 'codex' }));
   });
 
   it('HIST-2.7: ↑/↓ and j/k move through the results without resuming; Enter acts like a click', async () => {
@@ -224,7 +259,7 @@ describe('finding past Sessions (HIST-2)', () => {
     expect(titles()).toEqual(['all page 1']);
     fireEvent.scroll(document.getElementById('history-results')!);
     await waitFor(() => expect(titles()).toEqual(['all page 1', 'all page 2']));
-    expect(history).toHaveBeenLastCalledWith({ query: '', page: 2, headless: true });
+    expect(history).toHaveBeenLastCalledWith({ query: '', page: 2, headless: true, harness: null });
   });
 
   it('HIST-2.1: when the newest 50 are all filtered out (an empty page with more to come), the next pages load on their own', async () => {

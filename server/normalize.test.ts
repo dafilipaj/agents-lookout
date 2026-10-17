@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { GitLocation } from '../shared/types.ts';
 import type { FleetRow } from './fleet.ts';
-import { normalizeRows, sessionId, toStatus } from './normalize.ts';
+import { normalizeRows, procStart, sessionId, toStatus } from './normalize.ts';
 
 const fixture = (name: string): FleetRow[] =>
   JSON.parse(readFileSync(new URL(`./fixtures/fleet/${name}`, import.meta.url), 'utf8')).filter(
@@ -35,7 +35,9 @@ describe('fleet list → sidebar rows', () => {
         git: null,
         backend: 'tmux',
         controllable: true,
+        ownHost: true,
         model: 'claude-opus-5-5',
+        procStart: null,
       },
       {
         id: '22222222-2222-4222-8222-222222222222',
@@ -50,7 +52,9 @@ describe('fleet list → sidebar rows', () => {
         git: { repo: 'demo-repo', worktree: 'demo-repo-wt', branch: 'feature/demo' },
         backend: 'tmux',
         controllable: true,
+        ownHost: true,
         model: 'gpt-6-astra',
+        procStart: null,
       },
       {
         id: '33333333-3333-4333-8333-333333333333',
@@ -65,7 +69,9 @@ describe('fleet list → sidebar rows', () => {
         git: { repo: 'work', worktree: null, branch: 'main' },
         backend: 'unknown',
         controllable: false,
+        ownHost: false,
         model: 'claude-opus-5-5',
+        procStart: null,
       },
       {
         id: '44444444-4444-4444-8444-444444444444',
@@ -80,7 +86,9 @@ describe('fleet list → sidebar rows', () => {
         git: { repo: 'work', worktree: null, branch: 'main' },
         backend: 'unknown',
         controllable: false,
+        ownHost: false,
         model: 'claude-opus-5-5',
+        procStart: null,
       },
     ]);
   });
@@ -103,6 +111,48 @@ describe('fleet list → sidebar rows', () => {
     const rows = normalizeRows(fixture('handcrafted-backends.json'), deps);
     const byBackend = Object.fromEntries(rows.map((r) => [r.backend, r.controllable]));
     expect(byBackend).toEqual({ iterm: true, tmux: true, unknown: false });
+  });
+
+  it('VIEW-5.6: a Session has its own host only when it is tmux-backed and no other listed Session (pi included) shares that tmux session', () => {
+    const base = { session_id: null, cwd: null, status: 'idle', waiting_for: null, updated_at: null, display_title: 'x', context: null, model: null };
+    const rows = normalizeRows(
+      [
+        { ...base, pid: 1, harness: 'claude', backend: 'tmux', tmux_session: 'alone' },
+        { ...base, pid: 2, harness: 'claude', backend: 'tmux', tmux_session: 'work' },
+        { ...base, pid: 3, harness: 'codex', backend: 'tmux', tmux_session: 'work' },
+        { ...base, pid: 4, harness: 'codex', backend: 'tmux', tmux_session: 'with-pi' },
+        { ...base, pid: 5, harness: 'pi', backend: 'tmux', tmux_session: 'with-pi' },
+        { ...base, pid: 6, harness: 'claude', backend: 'tmux', tmux_session: null },
+        { ...base, pid: 7, harness: 'claude', backend: 'iterm', tmux_session: null },
+      ],
+      deps,
+    );
+    expect(rows.map((r) => [r.pid, r.ownHost])).toEqual([
+      [1, true],
+      [2, false],
+      [3, false],
+      [4, false],
+      [6, false],
+      [7, false],
+    ]);
+  });
+
+  it('VIEW-5.6: `proc_start` is kept verbatim when it is a bounded RFC 3339 UTC time, and null otherwise', () => {
+    const base = { session_id: null, cwd: null, status: 'idle', waiting_for: null, updated_at: null, display_title: 'x', context: null, model: null, harness: 'claude', backend: 'tmux' };
+    const rows = normalizeRows(
+      [
+        { ...base, pid: 1, proc_start: '2026-10-14T08:12:03Z' },
+        { ...base, pid: 2, proc_start: '2026-10-14T08:12:03.123456789Z' },
+        { ...base, pid: 3, proc_start: null },
+        { ...base, pid: 4 },
+        { ...base, pid: 5, proc_start: 1792145455 as unknown as string },
+      ],
+      deps,
+    );
+    expect(rows.map((r) => r.procStart)).toEqual(['2026-10-14T08:12:03Z', '2026-10-14T08:12:03.123456789Z', null, null, null]);
+    for (const bad of ['', 'yesterday', '2026-10-14T08:12:03', '2026-10-14T08:12:03+02:00', '2026-10-14 08:12:03Z', '2026-02-30T08:12:03Z', '2026-10-14T25:00:00Z', ` 2026-10-14T08:12:03Z`, `2026-10-14T08:12:03.${'0'.repeat(30)}Z`, '--expect-start']) {
+      expect(procStart(bad)).toBeNull();
+    }
   });
 
   it('SIDE-2.3: a Needs you row carries what it waits for; other rows never do', () => {
