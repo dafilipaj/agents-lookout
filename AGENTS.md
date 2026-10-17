@@ -10,7 +10,10 @@ How specs work: `docs/README.md`. Terms: `docs/GLOSSARY.md`.
 - Build only what the requirements say. Anything under Non-goals is out, even if it looks easy.
 - If the code has to differ from the spec, update the spec first (requirement plus a Changelog line), then the code.
 - Name tests after the acceptance criterion they cover: `SIDE-1.2: …`.
+- Each criterion is tagged `(test)` (an automated test at any layer), `(e2e)` (a Behaviour test, for a behaviour that spans the server and the UI and that a World can check) or `(manual)` (only an eye can judge it: layout, alignment, colour).
+- For an `(e2e)` criterion, write the Behaviour test from the criterion first, then the code.
 - Tick an acceptance criterion only after verifying it: test passing, or seen in the running app.
+- `pnpm req-check` checks the criteria against the tests; a reviewer checks the mapping with `pnpm req-check --feature <CODE>`. It runs in the pre-push hook with `pnpm test`, and with `pnpm e2e` once that exists.
 - Use Glossary terms with their defined meaning. Add a new concept to the Glossary in the same change.
 - Decisions that span features live in `docs/decisions/`. Don't contradict an `Accepted` one; propose a new decision that supersedes it.
 

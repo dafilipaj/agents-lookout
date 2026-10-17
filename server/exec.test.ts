@@ -2,10 +2,14 @@ import { execFileSync } from 'node:child_process';
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { KILL_GRACE_MS, type RunError, run } from './exec.ts';
 
-const dir = mkdtempSync(join(tmpdir(), 'lookout-exec-'));
+// Made in a hook, not at import: `pnpm req-check` imports this file to collect its titles.
+let dir: string;
+beforeAll(() => {
+  dir = mkdtempSync(join(tmpdir(), 'lookout-exec-'));
+});
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
 function script(name: string, body: string): string {

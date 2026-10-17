@@ -1,9 +1,9 @@
 ---
-title: <Feature name>
-code: <CODE>          # 3–6 capital letters; prefixes requirement IDs, e.g. SIDE
-status: Draft         # Draft | Ready | In Progress | Done | Parked
-created: YYYY-MM-DD
-updated: YYYY-MM-DD
+title: "<Feature name>"   # quoted, so a title with ": ", a backtick or "@" is still valid YAML
+code: "<CODE>"            # 3–6 capital letters; prefixes requirement IDs, e.g. SIDE
+status: "Draft"           # Draft | Ready | In Progress | Done | Parked
+created: "YYYY-MM-DD"
+updated: "YYYY-MM-DD"
 ---
 
 # <Feature name>

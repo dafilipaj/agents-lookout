@@ -1,0 +1,49 @@
+#!/bin/sh
+# Before each push (TEST-4): `pnpm req-check`, `pnpm test`, then `pnpm e2e`, stopping at the first failure.
+# `pnpm install` points git at this folder (the `prepare` script). The only way past it is `git push --no-verify`.
+set -eu
+
+# git exports GIT_DIR and friends to hooks; the tests run git in their own temporary repos.
+# shellcheck disable=SC2046 # one variable name per word
+unset $(git rev-parse --local-env-vars)
+cd "$(git rev-parse --show-toplevel)"
+
+fail() {
+  echo "pre-push: $1" >&2
+  echo "pre-push: fix it with: $2" >&2
+  exit 1
+}
+
+has_script() {
+  node -e 'process.exit(require("./package.json").scripts?.[process.argv[1]] ? 0 : 1)' "$1"
+}
+
+command -v node >/dev/null 2>&1 || fail "node is not installed." "brew install node"
+command -v pnpm >/dev/null 2>&1 || fail "pnpm is not installed." "corepack enable pnpm"
+[ -d node_modules ] || fail "dependencies are not installed." "pnpm install"
+
+# `pnpm e2e` runs only when package.json has an `e2e` script, so this hook works both before the
+# Behaviour tests land (TEST-1, TEST-2) and after. Without the script it says so; it never skips silently.
+# Its prerequisites are checked first, so a missing one fails before the slow steps.
+e2e=0
+if has_script e2e; then
+  e2e=1
+  command -v tmux >/dev/null 2>&1 || fail "tmux is not installed; Behaviour tests need it." "brew install tmux"
+  if [ -f e2e/pins.json ]; then
+    for rev in $(node -e 'const p=require("./e2e/pins.json");for(const v of Object.values(p))if(v?.rev)console.log(v.rev)'); do
+      ls -d .cache/*-"$rev" >/dev/null 2>&1 || fail "the binary pinned at $rev in e2e/pins.json is not in .cache/." "pnpm e2e:setup"
+    done
+  fi
+  chromium=0
+  node -e 'let c;try{c=require("@playwright/test").chromium}catch{process.exit(2)}process.exit(require("fs").existsSync(c.executablePath())?0:1)' 2>/dev/null || chromium=$?
+  [ "$chromium" -ne 2 ] || fail "Playwright is not installed." "pnpm install"
+  [ "$chromium" -eq 0 ] || fail "Playwright's Chromium is not installed." "pnpm e2e:setup"
+fi
+
+pnpm req-check
+pnpm test
+if [ "$e2e" -eq 1 ]; then
+  pnpm e2e
+else
+  echo "pre-push: no \`e2e\` script in package.json yet, so no Behaviour tests ran."
+fi

@@ -1,11 +1,15 @@
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { run } from './exec.ts';
 import { fetchFleetList, resolveFleetBin } from './fleet.ts';
 
-const dir = mkdtempSync(join(tmpdir(), 'lookout-fleet-'));
+// Made in a hook, not at import: `pnpm req-check` imports this file to collect its titles.
+let dir: string;
+beforeAll(() => {
+  dir = mkdtempSync(join(tmpdir(), 'lookout-fleet-'));
+});
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
 /** A stand-in `fleet` executable. */

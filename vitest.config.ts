@@ -17,7 +17,7 @@ export default defineConfig({
         test: {
           name: 'server',
           environment: 'node',
-          include: ['server/**/*.test.ts', 'shared/**/*.test.ts'],
+          include: ['server/**/*.test.ts', 'shared/**/*.test.ts', 'scripts/**/*.test.mjs'],
         },
       },
       {

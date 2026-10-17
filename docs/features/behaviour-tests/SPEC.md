@@ -1,7 +1,7 @@
 ---
 title: Behaviour tests
 code: TEST
-status: Ready
+status: In Progress
 created: 2026-10-17
 updated: 2026-10-17
 ---
@@ -77,23 +77,23 @@ What a Behaviour test runs in. A World is built fresh for each Behaviour test an
 
 ### TEST-3 Requirement check
 
-- [ ] TEST-3.1 `pnpm req-check` reads every acceptance criterion in `docs/features/*/SPEC.md`: its id, its tag (`(test)`, `(e2e)` or `(manual)`), whether it's ticked, and whether it's struck through. It reads every test title from the runners' own listings, `vitest list --json` and `playwright test --list`. (test)
-- [ ] TEST-3.2 It fails when a ticked `(test)` criterion has no test of any kind naming its id. (test)
-- [ ] TEST-3.3 It fails when a ticked `(e2e)` criterion has no Behaviour test naming its id. (test)
-- [ ] TEST-3.4 It fails when a test names an id that no spec has, or one that is struck through. Only codes in `docs/features/README.md` count as ids, so `UTF-8` isn't one. A requirement id such as `SIDE-5` is valid in a `describe` title. (test)
-- [ ] TEST-3.5 Everything else is information, never a failure: a `(manual)` criterion that a test names, an unticked criterion that already has tests, and an unticked `(test)` or `(e2e)` criterion without tests. It lists the first two. (test)
-- [ ] TEST-3.6 It prints, per feature, each criterion with its tag, tick and the tests naming it, followed by the violations. `--feature <CODE>` narrows the output for a review, `--json` prints it machine-readable, and the exit code is 0 or 1. (test)
-- [ ] TEST-3.7 It finishes within 10 s and starts no World. (manual)
+- [x] TEST-3.1 `pnpm req-check` reads every acceptance criterion in `docs/features/*/SPEC.md`: its id, its tag (`(test)`, `(e2e)` or `(manual)`), whether it's ticked, and whether it's struck through. It reads every test title from the runners' own listings: Vitest's collection of the test files, which loads them without running a test (as `vitest list --no-static-parse` does), and `playwright test --list`. (test)
+- [x] TEST-3.2 It fails when a ticked `(test)` criterion has no test of any kind naming its id. (test)
+- [x] TEST-3.3 It fails when a ticked `(e2e)` criterion has no Behaviour test naming its id. (test)
+- [x] TEST-3.4 It fails when a test names an id that no spec has, or one that is struck through. Only codes in `docs/features/README.md` count as ids, so `UTF-8` isn't one. A requirement id such as `SIDE-5` is valid in a `describe` title. (test)
+- [x] TEST-3.5 Everything else is information, never a failure: a `(manual)` criterion that a test names, an unticked criterion that already has tests, and an unticked `(test)` or `(e2e)` criterion without tests. It lists the first two. (test)
+- [x] TEST-3.6 It prints, per feature, each criterion with its tag, tick and the tests naming it, followed by the violations. `--feature <CODE>` narrows the output for a review, `--json` prints it machine-readable, and the exit code is 0 or 1. (test)
+- [x] TEST-3.7 It finishes within 10 s and starts no World. (manual)
 
 ### TEST-4 Before each push
 
 - [ ] TEST-4.1 A pre-push hook, versioned in the repo as `.githooks/pre-push`, runs `pnpm req-check`, `pnpm test` and `pnpm e2e` in that order, and stops the push at the first failure. (manual)
-- [ ] TEST-4.2 `pnpm install` sets `core.hooksPath` to `.githooks`, so a fresh clone or Worktree has the hook without a manual step. (manual)
+- [x] TEST-4.2 `pnpm install` sets `core.hooksPath` to `.githooks`, so a fresh clone or Worktree has the hook without a manual step. (manual)
 - [ ] TEST-4.3 A missing prerequisite (tmux, a pinned binary, Playwright's Chromium) fails the hook with the command that fixes it; it's never skipped silently. The only way to skip the hook is `git push --no-verify`. (manual)
 
 ### TEST-5 Working with Behaviour tests
 
-- [ ] TEST-5.1 `docs/README.md` (writing rule 2, Working with Claude) and `AGENTS.md` describe the three criterion tags, when a criterion is `(e2e)`, and the order of work: write the Behaviour test from the criterion first, then the code. The reviewer checks the criterion-to-test mapping with `pnpm req-check --feature <CODE>`. (manual)
+- [x] TEST-5.1 `docs/README.md` (writing rule 2, Working with Claude) and `AGENTS.md` describe the three criterion tags, when a criterion is `(e2e)`, and the order of work: write the Behaviour test from the criterion first, then the code. The reviewer checks the criterion-to-test mapping with `pnpm req-check --feature <CODE>`. (manual)
 
 ### TEST-6 Recording Transcripts
 
@@ -288,9 +288,12 @@ scenario(
 ### req-check
 
 - **Sources:**
-  - criteria come from `- [ ]` and `- [x]` lines under `### <CODE>-n` in each `SPEC.md`, with `~~…~~` meaning struck through;
-  - codes come from the table in `docs/features/README.md`;
-  - test titles come from `vitest list --json` and `playwright test --list --reporter=json`, not from a regex over source. The listings expand `it.each`, template titles and nested `describe`. A title from Playwright is a Behaviour test; one from Vitest isn't.
+  - each `SPEC.md` is read with a Markdown parser (`mdast-util-from-markdown` with GFM), not line by line: requirements are top-level `### <CODE>-n` headings, criteria are the GFM task-list items (`- [ ]`, `- [x]`) of top-level lists under them, and `~~…~~` around the start means struck through. Code, fenced, indented or inline, is never a heading, a criterion or a tag;
+  - codes come from the table in `docs/features/README.md`; each `SPEC.md` names its own in its frontmatter, read with a YAML parser (`yaml`), and one without a `code:` fails rather than being skipped;
+  - test titles come from the runners' listings, not from a regex over source. A title from Playwright is a Behaviour test; one from Vitest isn't;
+  - Vitest's titles are read by `scripts/vitest-titles.mjs` through Vitest's Node API, collecting with `staticParse: false`: Vitest imports each test file and runs its `describe` callbacks, but no hook and no test body. Its default static parse would count a test inside `if (false)` and leave `it.each` titles unexpanded. `vitest list --json` holds the same tests but joins the titles with ` > `, so a title containing ` > ` would split. Collecting this way expands `it.each`, template titles and nested `describe`;
+  - so a test file does no work at import or in a `describe` callback: setup that starts a server, makes a temporary directory or writes a file goes in a hook. Collecting today's test files starts no server, writes nothing to the repo (only Vitest's caches under `node_modules/`) and uses no network;
+  - Playwright's titles will come from `playwright test --list --reporter=json` once `e2e/` exists. Until then there's no Playwright config, so req-check reads no Behaviour tests and says so.
 - **Which tests count:** an id counts when it starts a test title or a `describe` title (the existing convention). An id elsewhere in a title is listed as a mention only.
 - **Rules:**
   1. A ticked `(test)` criterion with no test naming it fails (TEST-3.2).
@@ -299,6 +302,7 @@ scenario(
   4. A `(manual)` criterion named by a test, and an unticked criterion with tests, are info only (TEST-3.5).
   5. An unticked `(test)` or `(e2e)` criterion without tests is fine: it's still being built.
   6. Titles come only from the runners' listings.
+  7. A task-list item that starts with a criterion id but isn't a criterion fails with its `file:line` and why: nested in another item, inside a blockquote, outside a requirement, or after a `~~` that never closes. A ticked criterion without a tag fails too; a criterion's tag comes from its own paragraphs, never from a nested item or code (TEST-3.1).
 
   On today's tree these rules pass, so req-check can land at once.
 
@@ -318,7 +322,7 @@ scenario(
 
 ### Before each push
 
-- `.githooks/pre-push` runs `pnpm req-check`, `pnpm test` and `pnpm e2e` (TEST-4.1). A `prepare` script sets `git config core.hooksPath .githooks` on `pnpm install` (TEST-4.2).
+- `.githooks/pre-push` runs `pnpm req-check`, `pnpm test` and `pnpm e2e` (TEST-4.1). A `prepare` script (`scripts/setup-hooks.mjs`) sets `git config --local core.hooksPath .githooks` on `pnpm install`, and does nothing without git or when the package isn't the top of its own checkout. It runs git without the variables it may inherit from another repo's hook (`GIT_DIR`, `GIT_WORK_TREE`, `GIT_COMMON_DIR`, `GIT_INDEX_FILE`, `GIT_CONFIG*`, `GIT_CEILING_DIRECTORIES`), so the checkout it finds is the package's own and it doesn't change another repo's hooks (TEST-4.2).
 - No CI: a World needs macOS, tmux, a Rust build of the fork and Chromium, and the repo has one pusher.
 
 ### Decisions this follows
@@ -364,3 +368,7 @@ None.
 
 - 2026-10-17: Created from [0007](../../decisions/0007-behaviour-tests-from-spec-requirements.md) after reading Lookout's tests and fakes, the spec criteria, and the Fleet fork's isolated test setup.
 - 2026-10-17: Ready: decisions from review with Dario. Fake Harnesses plus `pnpm e2e:record` (TEST-6); real, fake and absent tools fixed (TEST-1.2); `(e2e)` tag and req-check rules (TEST-3); `ps` shim (TEST-1.10); fake `curl` (TEST-1.7); pins in `.cache/` (TEST-1.3); budget (TEST-2.5, TEST-2.6); pre-push hook, no CI; Chromium 1440×900; one World per Behaviour test. USAGE-2.2 stays; hiding an unused Harness went to the Backlog. Facts refreshed against `main` 6b2b77c (SIDE-8, 0008, LAUNCH-4.6 and 4.7).
+- 2026-10-17: In Progress: TEST-3 (`pnpm req-check`), TEST-4 (`.githooks/pre-push`; `prepare` sets `core.hooksPath`) and TEST-5 built. Until the Behaviour tests land, the hook runs `pnpm e2e` only when that script exists and says so when it doesn't, and req-check reads no Behaviour tests without a Playwright config and says so. TEST-4.1 and TEST-4.3 stay open until they're seen with `pnpm e2e` on a real push.
+- 2026-10-17: Review fixes. TEST-3.1 reads Vitest's titles through its Node API (`scripts/vitest-titles.mjs`) instead of `vitest list --json`, whose ` > `-joined names can't be split safely; req-check ignores fenced code, reads CRLF specs and commented frontmatter, and fails on a spec without a code. `prepare` runs `scripts/setup-hooks.mjs`, which does nothing inside another repo's checkout.
+- 2026-10-17: Second review fixes. req-check reads each spec with a Markdown parser and its frontmatter with a YAML parser, replacing the line-by-line reading that unclosed or look-alike fences and quoted `#` broke. TEST-3.1 says which Vitest collection counts: loading the test files without running them, so `it.each` titles expand and a test that is never registered doesn't count; test files keep setup out of import and `describe` callbacks. `setup-hooks` ignores the git variables it inherits, such as `GIT_DIR` from another repo's hook, and writes with `--local`. Playwright titles will come from `playwright test --list --reporter=json` once `e2e/` exists.
+- 2026-10-17: Third review fixes. req-check fails on a task-list item that starts with a criterion id but isn't a criterion (nested, in a blockquote, outside a requirement, or after an unclosed `~~`), naming its `file:line`, and on a ticked criterion without a tag; a tag in a nested item no longer counts. The spec template quotes its frontmatter values, so a title with `: `, a backtick or `@` is valid YAML.

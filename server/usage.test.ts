@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProviderUsage, UsageSnapshot } from '../shared/usage.ts';
 import { freshness, liveWindows, tightestFirst, usageLevel } from '../shared/usage.ts';
 import { type RunOptions, run } from './exec.ts';
@@ -222,7 +222,10 @@ describe('secrets never reach the UI (review #1)', () => {
 });
 
 describe('Jev (USAGE-1.4): `tb-jev status --json` through a fake tb-jev on PATH', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'lookout-jev-'));
+  let dir: string;
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), 'lookout-jev-'));
+  });
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
   function fakeJev(name: string, script: string): { env: NodeJS.ProcessEnv; argsFile: string } {
@@ -464,7 +467,10 @@ describe('UsageMonitor', () => {
 });
 
 describe('shutdown (review #7)', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'lookout-usage-close-'));
+  let dir: string;
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), 'lookout-usage-close-'));
+  });
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
   const pids = (marker: string) => {
