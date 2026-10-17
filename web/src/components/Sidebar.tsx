@@ -9,6 +9,7 @@ import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { LaunchItem } from './LaunchItem';
 import { SessionItem } from './SessionItem';
+import { DockRest } from './SessionView';
 import { SHELL_COLUMN, ShellCell } from './Shell';
 import { UsageStrip } from './UsageStrip';
 
@@ -303,8 +304,10 @@ export function Sidebar(props: SidebarProps) {
           {body}
         </div>
       </ShellCell>
-      {/* SIDE-8.1: the usage panel sits in the dock row, so its top line is the composer's. */}
-      <ShellCell row="dock" className="border-sidebar-border">
+      {/* SIDE-8.1: the usage panel sits in the dock row, so its top line is the composer's. DockRest,
+          stacked under it, keeps the row at the resting composer's height in every view. */}
+      <ShellCell row="dock" className="grid items-start border-sidebar-border *:col-start-1 *:row-start-1">
+        <DockRest />
         <UsageStrip usage={props.usage} now={now} onOpen={props.onUsageOpen} />
       </ShellCell>
     </aside>

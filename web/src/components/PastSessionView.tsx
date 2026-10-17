@@ -7,6 +7,7 @@ import { HARNESS_NAME } from '@/lib/sessions';
 import { formatAge } from '@/lib/time';
 import { Chat } from './Chat';
 import { HarnessIcon } from './HarnessIcon';
+import { DockNote, StatusBar } from './SessionView';
 import { PaneHeader, PlainView, ShellCell, ShellView } from './Shell';
 
 interface Props {
@@ -68,6 +69,8 @@ export function PastSessionView({ harness, sessionId, now, load }: Props) {
   // SIDE-8.1: laid out like an ended Session: a one-line header, the chat, and in the dock the note
   // on why it's read-only with where it ran under it, like a live Session's status line.
   const where = [item.projectPath, item.branch].filter(Boolean).join(' · ');
+  const noteTitle = item.blocked ? `This Session can't be resumed. ${BLOCK_REASON[item.blocked]}` : 'A past Session, shown read-only.';
+  const note = previewNote(detail);
   return (
     <ShellView data-testid="past-session">
       <PaneHeader aria-label="Past Session">
@@ -95,22 +98,10 @@ export function PastSessionView({ harness, sessionId, now, load }: Props) {
         />
       </ShellCell>
       <ShellCell row="dock">
-        <div role="note" className="flex flex-1 items-start gap-2.5 bg-muted/50 px-5 py-3.5">
-          <CircleSlash className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
-          <div>
-            <p className="text-[13px] font-medium">
-              {item.blocked ? `This Session can't be resumed. ${BLOCK_REASON[item.blocked]}` : 'A past Session, shown read-only.'}
-            </p>
-            <p className="text-[12.5px] leading-5 text-muted-foreground">{previewNote(detail)}</p>
-          </div>
-        </div>
+        {/* Like the ended banner: clamped to fit the resting dock, the full text in an overlay (SIDE-8.1). */}
+        <DockNote role="note" icon={<CircleSlash className="size-4" aria-hidden />} title={noteTitle} detail={note} />
         {where && (
-          <div
-            role="group"
-            aria-label="Where it ran"
-            title={where}
-            className="flex h-7 min-w-0 shrink-0 items-center gap-1.5 overflow-hidden border-t border-border/70 bg-muted/30 px-5 font-mono text-[11.5px] whitespace-nowrap text-muted-foreground"
-          >
+          <StatusBar role="group" aria-label="Where it ran" title={where}>
             {item.projectPath && <span className="min-w-0 truncate">{item.projectPath}</span>}
             {item.branch && (
               <>
@@ -125,7 +116,7 @@ export function PastSessionView({ harness, sessionId, now, load }: Props) {
                 </span>
               </>
             )}
-          </div>
+          </StatusBar>
         )}
       </ShellCell>
     </ShellView>

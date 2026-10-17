@@ -1,8 +1,8 @@
 import type { HistoryDetail, HistoryItem } from '@shared/types.ts';
-import { screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it } from 'vitest';
-import { NOW, launchView, renderApp, row } from '@/test/helpers';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { NOW, fakeResizeObserver, launchView, renderApp, row } from '@/test/helpers';
 import { SHELL_COLUMN, SHELL_GRID } from './Shell';
 
 /*
@@ -47,6 +47,42 @@ async function openHistory() {
 }
 
 beforeEach(() => window.localStorage.clear());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
+
+/** The last input was a key press, not a pointer press: whether focus would be visible in a browser. */
+let keyboardLast = true;
+document.addEventListener('keydown', () => (keyboardLast = true), true);
+document.addEventListener('pointerdown', () => (keyboardLast = false), true);
+
+/**
+ * What jsdom can't do for a dock note. It lays nothing out, so the note's title and detail report
+ * sizes that say whether the clamp cuts them short (set `title` or `detail` on the result): the
+ * title along its one line, the detail past its two. And its :focus-visible keeps its last match
+ * across renders, so after the first test a Tab could read as not visible; this stands in with the
+ * browser's rule, visible when the focus came from a key press and not a pointer press.
+ */
+function stubDockNote() {
+  const clip = { title: false, detail: false };
+  const size = (axis: 'width' | 'height', kind: 'scroll' | 'client') =>
+    function (this: HTMLElement) {
+      if (!this.parentElement?.hasAttribute('data-dock-note-text')) return 0;
+      const part = this.previousElementSibling ? 'detail' : 'title';
+      const cut = axis === 'width' ? part === 'title' && clip.title : part === 'detail' && clip.detail;
+      return kind === 'scroll' && cut ? 200 : 100;
+    };
+  vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockImplementation(size('width', 'scroll'));
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(size('width', 'client'));
+  vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(size('height', 'scroll'));
+  vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(size('height', 'client'));
+  const matches = Element.prototype.matches;
+  vi.spyOn(Element.prototype, 'matches').mockImplementation(function (this: Element, selector: string) {
+    return selector === ':focus-visible' ? this === document.activeElement && keyboardLast : matches.call(this, selector);
+  });
+  return clip;
+}
 
 describe('one grid (SIDE-8.1)', () => {
   it('SIDE-8.1 (support): the shell is one grid with rows header / content / dock, and every column is a subgrid over all three', async () => {
@@ -268,6 +304,214 @@ describe('one grid (SIDE-8.1)', () => {
       },
     ],
   ];
+
+  /*
+   * The dock line and the usage panel stay put when switching views: the sidebar's dock cell holds
+   * DockRest under the usage panel, an invisible empty composer with its status line, so the row has
+   * that height at rest in every view, with or without a main-pane dock. The measured positions are
+   * checked by eye (manual).
+   */
+  it.each(views)('SIDE-8.1: in the %s view the sidebar’s dock holds the resting dock under the usage panel', async (_, show) => {
+    await show();
+    const dock = cellOf(screen.getByRole('button', { name: 'Usage details' }));
+    expect(where(dock)).toBe('dock/left');
+    const rest = dock.querySelector<HTMLElement>(':scope > [data-dock-rest]');
+    expect(rest).not.toBeNull();
+    expect(rest).toHaveAttribute('aria-hidden', 'true');
+    expect(rest).toHaveAttribute('inert');
+    expect(rest!.classList).toContain('invisible');
+  });
+
+  it('SIDE-8.1: the resting dock is drawn by the composer’s and the status line’s own parts, so its height can’t drift from theirs', async () => {
+    renderApp('/s/a').snapshot([row({ id: 'a' })]);
+    const composer = screen.getByRole('textbox', { name: 'Message' }).closest('form')!;
+    const rest = document.querySelector<HTMLElement>('[data-dock-rest]')!;
+    // What sets its height: the form, the box, the field, the Send button and the hint; then the bar.
+    const parts = (form: Element) =>
+      [form, form.firstElementChild, form.querySelector('textarea'), form.querySelector('button'), form.lastElementChild].map((el) => `${el?.tagName} ${el?.className}`);
+    expect(parts(rest.querySelector('form')!)).toEqual(parts(composer));
+    expect(rest.querySelector('textarea')).toHaveAttribute('rows', '1');
+    expect(rest.lastElementChild!.className).toBe(screen.getByRole('group', { name: 'Status line' }).className);
+  });
+
+  it('SIDE-8.1: an empty composer is one line whatever its placeholder; typed text sizes it, and clearing it goes back', async () => {
+    renderApp('/s/a').snapshot([row({ id: 'a', title: 'a-session-title-long-enough-to-wrap-in-a-narrow-main-pane' })]);
+    const field = screen.getByRole('textbox', { name: 'Message' });
+    expect(field.classList).toContain('field-sizing-fixed');
+    expect(field.classList).toContain('placeholder:truncate');
+    expect(field.classList).not.toContain('field-sizing-content');
+    const user = userEvent.setup();
+    await user.type(field, 'one{Shift>}{Enter}{/Shift}two');
+    expect(field.classList).toContain('field-sizing-content');
+    expect(field.classList).not.toContain('field-sizing-fixed');
+    await user.clear(field);
+    expect(field.classList).toContain('field-sizing-fixed');
+  });
+
+  it('SIDE-8.1: the resting docks fit the resting height: a one-line composer hint, a banner’s one-line title and two-line detail', async () => {
+    const app = renderApp('/s/a');
+    app.snapshot([row({ id: 'a' }), row({ id: 'b', controllable: false })]);
+    const hint = screen.getByText(/Enter sends/);
+    expect(hint.classList).toContain('h-4');
+    expect(hint.classList).toContain('truncate');
+
+    app.emit({ type: 'sessions', upsert: [], remove: ['a'] });
+    const ended = await screen.findByText('This Session ended');
+    expect(ended.classList).toContain('truncate');
+    expect(ended.nextElementSibling!.classList).toContain('line-clamp-2');
+  });
+
+  /*
+   * A dock note (a banner, a past Session's note) Tabbed to stays clamped, so the dock doesn't grow
+   * and the usage panel doesn't move; the full text shows in an overlay above the dock line instead.
+   * jsdom applies no CSS, so this checks the classes that do it; the overlay on screen is checked by
+   * eye (manual).
+   */
+  async function expectClampedOnFocus(note: HTMLElement) {
+    // The clamp cuts the detail short: the overlay only opens then.
+    stubDockNote().detail = true;
+    const text = note.querySelector<HTMLElement>('[data-dock-note-text]')!;
+    const [title, detail] = [...text.querySelectorAll('p')];
+    const overlay = () => note.querySelector<HTMLElement>('[data-dock-note-overlay]');
+    const classes = () => [text, title!, detail!].map((el) => el.className);
+    const resting = classes();
+    expect(overlay()).toBeNull();
+    const user = userEvent.setup();
+    for (let i = 0; i < 40 && document.activeElement !== text; i++) await user.tab();
+    expect(document.activeElement).toBe(text);
+    // Still clamped, and nothing (no focus or hover variant) lifts the clamp.
+    expect(classes()).toEqual(resting);
+    expect(title!.classList).toContain('truncate');
+    expect(detail!.classList).toContain('line-clamp-2');
+    for (const el of [title!, detail!]) expect(el.className).not.toContain(':');
+    // Screen readers read the full text in the note itself; no native tooltip doubles the overlay.
+    expect(title).not.toHaveAttribute('title');
+    expect(detail).not.toHaveAttribute('title');
+
+    // The full text, in an overlay that opens upward, hidden from assistive tech since it repeats it.
+    const shown = overlay()!;
+    expect(shown.textContent).toBe(text.textContent);
+    expect(shown).toHaveAttribute('aria-hidden', 'true');
+    for (const c of ['absolute', '-translate-y-full']) expect(shown.classList).toContain(c);
+    // Inside the main pane at any width: 1.25rem in from its left edge, and its widths, minimum
+    // included, capped by the pane (the view) less 1.25rem on each side, never by the window.
+    for (const c of ['left-5', 'max-w-[min(40rem,calc(100%-2.5rem))]', 'min-w-[min(16rem,calc(100%-2.5rem))]']) expect(shown.classList).toContain(c);
+    expect(shown.className).not.toMatch(/vw|pointer-events-none/);
+    // Out of flow, its containing block is the view, so the dock cell's scroll box neither grows nor
+    // cuts it off: nothing between them is positioned.
+    const view = note.closest<HTMLElement>('[data-shell-view]')!;
+    expect(view.classList).toContain('relative');
+    for (let el = shown.parentElement; el && el !== view; el = el.parentElement) expect(el.className).not.toMatch(/\b(relative|absolute|fixed|sticky)\b/);
+
+    // Hover shows it too; it goes once neither holds.
+    await user.hover(text);
+    await user.tab();
+    expect(document.activeElement).not.toBe(text);
+    expect(overlay()).not.toBeNull();
+    await user.unhover(text);
+    expect(overlay()).toBeNull();
+    expect(classes()).toEqual(resting);
+  }
+
+  it('SIDE-8.1: a clamped banner can be reached by keyboard; focused it stays clamped and shows its full text in an overlay', async () => {
+    const app = renderApp('/s/a');
+    app.snapshot([row({ id: 'a' })]);
+    app.emit({ type: 'sessions', upsert: [], remove: ['a'] });
+    const title = await screen.findByText('This Session ended');
+    await expectClampedOnFocus(title.closest<HTMLElement>('[role="status"]')!);
+  });
+
+  it('SIDE-8.1: a past Session’s note fits the resting height too: a one-line title and a two-line detail, the full text in an overlay on hover or focus', async () => {
+    renderApp('/h/claude/gone-1', { pastSession: async () => PAST_DETAIL }).snapshot([]);
+    const note = within(await screen.findByTestId('past-session')).getByRole('note');
+    await expectClampedOnFocus(note);
+  });
+
+  /** The View only banner's text and its overlay, if open. */
+  async function viewOnlyNote() {
+    renderApp('/s/a').snapshot([row({ id: 'a', controllable: false })]);
+    const title = await screen.findByText('View only: this Session runs in another app');
+    const text = title.closest<HTMLElement>('[data-dock-note-text]')!;
+    const overlay = () => document.querySelector<HTMLElement>('[data-dock-note-overlay]');
+    return { text, overlay, view: text.closest<HTMLElement>('[data-shell-view]')! };
+  }
+
+  it('SIDE-8.1: the overlay opens only while the clamp cuts the text short, re-checked as the text or the pane resizes', async () => {
+    const ro = fakeResizeObserver();
+    const clip = stubDockNote();
+    const { text, overlay, view } = await viewOnlyNote();
+    const user = userEvent.setup();
+    // Everything fits (a wide window): hovering or Tabbing to it opens nothing.
+    await user.hover(text);
+    expect(overlay()).toBeNull();
+    for (let i = 0; i < 40 && document.activeElement !== text; i++) await user.tab();
+    expect(document.activeElement).toBe(text);
+    expect(overlay()).toBeNull();
+
+    // The pane narrows and the detail's two lines no longer hold it: the open overlay follows.
+    expect(ro.observed(text)).toBe(true);
+    expect(ro.observed(view)).toBe(true);
+    clip.detail = true;
+    ro.resize(view);
+    expect(overlay()).not.toBeNull();
+    clip.detail = false;
+    ro.resize(text);
+    expect(overlay()).toBeNull();
+    // A title cut short on its one line counts too.
+    clip.title = true;
+    ro.resize(text);
+    expect(overlay()).not.toBeNull();
+  });
+
+  it('SIDE-8.1: Esc closes the overlay, and only keyboard focus holds it open, not a mouse click', async () => {
+    stubDockNote().title = true;
+    const { text, overlay } = await viewOnlyNote();
+    const user = userEvent.setup();
+    for (let i = 0; i < 40 && document.activeElement !== text; i++) await user.tab();
+    expect(document.activeElement).toBe(text);
+    expect(overlay()).not.toBeNull();
+    // Esc closes it and leaves focus where it was; focusing the text again reopens it.
+    await user.keyboard('{Escape}');
+    expect(overlay()).toBeNull();
+    expect(document.activeElement).toBe(text);
+    await user.tab({ shift: true });
+    await user.tab();
+    expect(document.activeElement).toBe(text);
+    expect(overlay()).not.toBeNull();
+
+    // Opened by hover with focus elsewhere, Esc closes it too.
+    await user.tab();
+    expect(overlay()).toBeNull();
+    await user.hover(text);
+    expect(overlay()).not.toBeNull();
+    await user.keyboard('{Escape}');
+    expect(overlay()).toBeNull();
+    await user.unhover(text);
+
+    // A mouse click focuses the text, and the overlay shows while the pointer is over it, but goes
+    // once the pointer leaves: the click doesn't pin it.
+    await user.click(text);
+    expect(document.activeElement).toBe(text);
+    expect(overlay()).not.toBeNull();
+    await user.unhover(text);
+    expect(document.activeElement).toBe(text);
+    expect(overlay()).toBeNull();
+  });
+
+  it('SIDE-8.1: a click on the overlay goes no further: focus stays on the text and the click only closes it', async () => {
+    stubDockNote().title = true;
+    const { text, overlay } = await viewOnlyNote();
+    const user = userEvent.setup();
+    for (let i = 0; i < 40 && document.activeElement !== text; i++) await user.tab();
+    const shown = overlay()!;
+    // It takes the press itself (nothing under it gets it), and keeps focus on the text.
+    expect(fireEvent.mouseDown(shown)).toBe(false);
+    const path = window.location.pathname;
+    await user.click(shown);
+    expect(overlay()).toBeNull();
+    expect(document.activeElement).toBe(text);
+    expect(window.location.pathname).toBe(path);
+  });
 
   it.each(views)('SIDE-8.1 (support): the %s view is a ShellView of shell cells, with a header cell', async (_, show) => {
     await show();

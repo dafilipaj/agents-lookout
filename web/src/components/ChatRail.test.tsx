@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MAX_CHAT_ENTRIES, clockTime } from '@/lib/chat';
 import { chatMarks, firstLine, railFraction, stepMark } from '@/lib/marks';
 import { RAIL_THROTTLE_MS } from '@/lib/rail';
-import { renderApp, row } from '@/test/helpers';
+import { fakeResizeObserver, renderApp, row } from '@/test/helpers';
 
 // Synthetic entries only.
 let n = 0;
@@ -58,35 +58,6 @@ function fakeLayout(tops: Record<string, number>, scrollHeight = 1000) {
   const scrollTo = vi.fn();
   Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: scrollTo });
   return { rect, height, scrollTo };
-}
-
-/** jsdom has no ResizeObserver: a fake one that records what it observes, and resizes on demand. */
-function fakeResizeObserver() {
-  const observers: { cb: ResizeObserverCallback; targets: Set<Element> }[] = [];
-  class FakeResizeObserver {
-    targets = new Set<Element>();
-    cb: ResizeObserverCallback;
-    constructor(cb: ResizeObserverCallback) {
-      this.cb = cb;
-      observers.push(this);
-    }
-    observe(t: Element) {
-      this.targets.add(t);
-    }
-    unobserve(t: Element) {
-      this.targets.delete(t);
-    }
-    disconnect() {
-      this.targets.clear();
-    }
-  }
-  vi.stubGlobal('ResizeObserver', FakeResizeObserver);
-  const observed = (el: Element) => observers.some((o) => o.targets.has(el));
-  const resize = (el: Element) =>
-    act(() => {
-      for (const o of observers) if (o.targets.has(el)) o.cb([{ target: el } as ResizeObserverEntry], o as unknown as ResizeObserver);
-    });
-  return { observed, resize };
 }
 
 const tops = () => within(rail()).getAllByRole('button', { name: /^(Your prompt|Subagent result|Question)/ }).map((b) => b.parentElement!.style.top);

@@ -1,6 +1,6 @@
 import type { ChatPage, EndTarget, SessionRow } from '@shared/types.ts';
 import { ChevronDown, CircleSlash, FolderGit2, GitBranch, Info, Power, SendHorizontal, TerminalSquare } from 'lucide-react';
-import { type KeyboardEvent, type ReactNode, type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { type ComponentPropsWithRef, type ComponentPropsWithoutRef, type KeyboardEvent, type ReactNode, type RefObject, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '@/components/ui/dialog';
 import { turnRunning } from '@/lib/activity';
@@ -120,13 +120,15 @@ export function SessionView({
       </ShellCell>
       <ShellCell row="dock">
         {ended ? (
-          <Footer
+          <DockNote
+            role="status"
             icon={<CircleSlash className="size-4" />}
             title="This Session ended"
             detail="Its process is gone. The composer and terminal preview are closed; it stays here until you select another Session."
           />
         ) : !row.controllable ? (
-          <Footer
+          <DockNote
+            role="status"
             icon={<Info className="size-4" />}
             title="View only: this Session runs in another app"
             detail="Lookout can show it, but can't type into it or read its terminal, so there's no composer, preview or answer buttons. Sessions started from Lookout are Controllable."
@@ -313,12 +315,7 @@ function StatusLine({ row }: { row: SessionRow }) {
     </span>
   );
   return (
-    <div
-      role="group"
-      aria-label="Status line"
-      title={parts.join(' · ')}
-      className="flex h-7 min-w-0 shrink-0 items-center gap-1.5 overflow-hidden border-t border-border/70 bg-muted/30 px-5 font-mono text-[11.5px] whitespace-nowrap text-muted-foreground"
-    >
+    <StatusBar role="group" aria-label="Status line" title={parts.join(' · ')}>
       {where && (
         <span className="min-w-0 truncate" data-field={row.git ? 'repo' : 'cwd'} title={row.cwd ?? undefined}>
           {where}
@@ -353,7 +350,20 @@ function StatusLine({ row }: { row: SessionRow }) {
           </span>
         </>
       )}
-    </div>
+    </StatusBar>
+  );
+}
+
+/** The status line's one-line bar, also a past Session's "where it ran" and part of DockRest (SIDE-8.1). */
+export function StatusBar({ className, ...rest }: ComponentPropsWithoutRef<'div'>) {
+  return (
+    <div
+      className={cn(
+        'flex h-7 min-w-0 shrink-0 items-center gap-1.5 overflow-hidden border-t border-border/70 bg-muted/30 px-5 font-mono text-[11.5px] whitespace-nowrap text-muted-foreground',
+        className,
+      )}
+      {...rest}
+    />
   );
 }
 
@@ -440,13 +450,61 @@ function Composer({ sessionId, title, drafts, sending, error, onEdit, onSend, in
   };
 
   return (
-    <form
-      className="flex-1 px-4 py-3"
+    <ComposerFrame
       onSubmit={(e) => {
         e.preventDefault();
         void submit();
       }}
-    >
+      error={error}
+      field={{
+        ref: inputRef,
+        'aria-label': 'Message',
+        placeholder: `Message ${title}…`,
+        value: text,
+        onChange: (e) => update(e.target.value),
+        onKeyDown,
+        'aria-invalid': error ? true : undefined,
+      }}
+      send={{
+        disabled: sending || text.trim() === '',
+        children: (
+          <>
+            {sending ? 'Sending…' : 'Send'}
+            <SendHorizontal className="size-3.5" />
+          </>
+        ),
+      }}
+      hint={
+        <>
+          Enter sends · Shift+Enter for a new line · <kbd className="font-mono">i</kbd> to type here · Esc to leave
+        </>
+      }
+      hintTitle="Enter sends · Shift+Enter for a new line · i to type here · Esc to leave"
+    />
+  );
+}
+
+interface ComposerFrameProps extends Omit<ComponentPropsWithoutRef<'form'>, 'children'> {
+  /** VIEW-3.4: the last failed send's error, above the box. */
+  error?: string | null;
+  /** The message field. */
+  field?: ComponentPropsWithRef<'textarea'>;
+  /** The Send button, its label included. */
+  send?: ComponentPropsWithoutRef<typeof Button>;
+  /** The one-line hint under the box, its full text in `hintTitle`. */
+  hint?: ReactNode;
+  hintTitle?: string;
+}
+
+/**
+ * The composer's layout: the box with the field and Send, and the hint under it. The Composer fills
+ * it in; DockRest draws it empty, so the dock row's resting height is this layout's own (SIDE-8.1).
+ * An empty field is one line high whatever its placeholder: it sizes to its content only once it
+ * holds text, and the placeholder stays on one line, cut short with an ellipsis.
+ */
+function ComposerFrame({ error, field, send, hint, hintTitle, className, ...form }: ComposerFrameProps) {
+  return (
+    <form className={cn('flex-1 px-4 py-3', className)} {...form}>
       {error && (
         <p role="alert" className="mb-2 text-[12.5px] text-destructive">
           {error}
@@ -454,40 +512,142 @@ function Composer({ sessionId, title, drafts, sending, error, onEdit, onSend, in
       )}
       <div className="flex items-end gap-2 rounded-lg border border-input bg-background px-3 py-2 focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/25 dark:bg-input/20">
         <textarea
-          ref={inputRef}
-          aria-label="Message"
-          placeholder={`Message ${title}…`}
           rows={1}
-          value={text}
-          onChange={(e) => update(e.target.value)}
-          onKeyDown={onKeyDown}
-          aria-invalid={error ? true : undefined}
-          className="field-sizing-content max-h-[min(12rem,20dvh)] min-h-6 flex-1 resize-none bg-transparent text-[13.5px] leading-6 outline-none placeholder:text-muted-foreground"
+          {...field}
+          className={cn(
+            'max-h-[min(12rem,20dvh)] min-h-6 flex-1 resize-none bg-transparent text-[13.5px] leading-6 outline-none placeholder:text-muted-foreground',
+            field?.value ? 'field-sizing-content' : 'field-sizing-fixed truncate placeholder:truncate',
+          )}
         />
-        <Button type="submit" size="sm" className="h-7 shrink-0 gap-1.5" disabled={sending || text.trim() === ''}>
-          {sending ? 'Sending…' : 'Send'}
-          <SendHorizontal className="size-3.5" />
-        </Button>
+        <Button type="submit" size="sm" className="h-7 shrink-0 gap-1.5" {...send} />
       </div>
-      {/* One line, so a narrow main pane doesn't grow the dock row (SIDE-8.1). */}
-      <p className="mt-1.5 truncate text-[11px] text-muted-foreground" title="Enter sends · Shift+Enter for a new line · i to type here · Esc to leave">
-        Enter sends · Shift+Enter for a new line · <kbd className="font-mono">i</kbd> to type here · Esc to leave
+      <p className="mt-1.5 h-4 truncate text-[11px] leading-4 text-muted-foreground" title={hintTitle}>
+        {hint}
       </p>
     </form>
   );
 }
 
-/** The ended / View only banner. Its detail stops at two lines (full text on hover), so a narrow main pane doesn't grow the dock row (SIDE-8.1). */
-function Footer({ icon, title, detail }: { icon: ReactNode; title: string; detail: string }) {
+/**
+ * SIDE-8.1: the dock row's resting height, drawn by the real parts: an empty one-line composer with
+ * the status line's bar under it, invisible. The Session sidebar's dock cell holds it under the usage
+ * panel, so the row has this height at rest in every view, with or without a main-pane dock, and it
+ * can't drift from the composer: a change to either is a change to both.
+ */
+export function DockRest() {
   return (
-    <div role="status" className="flex flex-1 items-start gap-2.5 bg-muted/50 px-5 py-3.5">
-      <span className="mt-0.5 text-muted-foreground">{icon}</span>
-      <div className="min-w-0">
-        <p className="text-[13px] font-medium">{title}</p>
-        <p className="line-clamp-2 text-[12.5px] leading-5 text-muted-foreground" title={detail}>
-          {detail}
-        </p>
+    <div aria-hidden inert data-dock-rest="" className="invisible flex flex-col">
+      <ComposerFrame />
+      <StatusBar />
+    </div>
+  );
+}
+
+/**
+ * SIDE-8.1: a note in the dock where the composer would be (the ended / View only banner, a past
+ * Session's note). Its title stays on one line and its detail on two, focused or not, so it fits the
+ * resting dock and never grows it. When that cuts the text short, hovering the text or Tabbing to it
+ * shows the full text in an overlay that opens upward over the chat; Esc, or a click on the overlay,
+ * closes it. Its containing block is the view (ShellView), outside the dock cell's scroll box, so it
+ * neither moves the dock nor is cut off by it, and it stays inside the main pane: 1.25rem in from
+ * either side and no taller than the room above the dock line, so it never covers History. It takes
+ * the pointer, so a click on it never reaches what is underneath. Screen readers read the full text
+ * in the note itself; the overlay repeats it and is hidden from them, like the chat rail's tooltip.
+ */
+export function DockNote({ role, icon, title, detail }: { role: 'status' | 'note'; icon: ReactNode; title: string; detail: string }) {
+  // Hover and focus are kept apart, like the chat rail's tooltip: the pointer leaving doesn't hide
+  // it while the text has focus. Only keyboard focus counts: a mouse click focuses the text too,
+  // but doesn't hold the overlay open once the pointer leaves.
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  // Esc or a click on the overlay closes it until the text is hovered or focused again.
+  const [dismissed, setDismissed] = useState(false);
+  // Whether the clamp cuts the text short: with nothing hidden there is nothing to show.
+  const [clipped, setClipped] = useState(false);
+  const textRef = useRef<HTMLDivElement>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const open = clipped && (hovered || focused) && !dismissed;
+
+  const measure = useCallback(() => {
+    const text = textRef.current;
+    if (!text) return;
+    setClipped([...text.children].some((p) => p.scrollWidth > p.clientWidth || p.scrollHeight > p.clientHeight));
+    // The overlay's bottom edge sits just above the dock line whatever its height, so the room
+    // above it in the view, less a small margin, caps its height (it scrolls past that).
+    const overlay = overlayRef.current;
+    const view = text.closest('[data-shell-view]');
+    if (overlay && view) {
+      const room = overlay.getBoundingClientRect().bottom - view.getBoundingClientRect().top - 8;
+      overlay.style.maxHeight = room > 0 ? `${room}px` : '';
+    }
+  }, []);
+  useLayoutEffect(() => measure(), [measure, open, title, detail]);
+  // Re-measured when the text or the view resizes (the window, History opening or closing).
+  useEffect(() => {
+    const text = textRef.current;
+    if (!text || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(text);
+    const view = text.closest('[data-shell-view]');
+    if (view) ro.observe(view);
+    return () => ro.disconnect();
+  }, [measure]);
+  // Esc closes it wherever focus is, so an overlay opened by hover can be closed too.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: globalThis.KeyboardEvent) => e.key === 'Escape' && setDismissed(true);
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open]);
+
+  return (
+    <div role={role} className="flex flex-1 items-start gap-2.5 bg-muted/50 px-5 py-3.5">
+      <span className="mt-0.5 shrink-0 text-muted-foreground">{icon}</span>
+      <div
+        ref={textRef}
+        tabIndex={0}
+        data-dock-note-text=""
+        onMouseEnter={() => {
+          measure();
+          setDismissed(false);
+          setHovered(true);
+        }}
+        onMouseLeave={() => setHovered(false)}
+        onFocus={(e) => {
+          measure();
+          setDismissed(false);
+          setFocused(e.currentTarget.matches(':focus-visible'));
+        }}
+        onBlur={() => setFocused(false)}
+        onKeyDown={(e) => {
+          // Esc with the overlay open only closes it: it doesn't also reach the app's own Esc keys.
+          if (e.key === 'Escape' && open) {
+            e.stopPropagation();
+            setDismissed(true);
+          }
+        }}
+        className="min-w-0 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+      >
+        <p className="truncate text-[13px] font-medium">{title}</p>
+        <p className="line-clamp-2 text-[12.5px] leading-5 text-muted-foreground">{detail}</p>
       </div>
+      {open && (
+        // -mt-5 lifts it by the note's top padding (py-3.5) and 6 px more, clear of the dock line.
+        // left-5 and the width caps (the pane less 1.25rem on each side) keep it inside the pane at
+        // any width. A press on it keeps focus where it is, so the click lands on it and only closes it.
+        <div
+          ref={overlayRef}
+          role="tooltip"
+          aria-hidden
+          data-dock-note-overlay=""
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => setDismissed(true)}
+          className="absolute left-5 z-30 -mt-5 w-max max-w-[min(40rem,calc(100%-2.5rem))] min-w-[min(16rem,calc(100%-2.5rem))] -translate-y-full cursor-default overflow-y-auto rounded-md border border-border bg-popover px-3 py-2 break-words text-popover-foreground shadow-md"
+        >
+          <p className="text-[13px] font-medium">{title}</p>
+          <p className="text-[12.5px] leading-5 text-muted-foreground">{detail}</p>
+        </div>
+      )}
     </div>
   );
 }

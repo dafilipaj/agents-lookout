@@ -129,3 +129,32 @@ export function field(id: string, name: string): HTMLElement | null {
 
 export const visibleTitles = () =>
   [...document.querySelectorAll('[role="option"] [data-field="title"]')].map((e) => e.textContent);
+
+/** jsdom has no ResizeObserver: a fake one that records what it observes, and resizes on demand. */
+export function fakeResizeObserver() {
+  const observers: { cb: ResizeObserverCallback; targets: Set<Element> }[] = [];
+  class FakeResizeObserver {
+    targets = new Set<Element>();
+    cb: ResizeObserverCallback;
+    constructor(cb: ResizeObserverCallback) {
+      this.cb = cb;
+      observers.push(this);
+    }
+    observe(t: Element) {
+      this.targets.add(t);
+    }
+    unobserve(t: Element) {
+      this.targets.delete(t);
+    }
+    disconnect() {
+      this.targets.clear();
+    }
+  }
+  vi.stubGlobal('ResizeObserver', FakeResizeObserver);
+  const observed = (el: Element) => observers.some((o) => o.targets.has(el));
+  const resize = (el: Element) =>
+    act(() => {
+      for (const o of observers) if (o.targets.has(el)) o.cb([{ target: el } as ResizeObserverEntry], o as unknown as ResizeObserver);
+    });
+  return { observed, resize };
+}

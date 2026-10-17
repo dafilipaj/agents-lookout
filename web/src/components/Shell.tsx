@@ -9,6 +9,8 @@ import { cn } from '@/lib/utils';
  *
  * The dock row grows only up to 40% of the window (`fit-content(40dvh)`) and its cells scroll past
  * that, so text that wraps in a narrow main pane can't squeeze the content row (the Session list).
+ * At rest it is one height in every view: the Session sidebar's dock cell holds DockRest (an
+ * invisible empty composer with its status line), so switching views never moves the dock line.
  */
 export const SHELL_GRID = 'grid h-dvh overflow-hidden grid-cols-[auto_minmax(0,1fr)_auto] grid-rows-[minmax(3rem,auto)_minmax(0,1fr)_fit-content(40dvh)]';
 
@@ -47,9 +49,13 @@ export function PaneHeader({ className, ...rest }: Omit<CellProps, 'row' | 'as' 
   return <ShellCell as="header" row="header" className={cn('gap-2.5 px-5 py-2', className)} {...rest} />;
 }
 
-/** A main-pane view's root: a subgrid in the main column, so its cells land in the shell's rows. */
+/**
+ * A main-pane view's root: a subgrid in the main column, so its cells land in the shell's rows. It
+ * is positioned, so a dock note's overlay (DockNote) sizes to the pane and sits outside the dock
+ * cell's scroll box, which would otherwise cut it off.
+ */
 export function ShellView({ className, ...rest }: ComponentPropsWithoutRef<'div'>) {
-  return <div data-shell-view="" className={cn(SHELL_COLUMN, className)} {...rest} />;
+  return <div data-shell-view="" className={cn(SHELL_COLUMN, 'relative', className)} {...rest} />;
 }
 
 /**
