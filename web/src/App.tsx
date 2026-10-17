@@ -6,6 +6,7 @@ import { MainPane } from '@/components/MainPane';
 import { SettingsPage } from '@/components/SettingsPage';
 import { Sidebar } from '@/components/Sidebar';
 import type { LookoutClient } from '@/lib/client';
+import { tidySentAt } from '@/lib/activity';
 import { type HarnessState, type LaunchDraft, initialDraft } from '@/lib/launch';
 import { useRoute } from '@/lib/router';
 import { listKnown, useLookout } from '@/lib/store';
@@ -44,6 +45,8 @@ export function App({ client }: { client: LookoutClient }) {
   // VIEW-3.4: the last failed send per Session, so it shows whichever composer is mounted.
   const [sendErrors, setSendErrors] = useState<ReadonlyMap<string, string>>(new Map());
   const [overrides, setOverrides] = useState<ReadonlyMap<string, DrawerOverride>>(new Map());
+  // VIEW-1.10: when you last sent to each Session from the composer.
+  const [sentAt, setSentAt] = useState<ReadonlyMap<string, number>>(new Map());
 
   // A Codex Session's id changes once it gets a session id: keep it selected, and move its
   // view state to the new id.
@@ -63,6 +66,10 @@ export function App({ client }: { client: LookoutClient }) {
   if (selectedId && successor && sendErrors.has(selectedId) && !sendErrors.has(successor)) {
     setSendErrors(new Map(sendErrors).set(successor, sendErrors.get(selectedId)!));
   }
+  // VIEW-1.10: send times follow every Codex id change (selected or not) and go once a Session
+  // has definitely ended; in-flight sends and anything while the list isn't known stay.
+  const tidyCtx = { live: state.sessions, aliases: state.aliases, listKnown: listKnown(state), inFlight: sending };
+  if (tidySentAt(sentAt, tidyCtx) !== sentAt) setSentAt((m) => tidySentAt(m, tidyCtx));
   useEffect(() => {
     if (!selectedId || !successor || !state.sessions.has(successor)) return;
     const draft = drafts.get(selectedId);
@@ -228,6 +235,22 @@ export function App({ client }: { client: LookoutClient }) {
     [dispatch],
   );
 
+  // VIEW-1.10: a send's time follows a Codex Session whose id changed while it was in flight.
+  const updateSentAt = useCallback(
+    (sessionId: string, update: (current: number | undefined) => number | undefined) =>
+      setSentAt((m) => {
+        const next = new Map(m);
+        for (const id of [sessionId, aliases.current.get(sessionId)]) {
+          if (!id) continue;
+          const value = update(m.get(id));
+          if (value === undefined) next.delete(id);
+          else next.set(id, value);
+        }
+        return next;
+      }),
+    [],
+  );
+
   const clearSendError = useCallback(
     (sessionId: string) =>
       setSendErrors((m) => {
@@ -287,6 +310,8 @@ export function App({ client }: { client: LookoutClient }) {
             onEarlier={loadEarlier}
             onPage={addPage}
             onFollowing={onFollowing}
+            sentAt={sentAt}
+            onSentAt={updateSentAt}
           />
         )}
       </main>

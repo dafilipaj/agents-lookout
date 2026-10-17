@@ -3,7 +3,7 @@ title: Session view
 code: VIEW
 status: In Progress
 created: 2026-10-16
-updated: 2026-10-16
+updated: 2026-10-17
 ---
 
 # Session view
@@ -22,15 +22,16 @@ Selecting a Session in SIDE shows only a placeholder. To see what an agent did, 
 
 The selected Session's conversation, read from its Transcript. Works for every Session Fleet lists, Controllable or not.
 
-- [ ] VIEW-1.1 Your prompts and the agent's replies show in order, newest at the bottom. Replies are rendered as Markdown, code blocks included. Works for Claude Code and Codex Transcripts. (test)
+- [x] VIEW-1.1 Your prompts and the agent's replies show in order, newest at the bottom. Replies are rendered as Markdown, code blocks included. Works for Claude Code and Codex Transcripts. (test)
 - [x] VIEW-1.2 Consecutive tool calls fold into one row naming the tools and counts, e.g. "▸ 6 tool calls: Read ×3, Grep ×2, Bash". Expanding it shows one line per call (tool plus a short argument). Tool output is never shown. (test)
 - [x] VIEW-1.3 Thinking, hook output, system and bookkeeping entries, and subagent (sidechain) messages aren't shown. (test)
-- [ ] VIEW-1.4 A message the Harness writes appears within 2 s, without reloading. (manual)
+- [x] VIEW-1.4 A message the Harness writes appears within 2 s, without reloading. (manual)
 - [x] VIEW-1.5 While you're at the bottom, the chat follows new messages. Once you scroll up it stays put and shows a "Jump to latest" button. (manual)
 - [x] VIEW-1.6 Long Transcripts open fast: the latest messages load first, and "Show earlier" loads older ones. (test)
 - [ ] VIEW-1.7 The Transcript is found even after the agent moved into another directory or Worktree. (test)
 - [x] VIEW-1.8 If no Transcript can be found, the pane says so; the terminal preview and composer still work. (test)
 - [x] VIEW-1.9 A question the agent asked you (Claude Code's AskUserQuestion) shows in the chat with its options, and afterwards with the answer you gave. (test)
+- [x] VIEW-1.10 While the Session works on an answer, a "Working…" row with the time since your prompt (e.g. "Working… 12s") sits at the bottom of the chat. It appears the moment you send from the composer. While the Session Needs you, it reads "Needs you" instead, with what it waits for when Status has it. It disappears once the reply is final and the Session is Idle, and never shows for an ended Session. (test)
 
 ### VIEW-2 Terminal preview
 
@@ -133,6 +134,18 @@ A plain-text view of what the Session's terminal shows right now.
   - In the tab: the chat in view plus the 3 most recently viewed are kept; those 3 are cut to their latest 100 entries (what the server's `reset` brings back anyway), so switching back is instant and never renders a long stale chat. A chat keeps at most 2,000 entries, trimming the oldest end only while you're at the bottom, so scrolling up and "Show earlier" pages are never pulled away.
   - `peek` every second only while a tab has the drawer open: one peek per Session however many tabs show it, the next one a second after the last ended, and pushed only to the tabs previewing it, only when the text changed.
 
+- **Activity row (VIEW-1.10).** Built in the tab from data it already has: the Session's Status from `fleet list` (every 2 s) and the chat feed. No Fleet change, no new polling. Its own component (`ChatActivity`) sits in a slot under the chat's last row; the chat follows it like a new message while you're at the bottom. The rules, in order:
+  - **Never** for an ended Session. A view-only Session that's still running gets it like any other.
+  - **Needs you**: Status is `needs-you`; the text adds Fleet's `waiting_for` when there is one.
+  - **Working** when any of these holds:
+    - Status is `busy`.
+    - **Optimistic:** less than 5 s since a composer send, Status hasn't changed since the send, and no `final` reply in the feed is newer than the send (Status can miss a quick turn; the feed then shows it answered). The send's time is kept per Session in the tab, so it survives switching away and back and follows a Codex Session whose id changes, whichever Session is selected (the old id's entry goes). Once the list is known and a Session is missing from it, it really ended and its send time goes, unless a send to it is still in flight; while the list isn't known, nothing goes. A failed send puts back the time it replaced, unless a newer send has replaced it since.
+    - Status is `unknown` and the feed is mid-turn: the last history entry is your prompt (`user`), a `tool_call` or an `assistant` entry that isn't `final`.
+    - **Settling:** Status turned `idle` less than 5 s ago and the feed is still mid-turn, so the row doesn't vanish before the final reply reaches the chat (the feed polls every 1 s, the list every 2 s).
+  - **Timer:** from the latest `user` entry's `ts` that no `final` reply follows, or the composer send when that is newer. A send made while a turn runs (Status `busy`, an earlier send not yet caught up or answered, or Status `unknown` with the feed mid-turn) is queued behind it: decided when you send, it never sets the send's time, so it doesn't restart the clock. With neither, from when Status turned `busy` (a turn with no prompt of yours, such as a background task); otherwise no time is shown. "12s", then "3m 07s", then "1h 02m".
+  - **Ticking:** the row keeps its own one-second clock, so only it re-renders.
+  - **Accessibility:** the text sits in a `role="status"` polite live region that holds only the state ("Working…", "Needs you · …"), never the seconds, and stays mounted while empty so its first change is announced. The pulse uses `animate-busy`, which animates only under `prefers-reduced-motion: no-preference`.
+
 ### Key decisions
 
 - **Transcript parsing lives in Fleet, not tb-session or Lookout**: Fleet already resolves the target and the Codex Transcript path, and has the parser in JS; Lookout stays a plain consumer. HIST's search stays in tb-session.
@@ -155,3 +168,7 @@ None.
 - 2026-10-16: Tabs are kept in multi-line (pasted) messages; only a one-line message turns them into spaces.
 - 2026-10-16: VIEW-1 built against the agreed `fleet messages` contract with a fake `fleet` (fixtures in `server/fixtures/fleet/messages/`). Technical approach: the contract, how Lookout validates and bounds it, and how a viewed Session's chat is followed and paged. VIEW-1.1, 1.4 and 1.7 wait for a check against real Transcripts once the fork's `fleet messages` lands.
 - 2026-10-16: VIEW-1 review fixes against Fleet's `messages` as built: entries already shown are replaced by cursor (`updated`), so an answered question flips live (VIEW-1.9 re-verified by test); queued prompts are a separate queue below the history; questions mark options by `picked`; quiet polling of empty Transcripts; parked feeds instead of overlapping calls; a small chat cache in the tab; trimming only at the bottom.
+- 2026-10-17: Added VIEW-1.10, a "Working…" / "Needs you" row at the bottom of the chat, built from Status and the chat feed (no Fleet change). Technical approach: its rules, including a 5 s optimistic start after a send and a 5 s wait for the final reply after the Session turns Idle.
+- 2026-10-17: VIEW-1.1 and 1.4 checked by Dario against live Sessions with the fork's Fleet (`lookout` 1f824eb).
+- 2026-10-17: VIEW-1.10 review fixes: whether a send is queued is decided when you send, and a queued send never restarts the timer; the send's time is kept per Session (survives switching, follows a Codex id change); a failed send puts back the earlier send's time.
+- 2026-10-17: VIEW-1.10 second review fixes: a send the feed shows answered no longer makes the next send look queued; send times follow a Codex id change even when another Session is selected; send times of ended Sessions and old ids are dropped.

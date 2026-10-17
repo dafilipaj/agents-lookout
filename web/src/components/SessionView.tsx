@@ -2,11 +2,13 @@ import type { ChatPage, SessionRow } from '@shared/types.ts';
 import { ChevronDown, CircleSlash, FolderGit2, GitBranch, Info, SendHorizontal, TerminalSquare } from 'lucide-react';
 import { type KeyboardEvent, type ReactNode, type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { turnRunning } from '@/lib/activity';
 import type { Chat as ChatState, Preview } from '@/lib/store';
 import { HARNESS_NAME, STATUS_LABEL, location } from '@/lib/sessions';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { Chat } from './Chat';
+import { ChatActivity } from './ChatActivity';
 import { HarnessIcon } from './HarnessIcon';
 import { StatusMarker } from './StatusMarker';
 
@@ -36,6 +38,10 @@ export interface SessionViewProps {
   onPage(sessionId: string, before: string, epoch: number, page: ChatPage): void;
   /** VIEW-1.5: whether you're at the bottom of the chat. */
   onFollowing(sessionId: string, following: boolean): void;
+  /** VIEW-1.10: when you last sent to each Session from the composer, kept while switching. */
+  sentAt: ReadonlyMap<string, number>;
+  /** Sets a Session's send time from its current one; undefined clears it. */
+  onSentAt(sessionId: string, update: (current: number | undefined) => number | undefined): void;
 }
 
 /** VIEW: the selected Session. Mounted per Session (`key`), so its local state is its own. */
@@ -55,8 +61,25 @@ export function SessionView({
   onEarlier,
   onPage,
   onFollowing,
+  sentAt: sentAtBySession,
+  onSentAt,
 }: SessionViewProps) {
   const controls = row.controllable && !ended;
+
+  // VIEW-1.10: "Working…" shows the moment you send, before Status catches up. A send while a turn
+  // runs is queued behind it and keeps the turn's time. A failed send puts back the time it
+  // replaced, unless a newer send has replaced it since.
+  const sentAt = sentAtBySession.get(row.id) ?? null;
+  const send = async (sessionId: string, text: string) => {
+    const at = Date.now();
+    const entries = chat?.entries ?? [];
+    if (turnRunning({ status: row.status, statusSince: row.statusSince, entries, sentAt, now: at })) return onSend(sessionId, text);
+    const previous = sentAt ?? undefined;
+    onSentAt(sessionId, () => at);
+    const sent = await onSend(sessionId, text);
+    if (!sent) onSentAt(sessionId, (current) => (current === at ? previous : current));
+    return sent;
+  };
 
   const composerRef = useRef<HTMLTextAreaElement>(null);
   // VIEW-3.6: `i` focuses the composer when focus isn't in a text field.
@@ -83,6 +106,7 @@ export function SessionView({
         onEarlier={onEarlier}
         onPage={onPage}
         onFollowing={onFollowing}
+        activity={<ChatActivity row={row} ended={ended} entries={chat?.entries} sentAt={sentAt} />}
       />
       {ended ? (
         <Footer icon={<CircleSlash className="size-4" />} title="This Session ended">
@@ -104,7 +128,7 @@ export function SessionView({
             sending={sending.has(row.id)}
             error={sendErrors.get(row.id) ?? null}
             onEdit={onEdit}
-            onSend={onSend}
+            onSend={send}
             inputRef={composerRef}
           />
         </>

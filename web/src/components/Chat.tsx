@@ -25,10 +25,12 @@ export interface ChatProps {
   onPage(sessionId: string, before: string, epoch: number, page: ChatPage): void;
   /** VIEW-1.5: whether you're at the bottom. */
   onFollowing(sessionId: string, following: boolean): void;
+  /** VIEW-1.10: what the Session is doing, under the last message. */
+  activity?: ReactNode;
 }
 
 /** VIEW-1: the conversation from the Transcript. Mounted per Session. */
-export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFollowing }: ChatProps) {
+export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFollowing, activity }: ChatProps) {
   const [loadingEarlier, setLoadingEarlier] = useState(false);
   const [earlierError, setEarlierError] = useState<string | null>(null);
   const entries = chat?.entries ?? NONE;
@@ -81,12 +83,15 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
   // expands. A shrinking pane keeps following the bottom; anything else just re-checks where
   // you are, so "Jump to latest" shows when the bottom moved out of view.
   const content = useRef<HTMLDivElement>(null);
+  const tail = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = scrollRef.current;
     if (!el || typeof ResizeObserver === 'undefined') return;
     let height = el.clientHeight;
-    const ro = new ResizeObserver(() => {
-      if (el.clientHeight !== height && atBottom.current) el.scrollTop = el.scrollHeight;
+    const ro = new ResizeObserver((resized) => {
+      // The activity row (VIEW-1.10) appearing or changing is like a new message: followed.
+      const grewAtTail = resized.some((r) => r.target === tail.current);
+      if ((el.clientHeight !== height || grewAtTail) && atBottom.current) el.scrollTop = el.scrollHeight;
       height = el.clientHeight;
       const bottom = el.scrollHeight - el.scrollTop - el.clientHeight <= BOTTOM_SLACK_PX;
       atBottom.current = bottom;
@@ -94,6 +99,7 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
     });
     ro.observe(el);
     if (content.current) ro.observe(content.current);
+    if (tail.current) ro.observe(tail.current);
     return () => ro.disconnect();
   }, [chat?.loaded]);
 
@@ -197,6 +203,7 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
       <div ref={scrollRef} onScroll={onScroll} className="h-full overflow-y-auto" aria-label="Chat" data-testid="chat">
         <div ref={content} className="flex min-h-full flex-col">
           {body}
+          <div ref={tail}>{activity}</div>
         </div>
       </div>
       {!following && chat?.loaded && items.length > 0 && (

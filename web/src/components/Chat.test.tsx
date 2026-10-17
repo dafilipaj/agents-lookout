@@ -299,7 +299,7 @@ describe('loading, paging and problems', () => {
     reset([agent('still here')]);
     app.emit({ type: 'chat', sessionId: 'a', op: 'problem', problem: { kind: 'failed', message: 'Fleet took too long to read the Transcript.' } });
     expect(screen.getByText('still here')).toBeInTheDocument();
-    expect(screen.getByRole('status')).toHaveTextContent("Couldn't read new messages: Fleet took too long to read the Transcript. · retrying");
+    expect(messages().getByRole('status')).toHaveTextContent("Couldn't read new messages: Fleet took too long to read the Transcript. · retrying");
     app.emit({ type: 'chat', sessionId: 'a', op: 'problem', problem: null });
     expect(screen.queryByText(/retrying/)).toBeNull();
   });
