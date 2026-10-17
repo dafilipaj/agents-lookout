@@ -125,16 +125,16 @@ describe('finding past Sessions (HIST-2)', () => {
     const [live, codex, gone] = options();
     expect(live).toHaveAttribute('data-state', 'live');
     expect(within(live!).getByText('live')).toBeInTheDocument();
-    expect(live!.querySelector('[data-field="marker"]')).toHaveTextContent('●');
+    expect(live!.querySelector('[data-field="marker"] svg')).toHaveClass('lucide-circle-dot');
     expect(codex).toHaveAttribute('data-state', 'resumable');
-    expect(codex!.querySelector('[data-field="marker"]')).toHaveTextContent('○');
+    expect(codex!.querySelector('[data-field="marker"] svg')).toHaveClass('lucide-circle');
     expect(codex!.querySelector('[data-field="harness"]')).toHaveTextContent('Codex');
     expect(codex!.querySelector('[data-field="repo"]')).toHaveTextContent('work');
     expect(codex!.querySelector('[data-field="branch"]')).toHaveTextContent('feature/kg-hook');
     expect(codex!.querySelector('[data-field="age"]')).toHaveTextContent('3d');
     expect(codex!.querySelector('mark')).toHaveTextContent('the hook fires');
     expect(gone).toHaveAttribute('data-state', 'blocked');
-    expect(gone!.querySelector('[data-field="marker"]')).toHaveTextContent('⊘');
+    expect(gone!.querySelector('[data-field="marker"] svg')).toHaveClass('lucide-circle-slash');
     expect(within(gone!).getByText('folder gone')).toBeInTheDocument();
   });
 

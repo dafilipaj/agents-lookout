@@ -11,6 +11,7 @@ import type { HarnessState, LaunchDraft } from '@/lib/launch';
 import { cn } from '@/lib/utils';
 import { criticalHint } from '@/lib/usage';
 import { HarnessIcon } from './HarnessIcon';
+import { UsageLevelIcon } from './UsageLevelIcon';
 
 interface Props {
   open: boolean;
@@ -139,9 +140,7 @@ export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, h
                       <span className="whitespace-nowrap">{label}</span>
                       {limit && (
                         <span className="text-[11px] font-medium text-destructive" data-field="limit-hint">
-                          <span role="img" aria-label="Critical: 95% or more used">
-                            ⛔
-                          </span>{' '}
+                          <UsageLevelIcon level="critical" className="align-[-2px] [&_svg]:size-3" />{' '}
                           {limit}
                         </span>
                       )}

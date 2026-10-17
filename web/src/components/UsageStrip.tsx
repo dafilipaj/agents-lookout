@@ -1,10 +1,12 @@
 import type { JevStatus, ProviderUsage, UsageSnapshot, UsageWindow } from '@shared/usage.ts';
 import { freshness, hasReset, isFlagged, liveWindows, usageLevel } from '@shared/usage.ts';
+import { Check } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { HARNESS_NAME } from '@/lib/sessions';
-import { LEVEL_MARK, formatClock, formatUntil, freshnessLabel } from '@/lib/usage';
+import { formatClock, formatUntil, freshnessLabel } from '@/lib/usage';
 import { cn } from '@/lib/utils';
 import { HarnessIcon } from './HarnessIcon';
+import { UsageLevelIcon } from './UsageLevelIcon';
 
 const UNREADABLE: Record<Exclude<ProviderUsage['state'], 'ok'>, string> = {
   'not-installed': 'not installed',
@@ -15,7 +17,7 @@ const UNREADABLE: Record<Exclude<ProviderUsage['state'], 'ok'>, string> = {
 };
 
 const JEV_LABEL: Record<JevStatus['state'], string> = {
-  ready: '✓ ready',
+  ready: 'ready',
   'not-set-up': 'not set up',
   'not-installed': 'not installed',
   unavailable: 'update tb-jev',
@@ -40,7 +42,7 @@ export function UsageStrip({ usage, now, onOpen }: { usage: UsageSnapshot | null
             <div className="flex items-center gap-1.5 text-[11px] leading-4">
               <span className="font-medium">Jev</span>
               <span className={cn(usage.jev.state === 'ready' ? 'text-foreground/80' : 'text-muted-foreground')} data-field="jev">
-                {JEV_LABEL[usage.jev.state]}
+                <JevState state={usage.jev.state} />
               </span>
             </div>
           </div>
@@ -192,7 +194,7 @@ function Details({ usage, now }: { usage: UsageSnapshot; now: number }) {
       <section className="px-3.5 py-3" aria-label="Jev">
         <header className="mb-1 flex items-center gap-2">
           <span className="font-medium">Jev</span>
-          <span className={cn(usage.jev.state === 'ready' ? 'text-foreground/80' : 'text-muted-foreground')}>{JEV_LABEL[usage.jev.state]}</span>
+          <span className={cn(usage.jev.state === 'ready' ? 'text-foreground/80' : 'text-muted-foreground')}><JevState state={usage.jev.state} /></span>
         </header>
         <dl className="grid grid-cols-[5.5rem_1fr] gap-x-2 gap-y-0.5 text-[12px]">
           {usage.jev.version && (
@@ -244,17 +246,24 @@ function Bar({ percent, className }: { percent: number; className?: string }) {
   );
 }
 
-/** USAGE-1.2: ⚠ at 80% or more, ⛔ at 95% or more; a fixed-width slot either way. */
+/** USAGE-1.2: a warning triangle at 80% or more, a critical octagon at 95% or more; a fixed-width slot either way. */
 function Mark({ percent }: { percent: number }) {
-  const mark = LEVEL_MARK[usageLevel(percent)];
   return (
     <span className="w-3.5 shrink-0 text-center text-[11px] leading-none" data-field="mark">
-      {mark && (
-        <span role="img" aria-label={mark.label} title={mark.label}>
-          {mark.glyph}
-        </span>
-      )}
+      <UsageLevelIcon level={usageLevel(percent)} className="align-middle" />
     </span>
+  );
+}
+
+/** USAGE-1.4: Jev's state; ready carries a check (the text says it either way). */
+function JevState({ state }: { state: JevStatus['state'] }) {
+  return state === 'ready' ? (
+    <span className="inline-flex items-center gap-0.5">
+      <Check className="size-3 shrink-0" aria-hidden />
+      {JEV_LABEL.ready}
+    </span>
+  ) : (
+    JEV_LABEL[state]
   );
 }
 

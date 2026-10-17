@@ -1,3 +1,4 @@
+import { type LucideIcon, OctagonAlert, TriangleAlert } from 'lucide-react';
 import {
   type Freshness,
   type ProviderUsage,
@@ -66,11 +67,14 @@ export function freshnessLabel(f: Freshness, now: number): string {
   }
 }
 
-/** USAGE-1.2: the mark that reads without colour. */
-export const LEVEL_MARK: Record<UsageLevel, { glyph: string; label: string } | null> = {
+/**
+ * USAGE-1.2: the level icon that reads without colour, by its shape: a triangle for a warning, an
+ * octagon for critical ([0008](../../../docs/decisions/0008-lucide-icons-only.md)).
+ */
+export const LEVEL_ICON: Record<UsageLevel, { icon: LucideIcon; className: string; label: string } | null> = {
   normal: null,
-  warning: { glyph: '⚠', label: 'Warning: 80% or more used' },
-  critical: { glyph: '⛔', label: 'Critical: 95% or more used' },
+  warning: { icon: TriangleAlert, className: 'text-needs-you-text', label: 'Warning: 80% or more used' },
+  critical: { icon: OctagonAlert, className: 'text-destructive', label: 'Critical: 95% or more used' },
 };
 
 /**

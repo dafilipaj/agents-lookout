@@ -66,10 +66,20 @@ describe('usage strip', () => {
     expect(line('codex').querySelector('[data-field="reset"]')).toHaveTextContent('25m');
   });
 
-  it('USAGE-1.2: ⚠ at 80% or more and ⛔ at 95% or more, named for screen readers; nothing below 80%', () => {
+  it('USAGE-1.2: a warning triangle at 80% or more and a critical octagon at 95% or more, named for screen readers; nothing below 80%', () => {
     const app = show(usage([provider({ id: 'claude', windows: [win({ percent: 85 })] }), provider({ id: 'codex', windows: [win({ percent: 100 })] })]));
-    expect(within(line('claude')).getByRole('img', { name: 'Warning: 80% or more used' })).toHaveTextContent('⚠');
-    expect(within(line('codex')).getByRole('img', { name: 'Critical: 95% or more used' })).toHaveTextContent('⛔');
+    const warning = within(line('claude')).getByRole('img', { name: 'Warning: 80% or more used' });
+    const critical = within(line('codex')).getByRole('img', { name: 'Critical: 95% or more used' });
+    // Different shapes, so they read without colour (decision 0008: lucide icons, no emoji).
+    expect(warning.querySelector('svg.lucide-triangle-alert')).not.toBeNull();
+    expect(critical.querySelector('svg.lucide-octagon-alert')).not.toBeNull();
+    // Coloured with the text tokens, which hold 3:1 against the sidebar in both themes.
+    expect(warning).toHaveAttribute('data-level', 'warning');
+    expect(warning).toHaveClass('text-needs-you-text');
+    expect(critical).toHaveAttribute('data-level', 'critical');
+    expect(critical).toHaveClass('text-destructive');
+    expect(warning).toHaveTextContent('');
+    expect(critical).toHaveTextContent('');
     app.unmount();
     show(usage([provider({ id: 'claude', windows: [win({ percent: 79 })] }), provider({ id: 'codex', windows: [win({ percent: 0 })] })]));
     expect(strip().querySelector('[role="img"][aria-label^="Warning"], [role="img"][aria-label^="Critical"]')).toBeNull();
@@ -77,7 +87,7 @@ describe('usage strip', () => {
 
   it('USAGE-1.4: whether Jev is ready, not set up, not installed, or needs an update', () => {
     const cases = [
-      ['ready', '✓ ready'],
+      ['ready', 'ready'],
       ['not-set-up', 'not set up'],
       ['not-installed', 'not installed'],
       ['unavailable', 'update tb-jev'],
@@ -85,7 +95,8 @@ describe('usage strip', () => {
     ] as const;
     for (const [state, text] of cases) {
       const app = show(usage([provider({ id: 'claude' }), provider({ id: 'codex' })], { state }));
-      expect(strip().querySelector('[data-field="jev"]')).toHaveTextContent(text);
+      expect(strip().querySelector('[data-field="jev"]')).toHaveTextContent(new RegExp(`^${text}$`));
+      expect(strip().querySelector('[data-field="jev"] svg.lucide-check') !== null).toBe(state === 'ready');
       app.unmount();
     }
   });
@@ -148,7 +159,7 @@ describe('usage strip', () => {
 
     act(() => vi.advanceTimersByTime(31_000)); // the boundary passes
     expect(line('claude').querySelector('[data-field="percent"]')).toHaveTextContent('20%'); // next window that holds
-    expect(line('claude')).not.toHaveTextContent('⛔');
+    expect(within(line('claude')).queryByRole('img', { name: /^Critical/ })).toBeNull();
     expect(line('codex').querySelector('[data-field="reset"]')).toHaveTextContent('reset · refreshing');
     await vi.waitFor(() => expect(app.client.refreshUsage).toHaveBeenCalledTimes(1));
     act(() => vi.advanceTimersByTime(5_000));
@@ -232,7 +243,8 @@ describe('launcher hint', () => {
         provider({ id: 'codex', windows: [win({ percent: 100, resetsAt: at1730() }), win({ kind: 'weekly_all', percent: 96, resetsAt: Date.now() + 50 * H })], observedAt: Date.now(), fetchedAt: Date.now() }),
       ]),
     );
-    expect(hint(/Codex/)).toHaveTextContent(/^⛔ 5h limit 100% · resets (\w{3} )?17:30$/);
+    expect(hint(/Codex/)).toHaveTextContent(/^5h limit 100% · resets (\w{3} )?17:30$/);
+    expect(within(hint(/Codex/) as HTMLElement).getByRole('img', { name: 'Critical: 95% or more used' }).querySelector('svg.lucide-octagon-alert')).not.toBeNull();
     expect(hint(/Claude Code/)).toBeNull();
     await user.click(within(group).getByRole('radio', { name: /Codex/ }));
     expect(within(group).getByRole('radio', { name: /Codex/ })).toBeChecked();
@@ -256,7 +268,8 @@ describe('launcher hint', () => {
         provider({ id: 'codex', windows: [win({ percent: 100, resetsAt: at1730() })], observedAt: Date.now() - 20 * 60_000, fetchedAt: Date.now() }),
       ]),
     );
-    expect(hint(/Codex/)).toHaveTextContent(/^⛔ 5h limit 100% · resets (\w{3} )?17:30$/);
+    expect(hint(/Codex/)).toHaveTextContent(/^5h limit 100% · resets (\w{3} )?17:30$/);
+    expect(within(hint(/Codex/) as HTMLElement).getByRole('img', { name: 'Critical: 95% or more used' }).querySelector('svg.lucide-octagon-alert')).not.toBeNull();
   });
 
   it('two critical Harnesses both show their hint (review #12)', async () => {

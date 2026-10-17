@@ -20,7 +20,7 @@ Limits show up only when an agent stalls. Claude's usage page and Codex's `/stat
 
 ### USAGE-1 Always visible
 - [x] USAGE-1.1 A compact strip at the bottom of the Session sidebar shows, for Claude and for Codex, the tightest window: the Harness mark, a bar with **% used**, and the time to reset. (test)
-- [x] USAGE-1.2 A window at 80% or more is marked as a warning; at 95% or more, as critical. The marks are recognizable without colour. (test)
+- [x] USAGE-1.2 A window at 80% or more is marked as a warning (a triangle icon); at 95% or more, as critical (an octagon icon). The marks are recognizable without colour. (test)
 - [x] USAGE-1.3 The numbers refresh on their own: Claude every 60 s, Codex whenever one of its Transcripts records new limits. The strip says how old they are. (manual)
 - [x] USAGE-1.4 The strip shows whether Jev is ready (tb-jev installed, with credentials) or not set up. Nothing Lookout does here costs a billed call. (test)
 
@@ -49,14 +49,15 @@ Limits show up only when an agent stalls. Claude's usage page and Codex's `/stat
 │ …                       │
 ├─────────────────────────┤   the line above the composer (SIDE-8)
 │ ✳ ██████░░░░ 62% · 2h10 │   tightest Claude window, resets in 2 h 10 min
-│ ⊛ ██████████ 100% ⚠ 17:30│   Codex at its 5-hour limit
+│ ⊛ ██████████ 100% ⛔ 17:30│   Codex at its 5-hour limit
 │ Jev ✓ ready             │
 └─────────────────────────┘
 ```
 
+- The mock-up uses ⛔ and ✓ as shorthand for the critical octagon and the check icon.
 - Clicking the strip opens a popover with the details (USAGE-2.1).
 - One grid (SIDE-8): the strip is the Session sidebar's cell in the shell's dock row, so its top line is the line above the composer, or above the ended / View only banner. Whichever side is taller sets the row's height; the strip's lines stay at its top.
-- Marks: ⚠ at 80% or more, ⛔ at 95% or more, alongside the colour.
+- Level icons: a warning triangle (lucide `TriangleAlert`, amber in the `needs-you-text` token, as text and strokes use) at 80% or more, a critical octagon (`OctagonAlert`, red) at 95% or more, alongside the bar's colour. The launcher hint (USAGE-3.1) starts with the same octagon. Icons follow [0008](../../decisions/0008-lucide-icons-only.md).
 
 ## Technical approach
 
@@ -82,7 +83,7 @@ Limits show up only when an agent stalls. Claude's usage page and Codex's `/stat
   - **How Lookout maps it:**
     - not on PATH or in `~/.local/bin`: "not installed";
     - exit 2 (clap refuses `status`, as 0.1.0 does): "update tb-jev (needs 0.2+ for status)";
-    - exit 0: ✓ ready; exit 4: "not set up: <error_reason>";
+    - exit 0: "ready", with a check icon; exit 4: "not set up: <error_reason>";
     - anything else: "error", with a short reason.
   - The details show the version, where the key comes from ("env TYPESAFE_API_KEY", "config file" or "none"), the base URL, and the config path when one is used, never its contents.
   - Lookout runs only `status --json`, never `doctor`, `ask` or `--version`: on start, when the details open (at most once every 10 s), and otherwise at most every 5 minutes.
@@ -120,3 +121,4 @@ None.
 - 2026-10-16: Review round 2: exact Fleet `providers[]` and tb-jev 13-field contracts; sanitized reasons; expired windows and freshness handled; single-flight reads, cancellation on shutdown. USAGE-1.3 verified live: a Codex turn's new numbers showed within the 60 s poll.
 - 2026-10-16: Review round 3: `session_scoped` windows; Claude errors with exit 1 keep Codex live; a high-water mark so older readings never become current; rejected limits are errors; Codex age only from `observed_at`, shown neutrally as "as of last turn"; amber only for flagged ages; the five-minute rule now applies to Claude only.
 - 2026-10-17: UX: the strip sits in the app shell's dock row (SIDE-8), so its top line continues as the line above the composer.
+- 2026-10-17: Icons per [0008](../../decisions/0008-lucide-icons-only.md): the USAGE-1.2 level icons and the launcher hint are lucide icons (a warning triangle, a critical octagon) instead of ⚠ and ⛔; Jev's "ready" carries a check icon instead of ✓.

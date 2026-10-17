@@ -1,5 +1,5 @@
 import type { ChatEntry, ChatPage, Harness } from '@shared/types.ts';
-import { ArrowDown, ChevronRight, CircleHelp, FileX, MessagesSquare, Wrench } from 'lucide-react';
+import { ArrowDown, ChevronRight, Circle, CircleDot, CircleHelp, FileX, MessagesSquare, Square, SquareCheck, Wrench } from 'lucide-react';
 import { type PointerEvent as ReactPointerEvent, type ReactNode, memo, useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { Button } from '@/components/ui/button';
@@ -553,8 +553,8 @@ function Question({ entry, label }: { entry: QuestionEntry; label: string }) {
                         entry.status !== 'pending' && !chosen && 'opacity-60',
                       )}
                     >
-                      <span aria-hidden className="w-3.5 shrink-0 text-center text-muted-foreground">
-                        {q.multiSelect ? (chosen ? '☑' : '☐') : chosen ? '●' : '○'}
+                      <span aria-hidden className="flex h-[1lh] w-3.5 shrink-0 items-center justify-center text-muted-foreground" data-field="choice">
+                        <ChoiceIcon multiSelect={q.multiSelect} chosen={chosen} />
                       </span>
                       <span className="min-w-0">
                         {o.label}
@@ -584,6 +584,12 @@ function Question({ entry, label }: { entry: QuestionEntry; label: string }) {
       )}
     </div>
   );
+}
+
+/** VIEW-1.9: a box for several picks, a circle for one; checked, or with a dot, when it was picked. */
+function ChoiceIcon({ multiSelect, chosen }: { multiSelect: boolean; chosen: boolean }) {
+  const Icon = multiSelect ? (chosen ? SquareCheck : Square) : chosen ? CircleDot : Circle;
+  return <Icon className="size-3.5" />;
 }
 
 function Notice({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {

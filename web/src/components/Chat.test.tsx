@@ -194,7 +194,8 @@ describe('questions', () => {
     reset([question({ status: 'answered', answer: { answers: ['Recalculate drafts only'], picked: [[1]] } })]);
     let q = document.querySelector('[data-kind="question"]') as HTMLElement;
     expect(q).toHaveTextContent('Answered');
-    expect([...q.querySelectorAll('[data-picked]')].map((e) => e.textContent)).toEqual(['●Recalculate drafts onlySent invoices keep their amounts.']);
+    expect([...q.querySelectorAll('[data-picked]')].map((e) => e.textContent)).toEqual(['Recalculate drafts onlySent invoices keep their amounts.']);
+    expect(q.querySelector('[data-picked] [data-field="choice"] svg')).toHaveClass('lucide-circle-dot');
 
     app.emit({ type: 'chat', sessionId: 'a', op: 'reset', before: null, queue: [], entries: [question({ status: 'answered', answer: { answers: ['Only the ones from October'], picked: [[]] } })] });
     q = document.querySelector('[data-kind="question"]') as HTMLElement;
@@ -205,6 +206,18 @@ describe('questions', () => {
     q = document.querySelector('[data-kind="question"]') as HTMLElement;
     expect(q).toHaveTextContent('Not answered');
     expect(q).toHaveTextContent('Dismissed without an answer.');
+  });
+
+  it('VIEW-1.9: a multi-select question marks its options with boxes, a single-select one with circles (decision 0008)', () => {
+    const { reset } = open();
+    const base = (question() as Extract<ChatEntry, { kind: 'question' }>).questions[0]!;
+    reset([question({ status: 'answered', questions: [{ ...base, multiSelect: true }], answer: { answers: ['Leave them as they are, Recalculate all'], picked: [[0, 2]] } })]);
+    let q = document.querySelector('[data-kind="question"]') as HTMLElement;
+    const icons = () => [...q.querySelectorAll('[data-field="choice"] svg')].map((svg) => [...svg.classList].find((c) => c.startsWith('lucide-')));
+    expect(icons()).toEqual(['lucide-square-check', 'lucide-square', 'lucide-square-check']);
+    reset([question({ status: 'answered', answer: { answers: ['Recalculate all'], picked: [[2]] } })]);
+    q = document.querySelector('[data-kind="question"]') as HTMLElement;
+    expect(icons()).toEqual(['lucide-circle', 'lucide-circle', 'lucide-circle-dot']);
   });
 
   it('VIEW-1.9: options are marked by the indexes Fleet picked, even labels that contain ", "', () => {
@@ -233,7 +246,8 @@ describe('questions', () => {
     const q = document.querySelector('[data-kind="question"]') as HTMLElement;
     expect(q).toHaveAttribute('data-status', 'answered');
     expect(q).not.toHaveTextContent('Waiting for your answer');
-    expect([...q.querySelectorAll('[data-picked]')].map((e) => e.textContent)).toEqual(['●Recalculate drafts onlySent invoices keep their amounts.']);
+    expect([...q.querySelectorAll('[data-picked]')].map((e) => e.textContent)).toEqual(['Recalculate drafts onlySent invoices keep their amounts.']);
+    expect(q.querySelector('[data-picked] [data-field="choice"] svg')).toHaveClass('lucide-circle-dot');
     expect(document.querySelectorAll('[data-kind="question"]')).toHaveLength(1);
     expect(screen.getAllByRole('listitem').at(-1)).toHaveTextContent('Recalculating the drafts now.');
   });

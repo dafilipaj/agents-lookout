@@ -77,7 +77,7 @@ Finding last week's Session means remembering its directory and running `claude 
 - A past Session opened read-only (HIST-3.3) is laid out like an ended one: a one-line header, its chat, and in the dock row the note on why it can't be resumed with its start directory and branch under it, where a live Session's composer and status line go.
 
 - [✳][◎]: the Claude Code and Codex filter buttons (HIST-2.8), drawn with the same Harness logos as the Session sidebar. A switched-off one is greyed out; the last one on can't be switched off.
-- Markers: ● live (click selects it), ○ resumable (click resumes it), ⊘ can't be resumed (click opens it read-only).
+- Markers (lucide icons, [0008](../../decisions/0008-lucide-icons-only.md)): a circle with a dot (`CircleDot`) for live (click selects it), an empty circle for resumable (click resumes it), a slashed circle for can't be resumed (click opens it read-only). The mock-up above uses ● ○ ⊘ as shorthand.
 - Empty states: "No past Sessions", and "Nothing matches" with the query.
 - Errors: tb-session missing shows how to install it, like SIDE-6.1.
 
@@ -169,3 +169,4 @@ None.
 - 2026-10-17: Review of one grid: HIST-1.1 says History is the sidebar's only panel, without a tab strip, instead of "has a History tab"; the Technical approach puts the index-source note under the messages, in the dock row.
 - 2026-10-17: HIST-3.1 amended with LAUNCH-4.2: a resume selects its "Starting…" row at once, and the live Session takes over only while that row is still selected.
 - 2026-10-17: HIST-3.1: the resume request carries the tab's launch id, so the "Starting…" row is selected the moment you click (before tb-session and `fleet spawn` answer), and a late answer never pulls you back from where you moved meanwhile (LAUNCH Technical approach).
+- 2026-10-17: Result markers are lucide icons (a circle with a dot, an empty circle and a slashed circle) instead of ● ○ ⊘, per [0008](../../decisions/0008-lucide-icons-only.md).

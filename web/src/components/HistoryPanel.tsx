@@ -1,6 +1,6 @@
 import { BLOCK_REASON } from '@shared/history.ts';
 import type { Harness, HistoryItem, HistoryPage, SessionRow } from '@shared/types.ts';
-import { History as HistoryIcon, Search, X } from 'lucide-react';
+import { Circle, CircleDot, CircleSlash, History as HistoryIcon, Search, X } from 'lucide-react';
 import { type KeyboardEvent, type MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import type { HistoryQuery } from '@/lib/client';
@@ -336,7 +336,7 @@ interface ResultProps {
   onClick(): void;
 }
 
-/** HIST-2.3: one past Session. Markers: ● live, ○ resumable, ⊘ can't be resumed. */
+/** HIST-2.3: one past Session. Markers: a circle with a dot live, an empty circle resumable, a slashed circle can't be resumed. */
 function Result({ index, item, live, active, opening, now, onClick }: ResultProps) {
   const state = live ? 'live' : item.blocked ? 'blocked' : 'resumable';
   const what = live ? 'Live: select it' : item.blocked ? `Can't be resumed: ${BLOCK_REASON[item.blocked]} Opens read-only.` : 'Resume it';
@@ -356,8 +356,8 @@ function Result({ index, item, live, active, opening, now, onClick }: ResultProp
       )}
     >
       <div className="flex min-w-0 items-center gap-1.5">
-        <span aria-hidden className={cn('w-3 shrink-0 text-center text-[11px]', live ? 'text-busy' : 'text-muted-foreground')} data-field="marker">
-          {live ? '●' : item.blocked ? '⊘' : '○'}
+        <span aria-hidden className={cn('flex w-3 shrink-0 justify-center', live ? 'text-busy' : 'text-muted-foreground')} data-field="marker">
+          {live ? <CircleDot className="size-3" /> : item.blocked ? <CircleSlash className="size-3" /> : <Circle className="size-3" />}
         </span>
         <span className={cn('min-w-0 flex-1 truncate font-medium', item.blocked && 'text-muted-foreground')} data-field="title">
           {item.title}

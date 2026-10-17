@@ -22,3 +22,4 @@ How specs work: `docs/README.md`. Terms: `docs/GLOSSARY.md`.
 - Use Fleet only through its CLI's `--json` output ([0004](docs/decisions/0004-fleet-cli-as-session-layer.md)).
 - Fleet comes from the fork `dafilipaj/fleet`, branch `lookout`. A missing Fleet capability is a commit there, not a workaround in Lookout ([0006](docs/decisions/0006-run-a-fork-of-fleet.md)).
 - Reusable logic belongs in a Building block in cli-toolbox, not in this repo ([0005](docs/decisions/0005-building-blocks-live-outside-lookout.md)).
+- UI icons come only from `lucide-react`, sized and stroked like their neighbours and coloured with theme tokens; never emoji or Unicode symbols. Exceptions: `HarnessIcon`, `StatusMarker`, the chat rail's Marks, and keyboard glyphs in shortcut hints ([0008](docs/decisions/0008-lucide-icons-only.md)).
