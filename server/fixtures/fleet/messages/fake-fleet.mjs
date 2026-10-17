@@ -1,12 +1,16 @@
 #!/usr/bin/env node
 /* global process */
-// A stand-in `fleet` for tests and manual runs. Implements `list`, `peek`, `send` and
+// A stand-in `fleet` for tests and manual runs. Implements `list`, `peek`, `send`, `spawn --json`
+// (with `--resume`, the HIST contract; it never starts anything) and
 // `messages --json` per the VIEW-1 contract (docs/features/session-view/SPEC.md), from
 // hand-written fixtures; never real Transcripts.
 //
 //   FAKE_FLEET_DIR   fixture dir: list.json, sessions/<id>.json. Without it, the committed
 //                    fixtures next to this file are read, and nothing is ever written.
 //   FAKE_FLEET_LOG   when set, each call's argv is appended to it as one JSON line
+//   FAKE_FLEET_REGISTER  `later`: a spawned Session doesn't show in `list` until
+//                    `fake register`, as one stuck at a trust prompt; meanwhile a second
+//                    `spawn --resume` of it within 30 s is `session_starting` (the HIST contract)
 //
 // A session file: { session_id, harness, transcript, generation, revision, busy, queue,
 // padBefore?, entries }. Entry cursors are `c<generation>.<index>`; the top-level cursor adds a
@@ -19,6 +23,7 @@
 //   fake-fleet.mjs fake say <id> <text>               a new reply
 //   fake-fleet.mjs fake busy <id> on|off              while busy, `send` queues the prompt
 //   fake-fleet.mjs fake take <id>                     the Harness takes the first queued prompt
+//   fake-fleet.mjs fake register                      spawned Sessions register (FAKE_FLEET_REGISTER)
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -31,6 +36,9 @@ const argv = process.argv.slice(2).filter((a) => a !== '--local');
 const cmd = argv.shift();
 
 const list = () => JSON.parse(readFileSync(join(dir, 'list.json'), 'utf8'));
+/** Spawned, not registered yet (FAKE_FLEET_REGISTER=later): `{ at, row }`. */
+const pending = () => (existsSync(join(dir, 'pending.json')) ? JSON.parse(readFileSync(join(dir, 'pending.json'), 'utf8')) : []);
+const STARTING_MS = 30_000;
 const sessionFile = (id) => join(dir, 'sessions', `${id}.json`);
 
 /** Exact match on session_id or pid, as Lookout's targets are. */
@@ -171,9 +179,78 @@ function peek(args) {
   process.stdout.write(`▼ ${row.display_title} (${row.backend}, ${row.status}) — ${row.cwd}\n${screen.join('\n')}\n`);
 }
 
+/** `spawn --json`'s failure: exit 1, one object on stdout, the message on stderr. */
+function spawnFail(kind, error, extra = {}) {
+  process.stdout.write(`${JSON.stringify({ ok: false, host: 'fake', kind, error, partial: null, ...extra })}\n`);
+  process.stderr.write(`error: ${error}\n`);
+  process.exit(1);
+}
+
+/**
+ * `spawn --json` (docs/cli.md "Spawning" in the Fleet fork) and `spawn --resume` (the HIST
+ * contract). Nothing is started: with FAKE_FLEET_DIR, the new Session is added to list.json, as
+ * Fleet would report it once it registered.
+ */
+function spawn(args) {
+  const { opts, pos } = parse(args);
+  const harness = opts.harness ?? 'claude';
+  if (!opts.json) fail('usage', 'this fake only speaks --json');
+  if (opts.backend !== 'tmux') spawnFail('usage', 'this fake only spawns with --backend tmux');
+  if (!opts.dir || !existsSync(opts.dir)) spawnFail('dir_missing', `dir does not exist: ${opts.dir}`);
+  const resume = opts.resume;
+  if (resume !== undefined) {
+    if (!/^[A-Za-z0-9-]{1,128}$/.test(resume)) spawnFail('usage', 'invalid session id');
+    if (pos.length) spawnFail('usage', '--resume takes no prompt');
+    if (harness === 'pi') spawnFail('harness_unsupported', 'pi cannot resume');
+    const live = list().find((r) => r.session_id === resume && r.harness === harness);
+    if (live) spawnFail('session_live', `session ${resume} is live (pid ${live.pid})`, { pid: live.pid });
+    const starting = pending().find((p) => p.row.session_id === resume && p.row.harness === harness && Date.now() - p.at < STARTING_MS);
+    if (starting) spawnFail('session_starting', `session ${resume} is starting; it hasn't registered yet`);
+  }
+  const base = (opts.name ?? opts.dir.split('/').filter(Boolean).pop() ?? 'session').replace(/[^A-Za-z0-9_-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+  const rows = list();
+  const taken = new Set([...rows, ...pending().map((p) => p.row)].map((r) => r.tmux_session));
+  if (opts.name && taken.has(base)) spawnFail('name_taken', `tmux session \`${base}\` already exists — pick another --name`);
+  let name = base;
+  for (let n = 2; taken.has(name); n++) name = `${base}-${n}`;
+  const command = resume !== undefined ? (harness === 'codex' ? `codex resume ${resume}` : `claude --resume ${resume}`) : harness;
+  if (writable) {
+    const later = process.env.FAKE_FLEET_REGISTER === 'later';
+    const all = later ? [] : rows;
+    all.push({
+      pid: 70000 + rows.length,
+      session_id: resume ?? null,
+      cwd: opts.dir,
+      status: 'idle',
+      waiting_for: null,
+      updated_at: Date.now(),
+      backend: 'tmux',
+      tmux_session: name,
+      display_title: name,
+      context: null,
+      harness,
+      model: null,
+    });
+    if (later) writeFileSync(join(dir, 'pending.json'), `${JSON.stringify([...pending(), { at: Date.now(), row: all[0] }], null, 2)}\n`);
+    else writeFileSync(join(dir, 'list.json'), `${JSON.stringify(rows, null, 2)}\n`);
+  }
+  process.stdout.write(
+    `${JSON.stringify({
+      ok: true, dry_run: false, host: 'fake', backend: 'tmux', tmux_session: name, tmux_window: `${name}:0`, handle: '%99',
+      created_session: true, dir: opts.dir, harness, model: opts.model ?? null, name: opts.name ?? null,
+      command: `cd '${opts.dir}' && ${command}`, prompt_file: null, from: null, ...(resume !== undefined ? { resumed: resume } : {}),
+    })}\n`,
+  );
+}
+
 /** Changes a session the way its Harness would; each change bumps the revision. */
 function fake([what, id, ...rest]) {
   if (!writable) fail('usage', 'set FAKE_FLEET_DIR to a copy of the fixtures first');
+  if (what === 'register') {
+    writeFileSync(join(dir, 'list.json'), `${JSON.stringify([...list(), ...pending().map((p) => p.row)], null, 2)}\n`);
+    writeFileSync(join(dir, 'pending.json'), '[]\n');
+    return;
+  }
   const s = read(id);
   if (!s) fail('target_not_found', `no session file for ${id}`);
   s.revision = (s.revision ?? 0) + 1;
@@ -212,6 +289,9 @@ switch (cmd) {
     break;
   case 'peek':
     peek(argv);
+    break;
+  case 'spawn':
+    spawn(argv);
     break;
   case 'harness':
     process.stdout.write('[]\n');

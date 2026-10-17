@@ -5,7 +5,7 @@ import { type Settings, defaultSettings } from '../shared/settings.ts';
 import type { LaunchView } from '../shared/types.ts';
 import type { RunOptions } from './exec.ts';
 import type { FleetRow } from './fleet.ts';
-import { HARNESS_CACHE_MS, LaunchError, Launcher, cleanEnv, parseSpawnedSession } from './launcher.ts';
+import { DirMissingError, HARNESS_CACHE_MS, LaunchError, Launcher, MAX_TMUX_NAME, SessionLiveError, cleanEnv, parseSpawnAnswer } from './launcher.ts';
 
 const HARNESS_JSON = JSON.stringify([
   { id: 'claude', label: 'Claude Code', command: 'claude', installed: true, models: [{ id: '', label: 'Default' }, { id: 'claude-opus-5-5', label: 'Opus 5.5' }] },
@@ -14,6 +14,13 @@ const HARNESS_JSON = JSON.stringify([
 ]);
 
 type Call = { file: string; args: readonly string[]; opts: RunOptions };
+
+/** `fleet spawn --json`'s success object (Fleet docs/cli.md, "Spawning"). */
+const spawned = (tmux: string, over: Record<string, unknown> = {}) =>
+  `${JSON.stringify({ ok: true, dry_run: false, host: 'mac', backend: 'tmux', tmux_session: tmux, tmux_window: `${tmux}:0`, handle: '%12', created_session: true, dir: '/Users/me/Projects/work', harness: 'claude', model: null, name: null, command: 'claude', prompt_file: null, from: null, ...over })}\n`;
+/** A failed `fleet spawn --json`: exit 1, the object on stdout, the message on stderr. */
+const spawnFailed = (kind: string, error: string, extra: Record<string, unknown> = {}) =>
+  Object.assign(new Error('exit 1'), { code: 1, stdout: JSON.stringify({ ok: false, host: 'mac', kind, error, partial: null, ...extra }), stderr: `error: ${error}\n` });
 
 function setup(over: { spawn?: (call: Call) => Promise<string>; env?: NodeJS.ProcessEnv; settings?: Partial<Settings> } = {}) {
   const calls: Call[] = [];
@@ -24,7 +31,7 @@ function setup(over: { spawn?: (call: Call) => Promise<string>; env?: NodeJS.Pro
     const call = { file, args, opts };
     calls.push(call);
     if (args.includes('harness')) return HARNESS_JSON;
-    if (args.includes('spawn')) return over.spawn ? over.spawn(call) : 'spawned tmux session fix-rates  (attach: tmux attach -t fix-rates) in ~/Projects/work\n';
+    if (args.includes('spawn')) return over.spawn ? over.spawn(call) : spawned('fix-rates');
     if (file === 'tmux') return 'Welcome\n\n Quick safety check: Is this a project you trust?\n ❯ No, exit\n   Yes, I trust this folder\n\n\n';
     throw new Error(`unexpected ${file} ${args.join(' ')}`);
   });
@@ -80,6 +87,7 @@ describe('starting Sessions', () => {
     expect(call.args).toEqual([
       '--local',
       'spawn',
+      '--json',
       '--backend',
       'tmux',
       '--harness',
@@ -106,9 +114,25 @@ describe('starting Sessions', () => {
     expect(t.changes.at(-1)).toEqual({ launches: [], started: [{ launchId: launch.id, sessionId: 'sess-1' }] });
   });
 
-  it('parses the tmux session from what `fleet spawn` prints', () => {
-    expect(parseSpawnedSession('spawned tmux session work-2  (attach: tmux attach -t work-2) in ~/Projects/work\n')).toBe('work-2');
-    expect(parseSpawnedSession('spawned iTerm tab in ~/x')).toBeNull();
+  it('LAUNCH-4.1: reads the Session host from `fleet spawn --json`', () => {
+    expect(parseSpawnAnswer(spawned('work-2'))).toEqual({ ok: true, tmuxSession: 'work-2' });
+    expect(parseSpawnAnswer(spawned('x', { tmux_session: null, backend: 'iterm' }))).toEqual({ ok: true, tmuxSession: null });
+    expect(parseSpawnAnswer(spawned('bad name; rm'))).toEqual({ ok: true, tmuxSession: null });
+    expect(parseSpawnAnswer('spawned tmux session work-2  (attach: tmux attach -t work-2)')).toBeNull();
+    expect(parseSpawnAnswer('{"ok":false,"kind":"dir_missing","error":"nope"}')).toEqual({ ok: false, kind: 'dir_missing', error: 'nope' });
+  });
+
+  it('LAUNCH-4.1: a Session host named after a long directory (201 characters, or 255 and a suffix) is still recognized', async () => {
+    const long = `${'a'.repeat(200)}b`;
+    const longest = `${'c'.repeat(255)}-2`;
+    expect(parseSpawnAnswer(spawned(long))).toEqual({ ok: true, tmuxSession: long });
+    expect(parseSpawnAnswer(spawned(longest))).toEqual({ ok: true, tmuxSession: longest });
+    expect(parseSpawnAnswer(spawned('x'.repeat(MAX_TMUX_NAME + 1)))).toEqual({ ok: true, tmuxSession: null });
+    const t = setup({ spawn: async () => spawned(long) });
+    const launch = await t.launcher.start(req());
+    t.launcher.observe([row({ session_id: 'sess-9', tmux_session: long })]);
+    expect(t.launcher.list()).toEqual([]);
+    expect(t.changes.at(-1)!.started).toEqual([{ launchId: launch.id, sessionId: 'sess-9' }]);
   });
 
   it('LAUNCH-3.3: name and prompt are optional, and a multi-line prompt is one argument with its line breaks', async () => {
@@ -177,7 +201,7 @@ describe('starting Sessions', () => {
   it('LAUNCH-4.4: when `fleet spawn` fails, the start fails with the reason, and its row goes away', async () => {
     const t = setup({
       spawn: async () => {
-        throw Object.assign(new Error('exit 1'), { code: 1, stderr: 'error: tmux session `fix-rates` already exists — pick another --name\n' });
+        throw spawnFailed('name_taken', 'tmux session `fix-rates` already exists — pick another --name');
       },
     });
     const err = await t.launcher.start(req({ name: 'fix-rates' })).catch((e: unknown) => e);
@@ -191,7 +215,7 @@ describe('starting Sessions', () => {
   it('LAUNCH-4.4: any other `fleet spawn` failure comes through with Fleet’s reason', async () => {
     const t = setup({
       spawn: async () => {
-        throw Object.assign(new Error('exit 1'), { code: 1, stderr: 'error: dir does not exist: /x\n' });
+        throw spawnFailed('dir_missing', 'dir does not exist: /x');
       },
     });
     await expect(t.launcher.start(req())).rejects.toMatchObject({ status: 502, message: "Couldn't start the Session: dir does not exist: /x" });
@@ -236,7 +260,7 @@ describe('starting Sessions', () => {
     // Failed at 15 s after the row appeared, though spawn hasn't returned yet.
     expect(t.launcher.list()[0]).toMatchObject({ state: 'failed', terminal: null });
     // When spawn returns, the terminal's last lines are attached.
-    finishSpawn('spawned tmux session slow-one  (attach: tmux attach -t slow-one) in ~/Projects/work\n');
+    finishSpawn(spawned('slow-one'));
     await started;
     await vi.advanceTimersByTimeAsync(0);
     expect(t.launcher.list()[0]!.terminal).toEqual(['Welcome', ' Quick safety check: Is this a project you trust?', ' ❯ No, exit', '   Yes, I trust this folder']);
@@ -298,5 +322,124 @@ describe('telemetry (decision 0002)', () => {
 
   it('LAUNCH-5.2: keeps the rest, including the login profile’s own opt-in switch', () => {
     expect(cleanEnv(inherited)).toEqual({ PATH: '/usr/bin', HOME: '/Users/me', CLAUDE_OTEL_ENABLE: '1' });
+  });
+});
+
+describe('resuming past Sessions (HIST-3), through the same path as a start', () => {
+  const resumeReq = { sessionId: 'aaaaaaaa-0000-4000-8000-000000000201', harness: 'codex' as const, directory: '/Users/me/Projects/work', title: 'kg-hook-review' };
+
+  it('HIST-3.1: `fleet spawn --resume` in its own Session host, in the directory it started in; "Starting…", then the Session', async () => {
+    const t = setup({ spawn: async () => spawned('work-2', { harness: 'codex', resumed: resumeReq.sessionId }) });
+    const launch = await t.launcher.resume(resumeReq);
+    expect(spawnCall(t.calls).args).toEqual([
+      '--local', 'spawn', '--resume', resumeReq.sessionId, '--harness', 'codex', '--dir', '/Users/me/Projects/work', '--backend', 'tmux', '--json',
+    ]);
+    expect(t.launcher.list()).toEqual([expect.objectContaining({ id: launch.id, state: 'starting', title: 'kg-hook-review', harness: 'codex' })]);
+    // Fleet reports it under its own session id (here before its Session host shows in the list).
+    t.launcher.observe([row({ session_id: resumeReq.sessionId, harness: 'codex', tmux_session: null })]);
+    expect(t.launcher.list()).toEqual([]);
+    expect(t.changes.at(-1)!.started).toEqual([{ launchId: launch.id, sessionId: resumeReq.sessionId }]);
+    // A resume isn't a launch: the launcher's remembered choices stay.
+    expect(t.update).not.toHaveBeenCalled();
+  });
+
+  it('HIST-3.4: a resume Fleet hasn’t reported after 15 s fails like a start (LAUNCH-4.5), with its terminal’s last lines', async () => {
+    const t = setup({ spawn: async () => spawned('work-2', { harness: 'codex' }) });
+    await t.launcher.resume(resumeReq);
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(t.launcher.list()[0]).toMatchObject({ state: 'failed', error: expect.stringContaining('Session host is still running') });
+    expect(t.calls.find((c) => c.file === 'tmux')!.args).toEqual(['capture-pane', '-p', '-t', '=work-2:']);
+  });
+
+  it('HIST-3.4: a resume gets the same cleaned environment as a start (LAUNCH-5.2)', async () => {
+    const t = setup({ env: { PATH: '/usr/bin', OTEL_EXPORTER_OTLP_ENDPOINT: 'https://x', CLAUDE_CODE_SESSION_ID: 'p', CLAUDECODE: '1' } });
+    await t.launcher.resume(resumeReq);
+    expect(spawnCall(t.calls).opts.env).toEqual({ PATH: '/usr/bin' });
+  });
+
+  it('HIST-3.2: Fleet’s `session_live` (a race with the live check) is a SessionLiveError, and no row stays', async () => {
+    const t = setup({
+      spawn: async () => {
+        throw spawnFailed('session_live', `session ${resumeReq.sessionId} is live (pid 42)`, { pid: 42 });
+      },
+    });
+    await expect(t.launcher.resume(resumeReq)).rejects.toBeInstanceOf(SessionLiveError);
+    expect(t.launcher.list()).toEqual([]);
+  });
+
+  it('HIST-3.2: a resume this Lookout already has, "Starting…" or failed, is returned as it is: a retry after 35 s never spawns again', async () => {
+    const t = setup({ spawn: async () => spawned('work-2', { harness: 'codex' }) });
+    const first = await t.launcher.resume(resumeReq);
+    await vi.advanceTimersByTimeAsync(35_000); // stuck at a trust prompt: failed after 15 s, and Fleet's 30 s are over
+    const again = await t.launcher.resume(resumeReq);
+    expect(again).toMatchObject({ id: first.id, state: 'failed' });
+    expect(t.calls.filter((c) => c.args.includes('spawn'))).toHaveLength(1);
+    expect(t.launcher.pendingResume(resumeReq.sessionId, 'codex')).toMatchObject({ id: first.id });
+    expect(t.launcher.pendingResume(resumeReq.sessionId, 'claude')).toBeNull();
+    // Once its row is dismissed, a click may resume it again.
+    t.launcher.dismiss(first.id);
+    await t.launcher.resume(resumeReq);
+    expect(t.calls.filter((c) => c.args.includes('spawn'))).toHaveLength(2);
+  });
+
+  it('HIST-3.2: Fleet\u2019s `session_starting` keeps the "Starting…" row, tied to the Session id, and isn\u2019t retried', async () => {
+    const t = setup({
+      spawn: async () => {
+        throw spawnFailed('session_starting', `session ${resumeReq.sessionId} is starting`);
+      },
+    });
+    const launch = await t.launcher.resume(resumeReq);
+    expect(launch).toMatchObject({ state: 'starting', title: 'kg-hook-review' });
+    expect(t.launcher.list()).toEqual([expect.objectContaining({ id: launch.id, state: 'starting' })]);
+    t.launcher.observe([row({ session_id: resumeReq.sessionId, harness: 'codex', tmux_session: 'someone-elses' })]);
+    expect(t.changes.at(-1)!.started).toEqual([{ launchId: launch.id, sessionId: resumeReq.sessionId }]);
+    expect(t.calls.filter((c) => c.args.includes('spawn'))).toHaveLength(1);
+  });
+
+  it('HIST-3.4: a `session_starting` resume not reported after 15 s says it\u2019s being started elsewhere; no terminal lines to read', async () => {
+    const t = setup({
+      spawn: async () => {
+        throw spawnFailed('session_starting', `session ${resumeReq.sessionId} is starting`);
+      },
+    });
+    await t.launcher.resume(resumeReq);
+    await vi.advanceTimersByTimeAsync(15_000);
+    const failed = t.launcher.list()[0]!;
+    expect(failed).toMatchObject({ state: 'failed', terminal: null, error: expect.stringContaining('being started elsewhere') });
+    expect(failed.error).toMatch(/trust prompt/);
+    expect(failed.error).not.toMatch(/tmux/i);
+    expect(t.calls.some((c) => c.file === 'tmux')).toBe(false);
+  });
+
+  it('HIST-3.4: `session_starting` arriving after the 15 s: the failure is reworded the same way', async () => {
+    let answer!: (e: Error) => void;
+    const t = setup({ spawn: () => new Promise<string>((_r, reject) => (answer = reject)) });
+    const pending = t.launcher.resume(resumeReq);
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(t.launcher.list()[0]!.error).toContain('Session host is still running');
+    answer(spawnFailed('session_starting', `session ${resumeReq.sessionId} is starting`));
+    await pending;
+    expect(t.launcher.list()[0]).toMatchObject({ state: 'failed', terminal: null, error: expect.stringContaining('being started elsewhere') });
+  });
+
+  it('HIST-3.3: Fleet\u2019s `dir_missing` keeps its kind (DirMissingError), and no row stays', async () => {
+    const t = setup({
+      spawn: async () => {
+        throw spawnFailed('dir_missing', `dir does not exist: ${resumeReq.directory}`);
+      },
+    });
+    await expect(t.launcher.resume(resumeReq)).rejects.toBeInstanceOf(DirMissingError);
+    expect(t.launcher.list()).toEqual([]);
+  });
+
+  it('HIST-3.1: other refusals come through cleaned, without naming tmux', async () => {
+    const t = setup({
+      spawn: async () => {
+        throw spawnFailed('backend_failed', 'tmux refused: sk-ant-api03-SECRETSECRETSECRET');
+      },
+    });
+    const err = (await t.launcher.resume(resumeReq).catch((e: unknown) => e)) as LaunchError;
+    expect(err.message).toMatch(/^Couldn't start the Session: /);
+    expect(err.message).not.toMatch(/tmux|SECRETSECRET/);
   });
 });

@@ -1,9 +1,9 @@
 import { type Settings, defaultSettings } from '@shared/settings.ts';
-import type { ChatPage, FleetHealth, HarnessOption, LaunchRequest, LaunchView, ServerEvent, SessionRow } from '@shared/types.ts';
+import type { ChatPage, FleetHealth, HarnessOption, HistoryDetail, HistoryPage, LaunchRequest, LaunchView, ResumeResult, ServerEvent, SessionRow } from '@shared/types.ts';
 import { act, render } from '@testing-library/react';
 import { vi } from 'vitest';
 import { App } from '@/App';
-import type { ClientListener, LookoutClient } from '@/lib/client';
+import type { ClientListener, HistoryQuery, LookoutClient } from '@/lib/client';
 
 export const NOW = Date.UTC(2026, 9, 16, 12, 0, 0);
 
@@ -59,6 +59,9 @@ interface RenderOptions {
   launch?: (req: LaunchRequest) => Promise<LaunchView>;
   sendMessage?: (sessionId: string, text: string) => Promise<void>;
   earlierMessages?: (sessionId: string, before: string) => Promise<ChatPage>;
+  history?: (q: HistoryQuery) => Promise<HistoryPage>;
+  pastSession?: LookoutClient['pastSession'];
+  resume?: LookoutClient['resume'];
 }
 
 /** Renders the whole app against a fake server the test drives. */
@@ -82,6 +85,19 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
     refreshJev: vi.fn(async () => {}),
     refreshUsage: vi.fn(async () => {}),
     sendMessage: vi.fn(options.sendMessage ?? (async () => {})),
+    history: vi.fn(options.history ?? (async (): Promise<HistoryPage> => ({ state: 'ok', items: [], page: 1, hasMore: false }))),
+    pastSession: vi.fn(
+      options.pastSession ??
+        (async (): Promise<HistoryDetail> => {
+          throw new Error('no past Session');
+        }),
+    ),
+    resume: vi.fn(
+      options.resume ??
+        (async (): Promise<ResumeResult> => {
+          throw new Error('no resume');
+        }),
+    ),
   };
   const utils = render(<App client={client} />);
   const emit = (event: ServerEvent) =>

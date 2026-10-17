@@ -1,10 +1,24 @@
+import type { Harness } from '@shared/types.ts';
 import { useCallback, useSyncExternalStore } from 'react';
 
 /** The app's URLs. The selected Session lives in the path, so reload and back/forward keep it (SIDE-4.2). */
-export type Route = { name: 'home' } | { name: 'session'; id: string } | { name: 'settings' };
+export type Route =
+  | { name: 'home' }
+  | { name: 'session'; id: string }
+  | { name: 'settings' }
+  /** HIST-3.3: a past Session that can't be resumed, read-only. */
+  | { name: 'past'; harness: Harness; id: string };
 
 export function parseRoute(pathname: string): Route {
   if (pathname === '/settings') return { name: 'settings' };
+  const past = /^\/h\/(claude|codex)\/([^/]+)\/?$/.exec(pathname);
+  if (past?.[2]) {
+    try {
+      return { name: 'past', harness: past[1] as Harness, id: decodeURIComponent(past[2]) };
+    } catch {
+      return { name: 'home' };
+    }
+  }
   const m = /^\/s\/([^/]+)\/?$/.exec(pathname);
   if (m?.[1]) {
     try {
@@ -24,6 +38,8 @@ export function routePath(route: Route): string {
       return '/settings';
     case 'session':
       return `/s/${encodeURIComponent(route.id)}`;
+    case 'past':
+      return `/h/${route.harness}/${encodeURIComponent(route.id)}`;
   }
 }
 

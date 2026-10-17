@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { type IncomingMessage, type Server, type ServerResponse, createServer } from 'node:http';
 import { SettingsError } from '../shared/settings.ts';
-import type { ChatPage, HarnessOption, LaunchView, ServerEvent } from '../shared/types.ts';
+import type { ChatPage, Harness, HarnessOption, HistoryDetail, HistoryPage, LaunchView, ResumeResult, ServerEvent } from '../shared/types.ts';
 import type { UsageSnapshot } from '../shared/usage.ts';
+import { type FindQuery, HistoryError, parseFindQuery } from './history.ts';
 import { LaunchError } from './launcher.ts';
 import type { SessionMonitor } from './monitor.ts';
 import { type GuardConfig, guardRequest } from './security.ts';
@@ -32,6 +33,12 @@ export interface AppOptions {
     drop(clientId: string): void;
     send(sessionId: string, input: unknown): Promise<void>;
     earlier(sessionId: string, cursor: unknown): Promise<ChatPage>;
+  };
+  /** HIST: past Sessions through tb-session, and resuming one. */
+  history: {
+    find(q: FindQuery): Promise<HistoryPage>;
+    detail(sessionId: string, harness: Harness): Promise<HistoryDetail>;
+    resume(input: unknown): Promise<ResumeResult>;
   };
   /** Directory of the built UI; null in `pnpm dev`, where Vite serves it. */
   staticDir: string | null;
@@ -144,6 +151,20 @@ export function createApp(opts: AppOptions): LookoutApp {
         }
       }
     }
+    // HIST-2: reads (the guard still checks Host, Origin and Sec-Fetch-Site).
+    if (route === 'GET /api/history') {
+      return historyCall(res, () => opts.history.find(parseFindQuery(url.searchParams)));
+    }
+    const pastMatch = /^\/api\/history\/(claude|codex)\/([A-Za-z0-9-]{1,128})$/.exec(url.pathname);
+    if (pastMatch && req.method === 'GET') {
+      return historyCall(res, () => opts.history.detail(pastMatch[2]!, pastMatch[1] as Harness));
+    }
+    // HIST-3: resuming starts a process, so it's a mutation: the token and Origin, as LAUNCH's start.
+    if (route === 'POST /api/history/resume') {
+      const body = await readJson(req, res, MAX_BODY, null);
+      if (body === NO_BODY) return;
+      return historyCall(res, () => opts.history.resume(body));
+    }
     if (route === 'POST /api/usage/refresh') {
       // A window's reset time passed (USAGE-2.2): read the limits again (at most every 15 s).
       await opts.usage.refresh();
@@ -223,6 +244,16 @@ export function createApp(opts: AppOptions): LookoutApp {
     });
   });
   return { server, broadcast, sendTo };
+}
+
+/** Answers with the result, or with a HistoryError's or LaunchError's status and message. */
+async function historyCall(res: ServerResponse, call: () => Promise<unknown>): Promise<void> {
+  try {
+    return json(res, 200, await call());
+  } catch (err) {
+    if (err instanceof HistoryError || err instanceof LaunchError) return json(res, err.status, { error: err.message });
+    throw err;
+  }
 }
 
 function json(res: ServerResponse, status: number, body: unknown): void {

@@ -172,3 +172,57 @@ export interface ChatPage {
   entries: ChatEntry[];
   before: string | null;
 }
+
+/**
+ * HIST-2: one past Session, from `tb-session list|search --json`, validated and bounded by the
+ * server. Whether it's live is the tab's call, from the Session list it already has (HIST-3.2).
+ */
+export interface HistoryItem {
+  sessionId: string;
+  harness: Harness;
+  /** Started without a terminal (Glossary: Headless Session); null when tb-session doesn't know. */
+  headless: boolean | null;
+  /** Its summary, or else its first prompt. */
+  title: string;
+  /** The directory it started in; null when tb-session doesn't know. */
+  projectPath: string | null;
+  /** The start directory's name. */
+  repo: string | null;
+  branch: string | null;
+  /** When it was last active, ms since epoch. */
+  lastActiveAt: number | null;
+  /** Where the search matched, `«` and `»` around the hits; null when listing. */
+  snippet: string | null;
+  /** Why it can't be resumed (HIST-3.3); null when it can. */
+  blocked: HistoryBlock | null;
+}
+
+/** Why a past Session can't be resumed. */
+export type HistoryBlock = 'folder-gone' | 'transcript-missing' | 'no-folder';
+
+/** `GET /api/history`: a page of past Sessions, or how to install tb-session. */
+export type HistoryPage =
+  | { state: 'ok'; items: HistoryItem[]; page: number; hasMore: boolean }
+  | { state: 'not-installed'; installCommand: string };
+
+/** HIST-3.3: a past Session that can't be resumed, read-only: its latest messages. */
+export interface HistoryDetail {
+  item: HistoryItem;
+  entries: ChatEntry[];
+  /** `index`: its Transcript is gone, and the messages come from tb-session's search index. */
+  source: 'transcript' | 'index';
+  /**
+   * Which messages these are: the latest (tb-session 0.3, `--tail`), or, from a tb-session 0.2
+   * that can't tail, its first ones (`first`) or every one it has (`all`).
+   */
+  preview: 'latest' | 'first' | 'all';
+  /** How many messages the Session has, when tb-session says. */
+  totalMessages: number | null;
+}
+
+/** `POST /api/history/resume`: a start like LAUNCH's, or the live Session to select instead. */
+export type ResumeResult =
+  | { kind: 'started'; launch: LaunchView }
+  | { kind: 'live'; sessionId: string }
+  /** HIST-3.3: it can't be resumed after all (its start directory went since the listing, say). */
+  | { kind: 'blocked'; harness: Harness; sessionId: string; blocked: HistoryBlock };

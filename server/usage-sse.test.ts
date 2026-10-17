@@ -54,6 +54,15 @@ beforeAll(async () => {
       },
       dismiss: () => false,
     },
+    history: {
+      find: async () => ({ state: 'ok', items: [], page: 1, hasMore: false }),
+      detail: async () => {
+        throw new Error('unused');
+      },
+      resume: async () => {
+        throw new Error('unused');
+      },
+    },
     usage,
     viewer: { watch: () => {}, drop: () => {}, send: async () => {}, earlier: async () => ({ entries: [], before: null }) },
     staticDir: null,

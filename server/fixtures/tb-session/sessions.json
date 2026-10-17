@@ -1,0 +1,120 @@
+[
+  {
+    "session_id": "aaaaaaaa-0000-4000-8000-000000000101",
+    "harness": "claude",
+    "headless": false,
+    "summary": "fix-deal-rates",
+    "first_prompt": "Deal rates round the wrong way on invoice totals. Find out why.",
+    "git_branch": "main",
+    "project_path": "@root/work",
+    "created_at": "2026-10-16T08:00:00.000Z",
+    "modified_at": "2026-10-16T10:00:00.000Z",
+    "messages": [
+      { "role": "user", "content": "Deal rates round the wrong way on invoice totals. Find out why.", "timestamp": "2026-10-16T08:00:00.000Z" },
+      { "role": "assistant", "content": "The rate card rounds before the discount is applied; it should round after.", "timestamp": "2026-10-16T08:01:00.000Z" }
+    ]
+  },
+  {
+    "session_id": "cccccccc-0000-7000-8000-000000000201",
+    "harness": "codex",
+    "headless": false,
+    "summary": "kg-hook-review",
+    "first_prompt": "Review the knowledge graph hook before it ships.",
+    "git_branch": "feature/kg-hook",
+    "project_path": "@root/work",
+    "created_at": "2026-10-13T09:00:00.000Z",
+    "modified_at": "2026-10-13T11:00:00.000Z",
+    "messages": [
+      { "role": "user", "content": "Review the knowledge graph hook before it ships.", "timestamp": "2026-10-13T09:00:00.000Z" },
+      { "role": "assistant", "content": "It looks fine, but the hook fires twice when a subagent starts. The rate card test covers the rest.", "timestamp": "2026-10-13T09:05:00.000Z" }
+    ]
+  },
+  {
+    "session_id": "dddddddd-0000-4000-8000-000000000301",
+    "harness": "claude",
+    "headless": false,
+    "summary": "pr641-review",
+    "first_prompt": "Review PR 641.",
+    "git_branch": "fix/pr641",
+    "project_path": "/nonexistent/lookout-fixtures/worktrees/pr641-review",
+    "created_at": "2026-10-07T09:00:00.000Z",
+    "modified_at": "2026-10-07T10:00:00.000Z",
+    "messages": [
+      { "role": "user", "content": "Review PR 641.", "timestamp": "2026-10-07T09:00:00.000Z" },
+      { "role": "assistant", "content": "Two findings: a missing **null check** and a stale test name.", "timestamp": "2026-10-07T09:10:00.000Z" },
+      { "role": "user", "content": "Fix both.", "timestamp": "2026-10-07T09:20:00.000Z" },
+      { "role": "assistant", "content": "Done; both fixed and the rate card suite passes.", "timestamp": "2026-10-07T09:40:00.000Z" }
+    ]
+  },
+  {
+    "session_id": "eeeeeeee-0000-4000-8000-000000000401",
+    "harness": "claude",
+    "headless": null,
+    "transcript_missing": true,
+    "summary": "old-budget-spike",
+    "first_prompt": "Spike: budget burn chart.",
+    "git_branch": "main",
+    "project_path": "@root/work",
+    "created_at": "2026-09-01T09:00:00.000Z",
+    "modified_at": "2026-09-01T10:00:00.000Z",
+    "messages": [
+      { "role": "user", "content": "Spike: budget burn chart.", "timestamp": "2026-09-01T09:00:00.000Z" },
+      { "role": "assistant", "content": "A first cut of the burn chart is on the branch.", "timestamp": "2026-09-01T09:30:00.000Z" }
+    ]
+  },
+  {
+    "session_id": "ffffffff-0000-4000-8000-000000000501",
+    "harness": "claude",
+    "headless": true,
+    "summary": "eval run 17",
+    "first_prompt": "Grade this answer about rate cards.",
+    "git_branch": "main",
+    "project_path": "@root/work",
+    "created_at": "2026-10-15T09:00:00.000Z",
+    "modified_at": "2026-10-15T09:01:00.000Z",
+    "messages": [
+      { "role": "user", "content": "Grade this answer about rate cards.", "timestamp": "2026-10-15T09:00:00.000Z" },
+      { "role": "assistant", "content": "Score: 4/5. The rate card part is right.", "timestamp": "2026-10-15T09:01:00.000Z" }
+    ]
+  },
+  {
+    "session_id": "99999999-0000-4000-8000-000000000601",
+    "harness": "claude",
+    "headless": false,
+    "is_sidechain": true,
+    "summary": "subagent: find rate card files",
+    "first_prompt": "Find every rate card file.",
+    "git_branch": "main",
+    "project_path": "@root/work",
+    "created_at": "2026-10-16T08:02:00.000Z",
+    "modified_at": "2026-10-16T08:03:00.000Z",
+    "messages": [{ "role": "user", "content": "Find every rate card file.", "timestamp": "2026-10-16T08:02:00.000Z" }]
+  },
+  {
+    "session_id": "88888888-0000-4000-8000-000000000701",
+    "harness": "claude",
+    "headless": false,
+    "summary": null,
+    "first_prompt": null,
+    "git_branch": "main",
+    "project_path": "@root/work",
+    "created_at": "2026-10-16T11:00:00.000Z",
+    "modified_at": "2026-10-16T11:00:00.000Z",
+    "messages": []
+  },
+  {
+    "session_id": "77777777-0000-4000-8000-000000000801",
+    "harness": "claude",
+    "headless": false,
+    "summary": "assistant-only",
+    "first_prompt": null,
+    "git_branch": "main",
+    "project_path": "@root/work",
+    "created_at": "2026-10-09T08:00:00.000Z",
+    "modified_at": "2026-10-09T08:00:00.000Z",
+    "messages": [
+      { "role": "assistant", "content": "Picking up where we left off.", "timestamp": "2026-10-09T08:00:00.000Z" },
+      { "role": "user", "content": "", "timestamp": "2026-10-09T08:00:01.000Z" }
+    ]
+  }
+]

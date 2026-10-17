@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ServerEvent } from '../shared/types.ts';
 import { type LookoutApp, createApp } from './app.ts';
+import { HistoryError } from './history.ts';
 import { SettingsStore } from './settings.ts';
 import { ViewError } from './viewer.ts';
 
@@ -26,6 +27,8 @@ let watches: { clientId: string; sessionId: string | null; preview: boolean }[] 
 let dropped: string[] = [];
 let sent: { sessionId: string; input: unknown }[] = [];
 let pages: { sessionId: string; cursor: unknown }[] = [];
+let finds: unknown[] = [];
+let resumes: unknown[] = [];
 
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'lookout-app-'));
@@ -34,6 +37,8 @@ beforeEach(async () => {
   dropped = [];
   sent = [];
   pages = [];
+  finds = [];
+  resumes = [];
   const settings = new SettingsStore(join(dir, 'settings.json'));
   await settings.load();
   app = createApp({
@@ -63,6 +68,20 @@ beforeEach(async () => {
         if (typeof cursor !== 'string') throw new ViewError(400, 'Invalid cursor.', 'before');
         pages.push({ sessionId, cursor });
         return { entries: [{ kind: 'user', cursor: 'c1', ts: null, text: 'older', queued: false }], before: null };
+      },
+    },
+    history: {
+      find: async (q) => {
+        finds.push(q);
+        return { state: 'ok', items: [], page: q.page, hasMore: false };
+      },
+      detail: async (sessionId) => {
+        if (sessionId === 'gone') throw new HistoryError(404, 'tb-session has no such Session.');
+        return { item: { sessionId } as never, entries: [], source: 'index', preview: 'latest', totalMessages: null };
+      },
+      resume: async (input) => {
+        resumes.push(input);
+        return { kind: 'live', sessionId: 'abc' };
       },
     },
     staticDir: null,
@@ -287,3 +306,33 @@ function openEvents() {
     close: () => req.destroy(),
   };
 }
+
+describe('HIST routes', () => {
+  it('HIST-2.2: GET /api/history passes the query, page and headless toggle, bounded', async () => {
+    const res = await call('GET', '/api/history?q=%20rate%20card%0A&page=3&headless=1', { origin });
+    expect(res.status).toBe(200);
+    expect(finds).toEqual([{ query: 'rate card', page: 3, headless: true }]);
+    await call('GET', `/api/history?q=${'x'.repeat(2000)}&page=-4`);
+    expect(finds[1]).toMatchObject({ page: 1, headless: false });
+    expect((finds[1] as { query: string }).query).toHaveLength(500);
+  });
+
+  it('HIST-3.3: GET /api/history/:harness/:id reads one past Session; odd ids never reach tb-session', async () => {
+    expect(JSON.parse((await call('GET', '/api/history/codex/abc-1')).body)).toMatchObject({ source: 'index' });
+    expect((await call('GET', '/api/history/codex/gone')).status).toBe(404);
+    expect((await call('GET', '/api/history/pi/abc')).status).toBe(404);
+    expect((await call('GET', '/api/history/claude/a%20b')).status).toBe(404);
+  });
+
+  it('HIST-3.1: resuming is a mutation: it needs our Origin and the token, like LAUNCH’s start', async () => {
+    const body = JSON.stringify({ sessionId: 'abc', harness: 'claude' });
+    const post = (headers: Record<string, string>) => call('POST', '/api/history/resume', { 'content-type': 'application/json', ...headers }, body);
+    expect((await post({ 'x-lookout-token': TOKEN })).status).toBe(403);
+    expect((await post({ origin })).status).toBe(403);
+    expect(resumes).toEqual([]);
+    const ok = await post({ origin, 'x-lookout-token': TOKEN });
+    expect(ok.status).toBe(200);
+    expect(JSON.parse(ok.body)).toEqual({ kind: 'live', sessionId: 'abc' });
+    expect(resumes).toEqual([{ sessionId: 'abc', harness: 'claude' }]);
+  });
+});

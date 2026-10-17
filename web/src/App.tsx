@@ -1,12 +1,17 @@
-import type { ChatPage, LaunchRequest, SessionRow, Status } from '@shared/types.ts';
+import type { ChatPage, HistoryItem, LaunchRequest, SessionRow, Status } from '@shared/types.ts';
+import { History as HistoryIcon } from 'lucide-react';
 import { hasReset } from '@shared/usage.ts';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { HistoryPanel } from '@/components/HistoryPanel';
 import { Launcher } from '@/components/Launcher';
 import { MainPane } from '@/components/MainPane';
+import { PastSessionView } from '@/components/PastSessionView';
 import { SettingsPage } from '@/components/SettingsPage';
 import { Sidebar } from '@/components/Sidebar';
+import { Button } from '@/components/ui/button';
 import type { LookoutClient } from '@/lib/client';
 import { tidySentAt } from '@/lib/activity';
+import { type HistoryLayout, loadLayout, saveLayout } from '@/lib/history';
 import { type HarnessState, type LaunchDraft, initialDraft } from '@/lib/launch';
 import { useRoute } from '@/lib/router';
 import { listKnown, useLookout } from '@/lib/store';
@@ -138,6 +143,53 @@ export function App({ client }: { client: LookoutClient }) {
       setLauncherOpen(false);
     },
     [client],
+  );
+
+  // HIST-1: the right sidebar; open or not, and its width, kept in this browser (HIST-1.3).
+  const [layout, setLayout] = useState<HistoryLayout>(loadLayout);
+  const [historyFocus, setHistoryFocus] = useState(0);
+  const updateLayout = useCallback((patch: Partial<HistoryLayout>) => {
+    setLayout((l) => {
+      const next = { ...l, ...patch };
+      saveLayout(next);
+      return next;
+    });
+  }, []);
+  const toggleHistory = useCallback(() => {
+    setLayout((l) => {
+      const next = { ...l, open: !l.open };
+      saveLayout(next);
+      return next;
+    });
+    setHistoryFocus((n) => n + 1);
+  }, []);
+  // HIST-1.1: H opens and closes it when focus isn't in a text field.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.isComposing || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || e.key.toLowerCase() !== 'h') return;
+      if (launcherOpen || isTextField(e.target)) return;
+      e.preventDefault();
+      toggleHistory();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [toggleHistory, launcherOpen]);
+  const searchHistory = useCallback((q: Parameters<LookoutClient['history']>[0]) => client.history(q), [client]);
+  const loadPast = useCallback((harness: HistoryItem['harness'], id: string) => client.pastSession(harness, id), [client]);
+  // HIST-3: a live Session is selected (3.2); one that can't be resumed opens read-only (3.3);
+  // any other is resumed, and selected once Fleet reports it, as a start is (3.1, LAUNCH-4.2).
+  const openPast = useCallback(
+    async (item: HistoryItem, live: boolean) => {
+      if (live) return navigate({ name: 'session', id: item.sessionId });
+      if (item.blocked) return navigate({ name: 'past', harness: item.harness, id: item.sessionId });
+      const result = await client.resume(item.harness, item.sessionId);
+      if (result.kind === 'live') navigate({ name: 'session', id: result.sessionId });
+      // HIST-3.3: it can't be resumed after all (its directory went since it was listed).
+      else if (result.kind === 'blocked') navigate({ name: 'past', harness: result.harness, id: result.sessionId });
+      // A new start, or this Lookout's own one already under way: selected once Fleet reports it.
+      else setMine((m) => new Set(m).add(result.launch.id));
+    },
+    [client, navigate],
   );
 
   // VIEW-2.2: the drawer is open while the Session Needs you, unless you toggled it during the
@@ -285,6 +337,8 @@ export function App({ client }: { client: LookoutClient }) {
       <main className="min-w-0 flex-1 overflow-y-auto">
         {route.name === 'settings' ? (
           <SettingsPage settings={state.settings} save={save} onBack={() => navigate({ name: 'home' })} />
+        ) : route.name === 'past' ? (
+          <PastSessionView harness={route.harness} sessionId={route.id} now={now} load={loadPast} />
         ) : (
           <MainPane
             selectedId={selectedId}
@@ -315,6 +369,24 @@ export function App({ client }: { client: LookoutClient }) {
           />
         )}
       </main>
+      {layout.open ? (
+        <HistoryPanel
+          width={layout.width}
+          onResize={(width) => updateLayout({ width })}
+          onClose={toggleHistory}
+          focusKey={historyFocus}
+          sessions={state.sessions}
+          now={now}
+          search={searchHistory}
+          onOpen={openPast}
+        />
+      ) : (
+        <div className="flex h-full w-10 shrink-0 flex-col items-center border-l border-sidebar-border bg-sidebar pt-2.5">
+          <Button variant="ghost" size="icon-sm" aria-label="History" title="History (H)" onClick={toggleHistory} className="size-7 text-muted-foreground">
+            <HistoryIcon className="size-4" />
+          </Button>
+        </div>
+      )}
       <Launcher
         open={launcherOpen}
         onOpenChange={setLauncherOpen}

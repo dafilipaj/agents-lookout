@@ -5,6 +5,7 @@ import { createApp } from './app.ts';
 import { run } from './exec.ts';
 import { fetchFleetList, resolveFleetBin } from './fleet.ts';
 import { GitCache, readGitLocation } from './git.ts';
+import { History, resolveTbSessionBin, resumePast } from './history.ts';
 import { Launcher } from './launcher.ts';
 import { SessionMonitor } from './monitor.ts';
 import { localAllowLists } from './security.ts';
@@ -50,6 +51,14 @@ const viewer = new Viewer({
   sendTo: (clientId, e) => app.sendTo(clientId, e),
 });
 
+const history = new History({ runner: run, bin: () => resolveTbSessionBin(env) });
+/** HIST-3.2: live means in Fleet's current list; a fresh read, or the last one when that fails. */
+const isLive = async (id: string, harness: string) => {
+  const fresh = await fetchFleetList(run, resolveFleetBin(env));
+  if (fresh.kind === 'ok') return fresh.rows.some((r) => r.session_id === id && r.harness === harness);
+  return monitor.get(id)?.harness === harness;
+};
+
 const usage = new UsageMonitor({
   runner: run,
   fleetBin: () => resolveFleetBin(env),
@@ -63,6 +72,11 @@ const app = createApp({
   launcher,
   viewer,
   usage,
+  history: {
+    find: (q) => history.find(q),
+    detail: (id, harness) => history.detail(id, harness),
+    resume: (input) => resumePast({ history, launcher, isLive }, input),
+  },
   staticDir: production ? fileURLToPath(new URL('../dist/web', import.meta.url)) : null,
 });
 

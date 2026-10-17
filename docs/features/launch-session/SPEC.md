@@ -76,11 +76,11 @@ Sessions started in Orca can't be controlled from Lookout (SIDE shows them greye
 
 ## Technical approach
 
-- **Starting:** the server runs `fleet --local spawn --backend tmux --harness <h> --dir <d> [--model <m>] [--name <n>] [-- <prompt>]`, as an argv array. The prompt goes after `--`, so one starting with `-` isn't read as a flag.
+- **Starting:** the server runs `fleet --local spawn --json --backend tmux --harness <h> --dir <d> [--model <m>] [--name <n>] [-- <prompt>]`, as an argv array. The prompt goes after `--`, so one starting with `-` isn't read as a flag.
   - Fleet creates a new tmux session in `<dir>` (`new-session -c <dir>`), which opens a login shell.
   - It then types `<harness> [-n <name>] [<prompt>]` into that shell, so `claude` resolves to the telemetry wrapper ([0001](../../decisions/0001-tmux-as-hidden-session-host.md), [0002](../../decisions/0002-start-sessions-through-a-login-shell.md)).
   - A multi-line prompt is typed as one ANSI-C quoted argument (`$'…\n…'`), so it arrives as one message. If the typed line would be over 900 bytes, Fleet writes the prompt to `~/.claude/fleet-prompts/` and types `"$(cat <file>)"` instead.
-  - `fleet spawn` has no `--json`. It prints `spawned tmux session <name>  (attach: …) in <dir>`. The server reads the session name from that line, keeps it for LAUNCH-4.5, and matches the new Session by `tmux_session` in `fleet list --json`.
+  - `fleet spawn --json` (the Fleet fork, decision 0006) prints one object: `tmux_session` on success, `{ok: false, kind, error}` with exit 1 on failure. The server keeps `tmux_session` for LAUNCH-4.5 and matches the new Session by it in `fleet list --json`; `name_taken` becomes the name field's error, without naming tmux. HIST's resume uses the same path.
   - `--name` becomes Claude's `-n` and, sanitized, the tmux session's name. Codex has no `-n`, so for Codex the name only names the Session host. A name that's already taken is an error from Fleet; Lookout rewords it without mentioning tmux (0001).
   - **Environment:** Lookout strips `CLAUDECODE`, `CLAUDE_CODE_*`, `CLAUDE_PID`, `CLAUDE_EFFORT` and `OTEL_*` that it inherited (for example when its server runs inside a Claude Code Session) from what it passes to `fleet`, and adds nothing. When no tmux server is running, the one Fleet starts takes its global environment from this cleaned one. Verified 2026-10-16: tmux's global environment, the shell and `claude` carried none of them, and in `~/Projects/work` the wrapper alone added the `OTEL_*` block (with `repo=work`).
 - **Verified 2026-10-16:** a fresh tmux session's shell is `-zsh`, and `claude` resolves there to the shell function (the wrapper).
@@ -110,3 +110,4 @@ Resolved while building (2026-10-16): `fleet spawn` (the CLI) never answers a tr
 - 2026-10-16: In Progress. Technical approach checked against Fleet 38a461c: `spawn` prints text, not the tmux target; the command typed has no `cd`; multi-line prompts; harness list shape; Lookout strips inherited `OTEL_*`/`CLAUDE_CODE_*` from what it starts (LAUNCH-5.2). Open question on the trust prompt answered with what was seen.
 - 2026-10-16: N added because Chrome keeps ⌘N in a normal tab.
 - 2026-10-16: LAUNCH-5.1 verified in Grafana (Loki `claude-code-telemetry`): a Session started through Lookout in `~/Projects/work` sent its events with `repo=work` and `terminal.type=tmux`.
+- 2026-10-17: `fleet spawn` is read through `--json` (the fork has it now), shared with HIST's resume.

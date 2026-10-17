@@ -1,5 +1,5 @@
 import type { Settings } from '@shared/settings.ts';
-import type { ChatPage, HarnessOption, LaunchRequest, LaunchView, ServerEvent } from '@shared/types.ts';
+import type { ChatPage, Harness, HarnessOption, HistoryDetail, HistoryPage, LaunchRequest, LaunchView, ResumeResult, ServerEvent } from '@shared/types.ts';
 
 export interface ClientListener {
   onEvent(event: ServerEvent): void;
@@ -23,6 +23,19 @@ export interface LookoutClient {
   refreshJev(): Promise<void>;
   /** USAGE-2.2: a window's reset passed; have the server read the limits again. */
   refreshUsage(): Promise<void>;
+  /** HIST-2: past Sessions, newest first (empty query) or best match first. */
+  history(q: HistoryQuery): Promise<HistoryPage>;
+  /** HIST-3.3: a past Session's latest messages, read-only. */
+  pastSession(harness: Harness, sessionId: string): Promise<HistoryDetail>;
+  /** HIST-3.1/3.2: resume a past Session, or learn it's live. */
+  resume(harness: Harness, sessionId: string): Promise<ResumeResult>;
+}
+
+export interface HistoryQuery {
+  query: string;
+  page: number;
+  /** HIST-2.5: show Headless Sessions too. */
+  headless: boolean;
 }
 
 /** A request the server refused or couldn't answer; `message` is for people. */
@@ -182,6 +195,14 @@ export function createHttpClient(): LookoutClient {
     refreshJev: async () => {
       await call(() => send('POST', '/api/usage/jev'), 'Checking Jev');
     },
+    history: ({ query, page, headless }) =>
+      call<HistoryPage>(
+        () => fetch(`/api/history?${new URLSearchParams({ q: query, page: String(page), headless: headless ? '1' : '0' })}`),
+        'Searching History',
+      ),
+    pastSession: (harness, sessionId) =>
+      call<HistoryDetail>(() => fetch(`/api/history/${harness}/${encodeURIComponent(sessionId)}`), 'Loading the Session'),
+    resume: (harness, sessionId) => call<ResumeResult>(() => send('POST', '/api/history/resume', { sessionId, harness }), 'Resuming'),
     sendMessage: async (sessionId, text) => {
       await call(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/send`, { text }), 'Sending');
     },
