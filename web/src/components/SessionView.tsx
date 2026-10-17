@@ -1,11 +1,12 @@
-import type { SessionRow } from '@shared/types.ts';
-import { ChevronDown, CircleSlash, FolderGit2, GitBranch, Info, MessagesSquare, SendHorizontal, TerminalSquare } from 'lucide-react';
+import type { ChatPage, SessionRow } from '@shared/types.ts';
+import { ChevronDown, CircleSlash, FolderGit2, GitBranch, Info, SendHorizontal, TerminalSquare } from 'lucide-react';
 import { type KeyboardEvent, type ReactNode, type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import type { Preview } from '@/lib/store';
+import type { Chat as ChatState, Preview } from '@/lib/store';
 import { HARNESS_NAME, STATUS_LABEL, location } from '@/lib/sessions';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
+import { Chat } from './Chat';
 import { HarnessIcon } from './HarnessIcon';
 import { StatusMarker } from './StatusMarker';
 
@@ -28,6 +29,13 @@ export interface SessionViewProps {
   onEdit(sessionId: string): void;
   /** Resolves true once sent; false when it failed (App keeps the error) or one is in flight. */
   onSend(sessionId: string, text: string): Promise<boolean>;
+  /** VIEW-1: the chat as the server pushed it; null until it starts. */
+  chat: ChatState | null;
+  /** VIEW-1.6: "Show earlier": fetches a page, then hands it back with `onPage`. */
+  onEarlier(sessionId: string, before: string): Promise<ChatPage>;
+  onPage(sessionId: string, before: string, epoch: number, page: ChatPage): void;
+  /** VIEW-1.5: whether you're at the bottom of the chat. */
+  onFollowing(sessionId: string, following: boolean): void;
 }
 
 /** VIEW: the selected Session. Mounted per Session (`key`), so its local state is its own. */
@@ -43,6 +51,10 @@ export function SessionView({
   sendErrors,
   onEdit,
   onSend,
+  chat,
+  onEarlier,
+  onPage,
+  onFollowing,
 }: SessionViewProps) {
   const controls = row.controllable && !ended;
 
@@ -63,12 +75,15 @@ export function SessionView({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <Header row={row} ended={ended} now={now} />
-      <div className="min-h-0 flex-1 overflow-y-auto" aria-label="Chat">
-        <div className="flex h-full flex-col items-center justify-center gap-2 px-8 text-center text-muted-foreground">
-          <MessagesSquare className="size-5 opacity-60" />
-          <p className="text-[13px]">The chat from the Transcript isn&apos;t available yet.</p>
-        </div>
-      </div>
+      <Chat
+        sessionId={row.id}
+        harness={row.harness}
+        chat={chat}
+        ended={ended}
+        onEarlier={onEarlier}
+        onPage={onPage}
+        onFollowing={onFollowing}
+      />
       {ended ? (
         <Footer icon={<CircleSlash className="size-4" />} title="This Session ended">
           Its process is gone. The composer and terminal preview are closed; it stays here until you select another Session.

@@ -25,6 +25,7 @@ const USAGE = {
 let watches: { clientId: string; sessionId: string | null; preview: boolean }[] = [];
 let dropped: string[] = [];
 let sent: { sessionId: string; input: unknown }[] = [];
+let pages: { sessionId: string; cursor: unknown }[] = [];
 
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'lookout-app-'));
@@ -32,6 +33,7 @@ beforeEach(async () => {
   watches = [];
   dropped = [];
   sent = [];
+  pages = [];
   const settings = new SettingsStore(join(dir, 'settings.json'));
   await settings.load();
   app = createApp({
@@ -55,6 +57,12 @@ beforeEach(async () => {
       send: async (sessionId: string, input: unknown) => {
         if (sessionId === 'gone') throw new ViewError(404, "This Session isn't running.");
         sent.push({ sessionId, input });
+      },
+      earlier: async (sessionId: string, cursor: unknown) => {
+        if (sessionId === 'gone') throw new ViewError(404, "This Session isn't running, so earlier messages can't be loaded.");
+        if (typeof cursor !== 'string') throw new ViewError(400, 'Invalid cursor.', 'before');
+        pages.push({ sessionId, cursor });
+        return { entries: [{ kind: 'user', cursor: 'c1', ts: null, text: 'older', queued: false }], before: null };
       },
     },
     staticDir: null,
@@ -222,6 +230,32 @@ describe('following a Session (VIEW)', () => {
     const tooBig = await post('sess-a', { origin, 'x-lookout-token': TOKEN }, JSON.stringify({ text: 'x'.repeat(900_001) }));
     expect(tooBig.status).toBe(413);
     expect(JSON.parse(tooBig.body)).toEqual({ error: 'The message is too long.', field: 'text' });
+  });
+});
+
+describe('the chat (VIEW-1)', () => {
+  it('VIEW-1.6: "Show earlier" is a read: no token, but Host, Origin and Sec-Fetch-Site are checked', async () => {
+    const get = (path: string, headers: Record<string, string> = {}) => call('GET', path, headers);
+    const ok = await get('/api/sessions/sess-a/messages?before=c1.50', { origin });
+    expect(ok.status).toBe(200);
+    expect(JSON.parse(ok.body)).toEqual({ entries: [{ kind: 'user', cursor: 'c1', ts: null, text: 'older', queued: false }], before: null });
+    expect(pages).toEqual([{ sessionId: 'sess-a', cursor: 'c1.50' }]);
+    expect((await get('/api/sessions/sess-a/messages?before=c1', { origin: 'https://evil.example' })).status).toBe(403);
+    expect((await get('/api/sessions/sess-a/messages?before=c1', { 'sec-fetch-site': 'cross-site' })).status).toBe(403);
+    expect((await get('/api/sessions/%E0%A4%A/messages?before=c1')).status).toBe(400);
+    expect((await get('/api/sessions/sess-a/messages')).status).toBe(400); // no cursor
+    expect((await get('/api/sessions/gone/messages?before=c1')).status).toBe(404);
+    expect((await call('POST', '/api/sessions/sess-a/messages?before=c1', { origin, 'x-lookout-token': TOKEN })).status).toBe(404);
+    expect(pages).toHaveLength(1);
+  });
+
+  it('VIEW-1.4: chat updates reach the tab over its event stream', async () => {
+    const tab = openEvents();
+    const snap = await tab.next();
+    const clientId = snap.type === 'snapshot' ? snap.clientId : '';
+    app.sendTo(clientId, { type: 'chat', sessionId: 's', op: 'append', entries: [{ kind: 'assistant', cursor: 'c9', ts: null, text: '**hi**', final: true }], updated: [], queue: [] });
+    expect(await tab.next()).toMatchObject({ type: 'chat', op: 'append', sessionId: 's' });
+    tab.close();
   });
 });
 

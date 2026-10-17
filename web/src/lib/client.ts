@@ -1,5 +1,5 @@
 import type { Settings } from '@shared/settings.ts';
-import type { HarnessOption, LaunchRequest, LaunchView, ServerEvent } from '@shared/types.ts';
+import type { ChatPage, HarnessOption, LaunchRequest, LaunchView, ServerEvent } from '@shared/types.ts';
 
 export interface ClientListener {
   onEvent(event: ServerEvent): void;
@@ -13,6 +13,8 @@ export interface LookoutClient {
   harnesses(): Promise<HarnessOption[]>;
   launch(req: LaunchRequest): Promise<LaunchView>;
   dismissLaunch(id: string): Promise<void>;
+  /** VIEW-1.6: "Show earlier": the chat entries before `before`. */
+  earlierMessages(sessionId: string, before: string): Promise<ChatPage>;
   /** Tells the server what this tab views, and whether its terminal drawer is open (VIEW-2). */
   watch(clientId: string, sessionId: string | null, preview: boolean): Promise<void>;
   /** VIEW-3: types a message into the Session and submits it. */
@@ -91,8 +93,8 @@ export function createHttpClient(): LookoutClient {
 
   /**
    * What the tab views (VIEW): one request in flight at a time, and after it the latest wanted
-   * state only, so the server never ends on a stale one. A failed one is retried. VIEW-1's
-   * message cursors are meant to ride on the same channel.
+   * state only, so the server never ends on a stale one. A failed one is retried. The viewed
+   * Session's chat (VIEW-1) follows from it: the server keeps the cursors, not the tab.
    */
   let wanted: WatchState | null = null;
   let acked: string | null = null;
@@ -164,6 +166,11 @@ export function createHttpClient(): LookoutClient {
     dismissLaunch: async (id) => {
       await call(() => send('DELETE', `/api/launch/${encodeURIComponent(id)}`), 'Dismissing');
     },
+    earlierMessages: (sessionId, before) =>
+      call<ChatPage>(
+        () => fetch(`/api/sessions/${encodeURIComponent(sessionId)}/messages?before=${encodeURIComponent(before)}`),
+        'Loading earlier messages',
+      ),
     watch: async (clientId, sessionId, preview) => {
       wanted = { clientId, sessionId, preview };
       wake?.();

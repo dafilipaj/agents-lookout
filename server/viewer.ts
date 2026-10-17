@@ -1,4 +1,6 @@
-import type { ServerEvent, SessionRow } from '../shared/types.ts';
+import type { ChatPage, ServerEvent, SessionRow } from '../shared/types.ts';
+import { ChatFeed } from './chat.ts';
+import { isCursor } from './messages.ts';
 import type { RunError, Runner } from './exec.ts';
 import type { FleetListResult } from './fleet.ts';
 import { cleanEnv } from './launcher.ts';
@@ -72,16 +74,27 @@ export interface ViewerOptions {
 }
 
 /**
- * Follows the Sessions that tabs are viewing (VIEW). Today that's the terminal preview: one
- * `fleet peek` per second per Session, and only while some tab has its drawer open.
+ * Follows the Sessions that tabs are viewing (VIEW): the chat of every viewed Session (VIEW-1,
+ * see ChatFeed), and the terminal preview, one `fleet peek` per second per Session, only while
+ * some tab has its drawer open.
  */
 export class Viewer {
   private readonly watches = new Map<string, Watch>();
   private readonly pollers = new Map<string, Poller>();
   private readonly opts: ViewerOptions;
+  private readonly chat: ChatFeed;
 
   constructor(opts: ViewerOptions) {
     this.opts = opts;
+    this.chat = new ChatFeed({
+      runner: opts.runner,
+      fleetBin: opts.fleetBin,
+      env: () => this.env,
+      lookup: opts.lookup,
+      target: (row) => this.target(row),
+      sendTo: opts.sendTo,
+      intervalMs: opts.intervalMs,
+    });
   }
 
   private get env() {
@@ -92,6 +105,7 @@ export class Viewer {
   watch(clientId: string, sessionId: string | null, preview: boolean): void {
     this.watches.set(clientId, { sessionId, preview: preview && sessionId !== null });
     this.reconcile();
+    this.chat.view(clientId, sessionId);
     const poller = sessionId ? this.pollers.get(sessionId) : undefined;
     if (preview && sessionId && poller?.last) this.opts.sendTo(clientId, { type: 'preview', sessionId, ...poller.last });
   }
@@ -100,11 +114,17 @@ export class Viewer {
   drop(clientId: string): void {
     this.watches.delete(clientId);
     this.reconcile();
+    this.chat.drop(clientId);
   }
 
   /** Session ids being previewed (for tests and diagnostics). */
   previewing(): string[] {
     return [...this.pollers.keys()];
+  }
+
+  /** Session ids whose chat is followed (for tests and diagnostics). */
+  following(): string[] {
+    return this.chat.following();
   }
 
   stop(): void {
@@ -113,6 +133,18 @@ export class Viewer {
       if (p.timer) clearTimeout(p.timer);
     }
     this.pollers.clear();
+    this.chat.stop();
+  }
+
+  /** VIEW-1.6: "Show earlier": the entries before `cursor`, a cursor Lookout sent to the tab. */
+  async earlier(sessionId: string, cursor: unknown): Promise<ChatPage> {
+    // A position cursor as the contract has them: printable ASCII, no leading `-`, never a queued `q…` one.
+    if (typeof cursor !== 'string' || !isCursor(cursor) || cursor.startsWith('q')) {
+      throw new ViewError(400, 'Invalid cursor.', 'before');
+    }
+    const res = await this.chat.earlier(sessionId, cursor);
+    if (!res.ok) throw new ViewError(res.status, res.error);
+    return res.page;
   }
 
   /**

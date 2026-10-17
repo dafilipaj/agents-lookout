@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { type IncomingMessage, type Server, type ServerResponse, createServer } from 'node:http';
 import { SettingsError } from '../shared/settings.ts';
-import type { HarnessOption, LaunchView, ServerEvent } from '../shared/types.ts';
+import type { ChatPage, HarnessOption, LaunchView, ServerEvent } from '../shared/types.ts';
 import type { UsageSnapshot } from '../shared/usage.ts';
 import { LaunchError } from './launcher.ts';
 import type { SessionMonitor } from './monitor.ts';
@@ -31,6 +31,7 @@ export interface AppOptions {
     watch(clientId: string, sessionId: string | null, preview: boolean): void;
     drop(clientId: string): void;
     send(sessionId: string, input: unknown): Promise<void>;
+    earlier(sessionId: string, cursor: unknown): Promise<ChatPage>;
   };
   /** Directory of the built UI; null in `pnpm dev`, where Vite serves it. */
   staticDir: string | null;
@@ -177,6 +178,23 @@ export function createApp(opts: AppOptions): LookoutApp {
       try {
         await opts.viewer.send(sessionId, body);
         return json(res, 200, { ok: true });
+      } catch (err) {
+        if (err instanceof ViewError) return json(res, err.status, { error: err.message, field: err.field });
+        throw err;
+      }
+    }
+    // VIEW-1.6: "Show earlier". A read: nothing is typed, so no token (the guard still checks
+    // Host, Origin and Sec-Fetch-Site).
+    const messagesMatch = /^\/api\/sessions\/([^/]{1,200})\/messages$/.exec(url.pathname);
+    if (messagesMatch && req.method === 'GET') {
+      let sessionId: string;
+      try {
+        sessionId = decodeURIComponent(messagesMatch[1]!);
+      } catch {
+        return json(res, 400, { error: 'invalid session id' });
+      }
+      try {
+        return json(res, 200, await opts.viewer.earlier(sessionId, url.searchParams.get('before')));
       } catch (err) {
         if (err instanceof ViewError) return json(res, err.status, { error: err.message, field: err.field });
         throw err;

@@ -1,0 +1,413 @@
+import type { ChatEntry, ChatPage } from '@shared/types.ts';
+import { screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { describe, expect, it, vi } from 'vitest';
+import { CACHED_ENTRIES, MAX_CHAT_ENTRIES, answerFor, applyChatEvent, applyPage, chatItems, emptyChat, setFollowing, toolsLabel } from '@/lib/chat';
+import { initialState, reducer } from '@/lib/store';
+import { renderApp, row } from '@/test/helpers';
+
+let n = 0;
+const c = () => `c${++n}`;
+const you = (text: string, over: Partial<Extract<ChatEntry, { kind: 'user' }>> = {}): ChatEntry => ({ kind: 'user', cursor: c(), ts: '2026-10-16T10:00:00Z', text, queued: false, ...over });
+const agent = (text: string): ChatEntry => ({ kind: 'assistant', cursor: c(), ts: '2026-10-16T10:00:05Z', text, final: true });
+const tool = (name: string, summary: string): ChatEntry => ({ kind: 'tool_call', cursor: c(), ts: null, id: `t${n}`, tool: name, summary });
+const question = (over: Partial<Extract<ChatEntry, { kind: 'question' }>> = {}): ChatEntry => ({
+  kind: 'question',
+  cursor: c(),
+  ts: null,
+  id: 'toolu_q',
+  questions: [
+    {
+      question: 'How should invoices that already exist be handled?',
+      header: 'Invoices',
+      multiSelect: false,
+      options: [
+        { label: 'Leave them as they are', description: '' },
+        { label: 'Recalculate drafts only', description: 'Sent invoices keep their amounts.' },
+        { label: 'Recalculate all', description: '' },
+      ],
+    },
+  ],
+  status: 'pending',
+  answer: null,
+  ...over,
+});
+
+const messages = () => within(screen.getByRole('list', { name: 'Messages' }));
+
+function open(id = 'a', over: Parameters<typeof row>[0] | object = {}, options: Parameters<typeof renderApp>[1] = {}) {
+  const app = renderApp(`/s/${id}`, options);
+  app.snapshot([row({ id, ...over })]);
+  const reset = (entries: ChatEntry[], before: string | null = null, queue: ChatEntry[] = []) =>
+    app.emit({ type: 'chat', sessionId: id, op: 'reset', entries, before, queue });
+  const append = (entries: ChatEntry[], updated: ChatEntry[] = [], queue: ChatEntry[] = []) =>
+    app.emit({ type: 'chat', sessionId: id, op: 'append', entries, updated, queue });
+  return { app, reset, append };
+}
+
+describe('chat rendering', () => {
+  it('VIEW-1.1: prompts and replies in order, newest at the bottom, replies as Markdown with code blocks', () => {
+    const { app, reset } = open();
+    reset([you('Fix the rate rounding'), agent('The rounding is in **`RateCalculator#apply`**:\n\n```ruby\nlines.sum { |l| l.amount }\n```')]);
+    const items = screen.getAllByRole('listitem');
+    expect(items[0]).toHaveTextContent('You');
+    expect(items[0]).toHaveTextContent('Fix the rate rounding');
+    expect(items[1]).toHaveTextContent('Claude');
+    const strong = items[1]!.querySelector('strong');
+    expect(strong).toHaveTextContent('RateCalculator#apply');
+    expect(items[1]!.querySelector('pre code')).toHaveTextContent('lines.sum { |l| l.amount }');
+
+    app.emit({ type: 'chat', sessionId: 'a', op: 'append', entries: [you('Thanks'), agent('You’re welcome.')], updated: [], queue: [] });
+    const after = screen.getAllByRole('listitem');
+    expect(after.at(-1)).toHaveTextContent('You’re welcome.');
+    expect(after.at(-2)).toHaveTextContent('Thanks');
+  });
+
+  it('VIEW-1.1: a Codex chat names Codex, and its prompts keep their line breaks as typed', () => {
+    const { reset } = open('x', { harness: 'codex' });
+    reset([you('line one\n  line two'), agent('- one\n- two')]);
+    expect(messages().getByText(/line one/).textContent).toBe('line one\n  line two');
+    expect(screen.getAllByRole('listitem')[1]).toHaveTextContent('Codex');
+    expect(screen.getAllByRole('listitem')[1]!.querySelectorAll('ul li')).toHaveLength(2);
+  });
+
+  it('VIEW-1.1: Markdown from a Transcript is sanitized: no raw HTML, no script links, no remote images', () => {
+    const { reset } = open();
+    reset([
+      agent(
+        [
+          'Hello <b>bold?</b> <script>alert(1)</script>',
+          '<img src="x" onerror="alert(2)">',
+          '[click](javascript:alert(3)) and [docs](https://example.com/docs)',
+          '![diagram](https://evil.example/track.png)',
+          '<iframe src="https://evil.example"></iframe>',
+        ].join('\n\n'),
+      ),
+    ]);
+    const reply = screen.getAllByRole('listitem')[0]!;
+    for (const tag of ['script', 'b', 'img', 'iframe']) expect(reply.querySelector(tag)).toBeNull();
+    expect(reply.innerHTML).not.toContain('onerror');
+    expect(reply.innerHTML).not.toContain('javascript:');
+    const links = within(reply).getAllByRole('link');
+    expect(links).toHaveLength(1);
+    expect(links[0]).toHaveAttribute('href', 'https://example.com/docs');
+    expect(links[0]).toHaveAttribute('rel', 'noopener noreferrer nofollow');
+    expect(reply).toHaveTextContent('[image: diagram]');
+    expect(reply).toHaveTextContent('click');
+  });
+
+  it('VIEW-1.1: footnotes keep their heading for screen readers only', () => {
+    const { reset } = open();
+    reset([agent('See the note.[^1]\n\n[^1]: Rounded half to even.')]);
+    const reply = screen.getAllByRole('listitem')[0]!;
+    expect(reply.querySelector('h2.sr-only')).toHaveTextContent('Footnotes');
+    expect(reply.querySelector('h3')).toBeNull();
+    expect(within(reply).getAllByRole('link')[0]!.getAttribute('href')).toMatch(/^#/);
+  });
+
+  it('VIEW-1.1: slash commands show as yours', () => {
+    const { reset } = open();
+    reset([{ kind: 'command', cursor: c(), ts: null, text: '/model claude-opus-5-5' }]);
+    expect(messages().getByText('/model claude-opus-5-5').tagName).toBe('CODE');
+    expect(screen.getAllByRole('listitem')[0]).toHaveTextContent('You');
+  });
+});
+
+describe('tool calls', () => {
+  it('VIEW-1.2: consecutive tool calls fold into one row naming the tools and counts', async () => {
+    const user = userEvent.setup();
+    const { reset } = open();
+    reset([
+      agent('Reading first.'),
+      tool('Read', 'app/models/deal.rb'),
+      tool('Grep', 'round\\('),
+      tool('Read', 'app/services/rate_calculator.rb'),
+      tool('Grep', 'total_with_rates'),
+      tool('Read', 'spec/models/deal_spec.rb'),
+      tool('Bash', 'bundle exec rspec spec/models/deal_spec.rb'),
+      agent('Found it.'),
+      tool('Edit', 'app/services/rate_calculator.rb'),
+    ]);
+    const fold = screen.getByRole('button', { name: '6 tool calls: Read ×3, Grep ×2, Bash' });
+    expect(fold).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('app/models/deal.rb')).toBeNull();
+
+    await user.click(fold);
+    expect(fold).toHaveAttribute('aria-expanded', 'true');
+    const lines = fold.parentElement!.querySelectorAll('ul li');
+    expect([...lines].map((l) => l.textContent)).toEqual([
+      'Readapp/models/deal.rb',
+      'Grepround\\(',
+      'Readapp/services/rate_calculator.rb',
+      'Greptotal_with_rates',
+      'Readspec/models/deal_spec.rb',
+      'Bashbundle exec rspec spec/models/deal_spec.rb',
+    ]);
+    // A lone call is one line, nothing to expand.
+    expect(screen.getByText('app/services/rate_calculator.rb', { selector: '[data-kind="tool_call"] *' })).toBeInTheDocument();
+  });
+
+  it('VIEW-1.2: a run split across pages folds as one; labels count and order tools', () => {
+    const calls = [tool('Read', 'a'), tool('Read', 'b'), tool('Grep', 'x'), tool('Bash', 'ls'), tool('Grep', 'y'), tool('Read', 'c')];
+    const items = chatItems([you('go'), ...calls, agent('done')]);
+    expect(items.map((i) => i.type)).toEqual(['entry', 'tools', 'entry']);
+    expect(toolsLabel(calls.filter((x) => x.kind === 'tool_call') as never)).toBe('6 tool calls: Read ×3, Grep ×2, Bash');
+    expect(toolsLabel([calls[3]] as never)).toBe('1 tool call: Bash');
+  });
+});
+
+describe('questions', () => {
+  it('VIEW-1.9: a pending question shows its options and that it waits for you', () => {
+    const { reset } = open();
+    reset([question()]);
+    const q = document.querySelector('[data-kind="question"]') as HTMLElement;
+    expect(q).toHaveAttribute('data-status', 'pending');
+    expect(q).toHaveTextContent('How should invoices that already exist be handled?');
+    expect(q).toHaveTextContent('Invoices');
+    expect(within(q).getAllByRole('listitem').map((li) => li.firstChild?.nextSibling?.firstChild?.textContent)).toEqual([
+      'Leave them as they are',
+      'Recalculate drafts only',
+      'Recalculate all',
+    ]);
+    expect(q).toHaveTextContent('Sent invoices keep their amounts.');
+    expect(q).toHaveTextContent('Waiting for your answer');
+    expect(within(q).queryByRole('button')).toBeNull(); // answering is VIEW-4
+  });
+
+  it('VIEW-1.9: once answered, the answer you gave is marked; a typed answer and a declined one show too', () => {
+    const { app, reset } = open();
+    reset([question({ status: 'answered', answer: { answers: ['Recalculate drafts only'], picked: [[1]] } })]);
+    let q = document.querySelector('[data-kind="question"]') as HTMLElement;
+    expect(q).toHaveTextContent('Answered');
+    expect([...q.querySelectorAll('[data-picked]')].map((e) => e.textContent)).toEqual(['●Recalculate drafts onlySent invoices keep their amounts.']);
+
+    app.emit({ type: 'chat', sessionId: 'a', op: 'reset', before: null, queue: [], entries: [question({ status: 'answered', answer: { answers: ['Only the ones from October'], picked: [[]] } })] });
+    q = document.querySelector('[data-kind="question"]') as HTMLElement;
+    expect(q).toHaveTextContent('Answered: Only the ones from October');
+    expect(q.querySelectorAll('[data-picked]')).toHaveLength(0);
+
+    app.emit({ type: 'chat', sessionId: 'a', op: 'reset', before: null, queue: [], entries: [question({ status: 'declined', answer: { declined: true } })] });
+    q = document.querySelector('[data-kind="question"]') as HTMLElement;
+    expect(q).toHaveTextContent('Not answered');
+    expect(q).toHaveTextContent('Dismissed without an answer.');
+  });
+
+  it('VIEW-1.9: options are marked by the indexes Fleet picked, even labels that contain ", "', () => {
+    const q = {
+      question: 'Which fixes?',
+      header: '',
+      multiSelect: true,
+      options: [{ label: 'Fix A, then B', description: '' }, { label: 'C', description: '' }, { label: 'D', description: '' }],
+    };
+    expect(answerFor(q, { answers: ['Fix A, then B, C'], picked: [[0, 1]] }, 0)).toEqual({ picked: new Set([0, 1]), other: null });
+    expect(answerFor(q, { answers: ['C, and the README'], picked: [[1]] }, 0)).toEqual({ picked: new Set([1]), other: 'C, and the README' });
+    expect(answerFor(q, { answers: ['Something else'], picked: [[]] }, 0)).toEqual({ picked: new Set(), other: 'Something else' });
+    // Without `picked` (an older Fleet), only an exact label marks an option; nothing is split.
+    expect(answerFor(q, { answers: ['Fix A, then B'], picked: null }, 0)).toEqual({ picked: new Set([0]), other: null });
+    expect(answerFor(q, { answers: ['Fix A, then B, C'], picked: null }, 0)).toEqual({ picked: new Set(), other: 'Fix A, then B, C' });
+    expect(answerFor(q, { declined: true }, 0)).toEqual({ picked: new Set(), other: null });
+  });
+
+  it('VIEW-1.9: a question answered later flips from waiting to answered in place, live', () => {
+    const { reset, append } = open();
+    const asked = question();
+    reset([you('Fix the invoices'), asked]);
+    expect(document.querySelector('[data-kind="question"]')).toHaveTextContent('Waiting for your answer');
+    const after = agent('Recalculating the drafts now.');
+    append([after], [{ ...asked, status: 'answered', answer: { answers: ['Recalculate drafts only'], picked: [[1]] } } as ChatEntry]);
+    const q = document.querySelector('[data-kind="question"]') as HTMLElement;
+    expect(q).toHaveAttribute('data-status', 'answered');
+    expect(q).not.toHaveTextContent('Waiting for your answer');
+    expect([...q.querySelectorAll('[data-picked]')].map((e) => e.textContent)).toEqual(['●Recalculate drafts onlySent invoices keep their amounts.']);
+    expect(document.querySelectorAll('[data-kind="question"]')).toHaveLength(1);
+    expect(screen.getAllByRole('listitem').at(-1)).toHaveTextContent('Recalculating the drafts now.');
+  });
+
+  it('VIEW-1.1: a reply that grows is replaced in place, not repeated', () => {
+    const { reset, append } = open();
+    const reply = agent('First part.');
+    reset([you('go'), reply]);
+    append([], [{ ...reply, text: 'First part. And the rest.' } as ChatEntry]);
+    expect(screen.getAllByRole('listitem')).toHaveLength(2);
+    expect(screen.getAllByRole('listitem')[1]).toHaveTextContent('First part. And the rest.');
+  });
+});
+
+describe('loading, paging and problems', () => {
+  it('shows a skeleton until the first entries arrive, then "No messages yet" for an empty Transcript', () => {
+    const { reset } = open();
+    expect(screen.getByLabelText('Loading the chat')).toBeInTheDocument();
+    reset([]);
+    expect(screen.getByText('No messages yet')).toBeInTheDocument();
+  });
+
+  it('VIEW-1.6: the latest entries come first; "Show earlier" loads older ones above them until the start', async () => {
+    const user = userEvent.setup();
+    const older: ChatEntry[] = [you('first prompt'), agent('first reply')];
+    const earlierMessages = vi.fn(async (): Promise<ChatPage> => ({ entries: older, before: null }));
+    const { app, reset } = open('a', {}, { earlierMessages });
+    reset([you('latest prompt'), agent('latest reply')], 'c-latest');
+    await user.click(screen.getByRole('button', { name: 'Show earlier' }));
+    expect(earlierMessages).toHaveBeenCalledWith('a', 'c-latest');
+    await waitFor(() => expect(screen.getAllByRole('listitem')[0]).toHaveTextContent('first prompt'));
+    expect(screen.getAllByRole('listitem').map((li) => /(first|latest) (prompt|reply)/.exec(li.textContent ?? '')?.[0])).toEqual([
+      'first prompt',
+      'first reply',
+      'latest prompt',
+      'latest reply',
+    ]);
+    expect(screen.queryByRole('button', { name: 'Show earlier' })).toBeNull(); // the start
+    // New entries still arrive below.
+    app.emit({ type: 'chat', sessionId: 'a', op: 'append', entries: [agent('newest')], updated: [], queue: [] });
+    expect(screen.getAllByRole('listitem').at(-1)).toHaveTextContent('newest');
+  });
+
+  it('VIEW-1.6: a failed page says why and can be retried; a reset (rewritten Transcript) drops loaded pages', async () => {
+    const user = userEvent.setup();
+    let fail = true;
+    const earlierMessages = vi.fn(async (): Promise<ChatPage> => {
+      if (fail) throw new Error("This Session isn't running, so earlier messages can't be loaded.");
+      return { entries: [you('old one')], before: 'c-older' };
+    });
+    const { reset } = open('a', {}, { earlierMessages });
+    reset([agent('latest')], 'c-1');
+    await user.click(screen.getByRole('button', { name: 'Show earlier' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent("This Session isn't running");
+    fail = false;
+    await user.click(screen.getByRole('button', { name: 'Show earlier' }));
+    await waitFor(() => expect(screen.getAllByRole('listitem')[1]).toHaveTextContent('old one'));
+    expect(screen.getByRole('button', { name: 'Show earlier' })).toBeInTheDocument(); // more before it
+    reset([agent('compacted')], null);
+    expect(screen.queryByText('old one')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Show earlier' })).toBeNull();
+  });
+
+  it('VIEW-1.8: with no Transcript, the pane says so; the terminal preview and composer still work', async () => {
+    const user = userEvent.setup();
+    const { app } = open('a', { status: 'needs-you' });
+    app.emit({ type: 'chat', sessionId: 'a', op: 'problem', problem: { kind: 'missing', message: 'no transcript found for session a' } });
+    expect(screen.getByText('No Transcript found')).toBeInTheDocument();
+    expect(screen.getByText('no transcript found for session a')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Terminal/ })).toHaveAttribute('aria-expanded', 'true');
+    const box = screen.getByRole('textbox', { name: 'Message' });
+    await user.type(box, 'hi{Enter}');
+    expect(app.client.sendMessage).toHaveBeenCalledWith('a', 'hi');
+  });
+
+  it('a read that fails later keeps the chat and says it is retrying; it clears once reads work again', () => {
+    const { app, reset } = open();
+    reset([agent('still here')]);
+    app.emit({ type: 'chat', sessionId: 'a', op: 'problem', problem: { kind: 'failed', message: 'Fleet took too long to read the Transcript.' } });
+    expect(screen.getByText('still here')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent("Couldn't read new messages: Fleet took too long to read the Transcript. · retrying");
+    app.emit({ type: 'chat', sessionId: 'a', op: 'problem', problem: null });
+    expect(screen.queryByText(/retrying/)).toBeNull();
+  });
+
+  it('VIEW-1.4: entries arriving for another Session do not show here; repeats are ignored', () => {
+    const { app, reset } = open();
+    reset([agent('mine')]);
+    app.emit({ type: 'chat', sessionId: 'other', op: 'reset', entries: [agent('not mine')], before: null, queue: [] });
+    const dup = agent('once');
+    app.emit({ type: 'chat', sessionId: 'a', op: 'append', entries: [dup], updated: [], queue: [] });
+    app.emit({ type: 'chat', sessionId: 'a', op: 'append', entries: [dup], updated: [], queue: [] });
+    expect(screen.queryByText('not mine')).toBeNull();
+    expect(screen.getAllByText('once')).toHaveLength(1);
+  });
+
+});
+
+describe('read-only and ended Sessions', () => {
+  it('an ended Session keeps its chat but offers no "Show earlier" (Fleet can no longer read it)', () => {
+    const { app, reset } = open();
+    reset([agent('latest')], 'c-1');
+    expect(screen.getByRole('button', { name: 'Show earlier' })).toBeInTheDocument();
+    app.emit({ type: 'sessions', upsert: [], remove: ['a'] });
+    expect(screen.queryByRole('button', { name: 'Show earlier' })).toBeNull();
+    expect(screen.getByText('latest')).toBeInTheDocument();
+  });
+
+  it('VIEW-5.2: a Session that is not Controllable shows its chat, read-only', () => {
+    const { reset } = open('orca', { backend: 'unknown', controllable: false });
+    reset([you('hello'), agent('hi')]);
+    expect(screen.getByText('hi')).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'Message' })).toBeNull();
+    expect(screen.getByText('View only: this Session runs in another app')).toBeInTheDocument();
+  });
+
+  it('VIEW-5.3: when the Session ends, its chat stays readable', () => {
+    const { app, reset } = open();
+    reset([you('hello'), agent('the last reply')]);
+    app.emit({ type: 'sessions', upsert: [], remove: ['a'] });
+    expect(screen.getByText('This Session ended')).toBeInTheDocument();
+    expect(screen.getByText('the last reply')).toBeInTheDocument();
+  });
+});
+
+describe('queued prompts (VIEW-3.3)', () => {
+  it('a prompt sent while Busy shows once as queued below the history; once taken, it moves into the history once', async () => {
+    const user = userEvent.setup();
+    const { app, reset, append } = open('a', { status: 'busy' });
+    reset([you('Fix the rounding'), agent('Working on it…')]);
+    await user.type(screen.getByRole('textbox', { name: 'Message' }), 'Also add a KWD spec{Enter}');
+    expect(app.client.sendMessage).toHaveBeenCalledWith('a', 'Also add a KWD spec');
+    const queued: ChatEntry = { kind: 'user', cursor: 'q1.0', ts: null, text: 'Also add a KWD spec', queued: true };
+    append([], [], [queued]);
+    append([], [], [queued]); // every response repeats the whole queue
+    expect(document.querySelectorAll('[data-queued]')).toHaveLength(1);
+    expect(screen.getAllByRole('listitem').at(-1)).toHaveTextContent(/queued/i);
+    expect(screen.getAllByText('Also add a KWD spec')).toHaveLength(1);
+
+    // The Harness takes it: Fleet stops listing it as queued and sends it as a normal prompt.
+    append([you('Also add a KWD spec')], [], []);
+    expect(document.querySelectorAll('[data-queued]')).toHaveLength(0);
+    expect(screen.getAllByText('Also add a KWD spec')).toHaveLength(1);
+    expect(screen.getAllByRole('listitem').at(-1)).not.toHaveTextContent(/queued/i);
+  });
+
+  it('a queued prompt is never a "Show earlier" cursor, and a reset brings the queue too', () => {
+    const { reset } = open();
+    reset([agent('latest')], 'c-1', [{ kind: 'user', cursor: 'q1.0', ts: null, text: 'waiting', queued: true }]);
+    expect(document.querySelectorAll('[data-queued]')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Show earlier' })).toBeInTheDocument();
+  });
+});
+
+describe('chat state', () => {
+  it('VIEW-1.5: past the cap, the oldest end is trimmed only while you are at the bottom; pages survive appends', () => {
+    let chat = applyChatEvent(emptyChat, { type: 'chat', sessionId: 'a', op: 'reset', entries: [agent('start')], before: 'c-old', queue: [] });
+    chat = setFollowing(chat, false);
+    const epoch = chat.epoch;
+    chat = applyChatEvent(chat, { type: 'chat', sessionId: 'a', op: 'append', entries: Array.from({ length: MAX_CHAT_ENTRIES + 5 }, (_, i) => agent(`m${i}`)), updated: [], queue: [] });
+    expect(chat.entries).toHaveLength(MAX_CHAT_ENTRIES + 6); // scrolled up: nothing dropped
+    expect(chat.epoch).toBe(epoch); // appends never invalidate a page in flight
+    chat = applyPage(chat, 'c-old', epoch, { entries: [you('older')], before: null });
+    expect(chat.entries[0]).toMatchObject({ text: 'older' });
+    expect(chat.before).toBeNull();
+    chat = setFollowing(chat, true); // back at the bottom: now trimmed
+    expect(chat.entries).toHaveLength(MAX_CHAT_ENTRIES);
+    expect(chat.before).toBe(chat.entries[0]!.cursor);
+  });
+
+  it('a page that lands after a reset is dropped', () => {
+    let chat = applyChatEvent(emptyChat, { type: 'chat', sessionId: 'a', op: 'reset', entries: [agent('x')], before: 'c-1', queue: [] });
+    const epoch = chat.epoch;
+    chat = applyChatEvent(chat, { type: 'chat', sessionId: 'a', op: 'reset', entries: [agent('rewritten')], before: 'c-9', queue: [] });
+    expect(applyPage(chat, 'c-1', epoch, { entries: [you('stale')], before: null })).toBe(chat);
+  });
+
+  it('keeps the chat in view plus 3 recent ones, those cut to their latest entries; updates for others are ignored', () => {
+    let state = initialState;
+    const many = Array.from({ length: 150 }, (_, i) => agent(`e${i}`));
+    for (const id of ['a', 'b', 'c', 'd', 'e']) {
+      state = reducer(state, { type: 'chat-view', sessionId: id });
+      state = reducer(state, { type: 'event', event: { type: 'chat', sessionId: id, op: 'reset', entries: many, before: null, queue: [] } });
+    }
+    expect([...state.chats.keys()].sort()).toEqual(['b', 'c', 'd', 'e']);
+    expect(state.chats.get('e')!.entries).toHaveLength(150);
+    expect(state.chats.get('b')!.entries).toHaveLength(CACHED_ENTRIES);
+    expect(state.chats.get('b')!.before).toBe(state.chats.get('b')!.entries[0]!.cursor);
+    const ignored = reducer(state, { type: 'event', event: { type: 'chat', sessionId: 'b', op: 'append', entries: [agent('late')], updated: [], queue: [] } });
+    expect(ignored).toBe(state);
+  });
+});

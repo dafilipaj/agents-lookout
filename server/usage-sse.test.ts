@@ -55,7 +55,7 @@ beforeAll(async () => {
       dismiss: () => false,
     },
     usage,
-    viewer: { watch: () => {}, drop: () => {}, send: async () => {} },
+    viewer: { watch: () => {}, drop: () => {}, send: async () => {}, earlier: async () => ({ entries: [], before: null }) },
     staticDir: null,
   });
   await new Promise<void>((r) => app.server.listen(0, '127.0.0.1', r));

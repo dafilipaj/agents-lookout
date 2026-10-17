@@ -48,6 +48,8 @@ function setup(
   const calls: Call[] = [];
   let screen = 'line 1\nline 2\n\n';
   const runner = vi.fn(async (file: string, args: readonly string[], opts: RunOptions) => {
+    // The chat (VIEW-1) is covered in chat.test.ts; here it reads an empty Transcript.
+    if (args.includes('messages')) return JSON.stringify({ ok: true, entries: [], has_more_before: false, has_more_after: false, cursor: null });
     const call = { file, args, opts };
     calls.push(call);
     if (args.includes('peek')) return over.peek ? over.peek(call) : screen;
@@ -60,7 +62,7 @@ function setup(
     fleetBin: () => '/bin/fleet',
     lookup: (id) => rows.get(id) ?? null,
     freshList: over.fresh ?? (async () => ({ kind: 'ok', rows: [fleetRow({ pid: 77, harness: 'codex', session_id: null })] })),
-    sendTo: (clientId, event) => sent.push({ clientId, event }),
+    sendTo: (clientId, event) => void (event.type !== 'chat' && sent.push({ clientId, event })),
     env: { PATH: '/usr/bin', CLAUDECODE: '1', OTEL_X: '1' },
   });
   const peeks = () => calls.filter((c) => c.args.includes('peek')).length;

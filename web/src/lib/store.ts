@@ -1,7 +1,8 @@
 import { type Settings, defaultSettings } from '@shared/settings.ts';
-import type { FleetHealth, LaunchView, ServerEvent, SessionRow } from '@shared/types.ts';
+import type { ChatPage, FleetHealth, LaunchView, ServerEvent, SessionRow } from '@shared/types.ts';
 import type { UsageSnapshot } from '@shared/usage.ts';
-import { useEffect, useReducer } from 'react';
+import { type Dispatch, useEffect, useReducer } from 'react';
+import { CACHED_CHATS, type Chat, applyChatEvent, applyPage, emptyChat, park, setFollowing } from './chat.ts';
 import type { LookoutClient } from './client.ts';
 
 export interface LookoutState {
@@ -35,14 +36,33 @@ export interface LookoutState {
   previews: ReadonlyMap<string, Preview>;
   /** USAGE: the latest numbers, or null before the first read. */
   usage: UsageSnapshot | null;
+  /**
+   * VIEW-1: the chat of the Session in view, plus a few recently viewed ones (cut to their latest
+   * entries) for switching back. Kept across reconnects, and after the Session ends.
+   */
+  chats: ReadonlyMap<string, Chat>;
+  /** The Session whose chat is in view, then the cached ones, most recent first. */
+  chatOrder: readonly string[];
+  /** The Session in view (chat updates for any other are ignored). */
+  chatViewing: string | null;
 }
+
+export type { Chat } from './chat.ts';
 
 export interface Preview {
   text: string | null;
   error: string | null;
 }
 
-export type Action = { type: 'event'; event: ServerEvent } | { type: 'connection'; connected: boolean };
+export type Action =
+  | { type: 'event'; event: ServerEvent }
+  | { type: 'connection'; connected: boolean }
+  /** VIEW-1: the tab now views this Session's chat. */
+  | { type: 'chat-view'; sessionId: string | null }
+  /** VIEW-1.6: a "Show earlier" page, asked for with `before` while the chat had `epoch`. */
+  | { type: 'chat-page'; sessionId: string; before: string; epoch: number; page: ChatPage }
+  /** VIEW-1.5: whether you're at the bottom of the chat. */
+  | { type: 'chat-following'; sessionId: string; following: boolean };
 
 export const initialState: LookoutState = {
   loaded: false,
@@ -58,9 +78,20 @@ export const initialState: LookoutState = {
   clientId: null,
   previews: new Map(),
   usage: null,
+  chats: new Map(),
+  chatOrder: [],
+  chatViewing: null,
 };
 
 export function reducer(state: LookoutState, action: Action): LookoutState {
+  if (action.type === 'chat-view') return viewChat(state, action.sessionId);
+  if (action.type === 'chat-page' || action.type === 'chat-following') {
+    const chat = state.chats.get(action.sessionId);
+    if (!chat) return state;
+    const next =
+      action.type === 'chat-page' ? applyPage(chat, action.before, action.epoch, action.page) : setFollowing(chat, action.following);
+    return next === chat ? state : { ...state, chats: new Map(state.chats).set(action.sessionId, next) };
+  }
   if (action.type === 'connection') {
     return action.connected === state.connected ? state : { ...state, connected: action.connected };
   }
@@ -118,6 +149,12 @@ export function reducer(state: LookoutState, action: Action): LookoutState {
       return { ...state, settings: e.settings };
     case 'usage':
       return { ...state, usage: e.usage };
+    case 'chat': {
+      if (e.sessionId !== state.chatViewing) return state; // a late update for a Session left behind
+      const chat = state.chats.get(e.sessionId) ?? emptyChat;
+      const next = applyChatEvent(chat, e);
+      return next === chat ? state : { ...state, chats: new Map(state.chats).set(e.sessionId, next) };
+    }
     case 'preview':
       return { ...state, previews: new Map(state.previews).set(e.sessionId, { text: e.text, error: e.error }) };
     case 'launches': {
@@ -130,6 +167,19 @@ export function reducer(state: LookoutState, action: Action): LookoutState {
       return { ...state, launches: e.launches, started };
     }
   }
+}
+
+/** VIEW-1: the chat in view changes; older ones are cut to their latest entries, the oldest dropped. */
+function viewChat(state: LookoutState, sessionId: string | null): LookoutState {
+  if (sessionId === state.chatViewing) return state;
+  const order = sessionId ? [sessionId, ...state.chatOrder.filter((id) => id !== sessionId)] : [...state.chatOrder];
+  const keep = order.slice(0, CACHED_CHATS + (sessionId ? 1 : 0));
+  const chats = new Map<string, Chat>();
+  for (const id of keep) {
+    const chat = state.chats.get(id);
+    if (chat) chats.set(id, id === sessionId ? chat : park(chat));
+  }
+  return { ...state, chats, chatOrder: keep, chatViewing: sessionId };
 }
 
 /** A gone row's successor is a new row of the same process (same pid and Harness). */
@@ -156,7 +206,7 @@ export function listKnown(state: Pick<LookoutState, 'loaded' | 'fleet'>): boolea
   return state.loaded && (fleet.state === 'ok' || (fleet.state === 'failing' && fleet.lastOkAt !== null));
 }
 
-export function useLookout(client: LookoutClient): LookoutState {
+export function useLookout(client: LookoutClient): [LookoutState, Dispatch<Action>] {
   const [state, dispatch] = useReducer(reducer, initialState);
   useEffect(
     () =>
@@ -166,5 +216,5 @@ export function useLookout(client: LookoutClient): LookoutState {
       }),
     [client],
   );
-  return state;
+  return [state, dispatch];
 }

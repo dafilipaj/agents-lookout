@@ -1,4 +1,4 @@
-import type { LaunchRequest, SessionRow, Status } from '@shared/types.ts';
+import type { ChatPage, LaunchRequest, SessionRow, Status } from '@shared/types.ts';
 import { hasReset } from '@shared/usage.ts';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Launcher } from '@/components/Launcher';
@@ -24,7 +24,7 @@ function isTextField(t: EventTarget | null): boolean {
 }
 
 export function App({ client }: { client: LookoutClient }) {
-  const state = useLookout(client);
+  const [state, dispatch] = useLookout(client);
   const [route, navigate] = useRoute();
   const now = useNow(1000);
   const sessions = useMemo(() => [...state.sessions.values()], [state.sessions]);
@@ -157,6 +157,8 @@ export function App({ client }: { client: LookoutClient }) {
   useEffect(() => {
     if (state.clientId) void client.watch(state.clientId, viewing, previewing);
   }, [client, state.clientId, viewing, previewing]);
+  // VIEW-1: the chat in view; the store keeps a few others for switching back.
+  useEffect(() => dispatch({ type: 'chat-view', sessionId: viewing }), [dispatch, viewing]);
 
   // VIEW-3: one send per Session at a time; on success, a draft is cleared only if it is still
   // exactly what was sent (text typed meanwhile stays).
@@ -213,6 +215,18 @@ export function App({ client }: { client: LookoutClient }) {
     for (const k of fresh) refreshedResets.current.add(k);
     void client.refreshUsage().catch(() => {});
   }, [passedResets, client]);
+  // VIEW-1.6: "Show earlier" is a plain request; Chat hands the page back once it has noted
+  // its scroll position, and the store puts it above the history.
+  const loadEarlier = useCallback((sessionId: string, before: string) => client.earlierMessages(sessionId, before), [client]);
+  const addPage = useCallback(
+    (sessionId: string, before: string, epoch: number, page: ChatPage) => dispatch({ type: 'chat-page', sessionId, before, epoch, page }),
+    [dispatch],
+  );
+  // VIEW-1.5: the oldest end of a long chat is trimmed only while you're at the bottom.
+  const onFollowing = useCallback(
+    (sessionId: string, following: boolean) => dispatch({ type: 'chat-following', sessionId, following }),
+    [dispatch],
+  );
 
   const clearSendError = useCallback(
     (sessionId: string) =>
@@ -269,6 +283,10 @@ export function App({ client }: { client: LookoutClient }) {
             sendErrors={sendErrors}
             onEdit={clearSendError}
             onSend={sendMessage}
+            chat={(selectedId && state.chats.get(selectedId)) || null}
+            onEarlier={loadEarlier}
+            onPage={addPage}
+            onFollowing={onFollowing}
           />
         )}
       </main>

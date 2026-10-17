@@ -106,4 +106,69 @@ export type ServerEvent =
   | { type: 'launches'; launches: LaunchView[]; started: { launchId: string; sessionId: string }[] }
   | { type: 'sessions'; upsert: SessionRow[]; remove: string[] }
   | { type: 'fleet'; fleet: FleetHealth }
-  | { type: 'settings'; settings: Settings };
+  | { type: 'settings'; settings: Settings }
+  | ChatEvent;
+
+/**
+ * VIEW-1: one chat entry, from `fleet messages --json` (Transcript order). `system` entries are
+ * dropped on the server; Fleet never emits thinking, hooks, sidechains or tool output.
+ */
+export type ChatEntry =
+  | { kind: 'user'; cursor: string; ts: string | null; text: string; queued: boolean }
+  | { kind: 'assistant'; cursor: string; ts: string | null; text: string; final: boolean }
+  /** A slash command or `!` shell line typed into the Session. */
+  | { kind: 'command'; cursor: string; ts: string | null; text: string }
+  /** No tool output, ever: the tool and one short argument. */
+  | { kind: 'tool_call'; cursor: string; ts: string | null; id: string; tool: string; summary: string }
+  | {
+      kind: 'question';
+      cursor: string;
+      ts: string | null;
+      id: string;
+      questions: ChatQuestion[];
+      /** `abandoned`: never answered, and a later prompt moved the conversation on. */
+      status: 'pending' | 'answered' | 'declined' | 'abandoned';
+      answer: ChatAnswer | null;
+    };
+
+/** Claude Code's AskUserQuestion, as Fleet normalizes it. */
+export interface ChatQuestion {
+  question: string;
+  header: string;
+  multiSelect: boolean;
+  options: { label: string; description: string }[];
+}
+
+/**
+ * What became of a question: per question, in order, the answer text as recorded (null: none)
+ * and the indexes of the options it picked (empty for a typed answer); or declined.
+ */
+export type ChatAnswer = { answers: (string | null)[]; picked: number[][] | null } | { declined: true };
+
+/** Why the chat can't be shown in full: no Transcript was found, or reading it failed. */
+export interface ChatProblem {
+  kind: 'missing' | 'failed';
+  message: string;
+}
+
+/**
+ * VIEW-1.4: chat updates, sent only to the tabs viewing that Session.
+ * - `reset`: the latest entries; replaces what the tab has (first load, or the Transcript was
+ *   rewritten). `before` is the cursor for "Show earlier"; null at the Transcript's start.
+ * - `append`: newer entries, in order; `updated` replaces entries already shown, by cursor (a
+ *   question answered, a reply that grew); `queue` replaces the queue.
+ * - `queue` (both): prompts typed while the agent was busy and not taken yet, shown after the
+ *   entries. Never part of the history: once taken, a prompt arrives as a normal entry.
+ * - `problem`: the Transcript is missing or unreadable; null once it's fine again. Entries
+ *   already shown stay.
+ */
+export type ChatEvent =
+  | { type: 'chat'; sessionId: string; op: 'reset'; entries: ChatEntry[]; before: string | null; queue: ChatEntry[] }
+  | { type: 'chat'; sessionId: string; op: 'append'; entries: ChatEntry[]; updated: ChatEntry[]; queue: ChatEntry[] }
+  | { type: 'chat'; sessionId: string; op: 'problem'; problem: ChatProblem | null };
+
+/** VIEW-1.6: a page of older entries, from `GET /api/sessions/:id/messages?before=`. */
+export interface ChatPage {
+  entries: ChatEntry[];
+  before: string | null;
+}

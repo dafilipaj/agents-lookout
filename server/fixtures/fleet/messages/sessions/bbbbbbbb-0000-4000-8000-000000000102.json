@@ -1,0 +1,105 @@
+{
+  "session_id": "bbbbbbbb-0000-4000-8000-000000000102",
+  "harness": "codex",
+  "transcript": "/Users/me/.codex/sessions/2026/10/16/rollout-2026-10-16T09-30-00-bbbbbbbb-0000-4000-8000-000000000102.jsonl",
+  "generation": 1,
+  "entries": [
+    {
+      "role": "user",
+      "kind": "user",
+      "text": "The invoice PDF export cuts off long line item descriptions. Wrap them instead of truncating, and keep the table aligned.",
+      "ts": "2026-10-16T09:30:00Z"
+    },
+    {
+      "role": "assistant",
+      "kind": "assistant",
+      "text": "Looking at the PDF renderer first.",
+      "ts": "2026-10-16T09:30:05Z",
+      "final": false
+    },
+    {
+      "role": "assistant",
+      "kind": "tool_call",
+      "id": "call_01",
+      "tool": "exec_command",
+      "summary": "rg -n \"truncate\" app/pdf",
+      "text": "",
+      "ts": "2026-10-16T09:30:06Z"
+    },
+    {
+      "role": "assistant",
+      "kind": "tool_call",
+      "id": "call_02",
+      "tool": "exec_command",
+      "summary": "sed -n '1,120p' app/pdf/invoice_line_items.rb",
+      "text": "",
+      "ts": "2026-10-16T09:30:08Z"
+    },
+    {
+      "role": "assistant",
+      "kind": "tool_call",
+      "id": "call_03",
+      "tool": "exec_command",
+      "summary": "bundle exec rspec spec/pdf/invoice_pdf_spec.rb",
+      "text": "",
+      "ts": "2026-10-16T09:30:20Z"
+    },
+    {
+      "role": "assistant",
+      "kind": "assistant",
+      "text": "Found it: `LineItemsTable#description_cell` calls `truncate(80)`, and the column has a fixed height, so the text can't wrap.\n\nPlan:\n1. Drop the `truncate` call\n2. Let the row height follow the description (`overflow: :expand`)\n3. Keep the amount columns right-aligned",
+      "ts": "2026-10-16T09:30:42Z",
+      "final": false
+    },
+    {
+      "role": "assistant",
+      "kind": "tool_call",
+      "id": "call_04",
+      "tool": "apply_patch",
+      "summary": "app/pdf/invoice_line_items.rb",
+      "text": "",
+      "ts": "2026-10-16T09:31:10Z"
+    },
+    {
+      "role": "assistant",
+      "kind": "tool_call",
+      "id": "call_05",
+      "tool": "exec_command",
+      "summary": "bundle exec rspec spec/pdf",
+      "text": "",
+      "ts": "2026-10-16T09:31:40Z"
+    },
+    {
+      "role": "assistant",
+      "kind": "assistant",
+      "text": "Long descriptions now wrap, and each row grows to fit.\n\n- Removed `truncate(80)` from `description_cell`\n- Rows use `overflow: :expand`; amounts stay right-aligned\n- Added a spec with a 400-character description\n\n`bundle exec rspec spec/pdf`: 23 examples, 0 failures. See the [Prawn table docs](https://prawnpdf.org/manual.pdf) for the cell options.",
+      "ts": "2026-10-16T09:32:01Z",
+      "final": true
+    },
+    {
+      "role": "user",
+      "kind": "user",
+      "text": "Nice. Check that a 3-page invoice still repeats the header row.",
+      "ts": "2026-10-16T09:35:00Z"
+    },
+    {
+      "role": "assistant",
+      "kind": "tool_call",
+      "id": "call_06",
+      "tool": "exec_command",
+      "summary": "bundle exec rspec spec/pdf/invoice_pdf_spec.rb -e 'multi-page'",
+      "text": "",
+      "ts": "2026-10-16T09:35:10Z"
+    },
+    {
+      "role": "assistant",
+      "kind": "assistant",
+      "text": "It does: the header row repeats on pages 2 and 3 (`header: true` is still set on the table).",
+      "ts": "2026-10-16T09:35:30Z",
+      "final": true
+    }
+  ],
+  "revision": 0,
+  "busy": false,
+  "queue": []
+}

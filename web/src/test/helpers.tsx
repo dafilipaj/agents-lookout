@@ -1,5 +1,5 @@
 import { type Settings, defaultSettings } from '@shared/settings.ts';
-import type { FleetHealth, HarnessOption, LaunchRequest, LaunchView, ServerEvent, SessionRow } from '@shared/types.ts';
+import type { ChatPage, FleetHealth, HarnessOption, LaunchRequest, LaunchView, ServerEvent, SessionRow } from '@shared/types.ts';
 import { act, render } from '@testing-library/react';
 import { vi } from 'vitest';
 import { App } from '@/App';
@@ -58,6 +58,7 @@ interface RenderOptions {
   harnesses?: () => Promise<HarnessOption[]>;
   launch?: (req: LaunchRequest) => Promise<LaunchView>;
   sendMessage?: (sessionId: string, text: string) => Promise<void>;
+  earlierMessages?: (sessionId: string, before: string) => Promise<ChatPage>;
 }
 
 /** Renders the whole app against a fake server the test drives. */
@@ -76,6 +77,7 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
     harnesses: vi.fn(options.harnesses ?? (async () => HARNESSES)),
     launch: vi.fn(options.launch ?? (async (req: LaunchRequest) => launchView({ id: 'l-1', title: req.name || 'New Session' }))),
     dismissLaunch: vi.fn(async () => {}),
+    earlierMessages: vi.fn(options.earlierMessages ?? (async (): Promise<ChatPage> => ({ entries: [], before: null }))),
     watch: vi.fn(async () => {}),
     refreshJev: vi.fn(async () => {}),
     refreshUsage: vi.fn(async () => {}),

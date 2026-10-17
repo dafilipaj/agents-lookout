@@ -1,0 +1,92 @@
+[
+  {
+    "pid": 61001,
+    "session_id": "aaaaaaaa-0000-4000-8000-000000000101",
+    "cwd": "/Users/me/Projects/work-worktrees/crm-rates",
+    "status": "waiting",
+    "waiting_for": "question: Push the branch and open a draft PR?",
+    "updated_at": 1792140000000,
+    "backend": "tmux",
+    "tmux_session": "fix-deal-rates",
+    "display_title": "fix-deal-rates",
+    "context": {
+      "pct": 41
+    },
+    "harness": "claude",
+    "model": "claude-opus-5-5",
+    "fake_screen": [
+      "",
+      " ☐ Next step",
+      "",
+      "Push the branch and open a draft PR?",
+      "",
+      "❯ 1. Push and open a draft PR",
+      "     Runs git push, then gh pr create --draft",
+      "  2. Only push",
+      "  3. Not yet",
+      "  4. Type something.",
+      "",
+      "Enter to select · ↑/↓ to navigate · Esc to cancel"
+    ]
+  },
+  {
+    "pid": 61002,
+    "session_id": "bbbbbbbb-0000-4000-8000-000000000102",
+    "cwd": "/Users/me/Projects/work-worktrees/invoice-pdf",
+    "status": "idle",
+    "waiting_for": null,
+    "updated_at": 1792139000000,
+    "backend": "tmux",
+    "tmux_session": "invoice-pdf-export",
+    "display_title": "invoice-pdf-export",
+    "context": {
+      "pct": 18
+    },
+    "harness": "codex",
+    "model": "gpt-6-astra"
+  },
+  {
+    "pid": 61003,
+    "session_id": "cccccccc-0000-4000-8000-000000000103",
+    "cwd": "/Users/me/Projects/work",
+    "status": "busy",
+    "waiting_for": null,
+    "updated_at": 1792139500000,
+    "backend": "unknown",
+    "tmux_session": null,
+    "display_title": "docs-cleanup",
+    "context": {
+      "pct": 63
+    },
+    "harness": "claude",
+    "model": "claude-sonnet-5-5"
+  },
+  {
+    "pid": 61004,
+    "session_id": "dddddddd-0000-4000-8000-000000000104",
+    "cwd": "/Users/me/Projects/work",
+    "status": "idle",
+    "waiting_for": null,
+    "updated_at": 1792139800000,
+    "backend": "tmux",
+    "tmux_session": "fresh-session",
+    "display_title": "fresh-session",
+    "context": null,
+    "harness": "claude",
+    "model": "claude-opus-5-5"
+  },
+  {
+    "pid": 61005,
+    "session_id": null,
+    "cwd": "/Users/me/Projects/work",
+    "status": "idle",
+    "waiting_for": null,
+    "updated_at": 1792139900000,
+    "backend": "tmux",
+    "tmux_session": "no-session-id",
+    "display_title": "starting-claude",
+    "context": null,
+    "harness": "claude",
+    "model": "claude-opus-5-5"
+  }
+]
