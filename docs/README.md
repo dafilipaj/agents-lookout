@@ -43,7 +43,12 @@ Decisions are `Proposed`, `Accepted` or `Superseded by NNNN`. An accepted decisi
 ## Writing rules
 
 1. **Requirements are capabilities**, numbered `<CODE>-1`, `<CODE>-2`. Their acceptance criteria are `<CODE>-1.1`, `<CODE>-1.2`. While a spec is Draft, renumber freely. From Ready on, IDs never change and are never reused; a dropped one is struck through, not deleted.
-2. **Every acceptance criterion is checkable.** Say when it holds, and how it's verified: `(test)` for an automated test, `(manual)` for looking at the running app.
+2. **Every acceptance criterion is checkable.** Say when it holds, and how it's verified:
+   - `(test)`: an automated test at any layer;
+   - `(e2e)`: a Behaviour test, for a behaviour that spans the server and the UI and that a World can check;
+   - `(manual)`: looking at the running app, for what only an eye can judge (layout, alignment, colour).
+
+   A `(manual)` criterion that a World can check is retagged `(e2e)` when its feature is next worked on. Once TEST-3 is built, `pnpm req-check` checks each tag against the tests.
 3. **Non-goals are mandatory.** This is where scope creep gets stopped, for you and for agents.
 4. **Use Glossary terms**, capitalized. A new concept goes into `GLOSSARY.md` in the same change.
 5. **Key decisions are one line each, with the why.** The debate that led there lives in git history, not in the spec.

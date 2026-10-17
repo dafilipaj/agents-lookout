@@ -11,4 +11,4 @@ One row per feature. Update the status here and in the spec's frontmatter togeth
 | History: search past Sessions, resume on click | HIST | In Progress | [SPEC](history/SPEC.md) |
 | Local servers: overview, kill on click | PORTS | Parked | [SPEC](local-servers/SPEC.md) |
 | Usage at a glance: Claude, Codex and Jev limits | USAGE | In Progress | [SPEC](usage/SPEC.md) |
-| Behaviour tests: every requirement checked end to end ([0007](../decisions/0007-behaviour-tests-from-spec-requirements.md)) | TEST | Draft | — |
+| Behaviour tests: every requirement checked end to end ([0007](../decisions/0007-behaviour-tests-from-spec-requirements.md)) | TEST | Ready | [SPEC](behaviour-tests/SPEC.md) |

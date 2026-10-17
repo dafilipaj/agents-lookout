@@ -18,14 +18,15 @@ What hurts today, concretely. When you hit it and how often.
 
 ## Requirements
 
-One requirement per capability. Each acceptance criterion says when it holds and how it's verified: `(test)` or `(manual)`.
+One requirement per capability. Each acceptance criterion says when it holds and how it's verified: `(test)`, `(e2e)` or `(manual)` (writing rule 2 in `docs/README.md`).
 
 ### <CODE>-1 <Short name>
 
 One or two sentences, in Glossary terms.
 
 - [ ] <CODE>-1.1 When …, then … (test)
-- [ ] <CODE>-1.2 When …, then … (manual)
+- [ ] <CODE>-1.2 When …, then … (e2e)
+- [ ] <CODE>-1.3 When …, then … (manual)
 
 ### <CODE>-2 <Short name>
 

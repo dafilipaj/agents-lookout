@@ -64,3 +64,10 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
   - **Observed:** what the Transcript shows actually happened, e.g. hook runs are recorded as attachments.
 - **Open:** the most design-heavy of these four; grill it before speccing.
 - **Added:** 2026-10-17.
+
+## Hide a Harness you don't use (USAGE)
+
+- **What:** when a Harness isn't installed, leave it out of the usage strip instead of showing "Codex: not installed" (USAGE-2.2). The details could still say it's not installed.
+- **Why:** it only matters if Lookout is ever shared with someone who doesn't use Codex: for them the line is noise on every screen. For Dario, who uses both, USAGE-2.2 stays as it is.
+- **How (proposal):** a USAGE spec change with a Changelog line first; maybe a Settings toggle per Harness rather than hiding on "not installed" alone, since a leftover `~/.codex` makes Fleet think Codex is installed.
+- **Added:** 2026-10-17, from the review of the TEST spec.

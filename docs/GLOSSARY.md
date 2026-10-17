@@ -4,9 +4,13 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Acceptance criterion**: A checkable condition under a Requirement, ID'd `<CODE>-n.m`, verified by a test or by looking at the running app.
 
+**Behaviour test**: An end-to-end test of one Acceptance criterion: Playwright drives the built Lookout inside a World. Its title starts with the criterion's ID. See the TEST spec.
+
 **Building block**: A CLI with a stable `--json` contract that Lookout consumes and other people's UIs could consume too: Fleet, `tb-session`, the ports CLI. Building blocks live outside this repo.
 
 **Controllable**: A Session Lookout can bring to the front and type into, because Fleet knows its terminal (backend `tmux` or `iterm`). Sessions in other apps, such as Claude Desktop or IDE terminals, aren't.
+
+**Fake Harness**: A stand-in for Claude Code or Codex in a World. It runs in the World's tmux, registers and writes Transcripts the way the real Harness does, and answers from a script, so the real Fleet and tb-session see it as a Session. It never calls a model.
 
 **Harness**: The agent CLI a Session runs: Claude Code or Codex. (Fleet also knows pi; not a goal for Lookout.)
 
@@ -37,3 +41,5 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 **Transcript**: The JSONL log a Harness writes for a Session, for example under `~/.claude/projects/` or `~/.codex/sessions/`.
 
 **Worktree**: A git worktree. A Session's working directory is often one.
+
+**World**: The isolated environment a Behaviour test runs in: a temporary HOME, a PATH holding only the commands the test declares, a private tmux server, the pinned Fleet and tb-session, Fake Harnesses and fixture data. Anything the test doesn't declare is absent, so "Codex not installed" is a World without Codex.

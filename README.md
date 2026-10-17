@@ -5,10 +5,10 @@ A personal web UI for watching and controlling local agent Sessions (Claude Code
 ## Prerequisites
 
 - **Node 25** and **pnpm 10**. The server runs its TypeScript directly through Node's type stripping, with no build step.
-- **Fleet**, the Session layer ([decision 0004](docs/decisions/0004-fleet-cli-as-session-layer.md)). Install it pinned to the revision Lookout is tested against:
+- **Fleet**, the Session layer ([decision 0004](docs/decisions/0004-fleet-cli-as-session-layer.md)), from the fork `dafilipaj/fleet`, branch `lookout` ([decision 0006](docs/decisions/0006-run-a-fork-of-fleet.md)). Install it pinned to the revision Lookout is tested against:
 
   ```sh
-  cargo install --git https://github.com/ilucin/fleet --rev 38a461c --locked fleet
+  cargo install --git https://github.com/dafilipaj/fleet --rev ce2bbe1 --locked fleet
   ```
 
   Lookout looks for `fleet` on `PATH`, then in `~/.cargo/bin`. Set `LOOKOUT_FLEET_BIN` to use another binary.
