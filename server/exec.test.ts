@@ -55,9 +55,19 @@ describe('run', () => {
   it('escalates to SIGKILL when the group ignores SIGTERM', async () => {
     const marker = `lookout-test-child-${process.pid}-b`;
     const file = script('stubborn', `trap '' TERM\nsh -c 'sleep 60; : ${marker}' &\nsleep 60`);
+    const started = Date.now();
     const err = await rejection(run(file, [], { timeoutMs: 300 }));
     expect(err?.timedOut).toBe(true);
-    expect(pidsWith(marker)).not.toEqual([]); // still alive right after SIGTERM
-    await expect.poll(() => pidsWith(marker), { timeout: KILL_GRACE_MS + 3000 }).toEqual([]);
+    // The run settles only once the group is gone: after the SIGKILL grace, with nothing left.
+    expect(Date.now() - started).toBeGreaterThanOrEqual(300 + KILL_GRACE_MS - 50);
+    expect(pidsWith(marker)).toEqual([]);
+  });
+
+  it('a run that printed too much also settles only after its group has exited', async () => {
+    const marker = `lookout-test-child-${process.pid}-c`;
+    const file = script('chatty', `trap '' TERM\nsh -c 'sleep 60; : ${marker}' &\nhead -c 20000000 /dev/zero\nsleep 60`);
+    const err = await rejection(run(file, [], { timeoutMs: 20_000 }));
+    expect(err?.message).toMatch(/printed more than/);
+    expect(pidsWith(marker)).toEqual([]);
   });
 });

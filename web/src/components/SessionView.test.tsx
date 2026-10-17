@@ -15,7 +15,8 @@ describe('Session view header', () => {
     ]);
     const h = header();
     expect(within(h).getByRole('heading', { level: 1 })).toHaveTextContent('fix-deal-rates');
-    expect(h).toHaveTextContent('Claude · claude-opus-5-5');
+    expect(h.querySelector('[data-field="harness-model"]')).toHaveTextContent(/Claude Code · claude-opus-5-5$/);
+    expect(within(h).getByRole('img', { name: 'Claude Code' })).toHaveAttribute('data-harness', 'claude');
     expect(h.querySelector('[data-field="status"]')).toHaveTextContent('Busy');
     expect(h.querySelector('[data-field="repo"]')).toHaveTextContent('work');
     expect(h.querySelector('[data-field="location"]')).toHaveTextContent('crm-rates');
@@ -88,7 +89,7 @@ describe('terminal preview', () => {
     app.snapshot([row({ id: 'orca', backend: 'unknown', controllable: false, status: 'needs-you' })]);
     expect(screen.queryByRole('button', { name: /Terminal/ })).toBeNull();
     expect(screen.queryByRole('textbox', { name: 'Message' })).toBeNull();
-    expect(screen.getByText('Read-only: this Session runs in another app')).toBeInTheDocument();
+    expect(screen.getByText('View only: this Session runs in another app')).toBeInTheDocument();
     await waitFor(() => expect(app.client.watch).toHaveBeenLastCalledWith('tab-1', 'orca', false));
   });
 
@@ -257,7 +258,7 @@ describe('composer', () => {
     app.snapshot([row({ id: 'a' })]);
     await waitFor(() => expect(app.client.watch).toHaveBeenLastCalledWith('tab-1', 'a', false));
     await act(async () =>
-      app.emit({ type: 'snapshot', sessions: [row({ id: 'a' })], fleet: { state: 'ok' }, settings: settings(), launches: [], started: [], clientId: 'tab-9' }),
+      app.emit({ type: 'snapshot', sessions: [row({ id: 'a' })], fleet: { state: 'ok' }, settings: settings(), launches: [], started: [], clientId: 'tab-9', usage: null }),
     );
     await waitFor(() => expect(app.client.watch).toHaveBeenLastCalledWith('tab-9', 'a', false));
   });

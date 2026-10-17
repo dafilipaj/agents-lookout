@@ -9,6 +9,7 @@ import { Launcher } from './launcher.ts';
 import { SessionMonitor } from './monitor.ts';
 import { localAllowLists } from './security.ts';
 import { SettingsStore, defaultSettingsPath } from './settings.ts';
+import { UsageMonitor } from './usage.ts';
 import { Viewer } from './viewer.ts';
 
 const env = process.env;
@@ -49,12 +50,19 @@ const viewer = new Viewer({
   sendTo: (clientId, e) => app.sendTo(clientId, e),
 });
 
+const usage = new UsageMonitor({
+  runner: run,
+  fleetBin: () => resolveFleetBin(env),
+  onChange: (u) => app.broadcast({ type: 'usage', usage: u }),
+});
+
 const app = createApp({
   guard: { ...localAllowLists(port, extraOrigins), token },
   monitor,
   settings,
   launcher,
   viewer,
+  usage,
   staticDir: production ? fileURLToPath(new URL('../dist/web', import.meta.url)) : null,
 });
 
@@ -64,12 +72,17 @@ app.server.listen(port, '127.0.0.1', () => {
   if (env.LOOKOUT_TOKEN) console.log('Token: from LOOKOUT_TOKEN');
 });
 
-const shutdown = () => {
+let shuttingDown = false;
+const shutdown = async () => {
+  if (shuttingDown) return;
+  shuttingDown = true;
   monitor.stop();
   launcher.stop();
   viewer.stop();
   app.server.close();
   app.server.closeAllConnections();
+  // Cancel the usage reads and wait until their processes have exited, so none is orphaned.
+  await usage.close().catch(() => {});
   process.exit(0);
 };
 process.on('SIGINT', shutdown);

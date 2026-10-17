@@ -17,6 +17,10 @@ export interface LookoutClient {
   watch(clientId: string, sessionId: string | null, preview: boolean): Promise<void>;
   /** VIEW-3: types a message into the Session and submits it. */
   sendMessage(sessionId: string, text: string): Promise<void>;
+  /** USAGE-2.1: the details opened; have the server check Jev again. */
+  refreshJev(): Promise<void>;
+  /** USAGE-2.2: a window's reset passed; have the server read the limits again. */
+  refreshUsage(): Promise<void>;
 }
 
 /** A request the server refused or couldn't answer; `message` is for people. */
@@ -164,6 +168,12 @@ export function createHttpClient(): LookoutClient {
       wanted = { clientId, sessionId, preview };
       wake?.();
       void pump();
+    },
+    refreshUsage: async () => {
+      await call(() => send('POST', '/api/usage/refresh'), 'Refreshing usage');
+    },
+    refreshJev: async () => {
+      await call(() => send('POST', '/api/usage/jev'), 'Checking Jev');
     },
     sendMessage: async (sessionId, text) => {
       await call(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/send`, { text }), 'Sending');

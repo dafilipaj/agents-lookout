@@ -1,4 +1,5 @@
 import type { LaunchRequest, SessionRow, Status } from '@shared/types.ts';
+import { hasReset } from '@shared/usage.ts';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Launcher } from '@/components/Launcher';
 import { MainPane } from '@/components/MainPane';
@@ -199,6 +200,20 @@ export function App({ client }: { client: LookoutClient }) {
     [client, drafts],
   );
 
+  // USAGE-2.2: once a window's reset time passes, its numbers no longer hold: ask for new ones
+  // (once per window and reset).
+  const passedResets = (state.usage?.providers ?? [])
+    .flatMap((p) => p.windows.filter((w) => hasReset(w, now)).map((w) => `${p.id}:${w.kind}:${w.model ?? ''}:${w.resetsAt}`))
+    .join('|');
+  const refreshedResets = useRef(new Set<string>());
+  useEffect(() => {
+    if (!passedResets) return;
+    const fresh = passedResets.split('|').filter((k) => !refreshedResets.current.has(k));
+    if (!fresh.length) return;
+    for (const k of fresh) refreshedResets.current.add(k);
+    void client.refreshUsage().catch(() => {});
+  }, [passedResets, client]);
+
   const clearSendError = useCallback(
     (sessionId: string) =>
       setSendErrors((m) => {
@@ -227,6 +242,8 @@ export function App({ client }: { client: LookoutClient }) {
         launches={state.launches}
         onDismissLaunch={(id) => void client.dismissLaunch(id).catch(() => {})}
         keyboardEnabled={!launcherOpen}
+        usage={state.usage}
+        onUsageOpen={() => void client.refreshJev().catch(() => {})}
       />
       <main className="min-w-0 flex-1 overflow-y-auto">
         {route.name === 'settings' ? (
@@ -262,6 +279,8 @@ export function App({ client }: { client: LookoutClient }) {
         onDraftChange={setDraft}
         settings={state.settings}
         harnesses={harnesses}
+        usage={state.usage}
+        now={now}
         onStart={start}
       />
     </div>

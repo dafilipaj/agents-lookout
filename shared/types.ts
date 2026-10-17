@@ -1,4 +1,5 @@
 import type { LaunchHarness, Settings } from './settings.ts';
+import type { UsageSnapshot } from './usage.ts';
 
 /** The agent CLI a Session runs (Glossary: Harness). pi is a non-goal and is filtered out. */
 export type Harness = 'claude' | 'codex';
@@ -94,7 +95,11 @@ export type ServerEvent =
       started: { launchId: string; sessionId: string }[];
       /** This event stream's id: the tab names it when it says what it views (`PUT /api/watch`). */
       clientId: string;
+      /** USAGE: the latest numbers, or null before the first read. */
+      usage: UsageSnapshot | null;
     }
+  /** USAGE: new numbers (sent to every tab, only when they changed). */
+  | { type: 'usage'; usage: UsageSnapshot }
   /** VIEW-2: what the Session's terminal shows, as plain text; sent only to tabs previewing it. */
   | { type: 'preview'; sessionId: string; text: string | null; error: string | null }
   /** `started`: launches Fleet now reports, and the Session each became. */

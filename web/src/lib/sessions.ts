@@ -1,4 +1,7 @@
-import type { SessionRow, Status } from '@shared/types.ts';
+import type { Harness, SessionRow, Status } from '@shared/types.ts';
+
+/** The Harnesses' full names, also their marks' accessible names. */
+export const HARNESS_NAME: Record<Harness, string> = { claude: 'Claude Code', codex: 'Codex' };
 
 export const STATUS_LABEL: Record<Status, string> = {
   'needs-you': 'Needs you',
@@ -7,7 +10,6 @@ export const STATUS_LABEL: Record<Status, string> = {
   unknown: 'Unknown',
 };
 
-export const HARNESS_LABEL = { claude: 'Claude', codex: 'Codex' } as const;
 
 /** SIDE-3.5: Idle for longer than the threshold. */
 export function isLongIdle(row: SessionRow, now: number, thresholdHours: number): boolean {

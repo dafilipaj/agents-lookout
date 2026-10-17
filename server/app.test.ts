@@ -17,6 +17,11 @@ const hosts = new Set<string>();
 const origins = new Set<string>();
 const TOKEN = 'test-token';
 let launched: unknown[] = [];
+const USAGE = {
+  providers: [],
+  jev: { state: 'unavailable' as const, version: null, keySource: null, baseUrl: null, configPath: null, reason: null },
+  checkedAt: 1,
+};
 let watches: { clientId: string; sessionId: string | null; preview: boolean }[] = [];
 let dropped: string[] = [];
 let sent: { sessionId: string; input: unknown }[] = [];
@@ -43,6 +48,7 @@ beforeEach(async () => {
       },
       dismiss: () => false,
     },
+    usage: { snapshot: () => USAGE, watch: () => () => {}, refreshJev: async () => {}, refresh: async () => {} },
     viewer: {
       watch: (clientId: string, sessionId: string | null, preview: boolean) => void watches.push({ clientId, sessionId, preview }),
       drop: (clientId: string) => void dropped.push(clientId),
@@ -158,6 +164,8 @@ describe('events', () => {
     const tabs = [openEvents(), openEvents()];
     const firsts = await Promise.all(tabs.map((t) => t.next()));
     expect(firsts.map((e) => e.type)).toEqual(['snapshot', 'snapshot']);
+    // USAGE: a (re)connecting tab gets the latest usage numbers at once.
+    expect(firsts.map((e) => e.type === 'snapshot' && e.usage)).toEqual([USAGE, USAGE]);
     // LAUNCH-4.2: a (re)connecting tab learns which starts completed recently.
     expect(firsts.map((e) => e.type === 'snapshot' && e.started)).toEqual([
       [{ launchId: 'launch-1', sessionId: 'session-1' }],

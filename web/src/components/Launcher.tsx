@@ -1,5 +1,6 @@
 import type { LaunchHarness, Settings } from '@shared/settings.ts';
 import type { LaunchRequest } from '@shared/types.ts';
+import type { UsageSnapshot } from '@shared/usage.ts';
 import { type FormEvent, type KeyboardEvent, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
@@ -8,6 +9,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { SaveError } from '@/lib/client';
 import type { HarnessState, LaunchDraft } from '@/lib/launch';
 import { cn } from '@/lib/utils';
+import { criticalHint } from '@/lib/usage';
+import { HarnessIcon } from './HarnessIcon';
 
 interface Props {
   open: boolean;
@@ -16,6 +19,9 @@ interface Props {
   onDraftChange(draft: LaunchDraft): void;
   settings: Settings;
   harnesses: HarnessState;
+  /** USAGE-3.1: a Harness at 95% or more of a window says so next to its name. */
+  usage: UsageSnapshot | null;
+  now: number;
   /** Starts the Session; throws with a message for people when it fails. */
   onStart(req: LaunchRequest): Promise<void>;
 }
@@ -23,7 +29,7 @@ interface Props {
 const FALLBACK_LABEL: Record<LaunchHarness, string> = { claude: 'Claude Code', codex: 'Codex' };
 
 /** The launcher (LAUNCH-1 … LAUNCH-4). */
-export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, harnesses, onStart }: Props) {
+export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, harnesses, usage, now, onStart }: Props) {
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<{ message: string; field: string | null } | null>(null);
@@ -104,15 +110,16 @@ export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, h
             <span className="text-muted-foreground" id="launch-harness-label">
               Harness
             </span>
-            <div role="radiogroup" aria-labelledby="launch-harness-label" className="flex gap-1.5">
+            <div role="radiogroup" aria-labelledby="launch-harness-label" className="flex flex-wrap gap-1.5">
               {(['claude', 'codex'] as const).map((id) => {
                 const label = list?.find((h) => h.id === id)?.label ?? FALLBACK_LABEL[id];
                 const disabled = !installed(id);
+                const limit = criticalHint(usage?.providers.find((p) => p.id === id), now);
                 return (
                   <label
                     key={id}
                     className={cn(
-                      'flex h-8 cursor-pointer items-center gap-2 rounded-md border border-input px-3 select-none',
+                      'flex min-h-8 cursor-pointer items-center gap-2 rounded-md border border-input px-3 py-1 select-none',
                       'has-checked:border-foreground/40 has-checked:bg-accent has-focus-visible:ring-2 has-focus-visible:ring-ring/30',
                       disabled && 'cursor-not-allowed opacity-50',
                     )}
@@ -127,7 +134,18 @@ export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, h
                       onChange={() => set({ harness: id, model: '' })}
                       className="accent-foreground"
                     />
-                    {label}
+                    <HarnessIcon harness={id} className="size-4" />
+                    <span className="flex min-w-0 flex-col leading-tight">
+                      <span className="whitespace-nowrap">{label}</span>
+                      {limit && (
+                        <span className="text-[11px] font-medium text-destructive" data-field="limit-hint">
+                          <span role="img" aria-label="Critical: 95% or more used">
+                            ⛔
+                          </span>{' '}
+                          {limit}
+                        </span>
+                      )}
+                    </span>
                     {disabled && <span className="text-[11px] text-muted-foreground">not installed</span>}
                   </label>
                 );

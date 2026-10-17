@@ -1,5 +1,6 @@
 import { sortSessions } from '@shared/order.ts';
 import type { FleetHealth, LaunchView, SessionRow } from '@shared/types.ts';
+import type { UsageSnapshot } from '@shared/usage.ts';
 import { Plus, Search, Settings as SettingsIcon, TriangleAlert, WifiOff } from 'lucide-react';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -8,6 +9,7 @@ import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { LaunchItem } from './LaunchItem';
 import { SessionItem } from './SessionItem';
+import { UsageStrip } from './UsageStrip';
 
 export interface SidebarProps {
   sessions: readonly SessionRow[];
@@ -28,6 +30,10 @@ export interface SidebarProps {
   onDismissLaunch(id: string): void;
   /** False while a dialog owns the keyboard. */
   keyboardEnabled: boolean;
+  /** USAGE-1: the strip at the bottom. */
+  usage: UsageSnapshot | null;
+  /** USAGE-2.1: its details opened. */
+  onUsageOpen?(): void;
 }
 
 export function Sidebar(props: SidebarProps) {
@@ -37,17 +43,25 @@ export function Sidebar(props: SidebarProps) {
 
   // SIDE-3.4: while the pointer is over the sidebar, rows keep their places; new ones go last.
   const [frozenOrder, setFrozenOrder] = useState<string[] | null>(null);
-  const sortedIds = useMemo(() => sortSessions(sessions).map((s) => s.id), [sessions]);
+  // SIDE-1.5 / SIDE-3.1: Controllable Sessions first, then the "View only" section; each in
+  // Status order.
+  const sortedIds = useMemo(
+    () => [...sortSessions(sessions.filter((s) => s.controllable)), ...sortSessions(sessions.filter((s) => !s.controllable))].map((s) => s.id),
+    [sessions],
+  );
   const orderedIds = useMemo(() => (frozenOrder ? keepOrder(frozenOrder, sortedIds) : sortedIds), [frozenOrder, sortedIds]);
   // Rows that arrived (or left) during the hover join the frozen order, so they don't move among
   // themselves either. Adjusting state while rendering, as React documents for derived state.
   if (frozenOrder && !sameOrder(frozenOrder, orderedIds)) setFrozenOrder(orderedIds);
 
   const byId = useMemo(() => new Map(sessions.map((s) => [s.id, s])), [sessions]);
-  const visible = useMemo(
-    () => orderedIds.map((id) => byId.get(id)).filter((r): r is SessionRow => !!r && matchesFilter(r, filter)),
-    [orderedIds, byId, filter],
-  );
+  const { controllable, viewOnly, visible } = useMemo(() => {
+    const rows = orderedIds.map((id) => byId.get(id)).filter((r): r is SessionRow => !!r && matchesFilter(r, filter));
+    const controllable = rows.filter((r) => r.controllable);
+    const viewOnly = rows.filter((r) => !r.controllable);
+    // Keyboard order follows what's on screen: the first section, then the second.
+    return { controllable, viewOnly, visible: [...controllable, ...viewOnly] };
+  }, [orderedIds, byId, filter]);
 
   // SIDE-5: keyboard.
   const latest = useRef({ visible, selectedId, onSelect, enabled: props.keyboardEnabled });
@@ -120,33 +134,51 @@ export function Sidebar(props: SidebarProps) {
     if (fleet.state === 'failing' && fleet.lastOkAt === null && sessions.length === 0) {
       return <Message title="Fleet isn't answering" hint={fleet.error} />;
     }
+    const startHint = (
+      <>
+        Press <Code>N</Code> to start one here, or run <Code>claude</Code> or <Code>codex</Code> in iTerm2.
+      </>
+    );
     if (sessions.length === 0) {
       if (props.launches.length) return null;
-      return (
-        <Message
-          title="No live Sessions"
-          hint={
-            <>
-              Start one in iTerm2 with <Code>claude</Code> or <Code>codex</Code>, and it shows up here.
-            </>
-          }
-        />
-      );
+      return <Message title="No live Sessions" hint={startHint} />;
     }
     if (visible.length === 0) return <Message title="No matching Sessions" hint="Esc clears the filter." />;
+    const item = (row: SessionRow) => (
+      <SessionItem
+        key={row.id}
+        row={row}
+        selected={row.id === selectedId}
+        dimmed={isLongIdle(row, now, idleThresholdHours)}
+        now={now}
+        onSelect={selectId}
+      />
+    );
     return (
-      <ul role="listbox" aria-label="Sessions" className={cn('flex flex-col gap-px px-1.5 pb-2', stale && 'opacity-50')} data-stale={stale}>
-        {visible.map((row) => (
-          <SessionItem
-            key={row.id}
-            row={row}
-            selected={row.id === selectedId}
-            dimmed={isLongIdle(row, now, idleThresholdHours)}
-            now={now}
-            onSelect={selectId}
-          />
-        ))}
-      </ul>
+      <div role="listbox" aria-label="Sessions" className={cn('pb-2', stale && 'opacity-50')} data-stale={stale}>
+        {controllable.length > 0 ? (
+          <ul role="group" aria-label="Controllable" className="flex flex-col gap-px px-1.5">
+            {controllable.map(item)}
+          </ul>
+        ) : (
+          !filter && props.launches.length === 0 && <Message title="No Sessions Lookout can control" hint={startHint} />
+        )}
+        {viewOnly.length > 0 && (
+          <ul role="group" aria-labelledby="view-only-heading" className="mt-2 flex flex-col gap-px px-1.5">
+            <li role="presentation" className="flex items-baseline gap-1.5 px-2 pt-1 pb-1">
+              <span
+                id="view-only-heading"
+                className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase"
+                title="Running in another app (an IDE, Claude Desktop, another terminal app): Lookout shows them but can't type into them."
+              >
+                View only
+              </span>
+              <span className="text-[11px] text-muted-foreground/70 tabular-nums">{viewOnly.length}</span>
+            </li>
+            {viewOnly.map(item)}
+          </ul>
+        )}
+      </div>
     );
   })();
 
@@ -219,6 +251,7 @@ export function Sidebar(props: SidebarProps) {
         )}
         {body}
       </div>
+      <UsageStrip usage={props.usage} now={now} onOpen={props.onUsageOpen} />
     </aside>
   );
 }

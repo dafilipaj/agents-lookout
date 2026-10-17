@@ -1,0 +1,52 @@
+{
+  "account": {
+    "uuid": "00000000-0000-4000-8000-000000000000",
+    "email": "me@example.com",
+    "organization": "Example Org",
+    "plan": "team",
+    "tier": "default_claude_max_5x",
+    "plan_label": "Team · Max 5x"
+  },
+  "limits": [
+    {
+      "kind": "session",
+      "group": "session",
+      "label": "Current session",
+      "model": null,
+      "percent": 23,
+      "severity": "normal",
+      "resets_at": "2026-10-16T17:30:00.087751+00:00",
+      "active": true
+    },
+    {
+      "kind": "weekly_all",
+      "group": "weekly",
+      "label": "Weekly · all models",
+      "model": null,
+      "percent": 19,
+      "severity": "normal",
+      "resets_at": "2026-10-21T20:00:00.087772+00:00",
+      "active": false
+    },
+    {
+      "kind": "weekly_scoped",
+      "group": "weekly",
+      "label": "Weekly · Fable",
+      "model": "Fable",
+      "percent": 0,
+      "severity": "normal",
+      "resets_at": "2026-10-21T20:00:00+00:00",
+      "active": false
+    }
+  ],
+  "extra_usage": {
+    "enabled": false,
+    "used": 0,
+    "limit": null,
+    "currency": "USD",
+    "percent": 0
+  },
+  "fetched_at": "2026-10-16T13:19:53.834389+00:00",
+  "stale": false,
+  "error": null
+}

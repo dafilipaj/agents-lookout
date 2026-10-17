@@ -1,5 +1,6 @@
 import { type Settings, defaultSettings } from '@shared/settings.ts';
 import type { FleetHealth, LaunchView, ServerEvent, SessionRow } from '@shared/types.ts';
+import type { UsageSnapshot } from '@shared/usage.ts';
 import { useEffect, useReducer } from 'react';
 import type { LookoutClient } from './client.ts';
 
@@ -32,6 +33,8 @@ export interface LookoutState {
   clientId: string | null;
   /** VIEW-2: the latest terminal preview per Session this tab previews. */
   previews: ReadonlyMap<string, Preview>;
+  /** USAGE: the latest numbers, or null before the first read. */
+  usage: UsageSnapshot | null;
 }
 
 export interface Preview {
@@ -54,6 +57,7 @@ export const initialState: LookoutState = {
   orphans: [],
   clientId: null,
   previews: new Map(),
+  usage: null,
 };
 
 export function reducer(state: LookoutState, action: Action): LookoutState {
@@ -89,6 +93,7 @@ export function reducer(state: LookoutState, action: Action): LookoutState {
         orphans,
         clientId: e.clientId,
         previews: new Map(), // a new stream: previews come again once it says what it views
+        usage: e.usage ?? state.usage,
       };
     }
     case 'sessions': {
@@ -111,6 +116,8 @@ export function reducer(state: LookoutState, action: Action): LookoutState {
     }
     case 'settings':
       return { ...state, settings: e.settings };
+    case 'usage':
+      return { ...state, usage: e.usage };
     case 'preview':
       return { ...state, previews: new Map(state.previews).set(e.sessionId, { text: e.text, error: e.error }) };
     case 'launches': {

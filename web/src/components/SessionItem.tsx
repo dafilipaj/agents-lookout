@@ -1,9 +1,10 @@
 import type { SessionRow } from '@shared/types.ts';
-import { Eye, FolderGit2, GitBranch } from 'lucide-react';
+import { FolderGit2, GitBranch } from 'lucide-react';
 import { memo, useEffect, useRef } from 'react';
-import { HARNESS_LABEL, STATUS_LABEL, location } from '@/lib/sessions';
+import { STATUS_LABEL, location } from '@/lib/sessions';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
+import { HarnessIcon } from './HarnessIcon';
 import { StatusMarker } from './StatusMarker';
 
 interface Props {
@@ -61,9 +62,8 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
         >
           {row.title}
         </span>
-        <span className="flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground" data-field="harness">
-          {!row.controllable && <Eye aria-label="Not Controllable" data-icon="watch-only" className="size-3 opacity-80" />}
-          {HARNESS_LABEL[row.harness]}
+        <span className="flex shrink-0 items-center" data-field="harness">
+          <HarnessIcon harness={row.harness} className={cn(!row.controllable && 'opacity-70')} />
         </span>
       </div>
       <div className="flex items-center gap-1 pl-5.5 text-[11.5px] leading-4 text-muted-foreground">

@@ -10,6 +10,13 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 
+/** Real timers for userEvent, but the clock pinned at NOW, which the rows' times are built from. */
+function pinDate() {
+  vi.useRealTimers();
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(NOW);
+}
+
 describe('sidebar rows', () => {
   it('SIDE-2.1: a row shows title, Harness, Status, repo, where it works, and time since the status changed', () => {
     const app = renderApp();
@@ -18,7 +25,7 @@ describe('sidebar rows', () => {
     ]);
     const r = rowEl('a');
     expect(field('a', 'title')).toHaveTextContent('fix-deal-rates');
-    expect(field('a', 'harness')).toHaveTextContent('Codex');
+    expect(within(field('a', 'harness')!).getByRole('img', { name: 'Codex' })).toHaveAttribute('data-harness', 'codex');
     expect(within(r).getByRole('img', { name: 'Busy' })).toBeInTheDocument();
     expect(field('a', 'repo')).toHaveTextContent('work');
     expect(field('a', 'location')).toHaveTextContent('main');
@@ -66,15 +73,28 @@ describe('sidebar rows', () => {
     expect(rowEl('none').textContent).not.toContain('%');
   });
 
-  it('SIDE-1.5: Sessions that are not Controllable are shown greyed out', () => {
+  it('SIDE-1.5: Sessions that are not Controllable are shown in their own "View only" section', () => {
     const app = renderApp();
-    app.snapshot([row({ id: 'orca', backend: 'unknown', controllable: false }), row({ id: 'tmux' })]);
-    expect(rowEl('orca')).toHaveAttribute('data-controllable', 'false');
-    expect(field('orca', 'title')).toHaveClass('text-muted-foreground');
-    expect(within(rowEl('orca')).getByLabelText('Not Controllable')).toBeInTheDocument();
+    app.snapshot([row({ id: 'orca', backend: 'unknown', controllable: false, status: 'needs-you' }), row({ id: 'tmux', status: 'idle' })]);
+    const viewOnly = screen.getByRole('group', { name: 'View only' });
+    expect(within(viewOnly).getAllByRole('option').map((o) => o.getAttribute('data-session-id'))).toEqual(['orca']);
+    const controllable = screen.getByRole('group', { name: 'Controllable' });
+    expect(within(controllable).getAllByRole('option').map((o) => o.getAttribute('data-session-id'))).toEqual(['tmux']);
+    // A Needs you Session in another app still comes after the Controllable ones.
+    expect(visibleTitles()).toEqual(['tmux', 'orca']);
     expect(rowEl('orca').title).toMatch(/Not Controllable/);
-    expect(rowEl('tmux')).toHaveAttribute('data-controllable', 'true');
-    expect(field('tmux', 'title')).not.toHaveClass('text-muted-foreground');
+    expect(document.querySelector('[data-icon="watch-only"]')).toBeNull(); // no eye: it read as the opposite
+  });
+
+  it('SIDE-1.5: no "View only" header without such Sessions; with only them, the start hint stays above it', () => {
+    const app = renderApp();
+    app.snapshot([row({ id: 'a' })]);
+    expect(screen.queryByRole('group', { name: 'View only' })).toBeNull();
+    app.snapshot([row({ id: 'orca', backend: 'unknown', controllable: false })]);
+    expect(screen.getByText('No Sessions Lookout can control')).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'View only' })).toBeInTheDocument();
+    const hint = screen.getByText('No Sessions Lookout can control');
+    expect(hint.compareDocumentPosition(screen.getByRole('group', { name: 'View only' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('SIDE-2.5 (support): long text is truncated with the full text on hover', () => {
@@ -88,7 +108,20 @@ describe('sidebar rows', () => {
 });
 
 describe('status at a glance', () => {
-  it('SIDE-3.1: rows are ordered Needs you → Busy → Idle → Unknown, newest status change first', () => {
+  it('SIDE-3.1: Controllable Sessions first, then "View only"; each ordered Needs you → Busy → Idle → Unknown, newest first', () => {
+    const app = renderApp();
+    const other = { backend: 'unknown' as const, controllable: false };
+    app.snapshot([
+      row({ id: 'v-idle', status: 'idle', ...other }),
+      row({ id: 'c-idle', status: 'idle' }),
+      row({ id: 'v-needs', status: 'needs-you', ...other }),
+      row({ id: 'c-busy', status: 'busy' }),
+      row({ id: 'v-busy', status: 'busy', ...other }),
+    ]);
+    expect(visibleTitles()).toEqual(['c-busy', 'c-idle', 'v-needs', 'v-busy', 'v-idle']);
+  });
+
+  it('SIDE-3.1: within a section, rows are ordered Needs you → Busy → Idle → Unknown, newest status change first', () => {
     const app = renderApp();
     app.snapshot([
       row({ id: 'idle-old', status: 'idle', statusSince: NOW - 9000 }),
@@ -165,9 +198,49 @@ describe('status at a glance', () => {
   });
 });
 
+describe('both sections', () => {
+  const other = { backend: 'unknown' as const, controllable: false };
+
+  it('SIDE-5 (support): keyboard moves through both sections, and ⌘J finds Needs you in either', async () => {
+    pinDate();
+    const user = userEvent.setup();
+    const app = renderApp();
+    app.snapshot([row({ id: 'c1', status: 'busy' }), row({ id: 'v1', status: 'needs-you', ...other }), row({ id: 'v2', status: 'idle', ...other })]);
+    await user.keyboard('j');
+    expect(window.location.pathname).toBe('/s/c1');
+    await user.keyboard('j');
+    expect(window.location.pathname).toBe('/s/v1');
+    await user.keyboard('{Meta>}3{/Meta}');
+    expect(window.location.pathname).toBe('/s/v2');
+    await user.keyboard('{Meta>}j{/Meta}');
+    expect(window.location.pathname).toBe('/s/v1');
+    expect(document.title).toBe('(1) Lookout');
+  });
+
+  it('SIDE-5.4 (support): the filter applies to both sections', async () => {
+    pinDate();
+    const user = userEvent.setup();
+    const app = renderApp();
+    app.snapshot([row({ id: 'deal-a', title: 'deal-a' }), row({ id: 'deal-b', title: 'deal-b', ...other }), row({ id: 'misc', title: 'misc', ...other })]);
+    await user.keyboard('/deal');
+    expect(visibleTitles()).toEqual(['deal-a', 'deal-b']);
+  });
+
+  it('SIDE-3.4 (support): during a hover, rows keep their places in both sections', () => {
+    const app = renderApp();
+    app.snapshot([row({ id: 'c1', status: 'busy' }), row({ id: 'c2', status: 'idle' }), row({ id: 'v1', status: 'busy', ...other }), row({ id: 'v2', status: 'idle', ...other })]);
+    const aside = screen.getByRole('complementary', { name: 'Session sidebar' });
+    act(() => aside.dispatchEvent(new PointerEvent('pointerover', { bubbles: true })));
+    app.emit({ type: 'sessions', upsert: [row({ id: 'c2', status: 'needs-you', statusSince: NOW }), row({ id: 'v2', status: 'needs-you', statusSince: NOW, ...other })], remove: [] });
+    expect(visibleTitles()).toEqual(['c1', 'c2', 'v1', 'v2']);
+    act(() => aside.dispatchEvent(new PointerEvent('pointerout', { bubbles: true, relatedTarget: document.body })));
+    expect(visibleTitles()).toEqual(['c2', 'c1', 'v2', 'v1']);
+  });
+});
+
 describe('filter', () => {
   it('SIDE-5.4: `/` focuses the filter; typing filters by title, repo, Worktree or branch; Esc clears it', async () => {
-    vi.useRealTimers();
+    pinDate();
     const user = userEvent.setup();
     const app = renderApp();
     app.snapshot([

@@ -96,6 +96,9 @@ describe('the launcher', () => {
     await waitFor(() => expect(harnessRadio(/Codex/)).toBeDisabled());
     expect(harnessRadio(/Claude Code/)).toBeChecked();
     expect(screen.getByText('not installed')).toBeInTheDocument();
+    // Each choice shows its Harness's mark.
+    const group = screen.getByRole('radiogroup', { name: 'Harness' });
+    expect(within(group).getAllByRole('img').map((i) => i.getAttribute('aria-label'))).toEqual(['Claude Code', 'Codex']);
   });
 
   it('LAUNCH-3.2: the models are the ones Fleet lists for the chosen Harness, defaulting to its own default', async () => {
@@ -228,6 +231,7 @@ describe('the launcher', () => {
       launches: [],
       started: [{ launchId: 'l-1', sessionId: 'new-session' }],
       clientId: 'tab-2',
+      usage: null,
     });
     await waitFor(() => expect(window.location.pathname).toBe('/s/new-session'));
   });

@@ -1,11 +1,12 @@
 import type { SessionRow } from '@shared/types.ts';
-import { ChevronDown, CircleSlash, Eye, FolderGit2, GitBranch, MessagesSquare, SendHorizontal, TerminalSquare } from 'lucide-react';
+import { ChevronDown, CircleSlash, FolderGit2, GitBranch, Info, MessagesSquare, SendHorizontal, TerminalSquare } from 'lucide-react';
 import { type KeyboardEvent, type ReactNode, type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import type { Preview } from '@/lib/store';
-import { HARNESS_LABEL, STATUS_LABEL, location } from '@/lib/sessions';
+import { HARNESS_NAME, STATUS_LABEL, location } from '@/lib/sessions';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
+import { HarnessIcon } from './HarnessIcon';
 import { StatusMarker } from './StatusMarker';
 
 export interface SessionViewProps {
@@ -73,7 +74,7 @@ export function SessionView({
           Its process is gone. The composer and terminal preview are closed; it stays here until you select another Session.
         </Footer>
       ) : !row.controllable ? (
-        <Footer icon={<Eye className="size-4" />} title="Read-only: this Session runs in another app">
+        <Footer icon={<Info className="size-4" />} title="View only: this Session runs in another app">
           Lookout can show it, but can&apos;t type into it or read its terminal, so there&apos;s no composer, preview or answer
           buttons. Sessions started from Lookout are Controllable.
         </Footer>
@@ -108,8 +109,9 @@ function Header({ row, ended, now }: { row: SessionRow; ended: boolean; now: num
         <h1 className={cn('min-w-0 truncate text-[15px] font-semibold tracking-tight', ended && 'text-muted-foreground')} title={row.title}>
           {row.title}
         </h1>
-        <span className="shrink-0 text-[12.5px] text-muted-foreground" data-field="harness-model">
-          {HARNESS_LABEL[row.harness]}
+        <span className="flex shrink-0 items-center gap-1.5 text-[12.5px] text-muted-foreground" data-field="harness-model">
+          <HarnessIcon harness={row.harness} className="size-4" />
+          {HARNESS_NAME[row.harness]}
           {row.model && <> · {row.model}</>}
         </span>
         <span

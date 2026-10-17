@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { type IncomingMessage, type Server, type ServerResponse, createServer } from 'node:http';
 import { SettingsError } from '../shared/settings.ts';
 import type { HarnessOption, LaunchView, ServerEvent } from '../shared/types.ts';
+import type { UsageSnapshot } from '../shared/usage.ts';
 import { LaunchError } from './launcher.ts';
 import type { SessionMonitor } from './monitor.ts';
 import { type GuardConfig, guardRequest } from './security.ts';
@@ -19,6 +20,12 @@ export interface AppOptions {
     harnesses(): Promise<HarnessOption[]>;
     start(input: unknown): Promise<LaunchView>;
     dismiss(id: string): boolean;
+  };
+  usage: {
+    snapshot(): UsageSnapshot | null;
+    watch(): () => void;
+    refreshJev(): Promise<void>;
+    refresh(): Promise<void>;
   };
   viewer: {
     watch(clientId: string, sessionId: string | null, preview: boolean): void;
@@ -80,13 +87,16 @@ export function createApp(opts: AppOptions): LookoutApp {
     send(res, { type: 'snapshot', sessions, fleet, settings: opts.settings.get(), launches: opts.launcher.list(),
       started: opts.launcher.recentStarts(),
       clientId,
+      usage: opts.usage.snapshot(),
     });
     clients.set(clientId, res);
     const unwatch = opts.monitor.watch();
+    const unwatchUsage = opts.usage.watch(); // one usage poller for every open tab
     const keepAlive = setInterval(() => res.write(': keep-alive\n\n'), opts.keepAliveMs ?? 15_000);
     req.on('close', () => {
       clearInterval(keepAlive);
       clients.delete(clientId);
+      unwatchUsage();
       opts.viewer.drop(clientId); // a tab that's gone stops what it was following
       unwatch();
     });
@@ -132,6 +142,16 @@ export function createApp(opts: AppOptions): LookoutApp {
           throw err;
         }
       }
+    }
+    if (route === 'POST /api/usage/refresh') {
+      // A window's reset time passed (USAGE-2.2): read the limits again (at most every 15 s).
+      await opts.usage.refresh();
+      return json(res, 200, { ok: true });
+    }
+    if (route === 'POST /api/usage/jev') {
+      // The details opened (USAGE-2.1): check Jev again. Free: `tb-jev status` is local.
+      await opts.usage.refreshJev();
+      return json(res, 200, { ok: true });
     }
     if (route === 'PUT /api/watch') {
       const body = await readJson(req, res, MAX_BODY, null);

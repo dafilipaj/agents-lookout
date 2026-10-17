@@ -10,3 +10,4 @@ One row per feature. Update the status here and in the spec's frontmatter togeth
 | Open a Session in iTerm2 | ITERM | Draft | [SPEC](open-in-iterm/SPEC.md) |
 | History: search past Sessions, resume on click | HIST | Ready | [SPEC](history/SPEC.md) |
 | Local servers: overview, kill on click | PORTS | Parked | [SPEC](local-servers/SPEC.md) |
+| Usage at a glance: Claude, Codex and Jev limits | USAGE | In Progress | [SPEC](usage/SPEC.md) |

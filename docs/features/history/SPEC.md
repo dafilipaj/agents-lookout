@@ -85,7 +85,14 @@ Finding last week's Session means remembering its directory and running `claude 
     - a flag for Headless Sessions, with a filter.
   - Built as pluggable Transcript sources, one per Harness vendor. Claude Code is the first source and Codex the second. Another vendor's agent is one new source, with no changes to the index, search or the `--json` shape.
   - HIST can ship before Gap 1 closes: Codex rows appear once the PR merges, with no change in Lookout.
-- **Read-only latest messages (HIST-3.3):** `tb-session show <id> --json` returns the last 20 messages with role, content and timestamp. They're shown with VIEW's chat styles.
+  - Built and reviewed 2026-10-16 (tb-session 0.3.0, branch `feature/tb-session-sources`, PR not yet open). What the 0.3.0 contract means for HIST:
+    - Rows carry `harness` and `headless`. `headless` is `true`, `false` or `null`; `null` means unknown, for Sessions indexed by 0.2 whose Transcript is gone. The default view uses `--headless exclude`, which keeps `null` rows.
+    - A row whose Transcript was deleted stays in the index with `transcript_missing: true`. It can't be resumed.
+    - An empty `project_path` is left out of the JSON.
+- **Read-only latest messages (HIST-3.3):** `tb-session show <id> --harness <h> --tail 20 --json`. They're shown with VIEW's chat styles.
+  - Always pass `--harness`: the same full id can exist under two Harnesses, and without it `show` returns `ambiguous_session_id`.
+  - Errors exit 1 with `{error: "ambiguous_session_id" | "session_not_found", message, candidates?}`.
+  - `messages_source` is `"transcript"` or `"index"`. With `"index"` the Transcript is gone and the messages come from the search index; say so above the messages.
 - **Gap 2: resuming in the fork** ([0006](../../decisions/0006-run-a-fork-of-fleet.md)).
   - Command: `fleet spawn --resume <session_id> --harness <h> --dir <project_path> --backend tmux --json`.
   - Fleet already builds the resume commands for `fleet restore` (`claude --resume <id>`, `codex resume <id>`). `spawn` needs to expose them for any `session_id`.
@@ -121,3 +128,4 @@ None.
   - Headless Sessions are behind a toggle.
   - Sessions whose start directory is gone can't be resumed.
   - Ready.
+- 2026-10-16: Technical approach updated with the reviewed tb-session 0.3.0 contract (`headless` can be `null`, `messages_source`, pass `--harness` to `show`).

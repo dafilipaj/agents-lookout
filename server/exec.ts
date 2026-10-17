@@ -3,6 +3,11 @@ import { spawn } from 'node:child_process';
 export interface RunOptions {
   timeoutMs: number;
   env?: NodeJS.ProcessEnv;
+  /**
+   * Cancels the run: the whole process group gets SIGTERM, then SIGKILL. The promise rejects
+   * only once the process has exited, so awaiting it means nothing is left behind.
+   */
+  signal?: AbortSignal;
 }
 
 /** Runs a program with an argv array (never a shell string) and resolves its stdout. */
@@ -14,6 +19,10 @@ export interface RunError extends Error {
   /** True when the timeout killed the process. */
   timedOut?: boolean;
   stderr?: string;
+  /** What it printed on stdout before failing (some tools print a result with a non-zero exit). */
+  stdout?: string;
+  /** True when the run was cancelled through `signal`. */
+  aborted?: boolean;
 }
 
 const MAX_OUTPUT = 16 * 1024 * 1024;
@@ -26,6 +35,10 @@ export const KILL_GRACE_MS = 1000;
  */
 export const run: Runner = (file, args, opts) =>
   new Promise((resolve, reject) => {
+    if (opts.signal?.aborted) {
+      reject(Object.assign(new Error(`${file} was cancelled`), { aborted: true, code: null }));
+      return;
+    }
     const child = spawn(file, [...args], {
       env: opts.env ?? process.env,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -39,7 +52,8 @@ export const run: Runner = (file, args, opts) =>
     const stderr = () => Buffer.concat(err).toString('utf8');
     let size = 0;
     let settled = false;
-    let timedOut = false;
+    /** Why the run is being ended early; it is rejected with this once the process has exited. */
+    let ending: Partial<RunError> & { message: string } | null = null;
     let killTimer: NodeJS.Timeout | null = null;
 
     const killGroup = (signal: NodeJS.Signals) => {
@@ -50,29 +64,40 @@ export const run: Runner = (file, args, opts) =>
         // already gone
       }
     };
+    /** SIGTERM to the group, SIGKILL after a grace period; the promise settles on 'close'. */
     const terminate = () => {
+      if (killTimer) return;
       killGroup('SIGTERM');
-      killTimer = setTimeout(() => killGroup('SIGKILL'), KILL_GRACE_MS);
-      killTimer.unref();
+      killTimer = setTimeout(() => {
+        killGroup('SIGKILL');
+        // A process that escaped the group could hold our pipes open; let 'close' happen anyway.
+        setTimeout(() => {
+          child.stdout.destroy();
+          child.stderr.destroy();
+        }, KILL_GRACE_MS).unref();
+      }, KILL_GRACE_MS);
     };
-    const fail = (message: string, extra: Partial<RunError>) => {
-      if (settled) return;
-      settled = true;
+    const endEarly = (reason: Partial<RunError> & { message: string }) => {
+      if (ending || settled) return;
+      ending = reason;
       clearTimeout(timeout);
-      reject(Object.assign(new Error(message), { stderr: stderr() }, extra));
+      terminate();
     };
 
+    const onAbort = () => {
+      endEarly({ message: `${file} was cancelled`, aborted: true, code: null });
+    };
+    opts.signal?.addEventListener('abort', onAbort, { once: true });
+
     const timeout = setTimeout(() => {
-      timedOut = true;
-      terminate();
-      fail(`${file} timed out after ${opts.timeoutMs} ms`, { timedOut: true, code: null });
+      endEarly({ message: `${file} timed out after ${opts.timeoutMs} ms`, timedOut: true, code: null });
     }, opts.timeoutMs);
 
     const collect = (which: 'out' | 'err') => (chunk: Buffer) => {
+      if (ending) return;
       size += chunk.length;
       if (size > MAX_OUTPUT) {
-        terminate();
-        fail(`${file} printed more than ${MAX_OUTPUT} bytes`, { code: null });
+        endEarly({ message: `${file} printed more than ${MAX_OUTPUT} bytes`, code: null });
         return;
       }
       (which === 'out' ? out : err).push(chunk);
@@ -80,14 +105,27 @@ export const run: Runner = (file, args, opts) =>
     child.stdout.on('data', collect('out'));
     child.stderr.on('data', collect('err'));
 
-    child.on('error', (err: NodeJS.ErrnoException) => fail(err.message, { code: err.code ?? null }));
+    // The program couldn't start (ENOENT, …): there is no process to wait for.
+    child.on('error', (e: NodeJS.ErrnoException) => {
+      if (settled || ending) return;
+      settled = true;
+      clearTimeout(timeout);
+      reject(Object.assign(new Error(e.message), { stderr: stderr(), code: e.code ?? null }));
+    });
+    // Every other outcome, early endings included, settles only once the process has exited,
+    // so whoever awaits a run never leaves it behind.
     child.on('close', (code, signal) => {
-      // The leader exited; make sure nothing it started outlives a timeout.
-      if (timedOut) killGroup('SIGKILL');
-      else if (killTimer) clearTimeout(killTimer);
+      opts.signal?.removeEventListener('abort', onAbort);
+      if (ending) killGroup('SIGKILL'); // nothing it started outlives an early end
+      if (killTimer) clearTimeout(killTimer);
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
+      if (ending) {
+        const { message, ...extra } = ending;
+        reject(Object.assign(new Error(message), { stderr: stderr() }, extra));
+        return;
+      }
       if (code === 0) resolve(stdout());
       else {
         const errText = stderr();
@@ -95,6 +133,7 @@ export const run: Runner = (file, args, opts) =>
           Object.assign(new Error(`${file} exited with ${code ?? signal}${errText ? `: ${errText.trim()}` : ''}`), {
             code,
             stderr: errText,
+            stdout: stdout(),
             timedOut: false,
           }),
         );

@@ -1,8 +1,8 @@
 import type { LaunchView } from '@shared/types.ts';
 import { CircleX, LoaderCircle, X } from 'lucide-react';
 import { formatAge } from '@/lib/time';
+import { HarnessIcon } from './HarnessIcon';
 
-const HARNESS = { claude: 'Claude', codex: 'Codex' } as const;
 
 /** LAUNCH-4.2 / 4.5: a "Starting…" row, or the error it turns into. */
 export function LaunchItem({ launch, now, onDismiss }: { launch: LaunchView; now: number; onDismiss(id: string): void }) {
@@ -34,7 +34,7 @@ export function LaunchItem({ launch, now, onDismiss }: { launch: LaunchView; now
             <X className="size-3.5" />
           </button>
         ) : (
-          <span className="shrink-0 text-[11px] text-muted-foreground">{HARNESS[launch.harness]}</span>
+          <HarnessIcon harness={launch.harness} />
         )}
       </div>
       <div className="flex items-center gap-1 pl-5.5 text-[11.5px] leading-4 text-muted-foreground">

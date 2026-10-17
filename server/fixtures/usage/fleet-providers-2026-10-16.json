@@ -1,0 +1,132 @@
+{
+  "account": {
+    "uuid": "00000000-0000-4000-8000-000000000000",
+    "email": "me@example.com",
+    "organization": "Example Org",
+    "plan": "team",
+    "tier": "default_claude_max_5x",
+    "plan_label": "Team · Max 5x"
+  },
+  "limits": [
+    {
+      "kind": "session",
+      "group": "session",
+      "label": "Current session",
+      "model": null,
+      "percent": 70,
+      "severity": "normal",
+      "resets_at": "2026-10-16T17:29:59.655504+00:00",
+      "active": true
+    },
+    {
+      "kind": "weekly_all",
+      "group": "weekly",
+      "label": "Weekly · all models",
+      "model": null,
+      "percent": 26,
+      "severity": "normal",
+      "resets_at": "2026-10-21T19:59:59.655527+00:00",
+      "active": false
+    },
+    {
+      "kind": "weekly_scoped",
+      "group": "weekly",
+      "label": "Weekly · Fable",
+      "model": "Fable",
+      "percent": 0,
+      "severity": "normal",
+      "resets_at": "2026-10-21T20:00:00+00:00",
+      "active": false
+    }
+  ],
+  "extra_usage": {
+    "enabled": false,
+    "used": 0,
+    "limit": null,
+    "currency": "USD",
+    "percent": 0
+  },
+  "fetched_at": "2026-10-16T13:57:10.367965+00:00",
+  "stale": false,
+  "error": null,
+  "providers": [
+    {
+      "id": "claude",
+      "label": "Claude",
+      "status": "ok",
+      "plan": "Team · Max 5x",
+      "limits": [
+        {
+          "kind": "session",
+          "group": "session",
+          "label": "Current session",
+          "model": null,
+          "percent": 70,
+          "severity": "normal",
+          "resets_at": "2026-10-16T17:29:59.655504+00:00",
+          "active": true
+        },
+        {
+          "kind": "weekly_all",
+          "group": "weekly",
+          "label": "Weekly · all models",
+          "model": null,
+          "percent": 26,
+          "severity": "normal",
+          "resets_at": "2026-10-21T19:59:59.655527+00:00",
+          "active": false
+        },
+        {
+          "kind": "weekly_scoped",
+          "group": "weekly",
+          "label": "Weekly · Fable",
+          "model": "Fable",
+          "percent": 0,
+          "severity": "normal",
+          "resets_at": "2026-10-21T20:00:00+00:00",
+          "active": false
+        }
+      ],
+      "fetched_at": "2026-10-16T13:57:10.367965+00:00",
+      "observed_at": "2026-10-16T13:57:10.367965+00:00",
+      "error": null,
+      "credits": null
+    },
+    {
+      "id": "codex",
+      "label": "Codex",
+      "status": "ok",
+      "plan": "Plus",
+      "limits": [
+        {
+          "kind": "session",
+          "group": "session",
+          "label": "5h limit",
+          "model": null,
+          "percent": 43,
+          "severity": "normal",
+          "resets_at": "2026-10-16T18:24:19+00:00",
+          "active": true
+        },
+        {
+          "kind": "weekly_all",
+          "group": "weekly",
+          "label": "Weekly limit",
+          "model": null,
+          "percent": 22,
+          "severity": "normal",
+          "resets_at": "2026-10-23T08:23:04+00:00",
+          "active": false
+        }
+      ],
+      "fetched_at": "2026-10-16T13:57:10.803001+00:00",
+      "observed_at": "2026-10-16T13:47:46.733+00:00",
+      "error": null,
+      "credits": {
+        "has_credits": false,
+        "unlimited": false,
+        "balance": "0"
+      }
+    }
+  ]
+}

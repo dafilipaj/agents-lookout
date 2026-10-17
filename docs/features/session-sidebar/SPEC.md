@@ -26,7 +26,7 @@ The sidebar lists every live Session on this Host that Fleet finds, whichever te
 - [x] SIDE-1.2 A Session whose process exits disappears within 3 s. (manual)
 - [x] SIDE-1.3 Claude Code and Codex Sessions both appear. (manual)
 - [x] SIDE-1.4 Given a recorded `fleet list --json` output, the server produces the expected rows. (test)
-- [x] SIDE-1.5 Sessions that aren't Controllable (e.g. Claude Desktop, IDE terminals) are shown greyed out, so you know they exist. (test)
+- [x] SIDE-1.5 Sessions that aren't Controllable (e.g. Claude Desktop, IDE terminals) are shown in their own "View only" section below the others, so you know they exist. The section's header shows only when it has Sessions. (test)
 
 ### SIDE-2 One row per Session
 
@@ -38,7 +38,7 @@ The sidebar lists every live Session on this Host that Fleet finds, whichever te
 
 ### SIDE-3 Status at a glance
 
-- [x] SIDE-3.1 Rows are ordered Needs you → Busy → Idle → Unknown; within each Status, the most recent status change comes first. (test)
+- [x] SIDE-3.1 Controllable Sessions come first, then the "View only" section. Within each, rows are ordered Needs you → Busy → Idle → Unknown, and within each Status the most recent status change comes first. (test)
 - [x] SIDE-3.2 Each Status has its own marker. Needs you is the most prominent, and is recognizable without colour. (manual)
 - [x] SIDE-3.3 The browser tab title shows how many Sessions need you, e.g. "(2) Lookout", and no count when none do. (test)
 - [x] SIDE-3.4 Status markers and row text update live, also while the pointer is over the sidebar. Only reordering waits: rows don't move while the pointer is over the sidebar, and pending moves apply once it leaves. (manual)
@@ -83,22 +83,27 @@ The sidebar lists every live Session on this Host that Fleet finds, whichever te
 
 ```
 ┌──────────────────────────────┬───────────────────────────────────┐
-│ / filter                  ⚙  │                                   │
-│ ◆ fix-deal-rates      Claude │   selected Session (VIEW spec)    │
+│ / filter                + ⚙  │                                   │
+│ ◆ fix-deal-rates        [cl] │   selected Session (VIEW spec)    │
 │   work · [wt] crm-rates · 2m │                                   │
 │   permission: Bash(rspec …)  │                                   │
-│ ● kg-hook-review       Codex │                                   │
+│ ● kg-hook-review        [ox] │                                   │
 │   work · [br] main · 12s 41% │                                   │
-│ ○ spec-lookout        Claude │                                   │
+│ ○ spec-lookout          [cl] │                                   │
 │   agents-lookout · [br] main │                                   │
-│ ○ desktop-chat   (greyed out)│                                   │
+│ VIEW ONLY 2                  │                                   │
+│ ◆ desktop-chat          [cl] │                                   │
+│ ● orca-review           [cl] │                                   │
 └──────────────────────────────┴───────────────────────────────────┘
 ```
+
+- `[cl]` and `[ox]` are the Harness marks: Claude's and OpenAI's (for Codex), each with its name as the accessible label.
+- "View only" holds the Sessions that aren't Controllable, in the same Status order. Keyboard navigation, ⌘1–9, ⌘J and the filter run across both sections, and hover-freeze (SIDE-3.4) applies to both.
 
 - Markers: ◆ Needs you, ● Busy, ○ Idle, ? Unknown.
 - `[wt]` and `[br]` stand for the worktree and branch icons (e.g. lucide `FolderGit2` and `GitBranch`).
 - ⚙ opens Settings.
-- Empty state: "No live Sessions", with a hint to start one in iTerm2.
+- Empty state: "No live Sessions", with a hint to start one (N, or `claude` / `codex` in iTerm2). With only view-only Sessions, the same hint sits above the "View only" header.
 - Error states: see SIDE-6.
 
 ## Technical approach
@@ -128,7 +133,7 @@ The sidebar lists every live Session on this Host that Fleet finds, whichever te
 
 - **Order by Status, not by repo**: the sidebar's job is "who needs me", not "where is it".
 - **Worktree first, branch as fallback**: work happens in Worktrees, so their name identifies the task better than a branch.
-- **Sessions that aren't Controllable are shown greyed out**, not hidden: awareness without promising control.
+- **Sessions that aren't Controllable get their own "View only" section**, not hidden: awareness without promising control, and the ones you can act on stay on top. An eye icon on the row was tried and read as the opposite.
 - **The server polls Fleet and pushes to the UI**: one Fleet call serves every open tab.
 - **The main pane is its own spec (VIEW)**: keeps this one small enough to finish.
 
@@ -143,3 +148,4 @@ None.
 - 2026-10-16: Measured `fleet list` (0.1 s); no open questions left.
 - 2026-10-16: Ready.
 - 2026-10-16: In Progress. Technical approach checked against real Fleet output: the status mapping, `updated_at` meaning per Harness (server tracks status changes itself), pi rows dropped, and two Fleet gaps (Codex approvals read as Busy; Codex ids change after the first prompt).
+- 2026-10-16: view-only Sessions get their own section; the eye icon was read as the opposite
