@@ -21,6 +21,8 @@ const MAX_PROMPT = 100_000;
 const MODEL_ID = /^[A-Za-z0-9._[\]/:-]{0,100}$/;
 const HARNESS_LABEL: Record<LaunchHarness, string> = { claude: 'Claude Code', codex: 'Codex' };
 const TERMINAL_LINES = 8;
+/** A launch id the tab chose (LAUNCH-4.2): a UUID, like the server's own. */
+export const LAUNCH_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 export class LaunchError extends Error {
   readonly status: number;
@@ -108,6 +110,8 @@ export interface ResumeRequest {
   /** The directory it originally started in (absolute). */
   directory: string;
   title: string;
+  /** The id the tab chose for its "Starting…" row (LAUNCH-4.2); one is made up without it. */
+  launchId?: string;
 }
 
 /** Fleet's tmux name rule (`core::tmux::sanitize_name`): an empty result is an error there. */
@@ -141,7 +145,8 @@ export interface LauncherOptions {
 /** Starts Sessions through `fleet spawn` (LAUNCH) and follows them until Fleet reports them. */
 export class Launcher {
   private readonly launches = new Map<string, Launch>();
-  private readonly recent = new Map<string, { sessionId: string; at: number }>();
+  /** Completed starts: the Session each became, and its process, so a later id change is followed. */
+  private readonly recent = new Map<string, { sessionId: string; at: number; pid: number; harness: string }>();
   private harnessCache: { at: number; value: HarnessOption[] } | null = null;
   private readonly opts: LauncherOptions;
   private readonly now: () => number;
@@ -210,12 +215,13 @@ export class Launcher {
    */
   async start(input: unknown): Promise<LaunchView> {
     const req = await this.validate(input);
+    const id = this.newId((input as Record<string, unknown> | null)?.launchId);
     const args = ['--local', 'spawn', '--json', '--backend', 'tmux', '--harness', req.harness, '--dir', expandHome(req.directory)];
     if (req.model) args.push('--model', req.model);
     if (req.name) args.push('--name', req.name);
     if (req.prompt) args.push('--', req.prompt);
     const title = req.name || `${HARNESS_LABEL[req.harness]} in ${basename(expandHome(req.directory))}`;
-    const launch = await this.spawn({ title, harness: req.harness, directory: req.directory, resumes: null, name: req.name }, args);
+    const launch = await this.spawn({ id, title, harness: req.harness, directory: req.directory, resumes: null, name: req.name }, args);
     // LAUNCH-1.2: remember the choices. A failed write doesn't fail the start.
     this.opts.settings
       .update({ lastLaunch: { harness: req.harness, model: req.model, directory: req.directory } }, 'server')
@@ -244,19 +250,31 @@ export class Launcher {
   async resume(req: ResumeRequest): Promise<LaunchView> {
     const pending = this.pendingResume(req.sessionId, req.harness);
     if (pending) return pending;
+    const id = this.newId(req.launchId);
     const args = [
       '--local', 'spawn', '--resume', req.sessionId, '--harness', req.harness, '--dir', req.directory, '--backend', 'tmux', '--json',
     ];
-    return this.spawn({ title: req.title, harness: req.harness, directory: req.directory, resumes: req.sessionId, name: '' }, args);
+    return this.spawn({ id, title: req.title, harness: req.harness, directory: req.directory, resumes: req.sessionId, name: '' }, args);
+  }
+
+  /**
+   * LAUNCH-4.2: the tab picks its launch's id, so it can select the "Starting…" row the moment
+   * you press Start, before this answers. Without one (an older tab), one is made up.
+   */
+  private newId(requested: unknown): string {
+    if (requested === undefined) return randomUUID();
+    if (typeof requested !== 'string' || !LAUNCH_ID.test(requested)) throw new LaunchError(400, 'Invalid launch id.');
+    if (this.launches.has(requested) || this.recent.has(requested)) throw new LaunchError(409, 'That launch id is taken.');
+    return requested;
   }
 
   /** Shows the "Starting…" row, runs `fleet spawn … --json`, and follows the start (LAUNCH-4). */
   private async spawn(
-    init: { title: string; harness: LaunchHarness; directory: string; resumes: string | null; name: string },
+    init: { id: string; title: string; harness: LaunchHarness; directory: string; resumes: string | null; name: string },
     args: string[],
   ): Promise<LaunchView> {
     const launch: Launch = {
-      id: randomUUID(),
+      id: init.id,
       title: init.title,
       harness: init.harness,
       directory: init.directory,
@@ -305,6 +323,12 @@ export class Launcher {
 
   /** After each successful `fleet list`: a launch whose Session host Fleet reports has started. */
   observe(rows: readonly FleetRow[]): void {
+    // A Codex Session gets its session id after its first prompt, and its id changes: a completed
+    // start follows it, so a tab that reconnects or reloads `/l/<id>` lands on the live id.
+    for (const r of this.recent.values()) {
+      const now = rows.find((row) => row.pid === r.pid && row.harness === r.harness);
+      if (now) r.sessionId = sessionId(now);
+    }
     const started: { launchId: string; sessionId: string }[] = [];
     for (const launch of this.launches.values()) {
       const row = rows.find(
@@ -316,7 +340,7 @@ export class Launcher {
       if (launch.timer) clearTimeout(launch.timer);
       this.launches.delete(launch.id);
       const id = sessionId(row);
-      this.recent.set(launch.id, { sessionId: id, at: this.now() });
+      this.recent.set(launch.id, { sessionId: id, at: this.now(), pid: row.pid, harness: row.harness });
       started.push({ launchId: launch.id, sessionId: id });
     }
     if (started.length) this.changed(started);

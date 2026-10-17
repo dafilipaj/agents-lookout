@@ -31,7 +31,9 @@ describe('Session view header', () => {
     });
     expect(within(h).getByRole('heading', { level: 1 })).toHaveTextContent('renamed');
     expect(h.querySelector('[data-field="status"]')).toHaveTextContent('Needs you');
-    expect(h).toHaveTextContent('Waiting for: input needed');
+    // What it waits for isn't repeated in the header: the chat's Needs you row says it (VIEW-1.10).
+    expect(h).not.toHaveTextContent('input needed');
+    expect(screen.getByTestId('chat-activity')).toHaveTextContent('Needs you · input needed');
   });
 
   it('VIEW-5.5: one status line directly below the composer shows repo, Worktree or branch, model and context use, updating live', () => {

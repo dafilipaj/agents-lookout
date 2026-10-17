@@ -60,7 +60,7 @@ A plain-text view of what the Session's terminal shows right now.
 
 ### VIEW-5 Header and states
 
-- [x] VIEW-5.1 A header shows the title, Harness and Status, updating live, and the Session's actions. Where it works, its model and its context usage are in the status line (VIEW-5.5). (test)
+- [x] VIEW-5.1 A header shows the title, Harness and Status, updating live, and the Session's actions, on one line. Where it works, its model and its context usage are in the status line (VIEW-5.5). What a Session that Needs you waits for isn't repeated in the header: the chat's Needs you row (VIEW-1.10) and its sidebar row (SIDE-2.3) show it. (test)
 - [x] VIEW-5.2 For a Session that isn't Controllable, the chat is read-only, with a note saying why there's no composer, preview or buttons. (test)
 - [x] VIEW-5.3 When the selected Session ends (SIDE-4.3), its chat stays readable, and the composer, preview and buttons are replaced by "This Session ended". (test)
 - [x] VIEW-5.4 With nothing selected, the existing "Select a Session" hint stays. (test)
@@ -89,9 +89,8 @@ A plain-text view of what the Session's terminal shows right now.
 
 ```
 ┌───────────────┬──────────────────────────────────────────────────────┐
-│ sidebar       │ fix-deal-rates · Claude        ◆ Needs you · 2m      │
-│ (SIDE)        │ Waiting for: question  [End Session] [iTerm2] [Stop] │
-│               ├──────────────────────────────────────────────────────┤
+│ sidebar (SIDE)│ fix-deal-rates · Claude  ◆ Needs you · 2m  [actions] │
+├───────────────┼──────────────────────────────────────────────────────┤
 │               │ You   Fix the rate rounding in deal totals …         │
 │               │ Claude  I'll start by reading …                      │
 │               │   ▸ 6 tool calls: Read ×3, Grep ×2, Bash             │
@@ -103,13 +102,18 @@ A plain-text view of what the Session's terminal shows right now.
 │               │ Do you want to proceed?                              │
 │               │ ❯ 1. Yes                                             │
 │               │   2. Yes, and don't ask again for rspec commands …   │
-│               ├──────────────────────────────────────────────────────┤
-│               │ Message…                                   ↵ Send    │
+├───────────────┼──────────────────────────────────────────────────────┤
+│ usage (USAGE) │ Message…                                   ↵ Send    │
 │               ├──────────────────────────────────────────────────────┤
 │               │ work · [wt] crm-rates · opus-5.5 · 41% context       │
 └───────────────┴──────────────────────────────────────────────────────┘
 ```
 
+- One grid (SIDE-8): the header is the main pane's cell in the shell's header row, so its bottom line continues the Filter bar's and History's. The composer and status line are its cell in the dock row, so the line above the composer continues the line above the usage panel. Chat and Terminal row sit between the two. A Session that isn't Controllable, or has ended, puts its banner where the composer goes, with the status line under it. The header is always one line, so the header row keeps its height whichever Session is selected; what a Needs you Session waits for shows in the chat's Needs you row (VIEW-1.10).
+- Every main-pane view has a header cell of the same height: nothing selected (empty), Settings (Back and the title), a past Session (HIST-3.3), a start under way (LAUNCH-4.6), loading. Views without a composer run their content to the bottom.
+- Short windows: the Terminal preview gives way first, shrinking toward its Terminal row; the chat keeps at least 96 px; the composer grows to at most 12rem or 20% of the window's height, whichever is less, and scrolls past that.
+
+- `[actions]`: End Session (VIEW-5.6); ITERM's button and Stop (VIEW-4.4) join it there.
 - Status line (VIEW-5.5): one line in the monospace font, the parts separated by `·`. At narrow widths each part truncates with `…`; hovering shows the whole line, and the Worktree or branch on its own.
 - End Session (VIEW-5.6): the dialog names the Session, says its Harness is asked to exit and its Session host closed, and that its chat stays readable and History can resume it. Buttons: Cancel and End Session (destructive). While Fleet works, End Session reads "Ending…".
 
@@ -210,3 +214,5 @@ None.
 - 2026-10-17: VIEW-1.3 amended: Subagent results (Claude Code's task notifications, Fleet's `system` entries) show as compact one-line rows; Lookout keeps `system` entries instead of dropping them. Added VIEW-1.11, a rail of Marks beside the chat's scroll bar for prompts, Subagent results and questions, with `[`/`]` to jump between them. Fixtures' `system` entries are now task notifications.
 - 2026-10-17: VIEW-1.11 review fixes: only keys that scroll and presses on the scroll bar release a jump's hold, so `[`/`]` keep stepping with focus in the chat; Option/AltGr no longer blocks `[`/`]`; the Marks are re-measured when the message list resizes; the rail owns its measurements and is memoized. A jump from the rail moves focus to the entry, the rail's tab stop follows `[`/`]`, the Marks are a vertical toolbar, and the tooltip no longer repeats the name to assistive tech.
 - 2026-10-17: VIEW-1.11 review fixes, round 2: ↑/↓ from inside the chat scroll it instead of switching Sessions; a scroll key from the page releases the hold, Space on a button doesn't; the rail re-measures when the Working row changes the chat's height; the entry keeps a focus ring; the tooltip survives a click; Windows AltGr types `[`/`]`.
+- 2026-10-17: UX: the header and the composer (or the ended / View only banner) with the status line are cells of the app shell's header and dock rows (SIDE-8), so their lines continue the sidebars'; Settings and the nothing-selected view get a header cell of the same height.
+- 2026-10-17: VIEW-5.1 amended: the header is one line, without the "Waiting for" line, which repeated the chat's Needs you row (VIEW-1.10) and made the header row taller for that Session alone. UX: on a short window the Terminal preview gives way first, the chat keeps at least 96 px, and the composer grows to at most 12rem or 20% of the window.

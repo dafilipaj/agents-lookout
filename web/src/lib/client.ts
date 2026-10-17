@@ -11,7 +11,8 @@ export interface LookoutClient {
   subscribe(listener: ClientListener): () => void;
   saveSettings(patch: Partial<Settings>): Promise<Settings>;
   harnesses(): Promise<HarnessOption[]>;
-  launch(req: LaunchRequest): Promise<LaunchView>;
+  /** LAUNCH-4.2: `launchId` is the tab's own, so its row is selected before this answers. */
+  launch(req: LaunchRequest, launchId: string): Promise<LaunchView>;
   dismissLaunch(id: string): Promise<void>;
   /** VIEW-1.6: "Show earlier": the chat entries before `before`. */
   earlierMessages(sessionId: string, before: string): Promise<ChatPage>;
@@ -30,7 +31,7 @@ export interface LookoutClient {
   /** HIST-3.3: a past Session's latest messages, read-only. */
   pastSession(harness: Harness, sessionId: string): Promise<HistoryDetail>;
   /** HIST-3.1/3.2: resume a past Session, or learn it's live. */
-  resume(harness: Harness, sessionId: string): Promise<ResumeResult>;
+  resume(harness: Harness, sessionId: string, launchId: string): Promise<ResumeResult>;
 }
 
 export interface HistoryQuery {
@@ -179,7 +180,7 @@ export function createHttpClient(): LookoutClient {
     },
     saveSettings: (patch) => call<Settings>(() => send('PUT', '/api/settings', patch), 'Saving'),
     harnesses: async () => (await call<{ harnesses: HarnessOption[] }>(() => fetch('/api/harnesses'), 'Loading Harnesses')).harnesses,
-    launch: async (req) => (await call<{ launch: LaunchView }>(() => send('POST', '/api/launch', req), 'Starting')).launch,
+    launch: async (req, launchId) => (await call<{ launch: LaunchView }>(() => send('POST', '/api/launch', { ...req, launchId }), 'Starting')).launch,
     dismissLaunch: async (id) => {
       await call(() => send('DELETE', `/api/launch/${encodeURIComponent(id)}`), 'Dismissing');
     },
@@ -207,7 +208,8 @@ export function createHttpClient(): LookoutClient {
       ),
     pastSession: (harness, sessionId) =>
       call<HistoryDetail>(() => fetch(`/api/history/${harness}/${encodeURIComponent(sessionId)}`), 'Loading the Session'),
-    resume: (harness, sessionId) => call<ResumeResult>(() => send('POST', '/api/history/resume', { sessionId, harness }), 'Resuming'),
+    resume: (harness, sessionId, launchId) =>
+      call<ResumeResult>(() => send('POST', '/api/history/resume', { sessionId, harness, launchId }), 'Resuming'),
     endSession: (sessionId, target) =>
       call<EndResult>(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/end`, target), 'Ending the Session'),
     sendMessage: async (sessionId, text) => {

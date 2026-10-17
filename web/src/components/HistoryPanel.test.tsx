@@ -219,7 +219,7 @@ describe('finding past Sessions (HIST-2)', () => {
     expect(resume).not.toHaveBeenCalled();
     expect(window.location.pathname).toBe('/s/alpha'); // the Session sidebar didn't move either
     await user.keyboard('{Enter}');
-    expect(resume).toHaveBeenCalledWith('codex', 'codex-1');
+    expect(resume).toHaveBeenCalledWith('codex', 'codex-1', expect.any(String));
   });
 
   it('HIST-2.7: Enter acts on a result only from the search box or the list: on Close History it closes, on the toggle it toggles', async () => {
@@ -321,16 +321,18 @@ describe('finding past Sessions (HIST-2)', () => {
 });
 
 describe('clicking a past Session (HIST-3)', () => {
-  it('HIST-3.1: a resumable one is resumed: "Starting…" in the Session sidebar, then the live Session, selected', async () => {
+  it('HIST-3.1: a resumable one is resumed: "Starting…" in the Session sidebar, selected at once, then the live Session takes over', async () => {
     const resume = vi.fn(async () => ({ kind: 'started' as const, launch: launchView({ id: 'l-7', title: 'kg-hook-review', harness: 'codex' }) }));
     const app = renderApp('/', { history: async () => ok([CODEX]), resume });
     app.snapshot([]);
     const user = await openHistory(app);
     await user.click(await screen.findByText('kg-hook-review', { selector: '[data-field="title"]' }));
-    expect(resume).toHaveBeenCalledWith('codex', 'codex-1');
+    expect(resume).toHaveBeenCalledWith('codex', 'codex-1', expect.any(String));
     const starting: LaunchView = launchView({ id: 'l-7', title: 'kg-hook-review', harness: 'codex' });
     app.emit({ type: 'launches', launches: [starting], started: [] });
     expect(within(screen.getByRole('list', { name: 'Starting Sessions' })).getByText(/kg-hook-review/)).toBeInTheDocument();
+    await waitFor(() => expect(window.location.pathname).toBe('/l/l-7'));
+    expect(within(screen.getByTestId('starting-view')).getByRole('heading', { level: 1 })).toHaveTextContent('kg-hook-review');
     app.emit({ type: 'sessions', upsert: [row({ id: 'codex-1', harness: 'codex', title: 'kg-hook-review' })], remove: [] });
     app.emit({ type: 'launches', launches: [], started: [{ launchId: 'l-7', sessionId: 'codex-1' }] });
     await waitFor(() => expect(window.location.pathname).toBe('/s/codex-1'));

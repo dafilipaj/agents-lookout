@@ -9,6 +9,7 @@ import { HARNESS_NAME } from '@/lib/sessions';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { HarnessIcon } from './HarnessIcon';
+import { SHELL_COLUMN, ShellCell } from './Shell';
 
 /** HIST-2.2: typing waits this long before searching, well within the 1 s. */
 export const SEARCH_DEBOUNCE_MS = 150;
@@ -45,7 +46,7 @@ type Results =
    */
   | { state: 'ok'; gen: number; items: HistoryItem[]; page: number; hasMore: boolean; loadingMore: boolean; auto: number };
 
-/** HIST: the right sidebar's History tab. */
+/** HIST: the right sidebar, with History as its only panel (no tab strip until a second one). */
 export function HistoryPanel({ width, onResize, onClose, focusKey, sessions, now, search, onOpen }: HistoryPanelProps) {
   const [query, setQuery] = useState('');
   const [headless, setHeadless] = useState(false);
@@ -242,8 +243,9 @@ export function HistoryPanel({ width, onResize, onClose, focusKey, sessions, now
   return (
     <aside
       aria-label="History sidebar"
-      className="relative flex h-full shrink-0 flex-col border-l border-sidebar-border bg-sidebar text-sidebar-foreground"
+      className={cn(SHELL_COLUMN, 'relative border-l border-sidebar-border bg-sidebar text-sidebar-foreground')}
       style={{ width }}
+      data-shell-column="right"
       onKeyDown={onKeyDown}
       data-testid="history-panel"
     >
@@ -255,17 +257,12 @@ export function HistoryPanel({ width, onResize, onClose, focusKey, sessions, now
         onMouseDown={startResize}
         className="absolute inset-y-0 -left-1 z-10 w-2 cursor-col-resize hover:bg-ring/20"
       />
-      <div className="flex items-center gap-1.5 px-2.5 pt-2.5" role="tablist" aria-label="Right sidebar">
-        <span role="tab" aria-selected="true" className="flex items-center gap-1.5 px-1 text-[13px] font-medium">
-          <HistoryIcon className="size-3.5" aria-hidden />
-          History
-        </span>
-        <Button variant="ghost" size="icon-sm" aria-label="Close History" title="Close History (H)" onClick={onClose} className="ml-auto size-7 text-muted-foreground">
-          <X className="size-4" />
-        </Button>
-      </div>
-      <div className="flex flex-col gap-1.5 px-2.5 pt-2 pb-2">
-        <label className="relative flex min-w-0 items-center">
+      {/* SIDE-8.1: the search field is this column's header cell, mirroring the Filter bar on the
+          left; the panel's name stays for assistive tech (the tab strip waits for a second panel). */}
+      <ShellCell row="header" className="gap-1.5 border-sidebar-border px-2.5 py-2">
+        <h2 className="sr-only">History</h2>
+        <HistoryIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+        <label className="relative flex min-w-0 flex-1 items-center">
           <Search aria-hidden className="pointer-events-none absolute left-2 size-3.5 text-muted-foreground" />
           <input
             ref={inputRef}
@@ -278,45 +275,53 @@ export function HistoryPanel({ width, onResize, onClose, focusKey, sessions, now
             className="h-7 w-full min-w-0 rounded-md border border-input bg-background/60 pr-2 pl-7 text-[13px] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 dark:bg-input/20 [&::-webkit-search-cancel-button]:hidden"
           />
         </label>
-        <div className="flex min-w-0 items-center gap-2">
-          <label className="flex min-w-0 items-center gap-1.5 text-[12px] text-muted-foreground">
-            <input type="checkbox" checked={headless} onChange={(e) => setHeadless(e.target.checked)} className="size-3.5" />
-            <span className="truncate">Show Headless Sessions</span>
-          </label>
-          <div role="group" aria-label="Harnesses" className="ml-auto flex shrink-0 items-center gap-0.5">
-            {(['claude', 'codex'] as const).map((h) => {
-              const on = harnesses[h];
-              const last = on && !harnesses[h === 'claude' ? 'codex' : 'claude'];
-              return (
-                <button
-                  key={h}
-                  type="button"
-                  aria-pressed={on}
-                  aria-label={HARNESS_NAME[h]}
-                  aria-disabled={last || undefined}
-                  title={last ? `${HARNESS_NAME[h]}: at least one Harness stays on` : `${on ? 'Hide' : 'Show'} ${HARNESS_NAME[h]} Sessions`}
-                  onClick={() => toggleHarness(h)}
-                  className={cn(
-                    'flex size-6 items-center justify-center rounded-md border transition-colors',
-                    on ? 'border-border bg-background text-foreground dark:bg-input/30' : 'border-transparent text-muted-foreground opacity-45 grayscale hover:opacity-80',
-                    last && 'cursor-default',
-                  )}
-                >
-                  <HarnessIcon harness={h} className="size-3.5" />
-                </button>
-              );
-            })}
+        <Button variant="ghost" size="icon-sm" aria-label="Close History" title="Close History (H)" onClick={onClose} className="size-7 shrink-0 text-muted-foreground">
+          <X className="size-4" />
+        </Button>
+      </ShellCell>
+      {/* The list runs on past the dock line, to the bottom. */}
+      <ShellCell row="body" toBottom className="flex flex-col">
+        <div className="flex flex-col gap-1.5 px-2.5 pt-2 pb-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <label className="flex min-w-0 items-center gap-1.5 text-[12px] text-muted-foreground">
+              <input type="checkbox" checked={headless} onChange={(e) => setHeadless(e.target.checked)} className="size-3.5" />
+              <span className="truncate">Show Headless Sessions</span>
+            </label>
+            <div role="group" aria-label="Harnesses" className="ml-auto flex shrink-0 items-center gap-0.5">
+              {(['claude', 'codex'] as const).map((h) => {
+                const on = harnesses[h];
+                const last = on && !harnesses[h === 'claude' ? 'codex' : 'claude'];
+                return (
+                  <button
+                    key={h}
+                    type="button"
+                    aria-pressed={on}
+                    aria-label={HARNESS_NAME[h]}
+                    aria-disabled={last || undefined}
+                    title={last ? `${HARNESS_NAME[h]}: at least one Harness stays on` : `${on ? 'Hide' : 'Show'} ${HARNESS_NAME[h]} Sessions`}
+                    onClick={() => toggleHarness(h)}
+                    className={cn(
+                      'flex size-6 items-center justify-center rounded-md border transition-colors',
+                      on ? 'border-border bg-background text-foreground dark:bg-input/30' : 'border-transparent text-muted-foreground opacity-45 grayscale hover:opacity-80',
+                      last && 'cursor-default',
+                    )}
+                  >
+                    <HarnessIcon harness={h} className="size-3.5" />
+                  </button>
+                );
+              })}
+            </div>
           </div>
+          {openError && (
+            <p role="alert" className="rounded-md border border-destructive/30 px-2 py-1.5 text-[12px] text-destructive">
+              {openError}
+            </p>
+          )}
         </div>
-        {openError && (
-          <p role="alert" className="rounded-md border border-destructive/30 px-2 py-1.5 text-[12px] text-destructive">
-            {openError}
-          </p>
-        )}
-      </div>
-      <div id="history-results" ref={listRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-        {body}
-      </div>
+        <div id="history-results" ref={listRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
+          {body}
+        </div>
+      </ShellCell>
     </aside>
   );
 }

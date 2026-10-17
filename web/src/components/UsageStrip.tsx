@@ -30,7 +30,7 @@ export function UsageStrip({ usage, now, onOpen }: { usage: UsageSnapshot | null
     <Popover onOpenChange={(open) => open && onOpen?.()}>
       <PopoverTrigger
         aria-label="Usage details"
-        className="w-full shrink-0 border-t border-sidebar-border px-2.5 py-2 text-left outline-none hover:bg-sidebar-accent/50 focus-visible:bg-sidebar-accent/60"
+        className="w-full shrink-0 px-2.5 py-2 text-left outline-none hover:bg-sidebar-accent/50 focus-visible:bg-sidebar-accent/60"
       >
         {usage ? (
           <div className="flex flex-col gap-1" data-testid="usage-strip">

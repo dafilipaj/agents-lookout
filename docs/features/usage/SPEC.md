@@ -3,7 +3,7 @@ title: Usage at a glance
 code: USAGE
 status: In Progress
 created: 2026-10-16
-updated: 2026-10-16
+updated: 2026-10-17
 ---
 
 # Usage at a glance
@@ -44,9 +44,10 @@ Limits show up only when an agent stalls. Claude's usage page and Codex's `/stat
 
 ```
 ┌ / filter            + ⚙ ┐
+├─────────────────────────┤
 │ ◆ fix-deal-rates   ✳    │
 │ …                       │
-├─────────────────────────┤
+├─────────────────────────┤   the line above the composer (SIDE-8)
 │ ✳ ██████░░░░ 62% · 2h10 │   tightest Claude window, resets in 2 h 10 min
 │ ⊛ ██████████ 100% ⚠ 17:30│   Codex at its 5-hour limit
 │ Jev ✓ ready             │
@@ -54,6 +55,7 @@ Limits show up only when an agent stalls. Claude's usage page and Codex's `/stat
 ```
 
 - Clicking the strip opens a popover with the details (USAGE-2.1).
+- One grid (SIDE-8): the strip is the Session sidebar's cell in the shell's dock row, so its top line is the line above the composer, or above the ended / View only banner. Whichever side is taller sets the row's height; the strip's lines stay at its top.
 - Marks: ⚠ at 80% or more, ⛔ at 95% or more, alongside the colour.
 
 ## Technical approach
@@ -117,3 +119,4 @@ None.
 - 2026-10-16: In Progress. Claude from `fleet usage --json`, polled every 60 s while a tab is open; Codex read only from Fleet ("not available yet" until the fork adds it); Jev wired to `tb-jev status --json` (0.2.0 contract), probed rarely.
 - 2026-10-16: Review round 2: exact Fleet `providers[]` and tb-jev 13-field contracts; sanitized reasons; expired windows and freshness handled; single-flight reads, cancellation on shutdown. USAGE-1.3 verified live: a Codex turn's new numbers showed within the 60 s poll.
 - 2026-10-16: Review round 3: `session_scoped` windows; Claude errors with exit 1 keep Codex live; a high-water mark so older readings never become current; rejected limits are errors; Codex age only from `observed_at`, shown neutrally as "as of last turn"; amber only for flagged ages; the five-minute rule now applies to Claude only.
+- 2026-10-17: UX: the strip sits in the app shell's dock row (SIDE-8), so its top line continues as the line above the composer.

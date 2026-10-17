@@ -5,7 +5,7 @@ import { basename, delimiter, isAbsolute, join } from 'node:path';
 import { TB_SESSION_INSTALL_COMMAND } from '../shared/defaults.ts';
 import type { ChatEntry, Harness, HistoryBlock, HistoryDetail, HistoryItem, HistoryPage, ResumeResult } from '../shared/types.ts';
 import type { RunError, Runner } from './exec.ts';
-import { DirMissingError, type Launcher, SessionLiveError, cleanEnv } from './launcher.ts';
+import { DirMissingError, LAUNCH_ID, type Launcher, SessionLiveError, cleanEnv } from './launcher.ts';
 import { sanitizeLine } from './sanitize.ts';
 
 /**
@@ -238,13 +238,15 @@ export async function resumePast(deps: ResumeDeps, input: unknown): Promise<Resu
   if (typeof v.sessionId !== 'string' || !SESSION_ID.test(v.sessionId)) throw new HistoryError(400, 'Invalid session id.');
   if (v.harness !== 'claude' && v.harness !== 'codex') throw new HistoryError(400, 'Invalid Harness.');
   const { sessionId, harness } = v;
+  if (v.launchId !== undefined && (typeof v.launchId !== 'string' || !LAUNCH_ID.test(v.launchId))) throw new HistoryError(400, 'Invalid launch id.');
+  const launchId = v.launchId;
   const pending = deps.launcher.pendingResume(sessionId, harness);
   if (pending) return { kind: 'started', launch: pending };
   if (await deps.isLive(sessionId, harness)) return { kind: 'live', sessionId };
   const item = await deps.history.lookup(sessionId, harness);
   if (item.blocked || !item.projectPath) return { kind: 'blocked', harness, sessionId, blocked: item.blocked ?? 'no-folder' };
   try {
-    const launch = await deps.launcher.resume({ sessionId, harness, directory: item.projectPath, title: item.title });
+    const launch = await deps.launcher.resume({ sessionId, harness, directory: item.projectPath, title: item.title, launchId });
     return { kind: 'started', launch };
   } catch (err) {
     if (err instanceof SessionLiveError) return { kind: 'live', sessionId };

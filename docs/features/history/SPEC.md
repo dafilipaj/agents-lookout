@@ -20,7 +20,7 @@ Finding last week's Session means remembering its directory and running `claude 
 
 ### HIST-1 Right sidebar
 
-- [x] HIST-1.1 A right sidebar, opened and closed with a button at the top right or `H` (when focus isn't in a text field), has a History tab. Opening it focuses the search box. (manual)
+- [x] HIST-1.1 A right sidebar, opened and closed with a button at the top right or `H` (when focus isn't in a text field), holds History as its only panel: no tab strip until a second panel exists, named "History sidebar" with a "History" heading. Opening it focuses the search box. (manual)
 - [x] HIST-1.2 The Session sidebar on the left and the main pane stay visible and usable while it's open. (manual)
 - [x] HIST-1.3 Whether it's open, and its width, are remembered across reloads. (test)
 
@@ -37,7 +37,7 @@ Finding last week's Session means remembering its directory and running `claude 
 
 ### HIST-3 Click to resume
 
-- [x] HIST-3.1 Clicking a past Session that can be resumed starts it again in its own Session host, in the directory it originally started in. It appears in the Session sidebar as "Starting…", then as a live Session, and is selected (as in LAUNCH-4.2). (test)
+- [x] HIST-3.1 Clicking a past Session that can be resumed starts it again in its own Session host, in the directory it originally started in. It appears in the Session sidebar as "Starting…", selected at once, then as a live Session that takes over the selection while the "Starting…" row is still selected (as in LAUNCH-4.2). (test)
 - [x] HIST-3.2 Clicking a Session that's live right now selects it; a second process is never started. (test)
 - [x] HIST-3.3 Clicking a Session that can't be resumed, because its start directory no longer exists, opens it in the main pane read-only: its latest messages, and a note on why it can't be resumed. (test)
 - [ ] HIST-3.4 A resumed Session behaves like one LAUNCH started: the 15 s failure (LAUNCH-4.5) and telemetry (LAUNCH-5) apply. (manual)
@@ -56,9 +56,9 @@ Finding last week's Session means remembering its directory and running `claude 
 
 ```
 ┌───────────────┬──────────────────────────────────┬──────────────────────┐
-│ Sessions      │ main pane (VIEW)                 │ History          [×] │
-│ (SIDE)        │                                  │ [ search…          ] │
-│               │                                  │ ☐ Show headless [✳][◎]│
+│ / filter  + ⚙ │ header (VIEW)                    │ ⟲ [ search…     ] [×]│
+├───────────────┼──────────────────────────────────┼──────────────────────┤
+│ Sessions      │ main pane (VIEW)                 │ ☐ Show headless [✳][◎]│
 │               │                                  │ ● fix-deal-rates live│
 │               │                                  │   work · main · 2h   │
 │               │                                  │ ○ kg-hook-review     │
@@ -66,8 +66,15 @@ Finding last week's Session means remembering its directory and running `claude 
 │               │                                  │   "…the hook fires…" │
 │               │                                  │ ⊘ pr641-review       │
 │               │                                  │   folder gone · 9d   │
+├───────────────┼──────────────────────────────────┤                      │
+│ usage (USAGE) │ composer and status line (VIEW)  │                      │
 └───────────────┴──────────────────────────────────┴──────────────────────┘
 ```
+
+- One grid (SIDE-8): the search field sits in the shell's header row, mirroring the Filter bar on the left, with ⟲ (a history icon) before it and Close (×) after it, so its bottom line continues the Filter bar's and the main header's. The list runs on below the dock line to the bottom.
+- No visible "History" title or tab while History is the only panel: the panel keeps its accessible name ("History sidebar") and a visually hidden "History" heading. The tab strip comes back with a second panel (PORTS).
+- Closed, the right sidebar is a narrow rail with the History button in its header cell, so the top line runs across it too.
+- A past Session opened read-only (HIST-3.3) is laid out like an ended one: a one-line header, its chat, and in the dock row the note on why it can't be resumed with its start directory and branch under it, where a live Session's composer and status line go.
 
 - [✳][◎]: the Claude Code and Codex filter buttons (HIST-2.8), drawn with the same Harness logos as the Session sidebar. A switched-off one is greyed out; the last one on can't be switched off.
 - Markers: ● live (click selects it), ○ resumable (click resumes it), ⊘ can't be resumed (click opens it read-only).
@@ -95,7 +102,7 @@ Finding last week's Session means remembering its directory and running `claude 
 - **Read-only latest messages (HIST-3.3):** `tb-session show <id> --harness <h> --tail 20 --json`. They're shown with VIEW's chat styles.
   - Always pass `--harness`: the same full id can exist under two Harnesses, and without it `show` returns `ambiguous_session_id`.
   - Errors exit 1 with `{error: "ambiguous_session_id" | "session_not_found", message, candidates?}`.
-  - `messages_source` is `"transcript"` or `"index"`. With `"index"` the Transcript is gone and the messages come from the search index; say so above the messages.
+  - `messages_source` is `"transcript"` or `"index"`. With `"index"` the Transcript is gone and the messages come from the search index; say so in the note under the messages (the dock row, SIDE-8).
   - tb-session 0.2 has no `--tail`: its `show` gives the first 20 messages, with `total_messages`. Lookout calls them the latest only with 0.3; with 0.2 the note says they're the first ones (of how many) and that 0.2 can't show the latest, or that they're all of them when there are no more.
 - **Gap 2: resuming in the fork** ([0006](../../decisions/0006-run-a-fork-of-fleet.md)).
   - Command: `fleet spawn --resume <session_id> --harness <h> --dir <project_path> --backend tmux --json`.
@@ -158,3 +165,7 @@ None.
 - 2026-10-17: Review round 1. Technical approach: Lookout never spawns a resume it already has under way, and handles Fleet's `session_starting`; a Session that can't be resumed after all opens read-only; tb-session 0.2's `list` rows (no `first_prompt`) and its first-20 preview; at most 50 rows; paging tied to its query; Enter only from the search box or the list; long Session host names.
 - 2026-10-17: Review round 2. Technical approach: an empty or short filtered page fetches the next ones itself (at most 5, then "Load more"); with tb-session 0.2 a listed Session without a prompt is refused on a click, not filtered from the list, until 0.3.0 is installed; a `session_starting` resume that times out says it's being started elsewhere; Fleet's `dir_missing` at spawn opens the Session read-only.
 - 2026-10-17: Added HIST-2.8, Claude Code and Codex filter buttons next to the headless toggle (tb-session 0.3.0's `--harness`, filtered on the server for 0.2.0). Non-goals no longer rule out filters other than the headless toggle; semantic search stays out.
+- 2026-10-17: UX for one grid (SIDE-8): the search field moves into the header row beside Close, with a history icon; the visible title goes, the accessible name and a hidden heading stay; the closed rail and the list's run to the bottom are drawn; a read-only past Session puts its note and where it ran in the dock row.
+- 2026-10-17: Review of one grid: HIST-1.1 says History is the sidebar's only panel, without a tab strip, instead of "has a History tab"; the Technical approach puts the index-source note under the messages, in the dock row.
+- 2026-10-17: HIST-3.1 amended with LAUNCH-4.2: a resume selects its "Starting…" row at once, and the live Session takes over only while that row is still selected.
+- 2026-10-17: HIST-3.1: the resume request carries the tab's launch id, so the "Starting…" row is selected the moment you click (before tb-session and `fleet spawn` answer), and a late answer never pulls you back from where you moved meanwhile (LAUNCH Technical approach).

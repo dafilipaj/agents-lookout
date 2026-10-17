@@ -25,6 +25,11 @@ export interface LookoutState {
   /** Launches Fleet now reports: launch id → the Session it became. */
   started: ReadonlyMap<string, string>;
   /**
+   * LAUNCH-4.2: starts this tab asked for that the server hasn't listed yet, so their row and view
+   * show the moment you press Start. `answered`: the request is done; the next list settles it.
+   */
+  requested: ReadonlyMap<string, { launch: LaunchView; answered: boolean }>;
+  /**
    * Rows a snapshot dropped while the server's list wasn't known yet (it had just restarted).
    * They may come back under a new id (a Codex Session that got its session id), so they're
    * kept for matching until the list is known again.
@@ -62,7 +67,16 @@ export type Action =
   /** VIEW-1.6: a "Show earlier" page, asked for with `before` while the chat had `epoch`. */
   | { type: 'chat-page'; sessionId: string; before: string; epoch: number; page: ChatPage }
   /** VIEW-1.5: whether you're at the bottom of the chat. */
-  | { type: 'chat-following'; sessionId: string; following: boolean };
+  | { type: 'chat-following'; sessionId: string; following: boolean }
+  /** LAUNCH-4.2: this tab asks for a start (or a resume) with its own launch id. */
+  | { type: 'launch-requested'; launch: LaunchView }
+  /**
+   * The request for `id` answered with `launch` (null: it failed, or a resume found the Session
+   * live). The answer stands in for the row until the server's next list settles it, but only
+   * while the request's row is still this tab's own: once the server has listed it, its list is the
+   * truth, so a late answer can't bring back a start that was dismissed meanwhile.
+   */
+  | { type: 'launch-answered'; id: string; launch: LaunchView | null };
 
 export const initialState: LookoutState = {
   loaded: false,
@@ -74,6 +88,7 @@ export const initialState: LookoutState = {
   settings: defaultSettings(),
   launches: [],
   started: new Map(),
+  requested: new Map(),
   orphans: [],
   clientId: null,
   previews: new Map(),
@@ -91,6 +106,20 @@ export function reducer(state: LookoutState, action: Action): LookoutState {
     const next =
       action.type === 'chat-page' ? applyPage(chat, action.before, action.epoch, action.page) : setFollowing(chat, action.following);
     return next === chat ? state : { ...state, chats: new Map(state.chats).set(action.sessionId, next) };
+  }
+  if (action.type === 'launch-requested') {
+    return { ...state, requested: new Map(state.requested).set(action.launch.id, { launch: action.launch, answered: false }) };
+  }
+  if (action.type === 'launch-answered') {
+    if (!state.requested.has(action.id)) return state;
+    const requested = new Map(state.requested);
+    requested.delete(action.id);
+    const served = action.launch;
+    // A resume already under way answers with its own launch; an older server picks its own id.
+    if (served && !state.started.has(served.id) && !state.launches.some((l) => l.id === served.id)) {
+      requested.set(served.id, { launch: served, answered: true });
+    }
+    return { ...state, requested };
   }
   if (action.type === 'connection') {
     return action.connected === state.connected ? state : { ...state, connected: action.connected };
@@ -121,6 +150,7 @@ export function reducer(state: LookoutState, action: Action): LookoutState {
         settings: e.settings,
         launches: e.launches,
         started,
+        requested: settleRequested(state.requested, e.launches, started),
         orphans,
         clientId: e.clientId,
         previews: new Map(), // a new stream: previews come again once it says what it views
@@ -164,7 +194,7 @@ export function reducer(state: LookoutState, action: Action): LookoutState {
         for (const s of e.started) next.set(s.launchId, s.sessionId);
         started = next;
       }
-      return { ...state, launches: e.launches, started };
+      return { ...state, launches: e.launches, started, requested: settleRequested(state.requested, e.launches, started) };
     }
   }
 }
@@ -180,6 +210,30 @@ function viewChat(state: LookoutState, sessionId: string | null): LookoutState {
     if (chat) chats.set(id, id === sessionId ? chat : park(chat));
   }
   return { ...state, chats, chatOrder: keep, chatViewing: sessionId };
+}
+
+/**
+ * A full list of launches from the server settles this tab's requests: one it lists or reports
+ * started is the server's now, and one whose request answered but that it doesn't list is gone.
+ * One still under way stays (a resume reads tb-session and Fleet before its row appears).
+ */
+function settleRequested(
+  requested: LookoutState['requested'],
+  launches: readonly LaunchView[],
+  started: ReadonlyMap<string, string>,
+): LookoutState['requested'] {
+  if (requested.size === 0) return requested;
+  const listed = new Set(launches.map((l) => l.id));
+  const next = new Map([...requested].filter(([id, r]) => !r.answered && !listed.has(id) && !started.has(id)));
+  return next.size === requested.size ? requested : next;
+}
+
+/** Every launch to show: the server's, then this tab's own it doesn't list yet (LAUNCH-4.2). */
+export function shownLaunches(state: Pick<LookoutState, 'launches' | 'requested'>): readonly LaunchView[] {
+  if (state.requested.size === 0) return state.launches;
+  const listed = new Set(state.launches.map((l) => l.id));
+  const own = [...state.requested.values()].map((r) => r.launch).filter((l) => !listed.has(l.id));
+  return own.length ? [...state.launches, ...own] : state.launches;
 }
 
 /** A gone row's successor is a new row of the same process (same pid and Harness). */

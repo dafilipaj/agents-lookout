@@ -58,7 +58,7 @@ export function launchView(over: Partial<LaunchView> & { id: string }): LaunchVi
 
 interface RenderOptions {
   harnesses?: () => Promise<HarnessOption[]>;
-  launch?: (req: LaunchRequest) => Promise<LaunchView>;
+  launch?: LookoutClient['launch'];
   sendMessage?: (sessionId: string, text: string) => Promise<void>;
   endSession?: LookoutClient['endSession'];
   earlierMessages?: (sessionId: string, before: string) => Promise<ChatPage>;
@@ -81,7 +81,7 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
     },
     saveSettings,
     harnesses: vi.fn(options.harnesses ?? (async () => HARNESSES)),
-    launch: vi.fn(options.launch ?? (async (req: LaunchRequest) => launchView({ id: 'l-1', title: req.name || 'New Session' }))),
+    launch: vi.fn(options.launch ?? (async (req: LaunchRequest, launchId: string) => launchView({ id: launchId, title: req.name || 'New Session' }))),
     dismissLaunch: vi.fn(async () => {}),
     earlierMessages: vi.fn(options.earlierMessages ?? (async (): Promise<ChatPage> => ({ entries: [], before: null }))),
     watch: vi.fn(async () => {}),

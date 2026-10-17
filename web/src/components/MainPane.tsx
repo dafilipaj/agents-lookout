@@ -1,5 +1,6 @@
 import type { SessionRow } from '@shared/types.ts';
 import type { Preview } from '@/lib/store';
+import { PlainView } from './Shell';
 import { type SessionViewProps, SessionView } from './SessionView';
 
 interface Props extends Omit<SessionViewProps, 'row' | 'ended' | 'now' | 'preview' | 'drawerOpen'> {
@@ -33,26 +34,36 @@ function viewKey(row: SessionRow, aliases: ReadonlyMap<string, string>): string 
 /** The main pane: the selected Session (VIEW), or the hint when nothing is selected (VIEW-5.4). */
 export function MainPane({ selectedId, live, lastKnown, list, now, preview, drawerOpen, aliases, ...view }: Props) {
   if (!selectedId) return <Empty />;
-  if (!live && list === 'loading') return <div className="p-8 text-sm text-muted-foreground">Loading…</div>;
+  if (!live && list === 'loading') {
+    return (
+      <PlainView>
+        <div className="p-8 text-sm text-muted-foreground">Loading…</div>
+      </PlainView>
+    );
+  }
   if (!live && list === 'unavailable') {
     return (
-      <div className="mx-auto w-full max-w-3xl px-8 py-7">
-        <div role="status" className="rounded-lg border border-border bg-muted/60 px-3.5 py-3">
-          <p className="text-sm font-medium">Can&apos;t tell whether this Session is running</p>
-          <p className="text-[13px] text-muted-foreground">Fleet isn&apos;t answering, so the Session list is unknown.</p>
+      <PlainView>
+        <div className="mx-auto w-full max-w-3xl px-8 py-7">
+          <div role="status" className="rounded-lg border border-border bg-muted/60 px-3.5 py-3">
+            <p className="text-sm font-medium">Can&apos;t tell whether this Session is running</p>
+            <p className="text-[13px] text-muted-foreground">Fleet isn&apos;t answering, so the Session list is unknown.</p>
+          </div>
         </div>
-      </div>
+      </PlainView>
     );
   }
   const row = live ?? lastKnown;
   if (!row) {
     return (
-      <div className="mx-auto w-full max-w-3xl px-8 py-7">
-        <div role="status" className="rounded-lg border border-border bg-muted/60 px-3.5 py-3">
-          <p className="text-sm font-medium">This Session ended</p>
-          <p className="text-[13px] text-muted-foreground">Session {selectedId} isn&apos;t running.</p>
+      <PlainView>
+        <div className="mx-auto w-full max-w-3xl px-8 py-7">
+          <div role="status" className="rounded-lg border border-border bg-muted/60 px-3.5 py-3">
+            <p className="text-sm font-medium">This Session ended</p>
+            <p className="text-[13px] text-muted-foreground">Session {selectedId} isn&apos;t running.</p>
+          </div>
         </div>
-      </div>
+      </PlainView>
     );
   }
   return (
@@ -70,16 +81,18 @@ export function MainPane({ selectedId, live, lastKnown, list, now, preview, draw
 
 function Empty() {
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-4 p-8 text-center">
-      <p className="text-sm font-medium">Select a Session</p>
-      <ul className="grid grid-cols-[auto_auto] gap-x-3 gap-y-1.5 text-left text-[12.5px] text-muted-foreground">
-        <Hint keys={['↑', '↓']} alt={['j', 'k']} text="Move" />
-        <Hint keys={['⌘', '1–9']} text="Jump to a row" />
-        <Hint keys={['⌘', 'J']} text="Next that needs you" />
-        <Hint keys={['/']} text="Filter" />
-        <Hint keys={['N']} text="New Session (⌘N in the installed app)" />
-      </ul>
-    </div>
+    <PlainView>
+      <div className="flex h-full flex-col items-center justify-center gap-4 p-8 text-center">
+        <p className="text-sm font-medium">Select a Session</p>
+        <ul className="grid grid-cols-[auto_auto] gap-x-3 gap-y-1.5 text-left text-[12.5px] text-muted-foreground">
+          <Hint keys={['↑', '↓']} alt={['j', 'k']} text="Move" />
+          <Hint keys={['⌘', '1–9']} text="Jump to a row" />
+          <Hint keys={['⌘', 'J']} text="Next that needs you" />
+          <Hint keys={['/']} text="Filter" />
+          <Hint keys={['N']} text="New Session (⌘N in the installed app)" />
+        </ul>
+      </div>
+    </PlainView>
   );
 }
 

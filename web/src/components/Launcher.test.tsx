@@ -132,14 +132,14 @@ describe('the launcher', () => {
       model: '',
       name: '',
       prompt: 'Line one: say OK.\nLine two: say DONE.',
-    });
+    }, expect.any(String));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
 
     // Nothing typed at all is fine too.
     await openLauncher(user);
     expect(screen.getByLabelText('Prompt')).toHaveValue(''); // a successful start clears the draft
     await user.click(screen.getByRole('button', { name: /Start/ }));
-    expect(launch).toHaveBeenLastCalledWith(expect.objectContaining({ name: '', prompt: '' }));
+    expect(launch).toHaveBeenLastCalledWith(expect.objectContaining({ name: '', prompt: '' }), expect.any(String));
   });
 
   it('LAUNCH-4.4: if starting fails, the launcher stays open, shows the error and keeps the input', async () => {
@@ -180,7 +180,7 @@ describe('the launcher', () => {
     expect(screen.getByLabelText('Prompt')).toHaveValue('long');
   });
 
-  it('LAUNCH-4.2 (support): a "Starting…" row shows, and once Fleet reports the Session it is selected', async () => {
+  it('LAUNCH-4.2 (support): a "Starting…" row shows, selected, and once Fleet reports the Session it is selected', async () => {
     const user = userEvent.setup();
     const app = renderApp('/', { launch: async () => launchView({ id: 'l-1', title: 'fix-rates' }) });
     app.snapshot([row({ id: 'other' })]);
@@ -190,11 +190,13 @@ describe('the launcher', () => {
     const starting = screen.getByRole('list', { name: 'Starting Sessions' });
     expect(starting).toHaveTextContent('fix-rates');
     expect(starting).toHaveTextContent('Starting…');
+    expect(within(starting).getByRole('listitem')).toHaveAttribute('aria-current', 'true');
+    expect(window.location.pathname).toBe('/l/l-1');
 
     app.emit({ type: 'sessions', upsert: [row({ id: 'new-session', title: 'fix-rates' })], remove: [] });
     app.emit({ type: 'launches', launches: [], started: [{ launchId: 'l-1', sessionId: 'new-session' }] });
     expect(screen.queryByRole('list', { name: 'Starting Sessions' })).toBeNull();
-    expect(window.location.pathname).toBe('/s/new-session');
+    await waitFor(() => expect(window.location.pathname).toBe('/s/new-session'));
   });
 
   it('LAUNCH-4.2 (support): the Session is selected even when Fleet reports it before the start request returns', async () => {

@@ -3,7 +3,7 @@ title: Start Sessions
 code: LAUNCH
 status: In Progress
 created: 2026-10-16
-updated: 2026-10-16
+updated: 2026-10-17
 ---
 
 # Start Sessions
@@ -38,10 +38,12 @@ Sessions started in Orca can't be controlled from Lookout (SIDE shows them greye
 ### LAUNCH-4 Start
 
 - [x] LAUNCH-4.1 ⌘Enter or Start creates the Session in its own Session host. Fleet then reports it with backend `tmux`. (test)
-- [x] LAUNCH-4.2 A "Starting…" row appears in the sidebar at once, is replaced by the real Session as soon as Fleet reports it, and that Session is selected. (manual)
+- [x] LAUNCH-4.2 Start adds a "Starting…" row at the top of the sidebar and selects it at once. When Fleet reports the Session, it replaces the row and takes over the selection, but only while the "Starting…" row is still selected: if you moved to another Session or view meanwhile, you stay there. (test)
 - [x] LAUNCH-4.3 A multi-line first prompt arrives intact, line breaks included. (manual)
 - [x] LAUNCH-4.4 If starting fails, the launcher stays open, shows the error, and keeps everything you entered. (test)
-- [x] LAUNCH-4.5 If the Session hasn't appeared after 15 s, the "Starting…" row turns into an error showing the last lines of its terminal, and the Session host is left running so you can look. (manual)
+- [x] LAUNCH-4.5 If the Session hasn't appeared after 15 s, the "Starting…" row turns into an error, and the Session host is left running so you can look. The error and the last lines of its terminal show in the row while it isn't selected; selected, the row stays compact and the starting view shows them (LAUNCH-4.6). (manual)
+- [x] LAUNCH-4.6 While a "Starting…" row is selected, the main pane shows the start: its name, Harness, start directory and the time since Start; then, once it failed (LAUNCH-4.5), the error and its terminal's last lines in place of the waiting note. (test)
+- [x] LAUNCH-4.7 "Starting…" rows count as rows for ↑/↓, j/k and ⌘1–9 (SIDE-5.1, SIDE-5.2), in the order shown, above the Sessions. A failed one takes no ⌘ number (it stays until dismissed); ↑/↓ and j/k still reach it. ⌘J skips them all. (test)
 
 ### LAUNCH-5 Telemetry
 
@@ -74,6 +76,21 @@ Sessions started in Orca can't be controlled from Lookout (SIDE shows them greye
 
 - Opening: N, ⌘N in an installed-app window, or "+". The "+" button's tooltip and the empty main pane show the shortcut.
 
+```
+┌───────────────┬──────────────────────────────────────────────────────┐
+│ / filter  + ⚙ │ ◌ fix-rates · Claude Code                 Starting…  │
+├───────────────┼──────────────────────────────────────────────────────┤
+│ ◌ fix-rates   │ Directory  ~/Projects/work                           │
+│   Starting…   │ Started    4s ago                                    │
+│ ◆ kg-hook-…   │ Waiting for Fleet to report the Session…             │
+└───────────────┴──────────────────────────────────────────────────────┘
+```
+
+- Starting view (LAUNCH-4.6): a header like a Session's (spinner, name, Harness, "Starting…"), then the start directory (wrapped, never cut) and the time since Start. Once failed: "Didn't start" in the header, then the error and the terminal's last lines in full, scrollable. Each fact shows once. It has no dock: its content runs to the bottom (SIDE-8).
+- A failed row, while selected, is compact: its name, "Didn't start · folder · age" and Dismiss; the view carries the error and the lines. Unselected, it shows them itself (LAUNCH-4.5).
+- A failed start is dismissed from its sidebar row. Dismissing the selected one selects the next start below it (else the one above); with no other start left, nothing is selected (the empty main pane). Focus then goes to the Dismiss button of the start that took its place, if it failed too, else to the main pane.
+- The "Starting…" rows are a plain list, not options: a failed row holds a Dismiss button, which an option can't. The selected row has `aria-current`.
+
 ## Technical approach
 
 - **Starting:** the server runs `fleet --local spawn --json --backend tmux --harness <h> --dir <d> [--model <m>] [--name <n>] [-- <prompt>]`, as an argv array. The prompt goes after `--`, so one starting with `-` isn't read as a flag.
@@ -88,6 +105,13 @@ Sessions started in Orca can't be controlled from Lookout (SIDE shows them greye
 - **Harnesses and models:** from `fleet --local harness list --json`, cached for 10 minutes. Each entry is `{ id, label, command, installed, models: [{ id, label }] }`; the first model, id `''`, is the Harness's own default (`--model` is then left out). Model ids are letters, digits and `._[]-/:` only (Fleet's rule). pi is dropped.
 - **Start directories:** only one from the Settings list is accepted, so the server never starts anything elsewhere. One that's added must exist; `~` is expanded by the server.
 - **Settings:** start directories live in the server's settings file (the same one as SIDE-7). So does the last-used choice for LAUNCH-1.2.
+- **Selecting a start (LAUNCH-4.2, 4.6):** a selected "Starting…" row is in the URL, `/l/<launch id>`, like a Session (SIDE-4.2).
+  - The tab picks the launch id (a UUID) and sends it as `launchId` with `POST /api/launch` (and HIST's resume). So the moment you press Start, it shows that row itself and selects it, before `fleet spawn` returns. The server uses that id, and refuses a malformed one (400) or one it already has (409); without one it makes one up.
+  - The tab's own row stands until the server's `launches` list names it. Once the server has listed it, its list is the truth: a late answer never brings back a start dismissed meanwhile.
+  - An answer moves the selection only while the URL still shows that start: a failed start goes back (replaced) to where Start was pressed; a resume that finds the Session live, or can't resume it, or has one under way already, replaces the URL with that. Anywhere you moved to meanwhile stays.
+  - When a `started` mapping names the launch and the URL still shows it, the tab replaces the URL with the Session's, before paint, so Back doesn't return to a start that's gone; any other selection is left alone.
+  - The snapshot's `started` (kept 60 s) lets a tab that reconnects or reloads take over too. It follows the Session's process (pid and Harness), so a Codex Session that got its session id meanwhile is named by its new id.
+  - A launch id the tab doesn't know (dismissed in another tab, a reload long after, or Lookout restarted: launches live in the server's memory) shows "This start is no longer listed".
 
 ### Key decisions
 
@@ -111,3 +135,5 @@ Resolved while building (2026-10-16): `fleet spawn` (the CLI) never answers a tr
 - 2026-10-16: N added because Chrome keeps ⌘N in a normal tab.
 - 2026-10-16: LAUNCH-5.1 verified in Grafana (Loki `claude-code-telemetry`): a Session started through Lookout in `~/Projects/work` sent its events with `repo=work` and `terminal.type=tmux`.
 - 2026-10-17: `fleet spawn` is read through `--json` (the fork has it now), shared with HIST's resume.
+- 2026-10-17: LAUNCH-4.2 amended: Start selects the "Starting…" row at once, and the real Session takes over the selection only while that row is still selected, so you're never pulled away from a Session you moved to. Added LAUNCH-4.6, a starting view in the main pane (name, Harness, directory, time since Start; the error and terminal lines once failed), and LAUNCH-4.7, "Starting…" rows in keyboard navigation. Technical approach: the `/l/<id>` URL and the take-over. HIST's resume does the same (HIST-3.1).
+- 2026-10-17: Review of selecting a start: the tab picks the launch id, so Start selects its row the moment you press it, and a late answer never moves you once you've moved on (LAUNCH-4.2 now holds as written). LAUNCH-4.5: the failed row stays compact while selected. LAUNCH-4.6: the error and lines replace the waiting note. LAUNCH-4.7: a failed start takes no ⌘ number. UX: what follows dismissing the selected start, and where focus goes; the starting view shows each fact once. Technical approach: `launchId`, answers that respect where you are, `started` following an id change.

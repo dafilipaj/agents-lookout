@@ -301,7 +301,7 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
   }
 
   return (
-    <div className="@container relative flex min-h-0 flex-1">
+    <div className="@container relative flex min-h-24 flex-1">
       <div
         ref={scrollRef}
         onScroll={onScroll}

@@ -4,6 +4,7 @@ import { type FormEvent, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { PlainView } from './Shell';
 
 interface Props {
   settings: Settings;
@@ -38,53 +39,61 @@ export function SettingsPage({ settings, save, onBack }: Props) {
   };
 
   return (
-    <div className="mx-auto w-full max-w-2xl px-8 py-7">
-      <Button variant="ghost" size="sm" className="-ml-2.5 mb-3 text-muted-foreground" onClick={onBack}>
-        <ArrowLeft /> Back
-      </Button>
-      <h1 className="text-lg font-semibold tracking-tight">Settings</h1>
-      <p className="mt-0.5 text-[13px] text-muted-foreground">Saved on this Mac, shared by every Lookout tab.</p>
-
-      <form onSubmit={submit} className="mt-6 rounded-lg border border-border bg-card p-4">
-        <Label htmlFor="idle-threshold" className="text-[13px]">
-          Idle threshold
-        </Label>
-        <p id="idle-threshold-help" className="mt-1 text-[12.5px] text-muted-foreground">
-          Sessions that have been Idle longer than this are dimmed in the sidebar.
-        </p>
-        <div className="mt-3 flex items-center gap-2">
-          <Input
-            id="idle-threshold"
-            type="number"
-            inputMode="decimal"
-            min="0"
-            step="any"
-            aria-describedby="idle-threshold-help"
-            aria-invalid={state.kind === 'error'}
-            className="h-8 w-24"
-            value={value}
-            onChange={(e) => {
-              setDraft(e.target.value);
-              setState({ kind: 'idle' });
-            }}
-          />
-          <span className="text-[13px] text-muted-foreground">hours</span>
-          <Button type="submit" size="sm" className="ml-2 h-8" disabled={state.kind === 'saving' || draft === null}>
-            Save
+    // SIDE-8.1: Back and the title sit in the main pane's header row, like every other view's.
+    <PlainView
+      header={
+        <>
+          <Button variant="ghost" size="sm" className="-ml-2.5 h-7 text-muted-foreground" onClick={onBack}>
+            <ArrowLeft /> Back
           </Button>
-          <span role="status" className="ml-1 text-[12.5px] text-muted-foreground">
-            {state.kind === 'saved' && 'Saved'}
-          </span>
-        </div>
-        {state.kind === 'error' && (
-          <p role="alert" className="mt-2 text-[12.5px] text-destructive">
-            {state.message}
-          </p>
-        )}
-      </form>
+          <h1 className="text-[15px] font-semibold tracking-tight">Settings</h1>
+        </>
+      }
+    >
+      <div className="mx-auto w-full max-w-2xl px-8 py-7">
+        <p className="text-[13px] text-muted-foreground">Saved on this Mac, shared by every Lookout tab.</p>
 
-      <StartDirectories settings={settings} save={save} />
-    </div>
+        <form onSubmit={submit} className="mt-6 rounded-lg border border-border bg-card p-4">
+          <Label htmlFor="idle-threshold" className="text-[13px]">
+            Idle threshold
+          </Label>
+          <p id="idle-threshold-help" className="mt-1 text-[12.5px] text-muted-foreground">
+            Sessions that have been Idle longer than this are dimmed in the sidebar.
+          </p>
+          <div className="mt-3 flex items-center gap-2">
+            <Input
+              id="idle-threshold"
+              type="number"
+              inputMode="decimal"
+              min="0"
+              step="any"
+              aria-describedby="idle-threshold-help"
+              aria-invalid={state.kind === 'error'}
+              className="h-8 w-24"
+              value={value}
+              onChange={(e) => {
+                setDraft(e.target.value);
+                setState({ kind: 'idle' });
+              }}
+            />
+            <span className="text-[13px] text-muted-foreground">hours</span>
+            <Button type="submit" size="sm" className="ml-2 h-8" disabled={state.kind === 'saving' || draft === null}>
+              Save
+            </Button>
+            <span role="status" className="ml-1 text-[12.5px] text-muted-foreground">
+              {state.kind === 'saved' && 'Saved'}
+            </span>
+          </div>
+          {state.kind === 'error' && (
+            <p role="alert" className="mt-2 text-[12.5px] text-destructive">
+              {state.message}
+            </p>
+          )}
+        </form>
+
+        <StartDirectories settings={settings} save={save} />
+      </div>
+    </PlainView>
   );
 }
 

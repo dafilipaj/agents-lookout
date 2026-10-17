@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils';
 import { Chat } from './Chat';
 import { ChatActivity } from './ChatActivity';
 import { HarnessIcon } from './HarnessIcon';
+import { PaneHeader, ShellCell, ShellView } from './Shell';
 import { StatusMarker } from './StatusMarker';
 
 export interface SessionViewProps {
@@ -99,31 +100,38 @@ export function SessionView({
     return () => window.removeEventListener('keydown', onKey);
   }, [controls]);
 
+  // SIDE-8.1: header, then the chat with the Terminal row in the content row, then the dock: the
+  // composer (or the ended / View only banner) and the status line, under the shell's dock line.
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <ShellView>
       <Header row={row} ended={ended} now={now} onEnd={onEnd} />
-      <Chat
-        sessionId={row.id}
-        harness={row.harness}
-        chat={chat}
-        ended={ended}
-        onEarlier={onEarlier}
-        onPage={onPage}
-        onFollowing={onFollowing}
-        activity={<ChatActivity row={row} ended={ended} entries={chat?.entries} sentAt={sentAt} />}
-      />
-      {ended ? (
-        <Footer icon={<CircleSlash className="size-4" />} title="This Session ended">
-          Its process is gone. The composer and terminal preview are closed; it stays here until you select another Session.
-        </Footer>
-      ) : !row.controllable ? (
-        <Footer icon={<Info className="size-4" />} title="View only: this Session runs in another app">
-          Lookout can show it, but can&apos;t type into it or read its terminal, so there&apos;s no composer, preview or answer
-          buttons. Sessions started from Lookout are Controllable.
-        </Footer>
-      ) : (
-        <>
-          <Drawer open={drawerOpen} onToggle={() => onToggleDrawer(row, !drawerOpen)} preview={preview} />
+      <ShellCell row="body" className="flex flex-col overflow-hidden">
+        <Chat
+          sessionId={row.id}
+          harness={row.harness}
+          chat={chat}
+          ended={ended}
+          onEarlier={onEarlier}
+          onPage={onPage}
+          onFollowing={onFollowing}
+          activity={<ChatActivity row={row} ended={ended} entries={chat?.entries} sentAt={sentAt} />}
+        />
+        {controls && <Drawer open={drawerOpen} onToggle={() => onToggleDrawer(row, !drawerOpen)} preview={preview} />}
+      </ShellCell>
+      <ShellCell row="dock">
+        {ended ? (
+          <Footer
+            icon={<CircleSlash className="size-4" />}
+            title="This Session ended"
+            detail="Its process is gone. The composer and terminal preview are closed; it stays here until you select another Session."
+          />
+        ) : !row.controllable ? (
+          <Footer
+            icon={<Info className="size-4" />}
+            title="View only: this Session runs in another app"
+            detail="Lookout can show it, but can't type into it or read its terminal, so there's no composer, preview or answer buttons. Sessions started from Lookout are Controllable."
+          />
+        ) : (
           <Composer
             key={row.id}
             sessionId={row.id}
@@ -135,20 +143,24 @@ export function SessionView({
             onSend={send}
             inputRef={composerRef}
           />
-        </>
-      )}
-      <StatusLine row={row} />
-    </div>
+        )}
+        <StatusLine row={row} />
+      </ShellCell>
+    </ShellView>
   );
 }
 
-/** VIEW-5.1: title, Harness, Status and actions. Where it works, and its model, are in the status line (VIEW-5.5). */
+/**
+ * VIEW-5.1: title, Harness, Status and actions, on one line. Where it works, and its model, are in
+ * the status line (VIEW-5.5); what a Needs you Session waits for is in the chat's Needs you row
+ * (VIEW-1.10), so the header row keeps one height for every Session.
+ */
 function Header({ row, ended, now, onEnd }: { row: SessionRow; ended: boolean; now: number; onEnd: SessionViewProps['onEnd'] }) {
   const age = row.statusSince !== null ? formatAge(now - row.statusSince) : null;
   const title = useRef<HTMLHeadingElement>(null);
   return (
-    <header className="shrink-0 border-b border-border px-5 py-3" aria-label="Session">
-      <div className="flex min-w-0 items-center gap-2.5">
+    <PaneHeader aria-label="Session">
+      <div className="flex min-w-0 flex-1 items-center gap-2.5">
         {!ended && <StatusMarker status={row.status} />}
         <h1
           ref={title}
@@ -181,12 +193,7 @@ function Header({ row, ended, now, onEnd }: { row: SessionRow; ended: boolean; n
           <EndSession row={row} eligible={!ended && row.controllable && row.ownHost} onEnd={onEnd} fallbackFocus={title} />
         </div>
       </div>
-      {!ended && row.status === 'needs-you' && row.waitingFor && (
-        <p className="mt-1 truncate text-[12.5px] font-medium text-needs-you-text" title={row.waitingFor}>
-          Waiting for: {row.waitingFor}
-        </p>
-      )}
-    </header>
+    </PaneHeader>
   );
 }
 
@@ -358,12 +365,13 @@ function Drawer({ open, onToggle, preview }: { open: boolean; onToggle(): void; 
     if (el) el.scrollTop = el.scrollHeight; // the bottom is what matters
   }, [preview?.text, open]);
   return (
-    <section className="shrink-0 border-t border-border" aria-label="Terminal preview">
+    // SIDE-8.1: on a short window the preview gives way, down to its Terminal row, before the chat does.
+    <section className="flex min-h-0 flex-col border-t border-border" aria-label="Terminal preview">
       <button
         type="button"
         aria-expanded={open}
         onClick={onToggle}
-        className="flex w-full items-center gap-2 px-5 py-1.5 text-[12px] font-medium text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+        className="flex w-full shrink-0 items-center gap-2 px-5 py-1.5 text-[12px] font-medium text-muted-foreground hover:bg-accent/50 hover:text-foreground"
       >
         <TerminalSquare className="size-3.5" />
         Terminal
@@ -374,7 +382,7 @@ function Drawer({ open, onToggle, preview }: { open: boolean; onToggle(): void; 
         <pre
           ref={preRef}
           data-testid="terminal-preview"
-          className="h-64 overflow-auto bg-muted/40 px-5 py-2 font-mono text-[11.5px] leading-[1.45] whitespace-pre text-foreground/90 dark:bg-black/25"
+          className="h-64 min-h-0 overflow-auto bg-muted/40 px-5 py-2 font-mono text-[11.5px] leading-[1.45] whitespace-pre text-foreground/90 dark:bg-black/25"
         >
           {preview?.text ?? (preview?.error ? '' : 'Loading…')}
         </pre>
@@ -433,7 +441,7 @@ function Composer({ sessionId, title, drafts, sending, error, onEdit, onSend, in
 
   return (
     <form
-      className="shrink-0 border-t border-border px-4 py-3"
+      className="flex-1 px-4 py-3"
       onSubmit={(e) => {
         e.preventDefault();
         void submit();
@@ -454,27 +462,31 @@ function Composer({ sessionId, title, drafts, sending, error, onEdit, onSend, in
           onChange={(e) => update(e.target.value)}
           onKeyDown={onKeyDown}
           aria-invalid={error ? true : undefined}
-          className="field-sizing-content max-h-48 min-h-6 flex-1 resize-none bg-transparent text-[13.5px] leading-6 outline-none placeholder:text-muted-foreground"
+          className="field-sizing-content max-h-[min(12rem,20dvh)] min-h-6 flex-1 resize-none bg-transparent text-[13.5px] leading-6 outline-none placeholder:text-muted-foreground"
         />
         <Button type="submit" size="sm" className="h-7 shrink-0 gap-1.5" disabled={sending || text.trim() === ''}>
           {sending ? 'Sending…' : 'Send'}
           <SendHorizontal className="size-3.5" />
         </Button>
       </div>
-      <p className="mt-1.5 text-[11px] text-muted-foreground">
+      {/* One line, so a narrow main pane doesn't grow the dock row (SIDE-8.1). */}
+      <p className="mt-1.5 truncate text-[11px] text-muted-foreground" title="Enter sends · Shift+Enter for a new line · i to type here · Esc to leave">
         Enter sends · Shift+Enter for a new line · <kbd className="font-mono">i</kbd> to type here · Esc to leave
       </p>
     </form>
   );
 }
 
-function Footer({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
+/** The ended / View only banner. Its detail stops at two lines (full text on hover), so a narrow main pane doesn't grow the dock row (SIDE-8.1). */
+function Footer({ icon, title, detail }: { icon: ReactNode; title: string; detail: string }) {
   return (
-    <div role="status" className="flex shrink-0 items-start gap-2.5 border-t border-border bg-muted/50 px-5 py-3.5">
+    <div role="status" className="flex flex-1 items-start gap-2.5 bg-muted/50 px-5 py-3.5">
       <span className="mt-0.5 text-muted-foreground">{icon}</span>
-      <div>
+      <div className="min-w-0">
         <p className="text-[13px] font-medium">{title}</p>
-        <p className="text-[12.5px] leading-5 text-muted-foreground">{children}</p>
+        <p className="line-clamp-2 text-[12.5px] leading-5 text-muted-foreground" title={detail}>
+          {detail}
+        </p>
       </div>
     </div>
   );

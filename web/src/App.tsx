@@ -1,21 +1,26 @@
-import type { ChatPage, EndTarget, HistoryItem, LaunchRequest, SessionRow, Status } from '@shared/types.ts';
+import type { LaunchHarness } from '@shared/settings.ts';
+import type { ChatPage, EndTarget, HistoryItem, LaunchRequest, LaunchView, ResumeResult, SessionRow, Status } from '@shared/types.ts';
 import { History as HistoryIcon } from 'lucide-react';
 import { hasReset } from '@shared/usage.ts';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { HistoryPanel } from '@/components/HistoryPanel';
 import { Launcher } from '@/components/Launcher';
 import { MainPane } from '@/components/MainPane';
 import { PastSessionView } from '@/components/PastSessionView';
 import { SettingsPage } from '@/components/SettingsPage';
+import { SHELL_COLUMN, SHELL_GRID, ShellCell } from '@/components/Shell';
 import { Sidebar } from '@/components/Sidebar';
+import { StartingView } from '@/components/StartingView';
 import { Button } from '@/components/ui/button';
 import type { LookoutClient } from '@/lib/client';
 import { tidySentAt } from '@/lib/activity';
 import { type HistoryLayout, loadLayout, saveLayout } from '@/lib/history';
 import { useAnyModalOpen } from '@/lib/modal';
 import { type HarnessState, type LaunchDraft, initialDraft } from '@/lib/launch';
-import { useRoute } from '@/lib/router';
-import { listKnown, useLookout } from '@/lib/store';
+import { parseRoute, routePath, useRoute } from '@/lib/router';
+import { HARNESS_NAME } from '@/lib/sessions';
+import { cn } from '@/lib/utils';
+import { listKnown, shownLaunches, useLookout } from '@/lib/store';
 import { useNow } from '@/lib/time';
 
 /** A manual drawer toggle, valid while the Session keeps the Status it had then. */
@@ -23,6 +28,17 @@ interface DrawerOverride {
   open: boolean;
   status: Status;
   since: number | null;
+}
+
+/** LAUNCH-4.2: the row this tab shows for its own start until the server lists it. */
+function ownLaunch(id: string, title: string, harness: LaunchHarness, directory: string): LaunchView {
+  return { id, title, harness, directory, startedAt: Date.now(), state: 'starting', error: null, terminal: null };
+}
+
+/** The server's title for a start (LAUNCH-3.3): its name, else "<Harness> in <folder>". */
+function startTitle(req: LaunchRequest): string {
+  const folder = req.directory.replace(/\/+$/, '').split('/').pop() || req.directory;
+  return req.name.trim() || `${HARNESS_NAME[req.harness]} in ${folder}`;
 }
 
 function isTextField(t: EventTarget | null): boolean {
@@ -36,6 +52,7 @@ export function App({ client }: { client: LookoutClient }) {
   const now = useNow(1000);
   const sessions = useMemo(() => [...state.sessions.values()], [state.sessions]);
   const selectedId = route.name === 'session' ? route.id : null;
+  const selectedLaunchId = route.name === 'launch' ? route.id : null;
 
   // SIDE-3.3: the tab title counts the Sessions that need you.
   const needsYou = sessions.filter((s) => s.status === 'needs-you').length;
@@ -89,6 +106,12 @@ export function App({ client }: { client: LookoutClient }) {
     (id: string, how: 'push' | 'replace') => navigate({ name: 'session', id }, { replace: how === 'replace' }),
     [navigate],
   );
+  const onSelectLaunch = useCallback(
+    (id: string, how: 'push' | 'replace') => navigate({ name: 'launch', id }, { replace: how === 'replace' }),
+    [navigate],
+  );
+  // LAUNCH-4.2: the server's launches, then this tab's own it doesn't list yet.
+  const launches = useMemo(() => shownLaunches(state), [state]);
   const save = useCallback((patch: Parameters<LookoutClient['saveSettings']>[0]) => client.saveSettings(patch), [client]);
 
   // LAUNCH: the launcher. Its draft outlives closing it (LAUNCH-1.3); null = start fresh.
@@ -126,28 +149,57 @@ export function App({ client }: { client: LookoutClient }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [openLauncher, launcherOpen, modalOpen]);
 
-  // LAUNCH-4.2: once Fleet reports a Session this tab started, select it.
-  // Ownership is state, so whichever arrives last (the start's response or Fleet's report)
-  // triggers the selection; `handled` makes each start select once.
-  const [mine, setMine] = useState<ReadonlySet<string>>(new Set());
-  const handled = useRef(new Set<string>());
-  useEffect(() => {
-    for (const id of mine) {
-      const sessionId = state.started.get(id);
-      if (!sessionId || handled.current.has(id)) continue;
-      handled.current.add(id);
-      navigate({ name: 'session', id: sessionId });
-    }
-  }, [mine, state.started, navigate]);
+  // LAUNCH-4.2: Start (or a resume, HIST-3.1) selects its "Starting…" row the moment you press
+  // it: the tab picks the launch id and shows the row itself until the server lists it. Whatever
+  // answers later moves the selection only while that row is still selected; if you moved to
+  // another Session or view meanwhile, you stay there.
+  const requestLaunch = useCallback(
+    (launch: LaunchView) => {
+      const from = window.location.pathname;
+      const path = routePath({ name: 'launch', id: launch.id });
+      dispatch({ type: 'launch-requested', launch });
+      navigate({ name: 'launch', id: launch.id });
+      const here = () => window.location.pathname === path;
+      return {
+        here,
+        /** The launch the server answered with, or null when there's none (it failed, or went live). */
+        answered: (served: LaunchView | null) => dispatch({ type: 'launch-answered', id: launch.id, launch: served }),
+        /** It failed: back to where you pressed it, unless you've moved on. */
+        back: () => {
+          if (here()) navigate(parseRoute(from), { replace: true });
+        },
+      };
+    },
+    [dispatch, navigate],
+  );
+  // LAUNCH-4.2: once Fleet reports it, the Session takes over the selection, but only while its
+  // "Starting…" row is still selected: whatever you moved to meanwhile stays. Replaced, so Back
+  // doesn't return to a start that's gone; before paint, so the start never shows as unlisted.
+  const takeOver = selectedLaunchId ? state.started.get(selectedLaunchId) : undefined;
+  useLayoutEffect(() => {
+    if (takeOver) navigate({ name: 'session', id: takeOver }, { replace: true });
+  }, [takeOver, navigate]);
 
   const start = useCallback(
     async (req: LaunchRequest) => {
-      const launch = await client.launch(req);
-      setMine((m) => new Set(m).add(launch.id));
+      const id = crypto.randomUUID();
+      const pending = requestLaunch(ownLaunch(id, startTitle(req), req.harness, req.directory));
+      let launch: LaunchView;
+      try {
+        launch = await client.launch(req, id);
+      } catch (err) {
+        // LAUNCH-4.4: the launcher stays open with the error; the row goes.
+        pending.answered(null);
+        pending.back();
+        throw err;
+      }
+      pending.answered(launch);
+      // A server that picked its own id: follow it while the row is still selected.
+      if (launch.id !== id && pending.here()) navigate({ name: 'launch', id: launch.id }, { replace: true });
       setDraft(null);
       setLauncherOpen(false);
     },
-    [client],
+    [client, requestLaunch, navigate],
   );
 
   // HIST-1: the right sidebar; open or not, and its width, kept in this browser (HIST-1.3).
@@ -182,19 +234,30 @@ export function App({ client }: { client: LookoutClient }) {
   const searchHistory = useCallback((q: Parameters<LookoutClient['history']>[0]) => client.history(q), [client]);
   const loadPast = useCallback((harness: HistoryItem['harness'], id: string) => client.pastSession(harness, id), [client]);
   // HIST-3: a live Session is selected (3.2); one that can't be resumed opens read-only (3.3);
-  // any other is resumed, and selected once Fleet reports it, as a start is (3.1, LAUNCH-4.2).
+  // any other is resumed, its "Starting…" row selected as a start's is (3.1, LAUNCH-4.2).
   const openPast = useCallback(
     async (item: HistoryItem, live: boolean) => {
       if (live) return navigate({ name: 'session', id: item.sessionId });
       if (item.blocked) return navigate({ name: 'past', harness: item.harness, id: item.sessionId });
-      const result = await client.resume(item.harness, item.sessionId);
-      if (result.kind === 'live') navigate({ name: 'session', id: result.sessionId });
+      const id = crypto.randomUUID();
+      const pending = requestLaunch(ownLaunch(id, item.title, item.harness, item.projectPath ?? ''));
+      let result: ResumeResult;
+      try {
+        result = await client.resume(item.harness, item.sessionId, id);
+      } catch (err) {
+        pending.answered(null);
+        pending.back();
+        throw err;
+      }
+      pending.answered(result.kind === 'started' ? result.launch : null);
+      if (!pending.here()) return; // you moved on meanwhile: stay there
+      if (result.kind === 'live') navigate({ name: 'session', id: result.sessionId }, { replace: true });
       // HIST-3.3: it can't be resumed after all (its directory went since it was listed).
-      else if (result.kind === 'blocked') navigate({ name: 'past', harness: result.harness, id: result.sessionId });
-      // A new start, or this Lookout's own one already under way: selected once Fleet reports it.
-      else setMine((m) => new Set(m).add(result.launch.id));
+      else if (result.kind === 'blocked') navigate({ name: 'past', harness: result.harness, id: result.sessionId }, { replace: true });
+      // This Lookout's own resume of it, already under way: its "Starting…" row.
+      else if (result.launch.id !== id) navigate({ name: 'launch', id: result.launch.id }, { replace: true });
     },
-    [client, navigate],
+    [client, navigate, requestLaunch],
   );
 
   // VIEW-2.2: the drawer is open while the Session Needs you, unless you toggled it during the
@@ -329,7 +392,8 @@ export function App({ client }: { client: LookoutClient }) {
   );
 
   return (
-    <div className="flex h-dvh overflow-hidden">
+    // SIDE-8.1: one grid, rows header / content / dock, shared by every column (see Shell).
+    <div className={SHELL_GRID} data-shell="">
       <Sidebar
         sessions={sessions}
         fleet={state.fleet}
@@ -342,17 +406,26 @@ export function App({ client }: { client: LookoutClient }) {
         settingsOpen={route.name === 'settings'}
         onOpenSettings={() => navigate(route.name === 'settings' ? { name: 'home' } : { name: 'settings' })}
         onNewSession={openLauncher}
-        launches={state.launches}
+        launches={launches}
+        selectedLaunchId={selectedLaunchId}
+        onSelectLaunch={onSelectLaunch}
+        onSelectNone={() => navigate({ name: 'home' }, { replace: true })}
         onDismissLaunch={(id) => void client.dismissLaunch(id).catch(() => {})}
         keyboardEnabled={!modalOpen}
         usage={state.usage}
         onUsageOpen={() => void client.refreshJev().catch(() => {})}
       />
-      <main className="min-w-0 flex-1 overflow-y-auto">
+      {/* tabIndex -1: focus lands here after the selected start is dismissed (LAUNCH UX). */}
+      <main className={cn(SHELL_COLUMN, 'outline-none')} data-shell-column="main" tabIndex={-1}>
         {route.name === 'settings' ? (
           <SettingsPage settings={state.settings} save={save} onBack={() => navigate({ name: 'home' })} />
         ) : route.name === 'past' ? (
           <PastSessionView harness={route.harness} sessionId={route.id} now={now} load={loadPast} />
+        ) : route.name === 'launch' ? (
+          // Its Session is taking over the selection (the layout effect above): show nothing meanwhile.
+          takeOver ? null : (
+            <StartingView launch={launches.find((l) => l.id === route.id) ?? null} loaded={state.loaded} now={now} />
+          )
         ) : (
           <MainPane
             selectedId={selectedId}
@@ -397,10 +470,13 @@ export function App({ client }: { client: LookoutClient }) {
           onOpen={openPast}
         />
       ) : (
-        <div className="flex h-full w-10 shrink-0 flex-col items-center border-l border-sidebar-border bg-sidebar pt-2.5">
-          <Button variant="ghost" size="icon-sm" aria-label="History" title="History (H)" onClick={toggleHistory} className="size-7 text-muted-foreground">
-            <HistoryIcon className="size-4" />
-          </Button>
+        // HIST-1.1: closed, the right sidebar is a narrow rail; its header cell carries the top line on.
+        <div className={cn(SHELL_COLUMN, 'w-10 border-l border-sidebar-border bg-sidebar')} data-shell-column="right">
+          <ShellCell row="header" className="justify-center border-sidebar-border">
+            <Button variant="ghost" size="icon-sm" aria-label="History" title="History (H)" onClick={toggleHistory} className="size-7 text-muted-foreground">
+              <HistoryIcon className="size-4" />
+            </Button>
+          </ShellCell>
         </div>
       )}
       <Launcher

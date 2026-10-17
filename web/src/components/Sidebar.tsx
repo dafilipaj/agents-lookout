@@ -9,6 +9,7 @@ import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { LaunchItem } from './LaunchItem';
 import { SessionItem } from './SessionItem';
+import { SHELL_COLUMN, ShellCell } from './Shell';
 import { UsageStrip } from './UsageStrip';
 
 export interface SidebarProps {
@@ -27,6 +28,11 @@ export interface SidebarProps {
   onNewSession(): void;
   /** LAUNCH-4: starts in flight, shown above the Sessions. */
   launches: readonly LaunchView[];
+  /** LAUNCH-4.2: the selected "Starting…" row, if any (then `selectedId` is null). */
+  selectedLaunchId: string | null;
+  onSelectLaunch(id: string, how: 'push' | 'replace'): void;
+  /** Nothing selected: the selected start was dismissed and no other start is left. */
+  onSelectNone(): void;
   onDismissLaunch(id: string): void;
   /** False while a dialog owns the keyboard. */
   keyboardEnabled: boolean;
@@ -37,7 +43,7 @@ export interface SidebarProps {
 }
 
 export function Sidebar(props: SidebarProps) {
-  const { sessions, fleet, loaded, connected, idleThresholdHours, selectedId, now, onSelect } = props;
+  const { sessions, fleet, loaded, connected, idleThresholdHours, selectedId, now, onSelect, launches, selectedLaunchId, onSelectLaunch } = props;
   const [filter, setFilter] = useState('');
   const filterRef = useRef<HTMLInputElement>(null);
 
@@ -63,36 +69,45 @@ export function Sidebar(props: SidebarProps) {
     return { controllable, viewOnly, visible: [...controllable, ...viewOnly] };
   }, [orderedIds, byId, filter]);
 
-  // SIDE-5: keyboard.
-  const latest = useRef({ visible, selectedId, onSelect, enabled: props.keyboardEnabled });
+  // SIDE-5: keyboard. Rows in screen order: "Starting…" rows first (LAUNCH-4.7), then the Sessions.
+  const rows = useMemo<NavRow[]>(
+    () => [...launches.map((l) => ({ kind: 'launch' as const, id: l.id, failed: l.state === 'failed' })), ...visible.map((r) => ({ kind: 'session' as const, id: r.id, needsYou: r.status === 'needs-you' }))],
+    [launches, visible],
+  );
+  const latest = useRef({ rows, selectedId, selectedLaunchId, onSelect, onSelectLaunch, enabled: props.keyboardEnabled });
   useEffect(() => {
-    latest.current = { visible, selectedId, onSelect, enabled: props.keyboardEnabled };
+    latest.current = { rows, selectedId, selectedLaunchId, onSelect, onSelectLaunch, enabled: props.keyboardEnabled };
   });
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.isComposing || e.defaultPrevented || !latest.current.enabled) return;
-      const { visible, selectedId, onSelect } = latest.current;
+      const { rows, selectedId, selectedLaunchId, onSelect, onSelectLaunch } = latest.current;
       const inFilter = e.target === filterRef.current;
       const editing = !inFilter && isEditable(e.target);
-      const index = visible.findIndex((r) => r.id === selectedId);
+      const index = rows.findIndex((r) => (r.kind === 'launch' ? r.id === selectedLaunchId : r.id === selectedId));
+      const select = (row: NavRow | undefined, how: 'push' | 'replace') => {
+        if (!row) return;
+        if (row.kind === 'launch') onSelectLaunch(row.id, how);
+        else onSelect(row.id, how);
+      };
       const step = (delta: 1 | -1) => {
-        if (!visible.length) return;
-        const next = index === -1 ? (delta === 1 ? 0 : visible.length - 1) : clamp(index + delta, 0, visible.length - 1);
-        const row = visible[next];
-        if (row) onSelect(row.id, 'replace');
+        if (!rows.length) return;
+        const next = index === -1 ? (delta === 1 ? 0 : rows.length - 1) : clamp(index + delta, 0, rows.length - 1);
+        select(rows[next], 'replace');
       };
 
       if (e.metaKey && !e.altKey && !e.ctrlKey && !e.shiftKey) {
         if (/^[1-9]$/.test(e.key)) {
-          const row = visible[Number(e.key) - 1];
           e.preventDefault();
-          if (row) onSelect(row.id, 'push');
+          // A failed start stays until it's dismissed, so it doesn't take a number (LAUNCH-4.7).
+          select(rows.filter((r) => r.kind === 'session' || !r.failed)[Number(e.key) - 1], 'push');
         } else if (e.key.toLowerCase() === 'j') {
+          // "Starting…" rows never Need you, so ⌘J skips them.
           e.preventDefault();
-          const waiting = visible.filter((r) => r.status === 'needs-you');
+          const needsYou = (r: NavRow) => r.kind === 'session' && r.needsYou;
+          const waiting = rows.filter(needsYou);
           if (!waiting.length) return;
-          const after = visible.slice(index + 1).find((r) => r.status === 'needs-you');
-          onSelect((after ?? waiting[0]!).id, 'push');
+          select(rows.slice(index + 1).find(needsYou) ?? waiting[0], 'push');
         }
         return;
       }
@@ -127,6 +142,29 @@ export function Sidebar(props: SidebarProps) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [filter]);
+
+  // LAUNCH UX: dismissing the selected start selects the next start (else the one before); with no
+  // other start left, nothing is selected. Once its row is gone, focus goes to the Dismiss button
+  // of the start that took its place, if it failed too, else to the main pane, never to <body>.
+  const launchesRef = useRef<HTMLUListElement>(null);
+  const dismissed = useRef<{ id: string; then: string | null } | null>(null);
+  const dismiss = (id: string) => {
+    const i = launches.findIndex((l) => l.id === id);
+    const then = launches[i + 1]?.id ?? launches[i - 1]?.id ?? null;
+    if (id === selectedLaunchId) {
+      if (then) onSelectLaunch(then, 'replace');
+      else props.onSelectNone();
+    }
+    dismissed.current = { id, then };
+    props.onDismissLaunch(id);
+  };
+  useEffect(() => {
+    const d = dismissed.current;
+    if (!d || launches.some((l) => l.id === d.id)) return;
+    dismissed.current = null;
+    const next = d.then && launchesRef.current?.querySelector<HTMLElement>(`[data-launch-id="${CSS.escape(d.then)}"] button`);
+    (next || document.querySelector<HTMLElement>('main[tabindex]'))?.focus();
+  }, [launches]);
 
   const stale = fleet.state === 'failing' || (loaded && !connected);
   const body = (() => {
@@ -191,11 +229,13 @@ export function Sidebar(props: SidebarProps) {
   return (
     <aside
       aria-label="Session sidebar"
-      className="flex h-full w-[280px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground"
+      className={cn(SHELL_COLUMN, 'w-[280px] border-r border-sidebar-border bg-sidebar text-sidebar-foreground')}
+      data-shell-column="left"
       onPointerEnter={() => setFrozenOrder(orderedIds)}
       onPointerLeave={() => setFrozenOrder(null)}
     >
-      <div className="flex items-center gap-1.5 px-2.5 pt-2.5 pb-2">
+      {/* SIDE-8.1: the Filter bar is this column's header cell. */}
+      <ShellCell row="header" className="gap-1.5 border-sidebar-border px-2.5 py-2">
         <label className="relative flex min-w-0 flex-1 items-center">
           <Search aria-hidden className="pointer-events-none absolute left-2 size-3.5 text-muted-foreground" />
           <input
@@ -233,27 +273,40 @@ export function Sidebar(props: SidebarProps) {
         >
           <SettingsIcon className="size-4" />
         </Button>
-      </div>
-      {loaded && !connected ? (
-        <Banner icon={<WifiOff className="size-3.5" />} text="Lost the Lookout server. Reconnecting…" />
-      ) : fleet.state === 'failing' && fleet.lastOkAt !== null ? (
-        <Banner
-          icon={<TriangleAlert className="size-3.5" />}
-          text={`Fleet isn't answering. List is ${formatAge(now - fleet.lastOkAt)} old.`}
-          detail={fleet.error}
-        />
-      ) : null}
-      <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-        {props.launches.length > 0 && (
-          <ul aria-label="Starting Sessions" className="flex flex-col gap-px px-1.5 pb-px">
-            {props.launches.map((l) => (
-              <LaunchItem key={l.id} launch={l} now={now} onDismiss={props.onDismissLaunch} />
-            ))}
-          </ul>
-        )}
-        {body}
-      </div>
-      <UsageStrip usage={props.usage} now={now} onOpen={props.onUsageOpen} />
+      </ShellCell>
+      <ShellCell row="body" className="flex flex-col">
+        {loaded && !connected ? (
+          <Banner icon={<WifiOff className="size-3.5" />} text="Lost the Lookout server. Reconnecting…" />
+        ) : fleet.state === 'failing' && fleet.lastOkAt !== null ? (
+          <Banner
+            icon={<TriangleAlert className="size-3.5" />}
+            text={`Fleet isn't answering. List is ${formatAge(now - fleet.lastOkAt)} old.`}
+            detail={fleet.error}
+          />
+        ) : null}
+        <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto pt-1.5">
+          {launches.length > 0 && (
+            // A plain list, not a listbox: a failed row holds a Dismiss button, which an option can't.
+            <ul ref={launchesRef} aria-label="Starting Sessions" className="flex flex-col gap-px px-1.5 pb-px">
+              {launches.map((l) => (
+                <LaunchItem
+                  key={l.id}
+                  launch={l}
+                  now={now}
+                  selected={l.id === selectedLaunchId}
+                  onSelect={(id) => onSelectLaunch(id, 'push')}
+                  onDismiss={dismiss}
+                />
+              ))}
+            </ul>
+          )}
+          {body}
+        </div>
+      </ShellCell>
+      {/* SIDE-8.1: the usage panel sits in the dock row, so its top line is the composer's. */}
+      <ShellCell row="dock" className="border-sidebar-border">
+        <UsageStrip usage={props.usage} now={now} onOpen={props.onUsageOpen} />
+      </ShellCell>
     </aside>
   );
 }
@@ -263,7 +316,7 @@ function Banner({ icon, text, detail }: { icon: ReactNode; text: string; detail?
     <div
       role="status"
       title={detail}
-      className="mx-2.5 mb-2 flex items-center gap-1.5 rounded-md border border-needs-you/30 bg-needs-you-soft px-2 py-1.5 text-[12px] leading-4 text-needs-you-text"
+      className="mx-2.5 my-2 flex items-center gap-1.5 rounded-md border border-needs-you/30 bg-needs-you-soft px-2 py-1.5 text-[12px] leading-4 text-needs-you-text"
     >
       {icon}
       <span>{text}</span>
@@ -300,6 +353,9 @@ function NotInstalled({ command }: { command: string }) {
 function Code({ children }: { children: ReactNode }) {
   return <code className="rounded bg-muted px-1 font-mono text-[11px]">{children}</code>;
 }
+
+/** A row keyboard navigation can land on: a "Starting…" row or a Session's. */
+type NavRow = { kind: 'launch'; id: string; failed: boolean } | { kind: 'session'; id: string; needsYou: boolean };
 
 /** The frozen order, minus rows that are gone, plus new rows at the end. */
 function keepOrder(frozen: readonly string[], current: readonly string[]): string[] {

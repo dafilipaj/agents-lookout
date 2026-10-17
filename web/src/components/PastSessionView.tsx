@@ -7,6 +7,7 @@ import { HARNESS_NAME } from '@/lib/sessions';
 import { formatAge } from '@/lib/time';
 import { Chat } from './Chat';
 import { HarnessIcon } from './HarnessIcon';
+import { PaneHeader, PlainView, ShellCell, ShellView } from './Shell';
 
 interface Props {
   harness: Harness;
@@ -44,68 +45,90 @@ export function PastSessionView({ harness, sessionId, now, load }: Props) {
     [detail],
   );
 
-  if (!current) return <div className="p-8 text-sm text-muted-foreground">Loading…</div>;
+  if (!current) {
+    return (
+      <PlainView>
+        <div className="p-8 text-sm text-muted-foreground">Loading…</div>
+      </PlainView>
+    );
+  }
   if (!detail) {
     return (
-      <div className="mx-auto w-full max-w-3xl px-8 py-7">
-        <div role="alert" className="rounded-lg border border-border bg-muted/60 px-3.5 py-3">
-          <p className="text-sm font-medium">Couldn&apos;t open this past Session</p>
-          <p className="text-[13px] text-muted-foreground">{current.error}</p>
+      <PlainView>
+        <div className="mx-auto w-full max-w-3xl px-8 py-7">
+          <div role="alert" className="rounded-lg border border-border bg-muted/60 px-3.5 py-3">
+            <p className="text-sm font-medium">Couldn&apos;t open this past Session</p>
+            <p className="text-[13px] text-muted-foreground">{current.error}</p>
+          </div>
         </div>
-      </div>
+      </PlainView>
     );
   }
   const { item } = detail;
+  // SIDE-8.1: laid out like an ended Session: a one-line header, the chat, and in the dock the note
+  // on why it's read-only with where it ran under it, like a live Session's status line.
+  const where = [item.projectPath, item.branch].filter(Boolean).join(' · ');
   return (
-    <div className="flex h-full min-h-0 flex-col" data-testid="past-session">
-      <header className="shrink-0 border-b border-border px-5 py-3" aria-label="Past Session">
-        <div className="flex items-center gap-2.5">
-          <h1 className="min-w-0 truncate text-[15px] font-semibold tracking-tight text-muted-foreground" title={item.title}>
-            {item.title}
-          </h1>
-          <span className="flex shrink-0 items-center gap-1.5 text-[12.5px] text-muted-foreground">
-            <HarnessIcon harness={item.harness} className="size-4" />
-            {HARNESS_NAME[item.harness]}
-          </span>
-          <span className="ml-auto shrink-0 rounded-full bg-muted px-2 py-0.5 text-[12px] font-medium text-muted-foreground">
-            Read-only{item.lastActiveAt !== null && <span className="font-normal opacity-70"> · {formatAge(now - item.lastActiveAt)}</span>}
-          </span>
+    <ShellView data-testid="past-session">
+      <PaneHeader aria-label="Past Session">
+        <h1 className="min-w-0 truncate text-[15px] font-semibold tracking-tight text-muted-foreground" title={item.title}>
+          {item.title}
+        </h1>
+        <span className="flex shrink-0 items-center gap-1.5 text-[12.5px] text-muted-foreground">
+          <HarnessIcon harness={item.harness} className="size-4" />
+          {HARNESS_NAME[item.harness]}
+        </span>
+        <span className="ml-auto shrink-0 rounded-full bg-muted px-2 py-0.5 text-[12px] font-medium text-muted-foreground">
+          Read-only{item.lastActiveAt !== null && <span className="font-normal opacity-70"> · {formatAge(now - item.lastActiveAt)}</span>}
+        </span>
+      </PaneHeader>
+      <ShellCell row="body" className="flex flex-col overflow-hidden">
+        <Chat
+          key={key}
+          sessionId={key}
+          harness={item.harness}
+          chat={chat}
+          ended
+          onEarlier={noEarlier}
+          onPage={noop}
+          onFollowing={noop}
+        />
+      </ShellCell>
+      <ShellCell row="dock">
+        <div role="note" className="flex flex-1 items-start gap-2.5 bg-muted/50 px-5 py-3.5">
+          <CircleSlash className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
+          <div>
+            <p className="text-[13px] font-medium">
+              {item.blocked ? `This Session can't be resumed. ${BLOCK_REASON[item.blocked]}` : 'A past Session, shown read-only.'}
+            </p>
+            <p className="text-[12.5px] leading-5 text-muted-foreground">{previewNote(detail)}</p>
+          </div>
         </div>
-        <div className="mt-1 flex min-w-0 items-center gap-1.5 text-[12.5px] text-muted-foreground">
-          {item.projectPath && (
-            <span className="min-w-0 truncate" title={item.projectPath}>
-              {item.projectPath}
-            </span>
-          )}
-          {item.branch && (
-            <>
-              <span aria-hidden>·</span>
-              <GitBranch aria-label="Branch" className="size-3.5 shrink-0" />
-              <span className="truncate">{item.branch}</span>
-            </>
-          )}
-        </div>
-      </header>
-      <div role="note" className="flex shrink-0 items-start gap-2 border-b border-border bg-muted/40 px-5 py-2.5 text-[12.5px]">
-        <CircleSlash className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
-        <div>
-          <p className="font-medium">
-            {item.blocked ? `This Session can't be resumed. ${BLOCK_REASON[item.blocked]}` : 'A past Session, shown read-only.'}
-          </p>
-          <p className="text-muted-foreground">{previewNote(detail)}</p>
-        </div>
-      </div>
-      <Chat
-        key={key}
-        sessionId={key}
-        harness={item.harness}
-        chat={chat}
-        ended
-        onEarlier={noEarlier}
-        onPage={noop}
-        onFollowing={noop}
-      />
-    </div>
+        {where && (
+          <div
+            role="group"
+            aria-label="Where it ran"
+            title={where}
+            className="flex h-7 min-w-0 shrink-0 items-center gap-1.5 overflow-hidden border-t border-border/70 bg-muted/30 px-5 font-mono text-[11.5px] whitespace-nowrap text-muted-foreground"
+          >
+            {item.projectPath && <span className="min-w-0 truncate">{item.projectPath}</span>}
+            {item.branch && (
+              <>
+                {item.projectPath && (
+                  <span aria-hidden className="shrink-0 opacity-60">
+                    ·
+                  </span>
+                )}
+                <span className="flex min-w-0 items-center gap-1">
+                  <GitBranch aria-label="Branch" className="size-3.5 shrink-0" />
+                  <span className="truncate">{item.branch}</span>
+                </span>
+              </>
+            )}
+          </div>
+        )}
+      </ShellCell>
+    </ShellView>
   );
 }
 

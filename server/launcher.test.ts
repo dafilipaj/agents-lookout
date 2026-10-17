@@ -252,6 +252,31 @@ describe('starting Sessions', () => {
     expect(t.launcher.recentStarts()).toEqual([]);
   });
 
+  it('LAUNCH-4.2: a start whose Session gets its session id later (Codex) is replayed under the new id, so reloading `/l/<id>` lands on the live Session', async () => {
+    const t = setup({ spawn: async () => spawned('kg-hook') });
+    const launch = await t.launcher.start(req());
+    // Codex has no session id before its first prompt; harness-agnostic here (codex isn't installed in this fake).
+    t.launcher.observe([row({ pid: 4242, session_id: null, tmux_session: 'kg-hook' })]);
+    expect(t.launcher.recentStarts()).toEqual([{ launchId: launch.id, sessionId: 'claude:4242' }]);
+    t.launcher.observe([row({ pid: 4242, session_id: '12345678-aaaa-7000-8000-00000000c0de', tmux_session: 'kg-hook' })]);
+    expect(t.launcher.recentStarts()).toEqual([{ launchId: launch.id, sessionId: '12345678-aaaa-7000-8000-00000000c0de' }]);
+  });
+
+  it('LAUNCH-4.2: the tab picks the launch id, so it can select the row before the start answers; a bad or taken one is refused', async () => {
+    const t = setup();
+    const id = '0f0e0d0c-0b0a-4000-8000-000000000001';
+    const launch = await t.launcher.start(req({ launchId: id }));
+    expect(launch.id).toBe(id);
+    expect(t.changes[0]!.launches).toEqual([expect.objectContaining({ id, state: 'starting' })]);
+    await expect(t.launcher.start(req({ launchId: id }))).rejects.toMatchObject({ status: 409 });
+    t.launcher.observe([row({})]);
+    // Still taken while its start is remembered (60 s).
+    await expect(t.launcher.start(req({ launchId: id }))).rejects.toMatchObject({ status: 409 });
+    await expect(t.launcher.start(req({ launchId: '../x' }))).rejects.toMatchObject({ status: 400, message: 'Invalid launch id.' });
+    // An older tab sends none: the server makes one up.
+    expect((await t.launcher.start(req())).id).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
   it('LAUNCH-4.5: the 15 s count from when "Starting…" appeared, even while `fleet spawn` is still running', async () => {
     let finishSpawn: (out: string) => void = () => {};
     const t = setup({ spawn: () => new Promise((resolve) => (finishSpawn = resolve)) });
@@ -341,6 +366,13 @@ describe('resuming past Sessions (HIST-3), through the same path as a start', ()
     expect(t.changes.at(-1)!.started).toEqual([{ launchId: launch.id, sessionId: resumeReq.sessionId }]);
     // A resume isn't a launch: the launcher's remembered choices stay.
     expect(t.update).not.toHaveBeenCalled();
+  });
+
+  it('HIST-3.1: a resume uses the launch id the tab picked; one already under way keeps its own', async () => {
+    const t = setup({ spawn: async () => spawned('work-2', { harness: 'codex' }) });
+    const id = '0f0e0d0c-0b0a-4000-8000-000000000002';
+    expect((await t.launcher.resume({ ...resumeReq, launchId: id })).id).toBe(id);
+    expect((await t.launcher.resume({ ...resumeReq, launchId: '0f0e0d0c-0b0a-4000-8000-000000000003' })).id).toBe(id);
   });
 
   it('HIST-3.4: a resume Fleet hasn’t reported after 15 s fails like a start (LAUNCH-4.5), with its terminal’s last lines', async () => {

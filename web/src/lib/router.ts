@@ -7,7 +7,9 @@ export type Route =
   | { name: 'session'; id: string }
   | { name: 'settings' }
   /** HIST-3.3: a past Session that can't be resumed, read-only. */
-  | { name: 'past'; harness: Harness; id: string };
+  | { name: 'past'; harness: Harness; id: string }
+  /** LAUNCH-4.2 / 4.6: a "Starting…" row, selected until its Session takes over. */
+  | { name: 'launch'; id: string };
 
 export function parseRoute(pathname: string): Route {
   if (pathname === '/settings') return { name: 'settings' };
@@ -15,6 +17,14 @@ export function parseRoute(pathname: string): Route {
   if (past?.[2]) {
     try {
       return { name: 'past', harness: past[1] as Harness, id: decodeURIComponent(past[2]) };
+    } catch {
+      return { name: 'home' };
+    }
+  }
+  const launch = /^\/l\/([^/]+)\/?$/.exec(pathname);
+  if (launch?.[1]) {
+    try {
+      return { name: 'launch', id: decodeURIComponent(launch[1]) };
     } catch {
       return { name: 'home' };
     }
@@ -40,6 +50,8 @@ export function routePath(route: Route): string {
       return `/s/${encodeURIComponent(route.id)}`;
     case 'past':
       return `/h/${route.harness}/${encodeURIComponent(route.id)}`;
+    case 'launch':
+      return `/l/${encodeURIComponent(route.id)}`;
   }
 }
 
