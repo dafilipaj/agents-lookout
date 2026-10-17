@@ -235,11 +235,58 @@ describe('after ending (VIEW-5.7)', () => {
 describe('when Fleet refuses (VIEW-5.8)', () => {
   const failWith = (kind: string) => editList((r) => r.map((x) => (x.session_id === OWN ? { ...x, fake_close: kind } : x)));
 
-  it('VIEW-5.8: `busy` says Fleet is typing into it; try again', async () => {
+  const failWithReason = (kind: string, reason: unknown) =>
+    editList((r) => r.map((x) => (x.session_id === OWN ? { ...x, fake_close: kind, fake_close_reason: reason } : x)));
+  const BUSY_TEXT = 'Fleet is typing into it; try again.';
+  const SHARED_TEXT = 'This Session shares its Session host with other windows, so Lookout won’t end it. Close it in the terminal.';
+
+  it('VIEW-5.8: `busy` while Fleet holds the Session (`locked`) says Fleet is typing into it; try again', async () => {
     failWith('busy');
     const t = await setup();
-    expect(await refusal(t.end(OWN))).toEqual({ status: 409, message: 'Fleet is typing into it; try again.' });
+    expect(await refusal(t.end(OWN))).toEqual({ status: 409, message: BUSY_TEXT });
     expect(t.refresh).not.toHaveBeenCalled();
+  });
+
+  it('VIEW-5.8: each of Fleet’s reasons gets its own message, saying what to do, never naming tmux', async () => {
+    const cases: [string, string, string][] = [
+      ['busy', 'locked', BUSY_TEXT],
+      ['busy', 'editor_open', 'An editor is open in this Session. Close it in the terminal, then try again.'],
+      ['host_shared', 'shared_host', SHARED_TEXT],
+      ['host_shared', 'job_in_front', 'This Session is paused behind another program in its terminal. Close it there.'],
+      ['host_shared', 'other_jobs', 'Another program is stopped in this Session’s terminal. Close the Session there.'],
+    ];
+    for (const [kind, reason, message] of cases) {
+      failWithReason(kind, reason);
+      const t = await setup();
+      const got = await refusal(t.end(OWN));
+      expect(got, `${kind}/${reason}`).toEqual({ status: 409, message });
+      expect(got.message).not.toMatch(/tmux/i);
+      expect(t.refresh).not.toHaveBeenCalled();
+    }
+    // The fake answers as the contract has it: `reason` beside `kind`.
+    const raw = await run(FAKE_FLEET, ['--local', 'close', `id:${OWN}`, '--json'], { timeoutMs: 5000, env }).catch((e: { stdout: string }) => e.stdout);
+    expect(JSON.parse(raw)).toMatchObject({ ok: false, kind: 'host_shared', reason: 'other_jobs' });
+  });
+
+  it('VIEW-5.8: a missing, unknown or malformed reason, or one under another kind, falls back to the kind’s text', async () => {
+    const cases: [string, unknown, string][] = [
+      ['busy', null, BUSY_TEXT], // a Fleet before reasons: no `reason` at all
+      ['host_shared', null, SHARED_TEXT],
+      ['busy', 'brand_new_reason', BUSY_TEXT],
+      ['host_shared', 'job_in_front ', SHARED_TEXT],
+      ['busy', 'job_in_front', BUSY_TEXT], // `kind` decides: a host_shared reason doesn't count under busy
+      ['host_shared', 'editor_open', SHARED_TEXT],
+      ['busy', 'constructor', BUSY_TEXT],
+      ['host_shared', '__proto__', SHARED_TEXT],
+      ['busy', 7, BUSY_TEXT],
+      ['host_shared', ['other_jobs'], SHARED_TEXT],
+      ['busy', 'x'.repeat(5000), BUSY_TEXT],
+    ];
+    for (const [kind, reason, message] of cases) {
+      failWithReason(kind, reason);
+      const t = await setup();
+      expect(await refusal(t.end(OWN)), `${kind}/${String(reason).slice(0, 20)}`).toEqual({ status: 409, message });
+    }
   });
 
   it('VIEW-5.8: `host_shared` and `backend_unsupported` explain why, and say to close it in the terminal', async () => {
@@ -271,6 +318,9 @@ describe('when Fleet refuses (VIEW-5.8)', () => {
     expect(io).toEqual({ status: 502, message: "Couldn't end it: the Session host refused." });
     const secret = await refusal(endSession({ ...t.opts, runner: failing('{"ok":false,"kind":"io","error":"token=abc123 refused\\nmore"}', '') }, OWN, t.confirmed(OWN)));
     expect(secret.message).toBe("Couldn't end it: token=… refused.");
+    // Fleet can't tell what's on the terminal (`lsof` missing or failing): `io`, its error on one line.
+    const lsof = await refusal(endSession({ ...t.opts, runner: failing('{"ok":false,"kind":"io","error":"lsof failed: not found"}', '') }, OWN, t.confirmed(OWN)));
+    expect(lsof).toEqual({ status: 502, message: "Couldn't end it: lsof failed: not found." });
     const old = await refusal(endSession({ ...t.opts, runner: failing('', "error: unrecognized subcommand 'close'") }, OWN, t.confirmed(OWN)));
     expect(old).toEqual({ status: 501, message: 'This Fleet can’t end Sessions yet. Update the Fleet fork.' });
   });

@@ -10,8 +10,11 @@
 //                    fixtures next to this file are read, and nothing is ever written.
 //   FAKE_FLEET_LOG   when set, each call's argv is appended to it as one JSON line
 //   A list row's `fake_close` (`busy`, `host_shared`, `io`) makes `close` fail with that kind, and
-//   `fake_close_how` (`killed`) says how a close went; default `exit`. `close --expect-pid <n>
-//   --expect-start <t>` (both or neither) fails `target_changed` unless the row's `pid` and
+//   `fake_close_how` (`killed`) says how a close went; default `exit`. `busy` and `host_shared`
+//   carry the contract's `reason`: the row's `fake_close_reason` (`locked`, `editor_open`;
+//   `shared_host`, `job_in_front`, `other_jobs`; anything, to test unknown ones), default `locked`
+//   and `shared_host`; `fake_close_reason: null` leaves it out, as a Fleet before reasons did.
+//   `close --expect-pid <n> --expect-start <t>` (both or neither) fails `target_changed` unless the row's `pid` and
 //   `proc_start` are exactly those, as the Fleet fork checks its live process.
 //   FAKE_FLEET_REGISTER  `later`: a spawned Session doesn't show in `list` until
 //                    `fake register`, as one stuck at a trust prompt; meanwhile a second
@@ -53,8 +56,8 @@ function resolve(target) {
   return rows.find((r) => r.session_id === target) ?? rows.find((r) => String(r.pid) === target) ?? null;
 }
 
-function fail(kind, error) {
-  process.stdout.write(`${JSON.stringify({ ok: false, kind, error })}\n`);
+function fail(kind, error, extra = {}) {
+  process.stdout.write(`${JSON.stringify({ ok: false, kind, ...extra, error })}\n`);
   process.stderr.write(`error: ${error}\n`);
   process.exit(1);
 }
@@ -205,14 +208,21 @@ function close(args) {
     fail('target_changed', `the session's process is now pid ${row.pid} started ${row.proc_start ?? 'unknown'}`);
   }
   if (row.backend !== 'tmux') fail('backend_unsupported', `can't close a session on the ${row.backend} backend`);
-  if (row.fake_close) fail(row.fake_close, `fake ${row.fake_close}`);
+  if (row.fake_close) fail(row.fake_close, `fake ${row.fake_close}`, closeReason(row.fake_close, row.fake_close_reason));
   if (!row.tmux_session || rows.some((r) => r !== row && r.tmux_session === row.tmux_session)) {
-    fail('host_shared', `tmux session '${row.tmux_session}' hosts more than this session`);
+    fail('host_shared', `tmux session '${row.tmux_session}' hosts more than this session`, { reason: 'shared_host' });
   }
   if (writable && !dryRun) writeFileSync(join(dir, 'list.json'), `${JSON.stringify(rows.filter((r) => r !== row), null, 2)}\n`);
   process.stdout.write(
     `${JSON.stringify({ ok: true, session_id: row.session_id, pid: row.pid, harness: row.harness, how: row.fake_close_how ?? 'exit', tmux_session: row.tmux_session, dry_run: dryRun })}\n`,
   );
+}
+
+/** `close`'s `reason` (VIEW-5.8): only `busy` and `host_shared` carry one. */
+function closeReason(kind, reason) {
+  const fallback = { busy: 'locked', host_shared: 'shared_host' }[kind];
+  if (!fallback || reason === null) return {};
+  return { reason: reason ?? fallback };
 }
 
 /** `spawn --json`'s failure: exit 1, one object on stdout, the message on stderr. */

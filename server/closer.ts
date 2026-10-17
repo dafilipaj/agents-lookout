@@ -117,17 +117,40 @@ function pidOnlyId(id: string): Pick<SessionRow, 'id' | 'harness' | 'pid'> | nul
 const UNCONFIRMED = 'Lookout can’t confirm it’s the same Session, so it won’t end it. Close it in the terminal.';
 const CHANGED = 'This Session was restarted since you asked; nothing was closed.';
 const SHARED = 'This Session shares its Session host with other windows, so Lookout won’t end it. Close it in the terminal.';
+const BUSY = 'Fleet is typing into it; try again.';
 
-/** Fleet's failure kinds, for people. Nothing names tmux (0001). */
+/**
+ * VIEW-5.8: Fleet's `reason` on a `busy` or `host_shared` refusal, for people. `kind` still
+ * decides the outcome: a reason counts only under its own kind, and a missing or unknown one
+ * (any other value, or a newer Fleet's token) falls back to the kind's text. Nothing names tmux (0001).
+ */
+const REASONS: Readonly<Record<'busy' | 'host_shared', Readonly<Record<string, string>>>> = {
+  busy: {
+    locked: BUSY,
+    editor_open: 'An editor is open in this Session. Close it in the terminal, then try again.',
+  },
+  host_shared: {
+    shared_host: SHARED,
+    job_in_front: 'This Session is paused behind another program in its terminal. Close it there.',
+    other_jobs: 'Another program is stopped in this Session’s terminal. Close the Session there.',
+  },
+};
+
+function reasonText(kind: 'busy' | 'host_shared', reason: unknown, fallback: string): string {
+  const known = REASONS[kind];
+  return typeof reason === 'string' && Object.hasOwn(known, reason) ? (known[reason] ?? fallback) : fallback;
+}
+
+/** Fleet's failure kinds (and, for `busy` and `host_shared`, its `reason`), for people. Nothing names tmux (0001). */
 function failure(e: RunError): EndError {
   if (e.code === 'ENOENT') return new EndError(503, "Couldn't end it: Fleet isn't installed.");
   if (e.timedOut) return new EndError(504, "Couldn't end it: Fleet took too long. Check the Session list before trying again.");
   const parsed = parseObject(e.stdout);
   switch (parsed?.kind) {
     case 'busy':
-      return new EndError(409, 'Fleet is typing into it; try again.');
+      return new EndError(409, reasonText('busy', parsed.reason, BUSY));
     case 'host_shared':
-      return new EndError(409, SHARED);
+      return new EndError(409, reasonText('host_shared', parsed.reason, SHARED));
     case 'backend_unsupported':
       return new EndError(409, 'Lookout can only end a Session that runs in a Session host of its own. Close this one in its terminal.');
     case 'target_not_found':
