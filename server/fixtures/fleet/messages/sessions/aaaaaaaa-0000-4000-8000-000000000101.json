@@ -8,7 +8,7 @@
     {
       "role": "user",
       "kind": "system",
-      "text": "Session resumed from an earlier conversation",
+      "text": "Agent \"Survey rate code\" finished",
       "ts": "2026-10-16T09:58:00Z"
     },
     {
@@ -182,7 +182,7 @@
     {
       "role": "user",
       "kind": "system",
-      "text": "PostToolUse hook: formatted 1 file",
+      "text": "Background command \"rspec spec/services/deals\" completed",
       "ts": "2026-10-16T10:03:30Z"
     },
     {

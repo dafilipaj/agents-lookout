@@ -51,9 +51,12 @@ export function turnRunning(i: Omit<ActivityInput, 'waitingFor' | 'ended'>): boo
   return i.status === 'busy' || optimistic || (i.status === 'unknown' && midTurn(i.entries));
 }
 
-/** The feed's last entry is your prompt, a tool call, or a reply that isn't final. */
+/**
+ * The feed's last entry is your prompt, a tool call, or a reply that isn't final. A subagent's
+ * result (`system`, VIEW-1.3) says nothing about the turn: the entry before it decides.
+ */
 export function midTurn(entries: readonly ChatEntry[]): boolean {
-  const last = entries.at(-1);
+  const last = entries.findLast((e) => e.kind !== 'system');
   if (!last) return false;
   return last.kind === 'user' || last.kind === 'tool_call' || (last.kind === 'assistant' && !last.final);
 }

@@ -97,6 +97,8 @@ export function Sidebar(props: SidebarProps) {
         return;
       }
       if (e.metaKey || e.ctrlKey || e.altKey || editing) return;
+      // Arrow keys from inside the chat scroll it (VIEW-1.11 moves focus there after a jump).
+      const inChat = e.target instanceof Element && !!e.target.closest('[data-scroll-keys]');
 
       if (inFilter) {
         if (e.key === 'Escape') {
@@ -112,10 +114,10 @@ export function Sidebar(props: SidebarProps) {
       if (e.key === '/') {
         e.preventDefault();
         filterRef.current?.focus();
-      } else if (e.key === 'ArrowDown' || e.key === 'j') {
+      } else if ((e.key === 'ArrowDown' && !inChat) || e.key === 'j') {
         e.preventDefault();
         step(1);
-      } else if (e.key === 'ArrowUp' || e.key === 'k') {
+      } else if ((e.key === 'ArrowUp' && !inChat) || e.key === 'k') {
         e.preventDefault();
         step(-1);
       } else if (e.key === 'Escape' && filter) {

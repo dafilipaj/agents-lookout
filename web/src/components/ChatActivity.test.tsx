@@ -44,6 +44,13 @@ describe('VIEW-1.10 rules', () => {
     expect(unknown([])).toBeNull();
   });
 
+  it('VIEW-1.3: a subagent result in the feed does not change whether a turn looks running', () => {
+    const unknown = (entries: ChatEntry[]) => activityOf(input({ status: 'unknown', entries }));
+    const result = (): ChatEntry => ({ kind: 'system', cursor: `c${++n}`, ts: iso(NOW - 1_000), text: 'Agent "Build" finished' });
+    expect(unknown([you(NOW - 5_000), tool(), result()])?.kind).toBe('working');
+    expect(unknown([you(NOW - 5_000), reply(NOW - 2_000), result()])).toBeNull();
+  });
+
   it('VIEW-1.10: Needs you, with what it waits for when Status has it', () => {
     expect(activityOf(input({ status: 'needs-you', waitingFor: 'permission: Bash(rspec)' }))).toEqual({ kind: 'needs-you', waitingFor: 'permission: Bash(rspec)' });
     expect(activityOf(input({ status: 'needs-you' }))).toEqual({ kind: 'needs-you', waitingFor: null });

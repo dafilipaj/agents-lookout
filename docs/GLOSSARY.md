@@ -18,6 +18,8 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Local server**: A process listening on a TCP port on this machine. It belongs to a Worktree, and through it to a Session, when its working directory is inside that Worktree.
 
+**Mark**: A bookmark on the rail beside the chat's scroll bar for a prompt you sent, a Subagent result or a question; clicking it scrolls the chat to that entry.
+
 **Needs you**: The Status of a Session that is blocked on you: a permission prompt, a question, or input.
 
 **Requirement**: One capability a feature provides, ID'd `<CODE>-n`.
@@ -29,6 +31,8 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 **Start directory**: A directory listed in Settings where Lookout can start new Sessions. `~/Projects/work` by default.
 
 **Status**: What a Session is doing: *Busy* (working), *Needs you*, *Idle* (finished its turn), or *Dormant* (was running before a reboot and can be resumed). Comes from Fleet.
+
+**Subagent**: A helper agent a Session starts, such as Claude Code's Agent tool or a background task. Its own messages (the sidechain) aren't shown; its result shows in the chat as one line.
 
 **Transcript**: The JSONL log a Harness writes for a Session, for example under `~/.claude/projects/` or `~/.codex/sessions/`.
 

@@ -53,14 +53,23 @@ describe('fleet messages (through a fake `fleet` that follows the contract)', ()
     expect(res.hasMoreBefore).toBe(false);
   });
 
-  it('VIEW-1.3: system entries and kinds Lookout does not know are left out; their cursors still count', async () => {
+  it('VIEW-1.3: subagent results (`system`) are kept, bounded like other text; kinds Lookout does not know are left out', async () => {
     const res = await fetchReal(CLAUDE, { limit: 500 });
     if (!res.ok) throw new Error(res.error);
-    expect(res.entries.some((e) => (e.kind as string) === 'system')).toBe(false);
+    expect(res.entries.filter((e) => e.kind === 'system').map((e) => e.text)).toEqual([
+      'Agent "Survey rate code" finished',
+      'Background command "rspec spec/services/deals" completed',
+    ]);
     expect(res.entries.some((e) => e.kind === 'user' && e.text.includes('hook'))).toBe(false);
-    for (const kind of ['system', 'thinking', 'hook', 'tool_result', 'sidechain']) {
+    for (const kind of ['thinking', 'hook', 'tool_result', 'sidechain', 'bookkeeping']) {
       expect(toEntry({ cursor: 'c', kind, role: 'assistant', text: 'secret thoughts', ts: null })).toBeNull();
     }
+    const ts = '2026-10-16T10:04:00Z';
+    expect(toEntry({ cursor: 'c9', kind: 'system', role: 'user', text: 'Agent "Build" finished', ts })).toEqual({ kind: 'system', cursor: 'c9', ts, text: 'Agent "Build" finished' });
+    const long = toEntry({ cursor: 'c9', kind: 'system', role: 'user', text: 'x'.repeat(300_000), ts });
+    expect(long?.kind === 'system' && long.text.length).toBe(200_000);
+    expect(toEntry({ cursor: 'c9', kind: 'system', role: 'user', text: '  \n ', ts })).toBeNull();
+    expect(toEntry({ cursor: 'c9', kind: 'system', role: 'user', text: 42, ts })).toBeNull();
   });
 
   it('VIEW-1.6: the latest entries first, then pages back with --before', async () => {

@@ -121,14 +121,16 @@ export type ServerEvent =
   | ChatEvent;
 
 /**
- * VIEW-1: one chat entry, from `fleet messages --json` (Transcript order). `system` entries are
- * dropped on the server; Fleet never emits thinking, hooks, sidechains or tool output.
+ * VIEW-1: one chat entry, from `fleet messages --json` (Transcript order). Kinds Lookout doesn't
+ * know are dropped on the server; Fleet never emits thinking, hooks, sidechains or tool output.
  */
 export type ChatEntry =
   | { kind: 'user'; cursor: string; ts: string | null; text: string; queued: boolean }
   | { kind: 'assistant'; cursor: string; ts: string | null; text: string; final: boolean }
   /** A slash command or `!` shell line typed into the Session. */
   | { kind: 'command'; cursor: string; ts: string | null; text: string }
+  /** VIEW-1.3: a subagent's result, Claude Code's task notification summary (e.g. `Agent "Build" finished`). */
+  | { kind: 'system'; cursor: string; ts: string | null; text: string }
   /** No tool output, ever: the tool and one short argument. */
   | { kind: 'tool_call'; cursor: string; ts: string | null; id: string; tool: string; summary: string }
   | {

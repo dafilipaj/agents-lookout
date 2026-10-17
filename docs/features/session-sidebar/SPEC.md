@@ -52,7 +52,7 @@ The sidebar lists every live Session on this Host that Fleet finds, whichever te
 
 ### SIDE-5 Keyboard
 
-- [x] SIDE-5.1 ↑/↓ and j/k move the selection. (manual)
+- [x] SIDE-5.1 ↑/↓ and j/k move the selection. ↑/↓ pressed inside the chat scroll the chat instead (VIEW-1.11). (manual)
 - [x] SIDE-5.2 ⌘1–⌘9 select the first to ninth row. (manual)
 - [x] SIDE-5.3 ⌘J selects the next Session that needs you. (manual)
 - [x] SIDE-5.4 `/` focuses a filter box; typing filters rows by title, repo, Worktree or branch; Esc clears it. (test)

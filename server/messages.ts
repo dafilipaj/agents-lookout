@@ -54,7 +54,7 @@ export type MessagesResult =
       ok: true;
       sessionId: string | null;
       harness: string | null;
-      /** The history the chat shows, oldest first: `system`, unknown kinds and queued prompts left out. */
+      /** The history the chat shows, oldest first: unknown kinds and queued prompts left out. */
       entries: ChatEntry[];
       /** `--after`: entries already shown that changed since (replace them by cursor). */
       updated: ChatEntry[];
@@ -192,7 +192,7 @@ export function isCursor(c: string): boolean {
 const str = (v: unknown, max: number): string | null => (typeof v === 'string' ? bound(v, max) : null);
 const bound = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
 
-/** One entry as the chat shows it, or null for one it hides (`system`, unknown kinds) or can't read. */
+/** One entry as the chat shows it, or null for one it hides (unknown kinds) or can't read. */
 export function toEntry(v: unknown): ChatEntry | null {
   if (typeof v !== 'object' || v === null) return null;
   const r = v as Record<string, unknown>;
@@ -207,6 +207,9 @@ export function toEntry(v: unknown): ChatEntry | null {
       return text.trim() ? { kind: 'assistant', cursor, ts, text, final: r.final === true } : null;
     case 'command':
       return text.trim() ? { kind: 'command', cursor, ts, text } : null;
+    case 'system':
+      // VIEW-1.3: Claude Code's task notifications (a subagent's result), the only `system` entries Fleet emits.
+      return text.trim() ? { kind: 'system', cursor, ts, text } : null;
     case 'tool_call': {
       const tool = str(r.tool, MAX_TOOL);
       if (!tool) return null;
@@ -219,7 +222,7 @@ export function toEntry(v: unknown): ChatEntry | null {
       return { kind: 'question', cursor, ts, id: str(r.id, 200) ?? cursor, questions, status, answer: toAnswer(r.answer, questions) };
     }
     default:
-      return null; // `system` (VIEW-1.3), and kinds this Lookout doesn't know yet
+      return null; // kinds this Lookout doesn't know yet (VIEW-1.3)
   }
 }
 

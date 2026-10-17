@@ -111,6 +111,21 @@ describe('chat rendering', () => {
     expect(messages().getByText('/model claude-opus-5-5').tagName).toBe('CODE');
     expect(screen.getAllByRole('listitem')[0]).toHaveTextContent('You');
   });
+
+  it("VIEW-1.3: a subagent's result shows as one compact line, set apart from messages; the reply after it starts a turn", () => {
+    const { reset } = open();
+    const text = 'Agent "Build" finished\nsummary details stay in the title';
+    reset([you('Build it'), agent('Starting a subagent.'), { kind: 'system', cursor: c(), ts: '2026-10-16T10:02:00Z', text }, agent('The build passed.')]);
+    const items = screen.getAllByRole('listitem');
+    expect(items).toHaveLength(4);
+    const row = items[2]!.querySelector('[data-kind="system"]')!;
+    expect(row).toHaveTextContent('Agent "Build" finished');
+    expect(row).not.toHaveTextContent('summary details');
+    expect(row).not.toHaveTextContent(/You|Claude/);
+    expect(row.className).toMatch(/text-\[11\.5px\]/); // smaller than messages (13.5px)
+    expect(row.querySelector('[title]')).toHaveAttribute('title', text);
+    expect(items[3]).toHaveTextContent('Claude'); // the reply to it is headed again
+  });
 });
 
 describe('tool calls', () => {

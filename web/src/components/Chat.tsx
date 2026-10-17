@@ -1,17 +1,21 @@
 import type { ChatEntry, ChatPage, Harness } from '@shared/types.ts';
 import { ArrowDown, ChevronRight, CircleHelp, FileX, MessagesSquare, Wrench } from 'lucide-react';
-import { type ReactNode, memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { type PointerEvent as ReactPointerEvent, type ReactNode, memo, useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import { type ChatItem, type QuestionEntry, type ToolCall, answerFor, chatItems, clockTime, toolsLabel } from '@/lib/chat';
+import { JUMP_MARGIN_PX, chatMarks, firstLine, stepMark } from '@/lib/marks';
 import { HARNESS_NAME } from '@/lib/sessions';
 import type { Chat as ChatState } from '@/lib/store';
 import { cn } from '@/lib/utils';
+import { ChatRail, MarkShape } from './ChatRail';
 import { Markdown } from './Markdown';
 
 /** At most this far from the bottom still counts as "at the bottom" (VIEW-1.5). */
 const BOTTOM_SLACK_PX = 48;
 const NONE: readonly ChatEntry[] = [];
+/** Keys that scroll the chat when focus is in it, or on the page: pressing one releases a jump's hold (VIEW-1.11). */
+const SCROLL_KEYS = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ']);
 
 export interface ChatProps {
   sessionId: string;
@@ -43,6 +47,13 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
   const atBottom = useRef(true);
   const [following, setFollowing] = useState(true);
   const [unseen, setUnseen] = useState(0);
+  /**
+   * VIEW-1.11: set by a jump to a Mark, which counts as scrolling up (VIEW-1.5) even when it lands
+   * near the bottom; your own next scroll clears it. `cursor` is the Mark jumped to.
+   */
+  const held = useRef<{ cursor: string } | null>(null);
+  /** The last jump, for the rail's tab stop; a new object per jump, even to the same Mark. */
+  const [jumped, setJumped] = useState<{ cursor: string } | null>(null);
   /** Set while a "Show earlier" page goes in: where you were, so it stays in view. */
   const anchor = useRef<{ height: number; top: number } | null>(null);
   const lastKey = entries.at(-1)?.cursor ?? null;
@@ -73,16 +84,25 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
   const onScroll = () => {
     const el = scrollRef.current;
     if (!el) return;
-    const bottom = el.scrollHeight - el.scrollTop - el.clientHeight <= BOTTOM_SLACK_PX;
+    const bottom = !held.current && el.scrollHeight - el.scrollTop - el.clientHeight <= BOTTOM_SLACK_PX;
     atBottom.current = bottom;
     setFollowing(bottom);
     if (bottom) setUnseen(0);
+  };
+  /** You scroll yourself (wheel, touch, scroll bar, keys): a jump no longer holds the chat. */
+  const release = () => {
+    held.current = null;
+  };
+  // Only a press on the scroll bar itself: clicking or selecting text in the chat isn't scrolling.
+  const releaseOnScrollBar = (e: ReactPointerEvent) => {
+    if (e.target === e.currentTarget) release();
   };
 
   // Sizes change without a scroll: the pane shrinks (the terminal drawer opens), or a row
   // expands. A shrinking pane keeps following the bottom; anything else just re-checks where
   // you are, so "Jump to latest" shows when the bottom moved out of view.
   const content = useRef<HTMLDivElement>(null);
+  const list = useRef<HTMLOListElement>(null);
   const tail = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = scrollRef.current;
@@ -93,7 +113,7 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
       const grewAtTail = resized.some((r) => r.target === tail.current);
       if ((el.clientHeight !== height || grewAtTail) && atBottom.current) el.scrollTop = el.scrollHeight;
       height = el.clientHeight;
-      const bottom = el.scrollHeight - el.scrollTop - el.clientHeight <= BOTTOM_SLACK_PX;
+      const bottom = !held.current && el.scrollHeight - el.scrollTop - el.clientHeight <= BOTTOM_SLACK_PX;
       atBottom.current = bottom;
       setFollowing(bottom);
     });
@@ -107,6 +127,7 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
     const el = scrollRef.current;
     if (!el) return;
     // Instantly: a smooth scroll would pass through "not at the bottom" and flicker the button.
+    held.current = null;
     atBottom.current = true;
     setFollowing(true);
     setUnseen(0);
@@ -131,6 +152,78 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
       setLoadingEarlier(false);
     }
   };
+
+  // The rail gets a loader that keeps its identity, so it doesn't re-render with Chat.
+  const latestShowEarlier = useRef(showEarlier);
+  useLayoutEffect(() => {
+    latestShowEarlier.current = showEarlier;
+  });
+  const loadEarlier = useCallback(() => void latestShowEarlier.current(), []);
+
+  // VIEW-1.11: Marks for your prompts, subagent results and questions, on a rail by the scroll bar.
+  const marks = useMemo(() => chatMarks(entries), [entries]);
+  const markCursors = useMemo(() => new Set(marks.map((m) => m.cursor)), [marks]);
+  // Re-measured when what's rendered changes; sizes changing otherwise (rows expanding, the
+  // activity row, the pane resizing) reach it through a ResizeObserver.
+  const problemNow = chat?.problem ?? null;
+  const rendered = useMemo(() => ({ entries, queue, before, problemNow }), [entries, queue, before, problemNow]);
+  const canLoadEarlier = !!before && !ended && !!chat?.loaded;
+
+  /**
+   * Scrolls to a Mark's entry; a jump counts as scrolling up, so new messages don't pull you away.
+   * A jump from the rail also moves focus to the entry, as a link to it would.
+   */
+  const jumpTo = useCallback((cursor: string, focus: boolean) => {
+    const el = scrollRef.current;
+    const row = list.current?.querySelector<HTMLElement>(`[data-mark="${CSS.escape(cursor)}"]`);
+    if (!el || !row) return;
+    const hold = { cursor };
+    held.current = hold;
+    setJumped(hold);
+    atBottom.current = false;
+    setFollowing(false);
+    const top = Math.max(0, row.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop - JUMP_MARGIN_PX);
+    const reduce = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (typeof el.scrollTo === 'function') el.scrollTo({ top, behavior: reduce ? 'auto' : 'smooth' });
+    else el.scrollTop = top;
+    if (focus) row.focus({ preventScroll: true });
+  }, []);
+  const step = useEffectEvent((dir: 1 | -1) => {
+    const el = scrollRef.current;
+    const box = list.current;
+    if (!el || !box || marks.length === 0) {
+      if (dir === -1 && canLoadEarlier) void showEarlier();
+      return;
+    }
+    const base = el.getBoundingClientRect().top - el.scrollTop;
+    const rows = new Map([...box.querySelectorAll<HTMLElement>('[data-mark]')].map((r) => [r.dataset.mark!, r.getBoundingClientRect().top - base]));
+    const tops = marks.map((m) => rows.get(m.cursor) ?? 0);
+    const from = held.current ? marks.findIndex((m) => m.cursor === held.current!.cursor) : -1;
+    const next = stepMark(tops, el.scrollTop, dir, from >= 0 ? from : null);
+    if (next !== null) jumpTo(marks[next]!.cursor, false);
+    else if (dir === -1 && canLoadEarlier) void showEarlier();
+  });
+  // `[` and `]`: the previous and next Mark, when focus isn't in a text field or a dialog. Option
+  // or AltGr is allowed: some layouts need it to type `[` (`e.key` is the character either way),
+  // and Windows reports AltGr as Ctrl+Alt.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.isComposing || e.defaultPrevented) return;
+      // A key that scrolls the chat releases a jump's hold: with focus in the chat, or on the page
+      // after clicking its text (the key then scrolls the chat, but its target is <body>). Not
+      // Space or Enter on a button: that presses it.
+      if (SCROLL_KEYS.has(e.key)) {
+        if (scrollsChat(e.target, scrollRef.current) && !(e.key === ' ' && isPressable(e.target))) held.current = null;
+        return;
+      }
+      if (e.metaKey || (e.ctrlKey && !e.altKey) || (e.key !== '[' && e.key !== ']')) return;
+      if (isTextField(e.target) || (e.target instanceof Element && e.target.closest('[role="dialog"]'))) return;
+      e.preventDefault();
+      step(e.key === ']' ? 1 : -1);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const problem = chat?.problem ?? null;
   const label = HARNESS_NAME[harness];
@@ -166,7 +259,7 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
     );
   } else {
     body = (
-      <ol className="mx-auto flex w-full max-w-3xl flex-col gap-3.5 px-6 py-5" aria-label="Messages">
+      <ol ref={list} className="mx-auto flex w-full max-w-3xl flex-col gap-3.5 px-6 py-5" aria-label="Messages">
         {before && !ended && (
           <li className="flex flex-col items-center gap-1">
             <Button variant="ghost" size="sm" className="h-7 text-[12px] text-muted-foreground" disabled={loadingEarlier} onClick={() => void showEarlier()}>
@@ -179,11 +272,20 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
             )}
           </li>
         )}
-        {items.map((item, i) => (
-          <li key={item.key}>
-            <Row item={item} label={label} startsTurn={startsTurn(items, i)} />
-          </li>
-        ))}
+        {items.map((item, i) => {
+          const mark = markCursors.has(item.key);
+          return (
+            // A Mark's entry takes focus after a jump from the rail.
+            <li
+              key={item.key}
+              data-mark={mark ? item.key : undefined}
+              tabIndex={mark ? -1 : undefined}
+              className={mark ? 'rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4 focus-visible:ring-offset-background' : undefined}
+            >
+              <Row item={item} label={label} startsTurn={startsTurn(items, i)} />
+            </li>
+          );
+        })}
         {queue.map((q) => (
           <li key={`queue:${q.cursor}`} data-queued>
             <Prompt entry={q} queued />
@@ -199,13 +301,37 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
   }
 
   return (
-    <div className="relative min-h-0 flex-1">
-      <div ref={scrollRef} onScroll={onScroll} className="h-full overflow-y-auto" aria-label="Chat" data-testid="chat">
+    <div className="@container relative flex min-h-0 flex-1">
+      <div
+        ref={scrollRef}
+        onScroll={onScroll}
+        onWheel={release}
+        onTouchMove={release}
+        onPointerDown={releaseOnScrollBar}
+        className="h-full min-w-0 flex-1 overflow-y-auto"
+        aria-label="Chat"
+        // SIDE-5 leaves the arrow keys to the chat when they come from inside it: they scroll it.
+        data-scroll-keys
+        data-testid="chat"
+      >
         <div ref={content} className="flex min-h-full flex-col">
           {body}
           <div ref={tail}>{activity}</div>
         </div>
       </div>
+      {chat?.loaded && (
+        <ChatRail
+          scrollRef={scrollRef}
+          listRef={list}
+          marks={marks}
+          version={rendered}
+          jumped={jumped}
+          canLoadEarlier={canLoadEarlier}
+          loadingEarlier={loadingEarlier}
+          onEarlier={loadEarlier}
+          onJump={jumpTo}
+        />
+      )}
       {!following && chat?.loaded && items.length > 0 && (
         <Button
           size="sm"
@@ -226,7 +352,8 @@ function startsTurn(items: ChatItem[], i: number): boolean {
   for (let j = i - 1; j >= 0; j--) {
     const prev = items[j]!;
     if (prev.type === 'tools') continue; // tool calls before the first reply are part of the turn
-    return prev.entry.kind === 'user' || prev.entry.kind === 'command';
+    // A subagent's result is handed to the agent like a prompt: its reply starts a turn.
+    return prev.entry.kind === 'user' || prev.entry.kind === 'command' || prev.entry.kind === 'system';
   }
   return true;
 }
@@ -269,7 +396,46 @@ function Item({ item, label, startsTurn }: RowProps) {
       );
     case 'question':
       return <Question entry={e} label={label} />;
+    case 'system':
+      return <SubagentResult text={e.text} ts={e.ts} />;
   }
+}
+
+/** VIEW-1.3: a subagent's result (Claude Code's task notification), one compact line. */
+function SubagentResult({ text, ts }: { text: string; ts: string | null }) {
+  const time = clockTime(ts);
+  const line = firstLine(text);
+  return (
+    <div
+      data-kind="system"
+      className="flex min-w-0 items-center gap-2 rounded-md border border-dashed border-border px-2 py-0.5 text-[11.5px] leading-5 text-muted-foreground"
+    >
+      <MarkShape kind="subagent" className="shrink-0 group-hover:scale-100" />
+      <span className="min-w-0 truncate" title={text}>
+        {line}
+      </span>
+      {time && (
+        <time dateTime={ts!} className="ml-auto shrink-0 tabular-nums opacity-80">
+          {time}
+        </time>
+      )}
+    </div>
+  );
+}
+
+/** A key with this target scrolls the chat: it comes from inside it, or from the page itself. */
+function scrollsChat(t: EventTarget | null, chat: HTMLElement | null): boolean {
+  return !!chat && t instanceof Node && (t === document.body || chat.contains(t)) && !isTextField(t);
+}
+
+/** Space or Enter presses it rather than scrolling. */
+function isPressable(t: EventTarget | null): boolean {
+  return t instanceof Element && !!t.closest('button, a[href], summary, [role="button"], [role="checkbox"], [role="radio"], [role="option"]');
+}
+
+function isTextField(t: EventTarget | null): boolean {
+  if (!(t instanceof HTMLElement)) return false;
+  return t.isContentEditable || t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT';
 }
 
 /** Your prompt; a queued one waits in the Harness's queue and isn't part of the history yet (VIEW-3.3). */
