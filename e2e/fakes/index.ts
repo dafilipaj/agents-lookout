@@ -1,10 +1,18 @@
 import type { ClaudeUsageDecl, HarnessId, SessionDecl } from '../world/builder.ts';
 
 /**
- * Seams for the next slices of TEST. Nothing here runs yet; the World refuses a declaration that
- * needs it (`NotYetBuilt` in world/builder.ts).
+ * The World's fake commands: claude, codex, tb-jev, curl, tb-prod and tb-pr (TEST-1.2), each on
+ * the World's PATH only when declared.
  *
- * TODO(TEST-1.4) Fake Harnesses, `claude.mjs` and `codex.mjs` here:
+ * Built: `tb-prod.ts` and `tb-pr.ts`, for WORK's Behaviour tests. Each is a script node runs from a
+ * `bin/` wrapper (e2e/shims/fake) that logs its argv to the World's calls log (TEST-2.4). They read
+ * their answer when a call starts, and a test can change it or hold a call in flight (TEST-1.6,
+ * control.ts). A call they don't answer is a violation that fails the Behaviour test.
+ *
+ * The rest are seams for the next slices of TEST. Nothing of them runs yet; the World refuses a
+ * declaration that needs them (`NotYetBuilt` in world/builder.ts).
+ *
+ * TODO(TEST-1.4) Fake Harnesses, `claude` and `codex` here:
  *   - started so that `ps` shows argv[0] as `claude` or `codex` (an `exec -a` wrapper in bin/);
  *   - claude: writes `~/.claude/sessions/<pid>.json` with its real `procStart`, appends Claude
  *     Code's JSONL under `~/.claude/projects/<cwd slug>/`, draws a prompt and the permission
@@ -13,23 +21,17 @@ import type { ClaudeUsageDecl, HarnessId, SessionDecl } from '../world/builder.t
  *     carrying `rate_limits`, honours `resume <id>`;
  *   - Transcript lines replayed only from recorded fixtures (TEST-6), under e2e/fixtures/.
  * TODO(TEST-1.6) a control file each Fake Harness watches: busy, ask, say, exit, limits.
- * TODO(TEST-1.7) `curl.mjs`: answers only Anthropic's usage endpoint with the declared numbers,
- *   401, 429 or a timeout, checking the fake credentials; any other URL is a violation that fails
- *   the Behaviour test. `tb-jev.mjs`: `status --json` with USAGE's 0.2.0 contract.
+ * TODO(TEST-1.7) `curl`: answers only Anthropic's usage endpoint with the declared numbers, 401,
+ *   429 or a timeout, checking the fake credentials; any other URL is a violation that fails the
+ *   Behaviour test. `tb-jev`: `status --json` with USAGE's 0.2.0 contract.
  * TODO(TEST-1.10) the `ps` shim in e2e/shims/ps filters machine-wide listings to the World's panes;
  *   only then may a World declare Codex.
  * TODO(TEST-6) e2e/record/: `pnpm e2e:record <claude|codex>`, the only command that runs a real
  *   Harness, writing sanitized fixtures under e2e/fixtures/transcripts/<harness>/<version>/.
  */
 
-/** A fake command the World writes into its `bin/` when declared. */
-export interface FakeCommand {
-  name: 'claude' | 'codex' | 'tb-jev' | 'curl';
-  /** The script, under e2e/fakes/. */
-  script: string;
-  /** Logged to the World's calls log like Fleet and tb-session (TEST-2.4). */
-  logged: true;
-}
+/** A fake command the World writes into its `bin/` when declared, run from e2e/fakes/<name>.ts. */
+export type FakeCommand = 'claude' | 'codex' | 'tb-jev' | 'curl' | 'tb-prod' | 'tb-pr';
 
 /** What a Fake Harness reads from the World when it starts. */
 export interface FakeHarnessConfig {
@@ -50,9 +52,9 @@ export interface FakeCurlConfig {
   violations: string;
 }
 
-/** Violations a fake recorded; the World fails the Behaviour test on any (TEST-1.7). */
+/** A call a fake refused; the World fails the Behaviour test on any (TEST-1.5, TEST-1.7). */
 export interface FakeViolation {
-  command: FakeCommand['name'];
+  command: FakeCommand;
   argv: string[];
   why: string;
 }

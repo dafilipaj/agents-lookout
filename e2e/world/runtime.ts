@@ -7,7 +7,10 @@ import { type Server, createServer } from 'node:net';
 import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { promisify } from 'node:util';
-import type { WorldSpec } from './builder.ts';
+import { FakeControl, readViolations } from '../fakes/control.ts';
+import type { FakeViolation } from '../fakes/index.ts';
+import { BrowserGuard } from './browser.ts';
+import { type GitIdentityDecl, type TbPrDecl, type TbProdDecl, type WorldSpec, checkTbPr, checkTbProd } from './builder.ts';
 import { type Budget, WaitTimedOut, type Waiting, Waits } from './budget.ts';
 import { REPO_ROOT, checkPins } from './pins.ts';
 import {
@@ -38,6 +41,7 @@ const execFileP = promisify(execFile);
  */
 
 const SHIMS = join(REPO_ROOT, 'e2e', 'shims');
+const FAKES = join(REPO_ROOT, 'e2e', 'fakes');
 const SERVER_MAIN = join(REPO_ROOT, 'server', 'main.ts');
 /** The user's own Lookout and its Vite: a World never takes them (TEST-1.1). */
 export const RESERVED_PORTS: ReadonlySet<number> = new Set([4747, 4748]);
@@ -49,7 +53,8 @@ const LISTENING = /^Lookout server on http:\/\/127\.0\.0\.1:(\d+)/m;
 /**
  * TEST-1.2, real: the plain system tools Lookout, Fleet and a login shell need, linked into the
  * World's `bin/`. Fleet and tb-session come in as logged wrappers, tmux and ps as shims. Nothing
- * else is on PATH: not security, gh, ssh, osascript, curl, claude, codex or tb-jev.
+ * else is on PATH: never security, gh, ssh or osascript, and the fakes (claude, codex, tb-jev, curl,
+ * tb-prod and tb-pr) only when declared.
  */
 export const REAL_TOOLS: Readonly<Record<string, string>> = {
   git: '/usr/bin/git',
@@ -92,8 +97,14 @@ export interface StopReport {
   leftovers: string[];
   /** Connections to the default tmux socket in the World's TMUX_TMPDIR (TEST-1.9). */
   trapKnocks: number;
-  /** Only when collected: the failure report's parts (TEST-2.4). */
+  /**
+   * The failure report's parts (TEST-2.4): when collected, or when the fakes refused a call, which
+   * fails the test. A call refused while the World stopped is found only then, once its panes are
+   * gone, so that report has the rest without them.
+   */
   report?: FailureReport;
+  /** Calls the World's fakes refused, read once nothing of the World runs any more (TEST-1.5). */
+  violations: FakeViolation[];
 }
 
 export interface FailureReport {
@@ -101,11 +112,15 @@ export interface FailureReport {
   serverLog: string;
   calls: string;
   panes: string;
+  /** Each declared fake's answers in the order the test set them, the last one current; null without fakes. */
+  fakes: string | null;
 }
 
 export interface StartOptions {
   /** Cancels the start: whatever was started is torn down and `startWorld` rejects. */
   signal?: AbortSignal;
+  /** The guard on the test's browser context (TEST-1.7); told the World's origin once it is known. */
+  browser?: BrowserGuard;
   /** How long teardown waits after SIGTERM before SIGKILL. */
   stopGraceMs?: number;
   /** Called once the World is in its run's index, before anything of it exists. */
@@ -162,10 +177,18 @@ export interface RunningWorld extends Waiting {
   budget(ms: number): Budget;
   /** The argv of every Fleet, tb-session and fake call so far, one per line (TEST-2.4). */
   calls(): string[];
+  /** The fake `tb-prod`'s controls (TEST-1.6): change its answer, hold a call in flight. They throw when the World has no tb-prod. */
+  readonly tbProd: FakeControl<TbProdDecl>;
+  /** The fake `tb-pr`'s controls (TEST-1.6), as `tbProd`'s. */
+  readonly tbPr: FakeControl<TbPrDecl>;
+  /** Calls the World's fakes refused to answer so far; each fails the Behaviour test (TEST-1.5, `StopReport.violations`). */
+  violations(): FakeViolation[];
+  /** The URLs the World's pages asked for outside its Lookout origin, each aborted (TEST-1.7). */
+  browserRequests(): string[];
   serverLog(): string;
   /** Tears the World down; safe to call twice. `collect` gathers the failure report first. */
   stop(opts?: { collect?: boolean }): Promise<StopReport>;
-  // TODO(TEST-1.6): controls for a running World:
+  // TODO(TEST-1.6): controls for a running World's Sessions:
   //   session(id): { busy(), ask(question), say(reply), exit(), limits(numbers) }, through the
   //   control file each Fake Harness watches; startOutside(decl) for a Session Lookout didn't start.
 }
@@ -294,6 +317,7 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
   const logs = join(root, 'logs');
   const fleetDir = join(root, 'fleet');
   const callsLog = join(logs, 'calls.log');
+  const violationsLog = join(logs, 'violations.jsonl');
   const serverLogPath = join(logs, 'server.log');
   const settingsPath = join(home, '.config', 'lookout', 'settings.json');
   const graceMs = opts.stopGraceMs ?? STOP_GRACE_MS;
@@ -304,7 +328,14 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
   let trapKnocks = 0;
   let stopped: Promise<StopReport> | null = null;
   const waits = new Waits();
+  const browser = opts.browser ?? new BrowserGuard();
+  // TEST-1.6: a fake's controls; it has a directory only when the World declares it.
+  const fakeDir = (name: string) => join(root, 'fakes', name);
+  const waitUntil = (what: string, check: () => boolean, o?: { timeoutMs?: number }) => waits.waitUntil(what, check, o);
+  const tbProd = new FakeControl<TbProdDecl>('tb-prod', spec.tbProd ? fakeDir('tb-prod') : null, checkTbProd, waitUntil);
+  const tbPr = new FakeControl<TbPrDecl>('tb-pr', spec.tbPr ? fakeDir('tb-pr') : null, checkTbPr, waitUntil);
   let worldPort: number;
+  let worldUrl: string;
   const token = randomBytes(24).toString('base64url');
 
   // Everything the World starts gets this environment, and passes LOOKOUT_WORLD_ID on.
@@ -372,6 +403,21 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
     return [...escapedOf(mine).map((p) => `escaped the World's process tree: ${describeProc(p)}`), ...realHarnesses(mine, bin)];
   };
 
+  /** TEST-2.4: what each fake answered, as the test changed it, not only what it was declared with. */
+  const fakesReport = (): string | null => {
+    const fakes = Object.fromEntries([...(spec.tbProd ? [[tbProd.name, tbProd.history()]] : []), ...(spec.tbPr ? [[tbPr.name, tbPr.history()]] : [])]);
+    return Object.keys(fakes).length ? JSON.stringify(fakes, null, 2) : null;
+  };
+
+  /** The report's parts that are files in the World's root: readable until its directories go. */
+  const reportFiles = (panes: string): FailureReport => ({
+    declaration: JSON.stringify(spec, null, 2),
+    serverLog: readText(serverLogPath),
+    calls: readText(callsLog),
+    panes,
+    fakes: fakesReport(),
+  });
+
   const collectReport = async (): Promise<FailureReport> => {
     const panes: string[] = [];
     const list = await tmux(['list-panes', '-a', '-F', '#{pane_id}\t#{session_name}:#{window_index}.#{pane_index}\t#{pane_current_command}']);
@@ -382,22 +428,11 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
         panes.push(`── ${where} (${paneId}, ${cmd}) ──\n${screen.stdout.trimEnd()}`);
       }
     }
-    return {
-      declaration: JSON.stringify(spec, null, 2),
-      serverLog: readText(serverLogPath),
-      calls: readText(callsLog),
-      panes: panes.length ? panes.join('\n\n') : '(no tmux panes)',
-    };
+    return reportFiles(panes.length ? panes.join('\n\n') : '(no tmux panes)');
   };
 
   const doStop = async (collect: boolean): Promise<StopReport> => {
-    const fallbackReport = (e: Error): FailureReport => ({
-      declaration: JSON.stringify(spec, null, 2),
-      serverLog: readText(serverLogPath),
-      calls: readText(callsLog),
-      panes: `(could not read: ${e.message})`,
-    });
-    const report = collect ? await collectReport().catch(fallbackReport) : undefined;
+    let report = collect ? await collectReport().catch((e: Error) => reportFiles(`(could not read: ${e.message})`)) : undefined;
     const leftovers: string[] = [];
 
     // TEST-1.8: a World process that daemonized itself away from the World (a `setsid` helper)
@@ -433,6 +468,13 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
       left = await owned();
     }
     const stillRunning = left;
+    // TEST-1.5: nothing of the World can call a fake any more, and its logs are still there.
+    const violations = readViolations(violationsLog);
+    // TEST-2.4: the report's files are read again now, before the directories go, so they hold the
+    // calls made while the World stopped, such as one a fake refused. A collected report keeps the
+    // panes it captured before shutdown; without one, a refused call still gets its report, without panes.
+    if (report) report = reportFiles(report.panes);
+    else if (violations.length) report = reportFiles('(World stopped: its tmux panes were gone when the refused calls were read)');
 
     if (trap) await new Promise<void>((resolve) => trap?.close(() => resolve()));
     unfinished.delete(entryPath);
@@ -440,7 +482,7 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
       // Its directories go only once its processes are gone: the entry stays, so global teardown
       // sweeps it again and fails the run naming it.
       for (const p of stillRunning) leftovers.push(`process ${describeProc(p)} still runs after SIGKILL, so ${root} and ${tmuxTmpdir} are kept`);
-      return { leftovers, trapKnocks, ...(report ? { report } : {}) };
+      return { leftovers, trapKnocks, violations, ...(report ? { report } : {}) };
     }
     for (const dir of [root, tmuxTmpdir]) {
       // Only a directory the World created itself (reserveWorld), never one that was already there.
@@ -449,7 +491,7 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
       if (existsSync(dir)) leftovers.push(`directory ${dir}`);
     }
     await rm(entryPath, { force: true });
-    return { leftovers, trapKnocks, ...(report ? { report } : {}) };
+    return { leftovers, trapKnocks, violations, ...(report ? { report } : {}) };
   };
 
   const stop = (o: { collect?: boolean } = {}) => {
@@ -510,7 +552,18 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
       if (!real) continue;
       await writeExecutable(join(bin, name), fillTemplate('logged', { NAME: name, LOG: callsLog, REAL: real, SELF: join(bin, name) }));
     }
-    // TODO(TEST-1.4, TEST-1.7): the declared fakes from e2e/fakes/ (claude, codex, tb-jev, curl).
+    // TEST-1.2, TEST-1.5: the declared fakes, each run by node from e2e/fakes/ through a wrapper that
+    // logs its argv, with a directory of its own for the answer it reads when a call starts (TEST-1.6).
+    const installFake = async <A>(fake: FakeControl<A>, decl: A | null) => {
+      if (decl === null) return;
+      await mkdir(fakeDir(fake.name), { recursive: true });
+      fake.answer(decl);
+      const values = { NAME: fake.name, LOG: callsLog, NODE: process.execPath, SCRIPT: join(FAKES, `${fake.name}.ts`), STATE: fakeDir(fake.name), VIOLATIONS: violationsLog };
+      await writeExecutable(join(bin, fake.name), fillTemplate('fake', values));
+    };
+    await installFake(tbProd, spec.tbProd);
+    await installFake(tbPr, spec.tbPr);
+    // TODO(TEST-1.4, TEST-1.7): the other declared fakes from e2e/fakes/ (claude, codex, tb-jev, curl).
 
     // TEST-1.2: a login shell (a tmux pane, Fleet's `$SHELL -l`) runs /etc/profile, whose
     // path_helper puts /usr/bin, /usr/local/bin and /opt/homebrew/bin back on PATH, with
@@ -566,6 +619,8 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
     tmuxServerPid = Number((await step(tmux(['display', '-p', '#{pid}']))).stdout.trim());
     if (!tmuxServerPid) throw new Error("tmux didn't report its server's pid");
 
+    // TEST-1.5: a global git identity (WORK-2.5).
+    if (spec.gitIdentity) await writeFile(join(home, '.gitconfig'), gitConfig(spec.gitIdentity));
     // TODO(TEST-1.5): repos, History and usage fixtures go into home/ and work/ here.
     // TODO(TEST-1.4): live Sessions start here as Fake Harnesses; wait until Fleet lists them.
 
@@ -595,6 +650,9 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
     }
     if (RESERVED_PORTS.has(worldPort)) throw new Error(`The Lookout server got port ${worldPort}, which a World never uses.`);
     await step(checkBootstrap(worldPort, token));
+    worldUrl = `http://127.0.0.1:${worldPort}/`;
+    // TEST-1.7: from now on the test's pages reach this origin, and only this one.
+    browser.allow(new URL(worldUrl).origin);
     if (opts.pauseFile) {
       writeFileSync(opts.pauseFile, entryPath);
       await step(sleep(30_000));
@@ -620,7 +678,7 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
     socket,
     tmuxSocket,
     port: worldPort,
-    url: `http://127.0.0.1:${worldPort}/`,
+    url: worldUrl,
     token,
     settingsPath,
     env,
@@ -643,9 +701,19 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
     processes: owned,
     guard,
     calls: () => readText(callsLog).split('\n').filter(Boolean),
+    tbProd,
+    tbPr,
+    violations: () => readViolations(violationsLog),
+    browserRequests: () => browser.requests(),
     serverLog: () => readText(serverLogPath),
     stop,
   };
+}
+
+/** `~/.gitconfig` with a global identity, each value quoted as git reads it. */
+export function gitConfig(identity: GitIdentityDecl): string {
+  const quote = (v: string) => `"${v.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+  return `[user]\n\tname = ${quote(identity.name)}\n\temail = ${quote(identity.email)}\n`;
 }
 
 /** The user's real home, only to prove nothing in a World points at it (TEST-1.1). */

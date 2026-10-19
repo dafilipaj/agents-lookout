@@ -1,0 +1,12 @@
+#!/bin/bash
+# A fake command as the World runs it (TEST-1.2, TEST-1.5): logs its argv to the World's calls log,
+# as `logged` does for Fleet and tb-session (TEST-2.4), then runs the fake's script with node. The
+# script reads its answer from its own directory when the call starts (TEST-1.6, e2e/fakes/control.ts),
+# and records a call it doesn't answer in the World's violations, which fail the Behaviour test.
+line="$(/bin/date +%H:%M:%S) @NAME@"
+for a in "$@"; do printf -v q '%q' "$a"; line="$line $q"; done
+printf '%s\n' "$line" >> '@LOG@'
+LOOKOUT_FAKE_STATE='@STATE@'
+LOOKOUT_FAKE_VIOLATIONS='@VIOLATIONS@'
+export LOOKOUT_FAKE_STATE LOOKOUT_FAKE_VIOLATIONS
+exec '@NODE@' '@SCRIPT@' "$@"

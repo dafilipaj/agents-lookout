@@ -11,7 +11,7 @@ import { type WorldEntry, readEntry, readLeftovers, runDir, sweepWorld } from '.
 /**
  * The World's own tests that need a whole run: each starts Playwright on e2e/selftest/ the way
  * `pnpm e2e` does, interrupts it or lets it time out, and checks what was left and what was named
- * (TEST-1.8, TEST-2.2, TEST-2.6). Each of the three mechanisms that clean up after an interrupted
+ * (TEST-1.5, TEST-1.7, TEST-1.8, TEST-2.2, TEST-2.6). Each of the three mechanisms that clean up after an interrupted
  * start has a test that fails without it: the fixture's SIGINT handler, the worker's exit sweep,
  * and the next run's global-setup sweep.
  */
@@ -240,6 +240,51 @@ test("TEST-1.8: a test that times out with its teardown unfinished: the worker's
   } finally {
     stopGroup(run);
     for (const p of await listProcesses()) if (p.command.endsWith(` ${tag}`)) signalVerified([p], 'SIGKILL');
+    await rm(run.dir, { recursive: true, force: true });
+  }
+});
+
+test('TEST-1.5: a Behaviour test that asks the fake tb-prod or tb-pr for a subcommand it does not answer fails, naming the call', async () => {
+  const run = await startRun('fixture.selftest.ts', {}, ['--grep', 'TEST-1\\.5']);
+  try {
+    await finish(run, 40_000);
+    const byTitle = results(run.report());
+    // Each body passed (the refused call exited 2); the World failed the test after it, with this
+    // message alone (its stack follows a blank line).
+    const message = (title: string) => byTitle.get(title)?.errors.split('\n\n')[0];
+    const prod = byTitle.get('TEST-1.5: a plain test that asks the fake tb-prod for another subcommand');
+    expect(prod?.status, run.output()).toBe('failed');
+    expect(message('TEST-1.5: a plain test that asks the fake tb-prod for another subcommand')).toBe(
+      'Error: The fake tb-prod refused `tb-prod create tasks --data {}`: only `query tasks` is answered.',
+    );
+    const pr = byTitle.get('TEST-1.5: a plain test that asks the fake tb-pr for another subcommand');
+    expect(pr?.status).toBe('failed');
+    expect(message('TEST-1.5: a plain test that asks the fake tb-pr for another subcommand')).toBe(
+      [
+        'Error: The fake tb-pr refused `tb-pr open 812`: only `list --json` and `refresh` are answered.',
+        'The fake tb-pr refused `tb-pr list`: only `list --json` and `refresh` are answered.',
+      ].join('\n'),
+    );
+    expect((run.report()?.errors ?? []).map((e) => e.message ?? '').join('\n')).not.toContain('left things behind');
+  } finally {
+    stopGroup(run);
+    await rm(run.dir, { recursive: true, force: true });
+  }
+});
+
+test("TEST-1.7: a Behaviour test whose page gets past the World's route, by a redirect from its Lookout, fails naming the URL", async () => {
+  const run = await startRun('fixture.selftest.ts', {}, ['--grep', 'TEST-1\\.7']);
+  try {
+    await finish(run, 40_000);
+    const r = results(run.report()).get("TEST-1.7: a plain test whose page follows a redirect from the World's Lookout to outside it");
+    // The body passed; the World failed the test after it, with this message alone.
+    expect(r?.status, run.output()).toBe('failed');
+    expect(r?.errors.split('\n\n')[0]).toMatch(
+      /^Error: A page asked for https:\/\/github\.com\/productiveio\/api\/pull\/812 \(a redirect from http:\/\/127\.0\.0\.1:\d+\/away\), outside the World's Lookout origin, and the World's route never aborted it\.$/,
+    );
+    expect((run.report()?.errors ?? []).map((e) => e.message ?? '').join('\n')).not.toContain('left things behind');
+  } finally {
+    stopGroup(run);
     await rm(run.dir, { recursive: true, force: true });
   }
 });

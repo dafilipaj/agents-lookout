@@ -109,7 +109,7 @@ scenario('TEST-1.2: PATH holds only the tools the World declares', world(), asyn
   for (const name of [...Object.keys(REAL_TOOLS), 'tmux', 'ps', 'fleet', 'tb-session']) {
     expect(await lookup(name), name).toBe(join(world.bin, name));
   }
-  for (const name of [...ABSENT_TOOLS, 'claude', 'codex', 'pi', 'curl', 'tb-jev']) {
+  for (const name of [...ABSENT_TOOLS, 'claude', 'codex', 'pi', 'curl', 'tb-jev', 'tb-prod', 'tb-pr']) {
     expect(await lookup(name), name).toBe('');
   }
   expect(readdirSync(world.bin).sort()).toEqual([...Object.keys(REAL_TOOLS), 'tmux', 'ps', 'fleet', 'tb-session'].sort());
@@ -241,7 +241,7 @@ test('TEST-1.2: the guard reads the script a node or bun runs past their own opt
   expect(programOf('node --eval=1 /x/pi')).toBe('node');
 });
 
-scenario('TEST-1.5: an empty World has no Sessions, no Harness, no History and no Jev', world(), async ({ page, world }) => {
+scenario('TEST-1.5: an empty World has no Sessions, no Harness, no History, no Jev and no git identity', world(), async ({ page, world }) => {
   const sidebar = page.getByRole('complementary', { name: 'Session sidebar' });
   await world.step('the sidebar to say no Session is live', () => expect(sidebar.getByText('No live Sessions')).toBeVisible());
   await expect(sidebar.getByRole('option')).toHaveCount(0);
@@ -250,6 +250,8 @@ scenario('TEST-1.5: an empty World has no Sessions, no Harness, no History and n
   expect(readdirSync(world.home).sort()).toEqual(['.config', '.profile', 'Projects']);
   expect(readdirSync(join(world.home, 'Projects'))).toEqual(['work']);
   expect(world.calls().some((c) => c.includes(' fleet --local list --json'))).toBe(true);
+  // No `~/.gitconfig`, so git has no global identity to suggest (WORK-2.5).
+  expect(await world.run('git', ['config', '--global', 'user.email'])).toEqual({ stdout: '', stderr: '', code: 1 });
 });
 
 test('TEST-1.3: a binary that does not match its pin is refused, naming the pin and the command that gets it', async () => {
