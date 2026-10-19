@@ -1,3 +1,4 @@
+import { asSent } from '../shared/message.ts';
 import type { AnswerRequest, AnswerResult, ChatPage, ServerEvent, SessionRow } from '../shared/types.ts';
 import { type AnswerLedger, type AnswererOptions, PromptWatch, answerPrompt, stopSession } from './answerer.ts';
 import { ChatFeed } from './chat.ts';
@@ -47,7 +48,6 @@ function isPidTarget(row: SessionRow): boolean {
 const CONTROL_TYPED = /[\u0000-\u0009\u000b-\u001f\u007f]/;
 // eslint-disable-next-line no-control-regex -- as above, but a pasted tab is fine
 const CONTROL_PASTED = /[\u0000-\u0008\u000b-\u001f\u007f]/;
-const TAB_AS_SPACES = '    ';
 
 interface Watch {
   sessionId: string | null;
@@ -191,9 +191,8 @@ export class Viewer {
   async send(sessionId: string, input: unknown): Promise<void> {
     const raw = typeof input === 'object' && input !== null ? (input as Record<string, unknown>).text : undefined;
     if (typeof raw !== 'string' || raw.includes('\0')) throw new ViewError(400, 'Invalid message.', 'text');
-    let text = raw.replace(/\r\n?/g, '\n');
+    const text = asSent(raw); // the tab compares its message with the Transcript's copy this way (VIEW-1.13)
     const pasted = text.includes('\n'); // Fleet pastes multi-line text and types a single line
-    if (!pasted) text = text.replace(/\t/g, TAB_AS_SPACES);
     if ((pasted ? CONTROL_PASTED : CONTROL_TYPED).test(text)) {
       throw new ViewError(400, "The message has control characters that can't be sent.", 'text');
     }

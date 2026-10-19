@@ -4,6 +4,7 @@ import { type ComponentPropsWithRef, type ComponentPropsWithoutRef, type Keyboar
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '@/components/ui/dialog';
 import { turnRunning } from '@/lib/activity';
+import { type Echo, NO_ECHOES, settleEchoes, shown } from '@/lib/echoes';
 import {
   type AnswerAttempt,
   AnswerContext,
@@ -125,14 +126,55 @@ export function SessionView({
   // runs is queued behind it and keeps the turn's time. A failed send puts back the time it
   // replaced, unless a newer send has replaced it since.
   const sentAt = sentAtBySession.get(row.id) ?? null;
+
+  // VIEW-1.13: your message shows at once, dimmed, until its copy from the Transcript reaches the
+  // chat. Local state: this view is mounted per Session, so selecting another drops them. While the
+  // chat can't show them they're hidden, not dropped, and don't time out: the Session reads as ended
+  // (a Codex Session getting its session id reads so for a render before App follows it, and this
+  // view keeps its key across that), or its chat hasn't loaded (no Transcript, VIEW-1.8). While the
+  // chat shows a feed problem they show but don't time out: a copy may be on its way.
+  const [echoes, setEchoes] = useState<readonly Echo[]>(NO_ECHOES);
+  const echoIds = useRef(0);
+  const hidden = ended || !chat?.loaded;
+  const settled = settleEchoes(echoes, {
+    entries: chat?.entries ?? [],
+    queue: chat?.queue ?? [],
+    status: row.status,
+    statusSince: row.statusSince,
+    hidden,
+    paused: !!chat?.problem,
+    now,
+  });
+  if (settled !== echoes) setEchoes(settled);
+  const visible = useMemo(() => (hidden ? NO_ECHOES : shown(settled)), [hidden, settled]);
+  // A message whose copy never came opens the Terminal preview once, as an outcome Lookout can't be
+  // sure of does (VIEW-4.3).
+  const lost = visible.reduce((max, e) => (e.state === 'lost' ? Math.max(max, e.id) : max), 0);
+  const lostShown = useRef(0);
+  useEffect(() => {
+    if (lost <= lostShown.current) return;
+    lostShown.current = lost;
+    latest.current.showTerminal();
+  }, [lost]);
+
   const send = async (sessionId: string, text: string) => {
     const at = Date.now();
+    const id = ++echoIds.current;
+    setEchoes((list) => [...list, { id, text, at, since: at, state: 'waiting' }]);
     const entries = chat?.entries ?? [];
-    if (turnRunning({ status: row.status, statusSince: row.statusSince, entries, sentAt, now: at })) return onSend(sessionId, text);
-    const previous = sentAt ?? undefined;
-    onSentAt(sessionId, () => at);
-    const sent = await onSend(sessionId, text);
-    if (!sent) onSentAt(sessionId, (current) => (current === at ? previous : current));
+    let sent: boolean;
+    if (turnRunning({ status: row.status, statusSince: row.statusSince, entries, sentAt, now: at })) {
+      sent = await onSend(sessionId, text);
+    } else {
+      const previous = sentAt ?? undefined;
+      onSentAt(sessionId, () => at);
+      sent = await onSend(sessionId, text);
+      if (!sent) onSentAt(sessionId, (current) => (current === at ? previous : current));
+    }
+    // A failed send takes its message away; one that went through drops the lost ones: you've seen
+    // them, and moved on.
+    const drop = (e: Echo) => (sent ? e.state === 'lost' : e.id === id);
+    setEchoes((list) => (list.some(drop) ? list.filter((e) => !drop(e)) : list));
     return sent;
   };
 
@@ -165,6 +207,7 @@ export function SessionView({
             onEarlier={onEarlier}
             onPage={onPage}
             onFollowing={onFollowing}
+            echoes={visible}
             activity={
               <>
                 {permission && (

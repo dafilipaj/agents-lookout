@@ -667,7 +667,8 @@ describe('queued prompts (VIEW-3.3)', () => {
     reset([you('Fix the rounding'), agent('Working on it…')]);
     await user.type(screen.getByRole('textbox', { name: 'Message' }), 'Also add a KWD spec{Enter}');
     expect(app.client.sendMessage).toHaveBeenCalledWith('a', 'Also add a KWD spec');
-    const queued: ChatEntry = { kind: 'user', cursor: 'q1.0', ts: null, text: 'Also add a KWD spec', queued: true };
+    // Fleet's queue carries the enqueue line's time, at or after the send (VIEW-1.13 matches by it).
+    const queued: ChatEntry = { kind: 'user', cursor: 'q1.0', ts: new Date().toISOString(), text: 'Also add a KWD spec', queued: true };
     append([], [], [queued]);
     append([], [], [queued]); // every response repeats the whole queue
     expect(document.querySelectorAll('[data-queued]')).toHaveLength(1);
@@ -675,7 +676,7 @@ describe('queued prompts (VIEW-3.3)', () => {
     expect(screen.getAllByText('Also add a KWD spec')).toHaveLength(1);
 
     // The Harness takes it: Fleet stops listing it as queued and sends it as a normal prompt.
-    append([you('Also add a KWD spec')], [], []);
+    append([you('Also add a KWD spec', { ts: new Date().toISOString() })], [], []);
     expect(document.querySelectorAll('[data-queued]')).toHaveLength(0);
     expect(screen.getAllByText('Also add a KWD spec')).toHaveLength(1);
     expect(screen.getAllByRole('listitem').at(-1)).not.toHaveTextContent(/queued/i);

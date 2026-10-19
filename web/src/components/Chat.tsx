@@ -5,18 +5,21 @@ import { flushSync } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import { AnswerContext } from '@/lib/answers';
 import { type ChatItem, type QuestionEntry, type ToolCall, answerFor, chatItems, clockTime, toolsLabel } from '@/lib/chat';
+import { type Echo, IN_TERMINAL, NOT_TAKEN, NO_ECHOES, isCommand } from '@/lib/echoes';
 import { linkify } from '@/lib/links';
 import { JUMP_MARGIN_PX, chatMarks, firstLine, stepMark } from '@/lib/marks';
 import { HARNESS_NAME } from '@/lib/sessions';
 import type { Chat as ChatState } from '@/lib/store';
 import { cn } from '@/lib/utils';
-import { AnswerInTerminal, ChoiceIcon, QuestionForm } from './Answering';
+import { AnswerInTerminal, ChoiceIcon, QuestionForm, TerminalNote } from './Answering';
 import { ChatRail, MarkShape } from './ChatRail';
 import { Markdown } from './Markdown';
 
 /** At most this far from the bottom still counts as "at the bottom" (VIEW-1.5). */
 const BOTTOM_SLACK_PX = 48;
 const NONE: readonly ChatEntry[] = [];
+/** VIEW-1.13: a message you sent, as the chat shows it: waiting for its copy, or lost. */
+type ChatEcho = Pick<Echo, 'id' | 'text' | 'state'>;
 /** Keys that scroll the chat when focus is in it, or on the page: pressing one releases a jump's hold (VIEW-1.11). */
 const SCROLL_KEYS = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ']);
 /**
@@ -38,12 +41,14 @@ export interface ChatProps {
   onPage(sessionId: string, before: string, epoch: number, page: ChatPage): void;
   /** VIEW-1.5: whether you're at the bottom. */
   onFollowing(sessionId: string, following: boolean): void;
+  /** VIEW-1.13: messages you sent that the Transcript hasn't shown yet, oldest first. */
+  echoes?: readonly ChatEcho[];
   /** VIEW-1.10: what the Session is doing, under the last message. */
   activity?: ReactNode;
 }
 
 /** VIEW-1: the conversation from the Transcript. Mounted per Session. */
-export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFollowing, activity }: ChatProps) {
+export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFollowing, echoes = NO_ECHOES, activity }: ChatProps) {
   const [loadingEarlier, setLoadingEarlier] = useState(false);
   const [earlierError, setEarlierError] = useState<string | null>(null);
   const entries = chat?.entries ?? NONE;
@@ -76,7 +81,7 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
     } else if (atBottom.current) {
       el.scrollTop = el.scrollHeight;
     }
-  }, [entries, queue, before, chat?.loaded, chat?.problem]);
+  }, [entries, queue, echoes, before, chat?.loaded, chat?.problem]);
 
   useEffect(() => onFollowing(sessionId, following), [onFollowing, sessionId, following]);
 
@@ -267,7 +272,7 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
     ) : (
       <Skeleton />
     );
-  } else if (items.length === 0 && queue.length === 0 && !before) {
+  } else if (items.length === 0 && queue.length === 0 && echoes.length === 0 && !before) {
     // A Session before its first prompt: an empty conversation, not an error.
     body = (
       <Notice icon={<MessagesSquare className="size-5 opacity-60" />} title="No messages yet">
@@ -305,7 +310,13 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
         })}
         {queue.map((q) => (
           <li key={`queue:${q.cursor}`} data-queued>
-            <Prompt entry={q} queued />
+            <Prompt text={q.kind === 'user' ? q.text : ''} ts={q.ts} state="queued" />
+          </li>
+        ))}
+        {echoes.map((e) => (
+          // VIEW-1.13: sent, not in the Transcript yet; its copy takes this place.
+          <li key={`echo:${e.id}`} data-echo={e.state}>
+            <Sending echo={e} />
           </li>
         ))}
         {problem && (
@@ -394,7 +405,7 @@ function Item({ item, label, startsTurn }: RowProps) {
   const e = item.entry;
   switch (e.kind) {
     case 'user':
-      return <Prompt entry={e} queued={false} />;
+      return <Prompt text={e.text} ts={e.ts} state="sent" />;
     case 'command':
       return (
         <div className="flex flex-col items-end" data-kind="command">
@@ -455,12 +466,34 @@ function isTextField(t: EventTarget | null): boolean {
   return t.isContentEditable || t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT';
 }
 
-/** Your prompt; a queued one waits in the Harness's queue and isn't part of the history yet (VIEW-3.3). */
-function Prompt({ entry, queued }: { entry: ChatEntry; queued: boolean }) {
-  const text = entry.kind === 'user' ? entry.text : '';
+/**
+ * VIEW-1.13: your message before its copy from the Transcript arrives. One whose copy never came
+ * says so under it, with the way to the terminal, as an answer Lookout can't be sure of does
+ * (VIEW-4.3); a slash command's says, not as a problem, that its result shows there.
+ */
+function Sending({ echo }: { echo: ChatEcho }) {
+  const terminal = useContext(AnswerContext)?.terminal ?? null;
+  const lost = echo.state === 'lost';
+  const command = lost && isCommand(echo.text);
   return (
-    <div className="flex flex-col items-end" data-kind="user">
-      <Meta who="You" ts={entry.ts} extra={queued ? 'queued' : null} />
+    <>
+      <Prompt text={echo.text} ts={null} state={lost ? 'lost' : 'sending'} />
+      {lost && <TerminalNote message={command ? IN_TERMINAL : NOT_TAKEN} terminal={terminal} info={command} className="mt-1.5 justify-end" />}
+    </>
+  );
+}
+
+/**
+ * Your prompt. A queued one waits in the Harness's queue and isn't part of the history yet
+ * (VIEW-3.3); a sending one is your message before its copy from the Transcript arrives, and a lost
+ * one never got a copy (VIEW-1.13): both dimmed.
+ */
+function Prompt({ text, ts, state }: { text: string; ts: string | null; state: 'sent' | 'queued' | 'sending' | 'lost' }) {
+  const queued = state === 'queued';
+  const echo = state === 'sending' || state === 'lost';
+  return (
+    <div className={cn('flex flex-col items-end', echo && 'opacity-60')} data-kind={echo ? undefined : 'user'}>
+      <Meta who="You" ts={ts} extra={queued ? 'queued' : null} srLabel={state === 'sending' ? 'sending' : null} />
       <div
         className={cn(
           'max-w-[85%] rounded-lg bg-muted px-3.5 py-2 text-[13.5px] leading-[1.6] break-words whitespace-pre-wrap',
@@ -473,11 +506,12 @@ function Prompt({ entry, queued }: { entry: ChatEntry; queued: boolean }) {
   );
 }
 
-function Meta({ who, ts, extra = null }: { who: string; ts: string | null; extra?: string | null }) {
+function Meta({ who, ts, extra = null, srLabel = null }: { who: string; ts: string | null; extra?: string | null; srLabel?: string | null }) {
   const time = clockTime(ts);
   return (
     <p className="mb-1 flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
       <span className="font-medium text-foreground/80">{who}</span>
+      {srLabel && <span className="sr-only">{srLabel}</span>}
       {time && <time dateTime={ts!}>{time}</time>}
       {extra && <span className="rounded bg-muted px-1 text-[10.5px] uppercase tracking-wide">{extra}</span>}
     </p>

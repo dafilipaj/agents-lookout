@@ -1,6 +1,6 @@
 import type { QuestionAnswer } from '@shared/types.ts';
 import { Circle, CircleDot, ShieldQuestion, Square, SquareCheck, TerminalSquare } from 'lucide-react';
-import { type KeyboardEvent, useState } from 'react';
+import { type ComponentPropsWithoutRef, type KeyboardEvent, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { type Draft, type PermissionPanel, type QuestionPanel, type TerminalLink, answersOnClick, draftAnswers, emptyDraft, pick, typeText } from '@/lib/answers';
 import type { QuestionEntry } from '@/lib/chat';
@@ -18,10 +18,31 @@ export function ChoiceIcon({ multiSelect, chosen }: { multiSelect: boolean; chos
  * live region, so the reason is announced when it replaces the buttons.
  */
 export function AnswerInTerminal({ message, terminal }: { message: string; terminal: TerminalLink }) {
+  return <TerminalNote message={message} terminal={terminal} data-answer="blocked" />;
+}
+
+/**
+ * One line saying in plain words why to look at the terminal, with "Show terminal" while the
+ * Terminal preview is closed: for an answer (VIEW-4.3), and under a message that never reached the
+ * Transcript (VIEW-1.13). A live region, so it's announced when it shows: an alert, or with `info`
+ * (nothing went wrong, as for a slash command whose result shows only there) a polite status in
+ * muted text.
+ */
+export function TerminalNote({
+  message,
+  terminal,
+  info = false,
+  className,
+  ...rest
+}: { message: string; terminal: TerminalLink | null; info?: boolean } & Omit<ComponentPropsWithoutRef<'div'>, 'children' | 'role'>) {
   return (
-    <div role="alert" className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12.5px] text-needs-you-text" data-answer="blocked">
+    <div
+      role={info ? 'status' : 'alert'}
+      className={cn('mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12.5px]', info ? 'text-muted-foreground' : 'text-needs-you-text', className)}
+      {...rest}
+    >
       <span className="min-w-0">{message}</span>
-      {!terminal.open && (
+      {terminal && !terminal.open && (
         <Button variant="outline" size="xs" className="h-6 gap-1 text-[11.5px]" onClick={terminal.show}>
           <TerminalSquare className="size-3" />
           Show terminal
