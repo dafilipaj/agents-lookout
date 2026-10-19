@@ -28,7 +28,7 @@ What a Behaviour test runs in. A World is built fresh for each Behaviour test an
 - [x] TEST-1.1 When a Behaviour test starts, its World has its own temporary HOME, its own settings file, a private tmux server and a Lookout server on a free port. That port is never 4747 or 4748. Nothing from the user's HOME, tmux server, keychain or settings is visible to Lookout, Fleet, tb-session or the Fake Harnesses. (test)
 - [ ] TEST-1.2 PATH holds only what the World declares:
   - **real:** Fleet, tb-session, tmux (through a shim to the private `-L` server), git, ps (through the shim of TEST-1.10), lsof, sh, node, and the plain system tools these need;
-  - **fake:** claude, codex, tb-jev and curl, each only when declared;
+  - **fake:** claude, codex, tb-jev, curl, tb-prod and tb-pr, each only when declared;
   - **absent:** security, gh, ssh and osascript.
 
   A command the World doesn't declare can't be found, also not through Fleet's fallback directories (`/opt/homebrew/bin`, `/usr/local/bin`). (test)
@@ -38,14 +38,16 @@ What a Behaviour test runs in. A World is built fresh for each Behaviour test an
   - Harnesses present or absent;
   - live Sessions, each with Harness, Status, working directory and Transcript;
   - git repos and Worktrees;
+  - a global git identity: `user.name` and `user.email` in `~/.gitconfig`;
   - past Sessions for History;
   - Claude and Codex usage numbers;
   - Jev's state;
+  - tb-prod's Tasks for each assignee email and tb-pr's PR board, or their failures (WORK);
   - Settings.
 
   Anything the test doesn't declare is absent. `.without('codex')` removes both the Codex CLI and `~/.codex`, so Fleet's `harness list` and `usage` both say "not installed". (test)
-- [ ] TEST-1.6 A Behaviour test can change its World while it runs, as a Harness or the user would: a Session turns Busy, asks a question, replies, or exits; a new Session starts outside Lookout; a Codex turn records new limits. (test)
-- [ ] TEST-1.7 Nothing in a World reaches the network or a real account. The fake `curl` answers only Anthropic's usage endpoint, with the numbers (or the 401, 429 or timeout) the World declares, using fake credentials in the World's HOME. Any other request fails the Behaviour test and names the URL. (test)
+- [ ] TEST-1.6 A Behaviour test can change its World while it runs, as a Harness or the user would: a Session turns Busy, asks a question, replies, or exits; a new Session starts outside Lookout; a Codex turn records new limits. It can also change what the fake `tb-prod` or `tb-pr` answers from its next call on, and hold one of their calls in flight until the test releases it. (test)
+- [ ] TEST-1.7 Nothing in a World reaches the network or a real account. The fake `curl` answers only Anthropic's usage endpoint, with the numbers (or the 401, 429 or timeout) the World declares, using fake credentials in the World's HOME. Any other request fails the Behaviour test and names the URL. Chromium doesn't reach it either: the World aborts every request its pages make, popups and new tabs included, outside the World's own Lookout origin, and records each one's URL for the test to check. (test)
 - [x] TEST-1.8 After each Behaviour test, whether it passed, failed or timed out, its tmux server, Lookout server, Fake Harnesses and temporary directories are gone. A run that leaves any of them behind fails and names what it left. (test)
 - [ ] TEST-1.9 A guard test proves the isolation, as the Fleet fork's `tests/isolation.rs` does. It listens on the default tmux socket inside the World's `TMUX_TMPDIR`, runs a scenario that lists, starts and closes a Session, and fails if anything knocked on that socket or read outside the World's HOME. (test)
 - [ ] TEST-1.10 Processes outside the World are invisible to it. With Codex declared and a real Codex TUI running on the machine, Fleet lists only the World's Sessions. (test)
@@ -106,7 +108,7 @@ How the Fake Harnesses' Transcripts stay true to the real ones.
 ## Non-goals
 
 - Running a real Claude Code or Codex anywhere but `pnpm e2e:record`, which is run by hand. They cost money, are slow and don't answer the same way twice.
-- Any network call or real account in a World: Anthropic's usage endpoint, Typesafe, GitHub.
+- Any network call or real account in a World: Anthropic's usage endpoint, Typesafe, GitHub, Productive.
 - CI. The pre-push hook is the only gate; revisit if anyone else starts pushing.
 - Writing Behaviour tests for every existing criterion now, or retagging every `(manual)` criterion now. They come gradually, when each feature is next worked on, as [0007](../../decisions/0007-behaviour-tests-from-spec-requirements.md) says.
 - Replacing the Vitest unit and component tests. Edge cases stay there.
@@ -202,7 +204,7 @@ e2e/
   global-setup.ts        stops the run before the first test when a pin, tmux or the UI is missing
   world/                 the World builder (TypeScript): env, PATH, shims, Fleet config, Lookout server, teardown
   selftest/              runs that the World's own tests start, interrupt or time out (never run alone)
-  fakes/                 claude.mjs, codex.mjs, tb-jev.mjs, curl.mjs
+  fakes/                 claude.mjs, codex.mjs, tb-jev.mjs, curl.mjs, tb-prod.mjs, tb-pr.mjs
   shims/                 tmux, ps, and `logged` (Fleet's and tb-session's argv into the calls log)
   fixtures/              transcripts/{claude,codex}/<version>/*.jsonl, usage/*.json, history/*.json
   scenarios/<feature>/*.e2e.ts
@@ -228,7 +230,7 @@ scripts/req-check.mjs
    - **Fleet and tb-session:** a `logged` wrapper each, which appends its argv to `logs/calls.log` (TEST-2.4) and runs the pinned binary from `.cache/` under the wrapper's own path. The wrapper sets `FLEET_PATH_ONLY=1` itself, so a caller that drops it still gets a PATH-only Fleet. `LOOKOUT_FLEET_BIN` and `LOOKOUT_TB_SESSION_BIN` point at the wrappers; `.without('fleet')` leaves out both the wrapper and the variable.
    - **tmux shim:** `exec <real tmux> -L lookout-world-<rand> -f /dev/null "$@"`. Lookout and Fleet both reach the private server through it.
    - **ps shim:** passes every call through to `/bin/ps`, except that a machine-wide listing (`-ax`, `-e`) keeps only processes whose tty belongs to a pane of the World's tmux server, and their descendants. This keeps the user's own Codex TUIs out of Fleet's discovery (TEST-1.10).
-   - **Fakes:** the declared ones among claude, codex, tb-jev and curl.
+   - **Fakes:** the declared ones among claude, codex, tb-jev, curl, tb-prod and tb-pr.
    - **Kept out:** `security`, `gh`, `ssh` and `osascript`.
 3. **Fleet config** (`FLEET_CONFIG`) only turns naming, grouping and stacks off, since each would run `claude -p`. Every Fleet the World runs has `FLEET_PATH_ONLY=1` (step 4, and the `logged` wrapper sets it itself), so the launchers stay Fleet's defaults (`claude`, `codex`, `pi`), as do `tmux` and `gh`: each is found on the World's PATH or not at all. A Harness is installed exactly when the World puts its fake in `bin/`; no per-binary override is needed to keep Fleet out of `/opt/homebrew/bin` or `/usr/local/bin`.
 4. **Environment for the Lookout server and everything it starts:**
@@ -239,13 +241,14 @@ scripts/req-check.mjs
    - `FLEET_PATH_ONLY=1`, and none of Fleet's binary overrides (`FLEET_TMUX`, `FLEET_CMD`, `FLEET_GH`, `FLEET_NODE`, `FLEET_BIN`): Fleet finds the tmux shim, the wrapper and the fakes on PATH;
    - Fleet's `UNSET` list removed.
    - `~/.profile` sets PATH back to `bin/`: a login shell (a tmux pane, a spawned pane's `$SHELL -l`) reads it after `/etc/profile`.
-5. **Fixtures:** the declared Sessions, Transcripts, repos, usage and History are written into `home/` and `work/`. A declared Claude usage also writes fake credentials to `home/.claude/.credentials.json`. Live Sessions are started as Fake Harnesses in the private tmux server, and the World waits until Fleet lists them.
+5. **Fixtures:** the declared Sessions, Transcripts, repos, usage and History are written into `home/` and `work/`. A declared Claude usage also writes fake credentials to `home/.claude/.credentials.json`, and a declared git identity writes `home/.gitconfig`. Live Sessions are started as Fake Harnesses in the private tmux server, and the World waits until Fleet lists them.
 6. **Start:**
    - before anything of it exists, the World is written into its run's index, `.cache/e2e/runs/<run>/worlds/<id>.json` (its token, root, `TMUX_TMPDIR` and the test's title), so an interrupted run can still be swept. The entry, then the root, then `TMUX_TMPDIR` are each created exclusively; an id whose entry or directory already exists is someone else's, so what was made for it is removed again and the World takes another id. Each directory is added to the entry's `owns` as soon as it is made: teardown and sweeps remove only those, and `kill-server` goes only to a socket in a `TMUX_TMPDIR` the World made;
    - every process the World starts gets a process group of its own, so that a timeout can end a command and whatever it started while the World still holds it;
    - the private tmux server starts empty, with `exit-empty off`, from the World's environment (so a pane gets the World's PATH and `FLEET_PATH_ONLY`) and with `default-shell` set to the World's `SHELL`: every pane, whoever opens it, runs that shell, never the account's login shell. It daemonizes, the one World process allowed to; the World keeps the pid it reports;
    - a trap listens on the default socket in `TMUX_TMPDIR` for the whole test (TEST-1.9);
    - the World starts `node server/main.ts --lookout-world-<id>` with `LOOKOUT_PORT=0`, with `HOME` as its working directory, reads the port from the line the server prints, refuses 4747 and 4748, and checks that `/api/bootstrap` answers with the World's own token before Chromium opens. It records how long the start took (TEST-2.5) and hands Playwright the URL;
+   - the test's browser context routes every request: the World's Lookout origin passes, and anything else is aborted and its URL recorded (TEST-1.7). A context route covers popups and new tabs, so a link that opens GitHub or Fantastic shows its URL without loading it;
    - the start can be cancelled (SIGINT or SIGTERM in the worker): whatever was started is torn down, and the worker waits for that teardown before it exits. Playwright never tears down a fixture that hadn't reached `use()`.
 7. **Teardown:**
    - on failure, read the failure report first (TEST-2.4): the declaration, the server log, the calls log and every pane's last screen, attached to the Playwright report;
@@ -278,10 +281,12 @@ Inside a pane, `sh -l` reads `/etc/profile`, whose `path_helper` puts `/usr/bin`
 - **The Transcript lines** are replayed and extended from the recorded fixtures of one named Harness version (TEST-6), never from hand-made shapes. A World names the version it uses, defaulting to the newest recorded one.
 - **Driving them:** a Behaviour test steers a Fake Harness through a control file the fake watches: `busy`, `ask`, `say`, `exit`, `limits`. This gives TEST-1.6.
 
-### Fake `curl` and `tb-jev`
+### Fake `curl`, `tb-jev`, `tb-prod` and `tb-pr`
 
 - **`curl`** parses Fleet's arguments, checks the bearer token against the World's fake credentials, and answers `GET https://api.anthropic.com/api/oauth/usage` with the declared numbers, status (401, 429) or delay. Anything else exits non-zero and is logged as a violation, which fails the Behaviour test (TEST-1.7). Fleet's own parsing, caching and back-off stay real.
 - **`tb-jev`** answers `status --json` with the 0.2.0 contract (USAGE), per `.jev('ready' | 'not-set-up')`. Anything else is a violation.
+- **`tb-prod`** answers `query tasks` with the Tasks declared for the email in its filter, as JSON:API pages, or with a declared failure, and **`tb-pr`** answers `list --json` with the declared board and `refresh` with a declared exit code, or with a declared failure. The shapes and failures are WORK's (its Dependencies). Any other subcommand is a violation. The real ones would reach Productive and GitHub with your own accounts.
+- **Changing their answers (TEST-1.6):** `tb-prod` and `tb-pr` read their answer from a file the World writes, when a call starts. A test rewrites it to change what the next call gets, and can hold the next call in flight until it releases it.
 
 ### Declaring a World
 
@@ -297,11 +302,11 @@ scenario(
 );
 ```
 
-- `world()` starts empty: no Harnesses, no Sessions, no History, Jev absent.
+- `world()` starts empty: no Harnesses, no Sessions, no History, Jev, tb-prod and tb-pr absent.
 - `.with(harness, opts)` makes a Harness present: the CLI fake on PATH, its home directory, its launcher in the Fleet config, and optionally usage numbers.
 - `.without(harness)` makes it absent on every axis Fleet checks: no CLI, no home directory, and a launcher that doesn't exist.
-- `.session({ harness, status, cwd, transcript })`, `.repo(name, { worktrees })`, `.history([...])`, `.jev('ready' | 'not-set-up')` and `.settings({...})` declare the rest. Helpers for common Worlds are built on top of the empty builder, never instead of it.
-- `({ world })` inside the test gives the controls of TEST-1.6: `world.session(id).ask(...)`, `.say(...)`, `.exit()`, and `world.startOutside(...)`.
+- `.session({ harness, status, cwd, transcript })`, `.repo(name, { worktrees })`, `.history([...])`, `.jev('ready' | 'not-set-up')`, `.gitIdentity({ name, email })`, `.tbProd({...})`, `.tbPr({...})` and `.settings({...})` declare the rest. Helpers for common Worlds are built on top of the empty builder, never instead of it.
+- `({ world })` inside the test gives the controls of TEST-1.6: `world.session(id).ask(...)`, `.say(...)`, `.exit()`, `world.startOutside(...)`, and `world.tbProd` and `world.tbPr` with `.answer(...)`, `.hold()` and `.release()`. `world.browserRequests()` lists the URLs the World aborted (TEST-1.7).
 - Behaviour tests find elements by role and accessible name, never by an icon: icons are lucide SVGs without text ([0008](../../decisions/0008-lucide-icons-only.md)).
 - `world.step(what, fn)` and `world.waitUntil(what, check)` name a wait. A Behaviour test past its 30 s budget fails with "ran past 30 s, waiting for <what>" (TEST-2.6), also when the time went in a synchronous stretch no timer can interrupt: the elapsed time is checked again when the test ends. A scenario may shorten its budget (`{ budgetMs }`), never lengthen it. Playwright's own timeout sits 15 s above, to cover starting and tearing down the World.
 - The `world` fixture itself checks the title (TEST-2.2) and keeps the budget (TEST-2.6): a plain `test()` that uses a World is held to both, as a `scenario()` is. Past the budget, the wait in progress fails naming itself; `scenario()` also races its whole body, so a wait on the page outside `world.step` fails at the budget too.
@@ -371,7 +376,7 @@ scenario(
 ### Key decisions
 
 - **Fake Harnesses by default, a real one only in `pnpm e2e:record`**: the hook stays free, fast and repeatable, and format drift is caught when you choose to record.
-- **Real Fleet, tb-session, tmux, git, ps, lsof, sh and node; fake claude, codex, tb-jev and curl; no security, gh, ssh or osascript**: the real tools are the ones whose drift matters, tb-jev is a leaf Lookout only maps, and the absent ones would reach the keychain, the network or iTerm2.
+- **Real Fleet, tb-session, tmux, git, ps, lsof, sh and node; fake claude, codex, tb-jev, curl, tb-prod and tb-pr; no security, gh, ssh or osascript**: the real tools are the ones whose drift matters, tb-jev, tb-prod and tb-pr are leaves Lookout only maps (the real tb-prod and tb-pr would reach Productive and GitHub), and the absent ones would reach the keychain, the network or iTerm2.
 - **USAGE-2.2 unchanged**: "Codex: not installed" is shown; hiding an unused Harness only matters if Lookout is shared, so it's in the Backlog.
 - **`.without('codex')` removes the CLI and `~/.codex`**: Fleet's usage checks only the home directory, its `harness list` only the CLI.
 - **A new tag `(e2e)`**: whether a criterion needs a Behaviour test becomes checkable instead of a reviewer's call.
@@ -412,3 +417,5 @@ None.
 - 2026-10-17: Fixes from the World's second review. A World's processes are the ones carrying its `LOOKOUT_WORLD_ID` token in their environment, or descending from one, never the members of a recorded process group: pids are reused within minutes, so a group whose leader had exited could be someone else's. Signals go to single pids after their start time is read again; a group is signalled only through a child the World still holds. A process that daemonized away from the World is named and killed, and the World's directories go only after its processes. The worker's exit sweep names what it found under the test's title, and a worker waits for a cancelled start's teardown; runs of `e2e/selftest/` prove the SIGINT handler, the exit sweep and global setup's sweep each. The `world` fixture checks titles and keeps the budget, so a plain `test()` can't skip them. Sweeps remove only a World's own directories. `LOOKOUT_PORT` takes digits only. A pin's `--version` runs with a scratch HOME and an empty PATH. A second `pnpm e2e` in a checkout waits for the first. req-check ignores skipped Behaviour tests and files a `scenario()` under its scenario file. TEST-1.8 and 2.6 re-ticked after verifying them again.
 - 2026-10-19: Fleet re-pinned to `ad63005`, which adds `FLEET_PATH_ONLY`. Every Fleet a World runs has it: the Lookout server's environment, the `logged` wrapper (which sets it itself) and panes, which get it with PATH through `tmux -e` and run the World's `SHELL`, now set as the private tmux server's `default-shell`. The per-binary overrides that kept Fleet out of its fallback directories are gone (`FLEET_TMUX`, `FLEET_CMD`, `FLEET_GH`, `FLEET_NODE`, `FLEET_BIN`, and the config's launchers, `tmux`, `gh`, `fleetBin` and `web.node`); the Fleet config only turns naming, grouping and stacks off. A Behaviour test shows Fleet doesn't find `gh` although it is in `/opt/homebrew/bin`, nor `ssh`, `security` or `osascript`, through the wrapper and from a pane Fleet opens, by looking the names up without running them. The pre-push hook asks `node e2e/setup.ts --check`, the pin check the World runs, instead of looking for `.cache/*-<full rev>` (setup installs into `.cache/<package>-<rev7>`, so the hook always failed); `scripts/pre-push.test.mjs` covers it. TEST-1.2 stays open: the fake `claude`, `codex`, `tb-jev` and `curl` don't exist yet (TEST-1.4, TEST-1.7), and the `ps` shim still passes every call through to `/bin/ps` (TEST-1.10).
 - 2026-10-19: Fixes from the World's third review. Global setup refuses to sweep when a symlink sits anywhere between the repo and `.cache/e2e/runs`, and never follows a symlinked run or `worlds/`. A World creates its index entry, root and `TMUX_TMPDIR` exclusively, takes another id when one is already there, records what it made in the entry (`owns`), and removes or `kill-server`s only that. Tests cover a stranger reusing a World's former process group or a recorded pid with another start time. Two known gaps stay, written down under Teardown and the run lock: seen identities aren't kept by any sweep (after a teardown that ran out of time or an interrupted run), and two runs can race to take over a stale lock.
+- 2026-10-19: A World may provide fake `tb-prod` and `tb-pr`, next to claude, codex, tb-jev and curl, for WORK's Behaviour tests (TEST-1.2, TEST-1.5, `.tbProd()` and `.tbPr()`); Productive joins the Non-goals' list of what a World never reaches. TEST-1.2 stays open.
+- 2026-10-19: For WORK's Behaviour tests, after its third review. A World aborts every browser request outside its own Lookout origin, popups and new tabs included, and records its URL (TEST-1.7), so a link to GitHub or Fantastic is checked without loading it. `.gitIdentity()` writes a global git identity, and tb-prod's Tasks are declared per assignee email (TEST-1.5). A test can change what the fake `tb-prod` or `tb-pr` answers mid-test, or hold a call in flight (TEST-1.6). None of it is built yet; TEST-1.5, 1.6 and 1.7 stay open.

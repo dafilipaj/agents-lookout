@@ -31,25 +31,6 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
   - Scratchpad files under `/private/tmp` are gone after a reboot.
 - **Added:** 2026-10-17.
 
-## My Productive tasks, with their Sessions and PRs (TASKS)
-
-- **What:** tasks assigned to me, each marked when a Session has worked on it, and with its PR when one exists.
-- **How (proposal):**
-  - The tasks come from `tb-prod query … --json`.
-  - The link from task to Session to PR goes through the task id:
-    - branch names (`feature/<task id>-…`), from the `git_branch` that tb-session already has;
-    - the PR body's task link, or the `PR: <url>` TODO that `/p-dev:open-pr` adds to the task.
-  - Natural action: start a Session on a task (LAUNCH with the task URL as the first prompt).
-- **Shares** the task, Session and PR linking with PRS, so build them together or one right after the other.
-- **Added:** 2026-10-17.
-
-## My GitHub PRs and review requests (PRS)
-
-- **What:** my open PRs and the reviews requested from me, each with its CI state and the Sessions linked to it.
-- **How (proposal):** `tb-pr list --json` already gathers these across the org, with a cache.
-- **Later:** one-click actions that start a Session with a prompt, e.g. a review request runs `/p-codex:dual-review <PR>` in a new Session. The Session itself still asks before posting anything to GitHub.
-- **Added:** 2026-10-17.
-
 ## What's loaded into a Session (CTX)
 
 - **What:** per Session, what its Harness has loaded:
@@ -62,7 +43,7 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
 - **How (proposal):** two sources, always labelled:
   - **Resolved:** Lookout or a CLI applies the Harness's loading rules to the Session's directory. This can drift from what the Harness really does.
   - **Observed:** what the Transcript shows actually happened, e.g. hook runs are recorded as attachments.
-- **Open:** the most design-heavy of these four; grill it before speccing.
+- **Open:** the most design-heavy idea here; grill it before speccing.
 - **Added:** 2026-10-17.
 
 ## Hide a Harness you don't use (USAGE)

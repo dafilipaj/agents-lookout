@@ -20,13 +20,19 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Host**: A machine that runs Sessions. For now only this Mac.
 
+**Link**: A connection between a Task, a PR and a Session, found by id: a task id in a PR's branch or body (from `tb-pr`), the Session inferred to have opened a PR, or a Session started on a PR or Task (its URL in the first prompt). Each Link records why it exists. See the WORK spec.
+
 **Local server**: A process listening on a TCP port on this machine. It belongs to a Worktree, and through it to a Session, when its working directory is inside that Worktree.
 
 **Mark**: A bookmark on the rail beside the chat's scroll bar for a prompt you sent, a Subagent result or a question; clicking it scrolls the chat to that entry.
 
 **Needs you**: The Status of a Session that is blocked on you: a permission prompt, a question, or input.
 
+**PR**: An open GitHub pull request in a `productiveio/*` repo that you opened, or that is a Review request to you, as `tb-pr` lists it.
+
 **Requirement**: One capability a feature provides, ID'd `<CODE>-n`.
+
+**Review request**: An open PR on which you are a requested reviewer by name, whoever requested you. Requests sent to a team you're in don't count.
 
 **Session**: One agent conversation: a Harness process with a session ID and a working directory. Every Session Lookout starts runs in its own Session host.
 
@@ -38,7 +44,11 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Subagent**: A helper agent a Session starts, such as Claude Code's Agent tool or a background task. Its own messages (the sidechain) aren't shown; its result shows in the chat as one line.
 
+**Task**: A Productive task assigned to you that isn't closed.
+
 **Transcript**: The JSONL log a Harness writes for a Session, for example under `~/.claude/projects/` or `~/.codex/sessions/`.
+
+**Work**: The right-sidebar tab, next to History, that lists your Tasks and PRs with their Links. See the WORK spec.
 
 **Worktree**: A git worktree. A Session's working directory is often one.
 
