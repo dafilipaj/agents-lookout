@@ -23,7 +23,7 @@ pnpm build        # builds the UI into dist/web
 pnpm start        # server serves the built UI → http://127.0.0.1:4747
 ```
 
-Checks: `pnpm test`, `pnpm typecheck`, `pnpm lint`.
+Checks: `pnpm test`, `pnpm typecheck`, `pnpm lint`. Run `pnpm e2e:setup` once per checkout first: `pnpm test` runs the chat against the pinned Fleet it installs into `.cache/`, which Worktrees don't share.
 
 ## Port, token and settings
 

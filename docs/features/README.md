@@ -5,7 +5,7 @@ One row per feature. Update the status here and in the spec's frontmatter togeth
 | Feature | Code | Status | Spec |
 |---|---|---|---|
 | Session sidebar: every Session at a glance, switch between them | SIDE | Done | [SPEC](session-sidebar/SPEC.md) |
-| Session view: the selected Session's chat, composer and terminal preview | VIEW | In Progress | [SPEC](session-view/SPEC.md) |
+| Session view: the selected Session's chat, composer and terminal preview | VIEW | Done | [SPEC](session-view/SPEC.md) |
 | Start Claude Code and Codex Sessions | LAUNCH | Done | [SPEC](launch-session/SPEC.md) |
 | Open a Session in iTerm2 | ITERM | Draft | [SPEC](open-in-iterm/SPEC.md) |
 | History: search past Sessions, resume on click | HIST | Done | [SPEC](history/SPEC.md) |

@@ -357,6 +357,7 @@ scenario(
 - A pin's `rev` is the full commit. The World checks the revision cargo recorded for the install (`.crates2.json` in the install root), and `--version` against the pin's `version` when it names one, before the first test and again when a World starts (TEST-1.3). `--version` runs with a scratch `HOME` inside `.cache/` as its working directory and a `PATH` holding nothing: tb-session's `--version` looks for a newer release with `gh` and caches it under `~/Library/Caches`.
 - `@playwright/test` is pinned to 1.63.0, whose Chromium 1243 this Mac already caches.
 - Bumping a pin is a one-line change, reviewed like code.
+- `pnpm test` needs the pinned Fleet too (VIEW-1.7 runs the chat against it), so `pnpm e2e:setup` comes first, once per checkout: `.cache/` isn't shared between Worktrees.
 
 ### Before each push
 
