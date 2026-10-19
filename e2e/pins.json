@@ -1,0 +1,17 @@
+{
+  "fleet": {
+    "repo": "https://github.com/dafilipaj/fleet",
+    "branch": "lookout",
+    "rev": "ad63005a68cb587e2c9aec4222ed032512b513d2",
+    "package": "fleet",
+    "bin": "fleet"
+  },
+  "tbSession": {
+    "repo": "https://github.com/productiveio/cli-toolbox",
+    "branch": "feature/tb-session-sources",
+    "rev": "8c69a8a18d5a901344f6f9b8b445d8994b461f1a",
+    "package": "tb-session",
+    "bin": "tb-session",
+    "version": "0.3.0"
+  }
+}

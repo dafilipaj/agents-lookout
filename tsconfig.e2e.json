@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "lib": ["ES2024", "DOM"],
+    "types": ["node"]
+  },
+  "include": ["e2e"],
+  "exclude": ["e2e/.report", "e2e/.results"]
+}

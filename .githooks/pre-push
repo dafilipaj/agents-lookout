@@ -29,10 +29,11 @@ e2e=0
 if has_script e2e; then
   e2e=1
   command -v tmux >/dev/null 2>&1 || fail "tmux is not installed; Behaviour tests need it." "brew install tmux"
+  # The pinned Fleet and tb-session: the same check the World runs before its first test, so
+  # where a pin is installed is decided in one place (e2e/world/pins.ts), never here.
   if [ -f e2e/pins.json ]; then
-    for rev in $(node -e 'const p=require("./e2e/pins.json");for(const v of Object.values(p))if(v?.rev)console.log(v.rev)'); do
-      ls -d .cache/*-"$rev" >/dev/null 2>&1 || fail "the binary pinned at $rev in e2e/pins.json is not in .cache/." "pnpm e2e:setup"
-    done
+    pins=$(node e2e/setup.ts --check 2>&1) || fail "a binary pinned in e2e/pins.json is missing from .cache/ or doesn't match its pin:
+$pins" "pnpm e2e:setup"
   fi
   chromium=0
   node -e 'let c;try{c=require("@playwright/test").chromium}catch{process.exit(2)}process.exit(require("fs").existsSync(c.executablePath())?0:1)' 2>/dev/null || chromium=$?

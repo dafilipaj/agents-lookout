@@ -3,7 +3,7 @@ title: Behaviour tests
 code: TEST
 status: In Progress
 created: 2026-10-17
-updated: 2026-10-17
+updated: 2026-10-19
 ---
 
 # Behaviour tests
@@ -25,14 +25,14 @@ Every acceptance criterion tagged `(e2e)` gets a Behaviour test. The test drives
 
 What a Behaviour test runs in. A World is built fresh for each Behaviour test and torn down after it; two Behaviour tests never share one.
 
-- [ ] TEST-1.1 When a Behaviour test starts, its World has its own temporary HOME, its own settings file, a private tmux server and a Lookout server on a free port. That port is never 4747 or 4748. Nothing from the user's HOME, tmux server, keychain or settings is visible to Lookout, Fleet, tb-session or the Fake Harnesses. (test)
+- [x] TEST-1.1 When a Behaviour test starts, its World has its own temporary HOME, its own settings file, a private tmux server and a Lookout server on a free port. That port is never 4747 or 4748. Nothing from the user's HOME, tmux server, keychain or settings is visible to Lookout, Fleet, tb-session or the Fake Harnesses. (test)
 - [ ] TEST-1.2 PATH holds only what the World declares:
   - **real:** Fleet, tb-session, tmux (through a shim to the private `-L` server), git, ps (through the shim of TEST-1.10), lsof, sh, node, and the plain system tools these need;
   - **fake:** claude, codex, tb-jev and curl, each only when declared;
   - **absent:** security, gh, ssh and osascript.
 
   A command the World doesn't declare can't be found, also not through Fleet's fallback directories (`/opt/homebrew/bin`, `/usr/local/bin`). (test)
-- [ ] TEST-1.3 Fleet and tb-session are the real binaries at the versions pinned in `e2e/pins.json`. `pnpm e2e:setup` installs them into `.cache/`, never over the user's own binaries. When a binary doesn't match its pin, the run stops before the first test and says which pin it expected and the command that gets it. Until tb-session 0.3.0 is released, its pin is the commit of its 0.3.0 branch. (test)
+- [x] TEST-1.3 Fleet and tb-session are the real binaries at the versions pinned in `e2e/pins.json`. `pnpm e2e:setup` installs them into `.cache/`, never over the user's own binaries. When a binary doesn't match its pin, the run stops before the first test and says which pin it expected and the command that gets it. Until tb-session 0.3.0 is released, its pin is the commit of its 0.3.0 branch. (test)
 - [ ] TEST-1.4 Fake Harnesses stand in for Claude Code and Codex. They run in the World's tmux, register and write Transcripts the way the real ones do, and draw the screens Fleet reads. With them, the real Fleet can list, read `messages` from, `send` to, `answer`, `peek` and `close` them, and real tb-session can index their Transcripts. Their Transcript lines come only from fixtures recorded from a named Harness version (TEST-6). (test)
 - [ ] TEST-1.5 A Behaviour test declares its World in code, with a builder that starts empty. A World can contain:
   - Harnesses present or absent;
@@ -46,14 +46,14 @@ What a Behaviour test runs in. A World is built fresh for each Behaviour test an
   Anything the test doesn't declare is absent. `.without('codex')` removes both the Codex CLI and `~/.codex`, so Fleet's `harness list` and `usage` both say "not installed". (test)
 - [ ] TEST-1.6 A Behaviour test can change its World while it runs, as a Harness or the user would: a Session turns Busy, asks a question, replies, or exits; a new Session starts outside Lookout; a Codex turn records new limits. (test)
 - [ ] TEST-1.7 Nothing in a World reaches the network or a real account. The fake `curl` answers only Anthropic's usage endpoint, with the numbers (or the 401, 429 or timeout) the World declares, using fake credentials in the World's HOME. Any other request fails the Behaviour test and names the URL. (test)
-- [ ] TEST-1.8 After each Behaviour test, whether it passed, failed or timed out, its tmux server, Lookout server, Fake Harnesses and temporary directories are gone. A run that leaves any of them behind fails and names what it left. (test)
+- [x] TEST-1.8 After each Behaviour test, whether it passed, failed or timed out, its tmux server, Lookout server, Fake Harnesses and temporary directories are gone. A run that leaves any of them behind fails and names what it left. (test)
 - [ ] TEST-1.9 A guard test proves the isolation, as the Fleet fork's `tests/isolation.rs` does. It listens on the default tmux socket inside the World's `TMUX_TMPDIR`, runs a scenario that lists, starts and closes a Session, and fails if anything knocked on that socket or read outside the World's HOME. (test)
 - [ ] TEST-1.10 Processes outside the World are invisible to it. With Codex declared and a real Codex TUI running on the machine, Fleet lists only the World's Sessions. (test)
 
 ### TEST-2 Running Behaviour tests
 
-- [ ] TEST-2.1 `pnpm e2e` builds the UI when `dist/web` is older than the sources, then runs every Behaviour test with Playwright in headless Chromium at 1440×900, against the built Lookout (`NODE_ENV=production`). `pnpm e2e <filter>` runs the matching ones. (manual)
-- [ ] TEST-2.2 A Behaviour test is written as `scenario('<ID>: <what holds>', world, fn)`. Its title starts with the criterion id, as unit test titles already do. (test)
+- [x] TEST-2.1 `pnpm e2e` builds the UI when `dist/web` is older than the sources, then runs every Behaviour test with Playwright in headless Chromium at 1440×900, against the built Lookout (`NODE_ENV=production`). `pnpm e2e <filter>` runs the matching ones. (manual)
+- [x] TEST-2.2 A Behaviour test is written as `scenario('<ID>: <what holds>', world, fn)`. Its title starts with the criterion id, as unit test titles already do. (test)
 - [ ] TEST-2.3 Behaviour tests run in parallel, each in its own World, and give the same result in any order. (test)
 - [ ] TEST-2.4 When a Behaviour test fails, its report holds:
   - the Playwright trace and a screenshot;
@@ -64,7 +64,7 @@ What a Behaviour test runs in. A World is built fresh for each Behaviour test an
 
   That's enough to understand the failure without rerunning it. (manual)
 - [ ] TEST-2.5 On this Mac the whole Behaviour suite takes at most 3 min, and a World starts in under 3 s. Each run prints both. Over budget, the slowest Behaviour tests get looked at before more are added. (manual)
-- [ ] TEST-2.6 A Behaviour test that runs past 30 s fails, naming what it was waiting for. (test)
+- [x] TEST-2.6 A Behaviour test that runs past 30 s fails, naming what it was waiting for. (test)
 - [ ] TEST-2.7 The first Behaviour tests prove the World end to end, each one testing one of the World's abilities:
   - USAGE-2.2: with Codex absent, the usage strip shows "Codex: not installed";
   - SIDE-6.1: Fleet not installed;
@@ -150,10 +150,12 @@ A failed Behaviour test leaves its report in `e2e/.report/` (git-ignored), with 
   - tb-session: `LOOKOUT_TB_SESSION_BIN`, then PATH, then `~/.local/bin` (`server/history.ts`).
   - tb-jev: PATH, then `~/.local/bin`, with no override (`server/usage.ts`).
   - `git -C` (`server/git.ts`) and `tmux capture-pane` for a stuck start (`server/launcher.ts`) come from PATH.
-  - `LOOKOUT_PORT` must be 1–65535, and the Host allow-list is built from it, so port 0 can't be used: the World picks a free port.
+  - `LOOKOUT_PORT` may be 0–65535, written in digits only; anything else, an empty value included, stops the server at startup. With 0 the OS picks a free port; the server prints the port it bound (`Lookout server on http://127.0.0.1:<port>`) and builds the Host and Origin allow-lists from it. A World uses 0 (changed for TEST-1.1: picking a free port first and passing it races with every other process).
   - Settings come from `LOOKOUT_SETTINGS` and the token from `LOOKOUT_TOKEN`. `NODE_ENV=production` serves `dist/web`.
 - **How Fleet finds things** (the fork's `core/tools.rs`, `core/harness.rs`, `core/usage*.rs`, `core/discovery.rs`):
-  - **Binaries:** `find_binary` looks on PATH, then always in `/opt/homebrew/bin`, `/usr/local/bin`, `~/.local/bin`, `~/.cargo/bin` and `~/bin`. A Harness counts as installed in `harness list` when its launcher's first word resolves that way, or when the launcher is an absolute path to an executable.
+  - **Binaries:** `find_binary` looks on PATH, then always in `/opt/homebrew/bin`, `/usr/local/bin`, `~/.local/bin`, `~/.cargo/bin` and `~/bin`. A Harness counts as installed in `harness list` when its launcher's first word resolves that way, or when the launcher is an absolute path to an executable. pi's model list runs `pi --list-models --offline` when pi resolves.
+  - **PATH-only mode** (from `ad63005`, the World's pin since 2026-10-19): with `FLEET_PATH_ONLY=1` Fleet finds binaries on PATH alone, with no fallback directories, no hard-coded install locations (`~/.claude/local`, Tailscale.app) and no login-shell probe of a launcher. It refuses, as a usage error, `web serve` and the service installs, any other host, the iTerm backend, a local `exec` or `ssh`, and a PATH that is unset, empty or holds a relative or empty entry. Panes it opens get its PATH and `FLEET_PATH_ONLY=1` through `tmux -e`, and run the tmux server's `default-shell`. Explicit binaries (the overrides below) still win.
+  - **Binary overrides,** read before the fallback directories: `FLEET_TMUX` (or config `tmux`), `FLEET_CMD` (Claude Code's launcher), `FLEET_GH` (or config `gh`), `FLEET_NODE` (or config `web.node`), `FLEET_BIN` (or config `fleetBin`), and config `harnesses.<codex|pi>.command`. `tools::claude()`, used by naming and by `check_launcher` for a bare `claude`, has none.
   - **Launchers:** Claude Code's comes from `FLEET_CMD`, then config `claude`; Codex's from config `harnesses.codex.command`.
   - **Codex usage:** `not_installed` means `$CODEX_HOME` (default `~/.codex`) isn't a directory. It says nothing about the CLI, which is why `.without('codex')` removes both.
   - **Claude usage:**
@@ -194,18 +196,23 @@ A failed Behaviour test leaves its report in `e2e/.report/` (git-ignored), with 
 
 ```
 e2e/
-  playwright.config.ts   headless Chromium, 1440×900, 30 s timeout, workers ≈ half the cores
+  playwright.config.ts   headless Chromium, 1440×900, 30 s budget per test, workers ≈ half the cores
+  run.ts                 pnpm e2e: waits for another run in the same checkout, builds a stale UI, then runs Playwright
+  setup.ts               pnpm e2e:setup: installs the pins into .cache/, and Playwright's Chromium
+  global-setup.ts        stops the run before the first test when a pin, tmux or the UI is missing
   world/                 the World builder (TypeScript): env, PATH, shims, Fleet config, Lookout server, teardown
+  selftest/              runs that the World's own tests start, interrupt or time out (never run alone)
   fakes/                 claude.mjs, codex.mjs, tb-jev.mjs, curl.mjs
-  shims/                 tmux, ps
+  shims/                 tmux, ps, and `logged` (Fleet's and tb-session's argv into the calls log)
   fixtures/              transcripts/{claude,codex}/<version>/*.jsonl, usage/*.json, history/*.json
   scenarios/<feature>/*.e2e.ts
   record/                the recorder behind pnpm e2e:record (TEST-6)
   pins.json              Fleet fork revision, tb-session revision
-  .report/               failed tests' reports (git-ignored)
+  .report/               the HTML report with failed tests' reports (git-ignored)
+  .results/              Playwright's traces, screenshots and attachments (git-ignored)
 scripts/req-check.mjs
 .githooks/pre-push
-.cache/                  pinned Fleet and tb-session (git-ignored)
+.cache/                  pinned Fleet and tb-session; e2e/runs/: each run's index of Worlds; e2e/run.lock (git-ignored)
 ```
 
 `e2e/` sits outside Vitest's globs (`server/**/*.test.ts`, `web/src/**`), and apart from `server/fixtures/`, whose fake Fleet and tb-session a World doesn't use.
@@ -213,29 +220,48 @@ scripts/req-check.mjs
 ### A World, built for each Behaviour test
 
 1. **Directories:**
-   - a temporary root with `home/`, `bin/`, `logs/` and `work/`;
-   - `TMUX_TMPDIR` under `/tmp/lw-XXXX`;
+   - a temporary root `$TMPDIR/lookout-world-<id>` with `home/`, `bin/`, `logs/` and `work/`;
+   - `TMUX_TMPDIR` at `/tmp/lw-<id>`;
    - `home/Projects/work`, which is the default Start directory.
 2. **`bin/`:**
-   - **Real tools:** symlinks to git, lsof, sh, node and the plain system tools they need (`bash`, `env`, `hostname`, `sleep`, `cat`; the final list is fixed while building). Fleet and tb-session are reached through `LOOKOUT_FLEET_BIN` and `LOOKOUT_TB_SESSION_BIN`, from `.cache/`.
+   - **Real tools:** symlinks to git, lsof, sh, node and the plain system tools they need: `bash`, `env`, `hostname`, `sleep`, `cat`, `date`, `echo`, `sysctl`, `uname` and `id` (`REAL_TOOLS` in `e2e/world/runtime.ts`).
+   - **Fleet and tb-session:** a `logged` wrapper each, which appends its argv to `logs/calls.log` (TEST-2.4) and runs the pinned binary from `.cache/` under the wrapper's own path. The wrapper sets `FLEET_PATH_ONLY=1` itself, so a caller that drops it still gets a PATH-only Fleet. `LOOKOUT_FLEET_BIN` and `LOOKOUT_TB_SESSION_BIN` point at the wrappers; `.without('fleet')` leaves out both the wrapper and the variable.
    - **tmux shim:** `exec <real tmux> -L lookout-world-<rand> -f /dev/null "$@"`. Lookout and Fleet both reach the private server through it.
    - **ps shim:** passes every call through to `/bin/ps`, except that a machine-wide listing (`-ax`, `-e`) keeps only processes whose tty belongs to a pane of the World's tmux server, and their descendants. This keeps the user's own Codex TUIs out of Fleet's discovery (TEST-1.10).
    - **Fakes:** the declared ones among claude, codex, tb-jev and curl.
    - **Kept out:** `security`, `gh`, `ssh` and `osascript`.
-3. **Fleet config** (`FLEET_CONFIG`) sets each declared Harness's launcher to an absolute path in `bin/`. An absent Harness gets a path that doesn't exist. Fleet's fallback directories then can't find a real `claude` or `codex`.
+3. **Fleet config** (`FLEET_CONFIG`) only turns naming, grouping and stacks off, since each would run `claude -p`. Every Fleet the World runs has `FLEET_PATH_ONLY=1` (step 4, and the `logged` wrapper sets it itself), so the launchers stay Fleet's defaults (`claude`, `codex`, `pi`), as do `tmux` and `gh`: each is found on the World's PATH or not at all. A Harness is installed exactly when the World puts its fake in `bin/`; no per-binary override is needed to keep Fleet out of `/opt/homebrew/bin` or `/usr/local/bin`.
 4. **Environment for the Lookout server and everything it starts:**
+   - `LOOKOUT_WORLD_ID=<token>`: the World's id and random bytes, a value only that World has. Every process the World starts inherits it and passes it on; it is what makes a process the World's (step 7);
    - `HOME`, `PATH=<world>/bin` and `SHELL=/bin/sh`;
-   - `LOOKOUT_PORT` (free, never 4747 or 4748), `LOOKOUT_TOKEN`, `LOOKOUT_SETTINGS`, `LOOKOUT_FLEET_BIN` and `LOOKOUT_TB_SESSION_BIN` (the pinned binaries), and `NODE_ENV=production`;
-   - `FLEET_CONFIG`, `FLEET_TMUX`, `TMUX_TMPDIR`, `FLEET_SNAPSHOT`, `FLEET_LOCK_DIR`, `FLEET_MUX=0` and `NO_COLOR=1`;
+   - `LOOKOUT_PORT=0`, `LOOKOUT_TOKEN`, `LOOKOUT_SETTINGS`, `LOOKOUT_FLEET_BIN` and `LOOKOUT_TB_SESSION_BIN` (the pinned binaries), and `NODE_ENV=production`;
+   - `FLEET_CONFIG`, `TMUX_TMPDIR`, `FLEET_SNAPSHOT`, `FLEET_LOCK_DIR`, `FLEET_MUX=0` and `NO_COLOR=1`;
+   - `FLEET_PATH_ONLY=1`, and none of Fleet's binary overrides (`FLEET_TMUX`, `FLEET_CMD`, `FLEET_GH`, `FLEET_NODE`, `FLEET_BIN`): Fleet finds the tmux shim, the wrapper and the fakes on PATH;
    - Fleet's `UNSET` list removed.
+   - `~/.profile` sets PATH back to `bin/`: a login shell (a tmux pane, a spawned pane's `$SHELL -l`) reads it after `/etc/profile`.
 5. **Fixtures:** the declared Sessions, Transcripts, repos, usage and History are written into `home/` and `work/`. A declared Claude usage also writes fake credentials to `home/.claude/.credentials.json`. Live Sessions are started as Fake Harnesses in the private tmux server, and the World waits until Fleet lists them.
-6. **Start:** the World starts `node server/main.ts` in its own process group, waits for `/api/bootstrap`, records how long the start took (TEST-2.5), and hands Playwright the URL.
+6. **Start:**
+   - before anything of it exists, the World is written into its run's index, `.cache/e2e/runs/<run>/worlds/<id>.json` (its token, root, `TMUX_TMPDIR` and the test's title), so an interrupted run can still be swept. The entry, then the root, then `TMUX_TMPDIR` are each created exclusively; an id whose entry or directory already exists is someone else's, so what was made for it is removed again and the World takes another id. Each directory is added to the entry's `owns` as soon as it is made: teardown and sweeps remove only those, and `kill-server` goes only to a socket in a `TMUX_TMPDIR` the World made;
+   - every process the World starts gets a process group of its own, so that a timeout can end a command and whatever it started while the World still holds it;
+   - the private tmux server starts empty, with `exit-empty off`, from the World's environment (so a pane gets the World's PATH and `FLEET_PATH_ONLY`) and with `default-shell` set to the World's `SHELL`: every pane, whoever opens it, runs that shell, never the account's login shell. It daemonizes, the one World process allowed to; the World keeps the pid it reports;
+   - a trap listens on the default socket in `TMUX_TMPDIR` for the whole test (TEST-1.9);
+   - the World starts `node server/main.ts --lookout-world-<id>` with `LOOKOUT_PORT=0`, with `HOME` as its working directory, reads the port from the line the server prints, refuses 4747 and 4748, and checks that `/api/bootstrap` answers with the World's own token before Chromium opens. It records how long the start took (TEST-2.5) and hands Playwright the URL;
+   - the start can be cancelled (SIGINT or SIGTERM in the worker): whatever was started is torn down, and the worker waits for that teardown before it exits. Playwright never tears down a fixture that hadn't reached `use()`.
 7. **Teardown:**
-   - kill the Lookout server's process group and `tmux kill-server` on the private socket;
-   - check that no process of the World is left (TEST-1.8);
-   - keep `logs/` on failure, then remove the root.
+   - on failure, read the failure report first (TEST-2.4): the declaration, the server log, the calls log and every pane's last screen, attached to the Playwright report;
+   - a process is the World's when its environment carries the World's token, as `ps -E` shows the environment a process started with; or when its parent is the World's, since macOS hides the environment of its own binaries (`/bin/sh`, `/bin/sleep`, `/usr/bin/git`, `/bin/ps`, `/usr/sbin/lsof`) from `ps -E` though they inherit it like any other; or when it was seen as the World's before and still has the same pid and start time. `ps -E` prints arguments and environment on one line, so the environment is what follows the arguments `ps` prints without `-E`; a token in the arguments doesn't count. Nothing else makes a process the World's: not a process group, not a recorded pid, not a command line;
+   - a process the World started and lost sight of before it ever saw it is out of reach: an Apple binary whose parent exited at once, such as `sh -c 'sleep 60 &'`. Fake Harnesses, Fleet, tb-session, tmux and the Lookout server are not Apple binaries and always carry the token;
+   - known gap (TEST-1.8): the processes a World has seen are remembered only by the teardown that saw them, never in the index, and every sweep starts without them: the worker's exit sweep after a teardown that ran out of time, and the next run's sweep after an interrupted one. So an Apple binary that lost its parent after it was seen is missed there, and its directories go without it being named. Also, a run killed between creating a World's directory and recording it in `owns` (or an entry from before `owns`) leaves that directory behind, logged but not removed;
+   - signals go to one pid at a time, after its start time is read again; only a child the World spawned and still holds (the Lookout server, a command still running) is signalled as a whole group;
+   - SIGTERM to the Lookout server's group, `tmux -S <socket> kill-server`, then SIGTERM to the rest; one still running after 3 s gets SIGKILL and is named, and the test fails (TEST-1.8);
+   - a World process that daemonized away from the World (handed to launchd as the leader of its own group, as a `setsid` helper is), other than the tmux server, is named and killed with the rest. A process with no token, like a developer's `tail -f` of the World's log, is never touched;
+   - the root, `TMUX_TMPDIR` and the index entry go once none of the World's processes is left; while one still runs after SIGKILL, they stay, it is named, and global teardown sweeps them again;
+   - `lookout-world-<id>` in paths and on the Lookout server's command line is for diagnostics only.
+8. **Guard:** before and after each Behaviour test, no World process has daemonized away from the World, and none of the World's processes is a real `claude`, `codex` or `pi` (by `argv[0]`, or the script a `node` or `bun` runs past its own options) other than a Fake Harness from its `bin/`. Either fails the test.
+9. **Interrupted runs:** if the worker exits before a World is torn down (a teardown that ran out of time, a start nobody cancelled), it sweeps the World synchronously on exit and names what it found under the test's title, so global teardown fails the run on it. Global setup sweeps the Worlds of runs whose Playwright runner (pid and start time) is gone, and leaves runs that are still going alone. Global teardown sweeps what its own run left and fails the run naming it, also for a test that was expected to fail. A sweep finds a World's processes by its token, as teardown does, and removes only directories that are the World's own: `lookout-world-<id>` in the temporary directory, and `/tmp/lw-<id>`, each only when the entry's `owns` names it. Before it reads or removes anything, global setup checks the whole way from the repo to `.cache/e2e/runs` is plain directories of the repo's (no symlink, nothing resolving outside it) and stops the run otherwise; a run directory or its `worlds/` that is a symlink is neither followed nor removed.
+   - e2e/scenarios/test/selftest.e2e.ts runs Playwright on e2e/selftest/ the way `pnpm e2e` does, and proves each of the three: a SIGINT while a World starts leaves nothing and names nothing (the fixture's handler); a test whose teardown runs out of time has what it left killed and named under its title (the exit sweep); a run killed with SIGKILL while a World starts is swept by the next run's global setup.
 
-Inside a pane, `sh -l` reads `/etc/profile`, whose `path_helper` adds the system directories back to PATH. That's harmless: the Fake Harnesses are typed as absolute paths, and Fleet and Lookout run outside the panes with the World's PATH.
+Inside a pane, `sh -l` reads `/etc/profile`, whose `path_helper` puts `/usr/bin`, `/usr/local/bin` and `/opt/homebrew/bin` back on PATH, and with them `security`, `ssh`, `osascript`, `curl` and `gh`. That isn't harmless: Fake Harnesses run there, and so does a `fleet` typed into a pane. The World's `~/.profile` sets PATH back to `bin/`, and Behaviour tests check it in a pane the World opens and in one Fleet opens (TEST-1.2).
 
 ### Fake Harnesses
 
@@ -277,6 +303,11 @@ scenario(
 - `.session({ harness, status, cwd, transcript })`, `.repo(name, { worktrees })`, `.history([...])`, `.jev('ready' | 'not-set-up')` and `.settings({...})` declare the rest. Helpers for common Worlds are built on top of the empty builder, never instead of it.
 - `({ world })` inside the test gives the controls of TEST-1.6: `world.session(id).ask(...)`, `.say(...)`, `.exit()`, and `world.startOutside(...)`.
 - Behaviour tests find elements by role and accessible name, never by an icon: icons are lucide SVGs without text ([0008](../../decisions/0008-lucide-icons-only.md)).
+- `world.step(what, fn)` and `world.waitUntil(what, check)` name a wait. A Behaviour test past its 30 s budget fails with "ran past 30 s, waiting for <what>" (TEST-2.6), also when the time went in a synchronous stretch no timer can interrupt: the elapsed time is checked again when the test ends. A scenario may shorten its budget (`{ budgetMs }`), never lengthen it. Playwright's own timeout sits 15 s above, to cover starting and tearing down the World.
+- The `world` fixture itself checks the title (TEST-2.2) and keeps the budget (TEST-2.6): a plain `test()` that uses a World is held to both, as a `scenario()` is. Past the budget, the wait in progress fails naming itself; `scenario()` also races its whole body, so a wait on the page outside `world.step` fails at the budget too.
+- `pnpm e2e <words>` runs the Behaviour tests whose file or title matches any of the words, ignoring case (`side-6.1` finds `SIDE-6.1: …`). Playwright's options pass through with their values (`--workers 1`, `--repeat-each 5`); `--only-changed` takes the next word as its ref when git knows it as a commit.
+- Two runs in one checkout would clobber each other's `dist/web`, `e2e/.results` and `e2e/.report`, so `pnpm e2e` holds a lock (`.cache/e2e/run.lock`, naming its pid and start time): a second run waits for the first and says so, and fails naming it after 15 min. A lock whose run is gone is taken over.
+  - Known gap: taking over a stale lock isn't atomic. Two runs that find the same stale lock can interleave between reading it and removing it, so one removes the lock the other just took, and both run.
 
 ### Which criteria are `(e2e)`
 
@@ -293,7 +324,7 @@ scenario(
   - test titles come from the runners' listings, not from a regex over source. A title from Playwright is a Behaviour test; one from Vitest isn't;
   - Vitest's titles are read by `scripts/vitest-titles.mjs` through Vitest's Node API, collecting with `staticParse: false`: Vitest imports each test file and runs its `describe` callbacks, but no hook and no test body. Its default static parse would count a test inside `if (false)` and leave `it.each` titles unexpanded. `vitest list --json` holds the same tests but joins the titles with ` > `, so a title containing ` > ` would split. Collecting this way expands `it.each`, template titles and nested `describe`;
   - so a test file does no work at import or in a `describe` callback: setup that starts a server, makes a temporary directory or writes a file goes in a hook. Collecting today's test files starts no server, writes nothing to the repo (only Vitest's caches under `node_modules/`) and uses no network;
-  - Playwright's titles will come from `playwright test --list --reporter=json` once `e2e/` exists. Until then there's no Playwright config, so req-check reads no Behaviour tests and says so.
+  - Playwright's titles come from `playwright test --list --reporter=json` with `e2e/playwright.config.ts`; without a Playwright config req-check reads no Behaviour tests and says so. A test belongs to the file of its top-level suite, so a `scenario()` belongs to its scenario file, not to `e2e/world/index.ts`, which declares it. A test that won't run (`test.skip`, `test.fixme`: expected to be skipped, or every result skipped) names nothing, like Vitest's skipped tests.
 - **Which tests count:** an id counts when it starts a test title or a `describe` title (the existing convention). An id elsewhere in a title is listed as a mention only.
 - **Rules:**
   1. A ticked `(test)` criterion with no test naming it fails (TEST-3.2).
@@ -316,8 +347,10 @@ scenario(
 ### Pins
 
 - `e2e/pins.json` holds `{ fleet: { repo, rev }, tbSession: { repo, rev } }`: the fork `dafilipaj/fleet` at a commit on branch `lookout`, and cli-toolbox at the `feature/tb-session-sources` commit until 0.3.0 is released, then at its release tag.
-- `pnpm e2e:setup` runs `cargo install --git <repo> --rev <rev> --locked --root .cache/<name>-<rev>` for each, and installs Playwright's Chromium. It never touches `~/.cargo/bin`, `~/.local/bin` or anything else outside the repo, apart from Playwright's browser cache.
-- The World checks `--version` (and, for Fleet, the revision it was built from) before the first test (TEST-1.3).
+- `pnpm e2e:setup` runs `cargo install --git <repo> --rev <rev> --locked --root .cache/<package>-<rev7>` for each, and installs Playwright's Chromium. It never touches `~/.cargo/bin`, `~/.local/bin` or anything else outside the repo, apart from cargo's download cache and Playwright's browser cache. Git fetches go through the git CLI (`CARGO_NET_GIT_FETCH_WITH_CLI`), since cli-toolbox is private.
+- Before it checks or installs anything, `pnpm e2e:setup` refuses a `.cache`, install root, `bin/` or binary that is a symlink or resolves outside the repo: `cargo install --root` follows links, so one pointing at `~/.cargo` would install over the user's own binaries. The World checks the same before it uses a pin.
+- A pin's `rev` is the full commit. The World checks the revision cargo recorded for the install (`.crates2.json` in the install root), and `--version` against the pin's `version` when it names one, before the first test and again when a World starts (TEST-1.3). `--version` runs with a scratch `HOME` inside `.cache/` as its working directory and a `PATH` holding nothing: tb-session's `--version` looks for a newer release with `gh` and caches it under `~/Library/Caches`.
+- `@playwright/test` is pinned to 1.63.0, whose Chromium 1243 this Mac already caches.
 - Bumping a pin is a one-line change, reviewed like code.
 
 ### Before each push
@@ -354,9 +387,11 @@ scenario(
 - **Pins in `e2e/pins.json`, installed into `.cache/`**: reproducible runs that never replace the user's own Fleet or tb-session.
 - **A fake `curl` with fake credentials**: Fleet's real usage parsing, cache and back-off run, including 401, 429 and timeouts, with no network.
 - **One World per Behaviour test**: a reset can't clear the Lookout server's memory (the usage high-water mark, launches).
-- **A tmux shim on PATH, not only `FLEET_TMUX`**: Lookout itself runs `tmux capture-pane` from PATH, so both must reach the private server.
-- **Launchers as absolute paths in the World's Fleet config**: Fleet always searches `/opt/homebrew/bin` and `/usr/local/bin`, so "not on PATH" alone doesn't make a Harness absent.
-- **A free port, never 4747 or 4748**: a World must never collide with the Lookout the user is running.
+- **A tmux shim on PATH**: Lookout itself runs `tmux capture-pane` from PATH, and a PATH-only Fleet finds tmux there too, so both reach the private server through it.
+- **`FLEET_PATH_ONLY=1` for every Fleet the World runs, not per-binary overrides**: without it Fleet always searches `/opt/homebrew/bin` and `/usr/local/bin`, so "not on PATH" alone didn't make a command absent, and `tools::claude()` had no override at all. The switch makes PATH the whole answer, and refuses what reaches past it (other hosts, iTerm, a local exec or ssh, the web server). Its Behaviour test only looks names up (`harness list --no-models`), so a failed switch fails the test without running a real `gh`, `ssh`, `security` or `osascript`.
+- **A port the OS picks, never 4747 or 4748**: a World must never collide with the Lookout the user is running, and a port picked ahead of time can be taken before the server binds it. The server reports the port it bound, and the World checks the token it answers with.
+- **A World's processes by the environment they inherit, not by process group or command line**: a token only the World hands out, read with `ps -E`, and through the parent where macOS hides an Apple binary's environment. Process ids get reused within minutes on this Mac, so a recorded pid or process group can turn into another program's; a command line holding the World's id can be anyone's (a `tail -f` of its log), and an orphan's holds nothing.
+- **A registry on disk, swept by the next run**: Playwright skips the teardown of a fixture still starting when a run is interrupted.
 - **`TMUX_TMPDIR` under `/tmp`**: a socket path over about 104 bytes fails, and temporary directories under `/private/var/folders` or a scratchpad are too long.
 - **The Fake Harness's `argv[0]` is the Harness name**: Fleet finds Codex Sessions only by that basename.
 
@@ -372,3 +407,8 @@ None.
 - 2026-10-17: Review fixes. TEST-3.1 reads Vitest's titles through its Node API (`scripts/vitest-titles.mjs`) instead of `vitest list --json`, whose ` > `-joined names can't be split safely; req-check ignores fenced code, reads CRLF specs and commented frontmatter, and fails on a spec without a code. `prepare` runs `scripts/setup-hooks.mjs`, which does nothing inside another repo's checkout.
 - 2026-10-17: Second review fixes. req-check reads each spec with a Markdown parser and its frontmatter with a YAML parser, replacing the line-by-line reading that unclosed or look-alike fences and quoted `#` broke. TEST-3.1 says which Vitest collection counts: loading the test files without running them, so `it.each` titles expand and a test that is never registered doesn't count; test files keep setup out of import and `describe` callbacks. `setup-hooks` ignores the git variables it inherits, such as `GIT_DIR` from another repo's hook, and writes with `--local`. Playwright titles will come from `playwright test --list --reporter=json` once `e2e/` exists.
 - 2026-10-17: Third review fixes. req-check fails on a task-list item that starts with a criterion id but isn't a criterion (nested, in a blockquote, outside a requirement, or after an unclosed `~~`), naming its `file:line`, and on a ticked criterion without a tag; a tag in a nested item no longer counts. The spec template quotes its frontmatter values, so a title with `: `, a backtick or `@` is valid YAML.
+- 2026-10-17: In Progress: the World's core, the runner, the pins and the first smoke tests (SIDE-6.1, an empty World, the isolation guard). Ticked TEST-1.1, 1.3, 1.8, 2.1, 2.2 and 2.6. Fleet and tb-session run through argv-logging wrappers; Fleet's naming, grouping and stacks are off in a World; leftovers are found by the World's id in command lines. TEST-1.2 stays open: Fleet's fallback directories still find `/opt/homebrew/bin/gh` on this Mac, and the fakes don't exist yet. TEST-1.9's guard doesn't yet start and close a Session through Lookout (it needs a Fake Harness).
+- 2026-10-17: After review: a World owns its processes by identity (a recorded process group per child, start times, ancestry), never by command line, and is written to an on-disk registry before it starts anything, so interrupted runs are swept by the next run. The Lookout server accepts `LOOKOUT_PORT=0` and prints the port it bound; the World checks the token it answers with. Every binary override Fleet reads points inside the World, and its `~/.profile` undoes `path_helper` in login shells. Budgets also catch synchronous overruns and can only be shortened; `pnpm e2e` passes option values through. TEST-1.1, 1.3, 1.8, 2.1 and 2.6 re-ticked after verifying them again. TEST-1.2 stays open until the Fleet fork has a strict "PATH only, no fallback directories" switch (`tools::claude()` has no override).
+- 2026-10-17: Fixes from the World's second review. A World's processes are the ones carrying its `LOOKOUT_WORLD_ID` token in their environment, or descending from one, never the members of a recorded process group: pids are reused within minutes, so a group whose leader had exited could be someone else's. Signals go to single pids after their start time is read again; a group is signalled only through a child the World still holds. A process that daemonized away from the World is named and killed, and the World's directories go only after its processes. The worker's exit sweep names what it found under the test's title, and a worker waits for a cancelled start's teardown; runs of `e2e/selftest/` prove the SIGINT handler, the exit sweep and global setup's sweep each. The `world` fixture checks titles and keeps the budget, so a plain `test()` can't skip them. Sweeps remove only a World's own directories. `LOOKOUT_PORT` takes digits only. A pin's `--version` runs with a scratch HOME and an empty PATH. A second `pnpm e2e` in a checkout waits for the first. req-check ignores skipped Behaviour tests and files a `scenario()` under its scenario file. TEST-1.8 and 2.6 re-ticked after verifying them again.
+- 2026-10-19: Fleet re-pinned to `ad63005`, which adds `FLEET_PATH_ONLY`. Every Fleet a World runs has it: the Lookout server's environment, the `logged` wrapper (which sets it itself) and panes, which get it with PATH through `tmux -e` and run the World's `SHELL`, now set as the private tmux server's `default-shell`. The per-binary overrides that kept Fleet out of its fallback directories are gone (`FLEET_TMUX`, `FLEET_CMD`, `FLEET_GH`, `FLEET_NODE`, `FLEET_BIN`, and the config's launchers, `tmux`, `gh`, `fleetBin` and `web.node`); the Fleet config only turns naming, grouping and stacks off. A Behaviour test shows Fleet doesn't find `gh` although it is in `/opt/homebrew/bin`, nor `ssh`, `security` or `osascript`, through the wrapper and from a pane Fleet opens, by looking the names up without running them. The pre-push hook asks `node e2e/setup.ts --check`, the pin check the World runs, instead of looking for `.cache/*-<full rev>` (setup installs into `.cache/<package>-<rev7>`, so the hook always failed); `scripts/pre-push.test.mjs` covers it. TEST-1.2 stays open: the fake `claude`, `codex`, `tb-jev` and `curl` don't exist yet (TEST-1.4, TEST-1.7), and the `ps` shim still passes every call through to `/bin/ps` (TEST-1.10).
+- 2026-10-19: Fixes from the World's third review. Global setup refuses to sweep when a symlink sits anywhere between the repo and `.cache/e2e/runs`, and never follows a symlinked run or `worlds/`. A World creates its index entry, root and `TMUX_TMPDIR` exclusively, takes another id when one is already there, records what it made in the entry (`owns`), and removes or `kill-server`s only that. Tests cover a stranger reusing a World's former process group or a recorded pid with another start time. Two known gaps stay, written down under Teardown and the run lock: seen identities aren't kept by any sweep (after a teardown that ran out of time or an interrupted run), and two runs can race to take over a stale lock.

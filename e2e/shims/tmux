@@ -1,0 +1,9 @@
+#!/bin/sh
+# The World's tmux (TEST-1.1, TEST-1.2): every call goes to the World's private `-L` server under
+# its own TMUX_TMPDIR, never to the default server. Lookout (`tmux capture-pane`) and Fleet
+# (FLEET_PATH_ONLY) both find it on PATH. The World fills in the placeholders when it writes this
+# into bin/.
+unset TMUX TMUX_PANE
+TMUX_TMPDIR='@TMUX_TMPDIR@'
+export TMUX_TMPDIR
+exec '@REAL_TMUX@' -L '@SOCKET@' -f /dev/null "$@"

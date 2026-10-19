@@ -147,6 +147,40 @@ describe('req-check', () => {
     ]);
   });
 
+  it("TEST-3.1: a Behaviour test declared through a helper belongs to its scenario file, not the helper's", () => {
+    // `scenario()` calls `test()` inside an unnamed describe in e2e/world/index.ts; Playwright
+    // reports that file as the spec's own.
+    const report = {
+      suites: [
+        {
+          title: 'side/fleet-missing.e2e.ts',
+          file: 'side/fleet-missing.e2e.ts',
+          specs: [],
+          suites: [{ title: '', file: '../world/index.ts', specs: [{ title: 'SIDE-6.1: without Fleet', file: '../world/index.ts', tests: [{ expectedStatus: 'passed', results: [] }] }] }],
+        },
+      ],
+    };
+    expect(titlesFromPlaywright(report)).toEqual([{ path: ['SIDE-6.1: without Fleet'], file: 'side/fleet-missing.e2e.ts', behaviour: true }]);
+  });
+
+  it('TEST-3.3: a skipped Behaviour test (test.skip, test.fixme) does not count for a ticked (e2e) criterion', () => {
+    const spec = (title, tests) => ({ title, file: 'scenarios/demo/demo.e2e.ts', tests });
+    const listed = (...specs) => ({ suites: [{ title: 'scenarios/demo/demo.e2e.ts', file: 'scenarios/demo/demo.e2e.ts', specs, suites: [] }], errors: [] });
+    // As `--list` reports test.fixme and test.skip: expected to be skipped.
+    const fixme = run({ e2e: listed(spec('DEMO-1.3: holds end to end', [{ expectedStatus: 'skipped', results: [] }])) });
+    expect(row(fixme, 'DEMO-1.3').violation).toBe('no Behaviour test');
+    expect(fixme.violations.find((v) => v.id === 'DEMO-1.3')).toMatchObject({ rule: 'TEST-3.3' });
+    // A report from a run, where every result was skipped (`test.skip()` called in the body).
+    const ranSkipped = run({ e2e: listed(spec('DEMO-1.3: holds end to end', [{ expectedStatus: 'passed', results: [{ status: 'skipped' }] }])) });
+    expect(row(ranSkipped, 'DEMO-1.3').violation).toBe('no Behaviour test');
+    // One that runs still counts, next to a skipped one.
+    const both = run({
+      e2e: listed(spec('DEMO-1.3: holds end to end', [{ expectedStatus: 'skipped', results: [] }]), spec('DEMO-1.3: also holds', [{ expectedStatus: 'passed', results: [] }])),
+    });
+    expect(row(both, 'DEMO-1.3').violation).toBeNull();
+    expect(row(both, 'DEMO-1.3').tests.map((t) => t.title)).toEqual(['DEMO-1.3: also holds']);
+  });
+
   it('TEST-3.1: a Vitest title that contains " > " stays one title > DEMO-1.2: so this is only a mention', () => {
     const r = spawnSync(process.execPath, ['scripts/vitest-titles.mjs', 'scripts/req-check.test.mjs'], { cwd: repo, encoding: 'utf8' });
     expect(r.status, r.stderr).toBe(0);

@@ -1,0 +1,7 @@
+#!/bin/sh
+# The World's ps (TEST-1.2). For now it passes every call through to /bin/ps.
+#
+# TODO(TEST-1.10): a machine-wide listing (`-ax`, `-e`) keeps only the processes whose tty belongs
+# to a pane of the World's tmux server, and their descendants, so the user's own Codex TUIs stay
+# out of Fleet's discovery. Until then no World may declare Codex (see WorldBuilder.with).
+exec /bin/ps "$@"

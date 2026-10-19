@@ -1,0 +1,14 @@
+#!/bin/bash
+# A real tool as the World runs it (TEST-2.4): logs its argv to the World's calls log, then runs
+# the pinned binary. `exec -a` names the process after this file, inside the World's directory,
+# so a failure report shows which World ran it. Which processes are the World's is decided by the
+# LOOKOUT_WORLD_ID they inherit, never by this name (TEST-1.8).
+#
+# TEST-1.2: whoever calls it, with whatever environment, a Fleet started through here (or by what
+# it runs) finds binaries on PATH alone, never in Fleet's fallback directories.
+FLEET_PATH_ONLY=1
+export FLEET_PATH_ONLY
+line="$(/bin/date +%H:%M:%S) @NAME@"
+for a in "$@"; do printf -v q '%q' "$a"; line="$line $q"; done
+printf '%s\n' "$line" >> '@LOG@'
+exec -a '@SELF@' '@REAL@' "$@"

@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import type { AddressInfo } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_PORT } from '../shared/defaults.ts';
 import { AnswerLedger } from './answerer.ts';
@@ -10,18 +11,22 @@ import { GitCache, readGitLocation } from './git.ts';
 import { History, resolveTbSessionBin, resumePast } from './history.ts';
 import { Launcher } from './launcher.ts';
 import { SessionMonitor } from './monitor.ts';
+import { parsePort } from './port.ts';
 import { localAllowLists } from './security.ts';
 import { SettingsStore, defaultSettingsPath } from './settings.ts';
 import { UsageMonitor } from './usage.ts';
 import { Viewer } from './viewer.ts';
 
 const env = process.env;
-const port = Number(env.LOOKOUT_PORT ?? DEFAULT_PORT);
-if (!Number.isInteger(port) || port <= 0 || port > 65535) throw new Error(`Invalid LOOKOUT_PORT: ${env.LOOKOUT_PORT}`);
+// 0 lets the OS pick a free port (a Behaviour test's World); the bound port is printed below.
+const requestedPort = parsePort(env.LOOKOUT_PORT, DEFAULT_PORT);
 const production = env.NODE_ENV === 'production';
 const token = env.LOOKOUT_TOKEN || randomBytes(24).toString('base64url');
 // `pnpm dev` passes Vite's origin; nothing else is ever allowed.
 const extraOrigins = (env.LOOKOUT_DEV_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+// The Host and Origin allow-lists name the bound port, so they're filled once the server listens;
+// until then they're empty and nothing is allowed.
+const guard = { allowedHosts: new Set<string>(), allowedOrigins: new Set<string>(), token };
 
 const settings = new SettingsStore(defaultSettingsPath(env));
 await settings.load();
@@ -71,7 +76,7 @@ const usage = new UsageMonitor({
 });
 
 const app = createApp({
-  guard: { ...localAllowLists(port, extraOrigins), token },
+  guard,
   monitor,
   settings,
   launcher,
@@ -101,7 +106,12 @@ const app = createApp({
   staticDir: production ? fileURLToPath(new URL('../dist/web', import.meta.url)) : null,
 });
 
-app.server.listen(port, '127.0.0.1', () => {
+app.server.listen(requestedPort, '127.0.0.1', () => {
+  const { port } = app.server.address() as AddressInfo;
+  const allow = localAllowLists(port, extraOrigins);
+  for (const h of allow.allowedHosts) guard.allowedHosts.add(h);
+  for (const o of allow.allowedOrigins) guard.allowedOrigins.add(o);
+  // A World reads the bound port from this line.
   console.log(`Lookout server on http://127.0.0.1:${port}${production ? '' : ' (API only; open the Vite URL)'}`);
   console.log(`Settings: ${settings.path}`);
   if (env.LOOKOUT_TOKEN) console.log('Token: from LOOKOUT_TOKEN');

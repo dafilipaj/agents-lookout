@@ -106,15 +106,26 @@ export function titlesFromVitest(list, root = '') {
   return list.map((t) => ({ path: t.path, file: root ? relative(root, t.file) : t.file, behaviour: false }));
 }
 
+/**
+ * A Playwright test that won't run (`test.skip`, `test.fixme`): expected to be skipped, or every
+ * result it has was skipped. Like Vitest's skipped tests, it names no criterion.
+ */
+function skipped(spec) {
+  const tests = spec.tests ?? [];
+  return tests.length > 0 && tests.every((t) => t.expectedStatus === 'skipped' || (t.results?.length > 0 && t.results.every((r) => r.status === 'skipped')));
+}
+
 /** Titles from `playwright test --list --reporter=json`. Every one is a Behaviour test. */
 export function titlesFromPlaywright(report) {
   const out = [];
-  const walk = (suite, path) => {
-    for (const spec of suite.specs ?? []) out.push({ path: [...path, spec.title], file: spec.file ?? suite.file ?? '', behaviour: true });
-    for (const child of suite.suites ?? []) walk(child, [...path, child.title]);
+  const walk = (suite, path, file) => {
+    for (const spec of suite.specs ?? []) if (!skipped(spec)) out.push({ path: [...path, spec.title], file, behaviour: true });
+    // An unnamed `describe` (as `scenario()` makes) adds nothing to the path.
+    for (const child of suite.suites ?? []) walk(child, child.title ? [...path, child.title] : path, file);
   };
-  // Top-level suites are files; their titles are paths, not describe titles.
-  for (const file of report.suites ?? []) walk(file, []);
+  // Top-level suites are the test files; their titles are paths, not describe titles. A test
+  // belongs to the file it is in, even when a helper such as `scenario()` declares it.
+  for (const top of report.suites ?? []) walk(top, [], top.file ?? top.title ?? '');
   return out;
 }
 
