@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
  * SIDE-8.1: the app shell is one CSS grid, rows header / content / dock, shared by every column.
  * Each column is a subgrid spanning all three rows, so the header's bottom line and the dock's
  * top line are the grid's own row edges: they line up across the columns by construction, and a
- * taller cell on either side (a growing composer, more usage rows) grows the whole row. Columns: the Session sidebar, the main pane, and the right sidebar (History).
+ * taller cell on either side (a growing composer, more usage rows) grows the whole row. Columns: the Session sidebar, the main pane, and the right sidebar (History, Work).
  *
  * The dock row grows only up to 40% of the window (`fit-content(40dvh)`) and its cells scroll past
  * that, so text that wraps in a narrow main pane can't squeeze the content row (the Session list).

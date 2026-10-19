@@ -16,6 +16,7 @@ import { localAllowLists } from './security.ts';
 import { SettingsStore, defaultSettingsPath } from './settings.ts';
 import { UsageMonitor } from './usage.ts';
 import { Viewer } from './viewer.ts';
+import { WorkMonitor, resolveWorkBin } from './work.ts';
 
 const env = process.env;
 // 0 lets the OS pick a free port (a Behaviour test's World); the bound port is printed below.
@@ -75,6 +76,12 @@ const usage = new UsageMonitor({
   onChange: (u) => app.broadcast({ type: 'usage', usage: u }),
 });
 
+const work = new WorkMonitor({
+  runner: run,
+  tbPrBin: () => resolveWorkBin('tb-pr', env),
+  onChange: (w) => app.broadcast({ type: 'work', work: w }),
+});
+
 const app = createApp({
   guard,
   monitor,
@@ -82,6 +89,7 @@ const app = createApp({
   launcher,
   viewer,
   usage,
+  work,
   sessions: {
     answer: (id, req) => viewer.answer(id, req),
     stop: (id) => viewer.stopSession(id),
@@ -127,7 +135,7 @@ const shutdown = async () => {
   app.server.close();
   app.server.closeAllConnections();
   // Cancel the usage reads and wait until their processes have exited, so none is orphaned.
-  await usage.close().catch(() => {});
+  await Promise.all([usage.close().catch(() => {}), work.close().catch(() => {})]);
   process.exit(0);
 };
 process.on('SIGINT', shutdown);

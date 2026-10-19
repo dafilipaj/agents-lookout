@@ -11,5 +11,5 @@ One row per feature. Update the status here and in the spec's frontmatter togeth
 | History: search past Sessions, resume on click | HIST | Done | [SPEC](history/SPEC.md) |
 | Local servers: overview, kill on click | PORTS | Parked | [SPEC](local-servers/SPEC.md) |
 | Usage at a glance: Claude, Codex and Jev limits | USAGE | Done | [SPEC](usage/SPEC.md) |
-| Tasks and PRs: your Productive Tasks, PRs and Review requests, Linked to their Sessions | WORK | Ready | [SPEC](tasks-and-prs/SPEC.md) |
+| Tasks and PRs: your Productive Tasks, PRs and Review requests, Linked to their Sessions | WORK | In Progress | [SPEC](tasks-and-prs/SPEC.md) |
 | Behaviour tests: every requirement checked end to end ([0007](../decisions/0007-behaviour-tests-from-spec-requirements.md)) | TEST | In Progress | [SPEC](behaviour-tests/SPEC.md) |

@@ -10,6 +10,7 @@ import { BrowserGuard } from '../../world/browser.ts';
 import { type TaskDecl, type TbPrBoardDecl, type TbProdDecl, checkTbProd } from '../../world/builder.ts';
 import { expect, scenario, test, world } from '../../world/index.ts';
 import { REPO_ROOT } from '../../world/pins.ts';
+import { classifyTbPrFailure, parseTbPrList } from '../../../server/work.ts';
 import { recordLeftovers, runDir } from '../../world/registry.ts';
 import { type StopReport, type WorldCall, startWorld } from '../../world/runtime.ts';
 
@@ -20,7 +21,7 @@ import { type StopReport, type WorldCall, startWorld } from '../../world/runtime
  * proves that with a run of its own.
  */
 
-const ME = 'dario@example.com';
+const ME = 'lamplighter@example.com';
 const OTHER = 'someone@example.com';
 
 /** WORK's filter (its Sources): the open Tasks assigned to `email`. */
@@ -270,11 +271,11 @@ test('TEST-1.5: the fake tb-prod refuses, each as a violation, what tb-prod refu
  * fetch is put back (`restored_from`); the reviewed-by search too, with no list to put back.
  */
 const prBoard = (restoredFrom: string): TbPrBoardDecl => ({
-  user: 'dafilipaj',
+  user: 'lantern-keeper',
   columns: {
-    draft_mine: [{ number: 812, repo: 'api', title: 'Fix rounding in rates', check_state: 'success', head_branch: 'fix/12345678-rounding', task_ids: [{ id: '12345678', source: 'branch' }] }],
-    ready_to_merge_mine: [{ number: 77, repo: 'web', title: 'Ready one', age_days: 6, rotting: 'stale' }],
-    waiting_on_me: [{ number: 90, repo: 'web', title: 'Review me', author: 'teammate' }],
+    draft_mine: [{ number: 2101, repo: 'anvil', title: 'Sharpen the anvil corners', check_state: 'success', head_branch: 'fix/12345678-rounding', task_ids: [{ id: '12345678', source: 'branch' }] }],
+    ready_to_merge_mine: [{ number: 2102, repo: 'willow', title: 'Hang the willow lanterns', age_days: 6, rotting: 'stale' }],
+    waiting_on_me: [{ number: 2106, repo: 'willow', title: 'Count the willow leaves', author: 'teammate' }],
   },
   column_issues: [
     { column: 'waiting_on_me', reason: 'rate limited', restored_from: restoredFrom },
@@ -290,7 +291,7 @@ scenario(
     const list = await world.run('tb-pr', ['list', '--json']);
     expect(list.code, list.stderr).toBe(0);
     const board = JSON.parse(list.stdout);
-    expect(board).toMatchObject({ user: 'dafilipaj' });
+    expect(board).toMatchObject({ user: 'lantern-keeper' });
     expect(board.column_issues).toEqual([
       { column: 'waiting_on_me', reason: 'rate limited', restored_from: declaredRestoredFrom },
       { column: 'waiting_on_author', reason: 'rate limited' },
@@ -299,11 +300,11 @@ scenario(
     expect(Object.keys(board.columns)).toEqual(['draft_mine', 'review_mine', 'ready_to_merge_mine', 'waiting_on_me', 'waiting_on_author', 'notifications']);
     expect(board.columns.draft_mine).toEqual([
       {
-        number: 812,
-        repo: 'api',
-        title: 'Fix rounding in rates',
-        url: 'https://github.com/productiveio/api/pull/812',
-        author: 'dafilipaj',
+        number: 2101,
+        repo: 'anvil',
+        title: 'Sharpen the anvil corners',
+        url: 'https://github.com/productiveio/anvil/pull/2101',
+        author: 'lantern-keeper',
         state: 'draft',
         created_at: expect.any(String),
         age_days: 1,
@@ -321,7 +322,7 @@ scenario(
     expect(board.columns.ready_to_merge_mine[0]).not.toHaveProperty('check_state');
     expect(board.columns.waiting_on_me[0]).toMatchObject({ state: 'ready', author: 'teammate', task_ids: [] });
     // `--json` is a global flag: before the subcommand, too.
-    expect(JSON.parse((await world.run('tb-pr', ['--json', 'list'])).stdout).columns.draft_mine[0].number).toBe(812);
+    expect(JSON.parse((await world.run('tb-pr', ['--json', 'list'])).stdout).columns.draft_mine[0].number).toBe(2101);
 
     // tb-pr's summary gives a put-back list's age at the moment of the call (`humanize_age_hours`).
     world.tbPr.answer({ board: prBoard(minutesAgo(40)) });
@@ -332,7 +333,7 @@ scenario(
     });
 
     // A tb-pr from before Gap 1: no PR has `task_ids`. And a refresh that fails.
-    world.tbPr.answer({ board: { withTaskIds: false, columns: { review_mine: [{ number: 5, repo: 'api', title: 'Old' }] } }, refreshExit: 1 });
+    world.tbPr.answer({ board: { withTaskIds: false, columns: { review_mine: [{ number: 5, repo: 'anvil', title: 'Old' }] } }, refreshExit: 1 });
     const old = JSON.parse((await world.run('tb-pr', ['list', '--json'])).stdout);
     expect(old.columns.review_mine).toEqual([expect.objectContaining({ number: 5, state: 'ready', author: 'world-tester' })]);
     expect(old.columns.review_mine[0]).not.toHaveProperty('task_ids');
@@ -343,9 +344,51 @@ scenario(
   },
 );
 
+/** tb-pr 0.3.1's `Pr` fields in serde's order (`core/model.rs`), then Gap 1's `task_ids`. */
+const PR_FIELDS = ['number', 'repo', 'title', 'url', 'author', 'state', 'created_at', 'age_days', 'size', 'rotting', 'productive_task_id', 'comments_count', 'base_branch', 'head_branch', 'has_new_commits_since_my_review', 'changes_requested_by', 'check_state', 'task_ids'];
+
+scenario(
+  "TEST-1.5: the fake tb-pr's boards and failures read in WORK's parser as tb-pr 0.3.1's do",
+  world().tbPr({ board: prBoard(declaredRestoredFrom) }),
+  async ({ world }) => {
+    const list = await world.run('tb-pr', ['list', '--json']);
+    const raw = JSON.parse(list.stdout);
+    // Every PR has 0.3.1's fields in its order, and nothing else.
+    for (const pr of Object.values(raw.columns).flat() as Record<string, unknown>[]) {
+      const keys = Object.keys(pr);
+      expect(keys.filter((k) => !PR_FIELDS.includes(k)), JSON.stringify(pr)).toEqual([]);
+      expect(keys).toEqual(PR_FIELDS.filter((k) => keys.includes(k)));
+    }
+    const board = parseTbPrList(list.stdout);
+    expect(board.columns.draft_mine).toEqual([expect.objectContaining({ repo: 'anvil', number: 2101, chip: 'draft', ci: 'passing', taskIds: [{ id: '12345678', source: 'branch' }] })]);
+    expect(board.columns.ready_to_merge_mine).toEqual([expect.objectContaining({ repo: 'willow', number: 2102, chip: 'approved', ci: 'none', rotting: 'stale', ageDays: 6 })]);
+    expect(board.columns.waiting_on_me).toEqual([expect.objectContaining({ repo: 'willow', number: 2106, chip: null, ci: 'none' })]);
+    expect(board.issues).toEqual([
+      { column: 'waiting_on_me', reason: 'rate limited', restoredFrom: Date.parse(declaredRestoredFrom) },
+      { column: 'waiting_on_author', reason: 'rate limited', restoredFrom: null },
+    ]);
+    expect(board.taskIds).toBe(true);
+    world.tbPr.answer({ board: { withTaskIds: false, columns: { review_mine: [{ number: 5, repo: 'anvil', title: 'Old' }] } } });
+    expect(parseTbPrList((await world.run('tb-pr', ['list', '--json'])).stdout).taskIds).toBe(false);
+
+    // Each declared failure is recognised as WORK-7.6 and WORK-8.4 say.
+    const now = Date.parse('2026-10-19T14:00:00Z');
+    const failing = async (failure: Parameters<typeof world.tbPr.answer>[0]['failure']) => {
+      world.tbPr.answer({ failure });
+      const r = await world.run('tb-pr', ['list', '--json']);
+      expect(r.code).toBe(1);
+      return classifyTbPrFailure({ code: r.code, stderr: r.stderr, stdout: r.stdout }, now);
+    };
+    expect(await failing('gh-auth')).toMatchObject({ state: 'signed-out', fix: 'gh auth login' });
+    expect(await failing(401)).toMatchObject({ state: 'signed-out', fix: 'gh auth login' });
+    expect(await failing('rate-limited')).toMatchObject({ state: 'error', blockedUntil: now + 5 * 60_000 });
+    expect(await failing({ rateLimitedUntil: '2026-10-19T14:20:00Z' })).toMatchObject({ state: 'error', blockedUntil: Date.parse('2026-10-19T14:20:00Z') });
+  },
+);
+
 scenario(
   'TEST-1.5: the fake tb-pr fails as declared: gh auth token, a 401, rate limited with or without a reset time, a timeout',
-  world().tbPr({ board: { columns: { draft_mine: [{ number: 1, repo: 'api', title: 'One' }] } }, failure: 'gh-auth' }),
+  world().tbPr({ board: { columns: { draft_mine: [{ number: 1, repo: 'anvil', title: 'One' }] } }, failure: 'gh-auth' }),
   async ({ world }) => {
     const fails = async (stderr: string) => {
       for (const argv of [['list', '--json'], ['refresh']]) {
@@ -378,11 +421,11 @@ test('TEST-1.5: a declaration the World cannot build is refused when it is made'
   expect(() => world().tbProd({ tasks: { [ME]: [{ id: 'abc', title: 'T', project: 'P' }] } })).toThrow(/a Task's id is digits only/);
   expect(() => world().tbProd({ failure: 500 as never })).toThrow(/unknown failure 500/);
   expect(() => world().tbPr({ board: { columns: { mentions: [] } as never } })).toThrow(/unknown column mentions/);
-  expect(() => world().tbPr({ board: { columns: { draft_mine: [{ number: 1, repo: 'productiveio/api', title: 'T' }] } } })).toThrow(/bare repo name/);
-  expect(() => world().tbPr({ board: { withTaskIds: false, columns: { draft_mine: [{ number: 1, repo: 'api', title: 'T', task_ids: [] }] } } })).toThrow(/withTaskIds: false/);
+  expect(() => world().tbPr({ board: { columns: { draft_mine: [{ number: 1, repo: 'productiveio/anvil', title: 'T' }] } } })).toThrow(/bare repo name/);
+  expect(() => world().tbPr({ board: { withTaskIds: false, columns: { draft_mine: [{ number: 1, repo: 'anvil', title: 'T', task_ids: [] }] } } })).toThrow(/withTaskIds: false/);
   expect(() => world().tbPr({ refreshExit: 300 })).toThrow(/refreshExit/);
   // A board tb-pr 0.3.1 never prints (`merge_with_previous`).
-  const pr = { number: 1, repo: 'api', title: 'T' };
+  const pr = { number: 1, repo: 'anvil', title: 'T' };
   const flagged = (column_issues: TbPrBoardDecl['column_issues'], columns: TbPrBoardDecl['columns'] = { waiting_on_me: [pr] }) => () => world().tbPr({ board: { columns, column_issues } });
   expect(flagged([{ column: 'waiting_on_me', reason: 'rate limited' }])).toThrow(/waiting_on_me has PRs and the issue "rate limited" but no restored_from/);
   expect(flagged([{ column: 'waiting_on_me', reason: 'search returned empty' }])).toThrow(/but no restored_from/);
@@ -453,14 +496,14 @@ scenario(
   'TEST-1.6: a test changes what the fake tb-prod and tb-pr answer from their next call on',
   world()
     .tbProd({ tasks: { [ME]: [{ id: '1', title: 'Before', project: 'Acme' }] } })
-    .tbPr({ board: { columns: { draft_mine: [{ number: 1, repo: 'api', title: 'Before' }] } } }),
+    .tbPr({ board: { columns: { draft_mine: [{ number: 1, repo: 'anvil', title: 'Before' }] } } }),
   async ({ world }) => {
     const prTitles = async () => (JSON.parse((await world.run('tb-pr', ['list', '--json'])).stdout).columns.draft_mine as { title: string }[]).map((p) => p.title);
     expect(titles(await world.run('tb-prod', tasksQuery(ME)))).toEqual(['Before']);
     expect(await prTitles()).toEqual(['Before']);
 
     world.tbProd.answer({ tasks: { [ME]: [{ id: '2', title: 'After', project: 'Acme' }] } });
-    world.tbPr.answer({ board: { columns: { draft_mine: [{ number: 2, repo: 'api', title: 'After' }] } } });
+    world.tbPr.answer({ board: { columns: { draft_mine: [{ number: 2, repo: 'anvil', title: 'After' }] } } });
     expect(titles(await world.run('tb-prod', tasksQuery(ME)))).toEqual(['After']);
     expect(await prTitles()).toEqual(['After']);
 
@@ -529,7 +572,7 @@ scenario(
     const failed: string[] = [];
     context.on('requestfailed', (r) => failed.push(`${r.failure()?.errorText} ${r.url()}`));
     const task = 'https://app.fantastic.productive.io/109-productive/tasks/12345';
-    const pr = 'https://github.com/productiveio/api/pull/812';
+    const pr = 'https://github.com/productiveio/anvil/pull/2101';
     const api = 'https://api.github.com/user';
     const avatar = 'https://avatars.githubusercontent.com/u/1';
     const socket = 'wss://example.com/socket';

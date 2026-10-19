@@ -1,44 +1,5 @@
 import type { Harness, HistoryItem, SessionRow } from '@shared/types.ts';
 
-/** HIST-1.3: the right sidebar's width bounds, in px. */
-export const HISTORY_MIN_WIDTH = 280;
-export const HISTORY_MAX_WIDTH = 720;
-export const HISTORY_DEFAULT_WIDTH = 360;
-const KEY = 'lookout.history';
-
-/** HIST-1.3: whether the right sidebar is open, and its width; kept in this browser. */
-export interface HistoryLayout {
-  open: boolean;
-  width: number;
-}
-
-export const clampWidth = (w: number) => Math.round(Math.min(HISTORY_MAX_WIDTH, Math.max(HISTORY_MIN_WIDTH, w)));
-
-/** Reads the layout; storage can be missing or blocked, so anything odd is the default. */
-export function loadLayout(): HistoryLayout {
-  try {
-    const v: unknown = JSON.parse(window.localStorage.getItem(KEY) ?? 'null');
-    if (typeof v === 'object' && v !== null) {
-      const r = v as Record<string, unknown>;
-      return {
-        open: r.open === true,
-        width: typeof r.width === 'number' && Number.isFinite(r.width) ? clampWidth(r.width) : HISTORY_DEFAULT_WIDTH,
-      };
-    }
-  } catch {
-    // no storage here
-  }
-  return { open: false, width: HISTORY_DEFAULT_WIDTH };
-}
-
-export function saveLayout(layout: HistoryLayout): void {
-  try {
-    window.localStorage.setItem(KEY, JSON.stringify(layout));
-  } catch {
-    // no storage here: it's only a convenience
-  }
-}
-
 /** HIST-2.8: which Harnesses History shows; never neither. Kept in this browser, like the layout. */
 export type HarnessFilter = Record<Harness, boolean>;
 const FILTER_KEY = 'lookout.history.harnesses';

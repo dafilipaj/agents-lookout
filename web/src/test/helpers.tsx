@@ -67,6 +67,7 @@ interface RenderOptions {
   history?: (q: HistoryQuery) => Promise<HistoryPage>;
   pastSession?: LookoutClient['pastSession'];
   resume?: LookoutClient['resume'];
+  refreshWork?: LookoutClient['refreshWork'];
 }
 
 /** Renders the whole app against a fake server the test drives. */
@@ -89,6 +90,8 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
     watch: vi.fn(async () => {}),
     refreshJev: vi.fn(async () => {}),
     refreshUsage: vi.fn(async () => {}),
+    watchWork: vi.fn(async () => {}),
+    refreshWork: vi.fn(options.refreshWork ?? (async () => ({ ok: true as const }))),
     sendMessage: vi.fn(options.sendMessage ?? (async () => {})),
     endSession: vi.fn(options.endSession ?? (async () => ({ how: 'exit' as const }))),
     answer: vi.fn(options.answer ?? (async () => ({ epoch: 1 }))),

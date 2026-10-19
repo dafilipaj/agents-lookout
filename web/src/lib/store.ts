@@ -1,6 +1,7 @@
 import { type Settings, defaultSettings } from '@shared/settings.ts';
 import type { ChatPage, FleetHealth, LaunchView, ServerEvent, SessionRow } from '@shared/types.ts';
 import type { UsageSnapshot } from '@shared/usage.ts';
+import type { WorkSnapshot } from '@shared/work.ts';
 import { type Dispatch, useEffect, useReducer } from 'react';
 import type { ScreenState } from './answers.ts';
 import { CACHED_CHATS, type Chat, applyChatEvent, applyPage, emptyChat, park, setFollowing } from './chat.ts';
@@ -47,6 +48,8 @@ export interface LookoutState {
   prompts: ReadonlyMap<string, ScreenState>;
   /** USAGE: the latest numbers, or null before the first read. */
   usage: UsageSnapshot | null;
+  /** WORK: the latest PRs and Refresh state, or null before the server sent any. */
+  work: WorkSnapshot | null;
   /**
    * VIEW-1: the chat of the Session in view, plus a few recently viewed ones (cut to their latest
    * entries) for switching back. Kept across reconnects, and after the Session ends.
@@ -100,6 +103,7 @@ export const initialState: LookoutState = {
   previews: new Map(),
   prompts: new Map(),
   usage: null,
+  work: null,
   chats: new Map(),
   chatOrder: [],
   chatViewing: null,
@@ -163,6 +167,7 @@ export function reducer(state: LookoutState, action: Action): LookoutState {
         previews: new Map(), // a new stream: previews come again once it says what it views
         prompts: new Map(),
         usage: e.usage ?? state.usage,
+        work: e.work ?? state.work,
       };
     }
     case 'sessions': {
@@ -187,6 +192,8 @@ export function reducer(state: LookoutState, action: Action): LookoutState {
       return { ...state, settings: e.settings };
     case 'usage':
       return { ...state, usage: e.usage };
+    case 'work':
+      return { ...state, work: e.work };
     case 'chat': {
       if (e.sessionId !== state.chatViewing) return state; // a late update for a Session left behind
       const chat = state.chats.get(e.sessionId) ?? emptyChat;

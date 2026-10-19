@@ -1,0 +1,83 @@
+{
+  "user": "world-tester",
+  "fetched_at": "2026-10-19T10:00:00.482913Z",
+  "columns": {
+    "draft_mine": [
+      {
+        "number": 2101,
+        "repo": "anvil",
+        "title": "Sharpen the anvil corners",
+        "url": "https://github.com/productiveio/anvil/pull/2101",
+        "author": "world-tester",
+        "state": "draft",
+        "created_at": "2026-10-17T10:00:00Z",
+        "age_days": 2.0000055891203705,
+        "size": "S",
+        "rotting": "fresh",
+        "productive_task_id": "12345",
+        "comments_count": 0,
+        "base_branch": "develop",
+        "head_branch": "feature/12345678-fix-rounding",
+        "check_state": "success"
+      },
+      {
+        "number": 2102,
+        "repo": "willow",
+        "title": "Hang the willow lanterns",
+        "url": "https://github.com/productiveio/willow/pull/2102",
+        "author": "world-tester",
+        "state": "draft",
+        "created_at": "2026-09-10T10:00:00Z",
+        "age_days": 39.00000558912037,
+        "size": "M",
+        "rotting": "critical",
+        "comments_count": 3,
+        "base_branch": "develop",
+        "head_branch": "fix/2102-empty-state",
+        "check_state": "pending"
+      },
+      {
+        "number": 2103,
+        "repo": "kettle",
+        "title": "Draft the kettle manual",
+        "url": "https://github.com/productiveio/kettle/pull/2103",
+        "author": "world-tester",
+        "state": "draft",
+        "created_at": "2026-10-05T10:00:00Z",
+        "age_days": 14.000005589120372,
+        "size": "XS",
+        "rotting": "rotting",
+        "comments_count": 0,
+        "base_branch": "main"
+      }
+    ],
+    "review_mine": [],
+    "ready_to_merge_mine": [],
+    "waiting_on_me": [],
+    "waiting_on_author": [],
+    "notifications": []
+  },
+  "column_issues": [
+    {
+      "column": "draft_mine",
+      "reason": "search returned empty",
+      "restored_from": "2026-10-19T09:20:00.907431Z"
+    },
+    {
+      "column": "review_mine",
+      "reason": "search returned empty"
+    },
+    {
+      "column": "ready_to_merge_mine",
+      "reason": "search returned empty"
+    },
+    {
+      "column": "waiting_on_me",
+      "reason": "search returned empty"
+    },
+    {
+      "column": "waiting_on_author",
+      "reason": "search returned empty"
+    }
+  ]
+}

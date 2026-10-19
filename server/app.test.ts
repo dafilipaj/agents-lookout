@@ -11,6 +11,7 @@ import { EndError } from './closer.ts';
 import { HistoryError } from './history.ts';
 import { SettingsStore } from './settings.ts';
 import { ViewError } from './viewer.ts';
+import { WorkMonitor } from './work.ts';
 
 let dir: string;
 let app: LookoutApp;
@@ -64,6 +65,7 @@ beforeEach(async () => {
       dismiss: () => false,
     },
     usage: { snapshot: () => USAGE, watch: () => () => {}, refreshJev: async () => {}, refresh: async () => {} },
+    work: new WorkMonitor({ runner: async () => '', tbPrBin: () => '/nonexistent/tb-pr', onChange: () => {} }),
     viewer: {
       watch: (clientId: string, sessionId: string | null, preview: boolean) => void watches.push({ clientId, sessionId, preview }),
       drop: (clientId: string) => void dropped.push(clientId),

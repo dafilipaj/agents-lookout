@@ -3,6 +3,7 @@ import { type IncomingMessage, type Server, type ServerResponse, createServer } 
 import { SettingsError } from '../shared/settings.ts';
 import type { AnswerRequest, AnswerResult, ChatPage, EndResult, EndTarget, Harness, HarnessOption, HistoryDetail, HistoryPage, LaunchView, ResumeResult, ServerEvent } from '../shared/types.ts';
 import type { UsageSnapshot } from '../shared/usage.ts';
+import type { WorkSnapshot } from '../shared/work.ts';
 import { AnswerError, parseAnswerRequest } from './answerer.ts';
 import { EndError, parseEndTarget } from './closer.ts';
 import { type FindQuery, HistoryError, parseFindQuery } from './history.ts';
@@ -12,6 +13,7 @@ import { type GuardConfig, guardRequest } from './security.ts';
 import type { SettingsStore } from './settings.ts';
 import { serveStatic } from './static.ts';
 import { MAX_MESSAGE, ViewError } from './viewer.ts';
+import type { RefreshAnswer } from './work.ts';
 
 export interface AppOptions {
   guard: GuardConfig;
@@ -50,6 +52,14 @@ export interface AppOptions {
     detail(sessionId: string, harness: Harness): Promise<HistoryDetail>;
     resume(input: unknown): Promise<ResumeResult>;
   };
+  /** WORK: PRs through tb-pr, read only while a tab has Work open. */
+  work: {
+    snapshot(): WorkSnapshot;
+    /** A tab opened Work; the returned function says it closed it. */
+    watch(): () => void;
+    /** WORK-8.2: a forced read; never throws a command's error (WORK-7.7). */
+    refresh(): Promise<RefreshAnswer>;
+  };
   /** Directory of the built UI; null in `pnpm dev`, where Vite serves it. */
   staticDir: string | null;
   keepAliveMs?: number;
@@ -83,6 +93,8 @@ const SECURITY_HEADERS = {
 
 export function createApp(opts: AppOptions): LookoutApp {
   const clients = new Map<string, ServerResponse>();
+  /** WORK-8.1: the tabs that have Work open, each with its hold on the Work poller. */
+  const workOpen = new Map<string, () => void>();
 
   const send = (res: ServerResponse, event: ServerEvent) => {
     res.write(`data: ${JSON.stringify(event)}\n\n`);
@@ -110,6 +122,7 @@ export function createApp(opts: AppOptions): LookoutApp {
       started: opts.launcher.recentStarts(),
       clientId,
       usage: opts.usage.snapshot(),
+      work: opts.work.snapshot(),
     });
     clients.set(clientId, res);
     const unwatch = opts.monitor.watch();
@@ -119,6 +132,8 @@ export function createApp(opts: AppOptions): LookoutApp {
       clearInterval(keepAlive);
       clients.delete(clientId);
       unwatchUsage();
+      workOpen.get(clientId)?.();
+      workOpen.delete(clientId);
       opts.viewer.drop(clientId); // a tab that's gone stops what it was following
       unwatch();
     });
@@ -188,6 +203,35 @@ export function createApp(opts: AppOptions): LookoutApp {
       // The details opened (USAGE-2.1): check Jev again. Free: `tb-jev status` is local.
       await opts.usage.refreshJev();
       return json(res, 200, { ok: true });
+    }
+    // WORK-8.1: a tab says whether it has Work open, naming its event stream as `PUT /api/watch`
+    // does; a closed stream counts as closed. A PUT, so the token and Origin, as every mutation.
+    if (route === 'PUT /api/work/watch') {
+      const body = await readJson(req, res, MAX_BODY, null);
+      if (body === NO_BODY) return;
+      const w = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
+      if (typeof w.clientId !== 'string' || !clients.has(w.clientId)) return json(res, 404, { error: 'unknown event stream' });
+      if (typeof w.open !== 'boolean') return json(res, 400, { error: 'invalid open' });
+      const held = workOpen.get(w.clientId);
+      if (w.open && !held) workOpen.set(w.clientId, opts.work.watch());
+      if (!w.open && held) {
+        held();
+        workOpen.delete(w.clientId);
+      }
+      return json(res, 200, { ok: true });
+    }
+    // WORK-8.2: Refresh runs `tb-pr refresh`, so it's a mutation (the token and Origin). It answers
+    // with the outcome's plain reason only: a failure is never logged or passed on whole, since a
+    // command's error carries its output (WORK-7.7). Refused while no tab has Work open (409), during
+    // the cooldown or a rate limit (429).
+    if (route === 'POST /api/work/refresh') {
+      let answer: RefreshAnswer;
+      try {
+        answer = await opts.work.refresh();
+      } catch {
+        return json(res, 500, { ok: false, error: 'Refresh failed' });
+      }
+      return json(res, answer.status, answer.result);
     }
     if (route === 'PUT /api/watch') {
       const body = await readJson(req, res, MAX_BODY, null);

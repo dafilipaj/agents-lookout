@@ -1,4 +1,5 @@
 import type { Settings } from '@shared/settings.ts';
+import type { WorkRefreshResult } from '@shared/work.ts';
 import type { AnswerRequest, AnswerResult, ChatPage, EndResult, EndTarget, Harness, HarnessOption, HistoryDetail, HistoryPage, LaunchRequest, LaunchView, ResumeResult, ServerEvent } from '@shared/types.ts';
 
 export interface ClientListener {
@@ -30,6 +31,13 @@ export interface LookoutClient {
   refreshJev(): Promise<void>;
   /** USAGE-2.2: a window's reset passed; have the server read the limits again. */
   refreshUsage(): Promise<void>;
+  /** WORK-8.1: whether this tab has Work open, so the server reads only while some tab does. */
+  watchWork(clientId: string, open: boolean): Promise<void>;
+  /**
+   * WORK-8.2: a forced read; refused during the cooldown or a rate limit (WORK-8.4). Rejects with a
+   * SaveError saying in plain words why it didn't run: a 409, a server error, or no server.
+   */
+  refreshWork(): Promise<WorkRefreshResult>;
   /** HIST-2: past Sessions, newest first (empty query) or best match first. */
   history(q: HistoryQuery): Promise<HistoryPage>;
   /** HIST-3.3: a past Session's latest messages, read-only. */
@@ -67,6 +75,11 @@ export class SaveError extends Error {
     this.lost = extra.lost ?? false;
   }
 }
+
+/** WORK-8.2: Refresh refused while the server doesn't know yet that this tab has Work open (409). */
+export const REFRESH_NOT_WATCHED = "Refresh didn't run: Lookout is still catching up with this tab. Try again in a moment.";
+/** WORK-8.2: Refresh failed on Lookout's own server (a 500). */
+export const REFRESH_FAILED = "Refresh failed: Lookout's server ran into a problem. Try again later.";
 
 /** Retry delays for a watch the server didn't take: 1 s, 2 s, then every 5 s. */
 const WATCH_RETRY_MS = [1000, 2000, 5000];
@@ -171,6 +184,50 @@ export function createHttpClient(): LookoutClient {
     }
   };
 
+  /**
+   * WORK-8.1: whether this tab has Work open, sent as `watch` sends what it views: one request at a
+   * time, then the latest wanted state only, retried until the server takes it. A 404 means that
+   * event stream is gone, and the server stopped counting it; the next stream's snapshot brings a
+   * new client id.
+   */
+  let workWanted: { clientId: string; open: boolean } | null = null;
+  let workAcked: string | null = null;
+  let workPumping = false;
+  let workWake: (() => void) | null = null;
+  const workPump = async () => {
+    if (workPumping) return;
+    workPumping = true;
+    let attempt = 0;
+    try {
+      while (workWanted && JSON.stringify(workWanted) !== workAcked) {
+        const sending = workWanted;
+        try {
+          await call(() => send('PUT', '/api/work/watch', sending), 'Watching Work');
+          workAcked = JSON.stringify(sending);
+          attempt = 0;
+        } catch (err) {
+          if (err instanceof SaveError && err.status === 404) {
+            workAcked = JSON.stringify(sending);
+            continue;
+          }
+          const delay = WATCH_RETRY_MS[Math.min(attempt, WATCH_RETRY_MS.length - 1)];
+          await new Promise<void>((resolve) => {
+            const timer = setTimeout(done, delay);
+            function done() {
+              clearTimeout(timer);
+              workWake = null;
+              resolve();
+            }
+            workWake = done;
+          });
+          attempt++;
+        }
+      }
+    } finally {
+      workPumping = false;
+    }
+  };
+
   return {
     subscribe(listener) {
       let es: EventSource | null = null;
@@ -210,6 +267,29 @@ export function createHttpClient(): LookoutClient {
       wanted = { clientId, sessionId, preview };
       wake?.();
       void pump();
+    },
+    watchWork: async (clientId, open) => {
+      workWanted = { clientId, open };
+      workWake?.();
+      void workPump();
+    },
+    // WORK-8.2: the read's outcome, or a 429 with the time Refresh is back, which every tab's Refresh
+    // shows anyway. Anything else didn't run, said in plain words (WORK UX, Errors): a 409, the server
+    // not knowing yet that this tab has Work open (its stream reconnecting, the page still loading), a
+    // server error, or no server.
+    refreshWork: async () => {
+      let res: Response;
+      try {
+        res = await send('POST', '/api/work/refresh');
+      } catch {
+        throw new SaveError("Couldn't reach the Lookout server.", null, null, { lost: true });
+      }
+      const body = (await res.json().catch(() => null)) as WorkRefreshResult | null;
+      if (body && typeof body.ok === 'boolean' && (res.ok || res.status === 429)) return body;
+      if (res.status === 409) throw new SaveError(REFRESH_NOT_WATCHED, null, 409);
+      // Lookout's server always answers with a body; a failure without one came from something in between.
+      const lost = res.status >= 500 && !body;
+      throw new SaveError(lost ? "Couldn't reach the Lookout server." : REFRESH_FAILED, null, res.status, { lost });
     },
     refreshUsage: async () => {
       await call(() => send('POST', '/api/usage/refresh'), 'Refreshing usage');

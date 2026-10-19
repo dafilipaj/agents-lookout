@@ -68,16 +68,17 @@ describe('the right sidebar (HIST-1)', () => {
     const app = renderApp('/', { history: async () => ok([]) });
     app.snapshot([]);
     await openHistory(app);
-    const handle = screen.getByRole('separator', { name: 'Resize History' });
+    const sidebar = () => screen.getByTestId('right-sidebar');
+    const handle = screen.getByRole('separator', { name: 'Resize the right sidebar' });
     fireEvent.mouseDown(handle, { clientX: 1000 });
     fireEvent.mouseMove(window, { clientX: 900 });
     fireEvent.mouseUp(window, { clientX: 900 });
-    expect(panel()).toHaveStyle({ width: '460px' });
+    expect(sidebar()).toHaveStyle({ width: '460px' });
     app.unmount();
 
     const reloaded = renderApp('/', { history: async () => ok([]) });
     reloaded.snapshot([]);
-    expect(panel()).toHaveStyle({ width: '460px' });
+    expect(sidebar()).toHaveStyle({ width: '460px' });
     await userEvent.click(screen.getByRole('button', { name: 'Close History' }));
     reloaded.unmount();
     renderApp('/');

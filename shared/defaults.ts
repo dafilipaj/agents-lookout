@@ -11,3 +11,11 @@ export const FLEET_INSTALL_COMMAND =
 /** How cli-toolbox installs tb-session (HIST); it lands in ~/.local/bin. */
 export const TB_SESSION_INSTALL_COMMAND =
   'gh api -H "Accept: application/vnd.github.raw" repos/productiveio/cli-toolbox/contents/scripts/install.sh | bash -s -- tb-session';
+
+/** How cli-toolbox installs tb-pr (WORK-7.1); it lands in ~/.local/bin. */
+export const TB_PR_INSTALL_COMMAND =
+  'gh api -H "Accept: application/vnd.github.raw" repos/productiveio/cli-toolbox/contents/scripts/install.sh | bash -s -- tb-pr';
+
+/** How cli-toolbox installs tb-prod (WORK-7.1); it lands in ~/.local/bin. */
+export const TB_PROD_INSTALL_COMMAND =
+  'gh api -H "Accept: application/vnd.github.raw" repos/productiveio/cli-toolbox/contents/scripts/install.sh | bash -s -- tb-prod';

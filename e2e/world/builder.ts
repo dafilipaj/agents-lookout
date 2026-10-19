@@ -102,7 +102,7 @@ export const TB_PR_COLUMNS: readonly TbPrColumn[] = ['draft_mine', 'review_mine'
  */
 export interface PrDecl {
   number: number;
-  /** The repo's name in `productiveio`, as tb-pr gives it: `api`, not `productiveio/api`. */
+  /** The repo's name in `productiveio`, as tb-pr gives it: `anvil`, not `productiveio/anvil`. */
   repo: string;
   title: string;
   url?: string;
@@ -191,7 +191,8 @@ export interface WorldSpec {
   tbProd: TbProdDecl | null;
   /** The fake `tb-pr` on PATH and what it answers; absent unless declared. */
   tbPr: TbPrDecl | null;
-  settings: Partial<Pick<Settings, 'idleThresholdHours' | 'startDirectories'>>;
+  /** `lastLaunch`: what the launcher remembers as started last (WORK-5.2). */
+  settings: Partial<Pick<Settings, 'idleThresholdHours' | 'startDirectories' | 'lastLaunch'>>;
 }
 
 /** A declaration this slice can't build yet: the World refuses it instead of ignoring it. */

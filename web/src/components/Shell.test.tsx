@@ -97,11 +97,12 @@ describe('one grid (SIDE-8.1)', () => {
     const view = column('main')!.querySelector<HTMLElement>(':scope > [data-shell-view]')!;
     expect(uses(view, SHELL_COLUMN)).toBe(true);
     await openHistory();
-    expect(column('right')).toBe(screen.getByTestId('history-panel'));
+    expect(column('right')).toBe(screen.getByTestId('right-sidebar'));
+    expect(column('right')).toContainElement(screen.getByTestId('history-panel'));
     expect(uses(column('right')!, SHELL_COLUMN)).toBe(true);
   });
 
-  it('SIDE-8.1 (support): the Filter bar, the Session title bar and History’s search field are their columns’ header cells', async () => {
+  it('SIDE-8.1 (support): the Filter bar, the Session title bar and the right sidebar’s tab strip are their columns’ header cells', async () => {
     renderApp('/s/a').snapshot([row({ id: 'a', status: 'needs-you', waitingFor: 'question: ship it?' })]);
     await openHistory();
 
@@ -114,15 +115,17 @@ describe('one grid (SIDE-8.1)', () => {
     expect(header).not.toHaveTextContent('ship it?');
     expect(header.querySelectorAll(':scope > *')).toHaveLength(1);
 
-    // History's search field moved up into the header row, next to Close, like Filter on the left.
+    // WORK-1.8: the tab strip (History, Work) is the right column's header cell, next to Close,
+    // like Filter on the left; History's search field sits below it.
+    const tabs = screen.getByRole('tablist', { name: 'Right sidebar' });
+    expect(where(tabs)).toBe('header/right');
+    expect(within(tabs).getAllByRole('tab').map((t) => t.textContent)).toEqual(['History', 'Work']);
+    expect(within(cellOf(tabs)).getByRole('button', { name: 'Close History' })).toBeInTheDocument();
+    expect(screen.getByRole('complementary', { name: 'Right sidebar' })).toBe(screen.getByTestId('right-sidebar'));
     const search = screen.getByRole('searchbox', { name: 'Search past Sessions' });
-    expect(where(search)).toBe('header/right');
-    const top = cellOf(search);
-    expect(within(top).getByRole('button', { name: 'Close History' })).toBeInTheDocument();
-    // No visible title, but the panel keeps its name and a heading.
-    expect(within(top).getByRole('heading', { name: 'History' }).classList).toContain('sr-only');
-    expect(screen.getByRole('complementary', { name: 'History sidebar' })).toBe(screen.getByTestId('history-panel'));
-    // The toggles and the list sit below the line and run on past the dock to the bottom.
+    expect(where(search)).toBe('body/right');
+    // The search field, the toggles and the list run on past the dock to the bottom.
+    expect(cellOf(search)).toHaveAttribute('data-shell-to-bottom');
     const toggle = screen.getByRole('checkbox', { name: 'Show Headless Sessions' });
     expect(where(toggle)).toBe('body/right');
     expect(cellOf(toggle)).toHaveAttribute('data-shell-to-bottom');

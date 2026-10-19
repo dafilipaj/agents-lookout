@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type LookoutApp, createApp } from './app.ts';
 import { SettingsStore } from './settings.ts';
 import { UsageMonitor } from './usage.ts';
+import { WorkMonitor } from './work.ts';
 
 const SECRETS = ['sk-ant-api03-AbCdEf123456', 'eyJhbGciOiJIUzI1NiJ9.abc', 'hunter2', 'deadbeefdeadbeefdeadbeefdeadbeef'];
 
@@ -65,6 +66,7 @@ beforeAll(async () => {
       },
     },
     usage,
+    work: new WorkMonitor({ runner: async () => '', tbPrBin: () => '/nonexistent/tb-pr', onChange: () => {} }),
     viewer: { watch: () => {}, drop: () => {}, send: async () => {}, earlier: async () => ({ entries: [], before: null }) },
     staticDir: null,
   });

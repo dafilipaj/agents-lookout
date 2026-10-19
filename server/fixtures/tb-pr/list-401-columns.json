@@ -1,0 +1,38 @@
+{
+  "user": "world-tester",
+  "fetched_at": "2026-10-19T10:00:00.482913Z",
+  "columns": {
+    "draft_mine": [],
+    "review_mine": [],
+    "ready_to_merge_mine": [],
+    "waiting_on_me": [],
+    "waiting_on_author": [],
+    "notifications": []
+  },
+  "column_issues": [
+    {
+      "column": "draft_mine",
+      "reason": "api error 401"
+    },
+    {
+      "column": "review_mine",
+      "reason": "api error 401"
+    },
+    {
+      "column": "ready_to_merge_mine",
+      "reason": "api error 401"
+    },
+    {
+      "column": "waiting_on_me",
+      "reason": "api error 401"
+    },
+    {
+      "column": "waiting_on_author",
+      "reason": "api error 401"
+    },
+    {
+      "column": "mentions",
+      "reason": "api error 401"
+    }
+  ]
+}

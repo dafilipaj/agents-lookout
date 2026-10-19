@@ -1,21 +1,22 @@
 import type { LaunchHarness } from '@shared/settings.ts';
 import type { AnswerRequest, ChatPage, EndTarget, HistoryItem, LaunchRequest, LaunchView, ResumeResult, SessionRow, Status } from '@shared/types.ts';
-import { History as HistoryIcon } from 'lucide-react';
+import type { WorkPr } from '@shared/work.ts';
 import { hasReset } from '@shared/usage.ts';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { HistoryPanel } from '@/components/HistoryPanel';
 import { Launcher } from '@/components/Launcher';
 import { MainPane } from '@/components/MainPane';
 import { PastSessionView } from '@/components/PastSessionView';
+import { RightRail, RightSidebar } from '@/components/RightSidebar';
 import { SettingsPage } from '@/components/SettingsPage';
-import { SHELL_COLUMN, SHELL_GRID, ShellCell } from '@/components/Shell';
+import { SHELL_COLUMN, SHELL_GRID } from '@/components/Shell';
 import { Sidebar } from '@/components/Sidebar';
 import { StartingView } from '@/components/StartingView';
-import { Button } from '@/components/ui/button';
+import { WorkPanel } from '@/components/WorkPanel';
 import { type LookoutClient, SaveError } from '@/lib/client';
 import { tidySentAt } from '@/lib/activity';
 import { type AnswerAttempt, LOST_ANSWER, LOST_STOP, type StopRequest, processKey, promptKey, questionKey } from '@/lib/answers';
-import { type HistoryLayout, loadLayout, saveLayout } from '@/lib/history';
+import { type PanelNav, type RightLayout, type RightTab, loadLayout, saveLayout, toggleTab } from '@/lib/right-sidebar';
 import { useAnyModalOpen } from '@/lib/modal';
 import { type HarnessState, type LaunchDraft, initialDraft } from '@/lib/launch';
 import { parseRoute, routePath, useRoute } from '@/lib/router';
@@ -23,6 +24,7 @@ import { HARNESS_NAME } from '@/lib/sessions';
 import { cn } from '@/lib/utils';
 import { listKnown, shownLaunches, useLookout } from '@/lib/store';
 import { useNow } from '@/lib/time';
+import { reviewPrompt } from '@/lib/work';
 
 /** A manual drawer toggle, valid while the Session keeps the Status it had then. */
 interface DrawerOverride {
@@ -209,35 +211,81 @@ export function App({ client }: { client: LookoutClient }) {
     [client, requestLaunch, navigate],
   );
 
-  // HIST-1: the right sidebar; open or not, and its width, kept in this browser (HIST-1.3).
-  const [layout, setLayout] = useState<HistoryLayout>(loadLayout);
-  const [historyFocus, setHistoryFocus] = useState(0);
-  const updateLayout = useCallback((patch: Partial<HistoryLayout>) => {
+  // HIST-1, WORK-1: the right sidebar; open or not, its width, its tab and Work's filter, kept in
+  // this browser (HIST-1.3, WORK-1.2, WORK-1.5).
+  const [layout, setLayout] = useState<RightLayout>(loadLayout);
+  /** Bumped to move focus into the panel just opened or switched to (HIST-1.1). */
+  const [rightFocus, setRightFocus] = useState<Record<RightTab, number>>({ history: 0, work: 0 });
+  const updateLayout = useCallback((patch: Partial<RightLayout>) => {
     setLayout((l) => {
       const next = { ...l, ...patch };
       saveLayout(next);
       return next;
     });
   }, []);
-  const toggleHistory = useCallback(() => {
+  // WORK-1.1: `W` and `H` (and the rail's buttons) open the sidebar on their tab, or close it when
+  // that tab is already showing.
+  const toggleRight = useCallback((tab: RightTab) => {
     setLayout((l) => {
-      const next = { ...l, open: !l.open };
+      const next = toggleTab(l, tab);
       saveLayout(next);
       return next;
     });
-    setHistoryFocus((n) => n + 1);
+    setRightFocus((f) => ({ ...f, [tab]: f[tab] + 1 }));
   }, []);
-  // HIST-1.1: H opens and closes it when focus isn't in a text field.
+  // A tab clicked moves focus into its panel; one reached with ←/→ leaves it on the tab strip (WORK-1.7).
+  const showTab = useCallback(
+    (tab: RightTab, focusPanel: boolean) => {
+      updateLayout({ open: true, tab });
+      if (focusPanel) setRightFocus((f) => ({ ...f, [tab]: f[tab] + 1 }));
+    },
+    [updateLayout],
+  );
+  // HIST-1.1, WORK-1.1: H and W, when focus isn't in a text field and no modal is open.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.isComposing || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || e.key.toLowerCase() !== 'h') return;
+      if (e.isComposing || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+      const key = e.key.toLowerCase();
+      if (key !== 'h' && key !== 'w') return;
       if (modalOpen || isTextField(e.target)) return;
       e.preventDefault();
-      toggleHistory();
+      toggleRight(key === 'h' ? 'history' : 'work');
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [toggleHistory, modalOpen]);
+  }, [toggleRight, modalOpen]);
+  // WORK-8.1: the server reads Work only while some tab has it open: this one says whether it does.
+  // A new event stream (reconnect) has a new client id, so this re-runs.
+  const workOpen = layout.open && layout.tab === 'work';
+  useEffect(() => {
+    if (state.clientId) void client.watchWork(state.clientId, workOpen);
+  }, [client, state.clientId, workOpen]);
+  // WORK-8.2: the server answers once the read ends; its outcome reaches every tab as a `work` event,
+  // and a refusal during the cooldown or a rate limit shows on Refresh itself. What's left to say, in
+  // plain words: a refusal while the server doesn't know this tab has Work open (409), a server
+  // error, or no server at all (WORK UX, Errors).
+  const refreshWork = useCallback(
+    () =>
+      client.refreshWork().then(
+        () => null,
+        (err: unknown) => (err instanceof Error ? err.message : "Couldn't refresh Work."),
+      ),
+    [client],
+  );
+  // WORK-1.7: the tab strip's ↑/↓ and j/k, handed to the open panel.
+  const historyNav = useRef<PanelNav>(null);
+  const workNav = useRef<PanelNav>(null);
+  // WORK-5.2: Review opens the launcher with its prompt and nothing else; you press Start. Always
+  // Claude Code, whatever was started last: the prompt is a Claude Code plugin command. Its model is
+  // the last one only when the last start was Claude Code's.
+  const review = useCallback(
+    (pr: WorkPr) => {
+      const last = initialDraft(state.settings);
+      setDraft({ ...last, harness: 'claude', model: last.harness === 'claude' ? last.model : '', prompt: reviewPrompt(pr.url) });
+      openLauncher();
+    },
+    [state.settings, openLauncher],
+  );
   const searchHistory = useCallback((q: Parameters<LookoutClient['history']>[0]) => client.history(q), [client]);
   const loadPast = useCallback((harness: HistoryItem['harness'], id: string) => client.pastSession(harness, id), [client]);
   // HIST-3: a live Session is selected (3.2); one that can't be resumed opens read-only (3.3);
@@ -529,25 +577,34 @@ export function App({ client }: { client: LookoutClient }) {
         )}
       </main>
       {layout.open ? (
-        <HistoryPanel
+        <RightSidebar
           width={layout.width}
           onResize={(width) => updateLayout({ width })}
-          onClose={toggleHistory}
-          focusKey={historyFocus}
-          sessions={state.sessions}
+          tab={layout.tab}
+          onTab={showTab}
+          onClose={() => toggleRight(layout.tab)}
+          refresh={state.work?.refresh ?? null}
+          onRefresh={refreshWork}
           now={now}
-          search={searchHistory}
-          onOpen={openPast}
+          panels={{
+            history: <HistoryPanel focusKey={rightFocus.history} sessions={state.sessions} now={now} search={searchHistory} onOpen={openPast} navRef={historyNav} />,
+            work: (
+              <WorkPanel
+                work={state.work}
+                filter={layout.workFilter}
+                onFilter={(workFilter) => updateLayout({ workFilter })}
+                now={now}
+                focusKey={rightFocus.work}
+                onReview={review}
+                keyboardEnabled={!modalOpen}
+                navRef={workNav}
+              />
+            ),
+          }}
+          nav={{ history: historyNav, work: workNav }}
         />
       ) : (
-        // HIST-1.1: closed, the right sidebar is a narrow rail; its header cell carries the top line on.
-        <div className={cn(SHELL_COLUMN, 'w-10 border-l border-sidebar-border bg-sidebar')} data-shell-column="right">
-          <ShellCell row="header" className="justify-center border-sidebar-border">
-            <Button variant="ghost" size="icon-sm" aria-label="History" title="History (H)" onClick={toggleHistory} className="size-7 text-muted-foreground">
-              <HistoryIcon className="size-4" />
-            </Button>
-          </ShellCell>
-        </div>
+        <RightRail onOpen={toggleRight} />
       )}
       <Launcher
         open={launcherOpen}

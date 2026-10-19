@@ -34,6 +34,8 @@
   --needs-you-text: oklch(0.5 0.13 55);
   --busy: oklch(0.6 0.15 250);
   --idle: oklch(0.6 0 0);
+  /* WORK-3.2: CI passing, an approved PR */
+  --ok: oklch(0.55 0.13 150);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -65,6 +67,7 @@
     --needs-you-text: oklch(0.85 0.12 80);
     --busy: oklch(0.72 0.13 250);
     --idle: oklch(0.62 0 0);
+    --ok: oklch(0.74 0.14 150);
   }
 }
 
@@ -100,6 +103,7 @@
   --color-needs-you-text: var(--needs-you-text);
   --color-busy: var(--busy);
   --color-idle: var(--idle);
+  --color-ok: var(--ok);
   --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
 }

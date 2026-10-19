@@ -1,0 +1,83 @@
+/**
+ * The right sidebar (HIST-1, WORK-1): a container with an active tab, History or Work. Whether it's
+ * open, its width, the tab and Work's filter are kept in this browser (HIST-1.3, WORK-1.2, WORK-1.5).
+ */
+
+export type RightTab = 'history' | 'work';
+export const RIGHT_TABS: readonly RightTab[] = ['history', 'work'];
+export const TAB_LABEL: Record<RightTab, string> = { history: 'History', work: 'Work' };
+/** The key that opens each tab, or closes the sidebar when that tab is already showing (WORK-1.1). */
+export const TAB_KEY: Record<RightTab, string> = { history: 'H', work: 'W' };
+
+/**
+ * What the tab strip asks of the open panel (HIST-2.7, WORK-1.7): with focus on a tab, Refresh or
+ * Close, ↑/↓ and j/k move the panel's selection by a row, never the Session sidebar's.
+ */
+export interface PanelNav {
+  move(delta: 1 | -1): void;
+}
+
+/**
+ * WORK-1.5: which of Work's sections show. Tasks joins with slice C (WORK Dependencies): until then
+ * the filter doesn't offer it, and a remembered `tasks` reads as All.
+ */
+export type WorkFilter = 'all' | 'prs';
+export const WORK_FILTERS: readonly WorkFilter[] = ['all', 'prs'];
+export const WORK_FILTER_LABEL: Record<WorkFilter, string> = { all: 'All', prs: 'PRs and review requests' };
+
+/** HIST-1.3: the width bounds, in px. */
+export const RIGHT_MIN_WIDTH = 280;
+export const RIGHT_MAX_WIDTH = 720;
+export const RIGHT_DEFAULT_WIDTH = 360;
+
+export interface RightLayout {
+  open: boolean;
+  width: number;
+  tab: RightTab;
+  workFilter: WorkFilter;
+}
+
+const KEY = 'lookout.right';
+/** Where HIST kept `{ open, width }` before Work was a tab: read when the new key is absent. */
+const HISTORY_KEY = 'lookout.history';
+
+export const DEFAULT_LAYOUT: RightLayout = { open: false, width: RIGHT_DEFAULT_WIDTH, tab: 'history', workFilter: 'all' };
+
+export const clampWidth = (w: number) => Math.round(Math.min(RIGHT_MAX_WIDTH, Math.max(RIGHT_MIN_WIDTH, w)));
+
+/** A kept object, or null when it's missing, not JSON, not an object, or storage is blocked. */
+function read(key: string): Record<string, unknown> | null {
+  try {
+    const v: unknown = JSON.parse(window.localStorage.getItem(key) ?? 'null');
+    return typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Reads the layout: this key, else HIST's old one (also when this one is corrupt); anything odd is the default. */
+export function loadLayout(): RightLayout {
+  const r = read(KEY) ?? read(HISTORY_KEY);
+  if (!r) return DEFAULT_LAYOUT;
+  return {
+    open: r.open === true,
+    width: typeof r.width === 'number' && Number.isFinite(r.width) ? clampWidth(r.width) : RIGHT_DEFAULT_WIDTH,
+    tab: RIGHT_TABS.includes(r.tab as RightTab) ? (r.tab as RightTab) : 'history',
+    // A remembered `tasks` (slice C's choice) reads as All until Tasks exists.
+    workFilter: WORK_FILTERS.includes(r.workFilter as WorkFilter) ? (r.workFilter as WorkFilter) : 'all',
+  };
+}
+
+export function saveLayout(layout: RightLayout): void {
+  try {
+    window.localStorage.setItem(KEY, JSON.stringify(layout));
+  } catch {
+    // no storage here: it's only a convenience
+  }
+}
+
+/** WORK-1.1, HIST-1.1: `W` or `H`: open on that tab, or close when it's already showing. */
+export function toggleTab(layout: RightLayout, tab: RightTab): RightLayout {
+  if (layout.open && layout.tab === tab) return { ...layout, open: false };
+  return { ...layout, open: true, tab };
+}

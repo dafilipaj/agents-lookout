@@ -20,7 +20,7 @@ Finding last week's Session means remembering its directory and running `claude 
 
 ### HIST-1 Right sidebar
 
-- [x] HIST-1.1 A right sidebar, opened and closed with a button at the top right or `H` (when focus isn't in a text field), holds History as its only panel: no tab strip until a second panel exists, named "History sidebar" with a "History" heading. Opening it focuses the search box. (manual)
+- [x] HIST-1.1 A right sidebar, opened and closed with a button at the top right or `H` (when focus isn't in a text field), holds History as a tab, next to Work (WORK-1). `H` opens it on History, switches to History from another tab, and closes it when History is already showing. It's named "Right sidebar", and its tab strip in the header row stands in for a heading: History's tab names History's panel, with no other "History" heading. Opening it on History focuses the search box. (test)
 - [x] HIST-1.2 The Session sidebar on the left and the main pane stay visible and usable while it's open. (manual)
 - [x] HIST-1.3 Whether it's open, and its width, are remembered across reloads. (test)
 
@@ -49,16 +49,17 @@ Finding last week's Session means remembering its directory and running `claude 
 - Recreating a removed Worktree so that a Session can be resumed.
 - Semantic or AI search.
 - Grouping or a scope switch (Orca's Workspace / Project / All); everything is searched.
-- Other tabs in the right sidebar; it's built so PORTS can become one later.
+- Other tabs in the right sidebar: Work is WORK's (WORK-1), and PORTS can become one later.
 - Other Hosts, and the pi Harness.
 
 ## UX
 
 ```
 ┌───────────────┬──────────────────────────────────┬──────────────────────┐
-│ / filter  + ⚙ │ header (VIEW)                    │ ⟲ [ search…     ] [×]│
+│ / filter  + ⚙ │ header (VIEW)                    │ [History] [Work]  [×]│
 ├───────────────┼──────────────────────────────────┼──────────────────────┤
-│ Sessions      │ main pane (VIEW)                 │ ☐ Show headless [✳][◎]│
+│ Sessions      │ main pane (VIEW)                 │ [ search…          ] │
+│               │                                  │ ☐ Show headless [✳][◎]│
 │               │                                  │ ● fix-deal-rates live│
 │               │                                  │   work · main · 2h   │
 │               │                                  │ ○ kg-hook-review     │
@@ -71,9 +72,10 @@ Finding last week's Session means remembering its directory and running `claude 
 └───────────────┴──────────────────────────────────┴──────────────────────┘
 ```
 
-- One grid (SIDE-8): the search field sits in the shell's header row, mirroring the Filter bar on the left, with ⟲ (a history icon) before it and Close (×) after it, so its bottom line continues the Filter bar's and the main header's. The list runs on below the dock line to the bottom.
-- No visible "History" title or tab while History is the only panel: the panel keeps its accessible name ("History sidebar") and a visually hidden "History" heading. The tab strip comes back with a second panel (PORTS).
-- Closed, the right sidebar is a narrow rail with the History button in its header cell, so the top line runs across it too.
+- One grid (SIDE-8): the tab strip (History, Work, each with its icon) sits in the shell's header row, mirroring the Filter bar on the left, with Close (×) after it, so its bottom line continues the Filter bar's and the main header's. History's search field is the first thing below it (WORK-1.8). The list runs on below the dock line to the bottom.
+- The sidebar is named "Right sidebar". Its tab strip is its heading: History's tab names History's panel, and there's no other "History" title or heading.
+- `H` opens the sidebar on History, switches to History when Work is showing, and closes the sidebar when History is showing; `W` does the same for Work (WORK-1.1).
+- Closed, the right sidebar is a narrow rail with a button per tab: History in its header cell, so the top line runs across it too, and Work under it.
 - A past Session opened read-only (HIST-3.3) is laid out like an ended one: a one-line header, its chat, and in the dock row the note on why it can't be resumed with its start directory and branch under it, where a live Session's composer and status line go.
 
 - [✳][◎]: the Claude Code and Codex filter buttons (HIST-2.8), drawn with the same Harness logos as the Session sidebar. A switched-off one is greyed out; the last one on can't be switched off.
@@ -171,3 +173,6 @@ None.
 - 2026-10-17: HIST-3.1: the resume request carries the tab's launch id, so the "Starting…" row is selected the moment you click (before tb-session and `fleet spawn` answer), and a late answer never pulls you back from where you moved meanwhile (LAUNCH Technical approach).
 - 2026-10-17: Result markers are lucide icons (a circle with a dot, an empty circle and a slashed circle) instead of ● ○ ⊘, per [0008](../../decisions/0008-lucide-icons-only.md).
 - 2026-10-19: HIST-3.4 checked live on 4747 with the fork's Fleet: a Claude Code Session started and ended through Lookout in `~/Projects/work`, then resumed from History, showed "Starting…" and went live under the same session ID within 2 s; its resumed process sent telemetry to Grafana (Loki `claude-code-telemetry`, `repo=work`, `terminal.type=tmux`), including the prompt sent after the resume. The 15 s failure is the shared spawn path (LAUNCH-4.5), tested. Done.
+- 2026-10-19: Work (WORK-1) is the right sidebar's second panel, so the tab strip HIST-1.1 waited for is there: History and Work in the header row, History's search field below it, and the sidebar named "Right sidebar". Its open state and width (HIST-1.3) are kept with the active tab, read from HIST's old key the first time. Closed, the rail has a button for each tab.
+- 2026-10-19: HIST-1.1 and the UX reworded to what the right sidebar does now: History is one of its tabs; `H` opens it on History, switches to History from Work, and closes it when History is showing; the tab strip stands in for the "History" heading, and the sidebar is named "Right sidebar". The mock-up shows the tab strip, with the search field below it. With focus on the tab strip, j/k and ↑/↓ move through History's results, never the Session sidebar's, and ←/→ move between the tabs (WORK-1.7).
+- 2026-10-19: HIST-1.1 retagged `(test)`: switching from Work, the sidebar's name and the missing "History" heading are tested under its ID, next to the button, `H` and the search box's focus.

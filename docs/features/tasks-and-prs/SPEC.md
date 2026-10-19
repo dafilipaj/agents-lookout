@@ -1,7 +1,7 @@
 ---
 title: "Tasks and PRs"
 code: "WORK"
-status: "Ready"
+status: "In Progress"
 created: "2026-10-19"
 updated: "2026-10-19"
 ---
@@ -33,16 +33,18 @@ Built in this order: WORK-3 (PRs) first, then WORK-2 (Tasks), then WORK-4 (Links
 
 The right sidebar gets a second tab, Work, next to History.
 
-- [ ] WORK-1.1 With focus not in a text field, `W` opens the right sidebar on Work, or closes it if Work is already showing. `H` does the same for History (HIST-1.1). Both stand down while a modal is open, as `H` does today. (test)
-- [ ] WORK-1.2 Which tab is open is remembered across reloads, along with whether the sidebar is open and its width (HIST-1.3). (test)
+- [x] WORK-1.1 With focus not in a text field, `W` opens the right sidebar on Work, or closes it if Work is already showing. `H` does the same for History (HIST-1.1). Both stand down while a modal is open, as `H` does today. (test)
+- [x] WORK-1.2 Which tab is open is remembered across reloads, along with whether the sidebar is open and its width (HIST-1.3). (test)
 - [ ] WORK-1.3 Work has two sections, Tasks and PRs. Each shows its count and how old its data is ("updated 2m ago"). (test)
-- [ ] WORK-1.4 With Work open, the Session sidebar and the main pane stay fully visible beside it, neither covered nor pushed out of the grid (HIST-1.2). (manual)
+- [x] WORK-1.4 With Work open, the Session sidebar and the main pane stay fully visible beside it, neither covered nor pushed out of the grid (HIST-1.2). (manual)
 - [ ] WORK-1.5 A filter at the top of Work has three options: All (the default), Tasks, and PRs and review requests. Tasks shows only the Tasks section; PRs and review requests shows only the PRs section, with both its groups. The choice is remembered across reloads. (test)
 - [ ] WORK-1.6 Switching the filter shows the chosen section's latest data at once, and the switch starts no read: a hidden section is still read on schedule (WORK-8). (e2e)
-- [ ] WORK-1.7 With focus in Work, ↑/↓ and j/k move through the rows of the visible sections without acting, and Enter acts like a click on the row (HIST-2.7). (test)
-- [ ] WORK-1.8 The tab strip (History, Work) sits in the header row where History's search field is today, lined up with the rest of the grid (SIDE-8), with History's search field and Work's filter below it. (manual)
+- [ ] WORK-1.7 With focus in Work, or on the right sidebar's tab strip, Refresh or Close, ↑/↓ and j/k move through the rows of the visible sections without acting, and never reach the Session sidebar; Enter acts like a click on the row (HIST-2.7). ←/→ on the tab strip move between the tabs, as a tablist does. (test)
+  - Open: Enter can't be checked yet. A row's click acts on its Linked Sessions, and until Links (WORK-4) a row has none, so it does nothing.
+- [x] WORK-1.8 The tab strip (History, Work) sits in the header row where History's search field is today, lined up with the rest of the grid (SIDE-8), with History's search field and Work's filter below it. (manual)
 - [ ] WORK-1.9 The keyboard selection stays on the same item while that item is visible. When a filter change or a read removes it, the selection moves to the first visible row, or to none when Work is empty. (test)
-- [ ] WORK-1.10 With Work open, clicking a Session row in the Session sidebar selects it and shows it in the main pane, and the composer takes typed text, `W`, `H`, `O`, `j` and `k` included, without moving Work's selection or switching the tab. (test)
+  - Open: a filter change can't remove a row yet. Until Tasks (slice C), the filter has only All and PRs and review requests, which show the same rows; a read that removes the selected row is tested.
+- [x] WORK-1.10 With Work open, clicking a Session row in the Session sidebar selects it and shows it in the main pane, and the composer takes typed text, `W`, `H`, `O`, `j` and `k` included, without moving Work's selection or switching the tab. (test)
 - [ ] WORK-1.11 With Work open, a message sent from the composer reaches the selected Session and its reply shows, as with Work closed. (e2e)
 
 ### WORK-2 Tasks
@@ -58,9 +60,10 @@ The right sidebar gets a second tab, Work, next to History.
 
 ### WORK-3 PRs
 
-- [ ] WORK-3.1 PRs has two groups, Mine (your open PRs) and Review requests, both in `productiveio/*` repos only, and each sorted most urgent first as `tb-pr`'s own table sorts them: by rotting bucket, critical first, then oldest first, with remaining ties by repo and then number. (test)
-- [ ] WORK-3.2 Each PR shows its repo, number, title and age, plus its CI state: passing, failing, running, or "no CI". A PR in Mine also has a state chip: draft, ready or approved. (test)
+- [x] WORK-3.1 PRs has two groups, Mine (your open PRs) and Review requests, both in `productiveio/*` repos only, and each sorted most urgent first as `tb-pr`'s own table sorts them: by rotting bucket, critical first, then oldest first, with remaining ties by repo and then number. (test)
+- [x] WORK-3.2 Each PR shows its repo, number, title and age, plus its CI state: passing, failing, running, or "no CI". A PR in Mine also has a state chip: draft, ready or approved. (test)
 - [ ] WORK-3.3 "No CI" never looks like passing. A Review request shows "no CI" while `tb-pr` gives it no CI state, and its real CI state once `tb-pr` does (Gap 1). (test)
+  - Open: the "no CI" half is tested; the real CI state of a Review request waits on Gap 1 (Dependencies), which no `tb-pr` has yet.
 - [ ] WORK-3.4 A PR shows its Linked Task (title) and its Linked Sessions, and the Session marker and row click behave as in WORK-2.4. (e2e)
 
 ### WORK-4 Links
@@ -80,15 +83,17 @@ Lookout joins ids that the Building blocks give it. It never extracts a task id 
 ### WORK-5 Actions
 
 - [ ] WORK-5.1 "Start Session" on a Task opens the launcher (LAUNCH-1) with the prompt set to the Task's URL (WORK-6.2) and nothing else. Nothing starts until you press Start, and you can edit the prompt first. (e2e)
-- [ ] WORK-5.2 "Review" on a Review request opens the launcher with the prompt `/p-codex:dual-review <PR URL>`, under the same rules as WORK-5.1. (e2e)
-- [ ] WORK-5.3 Lookout runs only read commands against Productive and GitHub: `tb-prod query`, `tb-pr list --json` and `tb-pr refresh`. Any other subcommand is refused by the server. (test)
+- [ ] WORK-5.2 "Review" on a Review request opens the launcher with the prompt `/p-codex:dual-review <PR URL>`, under the same rules as WORK-5.1. Its Harness is always Claude Code, whatever was started last, since the prompt is a Claude Code plugin command. `R`, with focus in Work, does the same for the selected row when it's a Review request, standing down as `O` does (WORK-6.4). (e2e)
+  - Open: its Behaviour tests press Review and `R` and see the launcher on Claude Code after a remembered Codex start, but not the start itself. A World can't declare a Harness until the Fake Harnesses (TEST-1.4), so Start stays disabled there and Fleet is never asked to spawn.
+- [x] WORK-5.3 Lookout runs only read commands against Productive and GitHub: `tb-prod query`, `tb-pr list --json` and `tb-pr refresh`. Any other subcommand is refused by the server. (test)
 
 ### WORK-6 Open in the browser
 
 - [ ] WORK-6.1 Every Task, PR and Review request row has an "Open in browser" button whose tooltip names it and its shortcut, `O`. (test)
 - [ ] WORK-6.2 A Task opens in Fantastic Productive at `https://app.fantastic.productive.io/109-productive/tasks/<task id>`, in a new browser tab. Never the old app at `app.productive.io`. Its Behaviour test checks the URL the new tab asks for, without loading it: the World aborts that request (TEST-1.7). (e2e)
-- [ ] WORK-6.3 A PR or Review request opens its GitHub URL, as `tb-pr` gives it, in a new browser tab, checked as in WORK-6.2. (e2e)
+- [x] WORK-6.3 A PR or Review request opens its GitHub URL, as `tb-pr` gives it, in a new browser tab, checked as in WORK-6.2. (e2e)
 - [ ] WORK-6.4 `O`, with focus in Work and not in a text field, and with no modifier, opens the selected row's item exactly as its button does, checked as in WORK-6.2. It doesn't move the selection, select a Session or open the launcher. It stands down while a modal is open. (e2e)
+  - Open: the PR and Review request rows are tested. A Task row's `O` waits on Task rows (slice C).
 
 ### WORK-7 When a source can't be read
 
@@ -96,20 +101,20 @@ Lookout joins ids that the Building blocks give it. It never extracts a task id 
 - [ ] WORK-7.2 If it isn't signed in (WORK-7.6), its section shows the command that fixes that: `tb-prod config init` for tb-prod, `gh auth login` for tb-pr. (e2e)
 - [ ] WORK-7.3 When a read fails, the section keeps showing the last list it had, marks it old and gives the reason. For Tasks, that's only a list read for the saved email (WORK-2.8). It never presents stale data as current (as in USAGE-2.2). Its Behaviour test turns the fake's answer into a failure after a good read (TEST-1.6), then presses Refresh. (e2e)
 - [ ] WORK-7.4 If tb-session can't be read, Tasks and PRs still show, without Session markers, and a note says why. (e2e)
-- [ ] WORK-7.5 Lookout keeps, per `tb-pr` column, when it last read that column without a `column_issues` entry. A PR group with an issue in any of its columns (Mine has three, Review requests one) is marked possibly out of date, even though `tb-pr` succeeded and its `fetched_at` is fresh. The mark lists each affected column, in Mine by its state chip, with its reason and its own time: "draft: search returned empty, last confirmed 40m ago", or "not confirmed yet". Columns with the same reason and time share one entry. (test)
+- [x] WORK-7.5 Lookout keeps, per `tb-pr` column, when it last read that column without a `column_issues` entry. A PR group with an issue in any of its columns (Mine has three, Review requests one) is marked possibly out of date, even though `tb-pr` succeeded and its `fetched_at` is fresh. The mark lists each affected column, in Mine by its state chip, with its reason in plain words and its own time: "draft: GitHub's search came back empty, last confirmed 40m ago", or "not confirmed yet". In Review requests, a single column, an entry doesn't repeat the group's name: "GitHub's rate limit is used up, not confirmed yet". Columns with the same reason and time share one entry. tb-pr's own wording of an issue never shows (UX, Errors). (test)
 - [ ] WORK-7.6 "Not signed in" is recognized, with recorded outputs as tests, from:
   - tb-prod: exit 1 with "No config found" on stderr; a JSON error with `code` `config_error`; or a JSON `api_error` whose `details.status` is 401 (a revoked or expired token);
   - tb-pr: "`gh auth token`" in its error on stderr (gh not signed in, or not installed); "GitHub API error (401)" on stderr; or `column_issues` saying "api error 401" for every PR column.
 
   A tb-prod `api_error` with status 403 is not "not signed in": it's a failed read whose reason says Productive denied access. Any other failure is a failed read (WORK-7.3). (test)
-- [ ] WORK-7.7 A failing `tb-prod`, `tb-pr` or `tb-session` whose output holds token-like text (a `ghp_` or `github_pat_` token, an `Authorization:` header, `token=…`) leaves none of it in the server's log, the `work` event or any API response. Its reason is redacted and cut to one line before it's stored, sent or logged, and its raw stdout and stderr are never logged. (test)
+- [ ] WORK-7.7 A failing `tb-prod`, `tb-pr` or `tb-session` whose output holds token-like text (a `ghp_` or `github_pat_` token, an `Authorization:` header, `token=…`, or a secret under a longer name, such as `access_token=…` or `client_secret=…` in a URL's query) leaves none of it in the server's log, the `work` event or any API response. Its reason is redacted and cut to one line before it's stored, sent or logged, and its raw stdout and stderr are never logged. (test)
 
 ### WORK-8 Refresh
 
 - [ ] WORK-8.1 While any tab has Work open, the server reads Tasks and PRs every 5 minutes, counted from the end of the last read of either kind. Opening Work triggers a read when the data is more than 5 minutes old, and a Tasks read when Tasks hasn't been read for the saved email yet. With Work closed everywhere, nothing is read, not even for a newly saved email (WORK-2.8). (test)
 - [ ] WORK-8.2 A Refresh button forces a fresh read: `tb-pr refresh`, then `tb-pr list --json` only if the refresh succeeded, and a Productive read. Once the server accepts a forced read, Refresh is disabled in every tab for 60 s, whether the read succeeds or fails, and its hover says when it's back. (e2e)
 - [ ] WORK-8.3 Server-wide, at most one read per source runs at a time. A reason to read (the schedule, Work opening in a tab, a saved Productive email, Refresh) that arrives during a read joins it only when it asks for the same thing: Tasks for the same email, or PRs both forced or both not. Otherwise it waits until that read ends; waiting reasons that ask for the same thing run as one read. A forced read asked for during the 60 s cooldown is refused by the server, not queued. (test)
-- [ ] WORK-8.4 When `tb-pr` reports a rate limit ("rate limited" on stderr, or as a `column_issues` reason), the server starts no GitHub read, scheduled or forced, for 5 minutes, or until the reset time `tb-pr` reports when that's later (at most an hour), and Refresh says when it's back. (test)
+- [x] WORK-8.4 When `tb-pr` reports a rate limit ("rate limited" on stderr, or as a `column_issues` reason), the server starts no GitHub read, scheduled or forced, for 5 minutes, or until the reset time `tb-pr` reports when that's later (at most an hour), and Refresh says when it's back. (test)
 - [ ] WORK-8.5 When two tabs open Work at the same moment in a fresh World, `tb-pr` runs once and `tb-prod` once per page of Tasks (once for 20 Tasks or fewer). (e2e)
 
 ## Non-goals
@@ -154,33 +159,43 @@ Planned, but not in v1:
 │               │                                  │                 [▶] [↗] │
 │               │                                  │ PRs · 13 · updated 2m   │
 │               │                                  │ Mine                    │
-│               │                                  │ ● api #812 draft ✓ 2d   │
+│               │                                  │ ● oak #812 draft ✓ 2d   │
 │               │                                  │   → Fix rounding in …[↗]│
-│               │                                  │   web #77 ready ✗ 6d [↗]│
+│               │                                  │   fig #77 ready ✗ 6d [↗]│
 │               │                                  │ Review requests         │
-│               │                                  │   web #90 · no CI[▶] [↗]│
+│               │                                  │   fig #90 · no CI[▶] [↗]│
 ├───────────────┼──────────────────────────────────┤                         │
 │ usage (USAGE) │ composer and status line (VIEW)  │                         │
 └───────────────┴──────────────────────────────────┴─────────────────────────┘
 ```
 
 - **One grid (SIDE-8):** the tab strip sits in the header row, where History's search field is today. History keeps its search field below the tab strip once there are two tabs. Work's filter sits in the same place.
-- **Filter (WORK-1.5):** a three-option segmented control, "All", "Tasks", "PRs and review requests". The mock-up shortens the last one.
+- **Filter (WORK-1.5):** a three-option segmented control, "All", "Tasks", "PRs and review requests". The mock-up shortens the last one. Until slice C brings Tasks, "Tasks" isn't offered (Dependencies).
 - **Markers and buttons** (lucide icons, [0008](../../decisions/0008-lucide-icons-only.md)):
   - a circle with a dot (`CircleDot`): a Linked Session is live;
   - an empty circle (`Circle`): only past Linked Sessions;
   - nothing: no Linked Session.
   - The mock-up uses ● ○ as shorthand, and ✓ ✗ for the CI icons (`CircleCheck`, `CircleX`; `LoaderCircle` while running; `CircleDashed` for "no CI").
-  - [▶] is the action button (`Play`): "Start Session" on a Task, "Review" on a Review request. A PR in Mine has none.
+  - [▶] is the action button (`Play`): "Start Session" on a Task, "Review" on a Review request. A PR in Mine has none. Its tooltip names its key: "Review (R)".
   - [↗] is "Open in browser" (`ExternalLink`), on every row. Its tooltip: "Open in Fantastic (O)" on a Task, "Open on GitHub (O)" on a PR.
+  - A row's buttons are for the mouse. As in History, each section's rows are the options of one focusable listbox, each PR group a `group` in it, and an option holds nothing focusable: the keyboard acts on the selected row with Enter, `O` and `R`, and a screen reader hears those keys in the row's description. A row's name is its content, as History's rows' are: repo, number, chip, CI state, age and title.
   - ⟳ is Refresh (`RefreshCw`). While it's cooling down or GitHub is rate limited, it's disabled, and its hover says why and when it's back (WORK-8.2, WORK-8.4).
 - **Row clicks (WORK-2.4):**
   - The row selects its live Linked Session with the latest activity, or, with none live, resumes the past one with the latest activity.
   - A row without a Linked Session does nothing; its buttons do.
-  - ↑/↓ and j/k move through the rows without acting; Enter acts like a click (HIST-2.7); `O` opens the row in the browser (WORK-6.4).
-- **Shortcuts** (none with a modifier, all ignored in a text field or while a modal is open): `W` Work, `H` History, `O` open the selected row in the browser. They join `N` (LAUNCH-1.1), `i` (VIEW-3.6), j/k (SIDE-5.1) and `[`/`]` (VIEW-1.11), and clash with none of them.
-- **Empty states:** "No open tasks" and "No open PRs or review requests". Tasks without an email: "Set your Productive email in Settings" (WORK-2.6).
-- **Errors** (WORK-7): shown inside the section, or the PR group, they belong to, not in place of the panel. Mine's "possibly out of date" mark names each affected column by its state chip (WORK-7.5).
+  - ↑/↓ and j/k move through the rows without acting; Enter acts like a click (HIST-2.7); `O` opens the row in the browser (WORK-6.4); `R` reviews a Review request (WORK-5.2).
+- **Tab strip (WORK-1.7):** with focus on a tab, Refresh or Close, ↑/↓ and j/k go to the open panel, History's results or Work's rows, never to the Session sidebar. ←/→ move between the tabs and open the one they land on, focus staying on the tab strip; only the open tab is in the Tab order.
+- **Focus (WORK-1.7):** opening Work focuses its list, or Work itself while there's no list yet; the list takes focus when it shows up, unless focus has moved elsewhere meanwhile. When the list's last row goes, focus goes back to Work, never to the page, where j/k would move the Session sidebar.
+- **Shortcuts** (none with a modifier, all ignored in a text field or while a modal is open): `W` Work, `H` History, `O` open the selected row in the browser, `R` review the selected Review request. They join `N` (LAUNCH-1.1), `i` (VIEW-3.6), j/k (SIDE-5.1) and `[`/`]` (VIEW-1.11), and clash with none of them. `W`, `H`, `O` and `R` work with Caps Lock on. `O` and `R` act once per press: holding one down opens one tab or one launcher, not one per key repeat.
+- **Empty states:** "No open tasks" and "No open PRs or review requests", only after a read that succeeded. Tasks without an email: "Set your Productive email in Settings" (WORK-2.6).
+- **Errors** (WORK-7): shown inside the section, or the PR group, they belong to, not in place of the panel. Each says in plain words what's wrong and what to do. tb-pr's own text, such as its stderr, a GitHub error page or a `column_issues` reason, never shows: it goes only to the server's log, redacted and one line (WORK-7.7).
+  - Not installed: "tb-pr isn't installed", that Work reads PRs through it, and the install command.
+  - Signed out: "tb-pr isn't signed in to GitHub", said once, with `gh auth login` to run before pressing Refresh.
+  - Rate limited: "GitHub's rate limit is used up", and that Work reads PRs again when it frees up, in how long.
+  - A GitHub error, a timeout or any other failure: what failed, and to try Refresh later.
+  - A board Lookout can't read, such as a PR without a number, a repo or a GitHub URL: a failed read like the others, never a shorter list or "No open PRs or review requests".
+  - A Refresh that didn't run is said at the top of Work until the next press: refused while the server doesn't know yet that this tab has Work open (409, its event stream reconnecting or the page still loading), a server error (500), or no answer from Lookout's server. A refusal during the cooldown or a rate limit shows on Refresh itself (WORK-8.2, WORK-8.4), and a read that failed shows in its section.
+  - Mine's "possibly out of date" mark names each affected column by its state chip; Review requests' doesn't repeat the group's name (WORK-7.5). tb-pr's issue reasons read as: "GitHub's search came back empty", "GitHub's search came back incomplete", "GitHub's rate limit is used up", "GitHub had a server error", "GitHub refused the sign-in" (401), "GitHub refused access" (403), "GitHub refused the request" (another status), "GitHub couldn't be reached", and "the read failed" for anything else.
 
 ## Technical approach
 
@@ -307,16 +322,31 @@ All Links are found on the server by matching ids and URLs Lookout already knows
   - one read per source in flight at a time, server-wide; it polls only while a tab watches;
   - a scheduled, opening or forced read runs `tb-prod` and `tb-pr` in parallel, a saved email reads Tasks only, and each then runs the Link searches (WORK-4.9);
   - results go out as a `work` event on the existing event stream, only when something changed, and the snapshot carries the latest;
-  - it keeps, per `tb-pr` column (`draft_mine`, `review_mine`, `ready_to_merge_mine`, `waiting_on_me`), when it last read that column without a `column_issues` entry, in memory, so a restart starts at "not confirmed yet". A group shows its own columns' times (WORK-7.5).
+  - it keeps, per `tb-pr` column (`draft_mine`, `review_mine`, `ready_to_merge_mine`, `waiting_on_me`), when it last read that column without a `column_issues` entry, in memory, so a restart starts at "not confirmed yet". The time is that board's `fetched_at` (never later than the read), since `list --json` may serve a board from tb-pr's cache. A group shows its own columns' times (WORK-7.5).
   - Timeouts: tb-prod 10 s per page, tb-pr 20 s (a cold fetch is several seconds), tb-session 20 s.
+  - A PR is listed only when its `url` starts with `https://github.com/productiveio/` (WORK-3.1, WORK-6.3). One whose `url` is a GitHub URL under another owner is left out, as outside `productiveio/*`. Any other PR Lookout can't read, without a number, a repo, or a `url` on `https://github.com/` that fits in a link, makes the whole board unreadable: a failed read (WORK-7.3), never a shorter list or "No open PRs or review requests". Its title is cut to one line of at most 300 characters.
+  - "More than 5 minutes old" (WORK-8.1) counts from the end of Lookout's last read, as the schedule does.
+- **The API** (`shared/work.ts`, `server/work.ts`, `server/app.ts`):
+  - **`work` event:** `{ type: 'work', work: WorkSnapshot }` on `/api/events`, to every tab, only when the snapshot changed; the `snapshot` event carries `work` too.
+    - `WorkSnapshot` is `{ prs: PrSection, refresh: { cooldownUntil, githubBlockedUntil } }`, times in ms since epoch or `null`. Slice C adds `tasks` next to `prs`.
+    - `PrSection` is `{ state, reason, fix, stale, fetchedAt, mine, reviewRequests, marks: { mine, reviewRequests }, taskIds }`:
+      - `state`: `loading` (nothing read yet), `ok`, `not-installed`, `signed-out` or `error`, from the last read;
+      - `reason`: why the last read failed, as a plain sentence that says what to do (UX, Errors), never tb-pr's own text, else `null`; `fix`: the install command or `gh auth login`, else `null`;
+      - `stale`: the lists are from an earlier read than the last one, which failed (WORK-7.3); `fetchedAt`: tb-pr's `fetched_at` of the lists shown;
+      - `mine` and `reviewRequests`: PRs most urgent first (WORK-3.1), each `{ repo, number, title, url, createdAt, ageDays, rotting, ci, chip, column, taskIds }`, with `ci` one of `passing`, `failing`, `running`, `none` (WORK-3.3), `chip` one of `draft`, `ready`, `approved` in Mine and `null` in Review requests, and `taskIds` tb-pr's `task_ids` as `{ id, source: 'branch' | 'body' }`, `null` when tb-pr doesn't give them;
+      - `marks`: per group, `{ columns, reason, confirmedAt }` entries, one per reason and time, the reason in plain words (WORK-7.5); the UI's `describeMark` words one ("draft: GitHub's search came back empty, last confirmed 40m ago"), with the same ages as the rest of the UI (`formatAge`);
+      - `taskIds`: `false` when the board's PRs have no `task_ids` (a tb-pr older than Gap 1, WORK-4.1), `null` with no PR to tell by.
+  - **`PUT /api/work/watch`** `{ clientId, open }`: a tab says whether it has Work open, naming its event stream by the snapshot's `clientId`, as `PUT /api/watch` does. A mutation, so the token and Origin. 404 for an unknown stream, 400 when `open` isn't a boolean; saying the same twice changes nothing. A stream that closes counts as Work closed in that tab.
+  - **`POST /api/work/refresh`**, no body, a mutation: it answers when the forced read ends, `200 { ok: true }`, or `200 { ok: false, error }` with the plain reason only. Refused, it answers at once: `409 { ok: false, error }` while no tab has Work open (WORK-8.1), or `429 { ok: false, error, until }`, "Refresh was used less than a minute ago" during the cooldown, or "GitHub is rate limited" (WORK-8.4). An accepted one shows its cooldown in a `work` event at once.
 - **Reads, cooldown and coalescing (WORK-8):**
   - Every reason to read (the 5-minute schedule, Work opening in a tab, a saved email, Refresh in any tab) goes through `WorkMonitor`, which runs one read per source at a time. A saved email is a reason only while a tab has Work open; otherwise its read comes when Work next opens (WORK-2.8, WORK-8.1).
   - A reason joins the read in flight only when it asks for the same thing, that is, when it would run the same commands:
     - Tasks: the same email. tb-prod has no cache, so a forced Tasks read is the same `tb-prod query` and joins one running for that email.
     - PRs: both forced or both not. A forced read runs `tb-pr refresh` first, so it never joins a plain `list --json` read, which tb-pr may serve from its cache. A plain read that arrives during a forced one waits for it, and then costs only a `list --json` served from the cache the refresh just saved. When the refresh failed, it had already cleared that cache (`commands/refresh.rs`), so the waiting plain read fetches.
   - Any other reason waits until the read in flight ends. Waiting reasons run in the order they arrived, those asking for the same thing as one read; for Tasks, only the newest saved email waits.
+  - When the last tab closes Work, waiting reads are dropped (WORK-8.1): a Refresh that was waiting answers that Work was closed, and its cooldown stays. A read in flight runs to its end. With Work closed everywhere, Refresh is refused.
   - Saving a different email drops the kept Tasks list at once, so a failed read for the new email shows its reason without a list (WORK-7.3). When a Tasks read ends, its result is used only if its email is still the saved one. Otherwise it's discarded, and Tasks stays "Loading" until the saved email's read ends (WORK-2.8).
-  - The schedule counts 5 minutes from the end of the last read, scheduled or forced, so a Refresh never has a scheduled read right behind it. A scheduled `tb-pr list --json` lands just past tb-pr's own 5-minute cache, so it fetches about once per 5 minutes.
+  - The schedule counts 5 minutes from the end of the last read, scheduled or forced, so a Refresh never has a scheduled read right behind it: the schedule is off while a read runs, and from the moment the server accepts a Refresh, and the read's end sets it again. A scheduled `tb-pr list --json` lands just past tb-pr's own 5-minute cache, so it fetches about once per 5 minutes.
   - A forced read starts a 60 s server-wide cooldown when the server accepts it, whether it runs at once or waits, and whatever its result. During it the server refuses another forced read, and every tab gets the time it's back in the snapshot.
   - A rate limit from tb-pr stops GitHub reads, scheduled and forced (WORK-8.4):
     - with a reset time on stderr (Sources), Lookout takes the moment with that UTC time of day nearest to now, and waits until it, but at least 5 minutes and at most an hour, GitHub's core window;
@@ -325,21 +355,22 @@ All Links are found on the server by matching ids and URLs Lookout already knows
 - **Binaries:** `LOOKOUT_TB_PROD_BIN` and `LOOKOUT_TB_PR_BIN`, then `PATH`, then `~/.local/bin`, like tb-session. Each runs through `server/exec.ts` with the cleaned environment.
 - **Read-only by construction (WORK-5.3):** the server builds argv only from an allowlist (`tb-prod query`, `tb-pr list --json`, `tb-pr refresh`). There's no endpoint that takes a subcommand from the browser.
 - **Errors (WORK-7):**
-  - `WorkMonitor` catches every failure of its commands and turns it into a reason before anything else sees it: ANSI escapes stripped, redacted with `server/sanitize.ts`, one line, bounded (as USAGE does).
-  - It never rethrows a `RunError` and never logs one. `server/app.ts` logs uncaught request errors whole (`console.error('lookout: request failed', err)`), and a `RunError` carries the command's stdout and stderr. So the Refresh endpoint answers with the sanitized reason only.
+  - `WorkMonitor` catches every failure of its commands and turns it into a plain reason before anything else sees it (UX, Errors). What tb-pr said, the first line of its stderr or what Lookout couldn't read in its board, goes only to the server's log (`lookout: tb-pr: …`): ANSI escapes stripped, redacted with `server/sanitize.ts`, one line, bounded (as USAGE does).
+  - It never rethrows a `RunError` and never logs one. `server/app.ts` logs uncaught request errors whole (`console.error('lookout: request failed', err)`), and a `RunError` carries the command's stdout and stderr. So the Refresh endpoint answers with the plain reason only.
   - "Not signed in" is recognized as in WORK-7.6. Its tests use recorded outputs of each case, plus one with a fake token on stdout and on stderr (WORK-7.7).
 - **Settings:** `productiveEmail: string | null` in `shared/settings.ts`, default `null`, written by the client, parsed as WORK-2.7. The parser rejects unknown keys, so the field has to be added there. The `git config` suggestion isn't stored; the server sends it with the settings as `productiveEmailSuggestion`, or `null` when git has none.
 - **Actions (WORK-5)** use the launcher's existing pre-fill (`setDraft` + `openLauncher` in `App.tsx`).
   - The start directory is the launcher's last one, `~/Projects/work` by default.
   - Prompts, both editable before Start:
     - Task: the Task's URL (WORK-6.2), nothing else.
-    - Review request: `/p-codex:dual-review <PR URL>`.
-- **Open in browser (WORK-6):** a plain link with `target="_blank"` and `rel="noopener noreferrer"`; the `O` key clicks the selected row's link. The server builds the Task URL from the id; the PR URL is `tb-pr`'s `url`, accepted only when it starts with `https://github.com/`.
-- **Right sidebar:** today it's History only, with History-specific layout state (`web/src/lib/history.ts`). It needs a generic container with an active-tab field, which HIST's Non-goals already allowed for. Work's filter is stored next to the active tab.
+    - Review request: `/p-codex:dual-review <PR URL>`, with Claude Code as the Harness and its last-used model when the last start was Claude Code's, else its default (WORK-5.2).
+- **Open in browser (WORK-6):** `window.open(url, '_blank', 'noopener,noreferrer')`, from the row's button or the `O` key: the button sits inside the row's option, so it's no link (UX, Markers and buttons). The server builds the Task URL from the id; the PR URL is `tb-pr`'s `url`, accepted only when it starts with `https://github.com/`.
+- **Right sidebar:** a generic container with an active tab, History or Work (`RightSidebar.tsx`), its layout kept in this browser under `lookout.right` (`web/src/lib/right-sidebar.ts`), read from HIST's old `lookout.history` when that key is missing or unreadable. Work's filter is stored next to the active tab. Its tab strip is the sidebar's header cell (HIST-1.1, SIDE-8.1).
 
 ### Dependencies
 
 - **Gap 1** (tb-pr) for WORK-4.1 and the CI half of WORK-3.3.
+- **Slice C** (Tasks) for the filter's Tasks choice (WORK-1.5): until then the filter offers All and PRs and review requests, and a remembered Tasks reads as All.
 - **World fakes** (TEST) for the `(e2e)` criteria:
   - **fake `tb-prod` and `tb-pr`**, which a World may provide next to `claude`, `codex`, `tb-jev` and `curl` (TEST-1.2 and TEST-1.5, since 2026-10-19), for every `(e2e)` criterion here but WORK-1.11 and WORK-2.5. WORK-7.1 declares them absent. Built (`e2e/fakes/`):
     - **fake `tb-prod`**: answers `query tasks` with the Tasks declared for the email in its filter, as JSON:API pages, or with a declared failure (no config, an `api_error` with status 401 or 403, a timeout). It logs each argv and fails the test on any other subcommand, and on any query but the one under Sources: that filter exactly, sorted by `last_activity_at`. Where tb-prod would refuse the call itself (clap's usage error, `invalid_filter`), it prints what tb-prod prints. So a change to the Tasks filter is a change to the fake, checked against tb-prod's schema.
@@ -388,3 +419,8 @@ All Links are found on the server by matching ids and URLs Lookout already knows
 - 2026-10-19: Second review, checked against tb-pr, tb-prod and tb-session's source. A read joins one in flight only when it asks for the same thing: a new email's read waits for the old one, whose result is discarded, and a forced Refresh never joins a plain PR read (WORK-2.8, WORK-8.2, WORK-8.3). The GitHub budget is recounted with R and the measured 11 drafts and 2 non-drafts: 30 + 3R core requests per fetch, so an hour of Refresh every minute passes 5,000 once R reaches 18; a rate limit waits for tb-pr's reset time when it prints one, else 5 minutes (WORK-8.4). Gap 1 takes the first `task` query parameter in code after the regex, with tests for an invalid first value and for path and query URLs mixed or repeated. Staleness is kept per `tb-pr` column, and Mine's mark lists each affected column (WORK-7.5). A Productive 403 is a failed read, not "not signed in" (WORK-7.6). WORK-1.4 now covers layout only; WORK-1.10 `(test)` and WORK-1.11 `(e2e)` cover using the Session sidebar and the composer with Work open. The opener's life-span condition no longer claims it can't drop a true opener, and stale Session times are a Known gap. Fake `tb-prod` and `tb-pr` are TEST's now (TEST-1.2), and Dependencies says which `(e2e)` criteria need them and which need Fake Harnesses. The put-back column gets a planned tb-pr fix of its own.
 - 2026-10-19: Third review, checked against the World's code and tb-pr, tb-prod and tb-session's source. WORK-6.2 to 6.4's Behaviour tests check the new tab's URL without loading it, since a World now aborts and records every browser request outside its Lookout origin (TEST-1.7). WORK-2.5, 2.8 and 7.3 name the World features they use: `.gitIdentity()` and Tasks per email (TEST-1.5), and a fake's answer changed or held in flight mid-test (TEST-1.6). Saving a different email drops the kept Tasks list, and with Work closed in every tab its read waits until Work opens (WORK-2.8, WORK-7.3, WORK-8.1). A new Session's Link searches run within 10 s, not 30 s (WORK-4.9). `tb-prod` runs once per page (WORK-8.5). Gap 1's query capture, and the path before it, also stop at `,|<>"'[]`, with tests for adjacent URLs and for another organization's query URL. The budget says at most two GitHub fetches a minute. Mine's chips are mapped from the columns; Non-goals and Later say "tasks" for what isn't a Task; cut first prompts in older Sessions are a Known gap.
 - 2026-10-19: The World fakes WORK's `(e2e)` criteria need are built, all but the Fake Harnesses (Dependencies, TEST). The fake `tb-prod` answers only the Tasks query under Sources, and refuses argv and filters as tb-prod does; the fake `tb-pr` prints boards as tb-pr 0.3.1 does, `column_issues[].restored_from` included.
+- 2026-10-19: In Progress: the server for PRs (slice B, part 1). `WorkMonitor` reads `tb-pr list --json` and, for Refresh, `tb-pr refresh` first, through an argv allowlist that also admits `tb-prod query tasks` for slice C; one read in flight, joined only when forced-ness matches; the 5-minute schedule while a tab has Work open; the 60 s cooldown; rate-limit holds with tb-pr's reset time; per-column confirmation times; "not installed" and "not signed in" from tb-pr's recorded outputs; redacted one-line reasons. The `work` event, `PUT /api/work/watch` and `POST /api/work/refresh` are written under Lookout's side. A PR without a `https://github.com/productiveio/` URL isn't listed, and a column is confirmed as of its board's `fetched_at`. WORK-5.3 ticked; the server halves of WORK-3, 7.1 to 7.7 and 8.1 to 8.4 wait for the UI (part 2) or Tasks (slice C).
+- 2026-10-19: The UI for PRs (slice B, part 2). The right sidebar is a container with an active tab, History or Work, its tab strip in the header row and History's search field below it; `W` and `H` open or close their tab; the tab, open state, width and Work's filter are kept in this browser (read from HIST's old key the first time). Work has the filter, the PRs section with its count and age, Mine and Review requests with repo, number, title, age, CI ("no CI" spelled out and grey) and Mine's chip, Review (WORK-5.2), Open on GitHub and `O`, the not-installed, signed-out and failed-read states with an "old" mark, the column marks, and Refresh with its cooldown and rate-limit hover. A tab watches Work only while Work is its open tab. The Tasks section isn't shown until slice C: the UX has no not-yet-available state for it, so the Tasks filter shows no section yet. Ticked WORK-1.1, 1.2, 1.4, 1.7 to 1.10, 3.1 to 3.3, 5.2, 6.3, 6.4, 7.5 and 8.4. A row without a Linked Session does nothing on click or Enter until WORK-4. Still open, as they also need Tasks, Links or the Fake Harnesses: WORK-1.3, 1.5, 1.6, 1.11, 3.4, 6.1, 7.1 to 7.3, 7.6, 7.7, 8.1 to 8.3 and 8.5, whose PR halves have tests.
+- 2026-10-19: First review of slice B. Errors and marks say in plain words what's wrong and what to do, never tb-pr's own text, which goes only to the server's log, redacted and one line (UX, Errors); WORK-7.5's entries name the reason in plain words, and Review requests' no longer repeat the group's name; signed out is said once. A board with a PR Lookout can't read, other than one under another owner, is a failed read, never "No open PRs or review requests". Review always starts Claude Code, since its prompt is a Claude Code plugin command, and `R` reviews the selected Review request (WORK-5.2). Each section's rows are one focusable listbox with a `group` per PR group, and an option holds nothing focusable: Review and Open are mouse targets, the keyboard has Enter, `O` and `R` (UX, Markers and buttons), and Open in browser is `window.open`. On the tab strip, Refresh or Close, j/k and ↑/↓ go to the open panel, never the Session sidebar, and ←/→ move between the tabs (WORK-1.7, UX). Refresh is refused while no tab has Work open, and waiting reads are dropped when the last tab closes it (WORK-8.1). `O` and `R` work with Caps Lock on. The filter's Tasks choice waits for slice C, and a remembered Tasks reads as All (Dependencies). Unticked WORK-1.7, since Enter has nothing to act on until Links (WORK-4), and WORK-3.3, whose CI half waits on Gap 1.
+- 2026-10-19: Second review of slice B. A PR row's name is its content, as History's rows' are, so a screen reader hears its chip, CI state and age (UX, Markers and buttons). Focus follows the PR list: it moves in when the list shows up, and back to Work when the last row goes, never to the page (UX, Focus). `O` and `R` act once per press, not once per key repeat. A Refresh refused with 409, failed with 500 or not answered says so in plain words at the top of Work (UX, Errors). The schedule is off while a read runs and once a Refresh is accepted, so no scheduled read lines up behind a Refresh (Reads, cooldown and coalescing). Redaction also covers secrets under longer names, such as `access_token=` and `client_secret=` in a query (WORK-7.7). The tab strip moves the open panel's rows through a handle the panel gives it, not a key event of its own. The mock-up's repos are invented. Unticked WORK-1.9, since no filter change can remove a row before Tasks, and WORK-5.2, whose Behaviour tests now press `R` and see Claude Code chosen after a Codex start, but can't see the start until a World can declare a Harness (TEST-1.4).
+- 2026-10-19: Third review of slice B. Redaction bounds how far back it looks for a URL's scheme (32 characters) and a secret's longer name (64), so long dash-joined text in a tool's error no longer blocks the server for seconds (WORK-7.7). The PRs count is heard as "4 open". Unticked WORK-6.4, whose Task half waits on Task rows (slice C).

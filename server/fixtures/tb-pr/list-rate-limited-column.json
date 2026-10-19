@@ -1,0 +1,160 @@
+{
+  "user": "world-tester",
+  "fetched_at": "2026-10-19T10:00:00.482913Z",
+  "columns": {
+    "draft_mine": [
+      {
+        "number": 2101,
+        "repo": "anvil",
+        "title": "Sharpen the anvil corners",
+        "url": "https://github.com/productiveio/anvil/pull/2101",
+        "author": "world-tester",
+        "state": "draft",
+        "created_at": "2026-10-17T10:00:00Z",
+        "age_days": 2.0000055891203705,
+        "size": "S",
+        "rotting": "fresh",
+        "productive_task_id": "12345",
+        "comments_count": 0,
+        "base_branch": "develop",
+        "head_branch": "feature/12345678-fix-rounding",
+        "check_state": "success"
+      },
+      {
+        "number": 2102,
+        "repo": "willow",
+        "title": "Hang the willow lanterns",
+        "url": "https://github.com/productiveio/willow/pull/2102",
+        "author": "world-tester",
+        "state": "draft",
+        "created_at": "2026-09-10T10:00:00Z",
+        "age_days": 39.00000558912037,
+        "size": "M",
+        "rotting": "critical",
+        "comments_count": 3,
+        "base_branch": "develop",
+        "head_branch": "fix/2102-empty-state",
+        "check_state": "pending"
+      },
+      {
+        "number": 2103,
+        "repo": "kettle",
+        "title": "Draft the kettle manual",
+        "url": "https://github.com/productiveio/kettle/pull/2103",
+        "author": "world-tester",
+        "state": "draft",
+        "created_at": "2026-10-05T10:00:00Z",
+        "age_days": 14.000005589120372,
+        "size": "XS",
+        "rotting": "rotting",
+        "comments_count": 0,
+        "base_branch": "main"
+      }
+    ],
+    "review_mine": [
+      {
+        "number": 2104,
+        "repo": "anvil",
+        "title": "Speed up the anvil forge",
+        "url": "https://github.com/productiveio/anvil/pull/2104",
+        "author": "world-tester",
+        "state": "ready",
+        "created_at": "2026-10-13T10:00:00Z",
+        "age_days": 6.000005589120371,
+        "size": "L",
+        "rotting": "stale",
+        "comments_count": 5,
+        "base_branch": "develop",
+        "head_branch": "feature/23456789-faster-export",
+        "changes_requested_by": [
+          "reviewer-one"
+        ],
+        "check_state": "failure"
+      }
+    ],
+    "ready_to_merge_mine": [
+      {
+        "number": 2105,
+        "repo": "willow",
+        "title": "Rename the willow tab",
+        "url": "https://github.com/productiveio/willow/pull/2105",
+        "author": "world-tester",
+        "state": "approved",
+        "created_at": "2026-10-13T10:00:00Z",
+        "age_days": 6.000005589120371,
+        "size": "XS",
+        "rotting": "stale",
+        "comments_count": 2,
+        "base_branch": "develop",
+        "head_branch": "chore/rename-settings-tab"
+      }
+    ],
+    "waiting_on_me": [
+      {
+        "number": 2106,
+        "repo": "willow",
+        "title": "Count the willow leaves",
+        "url": "https://github.com/productiveio/willow/pull/2106",
+        "author": "teammate",
+        "state": "ready",
+        "created_at": "2026-10-18T22:00:00Z",
+        "age_days": 0.5000055891203704,
+        "size": "S",
+        "rotting": "warming",
+        "comments_count": 1,
+        "base_branch": "develop",
+        "head_branch": "feature/34567890-footer-totals"
+      },
+      {
+        "number": 2107,
+        "repo": "anvil",
+        "title": "Check the anvil weights",
+        "url": "https://github.com/productiveio/anvil/pull/2107",
+        "author": "teammate",
+        "state": "ready",
+        "created_at": "2026-10-14T10:00:00Z",
+        "age_days": 5.000005589120371,
+        "size": "M",
+        "rotting": "critical",
+        "comments_count": 0,
+        "base_branch": "develop",
+        "head_branch": "fix/import-validation"
+      }
+    ],
+    "waiting_on_author": [
+      {
+        "number": 2108,
+        "repo": "anvil",
+        "title": "Tidy the anvil drawers",
+        "url": "https://github.com/productiveio/anvil/pull/2108",
+        "author": "teammate",
+        "state": "ready",
+        "created_at": "2026-10-16T10:00:00Z",
+        "age_days": 3.0000055891203705,
+        "size": "S",
+        "rotting": "warming",
+        "comments_count": 4,
+        "base_branch": "develop",
+        "head_branch": "chore/mailer-templates",
+        "has_new_commits_since_my_review": true
+      }
+    ],
+    "notifications": []
+  },
+  "column_issues": [
+    {
+      "column": "review_mine",
+      "reason": "rate limited",
+      "restored_from": "2026-10-19T09:40:00.118204Z"
+    },
+    {
+      "column": "ready_to_merge_mine",
+      "reason": "rate limited",
+      "restored_from": "2026-10-19T09:40:00.118204Z"
+    },
+    {
+      "column": "mentions",
+      "reason": "api error 403"
+    }
+  ]
+}

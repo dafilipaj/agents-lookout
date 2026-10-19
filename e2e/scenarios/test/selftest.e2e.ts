@@ -280,7 +280,7 @@ test("TEST-1.7: a Behaviour test whose page gets past the World's route, by a re
     // The body passed; the World failed the test after it, with this message alone.
     expect(r?.status, run.output()).toBe('failed');
     expect(r?.errors.split('\n\n')[0]).toMatch(
-      /^Error: A page asked for https:\/\/github\.com\/productiveio\/api\/pull\/812 \(a redirect from http:\/\/127\.0\.0\.1:\d+\/away\), outside the World's Lookout origin, and the World's route never aborted it\.$/,
+      /^Error: A page asked for https:\/\/github\.com\/productiveio\/anvil\/pull\/2101 \(a redirect from http:\/\/127\.0\.0\.1:\d+\/away\), outside the World's Lookout origin, and the World's route never aborted it\.$/,
     );
     expect((run.report()?.errors ?? []).map((e) => e.message ?? '').join('\n')).not.toContain('left things behind');
   } finally {

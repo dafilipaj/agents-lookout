@@ -1,5 +1,6 @@
 import type { LaunchHarness, Settings } from './settings.ts';
 import type { UsageSnapshot } from './usage.ts';
+import type { WorkSnapshot } from './work.ts';
 
 /** The agent CLI a Session runs (Glossary: Harness). pi is a non-goal and is filtered out. */
 export type Harness = 'claude' | 'codex';
@@ -108,9 +109,16 @@ export type ServerEvent =
       clientId: string;
       /** USAGE: the latest numbers, or null before the first read. */
       usage: UsageSnapshot | null;
+      /**
+       * WORK: the latest PRs (and, from slice C, Tasks), and when Refresh is back. This server always
+       * sends it; it's optional only so that UI tests can leave it out.
+       */
+      work?: WorkSnapshot;
     }
   /** USAGE: new numbers (sent to every tab, only when they changed). */
   | { type: 'usage'; usage: UsageSnapshot }
+  /** WORK: the latest PRs and Refresh state (sent to every tab, only when something changed). */
+  | { type: 'work'; work: WorkSnapshot }
   /** VIEW-2: what the Session's terminal shows, as plain text; sent only to tabs previewing it. */
   | { type: 'preview'; sessionId: string; text: string | null; error: string | null }
   /** `started`: launches Fleet now reports, and the Session each became. */

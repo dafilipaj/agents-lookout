@@ -1,0 +1,3 @@
+Error: GitHub API error (502): <html>
+<head><title>502 Bad Gateway</title></head>
+</html>

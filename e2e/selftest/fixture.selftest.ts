@@ -55,7 +55,7 @@ test.describe(() => {
 // TEST-1.7: a request outside the World that got past its route fails the test, though its body passes.
 test("TEST-1.7: a plain test whose page follows a redirect from the World's Lookout to outside it", async ({ page, world: w }) => {
   // Lookout's server never redirects: the page's own route answers on its origin instead.
-  await page.route(`${w.url}away`, (route) => route.fulfill({ status: 302, headers: { location: 'https://github.com/productiveio/api/pull/812' } }));
+  await page.route(`${w.url}away`, (route) => route.fulfill({ status: 302, headers: { location: 'https://github.com/productiveio/anvil/pull/2101' } }));
   // The browser follows the redirect, which no route sees, and finds no way out.
   expect(await page.goto(`${w.url}away`).then(() => 'loaded', (e: Error) => e.message)).toContain('net::ERR_PROXY_CONNECTION_FAILED');
   expect(w.browserRequests()).toEqual([]);

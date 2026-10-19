@@ -1,15 +1,15 @@
 import { BLOCK_REASON } from '@shared/history.ts';
 import type { Harness, HistoryItem, HistoryPage, SessionRow } from '@shared/types.ts';
-import { Circle, CircleDot, CircleSlash, History as HistoryIcon, Search, X } from 'lucide-react';
-import { type KeyboardEvent, type MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from 'react';
+import { Circle, CircleDot, CircleSlash, Search } from 'lucide-react';
+import { type KeyboardEvent, type Ref, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import type { HistoryQuery } from '@/lib/client';
-import { type HarnessFilter, clampWidth, filterHarness, isLive, itemKey, loadHarnessFilter, saveHarnessFilter, snippetParts } from '@/lib/history';
+import { type HarnessFilter, filterHarness, isLive, itemKey, loadHarnessFilter, saveHarnessFilter, snippetParts } from '@/lib/history';
+import type { PanelNav } from '@/lib/right-sidebar';
 import { HARNESS_NAME } from '@/lib/sessions';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { HarnessIcon } from './HarnessIcon';
-import { SHELL_COLUMN, ShellCell } from './Shell';
 
 /** HIST-2.2: typing waits this long before searching, well within the 1 s. */
 export const SEARCH_DEBOUNCE_MS = 150;
@@ -22,10 +22,6 @@ const LOAD_MORE_PX = 200;
 export const AUTO_FILL_PAGES = 5;
 
 export interface HistoryPanelProps {
-  width: number;
-  /** HIST-1.3: the width once a drag ends. */
-  onResize(width: number): void;
-  onClose(): void;
   /** Bumped to focus the search box (HIST-1.1). */
   focusKey: number;
   /** The live Sessions, for the live marker (HIST-2.3) and the live check (HIST-3.2). */
@@ -34,6 +30,8 @@ export interface HistoryPanelProps {
   search(q: HistoryQuery): Promise<HistoryPage>;
   /** HIST-3: a click or Enter on a result. Rejects with a message for people. */
   onOpen(item: HistoryItem, live: boolean): Promise<void>;
+  /** WORK-1.7: how the tab strip moves History's results. */
+  navRef?: Ref<PanelNav>;
 }
 
 type Results =
@@ -46,8 +44,8 @@ type Results =
    */
   | { state: 'ok'; gen: number; items: HistoryItem[]; page: number; hasMore: boolean; loadingMore: boolean; auto: number };
 
-/** HIST: the right sidebar, with History as its only panel (no tab strip until a second one). */
-export function HistoryPanel({ width, onResize, onClose, focusKey, sessions, now, search, onOpen }: HistoryPanelProps) {
+/** HIST: the History tab of the right sidebar (RightSidebar): its search field, toggles and results. */
+export function HistoryPanel({ focusKey, sessions, now, search, onOpen, navRef }: HistoryPanelProps) {
   const [query, setQuery] = useState('');
   const [headless, setHeadless] = useState(false);
   // HIST-2.8: both by default; one can be switched off, never both. Remembered across reloads.
@@ -158,6 +156,16 @@ export function HistoryPanel({ width, onResize, onClose, focusKey, sessions, now
     );
   };
 
+  /** HIST-2.7: the next or previous result, without acting. */
+  const step = (delta: number) => {
+    if (!items.length) return;
+    const next = Math.min(items.length - 1, Math.max(0, active + delta));
+    setActive(next);
+    listRef.current?.querySelector<HTMLElement>(`[data-index="${next}"]`)?.scrollIntoView?.({ block: 'nearest' });
+  };
+  // The tab strip moves the results through this, not through a key event of its own (WORK-1.7).
+  useImperativeHandle(navRef, () => ({ move: step }));
+
   // HIST-2.7: ↑/↓ (and j/k outside the search box) move; only Enter or a click acts. Enter opens
   // a result only from the search box or the result list: on a button or the toggle, it's theirs.
   const onKeyDown = (e: KeyboardEvent<HTMLElement>) => {
@@ -166,10 +174,7 @@ export function HistoryPanel({ width, onResize, onClose, focusKey, sessions, now
     const inResults = inSearch || (listboxRef.current !== null && e.target === listboxRef.current);
     const move = (delta: number) => {
       e.preventDefault(); // the Session sidebar's own ↑/↓ and j/k stay put
-      if (!items.length) return;
-      const next = Math.min(items.length - 1, Math.max(0, active + delta));
-      setActive(next);
-      listRef.current?.querySelector<HTMLElement>(`[data-index="${next}"]`)?.scrollIntoView?.({ block: 'nearest' });
+      step(delta);
     };
     if (e.key === 'ArrowDown' || (!inSearch && e.key === 'j')) move(1);
     else if (e.key === 'ArrowUp' || (!inSearch && e.key === 'k')) move(-1);
@@ -180,25 +185,6 @@ export function HistoryPanel({ width, onResize, onClose, focusKey, sessions, now
       e.preventDefault();
       setQuery('');
     }
-  };
-
-  // HIST-1.3: drag the left edge to resize.
-  const startResize = (e: ReactMouseEvent) => {
-    e.preventDefault();
-    const startX = e.clientX;
-    const startWidth = width;
-    let latest = startWidth;
-    const onMove = (m: MouseEvent) => {
-      latest = clampWidth(startWidth + (startX - m.clientX));
-      onResize(latest);
-    };
-    const onUp = () => {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-      onResize(latest);
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
   };
 
   const activeId = items[active] ? `history-${itemKey(items[active])}` : undefined;
@@ -240,29 +226,11 @@ export function HistoryPanel({ width, onResize, onClose, focusKey, sessions, now
     );
   }
 
+  // WORK-1.8: below the tab strip, History keeps its search field at the top of its panel.
   return (
-    <aside
-      aria-label="History sidebar"
-      className={cn(SHELL_COLUMN, 'relative border-l border-sidebar-border bg-sidebar text-sidebar-foreground')}
-      style={{ width }}
-      data-shell-column="right"
-      onKeyDown={onKeyDown}
-      data-testid="history-panel"
-    >
-      <div
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="Resize History"
-        aria-valuenow={width}
-        onMouseDown={startResize}
-        className="absolute inset-y-0 -left-1 z-10 w-2 cursor-col-resize hover:bg-ring/20"
-      />
-      {/* SIDE-8.1: the search field is this column's header cell, mirroring the Filter bar on the
-          left; the panel's name stays for assistive tech (the tab strip waits for a second panel). */}
-      <ShellCell row="header" className="gap-1.5 border-sidebar-border px-2.5 py-2">
-        <h2 className="sr-only">History</h2>
-        <HistoryIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-        <label className="relative flex min-w-0 flex-1 items-center">
+    <div className="flex min-h-0 flex-1 flex-col" onKeyDown={onKeyDown} data-testid="history-panel">
+      <div className="flex flex-col gap-1.5 px-2.5 pt-2 pb-2">
+        <label className="relative flex min-w-0 items-center">
           <Search aria-hidden className="pointer-events-none absolute left-2 size-3.5 text-muted-foreground" />
           <input
             ref={inputRef}
@@ -275,54 +243,46 @@ export function HistoryPanel({ width, onResize, onClose, focusKey, sessions, now
             className="h-7 w-full min-w-0 rounded-md border border-input bg-background/60 pr-2 pl-7 text-[13px] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 dark:bg-input/20 [&::-webkit-search-cancel-button]:hidden"
           />
         </label>
-        <Button variant="ghost" size="icon-sm" aria-label="Close History" title="Close History (H)" onClick={onClose} className="size-7 shrink-0 text-muted-foreground">
-          <X className="size-4" />
-        </Button>
-      </ShellCell>
-      {/* The list runs on past the dock line, to the bottom. */}
-      <ShellCell row="body" toBottom className="flex flex-col">
-        <div className="flex flex-col gap-1.5 px-2.5 pt-2 pb-2">
-          <div className="flex min-w-0 items-center gap-2">
-            <label className="flex min-w-0 items-center gap-1.5 text-[12px] text-muted-foreground">
-              <input type="checkbox" checked={headless} onChange={(e) => setHeadless(e.target.checked)} className="size-3.5" />
-              <span className="truncate">Show Headless Sessions</span>
-            </label>
-            <div role="group" aria-label="Harnesses" className="ml-auto flex shrink-0 items-center gap-0.5">
-              {(['claude', 'codex'] as const).map((h) => {
-                const on = harnesses[h];
-                const last = on && !harnesses[h === 'claude' ? 'codex' : 'claude'];
-                return (
-                  <button
-                    key={h}
-                    type="button"
-                    aria-pressed={on}
-                    aria-label={HARNESS_NAME[h]}
-                    aria-disabled={last || undefined}
-                    title={last ? `${HARNESS_NAME[h]}: at least one Harness stays on` : `${on ? 'Hide' : 'Show'} ${HARNESS_NAME[h]} Sessions`}
-                    onClick={() => toggleHarness(h)}
-                    className={cn(
-                      'flex size-6 items-center justify-center rounded-md border transition-colors',
-                      on ? 'border-border bg-background text-foreground dark:bg-input/30' : 'border-transparent text-muted-foreground opacity-45 grayscale hover:opacity-80',
-                      last && 'cursor-default',
-                    )}
-                  >
-                    <HarnessIcon harness={h} className="size-3.5" />
-                  </button>
-                );
-              })}
-            </div>
+        <div className="flex min-w-0 items-center gap-2">
+          <label className="flex min-w-0 items-center gap-1.5 text-[12px] text-muted-foreground">
+            <input type="checkbox" checked={headless} onChange={(e) => setHeadless(e.target.checked)} className="size-3.5" />
+            <span className="truncate">Show Headless Sessions</span>
+          </label>
+          <div role="group" aria-label="Harnesses" className="ml-auto flex shrink-0 items-center gap-0.5">
+            {(['claude', 'codex'] as const).map((h) => {
+              const on = harnesses[h];
+              const last = on && !harnesses[h === 'claude' ? 'codex' : 'claude'];
+              return (
+                <button
+                  key={h}
+                  type="button"
+                  aria-pressed={on}
+                  aria-label={HARNESS_NAME[h]}
+                  aria-disabled={last || undefined}
+                  title={last ? `${HARNESS_NAME[h]}: at least one Harness stays on` : `${on ? 'Hide' : 'Show'} ${HARNESS_NAME[h]} Sessions`}
+                  onClick={() => toggleHarness(h)}
+                  className={cn(
+                    'flex size-6 items-center justify-center rounded-md border transition-colors',
+                    on ? 'border-border bg-background text-foreground dark:bg-input/30' : 'border-transparent text-muted-foreground opacity-45 grayscale hover:opacity-80',
+                    last && 'cursor-default',
+                  )}
+                >
+                  <HarnessIcon harness={h} className="size-3.5" />
+                </button>
+              );
+            })}
           </div>
-          {openError && (
-            <p role="alert" className="rounded-md border border-destructive/30 px-2 py-1.5 text-[12px] text-destructive">
-              {openError}
-            </p>
-          )}
         </div>
-        <div id="history-results" ref={listRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-          {body}
-        </div>
-      </ShellCell>
-    </aside>
+        {openError && (
+          <p role="alert" className="rounded-md border border-destructive/30 px-2 py-1.5 text-[12px] text-destructive">
+            {openError}
+          </p>
+        )}
+      </div>
+      <div id="history-results" ref={listRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
+        {body}
+      </div>
+    </div>
   );
 }
 
