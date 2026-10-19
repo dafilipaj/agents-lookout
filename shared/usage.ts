@@ -12,7 +12,7 @@ export interface UsageWindow {
   label: string;
   /** Model a scoped window is for, when there is one. */
   model: string | null;
-  /** % used, 0–100. */
+  /** % used, a whole number 0–100: rounded once, on reading, so a mark goes by the number shown. */
   percent: number;
   /** When it resets, ms since epoch; null when unknown (or, for Codex, already passed). */
   resetsAt: number | null;
@@ -106,6 +106,32 @@ export function hasReset(w: UsageWindow, now: number): boolean {
 /** The windows that still hold, tightest first (expired ones are left out of picks and hints). */
 export function liveWindows(windows: readonly UsageWindow[], now: number): UsageWindow[] {
   return tightestFirst(windows.filter((w) => !hasReset(w, now)));
+}
+
+/** A 5-hour window: the main one (`session`) or a per-model one (`session_scoped`). */
+export function isFiveHour(w: UsageWindow): boolean {
+  return w.kind === 'session' || w.kind === 'session_scoped';
+}
+
+/** A weekly window: all models (`weekly_all`) or one model (`weekly_scoped`). */
+export function isWeekly(w: UsageWindow): boolean {
+  return w.kind === 'weekly_all' || w.kind === 'weekly_scoped';
+}
+
+/**
+ * USAGE-1.1: what a provider's strip line shows. `main` gets the bar, % used and time to reset:
+ * the tightest 5-hour window or, only when none was reported at all, the tightest weekly window.
+ * `weekly` is the tightest weekly window (per-model ones counted), shown in brackets after a
+ * 5-hour `main`; null when `main` is itself weekly or none was reported. A window whose reset has
+ * passed counts as 0% with no reset time until the new read (Fleet's own shape for a passed Codex
+ * window), so the line keeps its shape across a reset. Null when no window was reported.
+ */
+export function stripWindows(windows: readonly UsageWindow[], now: number): { main: UsageWindow; weekly: UsageWindow | null } | null {
+  const asOfNow = tightestFirst(windows.map((w) => (hasReset(w, now) ? { ...w, percent: 0, resetsAt: null } : w)));
+  const fiveHour = asOfNow.find(isFiveHour);
+  const weekly = asOfNow.find(isWeekly) ?? null;
+  if (fiveHour) return { main: fiveHour, weekly };
+  return weekly ? { main: weekly, weekly: null } : null;
 }
 
 /** A short name for a window, e.g. "5h limit", "Weekly limit", "Weekly Fable limit". */

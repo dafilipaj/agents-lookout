@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProviderUsage, UsageSnapshot } from '../shared/usage.ts';
-import { freshness, liveWindows, tightestFirst, usageLevel } from '../shared/usage.ts';
+import { freshness, liveWindows, stripWindows, tightestFirst, usageLevel } from '../shared/usage.ts';
 import { type RunOptions, run } from './exec.ts';
 import { sanitizeLine } from './sanitize.ts';
 import {
@@ -138,6 +138,46 @@ describe('reading `fleet usage --json` (the fork’s providers[])', () => {
     ]);
     // A window whose reset passed no longer counts.
     expect(liveWindows([w(100, 1000), w(40, 5000)], 2000).map((x) => x.percent)).toEqual([40]);
+  });
+
+  it('USAGE-1.2: each % is rounded once, on reading, so a mark goes by the number shown', () => {
+    const limit = (percent: number) => ({ kind: 'session', group: 'session', label: '5h limit', model: null, percent, severity: 'normal', resets_at: null, active: true });
+    const read = (percent: number) => {
+      const out = parseFleetUsage(
+        JSON.stringify({
+          extra_usage: { enabled: true, used: 1, limit: 10, currency: 'USD', percent },
+          providers: [{ id: 'claude', label: 'Claude', status: 'ok', plan: null, limits: [limit(percent)], fetched_at: null, observed_at: null, error: null, credits: null }],
+        }),
+      ).claude!;
+      return [out.windows[0]!.percent, out.extra!.percent];
+    };
+    expect([79.4, 79.6, 94.4, 94.5].map(read)).toEqual([[79, 79], [80, 80], [94, 94], [95, 95]]);
+    // 79.6 shows as 80% with a warning, 94.5 as 95% with the critical mark.
+    expect([79.6, 94.5].map((p) => usageLevel(read(p)[0]!))).toEqual(['warning', 'critical']);
+  });
+
+  it('USAGE-1.1: the strip shows the tightest 5-hour window, and the tightest weekly one (per-model counted) beside it; weekly alone only when no 5-hour one was reported', () => {
+    type Kind = 'session' | 'session_scoped' | 'weekly_all' | 'weekly_scoped';
+    const w = (kind: Kind, percent: number, resetsAt: number | null = 9000) => ({ kind, label: kind, model: kind.endsWith('scoped') ? 'm' : null, percent, resetsAt });
+    const pick = (ws: ReturnType<typeof w>[], now = 0) => {
+      const p = stripWindows(ws, now);
+      return p && [p.main.kind, p.main.percent, p.weekly?.kind ?? null, p.weekly?.percent ?? null];
+    };
+    expect(pick([w('weekly_all', 42), w('session', 3)])).toEqual(['session', 3, 'weekly_all', 42]);
+    expect(pick([w('session', 30), w('weekly_all', 20), w('weekly_scoped', 64)])).toEqual(['session', 30, 'weekly_scoped', 64]);
+    expect(pick([w('session', 10), w('session_scoped', 50), w('weekly_all', 5)])).toEqual(['session_scoped', 50, 'weekly_all', 5]);
+    expect(pick([w('session', 10)])).toEqual(['session', 10, null, null]);
+    // No 5-hour window reported at all: the weekly window takes its place.
+    expect(pick([w('weekly_all', 19), w('weekly_scoped', 33)])).toEqual(['weekly_scoped', 33, null, null]);
+    // A 5-hour window whose reset passed counts as 0% with no reset time until the new read, as
+    // Fleet reports a passed Codex window: it keeps the bar, and the weekly one stays in brackets.
+    expect(pick([w('session', 100, 1000), w('weekly_all', 20)], 2000)).toEqual(['session', 0, 'weekly_all', 20]);
+    expect(stripWindows([w('session', 100, 1000), w('weekly_all', 20)], 2000)!.main).toMatchObject({ kind: 'session', percent: 0, resetsAt: null });
+    expect(pick([w('session', 100, 1000)], 2000)).toEqual(['session', 0, null, null]);
+    // One that still holds is tighter than one at 0%; a passed weekly window stays in brackets at 0%.
+    expect(pick([w('session', 100, 1000), w('session_scoped', 30)], 2000)).toEqual(['session_scoped', 30, null, null]);
+    expect(pick([w('session', 10), w('weekly_all', 90, 1000)], 2000)).toEqual(['session', 10, 'weekly_all', 0]);
+    expect(pick([])).toBeNull();
   });
 });
 

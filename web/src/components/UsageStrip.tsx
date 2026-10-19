@@ -1,6 +1,7 @@
 import type { JevStatus, ProviderUsage, UsageSnapshot, UsageWindow } from '@shared/usage.ts';
-import { freshness, hasReset, isFlagged, liveWindows, usageLevel } from '@shared/usage.ts';
+import { freshness, hasReset, isFiveHour, isFlagged, stripWindows, usageLevel } from '@shared/usage.ts';
 import { Check } from 'lucide-react';
+import { useId } from 'react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { HARNESS_NAME } from '@/lib/sessions';
 import { formatClock, formatUntil, freshnessLabel } from '@/lib/usage';
@@ -28,24 +29,32 @@ const windowKey = (p: ProviderUsage, w: UsageWindow) => `${p.id}-${w.kind}-${w.m
 
 /** USAGE-1: the always-visible strip at the bottom of the Session sidebar; click for details. */
 export function UsageStrip({ usage, now, onOpen }: { usage: UsageSnapshot | null; now: number; onOpen?(): void }) {
+  const summaryId = useId();
   return (
     <Popover onOpenChange={(open) => open && onOpen?.()}>
       <PopoverTrigger
         aria-label="Usage details"
+        aria-describedby={usage ? summaryId : undefined}
         className="w-full shrink-0 px-2.5 py-2 text-left outline-none hover:bg-sidebar-accent/50 focus-visible:bg-sidebar-accent/60"
       >
         {usage ? (
-          <div className="flex flex-col gap-1" data-testid="usage-strip">
-            {usage.providers.map((p) => (
-              <ProviderLine key={p.id} provider={p} now={now} />
-            ))}
-            <div className="flex items-center gap-1.5 text-[11px] leading-4">
-              <span className="font-medium">Jev</span>
-              <span className={cn(usage.jev.state === 'ready' ? 'text-foreground/80' : 'text-muted-foreground')} data-field="jev">
-                <JevState state={usage.jev.state} />
-              </span>
+          <>
+            {/* The button's name replaces what's in it, so screen readers get the lines, as shown, as its description. */}
+            <span id={summaryId} className="sr-only">
+              {stripSummary(usage, now)}
+            </span>
+            <div className="flex flex-col gap-1" data-testid="usage-strip">
+              {usage.providers.map((p) => (
+                <ProviderLine key={p.id} provider={p} now={now} />
+              ))}
+              <div className="flex items-center gap-1.5 text-[11px] leading-4">
+                <span className="font-medium">Jev</span>
+                <span className={cn(usage.jev.state === 'ready' ? 'text-foreground/80' : 'text-muted-foreground')} data-field="jev">
+                  <JevState state={usage.jev.state} />
+                </span>
+              </div>
             </div>
-          </div>
+          </>
         ) : (
           <p className="text-[11px] text-muted-foreground">Reading usage…</p>
         )}
@@ -60,41 +69,55 @@ export function UsageStrip({ usage, now, onOpen }: { usage: UsageSnapshot | null
   );
 }
 
-/** One provider in the strip: its tightest window that still holds (USAGE-1.1), or why there's none. */
+/**
+ * One provider in the strip (USAGE-1.1): its 5-hour window with the weekly one's % in brackets,
+ * the weekly window alone, labelled "weekly", when no 5-hour one was reported, or why there's
+ * none. A window whose reset has passed shows 0% with an empty reset slot until the new read.
+ */
 function ProviderLine({ provider, now }: { provider: ProviderUsage; now: number }) {
   const f = freshness(provider, now);
   const flagged = isFlagged(f);
-  const w = liveWindows(provider.windows, now)[0];
-  if (!provider.windows.length) {
+  const pick = stripWindows(provider.windows, now);
+  if (!pick) {
     return (
       <div className="flex items-center gap-1.5 text-[11px] leading-4 text-muted-foreground" data-provider={provider.id}>
         <HarnessIcon harness={provider.id} />
         <span className="truncate" title={provider.reason ?? undefined}>
-          {provider.state === 'ok' ? UNREADABLE['no-data'] : UNREADABLE[provider.state]}
+          {unreadable(provider)}
         </span>
       </div>
     );
   }
+  const { main: w, weekly } = pick;
   return (
     <div className="flex flex-col" data-provider={provider.id}>
-      {w ? (
-        <div className={cn('flex items-center gap-1.5 text-[11px] leading-4', flagged && 'opacity-60')} title={windowTitle(w, now)}>
-          <HarnessIcon harness={provider.id} />
-          <Bar percent={w.percent} className="flex-1" />
-          <span className="w-8 text-right font-medium tabular-nums" data-field="percent">
-            {Math.round(w.percent)}%
+      <div
+        className={cn('flex items-center gap-1.5 text-[11px] leading-4', flagged && 'opacity-60')}
+        title={weekly ? `${windowTitle(w, now)}; ${windowTitle(weekly, now)}` : windowTitle(w, now)}
+      >
+        <HarnessIcon harness={provider.id} />
+        {!isFiveHour(w) && (
+          // No 5-hour window was reported, so the weekly one has the bar: say so, or it passes for the 5-hour one.
+          <span className="shrink-0 text-muted-foreground" data-field="window">
+            weekly
           </span>
-          <Mark percent={w.percent} />
-          <span className="w-10 text-right text-muted-foreground tabular-nums" data-field="reset">
-            {formatUntil(w.resetsAt, now)}
+        )}
+        <Bar percent={w.percent} className="min-w-6 flex-1" />
+        <span className="w-8 text-right font-medium tabular-nums" data-field="percent">
+          {w.percent}%
+        </span>
+        <Mark percent={w.percent} />
+        <span className="w-10 text-right text-muted-foreground tabular-nums" data-field="reset">
+          {formatUntil(w.resetsAt, now)}
+        </span>
+        {weekly && (
+          // The weekly limit only as a %, its mark (USAGE-1.2) inside the brackets, by its number.
+          <span className="inline-flex shrink-0 items-center whitespace-nowrap text-muted-foreground tabular-nums" data-field="weekly">
+            (weekly {weekly.percent}%
+            <Mark percent={weekly.percent} compact />)
           </span>
-        </div>
-      ) : (
-        <div className="flex items-center gap-1.5 text-[11px] leading-4 text-muted-foreground">
-          <HarnessIcon harness={provider.id} />
-          <span data-field="reset">reset · refreshing</span>
-        </div>
-      )}
+        )}
+      </div>
       {/* USAGE-1.3: each provider says how old its numbers are; amber only when they're flagged. */}
       <span
         className={cn('pl-5 text-[10.5px] leading-3.5', flagged ? 'font-medium text-needs-you-text' : 'text-muted-foreground')}
@@ -246,13 +269,40 @@ function Bar({ percent, className }: { percent: number; className?: string }) {
   );
 }
 
-/** USAGE-1.2: a warning triangle at 80% or more, a critical octagon at 95% or more; a fixed-width slot either way. */
-function Mark({ percent }: { percent: number }) {
+/**
+ * USAGE-1.2: a warning triangle at 80% or more, a critical octagon at 95% or more; a fixed-width
+ * slot either way, unless `compact` (the weekly bracket), where it takes room only when shown.
+ */
+function Mark({ percent, compact = false }: { percent: number; compact?: boolean }) {
+  if (compact && usageLevel(percent) === 'normal') return null;
   return (
-    <span className="w-3.5 shrink-0 text-center text-[11px] leading-none" data-field="mark">
+    <span className={cn('shrink-0 text-center text-[11px] leading-none', compact ? 'ml-0.5' : 'w-3.5')} data-field="mark">
       <UsageLevelIcon level={usageLevel(percent)} className="align-middle" />
     </span>
   );
+}
+
+const unreadable = (p: ProviderUsage) => (p.state === 'ok' ? UNREADABLE['no-data'] : UNREADABLE[p.state]);
+
+/**
+ * USAGE-1.1 to 1.4 for screen readers: what the strip's lines show, marks, time to reset and age
+ * included, so old numbers are never read out as current (USAGE-2.2), e.g. "Claude Code: 5-hour
+ * 12%, resets in 2h10; weekly 97%, critical; updated 1m ago. Codex: 5-hour 0%; weekly 63%; old ·
+ * 12m ago. Jev: ready."
+ */
+function stripSummary(usage: UsageSnapshot, now: number): string {
+  const number = (w: UsageWindow) => {
+    const level = usageLevel(w.percent);
+    return `${isFiveHour(w) ? '5-hour' : 'weekly'} ${w.percent}%${level === 'normal' ? '' : `, ${level}`}`;
+  };
+  const lines = usage.providers.map((p) => {
+    const pick = stripWindows(p.windows, now);
+    if (!pick) return `${HARNESS_NAME[p.id]}: ${unreadable(p)}.`;
+    const reset = formatUntil(pick.main.resetsAt, now);
+    const said = [`${number(pick.main)}${reset ? `, resets in ${reset}` : ''}`, ...(pick.weekly ? [number(pick.weekly)] : []), freshnessLabel(freshness(p, now), now)];
+    return `${HARNESS_NAME[p.id]}: ${said.join('; ')}.`;
+  });
+  return [...lines, `Jev: ${JEV_LABEL[usage.jev.state]}.`].join(' ');
 }
 
 /** USAGE-1.4: Jev's state; ready carries a check (the text says it either way). */

@@ -10,6 +10,21 @@ export const STATUS_LABEL: Record<Status, string> = {
   unknown: 'Unknown',
 };
 
+/** VIEW-5.5 (UX): context usage reads normal up to 40%, as a warning above 40%, as danger above 60%. */
+export type ContextLevel = 'normal' | 'warning' | 'danger';
+
+export function contextLevel(pct: number): ContextLevel {
+  if (pct > 60) return 'danger';
+  if (pct > 40) return 'warning';
+  return 'normal';
+}
+
+/** The text colour for each level: the app's warning and danger tokens, which have light and dark values. */
+export const CONTEXT_LEVEL_CLASS: Record<ContextLevel, string | null> = {
+  normal: null,
+  warning: 'text-needs-you-text',
+  danger: 'text-destructive',
+};
 
 /** SIDE-3.5: Idle for longer than the threshold. */
 export function isLongIdle(row: SessionRow, now: number, thresholdHours: number): boolean {

@@ -2,6 +2,7 @@ import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { SaveError } from '@/lib/client';
+import { contextLevel } from '@/lib/sessions';
 import { renderApp, row, rowEl, settings } from '@/test/helpers';
 
 const header = () => screen.getByRole('banner', { name: 'Session' });
@@ -81,6 +82,25 @@ describe('Session view header', () => {
     const line = statusLine();
     expect(line.parentElement!.lastElementChild).toBe(line);
     expect(line.querySelector('[data-field="context"]')).toHaveTextContent('12% context');
+  });
+
+  it('VIEW-5.5: context usage reads normal up to 40%, warning above 40%, danger above 60%', () => {
+    expect([0, 40, 41, 60, 61, 100].map(contextLevel)).toEqual(['normal', 'normal', 'warning', 'warning', 'danger', 'danger']);
+    const cases = [
+      [40, 'normal', null],
+      [41, 'warning', 'text-needs-you-text'],
+      [60, 'warning', 'text-needs-you-text'],
+      [61, 'danger', 'text-destructive'],
+    ] as const;
+    for (const [pct, level, cls] of cases) {
+      const app = renderApp('/s/a');
+      app.snapshot([row({ id: 'a', model: 'claude-opus-5-5', contextPct: pct })]);
+      const ctx = statusLine().querySelector('[data-field="context"]')!;
+      expect(ctx).toHaveTextContent(`${pct}% context`);
+      expect(ctx).toHaveAttribute('data-level', level);
+      for (const c of ['text-needs-you-text', 'text-destructive']) expect(ctx.classList.contains(c)).toBe(c === cls);
+      app.unmount();
+    }
   });
 
   it('VIEW-5.4: with nothing selected, the "Select a Session" hint stays', () => {

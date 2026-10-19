@@ -15,7 +15,7 @@ import {
   stopButton,
 } from '@/lib/answers';
 import type { Chat as ChatState, Preview } from '@/lib/store';
-import { HARNESS_NAME, STATUS_LABEL, location } from '@/lib/sessions';
+import { CONTEXT_LEVEL_CLASS, HARNESS_NAME, STATUS_LABEL, contextLevel, location } from '@/lib/sessions';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { PromptCard } from './Answering';
@@ -453,6 +453,7 @@ function StatusLine({ row }: { row: SessionRow }) {
   const loc = location(row);
   const where = row.git ? row.git.repo : row.cwd;
   const context = row.contextPct !== null ? `${row.contextPct}% context` : null;
+  const ctxLevel = row.contextPct !== null ? contextLevel(row.contextPct) : null;
   const parts = [where, loc?.name, row.model, context].filter((p): p is string => !!p);
   if (!parts.length) return null;
   const dot = (
@@ -491,7 +492,11 @@ function StatusLine({ row }: { row: SessionRow }) {
       {context && (
         <>
           {(where || loc || row.model) && dot}
-          <span className="shrink-0" data-field="context">
+          <span
+            className={cn('shrink-0', ctxLevel && CONTEXT_LEVEL_CLASS[ctxLevel])}
+            data-field="context"
+            data-level={ctxLevel ?? undefined}
+          >
             {context}
           </span>
         </>

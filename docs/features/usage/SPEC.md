@@ -3,7 +3,7 @@ title: Usage at a glance
 code: USAGE
 status: Done
 created: 2026-10-16
-updated: 2026-10-17
+updated: 2026-10-19
 ---
 
 # Usage at a glance
@@ -19,8 +19,8 @@ Limits show up only when an agent stalls. Claude's usage page and Codex's `/stat
 ## Requirements
 
 ### USAGE-1 Always visible
-- [x] USAGE-1.1 A compact strip at the bottom of the Session sidebar shows, for Claude and for Codex, the tightest window: the Harness mark, a bar with **% used**, and the time to reset. (test)
-- [x] USAGE-1.2 A window at 80% or more is marked as a warning (a triangle icon); at 95% or more, as critical (an octagon icon). The marks are recognizable without colour. (test)
+- [x] USAGE-1.1 A compact strip at the bottom of the Session sidebar shows, for Claude and for Codex, the 5-hour window: the Harness mark, a bar with **% used**, and the time to reset. After it, the weekly limit shows only as a percentage in brackets, for example `(weekly 42%)`: the tightest weekly window, per-model weekly windows included. A per-model 5-hour window counts as a 5-hour window, so the tightest one shows. A 5-hour window whose reset has passed shows 0% with no time to reset until the new read, with the weekly limit still in brackets. Only a Harness that reported no 5-hour window at all shows its tightest weekly window with the bar, % used and time to reset instead, labelled `weekly` before the bar and without brackets, so it never passes for a 5-hour window. (test)
+- [x] USAGE-1.2 A window at 80% or more is marked as a warning (a triangle icon); at 95% or more, as critical (an octagon icon). In the strip each of the two numbers gets its own mark, beside it: the 5-hour window's by its % used, the weekly limit's inside its brackets. So a weekly limit at 85% marks the brackets, not the bar. The marks are recognizable without colour. (test)
 - [x] USAGE-1.3 The numbers refresh on their own: Claude every 60 s, Codex whenever one of its Transcripts records new limits. The strip says how old they are. (manual)
 - [x] USAGE-1.4 The strip shows whether Jev is ready (tb-jev installed, with credentials) or not set up. Nothing Lookout does here costs a billed call. (test)
 
@@ -43,18 +43,19 @@ Limits show up only when an agent stalls. Claude's usage page and Codex's `/stat
 ## UX
 
 ```
-┌ / filter            + ⚙ ┐
-├─────────────────────────┤
-│ ◆ fix-deal-rates   ✳    │
-│ …                       │
-├─────────────────────────┤   the line above the composer (SIDE-8)
-│ ✳ ██████░░░░ 62% · 2h10 │   tightest Claude window, resets in 2 h 10 min
-│ ⊛ ██████████ 100% ⛔ 17:30│   Codex at its 5-hour limit
-│ Jev ✓ ready             │
-└─────────────────────────┘
+┌ / filter                         + ⚙ ┐
+├──────────────────────────────────────┤
+│ ◆ fix-deal-rates   ✳                 │
+│ …                                    │
+├──────────────────────────────────────┤   the line above the composer (SIDE-8)
+│ ✳ ███░░░░ 12%   2h10 (weekly 42%)    │   Claude's 5-hour window, resets in 2 h 10 min; tightest weekly 42%
+│ ⊛ ███████ 100% ⛔   25m (weekly 85% ⚠)│   Codex at its 5-hour limit, resets in 25 min; its weekly window past 80%
+│ Jev ✓ ready                          │
+└──────────────────────────────────────┘
 ```
 
-- The mock-up uses ⛔ and ✓ as shorthand for the critical octagon and the check icon.
+- The mock-up uses ⛔, ⚠ and ✓ as shorthand for the critical octagon, the warning triangle and the check icon.
+- Each provider's line (USAGE-1.1): the Harness mark, the 5-hour window's bar, % used, its mark's slot and time to reset, then the weekly limit as `(weekly 42%)` in muted text. A weekly mark sits inside the brackets, after its %; the bar's slot stays empty for it. A 5-hour window whose reset has passed reads 0% with an empty reset slot. With no 5-hour window reported, the line is the weekly window's bar, % used and reset, as before, without brackets, with a muted `weekly` before the bar so it never passes for the 5-hour window. The tooltip names both windows. Screen readers get every line as the strip button's description, saying what the line shows: each number with its mark, the time to reset, and how old the numbers are, so old ones never read as current (USAGE-2.2). For example "Claude Code: 5-hour 12%, resets in 2h10; weekly 97%, critical; updated 1m ago", or after a failed read "Claude Code: 5-hour 0%; weekly 42%; old · 12m ago".
 - Clicking the strip opens a popover with the details (USAGE-2.1).
 - One grid (SIDE-8): the strip is the Session sidebar's cell in the shell's dock row, so its top line is the line above the composer, or above the ended / View only banner. Whichever side is taller sets the row's height; the strip's lines stay at its top.
 - Level icons: a warning triangle (lucide `TriangleAlert`, amber in the `needs-you-text` token, as text and strokes use) at 80% or more, a critical octagon (`OctagonAlert`, red) at 95% or more, alongside the bar's colour. The launcher hint (USAGE-3.1) starts with the same octagon. Icons follow [0008](../../decisions/0008-lucide-icons-only.md).
@@ -73,7 +74,8 @@ Limits show up only when an agent stalls. Claude's usage page and Codex's `/stat
     - **Reading it:** Lookout prefers `providers[]` and falls back to the top-level Claude fields only when `providers` is absent (upstream Fleet). It never reads rollout files itself.
     - **Status mapping:** ok becomes ok (no data when there are no limits); stale stays ok, marked old with its reason; no_data, not_installed and error map one to one (an error mentioning login means "not signed in").
     - **Validation:** enums are allowlisted, and unknown kinds and statuses are dropped or become errors. A shape Lookout doesn't know is an error, never "no data". A limits list that isn't empty but holds nothing Lookout understands (unknown kinds, non-numeric `percent`) is an error that keeps the last numbers.
-    - **Codex specifics:** a window whose reset passed comes back as 0% with no reset time. `observed_at` is Codex's last turn, and the age shown comes from it.
+    - **Codex specifics:** a window whose reset passed comes back as 0% with no reset time. `observed_at` is Codex's last turn, and the age shown comes from it. Fleet sorts Codex's windows by length (`window_minutes`): up to a day is a 5-hour kind (`session`, `session_scoped`), longer a weekly one (`weekly_all`, `weekly_scoped`); `primary` and `secondary` decide only when the length is missing.
+    - **5-hour and weekly (USAGE-1.1):** Lookout goes by Fleet's kinds alone: `session` and `session_scoped` are 5-hour windows, `weekly_all` and `weekly_scoped` weekly ones.
     - **When Claude can't be read,** Fleet exits 1 but still prints `{ error, providers: [claude with status error, codex live] }`. Lookout parses that, so Claude shows the error with its last numbers kept and marked old, and Codex stays live. Only when there's no JSON on stdout does it show "usage unavailable: <reason>" for both.
 - **Jev** (Typesafe System One, `api.typesafe.ai`, through `tb-jev` in cli-toolbox).
   - `tb-jev doctor` always makes a tiny *billed* evaluation, so Lookout must not poll it.
@@ -94,7 +96,8 @@ Limits show up only when an agent stalls. Claude's usage page and Codex's `/stat
     - **Codex** numbers are as of its last turn (`observed_at`), and stay correct between turns. A successful read shows a neutral grey "as of last turn · 17m", however long ago that turn was. Codex's age comes from `observed_at` only; falling back to the read time is only for legacy Claude data.
     - **Amber "old · …"** is only for failed or stale reads, numbers older than ones already shown, an unknown age (no usable time), or clock skew (a time more than 2 minutes in the future).
     - **High-water mark:** the newest numbers accepted so far stay shown, marked old, until Fleet returns something at least as new; an older reading never becomes current, however often it repeats.
-  - **A window whose reset has passed** shows "reset · refreshing", leaves the tightest pick and the launcher hint, and makes the tab ask for a new read (at most every 15 s). The launcher hint says how old the numbers are when they're old.
+  - **A window whose reset has passed** shows "reset · refreshing" in the details. In the strip it counts as 0% with no reset time until the new read, the shape Fleet already gives a passed Codex window, so a 5-hour window keeps the bar and a weekly one its brackets. It leaves the launcher hint, and makes the tab ask for a new read (at most every 15 s). The launcher hint says how old the numbers are when they're old.
+  - **Rounding:** each % used is rounded once, on reading, so a mark goes by the number shown: 79.6 shows as 80% with the warning triangle, 94.5 as 95% with the critical octagon. The launcher hint goes by the same number, so it shows from 94.5 (as 95%).
   - **Cadence and processes:** the 60 s cadence counts from each read's start. One Fleet read and one Jev probe run at a time, shared by every caller. On shutdown the server cancels them, kills their process groups, and waits for them to exit.
   - One server poller for every tab runs `fleet --local usage --json` every 60 s while a tab is connected, with the same runner, cleaned environment and timeouts as the rest. It pushes a `usage` event over the existing event stream, only when something changed, and the snapshot carries the latest numbers.
   - A read that fails keeps the last numbers, marked old, with the reason.
@@ -123,3 +126,4 @@ None.
 - 2026-10-17: UX: the strip sits in the app shell's dock row (SIDE-8), so its top line continues as the line above the composer.
 - 2026-10-17: Icons per [0008](../../decisions/0008-lucide-icons-only.md): the USAGE-1.2 level icons and the launcher hint are lucide icons (a warning triangle, a critical octagon) instead of ⚠ and ⛔; Jev's "ready" carries a check icon instead of ✓.
 - 2026-10-19: Done: every acceptance criterion is ticked.
+- 2026-10-19: Changed from Dario's testing: after the 5-hour window reset, the strip switched to the weekly window, the tightest one. USAGE-1.1 now shows the 5-hour window with its bar, % used and time to reset for Claude and Codex, and the weekly limit only as a % in brackets (`(weekly 42%)`), the tightest weekly window with per-model ones counted. A 5-hour window whose reset has passed shows 0% with no time to reset until the new read, the weekly limit still in brackets; only with no 5-hour window reported at all does the weekly one take the bar, as before. In the strip a passed window no longer shows "reset · refreshing" (the details still do). USAGE-1.2: each number gets its own mark beside it, so a weekly limit past 80% marks the brackets, not the bar; % used is rounded once, on reading, so the mark goes by the number shown; screen readers get the strip's lines as its button's description, as shown: marks, time to reset and age, "old · 12m ago" included (USAGE-2.2). With no 5-hour window reported, the weekly one's bar is labelled `weekly`. USAGE-3.1: the launcher hint's wording is unchanged, but it goes by the rounded number, so it now shows from 94.5 (as 95%). The refresh rules are unchanged. All stay ticked: their tests cover the new wording, the reset case, the 79/80 and 94/95 boundaries (79.6 and 94.5 included), the description with an old reading, and the labelled fallback. UX: the mock-up and the line's layout. Technical approach: how Fleet sorts Codex's windows into kinds, and rounding.

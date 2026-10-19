@@ -145,7 +145,8 @@ function readWindows(limits: unknown[]): { windows: UsageWindow[]; rejected: num
       kind: l.kind as WindowKind,
       label: label(l.label) ?? String(l.kind),
       model: label(l.model, 40),
-      percent: Math.max(0, Math.min(100, percent)),
+      // Rounded once, here, so a mark (USAGE-1.2) always goes by the number shown.
+      percent: Math.round(Math.max(0, Math.min(100, percent))),
       resetsAt: rfc3339(l.resets_at),
     });
   }
@@ -157,7 +158,7 @@ const NOT_UNDERSTOOD = "Fleet sent limits Lookout doesn't understand";
 function readExtra(x: unknown): ExtraUsage | null {
   if (!isObj(x) || typeof x.enabled !== 'boolean') return null;
   const currency = typeof x.currency === 'string' && /^[A-Z]{3}$/.test(x.currency) ? x.currency : null;
-  return { enabled: x.enabled, used: num(x.used) ?? 0, limit: num(x.limit), currency, percent: Math.max(0, Math.min(100, num(x.percent) ?? 0)) };
+  return { enabled: x.enabled, used: num(x.used) ?? 0, limit: num(x.limit), currency, percent: Math.round(Math.max(0, Math.min(100, num(x.percent) ?? 0))) };
 }
 
 function readCredits(c: unknown): Credits | null {
