@@ -104,7 +104,8 @@ export function closeTarget(row: Pick<SessionRow, 'id' | 'pid' | 'harness'>): st
   return `id:${row.id}`;
 }
 
-const isPidOnly = (row: Pick<SessionRow, 'id' | 'harness'>) => row.id.startsWith(`${row.harness}:`);
+/** A Session Lookout knows only by its pid (`codex:<pid>`): it has no session id yet. */
+export const isPidOnly = (row: Pick<SessionRow, 'id' | 'harness'>) => row.id.startsWith(`${row.harness}:`);
 
 /** `codex:<pid>` (or `claude:<pid>`), the id Lookout gives a Session without a session id. */
 function pidOnlyId(id: string): Pick<SessionRow, 'id' | 'harness' | 'pid'> | null {

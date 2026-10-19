@@ -1,13 +1,24 @@
-import type { ChatPage, EndTarget, SessionRow } from '@shared/types.ts';
-import { ChevronDown, CircleSlash, FolderGit2, GitBranch, Info, Power, SendHorizontal, TerminalSquare } from 'lucide-react';
-import { type ComponentPropsWithRef, type ComponentPropsWithoutRef, type KeyboardEvent, type ReactNode, type RefObject, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import type { AnswerRequest, ChatPage, EndTarget, SessionRow } from '@shared/types.ts';
+import { ChevronDown, CircleSlash, CircleStop, FolderGit2, GitBranch, Info, Power, SendHorizontal, TerminalSquare } from 'lucide-react';
+import { type ComponentPropsWithRef, type ComponentPropsWithoutRef, type KeyboardEvent, type ReactNode, type RefObject, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '@/components/ui/dialog';
 import { turnRunning } from '@/lib/activity';
+import {
+  type AnswerAttempt,
+  AnswerContext,
+  type Answering,
+  type ScreenState,
+  type StopRequest,
+  permissionPanel,
+  questionPanel,
+  stopButton,
+} from '@/lib/answers';
 import type { Chat as ChatState, Preview } from '@/lib/store';
 import { HARNESS_NAME, STATUS_LABEL, location } from '@/lib/sessions';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
+import { PromptCard } from './Answering';
 import { Chat } from './Chat';
 import { ChatActivity } from './ChatActivity';
 import { HarnessIcon } from './HarnessIcon';
@@ -46,6 +57,15 @@ export interface SessionViewProps {
   onSentAt(sessionId: string, update: (current: number | undefined) => number | undefined): void;
   /** VIEW-5.6: ends the confirmed process of the Session; rejects with a message for people. */
   onEnd(sessionId: string, target: EndTarget): Promise<void>;
+  /** VIEW-4.2: the prompt on the Session's terminal, as the server last read it. */
+  screen: ScreenState | undefined;
+  /** VIEW-4: the latest answer sent to this Session, and what came of it. */
+  attempt: AnswerAttempt | undefined;
+  /** VIEW-4.1–4.3: answers the prompt; App keeps the outcome (and opens the terminal on a refusal). */
+  onAnswer(row: SessionRow, req: AnswerRequest): void;
+  /** VIEW-4.4: the last Stop pressed for this Session. */
+  stopRequest: StopRequest | undefined;
+  onStop(row: SessionRow): void;
 }
 
 /** VIEW: the selected Session. Mounted per Session (`key`), so its local state is its own. */
@@ -68,8 +88,38 @@ export function SessionView({
   sentAt: sentAtBySession,
   onSentAt,
   onEnd,
+  screen,
+  attempt,
+  onAnswer,
+  stopRequest,
+  onStop,
 }: SessionViewProps) {
   const controls = row.controllable && !ended;
+
+  // VIEW-4: the permission prompt's buttons under the chat, and the question that can be answered in it.
+  const permission = permissionPanel(row, ended, screen, attempt);
+  const question = questionPanel(row, ended, chat?.entries ?? [], screen, attempt);
+  const questionId = question?.id ?? null;
+  const questionPhase = question?.phase ?? null;
+  const questionMessage = question?.message ?? null;
+  const showTerminal = () => onToggleDrawer(row, true);
+  // The epoch of the last read of the screen goes with every answer: the server refuses one read
+  // before another tab's answer, or before it started (0 before any read: the question's buttons
+  // wait, disabled, for the first one).
+  const epoch = screen?.epoch ?? 0;
+  const latest = useRef({ row, onAnswer, showTerminal, epoch });
+  useLayoutEffect(() => {
+    latest.current = { row, onAnswer, showTerminal, epoch };
+  });
+  // Stable while nothing it holds changes, so the chat's memoized rows don't re-render every second.
+  const answering = useMemo<Answering>(
+    () => ({
+      panel: questionId && questionPhase ? { id: questionId, phase: questionPhase, message: questionMessage } : null,
+      submit: (id, answers) => latest.current.onAnswer(latest.current.row, { kind: 'question', question: id, answers, epoch: latest.current.epoch }),
+      terminal: { open: drawerOpen, show: () => latest.current.showTerminal() },
+    }),
+    [questionId, questionPhase, questionMessage, drawerOpen],
+  );
 
   // VIEW-1.10: "Working…" shows the moment you send, before Status catches up. A send while a turn
   // runs is queued behind it and keeps the turn's time. A failed send puts back the time it
@@ -104,18 +154,32 @@ export function SessionView({
   // composer (or the ended / View only banner) and the status line, under the shell's dock line.
   return (
     <ShellView>
-      <Header row={row} ended={ended} now={now} onEnd={onEnd} />
+      <Header row={row} ended={ended} now={now} onEnd={onEnd} stop={stopButton(row, ended, stopRequest, now)} onStop={() => onStop(row)} />
       <ShellCell row="body" className="flex flex-col overflow-hidden">
-        <Chat
-          sessionId={row.id}
-          harness={row.harness}
-          chat={chat}
-          ended={ended}
-          onEarlier={onEarlier}
-          onPage={onPage}
-          onFollowing={onFollowing}
-          activity={<ChatActivity row={row} ended={ended} entries={chat?.entries} sentAt={sentAt} />}
-        />
+        <AnswerContext.Provider value={answering}>
+          <Chat
+            sessionId={row.id}
+            harness={row.harness}
+            chat={chat}
+            ended={ended}
+            onEarlier={onEarlier}
+            onPage={onPage}
+            onFollowing={onFollowing}
+            activity={
+              <>
+                {permission && (
+                  <PromptCard
+                    panel={permission}
+                    label={HARNESS_NAME[row.harness]}
+                    onChoose={(n) => permission.prompt && onAnswer(row, { kind: 'permission', prompt: permission.prompt.id, choice: n, epoch })}
+                    terminal={answering.terminal}
+                  />
+                )}
+                <ChatActivity row={row} ended={ended} entries={chat?.entries} sentAt={sentAt} />
+              </>
+            }
+          />
+        </AnswerContext.Provider>
         {controls && <Drawer open={drawerOpen} onToggle={() => onToggleDrawer(row, !drawerOpen)} preview={preview} />}
       </ShellCell>
       <ShellCell row="dock">
@@ -157,45 +221,126 @@ export function SessionView({
  * the status line (VIEW-5.5); what a Needs you Session waits for is in the chat's Needs you row
  * (VIEW-1.10), so the header row keeps one height for every Session.
  */
-function Header({ row, ended, now, onEnd }: { row: SessionRow; ended: boolean; now: number; onEnd: SessionViewProps['onEnd'] }) {
+function Header({
+  row,
+  ended,
+  now,
+  onEnd,
+  stop,
+  onStop,
+}: {
+  row: SessionRow;
+  ended: boolean;
+  now: number;
+  onEnd: SessionViewProps['onEnd'];
+  stop: ReturnType<typeof stopButton>;
+  onStop(): void;
+}) {
   const age = row.statusSince !== null ? formatAge(now - row.statusSince) : null;
   const title = useRef<HTMLHeadingElement>(null);
+  const stopErrorId = useId();
   return (
-    <PaneHeader aria-label="Session">
-      <div className="flex min-w-0 flex-1 items-center gap-2.5">
-        {!ended && <StatusMarker status={row.status} />}
-        <h1
-          ref={title}
-          tabIndex={-1}
-          className={cn('min-w-0 truncate text-[15px] font-semibold tracking-tight outline-none', ended && 'text-muted-foreground')}
-          title={row.title}
-        >
-          {row.title}
-        </h1>
-        <span className="flex shrink-0 items-center gap-1.5 text-[12.5px] text-muted-foreground" data-field="harness">
-          <HarnessIcon harness={row.harness} className="size-4" />
-          {HARNESS_NAME[row.harness]}
-        </span>
-        <span
-          className={cn(
-            'ml-auto shrink-0 rounded-full px-2 py-0.5 text-[12px] font-medium',
-            ended
-              ? 'bg-muted text-muted-foreground'
-              : row.status === 'needs-you'
-                ? 'bg-needs-you-soft text-needs-you-text'
-                : 'bg-muted text-foreground/80',
-          )}
-          data-field="status"
-        >
-          {ended ? 'Ended' : STATUS_LABEL[row.status]}
-          {!ended && age && <span className="font-normal opacity-70"> · {age}</span>}
-        </span>
-        {/* ITERM's "Open in iTerm2" and VIEW-4's Stop go here too. */}
+    // Positioned, so the bubble with Stop's whole error sizes to the pane and stays inside it.
+    <PaneHeader aria-label="Session" className="@container relative">
+      {/* One line, whatever is in it, and the buttons always whole: only they never shrink. Stop's
+          error gets only the room left over (at least 3rem) and is cut to fit; the title gives way
+          next, down to an ellipsis. A narrow header drops the Harness's name and the Status's age
+          (below 32rem), then the buttons' words (below 26rem; they keep them as their names and
+          tooltips), then the inline error (below 20rem; Stop's tooltip and description keep it).
+          Narrower still, what's left of the line before the buttons is cut off, never the buttons:
+          it's a box of its own (its 4 px of padding keep the error's focus ring). */}
+      <div className="flex min-w-0 flex-1 items-center gap-1.5 whitespace-nowrap" data-slot="header-row">
+        <div data-slot="header-info" className="flex min-w-0 flex-1 items-center gap-2.5 overflow-x-clip pr-1">
+          {!ended && <StatusMarker status={row.status} />}
+          <h1
+            ref={title}
+            tabIndex={-1}
+            className={cn('min-w-5 truncate text-[15px] font-semibold tracking-tight outline-none', ended && 'text-muted-foreground')}
+            title={row.title}
+          >
+            {row.title}
+          </h1>
+          <span className="flex shrink-0 items-center gap-1.5 text-[12.5px] text-muted-foreground" data-field="harness">
+            <HarnessIcon harness={row.harness} className="size-4" />
+            <span className="@max-[32rem]:sr-only">{HARNESS_NAME[row.harness]}</span>
+          </span>
+          <span
+            className={cn(
+              'ml-auto shrink-0 rounded-full px-2 py-0.5 text-[12px] font-medium',
+              ended
+                ? 'bg-muted text-muted-foreground'
+                : row.status === 'needs-you'
+                  ? 'bg-needs-you-soft text-needs-you-text'
+                  : 'bg-muted text-foreground/80',
+            )}
+            data-field="status"
+          >
+            {ended ? 'Ended' : STATUS_LABEL[row.status]}
+            {!ended && age && <span className="font-normal opacity-70 @max-[32rem]:hidden"> · {age}</span>}
+          </span>
+          {stop?.error && <StopError id={stopErrorId} message={stop.error} />}
+        </div>
+        {/* ITERM's "Open in iTerm2" goes here too. */}
         <div data-slot="header-actions" className="flex shrink-0 items-center gap-1.5 empty:hidden">
+          {stop && <Stop stopping={stop.stopping} error={stop.error} errorId={stopErrorId} onStop={onStop} />}
           <EndSession row={row} eligible={!ended && row.controllable && row.ownHost} onEnd={onEnd} fallbackFocus={title} />
         </div>
       </div>
     </PaneHeader>
+  );
+}
+
+/**
+ * VIEW-4.4: Stop, while the Session is Busy: one click, one Esc. Then "Stopping…", disabled until
+ * the Status leaves Busy or 10 s pass, since in Claude Code a second Esc opens its rewind menu.
+ * Why the last one failed is its tooltip and its description too, so it's there when the header
+ * is too narrow to show it beside the button; there, the button turns the error's colour instead.
+ */
+function Stop({ stopping, error, errorId, onStop }: { stopping: boolean; error: string | null; errorId: string; onStop(): void }) {
+  const label = stopping ? 'Stopping…' : 'Stop';
+  return (
+    <Button
+      variant="outline"
+      size="xs"
+      className={cn('h-7 shrink-0 gap-1.5 px-2 text-[12px]', error && '@max-[20rem]:text-destructive')}
+      title={error ? `${label}\n${error}` : label}
+      aria-describedby={error ? errorId : undefined}
+      disabled={stopping}
+      onClick={onStop}
+    >
+      <CircleStop className="size-3.5" />
+      <span className="@max-[26rem]:sr-only">{label}</span>
+    </Button>
+  );
+}
+
+/**
+ * VIEW-4.4: why Stop failed, beside it. It gets only the room the header has left over (flex basis
+ * 0, at least 3rem) and is cut to fit, so the header stays one line and the buttons stay whole; the
+ * whole text shows on hover or focus, in a bubble under the header that moves nothing and stays
+ * inside the pane. Below 20rem of header it isn't shown (it and its gap go): Stop's tooltip and
+ * description carry it, and a hidden alert says it to assistive tech.
+ */
+function StopError({ id, message }: { id: string; message: string }) {
+  return (
+    <>
+      <span role="alert" data-slot="stop-error-narrow" className="sr-only hidden @max-[20rem]:block">
+        {message}
+      </span>
+      <div role="alert" data-slot="stop-error" className="group flex min-w-12 flex-[1_1_0] justify-end @max-[20rem]:hidden">
+        <span id={id} tabIndex={0} className="min-w-0 truncate rounded-sm text-[12px] text-destructive outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          {message}
+        </span>
+        {/* Placed against the header (positioned): right-5 and the width cap (the pane less 1.25rem on each side) keep it inside the pane. */}
+        <span
+          aria-hidden
+          data-slot="stop-error-full"
+          className="pointer-events-none absolute top-full right-5 z-30 mt-1 hidden w-max max-w-[min(28rem,calc(100%-2.5rem))] rounded-md border border-border bg-popover px-2.5 py-1.5 text-[12px] whitespace-normal text-popover-foreground shadow-md group-focus-within:block group-hover:block"
+        >
+          {message}
+        </span>
+      </div>
+    </>
   );
 }
 
@@ -252,7 +397,8 @@ function EndSession({
           ref={trigger}
           variant="outline"
           size="xs"
-          className="h-7 gap-1.5 px-2 text-[12px]"
+          className="h-7 shrink-0 gap-1.5 px-2 text-[12px]"
+          title="End Session"
           onClick={() => {
             setError(null);
             endedHere.current = false;
@@ -260,7 +406,7 @@ function EndSession({
           }}
         >
           <Power className="size-3.5" />
-          End Session
+          <span className="@max-[26rem]:sr-only">End Session</span>
         </Button>
       )}
       <Dialog open={open} onOpenChange={(next) => !ending && !next && close()}>

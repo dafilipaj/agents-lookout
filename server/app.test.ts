@@ -4,7 +4,8 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { EndTarget, ServerEvent } from '../shared/types.ts';
+import type { AnswerRequest, EndTarget, ServerEvent } from '../shared/types.ts';
+import { AnswerError } from './answerer.ts';
 import { type LookoutApp, createApp } from './app.ts';
 import { EndError } from './closer.ts';
 import { HistoryError } from './history.ts';
@@ -31,6 +32,8 @@ let pages: { sessionId: string; cursor: unknown }[] = [];
 let finds: unknown[] = [];
 let resumes: unknown[] = [];
 let ended: { sessionId: string; target: EndTarget }[] = [];
+let answers: { sessionId: string; req: AnswerRequest }[] = [];
+let stops: string[] = [];
 
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'lookout-app-'));
@@ -42,6 +45,8 @@ beforeEach(async () => {
   finds = [];
   resumes = [];
   ended = [];
+  answers = [];
+  stops = [];
   const settings = new SettingsStore(join(dir, 'settings.json'));
   await settings.load();
   app = createApp({
@@ -78,6 +83,16 @@ beforeEach(async () => {
         if (sessionId === 'busy') throw new EndError(409, 'Fleet is typing into it; try again.');
         ended.push({ sessionId, target });
         return { how: 'exit' };
+      },
+      answer: async (sessionId: string, req: AnswerRequest) => {
+        if (sessionId === 'moved') throw new AnswerError(409, 'The terminal no longer shows this prompt as it was, so nothing was typed. Answer it in the terminal.');
+        if (sessionId === 'stale') throw new AnswerError(409, 'This was already answered from another tab, so nothing was typed.', 'stale');
+        answers.push({ sessionId, req });
+        return { epoch: 7 };
+      },
+      stop: async (sessionId: string) => {
+        if (sessionId === 'idle') throw new AnswerError(409, 'This Session isn’t working on anything now, so Esc wasn’t pressed.');
+        stops.push(sessionId);
       },
     },
     history: {
@@ -350,6 +365,64 @@ describe('VIEW-5.6 route', () => {
     expect(JSON.parse((await end('{"pid":61001,"procStart":"--json"}')).body)).toEqual({ error: 'Invalid process start time.' });
     expect((await end(JSON.stringify({ pid: 1, procStart: 'x'.repeat(2000) }))).status).toBe(413);
     expect(ended).toEqual([]);
+  });
+});
+
+describe('VIEW-4 routes', () => {
+  const json = { 'content-type': 'application/json' };
+  const permission = JSON.stringify({ kind: 'permission', prompt: 'p2.0badc0de', choice: 2, epoch: 5 });
+
+  it('VIEW-4.3: answering types into a Session: it needs our Origin and the token, and the answer goes to the Session named', async () => {
+    const answer = (id: string, headers: Record<string, string>, body = permission) =>
+      call('POST', `/api/sessions/${encodeURIComponent(id)}/answer`, { ...json, ...headers }, body);
+    expect((await answer('abc', { 'x-lookout-token': TOKEN })).status).toBe(403); // no Origin
+    expect((await answer('abc', { origin })).status).toBe(403); // no token
+    expect((await answer('abc', { origin: 'https://evil.example', 'x-lookout-token': TOKEN })).status).toBe(403);
+    expect((await answer('abc', { origin, 'x-lookout-token': TOKEN, 'sec-fetch-site': 'cross-site' })).status).toBe(403);
+    expect((await call('GET', '/api/sessions/abc/answer', { origin })).status).toBe(404);
+    expect(answers).toEqual([]);
+
+    const ok = await answer('abc', { origin, 'x-lookout-token': TOKEN });
+    expect(ok.status).toBe(200);
+    expect(JSON.parse(ok.body)).toEqual({ epoch: 7 });
+    expect(answers).toEqual([{ sessionId: 'abc', req: { kind: 'permission', prompt: 'p2.0badc0de', choice: 2, epoch: 5 } }]);
+
+    // Fleet's refusal reaches the tab with its status and plain words.
+    const moved = await answer('moved', { origin, 'x-lookout-token': TOKEN });
+    expect(moved.status).toBe(409);
+    expect(JSON.parse(moved.body)).toEqual({ error: 'The terminal no longer shows this prompt as it was, so nothing was typed. Answer it in the terminal.' });
+    // Refused because another tab answered first: the tab learns its read was stale.
+    const stale = await answer('stale', { origin, 'x-lookout-token': TOKEN });
+    expect(stale.status).toBe(409);
+    expect(JSON.parse(stale.body)).toEqual({ error: 'This was already answered from another tab, so nothing was typed.', kind: 'stale' });
+    expect((await call('POST', '/api/sessions/%E0%A4%A/answer', { ...json, origin, 'x-lookout-token': TOKEN }, permission)).status).toBe(400);
+  });
+
+  it('VIEW-4.3: a malformed answer is refused before anything runs', async () => {
+    const headers = { ...json, origin, 'x-lookout-token': TOKEN };
+    const answer = (body: string, h: Record<string, string> = headers) => call('POST', '/api/sessions/abc/answer', h, body);
+    expect((await answer(permission, { origin, 'x-lookout-token': TOKEN })).status).toBe(415);
+    expect((await answer('not json')).status).toBe(400);
+    expect(JSON.parse((await answer('{"kind":"permission","prompt":"--json","choice":1}')).body)).toEqual({ error: 'Invalid answer.' });
+    expect(JSON.parse((await answer('{"kind":"question","question":"toolu_1","answers":[{"options":[],"text":"a\\u001b"}],"epoch":5}')).body)).toEqual({
+      error: 'The answer has characters that can’t be typed.',
+    });
+    expect((await answer(JSON.stringify({ kind: 'question', question: 'toolu_1', answers: [{ options: [], text: 'x'.repeat(200_000) }], epoch: 5 }))).status).toBe(413);
+    expect(answers).toEqual([]);
+  });
+
+  it('VIEW-4.4: Stop is a mutation too: Origin and token; a refusal comes back with its words', async () => {
+    const stop = (id: string, headers: Record<string, string>) => call('POST', `/api/sessions/${encodeURIComponent(id)}/stop`, headers);
+    expect((await stop('abc', { 'x-lookout-token': TOKEN })).status).toBe(403);
+    expect((await stop('abc', { origin })).status).toBe(403);
+    expect((await call('GET', '/api/sessions/abc/stop', { origin })).status).toBe(404);
+    expect(stops).toEqual([]);
+    const ok = await stop('abc', { origin, 'x-lookout-token': TOKEN });
+    expect(ok.status).toBe(200);
+    expect(stops).toEqual(['abc']);
+    const idle = await stop('idle', { origin, 'x-lookout-token': TOKEN });
+    expect(idle.status).toBe(409);
+    expect(JSON.parse(idle.body)).toEqual({ error: 'This Session isn’t working on anything now, so Esc wasn’t pressed.' });
   });
 });
 

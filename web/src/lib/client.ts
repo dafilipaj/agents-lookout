@@ -1,5 +1,5 @@
 import type { Settings } from '@shared/settings.ts';
-import type { ChatPage, EndResult, EndTarget, Harness, HarnessOption, HistoryDetail, HistoryPage, LaunchRequest, LaunchView, ResumeResult, ServerEvent } from '@shared/types.ts';
+import type { AnswerRequest, AnswerResult, ChatPage, EndResult, EndTarget, Harness, HarnessOption, HistoryDetail, HistoryPage, LaunchRequest, LaunchView, ResumeResult, ServerEvent } from '@shared/types.ts';
 
 export interface ClientListener {
   onEvent(event: ServerEvent): void;
@@ -22,6 +22,10 @@ export interface LookoutClient {
   sendMessage(sessionId: string, text: string): Promise<void>;
   /** VIEW-5.6: ends the Session through Fleet (its Harness exits, its Session host closes). */
   endSession(sessionId: string, target: EndTarget): Promise<EndResult>;
+  /** VIEW-4.1–4.3: answers the prompt the Session waits on, only while its terminal still shows it untouched. */
+  answer(sessionId: string, req: AnswerRequest): Promise<AnswerResult>;
+  /** VIEW-4.4: interrupts a Busy Session, as Esc does in its terminal. */
+  stopSession(sessionId: string): Promise<void>;
   /** USAGE-2.1: the details opened; have the server check Jev again. */
   refreshJev(): Promise<void>;
   /** USAGE-2.2: a window's reset passed; have the server read the limits again. */
@@ -48,10 +52,19 @@ export class SaveError extends Error {
   readonly field: string | null;
   /** The HTTP status, when the server answered. */
   readonly status: number | null;
-  constructor(message: string, field: string | null = null, status: number | null = null) {
+  /** The server's kind of refusal, when it gives one (VIEW-4's `stale`). */
+  readonly kind: string | null;
+  /**
+   * No answer came back from Lookout's server: the connection failed, or something in between (a
+   * dev proxy while the server restarts) answered instead. The request may still have run.
+   */
+  readonly lost: boolean;
+  constructor(message: string, field: string | null = null, status: number | null = null, extra: { kind?: string | null; lost?: boolean } = {}) {
     super(message);
     this.field = field;
     this.status = status;
+    this.kind = extra.kind ?? null;
+    this.lost = extra.lost ?? false;
   }
 }
 
@@ -102,10 +115,14 @@ export function createHttpClient(): LookoutClient {
     try {
       res = await request();
     } catch (err) {
-      throw err instanceof SaveError ? err : new SaveError("Couldn't reach the Lookout server.");
+      throw err instanceof SaveError ? err : new SaveError("Couldn't reach the Lookout server.", null, null, { lost: true });
     }
-    const body = (await res.json().catch(() => ({}))) as T & { error?: string; field?: string | null };
-    if (!res.ok) throw new SaveError(body.error ?? `${what} failed (${res.status}).`, body.field ?? null, res.status);
+    const body = (await res.json().catch(() => ({}))) as T & { error?: string; field?: string | null; kind?: string };
+    if (!res.ok) {
+      // Lookout's server always says why; a failure without a reason came from something in between.
+      const lost = typeof body.error !== 'string' && res.status >= 500;
+      throw new SaveError(body.error ?? `${what} failed (${res.status}).`, body.field ?? null, res.status, { kind: body.kind ?? null, lost });
+    }
     return body;
   };
 
@@ -212,6 +229,10 @@ export function createHttpClient(): LookoutClient {
       call<ResumeResult>(() => send('POST', '/api/history/resume', { sessionId, harness, launchId }), 'Resuming'),
     endSession: (sessionId, target) =>
       call<EndResult>(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/end`, target), 'Ending the Session'),
+    answer: (sessionId, req) => call<AnswerResult>(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/answer`, req), 'Answering'),
+    stopSession: async (sessionId) => {
+      await call(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/stop`), 'Stopping');
+    },
     sendMessage: async (sessionId, text) => {
       await call(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/send`, { text }), 'Sending');
     },

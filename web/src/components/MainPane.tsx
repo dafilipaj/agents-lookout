@@ -1,9 +1,10 @@
 import type { SessionRow } from '@shared/types.ts';
+import { type AnswerAttempt, type ScreenState, type StopRequest, processKey } from '@/lib/answers';
 import type { Preview } from '@/lib/store';
 import { PlainView } from './Shell';
 import { type SessionViewProps, SessionView } from './SessionView';
 
-interface Props extends Omit<SessionViewProps, 'row' | 'ended' | 'now' | 'preview' | 'drawerOpen'> {
+interface Props extends Omit<SessionViewProps, 'row' | 'ended' | 'now' | 'preview' | 'drawerOpen' | 'screen' | 'attempt' | 'stopRequest'> {
   drawerOpen(row: SessionRow): boolean;
   /** The selected Session's id, or null when nothing is selected. */
   selectedId: string | null;
@@ -20,6 +21,11 @@ interface Props extends Omit<SessionViewProps, 'row' | 'ended' | 'now' | 'previe
   preview: Preview | null;
   /** Old id -> new id of the same process (a Codex Session that got its session id). */
   aliases: ReadonlyMap<string, string>;
+  /** VIEW-4.2: the prompt on each viewed Session's terminal. */
+  prompts: ReadonlyMap<string, ScreenState>;
+  /** VIEW-4: the latest answer and the last Stop per Session, by its process (`processKey`). */
+  attempts: ReadonlyMap<string, AnswerAttempt>;
+  stops: ReadonlyMap<string, StopRequest>;
 }
 
 /**
@@ -32,7 +38,7 @@ function viewKey(row: SessionRow, aliases: ReadonlyMap<string, string>): string 
 }
 
 /** The main pane: the selected Session (VIEW), or the hint when nothing is selected (VIEW-5.4). */
-export function MainPane({ selectedId, live, lastKnown, list, now, preview, drawerOpen, aliases, ...view }: Props) {
+export function MainPane({ selectedId, live, lastKnown, list, now, preview, drawerOpen, aliases, prompts, attempts, stops, ...view }: Props) {
   if (!selectedId) return <Empty />;
   if (!live && list === 'loading') {
     return (
@@ -74,6 +80,9 @@ export function MainPane({ selectedId, live, lastKnown, list, now, preview, draw
       now={now}
       preview={preview}
       drawerOpen={drawerOpen(row)}
+      screen={prompts.get(row.id)}
+      attempt={attempts.get(processKey(row))}
+      stopRequest={stops.get(processKey(row))}
       {...view}
     />
   );

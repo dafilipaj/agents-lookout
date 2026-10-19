@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChatEntry, ChatEvent, ServerEvent, SessionRow } from '../shared/types.ts';
+import { AnswerLedger } from './answerer.ts';
 import { run } from './exec.ts';
 import { type FleetRow, fetchFleetList } from './fleet.ts';
 import { fetchMessages, isCursor } from './messages.ts';
@@ -46,6 +47,7 @@ function start() {
     lookup: (id) => rows.get(id) ?? null,
     freshList: () => fetchFleetList((f, a, o) => run(f, a, { ...o, env }), FAKE),
     sendTo: (_c, e: ServerEvent) => void (e.type === 'chat' && events.push(e)),
+    ledger: new AnswerLedger(),
     env,
     intervalMs: 50,
   });

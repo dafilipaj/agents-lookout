@@ -18,6 +18,9 @@ export interface MonitorOptions {
   now?: () => number;
 }
 
+/** How often the monitor polls `fleet list`: a status change can reach Lookout up to this late. */
+export const MONITOR_INTERVAL_MS = 2000;
+
 /**
  * Polls `fleet list --json` every 2 s while anyone is watching, keeps the current rows, and
  * reports changes as diffs. On a failed poll the last rows stay (SIDE-6.2).
@@ -38,7 +41,7 @@ export class SessionMonitor {
 
   constructor(opts: MonitorOptions) {
     this.opts = opts;
-    this.intervalMs = opts.intervalMs ?? 2000;
+    this.intervalMs = opts.intervalMs ?? MONITOR_INTERVAL_MS;
     this.now = opts.now ?? Date.now;
   }
 

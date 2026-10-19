@@ -2,6 +2,7 @@ import { type Settings, defaultSettings } from '@shared/settings.ts';
 import type { ChatPage, FleetHealth, LaunchView, ServerEvent, SessionRow } from '@shared/types.ts';
 import type { UsageSnapshot } from '@shared/usage.ts';
 import { type Dispatch, useEffect, useReducer } from 'react';
+import type { ScreenState } from './answers.ts';
 import { CACHED_CHATS, type Chat, applyChatEvent, applyPage, emptyChat, park, setFollowing } from './chat.ts';
 import type { LookoutClient } from './client.ts';
 
@@ -39,6 +40,11 @@ export interface LookoutState {
   clientId: string | null;
   /** VIEW-2: the latest terminal preview per Session this tab previews. */
   previews: ReadonlyMap<string, Preview>;
+  /**
+   * VIEW-4.2: the prompt on the viewed Session's terminal, as the server last read it. Cleared when
+   * the tab views another Session: the server sends it again on viewing, so it's never stale.
+   */
+  prompts: ReadonlyMap<string, ScreenState>;
   /** USAGE: the latest numbers, or null before the first read. */
   usage: UsageSnapshot | null;
   /**
@@ -92,6 +98,7 @@ export const initialState: LookoutState = {
   orphans: [],
   clientId: null,
   previews: new Map(),
+  prompts: new Map(),
   usage: null,
   chats: new Map(),
   chatOrder: [],
@@ -154,6 +161,7 @@ export function reducer(state: LookoutState, action: Action): LookoutState {
         orphans,
         clientId: e.clientId,
         previews: new Map(), // a new stream: previews come again once it says what it views
+        prompts: new Map(),
         usage: e.usage ?? state.usage,
       };
     }
@@ -187,6 +195,8 @@ export function reducer(state: LookoutState, action: Action): LookoutState {
     }
     case 'preview':
       return { ...state, previews: new Map(state.previews).set(e.sessionId, { text: e.text, error: e.error }) };
+    case 'prompt':
+      return { ...state, prompts: new Map(state.prompts).set(e.sessionId, { prompt: e.prompt, epoch: e.epoch, uncertain: e.uncertain ?? null }) };
     case 'launches': {
       let started = state.started;
       if (e.started.length) {
@@ -209,7 +219,8 @@ function viewChat(state: LookoutState, sessionId: string | null): LookoutState {
     const chat = state.chats.get(id);
     if (chat) chats.set(id, id === sessionId ? chat : park(chat));
   }
-  return { ...state, chats, chatOrder: keep, chatViewing: sessionId };
+  // VIEW-4.2: a prompt read for a Session left behind may be stale by the time it's viewed again.
+  return { ...state, chats, chatOrder: keep, chatViewing: sessionId, prompts: new Map() };
 }
 
 /**

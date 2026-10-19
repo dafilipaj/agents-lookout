@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChatEvent, ServerEvent, SessionRow } from '../shared/types.ts';
+import { AnswerLedger } from './answerer.ts';
 import type { RunOptions } from './exec.ts';
 import type { FleetListResult } from './fleet.ts';
 import { ViewError, Viewer } from './viewer.ts';
@@ -172,6 +173,7 @@ function setup(opts: { fresh?: () => Promise<FleetListResult> } = {}) {
     lookup: (id) => rows.get(id) ?? null,
     freshList: opts.fresh ?? (async () => ({ kind: 'ok', rows: [] })),
     sendTo: (clientId, event) => sent.push({ clientId, event }),
+    ledger: new AnswerLedger(),
     env: { PATH: '/usr/bin' },
   });
   const chat = (clientId?: string) =>

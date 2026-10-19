@@ -54,7 +54,7 @@ beforeAll(async () => {
       },
       dismiss: () => false,
     },
-    sessions: { end: async () => ({ how: 'exit' as const }) },
+    sessions: { end: async () => ({ how: 'exit' as const }), answer: async () => ({ epoch: 1 }), stop: async () => {} },
     history: {
       find: async () => ({ state: 'ok', items: [], page: 1, hasMore: false }),
       detail: async () => {

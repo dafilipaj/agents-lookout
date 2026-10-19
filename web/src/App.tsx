@@ -1,5 +1,5 @@
 import type { LaunchHarness } from '@shared/settings.ts';
-import type { ChatPage, EndTarget, HistoryItem, LaunchRequest, LaunchView, ResumeResult, SessionRow, Status } from '@shared/types.ts';
+import type { AnswerRequest, ChatPage, EndTarget, HistoryItem, LaunchRequest, LaunchView, ResumeResult, SessionRow, Status } from '@shared/types.ts';
 import { History as HistoryIcon } from 'lucide-react';
 import { hasReset } from '@shared/usage.ts';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -12,8 +12,9 @@ import { SHELL_COLUMN, SHELL_GRID, ShellCell } from '@/components/Shell';
 import { Sidebar } from '@/components/Sidebar';
 import { StartingView } from '@/components/StartingView';
 import { Button } from '@/components/ui/button';
-import type { LookoutClient } from '@/lib/client';
+import { type LookoutClient, SaveError } from '@/lib/client';
 import { tidySentAt } from '@/lib/activity';
+import { type AnswerAttempt, LOST_ANSWER, LOST_STOP, type StopRequest, processKey, promptKey, questionKey } from '@/lib/answers';
 import { type HistoryLayout, loadLayout, saveLayout } from '@/lib/history';
 import { useAnyModalOpen } from '@/lib/modal';
 import { type HarnessState, type LaunchDraft, initialDraft } from '@/lib/launch';
@@ -70,6 +71,12 @@ export function App({ client }: { client: LookoutClient }) {
   const [overrides, setOverrides] = useState<ReadonlyMap<string, DrawerOverride>>(new Map());
   // VIEW-1.10: when you last sent to each Session from the composer.
   const [sentAt, setSentAt] = useState<ReadonlyMap<string, number>>(new Map());
+  // VIEW-4: the latest answer and the last Stop per Session, by its process, so they outlive
+  // switching away and a Codex Session getting its session id.
+  const [attempts, setAttempts] = useState<ReadonlyMap<string, AnswerAttempt>>(new Map());
+  const [stops, setStops] = useState<ReadonlyMap<string, StopRequest>>(new Map());
+  const answersInFlight = useRef(new Set<string>());
+  const stopsInFlight = useRef(new Set<string>());
 
   // A Codex Session's id changes once it gets a session id: keep it selected, and move its
   // view state to the new id.
@@ -329,6 +336,64 @@ export function App({ client }: { client: LookoutClient }) {
     [client, drafts],
   );
 
+  // VIEW-4.1–4.3: one answer per Session at a time. A refusal replaces the buttons with why, and
+  // opens the terminal preview to answer there; nothing is ever retried on its own. Another tab's
+  // answer first (`stale`) holds only until a newer read; a question's text the server can't take
+  // stays in the form to fix; a lost connection may have answered.
+  const answerPrompt = useCallback(
+    async (row: SessionRow, req: AnswerRequest) => {
+      const key = processKey(row);
+      if (answersInFlight.current.has(key)) return;
+      answersInFlight.current.add(key);
+      const base = { key: req.kind === 'permission' ? promptKey(req.prompt) : questionKey(req.question), since: row.statusSince, read: req.epoch };
+      const set = (a: AnswerAttempt) => setAttempts((m) => new Map(m).set(key, a));
+      set({ ...base, phase: 'sending', message: null, epoch: null });
+      try {
+        const { epoch } = await client.answer(row.id, req);
+        set({ ...base, phase: 'sent', message: null, epoch });
+      } catch (err) {
+        const e = err instanceof SaveError ? err : null;
+        if (e && !e.lost && req.kind === 'question' && (e.status === 400 || e.status === 413)) {
+          set({ ...base, phase: 'invalid', message: e.message, epoch: null });
+          return;
+        }
+        const phase = e?.kind === 'stale' ? 'stale' : 'refused';
+        const message = !e ? 'Couldn’t answer. Answer it in the terminal.' : e.lost ? LOST_ANSWER : e.message;
+        set({ ...base, phase, message, epoch: null });
+        toggleDrawer(row, true);
+      } finally {
+        answersInFlight.current.delete(key);
+      }
+    },
+    [client, toggleDrawer],
+  );
+
+  // VIEW-4.4: one Esc per click; the button stays "Stopping…" until the Status leaves Busy, or 10 s
+  // after the Esc landed (StopRequest, `stopButton`).
+  const stopSession = useCallback(
+    async (row: SessionRow) => {
+      const key = processKey(row);
+      if (stopsInFlight.current.has(key)) return;
+      stopsInFlight.current.add(key);
+      const since = row.statusSince;
+      const at = Date.now();
+      setStops((m) => new Map(m).set(key, { at, since, pending: true, error: null }));
+      const settle = (next: StopRequest) => setStops((m) => (m.get(key)?.at === at ? new Map(m).set(key, next) : m));
+      try {
+        await client.stopSession(row.id);
+        settle({ at: Date.now(), since, pending: false, error: null });
+      } catch (err) {
+        // A lost connection may have pressed Esc: say so, and show the terminal.
+        const lost = err instanceof SaveError && err.lost;
+        settle({ at, since, pending: false, error: lost ? LOST_STOP : err instanceof Error ? err.message : 'Couldn’t stop it.' });
+        if (lost) toggleDrawer(row, true);
+      } finally {
+        stopsInFlight.current.delete(key);
+      }
+    },
+    [client, toggleDrawer],
+  );
+
   // VIEW-5.6: Fleet ends it; the Session list then drops it, so the view shows it ended (VIEW-5.7).
   // `target` is the process the user confirmed, so a replacement is never the one closed.
   const endSession = useCallback(
@@ -455,6 +520,11 @@ export function App({ client }: { client: LookoutClient }) {
             sentAt={sentAt}
             onSentAt={updateSentAt}
             onEnd={endSession}
+            prompts={state.prompts}
+            attempts={attempts}
+            onAnswer={(row, req) => void answerPrompt(row, req)}
+            stops={stops}
+            onStop={(row) => void stopSession(row)}
           />
         )}
       </main>

@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { type IncomingMessage, type Server, type ServerResponse, createServer } from 'node:http';
 import { SettingsError } from '../shared/settings.ts';
-import type { ChatPage, EndResult, EndTarget, Harness, HarnessOption, HistoryDetail, HistoryPage, LaunchView, ResumeResult, ServerEvent } from '../shared/types.ts';
+import type { AnswerRequest, AnswerResult, ChatPage, EndResult, EndTarget, Harness, HarnessOption, HistoryDetail, HistoryPage, LaunchView, ResumeResult, ServerEvent } from '../shared/types.ts';
 import type { UsageSnapshot } from '../shared/usage.ts';
+import { AnswerError, parseAnswerRequest } from './answerer.ts';
 import { EndError, parseEndTarget } from './closer.ts';
 import { type FindQuery, HistoryError, parseFindQuery } from './history.ts';
 import { LaunchError } from './launcher.ts';
@@ -35,9 +36,13 @@ export interface AppOptions {
     send(sessionId: string, input: unknown): Promise<void>;
     earlier(sessionId: string, cursor: unknown): Promise<ChatPage>;
   };
-  /** VIEW-5.6: ends a Session through `fleet close`. */
+  /** VIEW-5.6: ends a Session through `fleet close`; VIEW-4: answers its prompt, or stops it. */
   sessions: {
     end(sessionId: string, target: EndTarget): Promise<EndResult>;
+    /** VIEW-4.1–4.3: `fleet answer`, only while the terminal still shows that prompt untouched. */
+    answer(sessionId: string, req: AnswerRequest): Promise<AnswerResult>;
+    /** VIEW-4.4: Esc, through `fleet keys`, only while the Session is Busy. */
+    stop(sessionId: string): Promise<void>;
   };
   /** HIST: past Sessions through tb-session, and resuming one. */
   history: {
@@ -65,6 +70,8 @@ const MAX_LAUNCH_BODY = 1024 * 1024;
 const MAX_SEND_BODY = MAX_MESSAGE * 8;
 /** VIEW-5.6: `{ pid, procStart }`. */
 const MAX_END_BODY = 1024;
+/** VIEW-4.1: up to 10 answers of 2,000 characters of text each, JSON-escaped, plus their options. */
+const MAX_ANSWER_BODY = 160 * 1024;
 
 const SECURITY_HEADERS = {
   'x-content-type-options': 'nosniff',
@@ -228,6 +235,30 @@ export function createApp(opts: AppOptions): LookoutApp {
         return json(res, 200, await opts.sessions.end(sessionId, parseEndTarget(body)));
       } catch (err) {
         if (err instanceof EndError) return json(res, err.status, { error: err.message });
+        throw err;
+      }
+    }
+    // VIEW-4: answering a prompt and stopping a Session type into it: mutations, so the token and
+    // Origin, as sending does (the guard checks every non-GET).
+    const answerMatch = /^\/api\/sessions\/([^/]{1,200})\/(answer|stop)$/.exec(url.pathname);
+    if (answerMatch && req.method === 'POST') {
+      let sessionId: string;
+      try {
+        sessionId = decodeURIComponent(answerMatch[1]!);
+      } catch {
+        return json(res, 400, { error: 'invalid session id' });
+      }
+      try {
+        if (answerMatch[2] === 'stop') {
+          await opts.sessions.stop(sessionId);
+          return json(res, 200, { ok: true });
+        }
+        const body = await readJson(req, res, MAX_ANSWER_BODY, { error: 'The answer is too long.', field: 'answers' });
+        if (body === NO_BODY) return;
+        return json(res, 200, await opts.sessions.answer(sessionId, parseAnswerRequest(body)));
+      } catch (err) {
+        // `stale`: the tab's read was older than another tab's answer; it holds until a newer read.
+        if (err instanceof AnswerError) return json(res, err.status, err.kind ? { error: err.message, kind: err.kind } : { error: err.message });
         throw err;
       }
     }

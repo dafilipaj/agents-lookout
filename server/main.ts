@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_PORT } from '../shared/defaults.ts';
+import { AnswerLedger } from './answerer.ts';
 import { createApp } from './app.ts';
 import { endSession } from './closer.ts';
 import { run } from './exec.ts';
@@ -50,6 +51,9 @@ const viewer = new Viewer({
   lookup: (id) => monitor.get(id),
   freshList: () => fetchFleetList(run, resolveFleetBin(env)),
   sendTo: (clientId, e) => app.sendTo(clientId, e),
+  // VIEW-4: what every tab answered or stopped, per Session. Answers and Stop go through the Viewer
+  // (below), so they and the prompt reads share it.
+  ledger: new AnswerLedger(),
 });
 
 const history = new History({ runner: run, bin: () => resolveTbSessionBin(env) });
@@ -74,6 +78,8 @@ const app = createApp({
   viewer,
   usage,
   sessions: {
+    answer: (id, req) => viewer.answer(id, req),
+    stop: (id) => viewer.stopSession(id),
     end: (id, target) =>
       endSession(
         {

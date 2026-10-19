@@ -1,13 +1,15 @@
 import type { ChatEntry, ChatPage, Harness } from '@shared/types.ts';
-import { ArrowDown, ChevronRight, Circle, CircleDot, CircleHelp, FileX, MessagesSquare, Square, SquareCheck, Wrench } from 'lucide-react';
-import { type PointerEvent as ReactPointerEvent, type ReactNode, memo, useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { ArrowDown, ChevronRight, CircleHelp, FileX, MessagesSquare, Wrench } from 'lucide-react';
+import { type PointerEvent as ReactPointerEvent, type ReactNode, memo, useCallback, useContext, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { Button } from '@/components/ui/button';
+import { AnswerContext } from '@/lib/answers';
 import { type ChatItem, type QuestionEntry, type ToolCall, answerFor, chatItems, clockTime, toolsLabel } from '@/lib/chat';
 import { JUMP_MARGIN_PX, chatMarks, firstLine, stepMark } from '@/lib/marks';
 import { HARNESS_NAME } from '@/lib/sessions';
 import type { Chat as ChatState } from '@/lib/store';
 import { cn } from '@/lib/utils';
+import { AnswerInTerminal, ChoiceIcon, QuestionForm } from './Answering';
 import { ChatRail, MarkShape } from './ChatRail';
 import { Markdown } from './Markdown';
 
@@ -509,8 +511,14 @@ function ToolCalls({ calls }: { calls: ToolCall[] }) {
   );
 }
 
-/** VIEW-1.9: a question with its options; once answered, the answer. Answering is VIEW-4. */
+/**
+ * VIEW-1.9: a question with its options; once answered, the answer. VIEW-4.1: while it's the one
+ * the Session waits on, its options are buttons (the Session view says so through AnswerContext).
+ */
 function Question({ entry, label }: { entry: QuestionEntry; label: string }) {
+  const answering = useContext(AnswerContext);
+  const live = entry.status === 'pending' && answering?.panel?.id === entry.id ? answering : null;
+  const panel = live?.panel ?? null;
   // Declined, or abandoned (never answered and the conversation moved on): not answered either way.
   const declined = entry.status === 'declined' || entry.status === 'abandoned';
   return (
@@ -532,51 +540,54 @@ function Question({ entry, label }: { entry: QuestionEntry; label: string }) {
           )}
         </span>
       </p>
-      <div className="space-y-3">
-        {entry.questions.map((q, qi) => {
-          const { picked, other } = answerFor(q, entry.status === 'answered' ? entry.answer : null, qi);
-          return (
-            <section key={qi} aria-label={q.header || q.question}>
-              {q.header && <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">{q.header}</p>}
-              <p className="text-[13.5px] font-medium">{q.question}</p>
-              {q.multiSelect && <p className="text-[11.5px] text-muted-foreground">Several can be picked</p>}
-              <ul className="mt-1.5 space-y-1">
-                {q.options.map((o, oi) => {
-                  const chosen = picked.has(oi);
-                  return (
-                    <li
-                      key={oi}
-                      data-picked={chosen || undefined}
-                      className={cn(
-                        'flex gap-2 rounded-md border px-2.5 py-1.5 text-[13px]',
-                        chosen ? 'border-foreground/40 bg-accent font-medium' : 'border-border',
-                        entry.status !== 'pending' && !chosen && 'opacity-60',
-                      )}
-                    >
-                      <span aria-hidden className="flex h-[1lh] w-3.5 shrink-0 items-center justify-center text-muted-foreground" data-field="choice">
-                        <ChoiceIcon multiSelect={q.multiSelect} chosen={chosen} />
-                      </span>
-                      <span className="min-w-0">
-                        {o.label}
-                        {o.description && <span className="block text-[12px] font-normal text-muted-foreground">{o.description}</span>}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-              {other && (
-                <p className="mt-1.5 text-[13px]">
-                  <span className="text-muted-foreground">Answered: </span>
-                  {other}
-                </p>
-              )}
-            </section>
-          );
-        })}
-      </div>
-      {entry.status === 'pending' && (
-        <p className="mt-2.5 text-[12px] text-muted-foreground">Answer it in the terminal; answering from here comes later.</p>
+      {live && panel && panel.phase !== 'blocked' ? (
+        <QuestionForm entry={entry} panel={panel} onSubmit={(answers) => live.submit(entry.id, answers)} />
+      ) : (
+        <div className="space-y-3">
+          {entry.questions.map((q, qi) => {
+            const { picked, other } = answerFor(q, entry.status === 'answered' ? entry.answer : null, qi);
+            return (
+              <section key={qi} aria-label={q.header || q.question}>
+                {q.header && <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">{q.header}</p>}
+                <p className="text-[13.5px] font-medium">{q.question}</p>
+                {q.multiSelect && <p className="text-[11.5px] text-muted-foreground">Several can be picked</p>}
+                <ul className="mt-1.5 space-y-1">
+                  {q.options.map((o, oi) => {
+                    const chosen = picked.has(oi);
+                    return (
+                      <li
+                        key={oi}
+                        data-picked={chosen || undefined}
+                        className={cn(
+                          'flex gap-2 rounded-md border px-2.5 py-1.5 text-[13px]',
+                          chosen ? 'border-foreground/40 bg-accent font-medium' : 'border-border',
+                          entry.status !== 'pending' && !chosen && 'opacity-60',
+                        )}
+                      >
+                        <span aria-hidden className="flex h-[1lh] w-3.5 shrink-0 items-center justify-center text-muted-foreground" data-field="choice">
+                          <ChoiceIcon multiSelect={q.multiSelect} chosen={chosen} />
+                        </span>
+                        <span className="min-w-0">
+                          {o.label}
+                          {o.description && <span className="block text-[12px] font-normal text-muted-foreground">{o.description}</span>}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+                {other && (
+                  <p className="mt-1.5 text-[13px]">
+                    <span className="text-muted-foreground">Answered: </span>
+                    {other}
+                  </p>
+                )}
+              </section>
+            );
+          })}
+        </div>
       )}
+      {live && panel?.phase === 'blocked' && panel.message && <AnswerInTerminal message={panel.message} terminal={live.terminal} />}
+      {entry.status === 'pending' && !live && <p className="mt-2.5 text-[12px] text-muted-foreground">Answer it in the terminal.</p>}
       {declined && (
         <p className="mt-2.5 text-[12px] text-muted-foreground">
           {entry.status === 'abandoned' ? 'The conversation moved on without an answer.' : 'Dismissed without an answer.'}
@@ -584,12 +595,6 @@ function Question({ entry, label }: { entry: QuestionEntry; label: string }) {
       )}
     </div>
   );
-}
-
-/** VIEW-1.9: a box for several picks, a circle for one; checked, or with a dot, when it was picked. */
-function ChoiceIcon({ multiSelect, chosen }: { multiSelect: boolean; chosen: boolean }) {
-  const Icon = multiSelect ? (chosen ? SquareCheck : Square) : chosen ? CircleDot : Circle;
-  return <Icon className="size-3.5" />;
 }
 
 function Notice({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {

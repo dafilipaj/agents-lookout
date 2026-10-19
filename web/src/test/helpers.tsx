@@ -61,6 +61,8 @@ interface RenderOptions {
   launch?: LookoutClient['launch'];
   sendMessage?: (sessionId: string, text: string) => Promise<void>;
   endSession?: LookoutClient['endSession'];
+  answer?: LookoutClient['answer'];
+  stopSession?: LookoutClient['stopSession'];
   earlierMessages?: (sessionId: string, before: string) => Promise<ChatPage>;
   history?: (q: HistoryQuery) => Promise<HistoryPage>;
   pastSession?: LookoutClient['pastSession'];
@@ -89,6 +91,8 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
     refreshUsage: vi.fn(async () => {}),
     sendMessage: vi.fn(options.sendMessage ?? (async () => {})),
     endSession: vi.fn(options.endSession ?? (async () => ({ how: 'exit' as const }))),
+    answer: vi.fn(options.answer ?? (async () => ({ epoch: 1 }))),
+    stopSession: vi.fn(options.stopSession ?? (async () => {})),
     history: vi.fn(options.history ?? (async (): Promise<HistoryPage> => ({ state: 'ok', items: [], page: 1, hasMore: false }))),
     pastSession: vi.fn(
       options.pastSession ??

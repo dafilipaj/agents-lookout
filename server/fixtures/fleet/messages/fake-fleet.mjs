@@ -16,6 +16,20 @@
 //   and `shared_host`; `fake_close_reason: null` leaves it out, as a Fleet before reasons did.
 //   `close --expect-pid <n> --expect-start <t>` (both or neither) fails `target_changed` unless the row's `pid` and
 //   `proc_start` are exactly those, as the Fleet fork checks its live process.
+//   `answer <id:…|pid:…> --json [--allow-attached] (--list | --choice <n> [--prompt <id>] |
+//   --question <tool_use_id> --answers <json>)` (VIEW-4, the Fleet fork's "Answering prompts"):
+//   `--list` reports the row's `fake_prompt` (a permission prompt, `{ kind: 'permission',
+//   incomplete: true, reason }`, a question form, or null); without one, a `waiting` row whose
+//   Transcript has a pending question shows that question's form, untouched. `--choice` and
+//   `--question` check what Fleet checks (the prompt on screen and untouched, its id, the choice,
+//   the question pending and the one waiting, the Session `waiting`, the answers' shape) and fail
+//   with Fleet's kinds; with FAKE_FLEET_DIR an answer clears the prompt, records a question's
+//   answer and turns the row `busy`. A row's `fake_answer` (any kind, e.g. `busy`,
+//   `outcome_uncertain`, `prompt_changed`) makes every answer fail with it; `fake_attached: true`
+//   (or the `iterm` backend) is `human_attached` unless `--allow-attached`.
+//   `keys <id:…|pid:…> <key>… --json` (VIEW-4.4) presses nothing: it checks the key names
+//   (`invalid_key`) and answers as Fleet does; a row's `fake_keys` (`busy`, `backend_failed`, …)
+//   makes it fail with that kind. It doesn't change Status: edit list.json for that.
 //   FAKE_FLEET_REGISTER  `later`: a spawned Session doesn't show in `list` until
 //                    `fake register`, as one stuck at a trust prompt; meanwhile a second
 //                    `spawn --resume` of it within 30 s is `session_starting` (the HIST contract)
@@ -56,11 +70,29 @@ function resolve(target) {
   return rows.find((r) => r.session_id === target) ?? rows.find((r) => String(r.pid) === target) ?? null;
 }
 
+/** Fleet's exact forms, `id:<session_id>` and `pid:<n>`; anything else as `resolve`. */
+function resolveExact(target) {
+  const m = /^(?:id:(.+)|pid:([1-9][0-9]*))$/.exec(target);
+  if (!m) return resolve(target);
+  const rows = list();
+  return (m[1] !== undefined ? rows.find((r) => r.session_id === m[1]) : rows.find((r) => String(r.pid) === m[2])) ?? null;
+}
+
+/** Changes one row of list.json (only with FAKE_FLEET_DIR, and never under `-n`). */
+function updateRow(row, patch) {
+  if (!writable || dryRun) return;
+  const rows = list().map((r) => (r.pid === row.pid && r.harness === row.harness ? { ...r, ...patch } : r));
+  writeFileSync(join(dir, 'list.json'), `${JSON.stringify(rows, null, 2)}\n`);
+}
+
 function fail(kind, error, extra = {}) {
   process.stdout.write(`${JSON.stringify({ ok: false, kind, ...extra, error })}\n`);
   process.stderr.write(`error: ${error}\n`);
   process.exit(1);
 }
+
+/** Options that take no value. */
+const FLAGS = new Set(['json', 'list', 'allow-attached']);
 
 /** Positional args after `--`, and `--opt value` / `--opt=value` options. */
 function parse(args) {
@@ -75,7 +107,7 @@ function parse(args) {
     if (a.startsWith('--')) {
       const eq = a.indexOf('=');
       if (eq > 0) opts[a.slice(2, eq)] = a.slice(eq + 1);
-      else if (a === '--json') opts.json = true;
+      else if (FLAGS.has(a.slice(2))) opts[a.slice(2)] = true;
       else opts[a.slice(2)] = args[++i];
     } else pos.push(a);
   }
@@ -225,6 +257,125 @@ function closeReason(kind, reason) {
   return { reason: reason ?? fallback };
 }
 
+/** What `answer --list` reads off the screen: the row's `fake_prompt`, else a pending question's form. */
+function screenPrompt(row) {
+  if (row.fake_prompt !== undefined) return row.fake_prompt;
+  if (row.status !== 'waiting' || row.harness !== 'claude') return null;
+  const s = row.session_id ? read(row.session_id) : null;
+  const q = s && [...s.entries].reverse().find((e) => e.kind === 'question' && e.status === 'pending');
+  return q ? { kind: 'question', id: q.id, questions: q.questions, active: 0, untouched: true } : null;
+}
+
+const out = (v) => process.stdout.write(`${JSON.stringify(v)}\n`);
+
+/** `answer` (VIEW-4): the Fleet fork's contract, docs/cli.md "Answering prompts". Types nothing. */
+function answer(args) {
+  const { opts, pos } = parse(args);
+  if (!opts.json) fail('usage', 'this fake only speaks --json');
+  const modes = [opts.list === true, opts.choice !== undefined, opts.question !== undefined].filter(Boolean).length;
+  if (modes !== 1) fail('usage', 'give one of --list, --choice <n>, --question <tool_use_id> --answers <json>');
+  if ((opts.answers !== undefined) !== (opts.question !== undefined)) fail('usage', '--answers goes with --question (and it needs one)');
+  const target = pos[0] ?? '';
+  const row = resolveExact(target);
+  if (!row) fail('target_not_found', `no session matches '${target}'`);
+  const base = { ok: true, session_id: row.session_id, harness: row.harness };
+  const prompt = screenPrompt(row);
+  if (opts.list) return out({ ...base, prompt });
+  const promptKind = opts.choice !== undefined ? 'permission' : 'question';
+  if (row.fake_answer) {
+    fail(row.fake_answer, `fake ${row.fake_answer}`, row.fake_answer === 'outcome_uncertain' ? { screen: prompt, prompt_kind: promptKind, steps: [] } : {});
+  }
+  if (opts.question !== undefined && row.harness !== 'claude') fail('harness_unsupported', `${row.harness} questions are not answerable here (Claude Code only)`);
+  if (!opts['allow-attached'] && (row.fake_attached || row.backend === 'iterm')) fail('human_attached', 'a terminal client is attached to the session; nothing typed');
+  if (row.backend === 'unknown') fail('backend_unsupported', `${row.display_title} has no terminal fleet can read and type into`);
+  return opts.choice !== undefined ? choose(row, base, prompt, opts) : answerQuestion(row, base, prompt, opts);
+}
+
+function choose(row, base, prompt, opts) {
+  const n = Number(opts.choice);
+  if (!Number.isInteger(n) || n < 1) fail('usage', `--choice takes an answer's number, not ${JSON.stringify(opts.choice)}`);
+  if (prompt?.kind === 'permission' && prompt.incomplete) fail('prompt_incomplete', `${prompt.reason ?? 'the prompt cannot be read whole'}; nothing typed`);
+  if (prompt?.kind !== 'permission') fail('prompt_not_on_screen', 'the terminal is not showing a permission prompt; nothing typed');
+  if (opts.prompt !== undefined && opts.prompt !== prompt.id) fail('prompt_not_on_screen', `the terminal shows a different prompt now (${prompt.id}: "${prompt.title}"); nothing typed`);
+  if (prompt.selected !== 1) fail('prompt_not_on_screen', "someone moved the prompt's cursor (it is not on answer 1) — answer it in the terminal; nothing typed");
+  const choice = prompt.choices.find((c) => c.n === n);
+  if (!choice) fail('choice_invalid', `the prompt has answers 1–${prompt.choices.length}, not ${n}`);
+  updateRow(row, { fake_prompt: null, status: 'busy', waiting_for: null });
+  const { key: _key, ...shown } = choice;
+  out({ ...base, answered: !dryRun, ...(dryRun ? { dry_run: true } : {}), prompt_kind: 'permission', prompt, choice: shown, method: 'key', steps: [{ key: String(n) }] });
+}
+
+function answerQuestion(row, base, prompt, opts) {
+  let answers;
+  try {
+    answers = JSON.parse(opts.answers);
+  } catch (e) {
+    fail('answer_invalid', `--answers is not JSON: ${e.message}`);
+  }
+  const s = row.session_id ? read(row.session_id) : null;
+  if (!s) fail('transcript_not_found', 'the session has no transcript yet');
+  const all = s.entries.filter((e) => e.kind === 'question');
+  const q = all.find((e) => e.id === opts.question);
+  if (!q) fail('question_not_found', `no question ${opts.question} in this session`);
+  if (q.status === 'abandoned') fail('question_not_active', `question ${q.id} was abandoned (a new prompt came before any answer)`);
+  if (q.status !== 'pending') fail('question_answered', `question ${q.id} is already ${q.status}`);
+  const waiting = all.filter((e) => e.status === 'pending').map((e) => e.id);
+  if (waiting.length !== 1 || waiting[0] !== q.id) fail('question_not_active', `question ${q.id} is not the one call waiting (waiting: ${waiting.join(', ')})`);
+  if (row.status !== 'waiting') fail('not_waiting', `the session is ${row.status}, not waiting on a question`);
+  const checked = validateAnswers(answers, q.questions);
+  if (prompt?.kind !== 'question' || prompt.id !== q.id || !prompt.untouched) {
+    fail('prompt_not_on_screen', 'the form has been touched (moved, ticked, typed or answered) — answer it there; nothing typed');
+  }
+  if (writable && !dryRun) {
+    s.revision = (s.revision ?? 0) + 1;
+    q.status = 'answered';
+    q.answer = {
+      answers: checked.map((a, i) => [...a.options.map((o) => q.questions[i].options[o].label), ...(a.text ? [a.text] : [])].join(', ')),
+      picked: checked.map((a) => a.options),
+    };
+    q.rev = s.revision;
+    save(row.session_id, s);
+  }
+  updateRow(row, { fake_prompt: undefined, status: 'busy', waiting_for: null });
+  out({ ...base, answered: !dryRun, ...(dryRun ? { dry_run: true } : {}), prompt_kind: 'question', id: q.id, steps: [] });
+}
+
+/** Fleet's `validate_answer`: one answer per question, options in range, single-select exactly one. */
+function validateAnswers(answers, questions) {
+  if (!Array.isArray(answers) || answers.length !== questions.length) fail('answer_invalid', `answers must be an array of ${questions.length}`);
+  return answers.map((a, i) => {
+    const q = questions[i];
+    const opts = Array.isArray(a?.options) ? a.options : [];
+    if (opts.some((n) => !Number.isInteger(n) || n < 0 || n >= q.options.length)) fail('answer_invalid', `answers[${i}].options: unknown option`);
+    const raw = typeof a?.text === 'string' ? a.text : '';
+    // eslint-disable-next-line no-control-regex -- as Fleet: no control characters
+    if (/[\u0000-\u001f\u007f-\u009f]/.test(raw)) fail('answer_invalid', `answers[${i}].text must be a single line without control characters`);
+    const text = raw.trim();
+    const options = [...new Set(opts)].sort((x, y) => x - y);
+    if (q.multiSelect ? options.length === 0 && !text : options.length + (text ? 1 : 0) !== 1) {
+      fail('answer_invalid', `answers[${i}]: pick ${q.multiSelect ? 'at least one option' : 'exactly one option'} or type something`);
+    }
+    return { options, text };
+  });
+}
+
+const KEYS = new Set(['Escape', 'Enter', 'Up', 'Down', 'Left', 'Right', 'Tab', 'BTab', 'Space', 'C-c']);
+
+/** `keys` (VIEW-4.4): checks and answers as Fleet does; presses nothing. */
+function keys(args) {
+  const { opts, pos } = parse(args);
+  if (!opts.json) fail('usage', 'this fake only speaks --json');
+  const [target = '', ...names] = pos;
+  if (!names.length) fail('usage', 'give at least one key');
+  const bad = names.find((k) => !KEYS.has(k));
+  if (bad) fail('invalid_key', `unknown key '${bad}'; nothing pressed`);
+  const row = resolveExact(target);
+  if (!row) fail('target_not_found', `no session matches '${target}'`);
+  if (row.backend === 'unknown') fail('backend_unsupported', `${row.display_title} has no terminal to drive`);
+  if (row.fake_keys) fail(row.fake_keys, `fake ${row.fake_keys}`);
+  out({ ok: true, host: 'fake', target: { session_id: row.session_id, pid: row.pid }, keys: names });
+}
+
 /** `spawn --json`'s failure: exit 1, one object on stdout, the message on stderr. */
 function spawnFail(kind, error, extra = {}) {
   process.stdout.write(`${JSON.stringify({ ok: false, host: 'fake', kind, error, partial: null, ...extra })}\n`);
@@ -342,6 +493,12 @@ switch (cmd) {
     break;
   case 'close':
     close(argv);
+    break;
+  case 'answer':
+    answer(argv);
+    break;
+  case 'keys':
+    keys(argv);
     break;
   case 'harness':
     process.stdout.write('[]\n');

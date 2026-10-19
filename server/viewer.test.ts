@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ServerEvent, SessionRow } from '../shared/types.ts';
+import { AnswerLedger } from './answerer.ts';
 import type { RunOptions } from './exec.ts';
 import type { FleetListResult, FleetRow } from './fleet.ts';
 import { MAX_MESSAGE, ViewError, Viewer, fleetTarget } from './viewer.ts';
@@ -65,6 +66,7 @@ function setup(
     lookup: (id) => rows.get(id) ?? null,
     freshList: over.fresh ?? (async () => ({ kind: 'ok', rows: [fleetRow({ pid: 77, harness: 'codex', session_id: null })] })),
     sendTo: (clientId, event) => void (event.type !== 'chat' && sent.push({ clientId, event })),
+    ledger: new AnswerLedger(),
     env: { PATH: '/usr/bin', CLAUDECODE: '1', OTEL_X: '1' },
   });
   const peeks = () => calls.filter((c) => c.args.includes('peek')).length;
@@ -267,5 +269,49 @@ describe('composer', () => {
       },
     });
     await expect(t.viewer.send('sess-a', { text: 'hi' })).rejects.toMatchObject({ status: 502, message: "Couldn't send: session has no terminal handle" });
+  });
+});
+
+describe('answering and Stop (VIEW-4)', () => {
+  it('VIEW-4.3: answers and Stop go through the Viewer, with the ledger its prompt reads carry: a read after an answer has its epoch, a click from the read before is refused', async () => {
+    const prompt = { kind: 'permission', id: 'p2.0badc0de', title: 'Do you want to proceed?', detail: [], choices: [{ n: 1, label: 'Yes' }], untouched: true };
+    const rows = new Map<string, SessionRow>([['sess-a', row({ id: 'sess-a', status: 'needs-you' })]]);
+    const runner = vi.fn(async (_file: string, args: readonly string[]) => {
+      if (args.includes('messages')) return JSON.stringify({ ok: true, entries: [], has_more_before: false, has_more_after: false, cursor: null });
+      if (args.includes('--list')) return JSON.stringify({ ok: true, session_id: 'sess-a', harness: 'claude', prompt });
+      if (args.includes('answer')) return JSON.stringify({ ok: true, answered: true });
+      throw new Error(`unexpected ${args.join(' ')}`);
+    });
+    const ledger = new AnswerLedger({ now: () => 41 });
+    const sent: ServerEvent[] = [];
+    const viewer = new Viewer({
+      runner,
+      fleetBin: () => '/bin/fleet',
+      lookup: (id) => rows.get(id) ?? null,
+      freshList: async () => ({ kind: 'ok', rows: [] }),
+      sendTo: (_c, event) => void (event.type === 'prompt' && sent.push(event)),
+      ledger,
+    });
+    const reads = () => sent as Extract<ServerEvent, { type: 'prompt' }>[];
+    viewer.watch('tab-1', 'sess-a', false);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(reads().map((e) => e.epoch)).toEqual([41]);
+
+    const answer = (epoch: number) => viewer.answer('sess-a', { kind: 'permission', prompt: 'p2.0badc0de', choice: 1, epoch });
+    expect(await answer(41)).toEqual({ epoch: 42 });
+    expect(ledger.lastAnswer(rows.get('sess-a')!)).toBe(42);
+    // The same prompt again, read after the answer: it reaches the tab with the answer's epoch.
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(reads().map((e) => e.epoch)).toEqual([41, 42]);
+    // A click from the read before is refused, nothing typed.
+    await expect(answer(41)).rejects.toMatchObject({ status: 409, kind: 'stale' });
+    expect(runner.mock.calls.filter(([, a]) => a.includes('--choice'))).toHaveLength(1);
+
+    // Stop uses the same ledger: a second one in the same Busy spell is refused before Fleet is asked.
+    rows.set('sess-a', row({ id: 'sess-a', status: 'busy' }));
+    ledger.beginStop(rows.get('sess-a')!);
+    await expect(viewer.stopSession('sess-a')).rejects.toMatchObject({ status: 409 });
+    expect(runner.mock.calls.filter(([, a]) => a.includes('keys'))).toHaveLength(0);
+    viewer.stop();
   });
 });

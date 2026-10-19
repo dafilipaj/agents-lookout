@@ -1,4 +1,5 @@
-import type { ChatPage, ServerEvent, SessionRow } from '../shared/types.ts';
+import type { AnswerRequest, AnswerResult, ChatPage, ServerEvent, SessionRow } from '../shared/types.ts';
+import { type AnswerLedger, type AnswererOptions, PromptWatch, answerPrompt, stopSession } from './answerer.ts';
 import { ChatFeed } from './chat.ts';
 import { isCursor } from './messages.ts';
 import type { RunError, Runner } from './exec.ts';
@@ -69,23 +70,41 @@ export interface ViewerOptions {
   freshList(): Promise<FleetListResult>;
   /** Pushes an event to one tab's event stream. */
   sendTo(clientId: string, event: ServerEvent): void;
+  /**
+   * VIEW-4: what every tab answered or stopped, per Session. The prompt reads and the Viewer's own
+   * `answer` and `stopSession` use it, so the answer routes can't be wired with another.
+   */
+  ledger: AnswerLedger;
   env?: NodeJS.ProcessEnv;
   intervalMs?: number;
 }
 
 /**
  * Follows the Sessions that tabs are viewing (VIEW): the chat of every viewed Session (VIEW-1,
- * see ChatFeed), and the terminal preview, one `fleet peek` per second per Session, only while
- * some tab has its drawer open.
+ * see ChatFeed), the prompt it Needs you on (VIEW-4, see PromptWatch), and the terminal preview,
+ * one `fleet peek` per second per Session, only while some tab has its drawer open. Answers and
+ * Stop go through it too (VIEW-4), so they share the prompt reads' ledger.
  */
 export class Viewer {
   private readonly watches = new Map<string, Watch>();
   private readonly pollers = new Map<string, Poller>();
   private readonly opts: ViewerOptions;
   private readonly chat: ChatFeed;
+  private readonly prompts: PromptWatch;
+  private readonly answerer: AnswererOptions;
 
   constructor(opts: ViewerOptions) {
     this.opts = opts;
+    this.prompts = new PromptWatch({
+      runner: opts.runner,
+      fleetBin: opts.fleetBin,
+      lookup: opts.lookup,
+      sendTo: opts.sendTo,
+      ledger: opts.ledger,
+      env: opts.env,
+      intervalMs: opts.intervalMs,
+    });
+    this.answerer = { runner: opts.runner, fleetBin: opts.fleetBin, lookup: opts.lookup, freshList: opts.freshList, ledger: opts.ledger, env: opts.env };
     this.chat = new ChatFeed({
       runner: opts.runner,
       fleetBin: opts.fleetBin,
@@ -106,6 +125,7 @@ export class Viewer {
     this.watches.set(clientId, { sessionId, preview: preview && sessionId !== null });
     this.reconcile();
     this.chat.view(clientId, sessionId);
+    this.prompts.view(clientId, sessionId);
     const poller = sessionId ? this.pollers.get(sessionId) : undefined;
     if (preview && sessionId && poller?.last) this.opts.sendTo(clientId, { type: 'preview', sessionId, ...poller.last });
   }
@@ -115,6 +135,7 @@ export class Viewer {
     this.watches.delete(clientId);
     this.reconcile();
     this.chat.drop(clientId);
+    this.prompts.drop(clientId);
   }
 
   /** Session ids being previewed (for tests and diagnostics). */
@@ -127,7 +148,23 @@ export class Viewer {
     return this.chat.following();
   }
 
+  /** Session ids whose prompt is read (VIEW-4.2; for tests and diagnostics). */
+  promptsFollowing(): string[] {
+    return this.prompts.following();
+  }
+
+  /** VIEW-4.1–4.3: answers the prompt a tab read (see `answerPrompt`), against the ledger its reads carry. */
+  answer(sessionId: string, req: AnswerRequest): Promise<AnswerResult> {
+    return answerPrompt(this.answerer, sessionId, req);
+  }
+
+  /** VIEW-4.4: one Esc for a Busy Session (see `stopSession`). */
+  stopSession(sessionId: string): Promise<void> {
+    return stopSession(this.answerer, sessionId);
+  }
+
   stop(): void {
+    this.prompts.stop();
     for (const p of this.pollers.values()) {
       p.stopped = true;
       if (p.timer) clearTimeout(p.timer);

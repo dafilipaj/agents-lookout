@@ -1,0 +1,222 @@
+import type { ChatEntry, ChatQuestion, QuestionAnswer, ScreenPrompt, SessionRow } from '@shared/types.ts';
+import { createContext } from 'react';
+
+/**
+ * VIEW-4.4: after one Esc, Stop waits this long for the Session to leave Busy before it can be
+ * pressed again: in Claude Code a second Esc opens its rewind menu.
+ */
+export const STOP_SETTLE_MS = 10_000;
+
+export type PermissionPrompt = Extract<ScreenPrompt, { kind: 'permission' }>;
+
+/** What the tab last heard of a Session's terminal prompt (VIEW-4.2), and the server's answer epoch when it was read. */
+export interface ScreenState {
+  prompt: ScreenPrompt | null;
+  epoch: number;
+  /** An answer whose outcome Lookout can't tell was for this prompt (`p:<id>`) or question (`q:<id>`), from any tab. */
+  uncertain: string | null;
+}
+
+/** VIEW-4: the latest answer this tab sent to a Session, and what came of it. */
+export interface AnswerAttempt {
+  /** What it answered: `p:<prompt id>` or `q:<tool_use id>`. */
+  key: string;
+  /**
+   * - `refused`: nothing typed (or it may have been); holds for that prompt in that Needs you spell.
+   * - `stale`: another tab answered first, or was answering; holds only until a newer read.
+   * - `invalid`: the server couldn't take the answer as written (a question's text); the form stays.
+   */
+  phase: 'sending' | 'sent' | 'refused' | 'stale' | 'invalid';
+  /** Why nothing was (or may not have been) typed, for people. */
+  message: string | null;
+  /** `sent`: the server's answer epoch after it. A prompt read before it is stale. */
+  epoch: number | null;
+  /** The epoch of the read it answered. */
+  read: number;
+  /** The Needs you spell it belongs to: the row's `statusSince` when it was sent. */
+  since: number | null;
+}
+
+/** VIEW-4.4: a Stop this tab pressed. */
+export interface StopRequest {
+  at: number;
+  /** The Busy spell it belongs to: the row's `statusSince` when it was pressed. */
+  since: number | null;
+  /** The request is in flight. */
+  pending: boolean;
+  /** Why Esc wasn't pressed, for people. */
+  error: string | null;
+}
+
+export const promptKey = (id: string) => `p:${id}`;
+export const questionKey = (id: string) => `q:${id}`;
+
+/** The Session's process: a Codex Session's id changes when it gets its session id; its process doesn't. */
+export const processKey = (row: Pick<SessionRow, 'harness' | 'pid'>) => `${row.harness}:${row.pid}`;
+
+export const INCOMPLETE = 'Lookout can’t read this prompt whole, so it won’t answer it. Answer it in the terminal.';
+/** An answer from some tab may have landed on it (the server's read says so). */
+export const UNCERTAIN = 'It may have been answered, but Lookout can’t tell. Check the terminal.';
+/** The request went out, but no answer came back from Lookout's server. */
+export const LOST_ANSWER = 'Lost the connection to Lookout. It may have been answered; check the terminal.';
+export const LOST_STOP = 'Lost the connection to Lookout. Esc may have been pressed; check the terminal.';
+export const TOUCHED = 'This prompt was changed in the terminal, so Lookout won’t answer it. Answer it there.';
+export const QUESTION_TOUCHED = 'You started answering in the terminal, so Lookout won’t. Finish it there.';
+
+/** Buttons only for a running, Controllable Session that Needs you (VIEW-4.1, 4.2; VIEW-5.2, 5.3). */
+function answerable(row: SessionRow, ended: boolean): boolean {
+  return !ended && row.controllable && row.status === 'needs-you';
+}
+
+/**
+ * The attempt, when it's for this prompt and this Needs you spell. A `stale` refusal counts only
+ * until a read newer than the one it answered.
+ */
+function attemptFor(attempt: AnswerAttempt | undefined, key: string, row: SessionRow, screen: ScreenState | undefined): AnswerAttempt | null {
+  if (!attempt || attempt.key !== key || attempt.since !== row.statusSince) return null;
+  if (attempt.phase === 'stale' && (screen?.epoch ?? 0) > attempt.read) return null;
+  return attempt;
+}
+
+export type PermissionPanel =
+  | { kind: 'buttons'; prompt: PermissionPrompt; sending: boolean }
+  /** No buttons: why, in place of them. `prompt` is shown above it when there is one. */
+  | { kind: 'message'; prompt: PermissionPrompt | null; message: string };
+
+/**
+ * VIEW-4.2/4.3: what the chat shows for a permission prompt on the terminal: its choices as
+ * buttons; or, when Lookout can't answer it safely, why, in place of them; or nothing.
+ */
+export function permissionPanel(row: SessionRow, ended: boolean, screen: ScreenState | undefined, attempt: AnswerAttempt | undefined): PermissionPanel | null {
+  const p = screen?.prompt;
+  if (!answerable(row, ended) || !p || p.kind === 'question') return null;
+  if (p.kind === 'incomplete') return { kind: 'message', prompt: null, message: INCOMPLETE };
+  // An answer landed after this was read: it's stale, whatever it shows (the next read says what's there now).
+  if (attempt?.phase === 'sent' && attempt.epoch !== null && screen.epoch < attempt.epoch) return null;
+  const a = attemptFor(attempt, promptKey(p.id), row, screen);
+  if (a && a.phase !== 'sending' && a.phase !== 'sent') return { kind: 'message', prompt: p, message: a.message ?? TOUCHED };
+  // Some tab's answer to it may have landed: no tab answers it again.
+  if (screen.uncertain === promptKey(p.id)) return { kind: 'message', prompt: p, message: UNCERTAIN };
+  if (!p.untouched) return { kind: 'message', prompt: p, message: TOUCHED };
+  return { kind: 'buttons', prompt: p, sending: a?.phase === 'sending' };
+}
+
+export interface QuestionPanel {
+  /** The question's tool_use id. */
+  id: string;
+  /**
+   * `blocked`: Lookout won't answer it (it was refused, or touched in the terminal); `message` says
+   * why. `ready` with a `message`: the last answer couldn't be taken as written; fix it in the form.
+   * `reading`: the tab has no read of the screen yet, so no epoch to answer with; the buttons wait
+   * for it, disabled (the server would refuse the answer as read before it started).
+   */
+  phase: 'ready' | 'reading' | 'sending' | 'sent' | 'blocked';
+  message: string | null;
+}
+
+/**
+ * VIEW-4.1: the question the chat can answer, and how its answer went; null when none can. Only
+ * Claude Code's (Fleet reads no Codex question forms), and only the one call waiting, as Fleet
+ * answers no other.
+ */
+export function questionPanel(
+  row: SessionRow,
+  ended: boolean,
+  entries: readonly ChatEntry[],
+  screen: ScreenState | undefined,
+  attempt: AnswerAttempt | undefined,
+): QuestionPanel | null {
+  if (!answerable(row, ended) || row.harness !== 'claude') return null;
+  const p = screen?.prompt ?? null;
+  // A permission prompt on screen: the question isn't what the Session waits on.
+  if (p && p.kind !== 'question') return null;
+  const pending = entries.filter((e): e is Extract<ChatEntry, { kind: 'question' }> => e.kind === 'question' && e.status === 'pending');
+  if (pending.length !== 1) return null;
+  const q = pending[0]!;
+  if (p?.id && p.id !== q.id) return null;
+  const a = attemptFor(attempt, questionKey(q.id), row, screen);
+  if (a?.phase === 'refused' || a?.phase === 'stale') return { id: q.id, phase: 'blocked', message: a.message };
+  if (a?.phase === 'sending' || a?.phase === 'sent') return { id: q.id, phase: a.phase, message: null };
+  if (screen?.uncertain === questionKey(q.id)) return { id: q.id, phase: 'blocked', message: UNCERTAIN };
+  if (p && p.id === q.id && !p.untouched) return { id: q.id, phase: 'blocked', message: QUESTION_TOUCHED };
+  // No read of the screen yet: nothing to answer with until the first one comes.
+  if (!screen) return { id: q.id, phase: 'reading', message: null };
+  return { id: q.id, phase: 'ready', message: a?.phase === 'invalid' ? a.message : null };
+}
+
+/** VIEW-4.1: one question with one choice answers on click; several questions, or a multi-select one, are picked, then submitted. */
+export function answersOnClick(questions: readonly ChatQuestion[]): boolean {
+  return questions.length === 1 && !questions[0]!.multiSelect;
+}
+
+/** The picks and text of one question, before Submit. */
+export interface Draft {
+  picked: number[];
+  text: string;
+}
+
+export const emptyDraft: Draft = { picked: [], text: '' };
+
+/** Picking option `i`: toggles it when several can be picked; otherwise it's the one answer (any text goes, as in the terminal). */
+export function pick(q: ChatQuestion, d: Draft, i: number): Draft {
+  if (q.multiSelect) return { ...d, picked: d.picked.includes(i) ? d.picked.filter((x) => x !== i) : [...d.picked, i].sort((a, b) => a - b) };
+  return { picked: d.picked[0] === i ? [] : [i], text: '' };
+}
+
+/**
+ * Text that can be typed into the terminal as one line: line breaks and tabs become spaces (a
+ * pasted tab would be a keypress), other control characters go.
+ */
+export function typeable(text: string): string {
+  // eslint-disable-next-line no-control-regex -- removing control characters is the point
+  return text.replace(/[\r\n\t]+/g, ' ').replace(/[\u0000-\u001f\u007f-\u009f]/g, '');
+}
+
+/** Typing "something else": with one choice it replaces the option picked; with several it joins them. */
+export function typeText(q: ChatQuestion, d: Draft, text: string): Draft {
+  const clean = typeable(text);
+  return q.multiSelect || clean.trim() === '' ? { ...d, text: clean } : { picked: [], text: clean };
+}
+
+/** VIEW-4.1: the answers to send, one per question, or null while a question has none (Submit stays disabled). */
+export function draftAnswers(questions: readonly ChatQuestion[], drafts: readonly Draft[]): QuestionAnswer[] | null {
+  const out: QuestionAnswer[] = [];
+  for (const [i, q] of questions.entries()) {
+    const d = drafts[i] ?? emptyDraft;
+    const text = typeable(d.text).trim();
+    const count = d.picked.length + (text ? 1 : 0);
+    if (q.multiSelect ? count === 0 : count !== 1) return null;
+    out.push(text ? { options: d.picked, text } : { options: d.picked });
+  }
+  return out;
+}
+
+/**
+ * VIEW-4.4: Stop shows only while a Controllable Session is Busy. One click sends one Esc; then it
+ * reads "Stopping…" and stays disabled until the Status leaves Busy, or for 10 s. A failure
+ * enables it again, with why.
+ */
+export function stopButton(row: SessionRow, ended: boolean, req: StopRequest | undefined, now: number): { stopping: boolean; error: string | null } | null {
+  if (ended || !row.controllable || row.status !== 'busy') return null;
+  const r = req && req.since === row.statusSince ? req : null;
+  if (!r) return { stopping: false, error: null };
+  if (r.error) return { stopping: false, error: r.error };
+  return { stopping: r.pending || now - r.at < STOP_SETTLE_MS, error: null };
+}
+
+/** The Terminal preview (VIEW-2): where to answer when Lookout won't (VIEW-4.3). */
+export interface TerminalLink {
+  open: boolean;
+  show(): void;
+}
+
+/** VIEW-4.1: what the chat's questions need to be answered from here. */
+export interface Answering {
+  /** The question that can be answered now, and how its answer went; null when none can. */
+  panel: QuestionPanel | null;
+  submit(questionId: string, answers: QuestionAnswer[]): void;
+  terminal: TerminalLink;
+}
+
+/** Given by the Session view to the chat's questions (their rows are memoized; the context still reaches them). */
+export const AnswerContext = createContext<Answering | null>(null);

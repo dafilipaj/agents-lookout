@@ -118,7 +118,57 @@ export type ServerEvent =
   | { type: 'sessions'; upsert: SessionRow[]; remove: string[] }
   | { type: 'fleet'; fleet: FleetHealth }
   | { type: 'settings'; settings: Settings }
+  /**
+   * VIEW-4: the prompt the Session's terminal shows, read with `fleet answer --list` while a tab
+   * views it and it Needs you; sent only to the tabs viewing it, only when it changed. `epoch` is
+   * the server's answer epoch when the read began (see `AnswerResult`); an answer goes back with
+   * it. `uncertain`: an answer whose outcome Lookout can't tell was for this prompt (`p:<id>`) or
+   * question (`q:<id>`), so no tab offers to answer it again.
+   */
+  | { type: 'prompt'; sessionId: string; prompt: ScreenPrompt | null; epoch: number; uncertain?: string | null }
   | ChatEvent;
+
+/**
+ * VIEW-4.2: what `fleet answer --list` read off the terminal, validated and bounded by the server.
+ * - `permission`: a permission prompt (Claude Code) or approval (Codex), its choices in the
+ *   terminal's wording; `untouched` while its cursor is still on the first choice.
+ * - `incomplete`: a permission prompt Fleet can't read whole; it must be answered in the terminal.
+ * - `question`: an AskUserQuestion form; its options come from the chat's question (VIEW-4.1).
+ */
+export type ScreenPrompt =
+  | { kind: 'permission'; id: string; title: string; detail: string[]; choices: PromptChoice[]; untouched: boolean }
+  | { kind: 'incomplete' }
+  | { kind: 'question'; id: string | null; untouched: boolean };
+
+/** One choice of a permission prompt: its number on screen and its wording. */
+export interface PromptChoice {
+  n: number;
+  label: string;
+}
+
+/** VIEW-4.1: the answer to one question: 0-based option indexes, and/or typed text. */
+export interface QuestionAnswer {
+  options: number[];
+  text?: string;
+}
+
+/**
+ * VIEW-4: `POST /api/sessions/:id/answer`'s body. `epoch` is that of the read it answers (the
+ * `prompt` event's): the server refuses an answer read before the Session's last one.
+ */
+export type AnswerRequest =
+  /** A choice of the permission prompt `prompt` (its id from `--list`), never of another one. */
+  | { kind: 'permission'; prompt: string; choice: number; epoch: number }
+  /** The pending AskUserQuestion `question` (its tool_use id), one answer per question. */
+  | { kind: 'question'; question: string; answers: QuestionAnswer[]; epoch: number };
+
+/**
+ * VIEW-4: an answer Fleet typed. `epoch` is the server's answer epoch after it: a `prompt` event
+ * with a lower epoch was read before the answer landed, so its buttons are stale.
+ */
+export interface AnswerResult {
+  epoch: number;
+}
 
 /**
  * VIEW-1: one chat entry, from `fleet messages --json` (Transcript order). Kinds Lookout doesn't
