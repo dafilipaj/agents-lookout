@@ -43,8 +43,8 @@ export function UsageStrip({ usage, now, onOpen }: { usage: UsageSnapshot | null
             <span id={summaryId} className="sr-only">
               {stripSummary(usage, now)}
             </span>
-            {/* One set of columns for every line, so the bars line up: mark (and `w`), bar, %, level mark, reset, weekly. */}
-            <div className="grid grid-cols-[auto_minmax(2.5rem,1fr)_auto_auto_auto_auto] gap-x-1.5 gap-y-1" data-testid="usage-strip">
+            {/* One set of columns for every first line, so the bars line up: mark (and `w`), bar, %, level mark, reset. */}
+            <div className="grid grid-cols-[auto_minmax(2.5rem,1fr)_auto_auto_auto] gap-x-1.5 gap-y-1" data-testid="usage-strip">
               {usage.providers.map((p) => (
                 <ProviderLine key={p.id} provider={p} now={now} />
               ))}
@@ -71,11 +71,12 @@ export function UsageStrip({ usage, now, onOpen }: { usage: UsageSnapshot | null
 }
 
 /**
- * One provider in the strip (USAGE-1.1): its 5-hour window with the weekly one's % in brackets,
- * `(w 42%)`, the weekly window alone, labelled `w`, when no 5-hour one was reported, or why there's
- * none. `w` keeps the full word in its tooltip. A window whose reset has passed shows 0% with an
- * empty reset slot until the new read. The line sits on the strip's columns (a subgrid), so the bar
- * takes what the rest leave and lines up with the other lines' bars.
+ * One provider in the strip (USAGE-1.1), on two lines. The first: its 5-hour window, or the weekly
+ * window, labelled `w`, when no 5-hour one was reported. The second: the weekly limit, `weekly 42%`,
+ * when the 5-hour window has the bar, then how old the numbers are (USAGE-1.3). Or a single line
+ * saying why there are no numbers. A window whose reset has passed shows 0% with an empty reset slot
+ * until the new read. The first line sits on the strip's columns (a subgrid), so the bar takes what
+ * the rest leave and lines up with the other lines' bars.
  */
 function ProviderLine({ provider, now }: { provider: ProviderUsage; now: number }) {
   const f = freshness(provider, now);
@@ -92,6 +93,7 @@ function ProviderLine({ provider, now }: { provider: ProviderUsage; now: number 
     );
   }
   const { main: w, weekly } = pick;
+  const age = freshnessLabel(f, now);
   return (
     <div className="col-span-full grid grid-cols-subgrid" data-provider={provider.id}>
       <div
@@ -115,23 +117,28 @@ function ProviderLine({ provider, now }: { provider: ProviderUsage; now: number 
         <span className="text-right text-muted-foreground tabular-nums" data-field="reset">
           {formatUntil(w.resetsAt, now)}
         </span>
-        {weekly && (
-          // The weekly limit only as a %, its mark (USAGE-1.2) inside the brackets, by its number.
-          <span className="inline-flex items-center whitespace-nowrap text-muted-foreground tabular-nums" title={weeklyTitle(weekly)} data-field="weekly">
-            (w {weekly.percent}%
-            <Mark percent={weekly.percent} compact />)
-          </span>
-        )}
       </div>
-      {/* USAGE-1.3: each provider says how old its numbers are; amber only when they're flagged. */}
-      <span
-        className={cn('col-span-full pl-5 text-[10.5px] leading-3.5', flagged ? 'font-medium text-needs-you-text' : 'text-muted-foreground')}
-        data-field="age"
-        data-flagged={flagged}
-        title={provider.reason ?? undefined}
-      >
-        {freshnessLabel(f, now)}
-      </span>
+      <div className="col-span-full flex min-w-0 items-center pl-5 text-[10.5px] leading-3.5 whitespace-nowrap">
+        {weekly && (
+          <>
+            {/* The weekly limit as a %, its mark (USAGE-1.2) after it, by its number; it never gets cut short. */}
+            <span className={cn('inline-flex shrink-0 items-center text-muted-foreground tabular-nums', flagged && 'opacity-60')} title={weeklyTitle(weekly)} data-field="weekly">
+              weekly {weekly.percent}%
+              <Mark percent={weekly.percent} compact />
+            </span>
+            <span className="shrink-0 text-muted-foreground">&nbsp;·&nbsp;</span>
+          </>
+        )}
+        {/* USAGE-1.3: each provider says how old its numbers are; amber only when they're flagged. Cut short first, in full in its tooltip. */}
+        <span
+          className={cn('min-w-0 truncate', flagged ? 'font-medium text-needs-you-text' : 'text-muted-foreground')}
+          data-field="age"
+          data-flagged={flagged}
+          title={provider.reason ? `${age}; ${provider.reason}` : age}
+        >
+          {age}
+        </span>
+      </div>
     </div>
   );
 }
@@ -276,7 +283,7 @@ function Bar({ percent, className }: { percent: number; className?: string }) {
 
 /**
  * USAGE-1.2: a warning triangle at 80% or more, a critical octagon at 95% or more; a fixed-width
- * slot either way, unless `compact` (the weekly bracket), where it takes room only when shown.
+ * slot either way, unless `compact` (the weekly limit's), where it takes room only when shown.
  */
 function Mark({ percent, compact = false }: { percent: number; compact?: boolean }) {
   if (compact && usageLevel(percent) === 'normal') return null;
@@ -322,7 +329,7 @@ function JevState({ state }: { state: JevStatus['state'] }) {
   );
 }
 
-/** USAGE-1.1: the strip shortens "weekly" to `w`; its tooltip says it in full. */
+/** USAGE-1.1: the tooltip of the weekly limit, and of the `w` before a weekly window's bar. */
 const weeklyTitle = (w: UsageWindow) => `Weekly limit ${w.percent}%`;
 
 function windowTitle(w: UsageWindow, now: number): string {

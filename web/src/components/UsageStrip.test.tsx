@@ -55,8 +55,11 @@ describe('usage strip', () => {
   const weeklyMark = (id: string) => line(id).querySelector('[data-field="weekly"] [role="img"]')?.getAttribute('data-level') ?? 'normal';
   const field = (id: string, f: string) => line(id).querySelector<HTMLElement>(`[data-field="${f}"]`);
   const barWidth = (id: string) => line(id).querySelector<HTMLElement>('[aria-hidden] > span')?.style.width;
+  // A provider's two lines: the bar's, and the one under it with the weekly limit and the age.
+  const first = (id: string) => line(id).children[0] as HTMLElement;
+  const second = (id: string) => line(id).children[1] as HTMLElement;
 
-  it('USAGE-1.1: for Claude and Codex, the 5-hour window (mark, bar, % used, time to reset) and the tightest weekly window in brackets', () => {
+  it('USAGE-1.1: for Claude and Codex, the 5-hour window (mark, bar, % used, time to reset), and under it the tightest weekly window, then the age', () => {
     show(
       usage([
         // A weekly window tighter than the 5-hour one: the bar stays on the 5-hour one.
@@ -76,19 +79,27 @@ describe('usage strip', () => {
     expect(field('claude', 'percent')).toHaveTextContent('12%');
     expect(field('claude', 'reset')).toHaveTextContent('2h10');
     expect(barWidth('claude')).toBe('12%');
-    expect(field('claude', 'weekly')!.textContent).toBe('(w 42%)'); // per-model weekly windows count
+    expect(field('claude', 'weekly')!.textContent).toBe('weekly 42%'); // per-model weekly windows count
     expect(within(line('codex')).getByRole('img', { name: 'Codex' })).toBeInTheDocument();
     expect(field('codex', 'percent')).toHaveTextContent('41%');
     expect(field('codex', 'reset')).toHaveTextContent('25m');
     expect(barWidth('codex')).toBe('41%');
-    expect(field('codex', 'weekly')!.textContent).toBe('(w 63%)');
-    expect(line('codex').querySelector('[title]')!.getAttribute('title')).toContain('Weekly limit: 63% used');
+    expect(field('codex', 'weekly')!.textContent).toBe('weekly 63%');
+    expect(first('codex').getAttribute('title')).toContain('Weekly limit: 63% used');
     // The bar is the 5-hour window's, so nothing labels it.
     expect(field('claude', 'window')).toBeNull();
     expect(field('codex', 'window')).toBeNull();
+    // The weekly limit has the second line to itself, before the age; the first line is the 5-hour window's alone.
+    for (const id of ['claude', 'codex']) {
+      expect(first(id).querySelector('[data-field="weekly"]')).toBeNull();
+      expect(second(id).firstElementChild).toBe(field(id, 'weekly'));
+      expect(second(id).lastElementChild).toBe(field(id, 'age'));
+    }
+    expect(second('claude')).toHaveTextContent(/^weekly 42% · updated 1m ago$/);
+    expect(second('codex')).toHaveTextContent(/^weekly 63% · as of last turn · 1m$/);
   });
 
-  it('USAGE-1.1: with no 5-hour window reported, the weekly window takes the bar, % used and time to reset, labelled "w", without brackets', () => {
+  it('USAGE-1.1: with no 5-hour window reported, the weekly window takes the bar, % used and time to reset, labelled "w", and the second line has only the age', () => {
     show(
       usage([
         provider({ id: 'claude', windows: [win({ kind: 'weekly_all', percent: 19, resetsAt: NOW + 50 * H }), win({ kind: 'weekly_scoped', model: 'Fable', percent: 33, resetsAt: NOW + 26 * H })] }),
@@ -103,12 +114,14 @@ describe('usage strip', () => {
     expect(field('claude', 'window')!.textContent).toBe('w');
     // In the Harness mark's cell, the one before the bar's.
     expect(field('claude', 'window')!.parentElement!.nextElementSibling).toBe(line('claude').querySelector('[aria-hidden]'));
+    expect(second('claude')).toHaveTextContent(/^updated 1m ago$/);
     expect(field('codex', 'percent')).toHaveTextContent('41%');
     expect(field('codex', 'weekly')).toBeNull();
     expect(field('codex', 'window')).toBeNull();
+    expect(second('codex')).toHaveTextContent(/^as of last turn · 1m$/);
   });
 
-  it('USAGE-1.1: the strip shortens "weekly" to "w", but its tooltip and the screen-reader description keep the full word', () => {
+  it('USAGE-1.1: the second line spells out "weekly"; the "w" before a weekly bar keeps the full word in its tooltip, as does the screen-reader description', () => {
     show(
       usage([
         provider({ id: 'claude', windows: [win({ percent: 12 }), win({ kind: 'weekly_all', label: 'Weekly · all models', percent: 58, resetsAt: NOW + 50 * H })] }),
@@ -116,7 +129,7 @@ describe('usage strip', () => {
         provider({ id: 'codex', windows: [win({ kind: 'weekly_all', label: 'Weekly limit', percent: 33, resetsAt: NOW + 26 * H })] }),
       ]),
     );
-    expect(field('claude', 'weekly')!.textContent).toBe('(w 58%)');
+    expect(field('claude', 'weekly')!.textContent).toBe('weekly 58%');
     expect(field('claude', 'weekly')).toHaveAttribute('title', 'Weekly limit 58%');
     expect(field('codex', 'window')!.textContent).toBe('w');
     expect(field('codex', 'window')).toHaveAttribute('title', 'Weekly limit 33%');
@@ -126,6 +139,24 @@ describe('usage strip', () => {
     expect(screen.getByRole('button', { name: 'Usage details' })).toHaveAccessibleDescription(
       'Claude Code: 5-hour 12%, resets in 2h10; weekly 58%; updated 1m ago. Codex: weekly 33%, resets in 1d 2h; as of last turn · 1m. Jev: ready.',
     );
+  });
+
+  it('USAGE-1.1: short of room, the second line cuts the age short, in full in its tooltip, never the weekly limit', () => {
+    show(
+      usage([
+        // The widest second line: a weekly limit at 100% with its mark, and Codex's longest age.
+        provider({ id: 'codex', observedAt: NOW - 10_000, windows: [win({ percent: 100 }), win({ kind: 'weekly_all', percent: 100, resetsAt: NOW + 50 * H })] }),
+        provider({ id: 'claude', stale: true, reason: 'fleet usage timed out', observedAt: NOW - 12 * 60_000, windows: [win({ percent: 12 }), win({ kind: 'weekly_all', percent: 85, resetsAt: NOW + 50 * H })] }),
+      ]),
+    );
+    expect(second('codex')).toHaveTextContent(/^weekly 100% · as of last turn · just now$/);
+    expect(second('codex')).toHaveClass('min-w-0', 'whitespace-nowrap');
+    expect(field('codex', 'weekly')).toHaveClass('shrink-0');
+    expect(field('codex', 'age')).toHaveClass('min-w-0', 'truncate');
+    expect(field('codex', 'age')).toHaveAttribute('title', 'as of last turn · just now');
+    // An old reading's tooltip also says why.
+    expect(field('claude', 'age')).toHaveAttribute('title', 'old · 12m ago; fleet usage timed out');
+    expect(field('claude', 'age')).toHaveClass('text-needs-you-text');
   });
 
   it('USAGE-1.2: a warning triangle at 80% or more and a critical octagon at 95% or more, named for screen readers; nothing below 80%', () => {
@@ -147,7 +178,7 @@ describe('usage strip', () => {
     expect(strip().querySelector('[role="img"][aria-label^="Warning"], [role="img"][aria-label^="Critical"]')).toBeNull();
   });
 
-  it('USAGE-1.2: either number is marked at 80% and 95%, by its own number: the bar’s for the 5-hour window, the brackets’ for the weekly one', () => {
+  it('USAGE-1.2: either number is marked at 80% and 95%, by its own number: beside the bar for the 5-hour window, after the weekly limit on the second line', () => {
     const at = (five: number, weekly: number) => {
       const app = show(
         usage([
@@ -156,23 +187,26 @@ describe('usage strip', () => {
           provider({ id: 'codex', windows: [win({ percent: weekly }), win({ kind: 'weekly_scoped', model: 'gpt-6', percent: five, resetsAt: NOW + 50 * H })] }),
         ]),
       );
-      const seen = { claude: [barMark('claude'), weeklyMark('claude')], codex: [barMark('codex'), weeklyMark('codex')], bracket: field('claude', 'weekly')!.textContent };
+      const seen = { claude: [barMark('claude'), weeklyMark('claude')], codex: [barMark('codex'), weeklyMark('codex')], weekly: field('claude', 'weekly')!.textContent };
       app.unmount();
       return seen;
     };
-    // A weekly window at 85% marks the brackets, not the bar.
-    expect(at(10, 85)).toEqual({ claude: ['normal', 'warning'], codex: ['warning', 'normal'], bracket: '(w 85%)' });
+    // A weekly window at 85% marks the weekly limit, not the bar.
+    expect(at(10, 85)).toEqual({ claude: ['normal', 'warning'], codex: ['warning', 'normal'], weekly: 'weekly 85%' });
     // The boundaries, on each number: 79 / 80 and 94 / 95.
-    expect(at(79, 80)).toEqual({ claude: ['normal', 'warning'], codex: ['warning', 'normal'], bracket: '(w 80%)' });
-    expect(at(80, 79)).toEqual({ claude: ['warning', 'normal'], codex: ['normal', 'warning'], bracket: '(w 79%)' });
-    expect(at(94, 95)).toEqual({ claude: ['warning', 'critical'], codex: ['critical', 'warning'], bracket: '(w 95%)' });
-    expect(at(95, 94)).toEqual({ claude: ['critical', 'warning'], codex: ['warning', 'critical'], bracket: '(w 94%)' });
-    // The brackets' mark has the same shapes and tokens as the bar's, so it reads without colour too.
+    expect(at(79, 80)).toEqual({ claude: ['normal', 'warning'], codex: ['warning', 'normal'], weekly: 'weekly 80%' });
+    expect(at(80, 79)).toEqual({ claude: ['warning', 'normal'], codex: ['normal', 'warning'], weekly: 'weekly 79%' });
+    expect(at(94, 95)).toEqual({ claude: ['warning', 'critical'], codex: ['critical', 'warning'], weekly: 'weekly 95%' });
+    expect(at(95, 94)).toEqual({ claude: ['critical', 'warning'], codex: ['warning', 'critical'], weekly: 'weekly 94%' });
+    // The weekly limit's mark has the same shapes and tokens as the bar's, so it reads without colour too.
     show(usage([provider({ id: 'claude', windows: [win({ percent: 10 }), win({ kind: 'weekly_all', percent: 97, resetsAt: NOW + 50 * H })] }), provider({ id: 'codex' })]));
-    const inBrackets = within(field('claude', 'weekly')!).getByRole('img', { name: 'Critical: 95% or more used' });
-    expect(inBrackets.querySelector('svg.lucide-octagon-alert')).not.toBeNull();
-    expect(inBrackets).toHaveClass('text-destructive');
+    const weeklyIcon = within(field('claude', 'weekly')!).getByRole('img', { name: 'Critical: 95% or more used' });
+    expect(weeklyIcon.querySelector('svg.lucide-octagon-alert')).not.toBeNull();
+    expect(weeklyIcon).toHaveClass('text-destructive');
     expect(barMark('claude')).toBe('normal');
+    // On the second line, between the weekly % and the age.
+    expect(second('claude')).toContainElement(weeklyIcon);
+    expect(second('claude')).toHaveTextContent(/^weekly 97% · updated 1m ago$/);
     // The button's name replaces its contents, so screen readers reach the marks through its description.
     expect(screen.getByRole('button', { name: 'Usage details' })).toHaveAccessibleDescription('Claude Code: 5-hour 10%, resets in 2h10; weekly 97%, critical; updated 1m ago. Codex: no data yet. Jev: ready.');
   });
@@ -245,6 +279,7 @@ describe('usage strip', () => {
     );
     expect(field('claude', 'age')).toHaveTextContent('old · 12m ago');
     expect(field('claude', 'age')).toHaveAttribute('data-flagged', 'true');
+    expect(second('claude')).toHaveTextContent(/^weekly 85% · old · 12m ago$/);
     expect(field('codex', 'age')).toHaveTextContent('as of last turn · 17m');
     expect(screen.getByRole('button', { name: 'Usage details' })).toHaveAccessibleDescription(
       'Claude Code: 5-hour 0%; weekly 85%, warning; old · 12m ago. Codex: weekly 33%, resets in 1d 2h; as of last turn · 17m. Jev: ready.',
@@ -263,7 +298,7 @@ describe('usage strip', () => {
     expect(strip().querySelector('[data-field="age"]')).toBeNull();
   });
 
-  it('USAGE-1.1 / 2.2: once the 5-hour reset passes, the strip shows it at 0% with an empty reset slot and the weekly limit still in brackets, the details say "reset · refreshing", and a refresh is asked for (review #2)', async () => {
+  it('USAGE-1.1 / 2.2: once the 5-hour reset passes, the strip shows it at 0% with an empty reset slot and the weekly limit still under it, the details say "reset · refreshing", and a refresh is asked for (review #2)', async () => {
     const app = show(
       usage([
         provider({ id: 'claude', windows: [win({ percent: 100, resetsAt: NOW + 30_000 }), win({ kind: 'weekly_all', percent: 42, resetsAt: NOW + 50 * H })] }),
@@ -281,7 +316,7 @@ describe('usage strip', () => {
       expect(field(id, 'window')).toBeNull();
       expect(within(line(id)).queryByRole('img', { name: /^Critical/ })).toBeNull();
     }
-    expect(field('claude', 'weekly')!.textContent).toBe('(w 42%)');
+    expect(field('claude', 'weekly')!.textContent).toBe('weekly 42%');
     expect(field('codex', 'weekly')).toBeNull();
     await vi.waitFor(() => expect(app.client.refreshUsage).toHaveBeenCalledTimes(1));
     act(() => vi.advanceTimersByTime(5_000));
