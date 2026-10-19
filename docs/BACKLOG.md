@@ -52,3 +52,16 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
 - **Why:** it only matters if Lookout is ever shared with someone who doesn't use Codex: for them the line is noise on every screen. For Dario, who uses both, USAGE-2.2 stays as it is.
 - **How (proposal):** a USAGE spec change with a Changelog line first; maybe a Settings toggle per Harness rather than hiding on "not installed" alone, since a leftover `~/.codex` makes Fleet think Codex is installed.
 - **Added:** 2026-10-17, from the review of the TEST spec.
+
+## Switch a Session's model from the status line (VIEW)
+
+- **What:** click the model's name in a Session's status line (VIEW-5.5) to open a menu of the other models its Harness offers, and pick one to switch to it. Only the same vendor's models: Claude Code stays on Claude models and Codex on OpenAI's, so moving a Session between vendors is out of scope.
+- **Why:** today switching means typing `/model` in the terminal or composer and knowing the exact name. The status line already shows the model, so that's where you'd look to change it.
+- **How (proposal):**
+  - The menu lists the models Fleet gives for the Session's Harness (`harness list --json`, as LAUNCH-3.2 uses), with the current one marked.
+  - Picking one sends the Harness's own switch, e.g. `/model <id>` for Claude Code, and the status line shows the new model once the Harness reports it.
+  - Disabled while the Session isn't Controllable, Needs you, or has text in its input box.
+- **Costs and risks:**
+  - Codex's `/model` opens an interactive picker, so Codex may need a Fleet fork command rather than typed keys.
+  - A switch sent while Busy is queued like any message; it's safer to allow it only while Idle.
+- **Added:** 2026-10-19, from Dario.

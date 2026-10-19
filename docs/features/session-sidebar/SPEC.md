@@ -1,7 +1,7 @@
 ---
 title: Session sidebar
 code: SIDE
-status: In Progress
+status: Done
 created: 2026-10-16
 updated: 2026-10-17
 ---
@@ -168,3 +168,4 @@ None.
 - 2026-10-17: SIDE-8.1 no longer names a two-line header among the cells that grow a row: the Session header is one line (VIEW-5.1). UX: "Starting…" rows can be selected and count for ↑/↓, j/k and ⌘1–9 (LAUNCH-4.7).
 - 2026-10-17: UX: a failed "Starting…" row takes no ⌘ number (LAUNCH-4.7).
 - 2026-10-17: SIDE-8.1: the dock row has one resting height in every view (the empty composer with the status line), so the dock line and the usage panel no longer move when switching views (they jumped about 20 px going to Settings). The past-Session note's title stays on one line and its detail on two, like the banners. Hovered or focused (Tab), a banner or the note stays clamped and shows its full text in an overlay above the dock line, so it doesn't grow the dock either. The resting height comes from an invisible empty composer in the sidebar's dock, not a number, and an empty composer no longer sizes to a long placeholder.
+- 2026-10-19: Done: every acceptance criterion is ticked.

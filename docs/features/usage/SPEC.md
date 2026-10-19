@@ -1,7 +1,7 @@
 ---
 title: Usage at a glance
 code: USAGE
-status: In Progress
+status: Done
 created: 2026-10-16
 updated: 2026-10-17
 ---
@@ -122,3 +122,4 @@ None.
 - 2026-10-16: Review round 3: `session_scoped` windows; Claude errors with exit 1 keep Codex live; a high-water mark so older readings never become current; rejected limits are errors; Codex age only from `observed_at`, shown neutrally as "as of last turn"; amber only for flagged ages; the five-minute rule now applies to Claude only.
 - 2026-10-17: UX: the strip sits in the app shell's dock row (SIDE-8), so its top line continues as the line above the composer.
 - 2026-10-17: Icons per [0008](../../decisions/0008-lucide-icons-only.md): the USAGE-1.2 level icons and the launcher hint are lucide icons (a warning triangle, a critical octagon) instead of ⚠ and ⛔; Jev's "ready" carries a check icon instead of ✓.
+- 2026-10-19: Done: every acceptance criterion is ticked.

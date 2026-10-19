@@ -1,7 +1,7 @@
 ---
 title: Start Sessions
 code: LAUNCH
-status: In Progress
+status: Done
 created: 2026-10-16
 updated: 2026-10-17
 ---
@@ -137,3 +137,4 @@ Resolved while building (2026-10-16): `fleet spawn` (the CLI) never answers a tr
 - 2026-10-17: `fleet spawn` is read through `--json` (the fork has it now), shared with HIST's resume.
 - 2026-10-17: LAUNCH-4.2 amended: Start selects the "Starting…" row at once, and the real Session takes over the selection only while that row is still selected, so you're never pulled away from a Session you moved to. Added LAUNCH-4.6, a starting view in the main pane (name, Harness, directory, time since Start; the error and terminal lines once failed), and LAUNCH-4.7, "Starting…" rows in keyboard navigation. Technical approach: the `/l/<id>` URL and the take-over. HIST's resume does the same (HIST-3.1).
 - 2026-10-17: Review of selecting a start: the tab picks the launch id, so Start selects its row the moment you press it, and a late answer never moves you once you've moved on (LAUNCH-4.2 now holds as written). LAUNCH-4.5: the failed row stays compact while selected. LAUNCH-4.6: the error and lines replace the waiting note. LAUNCH-4.7: a failed start takes no ⌘ number. UX: what follows dismissing the selected start, and where focus goes; the starting view shows each fact once. Technical approach: `launchId`, answers that respect where you are, `started` following an id change.
+- 2026-10-19: Done: every acceptance criterion is ticked.

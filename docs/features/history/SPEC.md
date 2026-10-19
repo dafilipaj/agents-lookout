@@ -1,7 +1,7 @@
 ---
 title: History
 code: HIST
-status: In Progress
+status: Done
 created: 2026-10-16
 updated: 2026-10-17
 ---
@@ -40,7 +40,7 @@ Finding last week's Session means remembering its directory and running `claude 
 - [x] HIST-3.1 Clicking a past Session that can be resumed starts it again in its own Session host, in the directory it originally started in. It appears in the Session sidebar as "Starting…", selected at once, then as a live Session that takes over the selection while the "Starting…" row is still selected (as in LAUNCH-4.2). (test)
 - [x] HIST-3.2 Clicking a Session that's live right now selects it; a second process is never started. (test)
 - [x] HIST-3.3 Clicking a Session that can't be resumed, because its start directory no longer exists, opens it in the main pane read-only: its latest messages, and a note on why it can't be resumed. (test)
-- [ ] HIST-3.4 A resumed Session behaves like one LAUNCH started: the 15 s failure (LAUNCH-4.5) and telemetry (LAUNCH-5) apply. (manual)
+- [x] HIST-3.4 A resumed Session behaves like one LAUNCH started: the 15 s failure (LAUNCH-4.5) and telemetry (LAUNCH-5) apply. (manual)
 
 ## Non-goals
 
@@ -170,3 +170,4 @@ None.
 - 2026-10-17: HIST-3.1 amended with LAUNCH-4.2: a resume selects its "Starting…" row at once, and the live Session takes over only while that row is still selected.
 - 2026-10-17: HIST-3.1: the resume request carries the tab's launch id, so the "Starting…" row is selected the moment you click (before tb-session and `fleet spawn` answer), and a late answer never pulls you back from where you moved meanwhile (LAUNCH Technical approach).
 - 2026-10-17: Result markers are lucide icons (a circle with a dot, an empty circle and a slashed circle) instead of ● ○ ⊘, per [0008](../../decisions/0008-lucide-icons-only.md).
+- 2026-10-19: HIST-3.4 checked live on 4747 with the fork's Fleet: a Claude Code Session started and ended through Lookout in `~/Projects/work`, then resumed from History, showed "Starting…" and went live under the same session ID within 2 s; its resumed process sent telemetry to Grafana (Loki `claude-code-telemetry`, `repo=work`, `terminal.type=tmux`), including the prompt sent after the resume. The 15 s failure is the shared spawn path (LAUNCH-4.5), tested. Done.
