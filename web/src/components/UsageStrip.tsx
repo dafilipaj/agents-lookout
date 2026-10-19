@@ -43,11 +43,12 @@ export function UsageStrip({ usage, now, onOpen }: { usage: UsageSnapshot | null
             <span id={summaryId} className="sr-only">
               {stripSummary(usage, now)}
             </span>
-            <div className="flex flex-col gap-1" data-testid="usage-strip">
+            {/* One set of columns for every line, so the bars line up: mark (and `w`), bar, %, level mark, reset, weekly. */}
+            <div className="grid grid-cols-[auto_minmax(2.5rem,1fr)_auto_auto_auto_auto] gap-x-1.5 gap-y-1" data-testid="usage-strip">
               {usage.providers.map((p) => (
                 <ProviderLine key={p.id} provider={p} now={now} />
               ))}
-              <div className="flex items-center gap-1.5 text-[11px] leading-4">
+              <div className="col-span-full flex items-center gap-1.5 text-[11px] leading-4">
                 <span className="font-medium">Jev</span>
                 <span className={cn(usage.jev.state === 'ready' ? 'text-foreground/80' : 'text-muted-foreground')} data-field="jev">
                   <JevState state={usage.jev.state} />
@@ -71,8 +72,10 @@ export function UsageStrip({ usage, now, onOpen }: { usage: UsageSnapshot | null
 
 /**
  * One provider in the strip (USAGE-1.1): its 5-hour window with the weekly one's % in brackets,
- * the weekly window alone, labelled "weekly", when no 5-hour one was reported, or why there's
- * none. A window whose reset has passed shows 0% with an empty reset slot until the new read.
+ * `(w 42%)`, the weekly window alone, labelled `w`, when no 5-hour one was reported, or why there's
+ * none. `w` keeps the full word in its tooltip. A window whose reset has passed shows 0% with an
+ * empty reset slot until the new read. The line sits on the strip's columns (a subgrid), so the bar
+ * takes what the rest leave and lines up with the other lines' bars.
  */
 function ProviderLine({ provider, now }: { provider: ProviderUsage; now: number }) {
   const f = freshness(provider, now);
@@ -80,7 +83,7 @@ function ProviderLine({ provider, now }: { provider: ProviderUsage; now: number 
   const pick = stripWindows(provider.windows, now);
   if (!pick) {
     return (
-      <div className="flex items-center gap-1.5 text-[11px] leading-4 text-muted-foreground" data-provider={provider.id}>
+      <div className="col-span-full flex items-center gap-1.5 text-[11px] leading-4 text-muted-foreground" data-provider={provider.id}>
         <HarnessIcon harness={provider.id} />
         <span className="truncate" title={provider.reason ?? undefined}>
           {unreadable(provider)}
@@ -90,37 +93,39 @@ function ProviderLine({ provider, now }: { provider: ProviderUsage; now: number 
   }
   const { main: w, weekly } = pick;
   return (
-    <div className="flex flex-col" data-provider={provider.id}>
+    <div className="col-span-full grid grid-cols-subgrid" data-provider={provider.id}>
       <div
-        className={cn('flex items-center gap-1.5 text-[11px] leading-4', flagged && 'opacity-60')}
+        className={cn('col-span-full grid grid-cols-subgrid items-center text-[11px] leading-4', flagged && 'opacity-60')}
         title={weekly ? `${windowTitle(w, now)}; ${windowTitle(weekly, now)}` : windowTitle(w, now)}
       >
-        <HarnessIcon harness={provider.id} />
-        {!isFiveHour(w) && (
-          // No 5-hour window was reported, so the weekly one has the bar: say so, or it passes for the 5-hour one.
-          <span className="shrink-0 text-muted-foreground" data-field="window">
-            weekly
-          </span>
-        )}
-        <Bar percent={w.percent} className="min-w-6 flex-1" />
-        <span className="w-8 text-right font-medium tabular-nums" data-field="percent">
+        <span className="flex items-center gap-1.5">
+          <HarnessIcon harness={provider.id} />
+          {!isFiveHour(w) && (
+            // No 5-hour window was reported, so the weekly one has the bar: say so, or it passes for the 5-hour one.
+            <span className="text-muted-foreground" title={weeklyTitle(w)} data-field="window">
+              w
+            </span>
+          )}
+        </span>
+        <Bar percent={w.percent} />
+        <span className="text-right font-medium tabular-nums" data-field="percent">
           {w.percent}%
         </span>
         <Mark percent={w.percent} />
-        <span className="w-10 text-right text-muted-foreground tabular-nums" data-field="reset">
+        <span className="text-right text-muted-foreground tabular-nums" data-field="reset">
           {formatUntil(w.resetsAt, now)}
         </span>
         {weekly && (
           // The weekly limit only as a %, its mark (USAGE-1.2) inside the brackets, by its number.
-          <span className="inline-flex shrink-0 items-center whitespace-nowrap text-muted-foreground tabular-nums" data-field="weekly">
-            (weekly {weekly.percent}%
+          <span className="inline-flex items-center whitespace-nowrap text-muted-foreground tabular-nums" title={weeklyTitle(weekly)} data-field="weekly">
+            (w {weekly.percent}%
             <Mark percent={weekly.percent} compact />)
           </span>
         )}
       </div>
       {/* USAGE-1.3: each provider says how old its numbers are; amber only when they're flagged. */}
       <span
-        className={cn('pl-5 text-[10.5px] leading-3.5', flagged ? 'font-medium text-needs-you-text' : 'text-muted-foreground')}
+        className={cn('col-span-full pl-5 text-[10.5px] leading-3.5', flagged ? 'font-medium text-needs-you-text' : 'text-muted-foreground')}
         data-field="age"
         data-flagged={flagged}
         title={provider.reason ?? undefined}
@@ -316,6 +321,9 @@ function JevState({ state }: { state: JevStatus['state'] }) {
     JEV_LABEL[state]
   );
 }
+
+/** USAGE-1.1: the strip shortens "weekly" to `w`; its tooltip says it in full. */
+const weeklyTitle = (w: UsageWindow) => `Weekly limit ${w.percent}%`;
 
 function windowTitle(w: UsageWindow, now: number): string {
   return `${w.label}: ${Math.round(w.percent)}% used${w.resetsAt !== null ? `, resets ${formatClock(w.resetsAt, now)}` : ''}`;
