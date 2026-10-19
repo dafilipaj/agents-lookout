@@ -53,15 +53,16 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
 - **How (proposal):** a USAGE spec change with a Changelog line first; maybe a Settings toggle per Harness rather than hiding on "not installed" alone, since a leftover `~/.codex` makes Fleet think Codex is installed.
 - **Added:** 2026-10-17, from the review of the TEST spec.
 
-## Switch a Session's model from the status line (VIEW)
+## Switch a Codex Session's model (VIEW-6) once Codex 0.164 ships
 
-- **What:** click the model's name in a Session's status line (VIEW-5.5) to open a menu of the other models its Harness offers, and pick one to switch to it. Only the same vendor's models: Claude Code stays on Claude models and Codex on OpenAI's, so moving a Session between vendors is out of scope.
-- **Why:** today switching means typing `/model` in the terminal or composer and knowing the exact name. The status line already shows the model, so that's where you'd look to change it.
+- **What:** the status line's model menu (VIEW-6) for Codex Sessions too, not only Claude Code ones. Picked up once Codex 0.164 is released as stable and installed here.
+- **Why:** VIEW-6 leaves Codex out because the installed Codex, 0.163, only opens a picker on `/model`, which Fleet would have to drive by keys. Codex 0.164 adds `/model <slug>` with the model inline (openai/codex #54378), so Codex can be switched the way Claude Code is.
 - **How (proposal):**
-  - The menu lists the models Fleet gives for the Session's Harness (`harness list --json`, as LAUNCH-3.2 uses), with the current one marked.
-  - Picking one sends the Harness's own switch, e.g. `/model <id>` for Claude Code, and the status line shows the new model once the Harness reports it.
-  - Disabled while the Session isn't Controllable, Needs you, or has text in its input box.
+  - VIEW-6.1 and 6.2 change wording: the menu is for Controllable Claude Code and Codex Sessions, listing the models Fleet gives for the Session's Harness, and only a Session that isn't Controllable or has ended keeps a plain model name. The Technical approach's Codex Known gap goes.
+  - `fleet model` in the fork takes Codex: it types `/model <slug>`, answers no confirmation (Codex asks none), and succeeds once the rollout has a `thread_settings_applied` event with the new model, written after the command began.
+  - Fleet's `list` reads that event for a Codex Session's `model`, so the status line shows the new model at once and Lookout keeps no `pendingModel` for Codex.
 - **Costs and risks:**
-  - Codex's `/model` opens an interactive picker, so Codex may need a Fleet fork command rather than typed keys.
-  - A switch sent while Busy is queued like any message; it's safer to allow it only while Idle.
-- **Added:** 2026-10-19, from Dario.
+  - Codex's inline `/model` applies to this session only, while Claude Code's also becomes the default for new Sessions (VIEW-6.4). The menu's note has to say which applies to the Session's Harness.
+  - `thread_settings_applied` is written only once the rollout file exists, i.e. after the first prompt, so a switch before it has nothing to succeed on.
+  - Codex accepts `/model` mid-turn (from the next turn), but VIEW-6.3 keeps the menu to Idle Sessions for both Harnesses.
+- **Added:** 2026-10-19, from VIEW-6, where Codex is a Known gap.
