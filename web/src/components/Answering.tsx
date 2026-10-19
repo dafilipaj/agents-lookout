@@ -4,6 +4,7 @@ import { type KeyboardEvent, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { type Draft, type PermissionPanel, type QuestionPanel, type TerminalLink, answersOnClick, draftAnswers, emptyDraft, pick, typeText } from '@/lib/answers';
 import type { QuestionEntry } from '@/lib/chat';
+import { linkify } from '@/lib/links';
 import { cn } from '@/lib/utils';
 
 /** VIEW-1.9: a box for several picks, a circle for one; checked, or with a dot, when picked. */
@@ -64,8 +65,8 @@ export function QuestionForm({ entry, panel, onSubmit }: { entry: QuestionEntry;
           const name = q.header || q.question;
           return (
             <section key={qi} aria-label={name}>
-              {q.header && <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">{q.header}</p>}
-              <p className="text-[13.5px] font-medium">{q.question}</p>
+              {q.header && <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">{linkify(q.header)}</p>}
+              <p className="text-[13.5px] font-medium">{linkify(q.question)}</p>
               {q.multiSelect && <p className="text-[11.5px] text-muted-foreground">Several can be picked</p>}
               <ul className="mt-1.5 space-y-1">
                 {q.options.map((o, oi) => {
@@ -93,6 +94,7 @@ export function QuestionForm({ entry, panel, onSubmit }: { entry: QuestionEntry;
                         <span aria-hidden className="flex h-[1lh] w-3.5 shrink-0 items-center justify-center text-muted-foreground" data-field="choice">
                           <ChoiceIcon multiSelect={q.multiSelect} chosen={chosen} />
                         </span>
+                        {/* VIEW-1.12: plain text, never a link inside a button. */}
                         <span className="min-w-0">
                           {o.label}
                           {o.description && <span className="block text-[12px] font-normal text-muted-foreground">{o.description}</span>}

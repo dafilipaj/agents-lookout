@@ -121,6 +121,19 @@ describe('permission prompts (VIEW-4.2)', () => {
     expect(card()).toBeNull();
   });
 
+  it('VIEW-1.12: the permission prompt card stays plain text, addresses included', () => {
+    const app = open();
+    app.prompt({
+      ...PERMISSION,
+      title: 'Fetch https://example.com/a?',
+      detail: ['Bash command', '', '  curl https://example.com'],
+      choices: [{ n: 1, label: 'Yes' }, { n: 2, label: 'Yes, and don’t ask again for https://example.com' }],
+    });
+    expect(card()).toHaveTextContent('Fetch https://example.com/a?');
+    expect(card()).toHaveTextContent('curl https://example.com');
+    expect(within(card()!).queryAllByRole('link')).toEqual([]);
+  });
+
   it('VIEW-4.2: a prompt read for another Session isn’t shown after switching back until it’s read again', () => {
     const app = renderApp('/s/a');
     app.snapshot([row({ id: 'a', status: 'needs-you' }), row({ id: 'b', status: 'needs-you' })]);
@@ -365,6 +378,34 @@ describe('questions (VIEW-4.1)', () => {
     await user.click(optionButton(/^Only push/));
     expect(row()).toHaveClass('mt-2.5');
     expect(row()).toHaveTextContent('Answering…');
+  });
+
+  it('VIEW-1.12: an answerable question links the addresses in its header and text, never inside its answer buttons', async () => {
+    const user = userEvent.setup();
+    const withLinks = q({
+      header: 'See https://example.com/aBc',
+      question: 'Merge https://github.com/productiveio/lookout/pull/12?',
+      options: [
+        { label: 'Merge https://github.com/productiveio/lookout/pull/12', description: 'As https://example.com/merge says' },
+        { label: 'Not yet', description: '' },
+      ],
+    });
+    const app = open({}, [question([withLinks])]);
+    app.prompt(null);
+    const card = screen.getByTestId('chat').querySelector('[data-kind="question"]') as HTMLElement;
+    const [header, text] = within(card).getAllByRole('link');
+    expect(within(card).getAllByRole('link')).toHaveLength(2);
+    // Under the uppercase header, the link keeps its case.
+    expect(header).toHaveAttribute('href', 'https://example.com/aBc');
+    expect(header!.parentElement).toHaveClass('uppercase');
+    expect(header).toHaveClass('normal-case');
+    expect(text).toHaveAttribute('href', 'https://github.com/productiveio/lookout/pull/12');
+    expect(text!.closest('button')).toBeNull();
+    const merge = optionButton(/^Merge https/);
+    expect(merge.querySelector('a')).toBeNull();
+    expect(merge).toHaveTextContent('Merge https://github.com/productiveio/lookout/pull/12As https://example.com/merge says');
+    await user.click(merge);
+    expect(app.client.answer).toHaveBeenCalledWith('a', { kind: 'question', question: 'toolu_13', answers: [{ options: [0] }], epoch: 1 });
   });
 
   it('VIEW-4.3: a refused answer replaces the question’s buttons with why and opens the terminal preview', async () => {

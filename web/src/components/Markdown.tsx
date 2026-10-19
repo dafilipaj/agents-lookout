@@ -1,6 +1,7 @@
-import { memo } from 'react';
-import ReactMarkdown, { type Components } from 'react-markdown';
+import { type ComponentProps, createContext, memo, useContext } from 'react';
+import ReactMarkdown, { type Components, type ExtraProps } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { HIDDEN_CHARACTER, HIDDEN_ENCODED, LINK_CLASS, LINK_REL, linkify } from '@/lib/links';
 
 /**
  * VIEW-1.1: an agent's reply as Markdown. Transcripts can hold anything, so:
@@ -8,25 +9,51 @@ import remarkGfm from 'remark-gfm';
  * - links work only for http(s) and mailto (and footnotes' `#` links), open in a new tab, and
  *   send no referrer;
  * - images aren't loaded; they show as a placeholder with their alt text (Non-goals).
+ * VIEW-1.12: remark-gfm links bare addresses in prose; addresses in code are linked here.
  */
 const SAFE_URL = /^(https?:|mailto:|#)/i;
 
+/** micromark percent-encodes an IPv6 host's brackets (`<https://[::1]:8080>`): put them back. */
+const ENCODED_IPV6 = /^(https?:\/\/(?:[^/?#@]*@)?)%5B([0-9a-f:.]+)%5D/i;
+
 function safeUrl(url: string): string {
-  return SAFE_URL.test(url.trim()) ? url : '';
+  return SAFE_URL.test(url.trim()) ? url.replace(ENCODED_IPV6, '$1[$2]') : '';
+}
+
+type Node = NonNullable<ExtraProps['node']>;
+const textOf = (n: Node | Node['children'][number]): string => ('value' in n ? n.value : 'children' in n ? n.children.map(textOf).join('') : '');
+
+/** VIEW-1.12: a bidi control or an invisible character in a link's href or text, percent-encoded or not. */
+function hidesAddress(href: string, node: Node | undefined): boolean {
+  return HIDDEN_CHARACTER.test(href) || HIDDEN_ENCODED.test(href) || (!!node && HIDDEN_CHARACTER.test(textOf(node)));
+}
+
+/** Set inside a link, so code in its text isn't linked again: links never nest. */
+const InLink = createContext(false);
+
+/** Inline code and code blocks: their addresses are links too, unless the code is a link's text. */
+function Code({ children, className }: ComponentProps<'code'>) {
+  const inLink = useContext(InLink);
+  return (
+    <code className={`rounded bg-muted px-1 py-px font-mono text-[12.5px] ${className ?? ''}`}>
+      {typeof children === 'string' && !inLink ? linkify(children) : children}
+    </code>
+  );
 }
 
 const components: Components = {
-  a: ({ href, children }) =>
-    href?.startsWith('#') ? (
+  // A link that could read as another address (VIEW-1.12) stays text.
+  a: ({ href, children, node }) =>
+    !href || hidesAddress(href, node) ? (
+      <span>{children}</span>
+    ) : href.startsWith('#') ? (
       <a href={href} className="text-busy no-underline">
-        {children}
-      </a>
-    ) : href ? (
-      <a href={href} target="_blank" rel="noopener noreferrer nofollow" className="text-busy underline underline-offset-2 hover:opacity-80">
-        {children}
+        <InLink value>{children}</InLink>
       </a>
     ) : (
-      <span>{children}</span>
+      <a href={href} target="_blank" rel={LINK_REL} className={LINK_CLASS} dir="auto">
+        <InLink value>{children}</InLink>
+      </a>
     ),
   img: ({ alt }) => <span className="rounded bg-muted px-1.5 py-0.5 text-[12px] text-muted-foreground">[image{alt ? `: ${alt}` : ''}]</span>,
   p: ({ children }) => <p className="my-2 first:mt-0 last:mb-0">{children}</p>,
@@ -51,9 +78,7 @@ const components: Components = {
       {children}
     </pre>
   ),
-  code: ({ children, className }) => (
-    <code className={`rounded bg-muted px-1 py-px font-mono text-[12.5px] ${className ?? ''}`}>{children}</code>
-  ),
+  code: Code,
   table: ({ children }) => (
     <div className="my-2 overflow-x-auto first:mt-0 last:mb-0">
       <table className="w-max min-w-[50%] border-collapse text-[12.5px]">{children}</table>

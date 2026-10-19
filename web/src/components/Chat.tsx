@@ -5,6 +5,7 @@ import { flushSync } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import { AnswerContext } from '@/lib/answers';
 import { type ChatItem, type QuestionEntry, type ToolCall, answerFor, chatItems, clockTime, toolsLabel } from '@/lib/chat';
+import { linkify } from '@/lib/links';
 import { JUMP_MARGIN_PX, chatMarks, firstLine, stepMark } from '@/lib/marks';
 import { HARNESS_NAME } from '@/lib/sessions';
 import type { Chat as ChatState } from '@/lib/store';
@@ -18,6 +19,12 @@ const BOTTOM_SLACK_PX = 48;
 const NONE: readonly ChatEntry[] = [];
 /** Keys that scroll the chat when focus is in it, or on the page: pressing one releases a jump's hold (VIEW-1.11). */
 const SCROLL_KEYS = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ']);
+/**
+ * A row cut to one line with an ellipsis. While a link in it has keyboard focus it shows whole, so
+ * Tab to a link past the ellipsis doesn't scroll the row sideways for good (VIEW-1.12). Not on a
+ * click, which focuses the link too: the row would rewrap under the pointer.
+ */
+const TRUNCATED = 'min-w-0 truncate has-focus-visible:whitespace-normal has-focus-visible:break-words';
 
 export interface ChatProps {
   sessionId: string;
@@ -211,6 +218,14 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.isComposing || e.defaultPrevented) return;
+      // VIEW-1.12: Space on a link in the chat opens it, as Enter does, instead of scrolling the chat.
+      // Not with a modifier: Shift+Space scrolls up.
+      const modified = e.shiftKey || e.altKey || e.ctrlKey || e.metaKey;
+      if (e.key === ' ' && !modified && e.target instanceof HTMLAnchorElement && e.target.hasAttribute('href') && scrollRef.current?.contains(e.target)) {
+        e.preventDefault();
+        if (!e.repeat) e.target.click();
+        return;
+      }
       // A key that scrolls the chat releases a jump's hold: with focus in the chat, or on the page
       // after clicking its text (the key then scrolls the chat, but its target is <body>). Not
       // Space or Enter on a button: that presses it.
@@ -384,7 +399,7 @@ function Item({ item, label, startsTurn }: RowProps) {
       return (
         <div className="flex flex-col items-end" data-kind="command">
           <Meta who="You" ts={e.ts} />
-          <code className="max-w-[85%] rounded-md border border-border px-2.5 py-1 font-mono text-[12.5px] break-all">{e.text}</code>
+          <code className="max-w-[85%] rounded-md border border-border px-2.5 py-1 font-mono text-[12.5px] break-all">{linkify(e.text)}</code>
         </div>
       );
     case 'assistant':
@@ -413,8 +428,8 @@ function SubagentResult({ text, ts }: { text: string; ts: string | null }) {
       className="flex min-w-0 items-center gap-2 rounded-md border border-dashed border-border px-2 py-0.5 text-[11.5px] leading-5 text-muted-foreground"
     >
       <MarkShape kind="subagent" className="shrink-0 group-hover:scale-100" />
-      <span className="min-w-0 truncate" title={text}>
-        {line}
+      <span className={TRUNCATED} title={text}>
+        {linkify(line)}
       </span>
       {time && (
         <time dateTime={ts!} className="ml-auto shrink-0 tabular-nums opacity-80">
@@ -430,9 +445,9 @@ function scrollsChat(t: EventTarget | null, chat: HTMLElement | null): boolean {
   return !!chat && t instanceof Node && (t === document.body || chat.contains(t)) && !isTextField(t);
 }
 
-/** Space or Enter presses it rather than scrolling. */
+/** Space or Enter presses it rather than scrolling. A link only takes Space without a modifier (above). */
 function isPressable(t: EventTarget | null): boolean {
-  return t instanceof Element && !!t.closest('button, a[href], summary, [role="button"], [role="checkbox"], [role="radio"], [role="option"]');
+  return t instanceof Element && !!t.closest('button, summary, [role="button"], [role="checkbox"], [role="radio"], [role="option"]');
 }
 
 function isTextField(t: EventTarget | null): boolean {
@@ -452,7 +467,7 @@ function Prompt({ entry, queued }: { entry: ChatEntry; queued: boolean }) {
           queued && 'border border-dashed border-border bg-transparent text-muted-foreground',
         )}
       >
-        {text}
+        {linkify(text)}
       </div>
     </div>
   );
@@ -478,8 +493,8 @@ function ToolCalls({ calls }: { calls: ToolCall[] }) {
       <div className="flex min-w-0 items-center gap-2 py-0.5 text-[12.5px] text-muted-foreground" data-kind="tool_call">
         <Wrench className="size-3.5 shrink-0 opacity-70" />
         <span className="shrink-0 font-medium text-foreground/75">{c.tool}</span>
-        <span className="min-w-0 truncate font-mono text-[11.5px]" title={c.summary}>
-          {c.summary}
+        <span className={cn(TRUNCATED, 'font-mono text-[11.5px]')} title={c.summary}>
+          {linkify(c.summary)}
         </span>
       </div>
     );
@@ -500,8 +515,8 @@ function ToolCalls({ calls }: { calls: ToolCall[] }) {
           {calls.map((c) => (
             <li key={c.cursor} className="flex min-w-0 items-center gap-2 text-[12.5px] text-muted-foreground">
               <span className="shrink-0 font-medium text-foreground/75">{c.tool}</span>
-              <span className="min-w-0 truncate font-mono text-[11.5px]" title={c.summary}>
-                {c.summary}
+              <span className={cn(TRUNCATED, 'font-mono text-[11.5px]')} title={c.summary}>
+                {linkify(c.summary)}
               </span>
             </li>
           ))}
@@ -548,8 +563,8 @@ function Question({ entry, label }: { entry: QuestionEntry; label: string }) {
             const { picked, other } = answerFor(q, entry.status === 'answered' ? entry.answer : null, qi);
             return (
               <section key={qi} aria-label={q.header || q.question}>
-                {q.header && <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">{q.header}</p>}
-                <p className="text-[13.5px] font-medium">{q.question}</p>
+                {q.header && <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">{linkify(q.header)}</p>}
+                <p className="text-[13.5px] font-medium">{linkify(q.question)}</p>
                 {q.multiSelect && <p className="text-[11.5px] text-muted-foreground">Several can be picked</p>}
                 <ul className="mt-1.5 space-y-1">
                   {q.options.map((o, oi) => {
@@ -568,8 +583,8 @@ function Question({ entry, label }: { entry: QuestionEntry; label: string }) {
                           <ChoiceIcon multiSelect={q.multiSelect} chosen={chosen} />
                         </span>
                         <span className="min-w-0">
-                          {o.label}
-                          {o.description && <span className="block text-[12px] font-normal text-muted-foreground">{o.description}</span>}
+                          {linkify(o.label)}
+                          {o.description && <span className="block text-[12px] font-normal text-muted-foreground">{linkify(o.description)}</span>}
                         </span>
                       </li>
                     );
@@ -578,7 +593,7 @@ function Question({ entry, label }: { entry: QuestionEntry; label: string }) {
                 {other && (
                   <p className="mt-1.5 text-[13px]">
                     <span className="text-muted-foreground">Answered: </span>
-                    {other}
+                    {linkify(other)}
                   </p>
                 )}
               </section>

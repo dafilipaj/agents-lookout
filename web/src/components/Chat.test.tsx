@@ -1,8 +1,9 @@
 import type { ChatEntry, ChatPage } from '@shared/types.ts';
-import { screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { CACHED_ENTRIES, MAX_CHAT_ENTRIES, answerFor, applyChatEvent, applyPage, chatItems, emptyChat, setFollowing, toolsLabel } from '@/lib/chat';
+import { textParts } from '@/lib/links';
 import { initialState, reducer } from '@/lib/store';
 import { renderApp, row } from '@/test/helpers';
 
@@ -125,6 +126,292 @@ describe('chat rendering', () => {
     expect(row.className).toMatch(/text-\[11\.5px\]/); // smaller than messages (13.5px)
     expect(row.querySelector('[title]')).toHaveAttribute('title', text);
     expect(items[3]).toHaveTextContent('Claude'); // the reply to it is headed again
+  });
+});
+
+describe('links (VIEW-1.12)', () => {
+  const links = (el: Element) => [...el.querySelectorAll('a')].map((a) => a.getAttribute('href'));
+  const prompt = () => document.querySelector('[data-kind="user"]')!;
+
+  it('VIEW-1.12: an address in your prompt is a link that opens in a new tab with no referrer; the text reads as before', () => {
+    const { reset } = open();
+    const text = 'Review https://github.com/productiveio/lookout/pull/12, then\n  ship it.';
+    reset([you(text), { kind: 'command', cursor: c(), ts: null, text: '/review https://github.com/productiveio/lookout/pull/13' }]);
+    const link = within(prompt() as HTMLElement).getByRole('link', { name: 'https://github.com/productiveio/lookout/pull/12' });
+    expect(link).toHaveAttribute('href', 'https://github.com/productiveio/lookout/pull/12');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer nofollow');
+    expect(link.className).toContain('underline'); // Markdown's look
+    expect(prompt().lastElementChild!.textContent).toBe(text);
+    // A slash command is yours too.
+    expect(links(document.querySelector('[data-kind="command"]')!)).toEqual(['https://github.com/productiveio/lookout/pull/13']);
+  });
+
+  it('VIEW-1.12: trailing punctuation and unbalanced brackets stay text; balanced parentheses stay in the address', () => {
+    const cases: [string, string[]][] = [
+      ['Read https://en.wikipedia.org/wiki/Foo_(bar).', ['https://en.wikipedia.org/wiki/Foo_(bar)']],
+      ['(see https://example.com/docs)', ['https://example.com/docs']],
+      ['Done: https://x.dev/a?b=1&c=2#top! Next?', ['https://x.dev/a?b=1&c=2#top']],
+      ['Is it https://x.dev/a?', ['https://x.dev/a']],
+      ['one https://x.dev/a; two https://x.dev/b, three https://x.dev/c:', ['https://x.dev/a', 'https://x.dev/b', 'https://x.dev/c']],
+      [`['https://a.dev/x', "https://b.dev/y"]`, ['https://a.dev/x', 'https://b.dev/y']],
+      ['[docs](https://c.dev/z) and <https://d.dev> and {url: https://e.dev/q}', ['https://c.dev/z', 'https://d.dev', 'https://e.dev/q']],
+      ['https://f.dev/a)].', ['https://f.dev/a']],
+      ['HTTP://F.DEV/Upper', ['HTTP://F.DEV/Upper']],
+      ['nothing after the scheme: https://. or http://', []],
+    ];
+    for (const [text, hrefs] of cases) {
+      const parts = textParts(text);
+      expect(parts.flatMap((p) => (p.href ? [p.href] : [])), text).toEqual(hrefs);
+      expect(parts.map((p) => p.text).join(''), text).toBe(text);
+    }
+    const { reset } = open();
+    reset([you(cases[0]![0]), you(cases[1]![0])]);
+    const [wiki, docs] = screen.getAllByRole('link');
+    expect(wiki).toHaveAttribute('href', 'https://en.wikipedia.org/wiki/Foo_(bar)');
+    expect(wiki!.parentElement!.textContent).toBe('Read https://en.wikipedia.org/wiki/Foo_(bar).');
+    expect(docs).toHaveAttribute('href', 'https://example.com/docs');
+    expect(docs!.parentElement!.textContent).toBe('(see https://example.com/docs)');
+  });
+
+  it('VIEW-1.12: an address followed by a 200,000-character run of closing brackets is cut in well under a second', () => {
+    const tail = ')'.repeat(199_980);
+    const started = performance.now();
+    const parts = textParts(`https://example.com/${tail}`);
+    expect(performance.now() - started).toBeLessThan(250); // was minutes: two scans per bracket cut off
+    expect(parts).toEqual([
+      { text: 'https://example.com/', href: 'https://example.com/' },
+      { text: tail, href: null },
+    ]);
+  });
+
+  it('VIEW-1.12: Markdown’s `*`, `_` and `~` after an address stay text, so code links the same address prose does', () => {
+    const cases: [string, string][] = [
+      ['https://example.com**', 'https://example.com'],
+      ['(https://example.com)**', 'https://example.com'],
+      ['**https://example.com/b**', 'https://example.com/b'],
+      ['see https://example.com/a_', 'https://example.com/a'],
+      ['https://example.com/a~~.', 'https://example.com/a'],
+      ['https://example.com/a*b*', 'https://example.com/a*b'],
+      ['https://example.com/snake_case_x.', 'https://example.com/snake_case_x'],
+      ['Read https://en.wikipedia.org/wiki/Foo_(bar)_.', 'https://en.wikipedia.org/wiki/Foo_(bar)'],
+    ];
+    const { reset } = open();
+    reset([agent(cases.flatMap(([text]) => [text, `\`${text}\``]).join('\n\n'))]);
+    const paragraphs = [...document.querySelector('[data-kind="assistant"] > div:last-child')!.children];
+    expect(paragraphs).toHaveLength(cases.length * 2);
+    for (const [i, [text, href]] of cases.entries()) {
+      const prose = paragraphs[2 * i]!;
+      const code = paragraphs[2 * i + 1]!.querySelector('code')!;
+      expect(links(prose), text).toEqual([href]);
+      expect(links(code), text).toEqual([href]);
+      expect(code.textContent, text).toBe(text);
+    }
+  });
+
+  it('VIEW-1.12: javascript:, file: and other schemes stay text; Markdown’s mailto: links still work', () => {
+    const text = 'javascript:alert(1) file:///etc/passwd data:text/html,<b>x</b> ftp://x.dev mailto:me@x.dev xhttps://x.dev';
+    expect(textParts(text)).toEqual([{ text, href: null }]);
+    const { reset } = open();
+    reset([you(text), tool('Read', 'file:///Users/me/notes.md'), agent('Run `javascript:void(0)` or `file:///tmp/x`, or [write](mailto:me@x.dev).')]);
+    expect(links(document.body)).toEqual(['mailto:me@x.dev']);
+    expect(prompt().lastElementChild!.textContent).toBe(text);
+  });
+
+  it('VIEW-1.12: addresses in inline code and code blocks in replies are links; code that is a link’s text isn’t linked again', () => {
+    const { reset } = open();
+    reset([
+      agent(
+        [
+          'Open `https://example.com/a` or see https://example.com/c.',
+          "```sh\ncurl -s 'https://api.example.com/v1/items?id=2' | jq .\n```",
+          '[`https://example.com/b`](https://example.com/b)',
+        ].join('\n\n'),
+      ),
+    ]);
+    const reply = screen.getAllByRole('listitem')[0]!;
+    expect(links(reply)).toEqual(['https://example.com/a', 'https://example.com/c', 'https://api.example.com/v1/items?id=2', 'https://example.com/b']);
+    expect(reply.querySelector('p > code > a')).toHaveAttribute('href', 'https://example.com/a');
+    const block = reply.querySelector('pre code')!;
+    expect(block.querySelector('a')).toHaveAttribute('rel', 'noopener noreferrer nofollow');
+    expect(block.querySelector('a')).toHaveAttribute('target', '_blank');
+    expect(block.textContent).toBe("curl -s 'https://api.example.com/v1/items?id=2' | jq .\n");
+    expect(reply.querySelectorAll('a a')).toHaveLength(0);
+  });
+
+  it('VIEW-1.12: tool-call lines link their addresses, alone and expanded; they still truncate, titled with the whole line', async () => {
+    const user = userEvent.setup();
+    const { reset } = open();
+    const summary = 'https://docs.example.com/api/auth (the token section)';
+    reset([agent('Checking.'), tool('WebFetch', summary), agent('Then two.'), tool('WebFetch', 'https://a.dev/x'), tool('Bash', "curl -s 'https://b.dev/y'")]);
+    const lone = document.querySelector('[data-kind="tool_call"] [title]')!;
+    expect(lone).toHaveAttribute('title', summary);
+    expect(lone).toHaveClass('truncate');
+    expect(links(lone)).toEqual(['https://docs.example.com/api/auth']);
+    expect(lone.textContent).toBe(summary);
+
+    await user.click(screen.getByRole('button', { name: '2 tool calls: WebFetch, Bash' }));
+    const lines = [...document.querySelectorAll('[data-kind="tool_calls"] li [title]')];
+    expect(lines.map((l) => l.getAttribute('title'))).toEqual(['https://a.dev/x', "curl -s 'https://b.dev/y'"]);
+    expect(lines.flatMap(links)).toEqual(['https://a.dev/x', 'https://b.dev/y']);
+    expect(lines.every((l) => l.classList.contains('truncate'))).toBe(true);
+  });
+
+  it('VIEW-1.12: a Subagent row links its address, keeping its title', () => {
+    const { reset } = open();
+    const text = 'Agent "Deploy" finished: https://deploy.example.com/runs/42.\nsummary details';
+    reset([{ kind: 'system', cursor: c(), ts: null, text }]);
+    const line = document.querySelector('[data-kind="system"] [title]')!;
+    expect(line).toHaveAttribute('title', text);
+    expect(links(line)).toEqual(['https://deploy.example.com/runs/42']);
+    expect(line.textContent).toBe('Agent "Deploy" finished: https://deploy.example.com/runs/42.');
+  });
+
+  it('VIEW-1.12: a question’s header, text, options and typed answer link their addresses; under the uppercase header a link keeps its case', () => {
+    const { reset } = open();
+    const base = (question() as Extract<ChatEntry, { kind: 'question' }>).questions[0]!;
+    reset([
+      question({
+        status: 'answered',
+        questions: [
+          {
+            ...base,
+            header: 'Per https://figma.example.com/f/aBc',
+            question: 'Which design (https://figma.example.com/f/1)?',
+            options: [{ label: 'The new one', description: 'As in https://figma.example.com/f/2' }, ...base.options],
+          },
+        ],
+        answer: { answers: ['The one at https://figma.example.com/f/3'], picked: [[]] },
+      }),
+    ]);
+    const q = document.querySelector('[data-kind="question"]')!;
+    expect(links(q)).toEqual(['https://figma.example.com/f/aBc', 'https://figma.example.com/f/1', 'https://figma.example.com/f/2', 'https://figma.example.com/f/3']);
+    expect(q).toHaveTextContent('Which design (https://figma.example.com/f/1)?');
+    const header = within(q as HTMLElement).getByRole('link', { name: 'https://figma.example.com/f/aBc' });
+    expect(header.parentElement).toHaveClass('uppercase');
+    expect(header).toHaveClass('normal-case');
+  });
+
+  it('VIEW-1.12: Enter or Space on a focused link opens it; Space doesn’t scroll the chat or release a jump’s hold; Shift+Space still scrolls up', async () => {
+    const user = userEvent.setup();
+    const { reset } = open();
+    reset([you('See https://example.com/x'), agent('Done.')]);
+    // A jump to the prompt's Mark holds the chat as scrolled up (VIEW-1.11). jsdom has no layout,
+    // so the chat is always at its bottom: a scroll shows "Jump to latest" only while the hold lasts.
+    await user.click(await screen.findByRole('button', { name: /^Your prompt/ }));
+    const chat = screen.getByTestId('chat');
+    const holds = () => {
+      fireEvent.scroll(chat);
+      return !!screen.queryByRole('button', { name: /Jump to latest/ });
+    };
+    expect(holds()).toBe(true);
+    const link = screen.getByRole('link');
+    let opened = 0;
+    link.addEventListener('click', (e) => {
+      opened++;
+      e.preventDefault(); // jsdom can't navigate
+    });
+    link.focus();
+    await user.keyboard('{Enter}');
+    expect(opened).toBe(1);
+    expect(fireEvent.keyDown(link, { key: ' ' })).toBe(false); // default prevented: no scroll
+    expect(opened).toBe(2);
+    fireEvent.keyDown(link, { key: ' ', repeat: true }); // held down: one tab, not one per repeat
+    expect(opened).toBe(2);
+    expect(holds()).toBe(true);
+    // Shift+Space scrolls up, as anywhere else: it opens nothing, and it's your own scroll.
+    expect(fireEvent.keyDown(link, { key: ' ', shiftKey: true })).toBe(true);
+    expect(opened).toBe(2);
+    expect(holds()).toBe(false);
+  });
+
+  it('VIEW-1.12: an address ends at a bidi control or an invisible character, in your prompt, on a tool line and in code', () => {
+    // U+202E reverses what follows: `https://\u202E@evil.example/moc.elgoog` reads as `https://google.com/elpmaxe.live@`.
+    const spoof = 'https://\u202E@evil.example/moc.elgoog';
+    expect(textParts(spoof)).toEqual([{ text: spoof, href: null }]);
+    for (const hidden of ['\u061C', '\u200B', '\u200D', '\u200F', '\u202A', '\u202E', '\u2060', '\u2066', '\u2069', '\uFEFF']) {
+      const text = `see https://x.dev/a${hidden}b`;
+      expect(textParts(text).flatMap((p) => (p.href ? [p.href] : [])), JSON.stringify(text)).toEqual(['https://x.dev/a']);
+    }
+    const { reset } = open();
+    reset([you(`Open ${spoof}`), tool('WebFetch', `${spoof} and https://ok.dev/\u2066x`), agent(`Run \`curl ${spoof}\` or \`curl https://ok.dev/\u200Bb\`.`)]);
+    expect(links(document.body)).toEqual(['https://ok.dev/', 'https://ok.dev/']);
+    expect(prompt().lastElementChild!.textContent).toBe(`Open ${spoof}`);
+    // A right-to-left override before an address can't reverse it: each link is a bidi isolate.
+    reset([you('\u202Ehttps://evil.example/moc.elgoog//:sptth')]);
+    expect(screen.getByRole('link')).toHaveAttribute('dir', 'ltr');
+  });
+
+  it('VIEW-1.12: a Markdown link whose text or href holds a bidi control or an invisible character, percent-encoded or not, stays text', () => {
+    const { reset } = open();
+    reset([
+      agent(
+        [
+          'Bare: https://\u202E@evil.example/moc.elgoog',
+          'Angled: <https://\u202E@evil.example/moc.elgoog>',
+          'Text: [https://\u2066x.dev](https://x.dev)',
+          'Href: [docs](https://x.dev/a\u200Bb)',
+          'Encoded: [docs](https://x.dev/%E2%80%AEb) and [docs](https://x.dev/%ef%bb%bf) and [docs](https://x.dev/%D8%9Cb)',
+          'Letter mark: <https://؜127.0.0.1:8080@203.0.113.9/>',
+          'Fine: <https://ok.dev/a> and [ok](https://ok.dev/b)',
+        ].join('\n\n'),
+      ),
+    ]);
+    const reply = document.querySelector('[data-kind="assistant"]')!;
+    expect(links(reply)).toEqual(['https://ok.dev/a', 'https://ok.dev/b']);
+    expect(reply.querySelectorAll('a[dir="auto"]')).toHaveLength(2);
+    expect(reply).toHaveTextContent('Angled: https://\u202E@evil.example/moc.elgoog');
+    expect(reply).toHaveTextContent('Encoded: docs and docs');
+  });
+
+  it('VIEW-1.12: a quote inside an address stays in it; a quote ends it only when the same quote opens right before it', () => {
+    const cases: [string, string[]][] = [
+      ["See https://en.wikipedia.org/wiki/Murphy's_law", ["https://en.wikipedia.org/wiki/Murphy's_law"]],
+      ["curl 'https://x.dev/a'", ['https://x.dev/a']],
+      ['["https://x.dev/a"]', ['https://x.dev/a']],
+      ['{"a":"https://x.dev/a","b":"https://y.dev/b?q=\'d\'&e=1"}', ['https://x.dev/a', "https://y.dev/b?q='d'&e=1"]],
+      ["\"https://x.dev/it's\"", ["https://x.dev/it's"]],
+      ['git commit -m "fix, see https://x.dev/a"', ['https://x.dev/a']],
+    ];
+    for (const [text, hrefs] of cases) {
+      const parts = textParts(text);
+      expect(parts.flatMap((p) => (p.href ? [p.href] : [])), text).toEqual(hrefs);
+      expect(parts.map((p) => p.text).join(''), text).toBe(text);
+    }
+    // Code links what prose does.
+    const { reset } = open();
+    reset([agent("https://en.wikipedia.org/wiki/Murphy's_law\n\n`https://en.wikipedia.org/wiki/Murphy's_law`")]);
+    expect(links(document.querySelector('[data-kind="assistant"]')!)).toEqual(["https://en.wikipedia.org/wiki/Murphy's_law", "https://en.wikipedia.org/wiki/Murphy's_law"]);
+  });
+
+  it('VIEW-1.12: an IPv6 host links in code and in Markdown’s <…> and […](…) links; a bare one in prose stays text', () => {
+    const { reset } = open();
+    reset([agent('`https://[::1]:8080/a`\n\n<https://[::1]:8080/b>\n\n[local](https://me@[fe80::1]/c)\n\nhttps://[::1]:8080/d')]);
+    const reply = document.querySelector('[data-kind="assistant"]')!;
+    expect(links(reply)).toEqual(['https://[::1]:8080/a', 'https://[::1]:8080/b', 'https://me@[fe80::1]/c']);
+    expect(within(reply as HTMLElement).getByRole('link', { name: 'https://[::1]:8080/b' })).toBeInTheDocument();
+    expect(reply).toHaveTextContent('https://[::1]:8080/d');
+  });
+
+  it('VIEW-1.12: a truncated row shows whole while a link in it has keyboard focus, so Tab doesn’t scroll it sideways', async () => {
+    const user = userEvent.setup();
+    const { reset } = open();
+    const whole = ['has-focus-visible:whitespace-normal', 'has-focus-visible:break-words'];
+    reset([
+      { kind: 'system', cursor: c(), ts: null, text: 'Agent "Deploy" finished: https://deploy.example.com/runs/42' },
+      agent('One.'),
+      tool('Bash', 'cd /a/very/long/path && curl https://x.dev/a'),
+      agent('Two.'),
+      tool('WebFetch', 'https://a.dev/x'),
+      tool('Bash', "curl -s 'https://b.dev/y'"),
+    ]);
+    await user.click(screen.getByRole('button', { name: '2 tool calls: WebFetch, Bash' }));
+    const rows = [...document.querySelectorAll('[data-kind="system"] [title], [data-kind="tool_call"] [title], [data-kind="tool_calls"] li [title]')];
+    expect(rows).toHaveLength(4);
+    for (const row of rows) {
+      expect(row.querySelector('a')).not.toBeNull();
+      expect(row).toHaveClass('truncate', ...whole);
+    }
   });
 });
 
