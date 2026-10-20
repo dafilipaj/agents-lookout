@@ -9,7 +9,10 @@ import {
   type AnswerAttempt,
   AnswerContext,
   type Answering,
+  type Draft,
+  type DraftKeeper,
   ESC_HINT,
+  type QuestionDrafts,
   type ScreenState,
   type SendFailure,
   type StopRequest,
@@ -41,6 +44,8 @@ export interface SessionViewProps {
   onToggleDrawer(row: SessionRow, open: boolean): void;
   /** Unsent drafts per Session, kept while switching (VIEW-3.5). */
   drafts: Map<string, string>;
+  /** VIEW-4.6: a question's picks and text per Session, then question, kept while switching. */
+  questionDrafts: QuestionDrafts;
   /** Sessions with a send in flight. */
   sending: ReadonlySet<string>;
   /** VIEW-3.4: the last failed send per Session; VIEW-3.7: with why Fleet held it, when it did. */
@@ -84,6 +89,7 @@ export function SessionView({
   drawerOpen,
   onToggleDrawer,
   drafts,
+  questionDrafts,
   sending,
   sendErrors,
   onEdit,
@@ -106,7 +112,7 @@ export function SessionView({
 
   // VIEW-4: the permission prompt's buttons under the chat, and the question that can be answered in it.
   const permission = permissionPanel(row, ended, screen, attempt);
-  const question = questionPanel(row, ended, chat?.entries ?? [], screen, attempt);
+  const question = questionPanel(row, ended, chat?.entries ?? [], screen, attempt, now);
   const questionId = question?.id ?? null;
   const questionPhase = question?.phase ?? null;
   const questionMessage = question?.message ?? null;
@@ -115,20 +121,33 @@ export function SessionView({
   const showTerminal = () => onToggleDrawer(row, true);
   // The epoch of the last read of the screen goes with every answer: the server refuses one read
   // before another tab's answer, or before it started (0 before any read: the question's buttons
-  // wait, disabled, for the first one).
+  // wait, locked, for the first one).
   const epoch = screen?.epoch ?? 0;
   const latest = useRef({ row, onAnswer, showTerminal, epoch });
   useLayoutEffect(() => {
     latest.current = { row, onAnswer, showTerminal, epoch };
   });
+  // VIEW-4.6: a question's picks and text, kept by App while a read takes its form away, or
+  // another Session is viewed.
+  const keptDrafts = useMemo<DraftKeeper>(
+    () => ({
+      get: (id) => questionDrafts.get(row.id)?.get(id),
+      set: (id, d) => {
+        const kept = questionDrafts.get(row.id) ?? new Map<string, readonly Draft[]>();
+        questionDrafts.set(row.id, kept.set(id, d));
+      },
+    }),
+    [questionDrafts, row.id],
+  );
   // Stable while nothing it holds changes, so the chat's memoized rows don't re-render every second.
   const answering = useMemo<Answering>(
     () => ({
       panel: questionId && questionPhase ? { id: questionId, phase: questionPhase, message: questionMessage } : null,
       submit: (id, answers) => latest.current.onAnswer(latest.current.row, { kind: 'question', question: id, answers, epoch: latest.current.epoch }),
       terminal: { open: drawerOpen, show: () => latest.current.showTerminal() },
+      drafts: keptDrafts,
     }),
-    [questionId, questionPhase, questionMessage, drawerOpen],
+    [questionId, questionPhase, questionMessage, drawerOpen, keptDrafts],
   );
 
   // VIEW-1.10: "Working…" shows the moment you send, before Status catches up. A send while a turn

@@ -86,6 +86,8 @@ function ledgerAt41() {
 async function setup() {
   const known = await rows();
   const { ledger, answered } = ledgerAt41();
+  /** VIEW-4.8: what the server logged about refused answers. */
+  const logged: string[] = [];
   const opts = {
     runner,
     fleetBin: () => FAKE_FLEET,
@@ -93,12 +95,14 @@ async function setup() {
     freshList: list,
     ledger,
     env,
+    log: (line: string) => void logged.push(line),
   };
   return {
     opts,
     ledger,
     answered,
     known,
+    logged,
     answer: (id: string, req: AnswerRequest) => answerPrompt(opts, id, req),
     stop: (id: string) => stopSession(opts, id),
   };
@@ -129,14 +133,23 @@ describe('reading the prompt on screen (VIEW-4.2)', () => {
         choices: PERMISSION.choices,
         untouched: true,
       },
+      answerable: true,
+      detail: null,
+      pane: { cols: 200, rows: 50 },
     });
     expect(fleetCalls().filter((c) => c.includes('answer'))).toEqual([['--local', 'answer', `id:${CODEX}`, '--list', '--json']]);
   });
 
   it('VIEW-4.2: a question form is reported by id only (its options come from the chat); nothing on screen is null', async () => {
     const t = await setup();
-    expect(await listPrompt(t.opts, t.known.find((r) => r.id === CLAUDE)!)).toEqual({ ok: true, prompt: { kind: 'question', id: 'toolu_13', untouched: true } });
-    expect(await listPrompt(t.opts, t.known.find((r) => r.id === IDLE)!)).toEqual({ ok: true, prompt: null });
+    expect(await listPrompt(t.opts, t.known.find((r) => r.id === CLAUDE)!)).toEqual({
+      ok: true,
+      prompt: { kind: 'question', id: 'toolu_13', untouched: true },
+      answerable: true,
+      detail: null,
+      pane: { cols: 200, rows: 50 },
+    });
+    expect(await listPrompt(t.opts, t.known.find((r) => r.id === IDLE)!)).toEqual({ ok: true, prompt: null, answerable: false, detail: 'no_form', pane: { cols: 200, rows: 50 } });
     // A Session without a session id is read by its exact pid.
     await listPrompt(t.opts, t.known.find((r) => r.id === NO_ID)!);
     expect(fleetCalls().at(-1)).toEqual(['--local', 'answer', 'pid:61005', '--list', '--json']);
@@ -182,7 +195,47 @@ describe('reading the prompt on screen (VIEW-4.2)', () => {
     const failing = { ...t.opts, runner: vi.fn(async () => Promise.reject(Object.assign(new Error('exit 2'), { code: 2, stderr: "error: unrecognized subcommand 'answer'" }))) };
     expect(await listPrompt(failing, row)).toEqual({ ok: false });
     // Another kind of prompt Fleet reports is a read: the screen shows something Lookout doesn't answer.
-    expect(await listPrompt(answering(JSON.stringify({ ok: true, session_id: CLAUDE, harness: 'claude', prompt: { kind: 'trust' } })), row)).toEqual({ ok: true, prompt: null });
+    expect(await listPrompt(answering(JSON.stringify({ ok: true, session_id: CLAUDE, harness: 'claude', prompt: { kind: 'trust' }, answerable: false, detail: null })), row)).toEqual({
+      ok: true,
+      prompt: null,
+      answerable: false,
+      detail: null,
+      pane: null,
+    });
+  });
+
+  it('VIEW-4.6: beside the prompt, whether Fleet could answer it now, why not, and the terminal’s size; a form cut off by a small pane has no id', async () => {
+    const CUT = { kind: 'question', incomplete: true, id: null, questions: null, active: null, untouched: false };
+    editRow(bySession(CLAUDE), { fake_prompt: CUT, fake_pane: { cols: 80, rows: 24 } });
+    const t = await setup();
+    const row = t.known.find((r) => r.id === CLAUDE)!;
+    expect(await listPrompt(t.opts, row)).toEqual({
+      ok: true,
+      prompt: { kind: 'question', id: null, untouched: false },
+      answerable: false,
+      detail: 'clipped',
+      pane: { cols: 80, rows: 24 },
+    });
+    // Only Fleet's `true` is answerable; a code Lookout doesn't know, or a size that isn't one, is nothing.
+    const answering = (extra: Record<string, unknown>) => ({
+      ...t.opts,
+      runner: vi.fn(async () => JSON.stringify({ ok: true, session_id: CLAUDE, harness: 'claude', prompt: { kind: 'question', id: 'toolu_13', untouched: true }, answerable: false, ...extra })),
+    });
+    for (const answerable of ['true', 1, null]) expect(await listPrompt(answering({ answerable }), row)).toEqual(expect.objectContaining({ ok: true, answerable: false }));
+    for (const answerable of ['true', 1, null]) expect(await listPrompt(answering({ answerable }), row)).not.toHaveProperty('oldFleet');
+    expect(await listPrompt(answering({ detail: 'the form says: Push?' }), row)).toMatchObject({ detail: null });
+    expect(await listPrompt(answering({ detail: 'layout_unsupported' }), row)).toMatchObject({ detail: 'layout_unsupported' });
+    for (const pane of [{ cols: 0, rows: 24 }, { cols: 80.5, rows: 24 }, { cols: 80, rows: 10_001 }, { cols: '80', rows: 24 }, [80, 24], 'x'])
+      expect(await listPrompt(answering({ pane }), row)).toMatchObject({ pane: null });
+    expect(await listPrompt(answering({ pane: { cols: 80, rows: 24, x: 1 } }), row)).toMatchObject({ pane: { cols: 80, rows: 24 } });
+  });
+
+  it('VIEW-4.6: a read without `answerable` comes from a Fleet older than the pin: its own state, never answerable, whatever else it says', async () => {
+    const t = await setup();
+    const row = t.known.find((r) => r.id === CLAUDE)!;
+    // e0d4612, the pin before VIEW-4.6: the form, untouched, and nothing of whether it can be answered.
+    const old = { ...t.opts, runner: vi.fn(async () => JSON.stringify({ ok: true, session_id: CLAUDE, harness: 'claude', prompt: { kind: 'question', id: 'toolu_13', untouched: true } })) };
+    expect(await listPrompt(old, row)).toEqual({ ok: true, prompt: { kind: 'question', id: 'toolu_13', untouched: true }, answerable: false, detail: null, pane: null, oldFleet: true });
   });
 });
 
@@ -218,7 +271,8 @@ describe('following the prompt (VIEW-4.2)', () => {
       calls.push(`end ${id}`);
       if (state.fail === 'timeout') throw Object.assign(new Error('timed out'), { timedOut: true });
       if (state.fail === 'malformed') return `{"ok":true,"session_id":"${id}","harness":"claude","prompt":{"kind":"perm`;
-      return JSON.stringify({ ok: true, session_id: id, harness: 'claude', prompt: id === 'sess-a' ? state.prompt : null });
+      // A Fleet from the pin, which says whether it could answer (VIEW-4.6); these reads don't need it.
+      return JSON.stringify({ ok: true, session_id: id, harness: 'claude', prompt: id === 'sess-a' ? state.prompt : null, answerable: false, detail: null });
     });
     const sent: { clientId: string; event: ServerEvent }[] = [];
     const ledger = new AnswerLedger();
@@ -241,7 +295,21 @@ describe('following the prompt (VIEW-4.2)', () => {
     expect(t.runner).toHaveBeenCalledTimes(1);
     expect(t.runner.mock.calls[0]![1]).toEqual(['--local', 'answer', 'id:sess-a', '--list', '--json']);
     expect(t.sent).toEqual([
-      { clientId: 'tab-1', event: { type: 'prompt', sessionId: 'sess-a', prompt: expect.objectContaining({ id: 'p2.0badc0de' }), epoch: expect.any(Number), uncertain: null, since: 0 } },
+      {
+        clientId: 'tab-1',
+        event: {
+          type: 'prompt',
+          sessionId: 'sess-a',
+          prompt: expect.objectContaining({ id: 'p2.0badc0de' }),
+          epoch: expect.any(Number),
+          uncertain: null,
+          since: 0,
+          answerable: false,
+          detail: null,
+          pane: null,
+          oldFleet: false,
+        },
+      },
     ]);
 
     await vi.advanceTimersByTimeAsync(1000);
@@ -274,7 +342,9 @@ describe('following the prompt (VIEW-4.2)', () => {
     t.state.prompt = null;
     await vi.advanceTimersByTimeAsync(1000);
     expect(t.runner).toHaveBeenCalledTimes(1);
-    expect(prompts(t.sent)).toEqual([{ type: 'prompt', sessionId: 'sess-a', prompt: null, epoch: expect.any(Number), uncertain: null, since: 0 }]);
+    expect(prompts(t.sent)).toEqual([
+      { type: 'prompt', sessionId: 'sess-a', prompt: null, epoch: expect.any(Number), uncertain: null, since: 0, answerable: false, detail: null, pane: null, oldFleet: false },
+    ]);
     t.state.prompt = PERMISSION;
     await vi.advanceTimersByTimeAsync(1000);
     expect(t.runner).toHaveBeenCalledTimes(2);
@@ -302,7 +372,9 @@ describe('following the prompt (VIEW-4.2)', () => {
     t.state.prompt = null; // a panel: nothing Lookout answers
     t.w.view('tab-1', 'sess-a');
     await vi.advanceTimersByTimeAsync(0);
-    expect(prompts(t.sent)).toEqual([{ type: 'prompt', sessionId: 'sess-a', prompt: null, epoch: expect.any(Number), uncertain: null, since: 1_000 }]);
+    expect(prompts(t.sent)).toEqual([
+      { type: 'prompt', sessionId: 'sess-a', prompt: null, epoch: expect.any(Number), uncertain: null, since: 1_000, answerable: false, detail: null, pane: null, oldFleet: false },
+    ]);
     await vi.advanceTimersByTimeAsync(1000);
     expect(t.sent).toHaveLength(1);
 
@@ -533,7 +605,7 @@ describe('answering (VIEW-4.1–4.3)', () => {
     editRow(bySession(CODEX), { fake_prompt: { ...PERMISSION, selected: 2, untouched: false } });
     t = await setup();
     expect(await refusal(t.answer(CODEX, { kind: 'permission', prompt: 'p2.0badc0de', choice: 1, epoch: 41 }))).toEqual(other);
-    editRow(bySession(CODEX), { fake_prompt: { kind: 'permission', incomplete: true, reason: 'its top is out of reach' } });
+    editRow(bySession(CODEX), { fake_prompt: { kind: 'permission', incomplete: true, reason: 'its frame is ambiguous' }, fake_detail: 'layout_unsupported' });
     t = await setup();
     expect(await refusal(t.answer(CODEX, { kind: 'permission', prompt: 'p2.0badc0de', choice: 1, epoch: 41 }))).toMatchObject({
       status: 409,
@@ -717,6 +789,174 @@ describe('answering (VIEW-4.1–4.3)', () => {
     expect(() => parseAnswerRequest({ kind: 'permission', prompt: 'p2.0badc0de', choice: 1 })).toThrow('Invalid answer.');
     expect(() => parseAnswerRequest({ kind: 'permission', prompt: 'p2.0badc0de', choice: 1, epoch: -1 })).toThrow('Invalid answer.');
     expect(() => parseAnswerRequest({ kind: 'permission', prompt: 'p2.0badc0de', choice: 1, epoch: '41' })).toThrow('Invalid answer.');
+  });
+});
+
+describe('a prompt Fleet can’t answer now (VIEW-4.6, VIEW-4.8)', () => {
+  const CUT = { kind: 'question', incomplete: true, id: null, questions: null, active: null, untouched: false };
+  /** Fleet's `error` for a cut-off form: free text, which may quote the screen. */
+  const CUT_ERROR = "the question form's answers run off the captured screen (taller than the terminal) — answer it there; nothing typed";
+
+  it('VIEW-4.6: a refusal for a form taller than the terminal says it doesn’t fit, with the terminal’s size, and to answer it from a terminal app, where a bigger terminal lets Lookout answer it', async () => {
+    editRow(bySession(CLAUDE), { fake_prompt: CUT, fake_pane: { cols: 80, rows: 24 } });
+    let t = await setup();
+    expect(await refusal(t.answer(CLAUDE, { kind: 'question', question: 'toolu_13', answers: [{ options: [1] }], epoch: 41 }))).toEqual({
+      status: 409,
+      message:
+        'This question doesn’t fit in the terminal (80×24), so nothing was typed. Open the Session in a terminal app and answer it there. A bigger terminal lets Lookout answer questions like this.',
+    });
+    editRow(bySession(CODEX), { status: 'waiting', fake_prompt: { kind: 'permission', incomplete: true, reason: 'its top is out of reach' }, fake_pane: null });
+    t = await setup();
+    expect(await refusal(t.answer(CODEX, { kind: 'permission', prompt: 'p2.0badc0de', choice: 1, epoch: 41 }))).toEqual({
+      status: 409,
+      message: 'This prompt doesn’t fit in the terminal, so nothing was typed. Open the Session in a terminal app and answer it there. A bigger terminal lets Lookout answer prompts like this.',
+    });
+    expect(typed().every((c) => !c.includes('--list'))).toBe(true);
+    expect(t.answered).not.toHaveBeenCalled();
+  });
+
+  it('VIEW-4.8: a refused answer logs one line: what was answered, Fleet’s kind and reason code, the Session, the id and the pane’s size; never Fleet’s error, the screen or the Transcript', async () => {
+    editRow(bySession(CLAUDE), { fake_prompt: CUT, fake_pane: { cols: 80, rows: 24 } });
+    let t = await setup();
+    await refusal(t.answer(CLAUDE, { kind: 'question', question: 'toolu_13', answers: [{ options: [1] }], epoch: 41 }));
+    expect(t.logged).toEqual([`lookout: answer refused: question kind=prompt_incomplete detail=clipped session=${CLAUDE} id=toolu_13 pane=80x24`]);
+    const line = t.logged[0]!;
+    expect(line).not.toContain(CUT_ERROR);
+    for (const words of ['captured screen', 'nothing typed', 'Push the branch', 'Next step', 'Only push']) expect(line).not.toContain(words);
+
+    // A permission prompt someone moved the cursor on, in a Session Fleet reports outside tmux (no pane).
+    editRow(bySession(CODEX), { status: 'waiting', fake_prompt: { ...PERMISSION, selected: 2, untouched: false }, fake_pane: null });
+    t = await setup();
+    await refusal(t.answer(CODEX, { kind: 'permission', prompt: 'p2.0badc0de', choice: 1, epoch: 41 }));
+    expect(t.logged).toEqual([`lookout: answer refused: permission kind=prompt_not_on_screen detail=cursor_moved session=${CODEX} id=p2.0badc0de pane=none`]);
+    expect(t.logged[0]).not.toContain('bundle exec rspec');
+
+    // A refusal that isn't a screen check has no code.
+    editRow(bySession(CODEX), { fake_prompt: PERMISSION, fake_answer: 'busy', fake_pane: { cols: 200, rows: 50 } });
+    t = await setup();
+    await refusal(t.answer(CODEX, { kind: 'permission', prompt: 'p2.0badc0de', choice: 1, epoch: 41 }));
+    expect(t.logged).toEqual([`lookout: answer refused: permission kind=busy detail=none session=${CODEX} id=p2.0badc0de pane=200x50`]);
+  });
+
+  it('VIEW-4.8: values that aren’t what Fleet’s contract says are logged as `other`, and Fleet’s error still never is; an answer Fleet didn’t refuse logs nothing', async () => {
+    const t = await setup();
+    const failing = (stdout: string) => ({
+      ...t.opts,
+      runner: vi.fn(async (_f: string, args: readonly string[]) => {
+        if (args.includes('--list')) return '';
+        throw Object.assign(new Error('exit 1'), { code: 1, stdout, stderr: 'error: Do you want to proceed? rm -rf ~' });
+      }),
+    });
+    const hostile = JSON.stringify({
+      ok: false,
+      kind: 'prompt_not_on_screen\nlookout: answer typed',
+      error: 'Do you want to proceed? rm -rf ~',
+      detail: 'Clipped: Push the branch?',
+      pane: { cols: -1, rows: 'x' },
+    });
+    await refusal(answerPrompt(failing(hostile), CLAUDE, { kind: 'question', question: 'toolu_13', answers: [{ options: [1] }], epoch: 41 }));
+    expect(t.logged).toEqual([`lookout: answer refused: question kind=other detail=other session=${CLAUDE} id=toolu_13 pane=other`]);
+    expect(t.logged[0]).not.toContain('rm -rf');
+    t.logged.length = 0;
+    // No failure object (a crash, a timeout), or one without a kind: nothing to log.
+    await refusal(answerPrompt(failing('not json'), CLAUDE, { kind: 'question', question: 'toolu_13', answers: [{ options: [1] }], epoch: 41 }));
+    await refusal(answerPrompt(failing(JSON.stringify({ ok: false, error: 'Do you want to proceed?' })), CLAUDE, { kind: 'question', question: 'toolu_13', answers: [{ options: [1] }], epoch: 41 }));
+    const timeout = { ...t.opts, runner: vi.fn(async () => Promise.reject(Object.assign(new Error('timed out'), { timedOut: true }))) };
+    await refusal(answerPrompt(timeout, CLAUDE, { kind: 'question', question: 'toolu_13', answers: [{ options: [1] }], epoch: 41 }));
+    expect(t.logged).toEqual([]);
+    // Answered: nothing either (a fresh server: the failures above may have typed, so their epoch is spent).
+    const fresh = await setup();
+    await fresh.answer(CLAUDE, { kind: 'question', question: 'toolu_13', answers: [{ options: [1] }], epoch: 41 });
+    expect(fresh.logged).toEqual([]);
+    // A `detail` outside Fleet's fixed set is `other`, however much it looks like a code.
+    const other = await setup();
+    const push = JSON.stringify({ ok: false, kind: 'prompt_not_on_screen', detail: 'push', pane: null });
+    await refusal(answerPrompt({ ...failing(push), ledger: other.opts.ledger, log: other.opts.log }, CLAUDE, { kind: 'question', question: 'toolu_13', answers: [{ options: [1] }], epoch: 41 }));
+    expect(other.logged).toEqual([`lookout: answer refused: question kind=prompt_not_on_screen detail=other session=${CLAUDE} id=toolu_13 pane=none`]);
+  });
+
+  it('VIEW-4.8: a log that throws changes nothing: the refusal and what may have been typed are as without it', async () => {
+    const t = await setup();
+    const opts = {
+      ...t.opts,
+      log: () => {
+        throw new Error('log full');
+      },
+    };
+    // Keys may have gone out: the outcome is uncertain, so every tab's read from before is stale.
+    editRow(bySession(CLAUDE), { fake_answer: 'prompt_changed', fake_detail: 'cursor_moved' });
+    expect(await refusal(answerPrompt(opts, CLAUDE, { kind: 'question', question: 'toolu_13', answers: [{ options: [1] }], epoch: 41 }))).toEqual({
+      status: 502,
+      message: 'The prompt changed while Lookout was answering, so it stopped part-way. Check the terminal and finish there.',
+    });
+    expect(t.answered).toHaveBeenCalledExactlyOnceWith('uncertain');
+  });
+
+  it('VIEW-4.8: without a log of its own, the line goes to the server’s console as a warning', async () => {
+    editRow(bySession(CLAUDE), { fake_prompt: CUT, fake_pane: { cols: 80, rows: 24 } });
+    const t = await setup();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      await refusal(answerPrompt({ ...t.opts, log: undefined }, CLAUDE, { kind: 'question', question: 'toolu_13', answers: [{ options: [1] }], epoch: 41 }));
+      expect(warn).toHaveBeenCalledExactlyOnceWith(`lookout: answer refused: question kind=prompt_incomplete detail=clipped session=${CLAUDE} id=toolu_13 pane=80x24`);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+});
+
+describe('following whether it can be answered (VIEW-4.6)', () => {
+  beforeEach(() => vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] }));
+  afterEach(() => vi.useRealTimers());
+
+  it('VIEW-4.6: the tabs get whether Fleet could answer the prompt, why not and the pane’s size, and hear when any of them changes', async () => {
+    const row: SessionRow = {
+      id: 'sess-a', pid: 4242, harness: 'claude', title: 'a', status: 'needs-you', waitingFor: null, statusSince: 0, contextPct: null, cwd: '/x', git: null,
+      backend: 'tmux', controllable: true, ownHost: true, model: null, procStart: null,
+    };
+    const CUT_PROMPT = { kind: 'question', incomplete: true, id: null, questions: null, active: null, untouched: false };
+    let list: Record<string, unknown> = { prompt: CUT_PROMPT, answerable: false, detail: 'clipped', pane: { cols: 80, rows: 24 }, error: 'should never travel' };
+    const runner = vi.fn(async () => JSON.stringify({ ok: true, session_id: 'sess-a', harness: 'claude', ...list }));
+    const sent: Extract<ServerEvent, { type: 'prompt' }>[] = [];
+    const w = new PromptWatch({ runner, fleetBin: () => '/bin/fleet', lookup: () => row, sendTo: (_c, e) => void sent.push(e), ledger: new AnswerLedger() });
+    w.view('tab-1', 'sess-a');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sent).toEqual([
+      {
+        type: 'prompt',
+        sessionId: 'sess-a',
+        prompt: { kind: 'question', id: null, untouched: false },
+        epoch: expect.any(Number),
+        uncertain: null,
+        since: 0,
+        answerable: false,
+        detail: 'clipped',
+        pane: { cols: 80, rows: 24 },
+        oldFleet: false,
+      },
+    ]);
+    expect(JSON.stringify(sent)).not.toContain('should never travel');
+    // The window made bigger: the same Session, now the whole form, which Fleet can answer.
+    list = { prompt: { kind: 'question', id: 'toolu_13', questions: [], active: 0, untouched: true }, answerable: true, detail: null, pane: { cols: 200, rows: 50 } };
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(sent.at(-1)).toMatchObject({ prompt: { kind: 'question', id: 'toolu_13', untouched: true }, answerable: true, detail: null, pane: { cols: 200, rows: 50 } });
+    // Only the size changes: still news.
+    list = { ...list, pane: { cols: 160, rows: 50 } };
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(sent).toHaveLength(3);
+    expect(sent.at(-1)).toMatchObject({ answerable: true, pane: { cols: 160, rows: 50 } });
+    // Nothing new: nothing sent.
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(sent).toHaveLength(3);
+    // A failed read: nothing answerable, no reason, no size.
+    runner.mockRejectedValue(Object.assign(new Error('timed out'), { timedOut: true }));
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(sent.at(-1)).toMatchObject({ prompt: null, answerable: false, detail: null, pane: null, oldFleet: false });
+    // A Fleet older than the pin (no `answerable`): news, and said as such.
+    runner.mockResolvedValue(JSON.stringify({ ok: true, session_id: 'sess-a', harness: 'claude', prompt: { kind: 'question', id: 'toolu_13', untouched: true } }));
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(sent.at(-1)).toMatchObject({ prompt: { kind: 'question', id: 'toolu_13', untouched: true }, answerable: false, detail: null, oldFleet: true });
+    w.stop();
   });
 });
 

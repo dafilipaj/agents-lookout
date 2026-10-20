@@ -1,10 +1,24 @@
-import type { AnswerResult, ChatEntry, ChatQuestion, ScreenPrompt, SessionRow } from '@shared/types.ts';
+import type { AnswerResult, ChatEntry, ChatQuestion, ScreenPrompt, ServerEvent, SessionRow } from '@shared/types.ts';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ESC_HINT, INCOMPLETE, LOST_ANSWER, LOST_STOP, QUESTION_TOUCHED, STOP_SETTLE_MS, TOUCHED, UNCERTAIN } from '@/lib/answers';
+import {
+  ESC_HINT,
+  FORM_WAIT_MS,
+  INCOMPLETE,
+  LOST_ANSWER,
+  LOST_STOP,
+  QUESTION_NOT_SHOWN,
+  QUESTION_TOUCHED,
+  QUESTION_UNCHECKED,
+  READ_WAIT_MS,
+  STOP_SETTLE_MS,
+  TOUCHED,
+  UNCERTAIN,
+  doesntFit,
+} from '@/lib/answers';
 import { SaveError } from '@/lib/client';
-import { NOW, renderApp, row } from '@/test/helpers';
+import { NOW, renderApp, row, rowEl } from '@/test/helpers';
 
 const PERMISSION: Extract<ScreenPrompt, { kind: 'permission' }> = {
   kind: 'permission',
@@ -63,8 +77,22 @@ function open(over: Partial<SessionRow> = {}, entries: ChatEntry[] = [], options
   app.snapshot([row({ id: 'a', status: 'needs-you', statusSince: NOW - 5_000, ...over })]);
   app.emit({ type: 'chat', sessionId: 'a', op: 'reset', entries, before: null, queue: [] });
   const prompt = (p: ScreenPrompt | null, epoch = 1, uncertain: string | null = null) => app.emit({ type: 'prompt', sessionId: 'a', prompt: p, epoch, uncertain });
-  return { ...app, prompt };
+  /** VIEW-4.6: a read that shows question toolu_13's form, untouched, as Fleet can answer it now. */
+  const form = (epoch = 1, over: Partial<PromptEvent> = {}) => app.emit({ ...confirmed(epoch), ...over });
+  return { ...app, prompt, form };
 }
+
+type PromptEvent = Extract<ServerEvent, { type: 'prompt' }>;
+const confirmed = (epoch = 1): PromptEvent => ({
+  type: 'prompt',
+  sessionId: 'a',
+  prompt: { kind: 'question', id: 'toolu_13', untouched: true },
+  epoch,
+  uncertain: null,
+  answerable: true,
+  detail: null,
+  pane: { cols: 200, rows: 50 },
+});
 
 describe('permission prompts (VIEW-4.2)', () => {
   it('VIEW-4.2: a Controllable Session that Needs you on a permission prompt shows its choices as buttons with the terminal’s wording; picking one answers it', async () => {
@@ -269,11 +297,17 @@ describe('when Lookout won’t answer (VIEW-4.3)', () => {
 describe('questions (VIEW-4.1)', () => {
   const optionButton = (name: RegExp | string) => within(screen.getByTestId('chat')).getByRole('button', { name });
   const submit = () => within(screen.getByTestId('chat')).queryByRole('button', { name: 'Submit' });
+  const typeField = () => screen.getByRole('textbox', { name: 'Type something: Next step' });
+  /** VIEW-4.7: waiting for a read, locked but focusable: `disabled` would drop focus to the page, where `j`/`k` switch Sessions. */
+  const expectLocked = (el: HTMLElement) => {
+    expect(el).toHaveAttribute('aria-disabled', 'true');
+    expect(el).not.toBeDisabled();
+  };
 
   it('VIEW-4.1: one question with one choice answers on click, with no Submit', async () => {
     const user = userEvent.setup();
     const app = open({}, [question([q()])]);
-    app.prompt({ kind: 'question', id: 'toolu_13', untouched: true });
+    app.form();
     expect(submit()).toBeNull();
     // A circle for one choice, as in the read-only chat (VIEW-1.9).
     expect(optionButton(/^Only push/).querySelector('[data-field="choice"] svg')).toHaveClass('lucide-circle');
@@ -291,7 +325,7 @@ describe('questions (VIEW-4.1)', () => {
     const user = userEvent.setup();
     const two = [q({ header: 'Branch', question: 'Push it?' }), q({ header: 'Tests', question: 'Run them?', options: [{ label: 'All', description: '' }, { label: 'Changed only', description: '' }] })];
     const app = open({}, [question(two)]);
-    app.prompt(null);
+    app.form();
     expect(submit()).toBeDisabled();
     await user.click(optionButton(/^Push and open a draft PR/));
     expect(optionButton(/^Push and open a draft PR/)).toHaveAttribute('aria-pressed', 'true');
@@ -308,7 +342,7 @@ describe('questions (VIEW-4.1)', () => {
   it('VIEW-4.1: multi-select works as in the terminal: boxes toggle, and typed text joins them', async () => {
     const user = userEvent.setup();
     const app = open({}, [question([q({ multiSelect: true, question: 'Which checks?', header: 'Checks' })])]);
-    app.prompt(null);
+    app.form();
     expect(screen.getByText('Several can be picked')).toBeInTheDocument();
     expect(optionButton(/^Only push/).querySelector('[data-field="choice"] svg')).toHaveClass('lucide-square');
     await user.click(optionButton(/^Push and open a draft PR/));
@@ -324,7 +358,7 @@ describe('questions (VIEW-4.1)', () => {
   it('VIEW-4.1: "Type something" stands in for the option of a one-choice question; then Submit, or Enter, sends it', async () => {
     const user = userEvent.setup();
     const app = open({}, [question([q()])]);
-    app.prompt(null);
+    app.form();
     const box = screen.getByRole('textbox', { name: 'Type something: Next step' });
     await user.type(box, 'Push to my fork instead');
     expect(submit()).toBeEnabled();
@@ -335,7 +369,7 @@ describe('questions (VIEW-4.1)', () => {
   it('VIEW-4.1: a pasted tab is a space, and other control characters go, so the answer can be typed', async () => {
     const user = userEvent.setup();
     const app = open({}, [question([q()])]);
-    app.prompt(null);
+    app.form();
     const box = screen.getByRole('textbox', { name: 'Type something: Next step' });
     await user.click(box);
     await user.paste('col1\tcol2\u001b[A\u0007 done');
@@ -349,7 +383,7 @@ describe('questions (VIEW-4.1)', () => {
     const why = 'The answer has characters that can’t be typed.';
     const answer = vi.fn().mockRejectedValueOnce(new SaveError(why, null, 400)).mockResolvedValue({ epoch: 9 });
     const app = open({}, [question([q()])], { answer });
-    app.prompt(null);
+    app.form();
     await user.click(drawerToggle());
     const box = screen.getByRole('textbox', { name: 'Type something: Next step' });
     await user.type(box, 'Push to my fork{Enter}');
@@ -366,7 +400,7 @@ describe('questions (VIEW-4.1)', () => {
 
   it('VIEW-4.1: a one-click question leaves no empty row under "Type something…"; the row comes with Submit or progress', async () => {
     const user = userEvent.setup();
-    open({}, [question([q()])], { answer: () => new Promise(() => {}) }).prompt(null);
+    open({}, [question([q()])], { answer: () => new Promise(() => {}) }).form();
     const row = () => screen.getByTestId('chat').querySelector('[data-slot="answer-actions"]') as HTMLElement;
     expect(row()).not.toHaveClass('mt-2.5');
     expect(row()).not.toHaveClass('min-h-7');
@@ -391,7 +425,7 @@ describe('questions (VIEW-4.1)', () => {
       ],
     });
     const app = open({}, [question([withLinks])]);
-    app.prompt(null);
+    app.form();
     const card = screen.getByTestId('chat').querySelector('[data-kind="question"]') as HTMLElement;
     const [header, text] = within(card).getAllByRole('link');
     expect(within(card).getAllByRole('link')).toHaveLength(2);
@@ -411,7 +445,7 @@ describe('questions (VIEW-4.1)', () => {
   it('VIEW-4.3: a refused answer replaces the question’s buttons with why and opens the terminal preview', async () => {
     const user = userEvent.setup();
     const why = 'This question isn’t the one waiting any more, so nothing was typed. Answer it in the terminal.';
-    open({}, [question([q()])], { answer: vi.fn(async () => Promise.reject(new SaveError(why, null, 409))) }).prompt(null);
+    open({}, [question([q()])], { answer: vi.fn(async () => Promise.reject(new SaveError(why, null, 409))) }).form();
     await user.click(drawerToggle());
     await user.click(optionButton(/^Not yet/));
     const card = screen.getByTestId('chat').querySelector('[data-kind="question"]') as HTMLElement;
@@ -420,16 +454,19 @@ describe('questions (VIEW-4.1)', () => {
     expect(drawerToggle()).toHaveAttribute('aria-expanded', 'true');
   });
 
-  it('VIEW-4.3: before the tab’s first read of the screen, the question’s buttons wait, disabled, so a click can’t go out with no epoch; the read enables them', async () => {
+  it('VIEW-4.3: before the tab’s first read of the screen, the question’s buttons wait, locked, so a click can’t go out with no epoch; the read enables them', async () => {
     const user = userEvent.setup();
     const app = open({}, [question([q()])]);
-    expect(optionButton(/^Only push/)).toBeDisabled();
-    expect(screen.getByRole('textbox', { name: 'Type something: Next step' })).toBeDisabled();
+    expectLocked(optionButton(/^Only push/));
+    expectLocked(typeField());
+    expect(typeField()).toHaveAttribute('readonly');
     await user.click(optionButton(/^Only push/));
     expect(app.client.answer).not.toHaveBeenCalled();
-    // The first read of a Session that Needs you comes even with nothing on screen.
-    app.prompt(null, 7);
+    // The first read that shows the form, untouched and answerable, enables them (VIEW-4.6).
+    app.form(7);
     expect(optionButton(/^Only push/)).toBeEnabled();
+    expect(optionButton(/^Only push/)).not.toHaveAttribute('aria-disabled');
+    expect(typeField()).not.toHaveAttribute('readonly');
     await user.click(optionButton(/^Only push/));
     expect(app.client.answer).toHaveBeenCalledWith('a', { kind: 'question', question: 'toolu_13', answers: [{ options: [1] }], epoch: 7 });
   });
@@ -440,6 +477,220 @@ describe('questions (VIEW-4.1)', () => {
     const card = screen.getByTestId('chat').querySelector('[data-kind="question"]') as HTMLElement;
     expect(within(card).getByRole('alert')).toHaveTextContent(QUESTION_TOUCHED);
     expect(within(card).queryAllByRole('button')).toEqual([]);
+  });
+
+  it('VIEW-4.6: a form taller than the terminal gets no buttons: before any click, one line says it doesn’t fit, with the terminal’s size, and to answer it from a terminal app', async () => {
+    const user = userEvent.setup();
+    const app = open({}, [question([q()])]);
+    app.emit({ ...confirmed(), prompt: { kind: 'question', id: null, untouched: false }, answerable: false, detail: 'clipped', pane: { cols: 80, rows: 24 } });
+    const card = screen.getByTestId('chat').querySelector('[data-kind="question"]') as HTMLElement;
+    const line = within(card).getByRole('alert');
+    expect(line).toHaveTextContent(doesntFit('question', { cols: 80, rows: 24 }));
+    expect(line).toHaveTextContent(
+      'This question doesn’t fit in the terminal (80×24), so Lookout can’t read it whole. Open the Session in a terminal app and answer it there. A bigger terminal lets Lookout answer questions like this.',
+    );
+    // Its options stay readable; nothing to click or type.
+    expect(card).toHaveTextContent('Only push');
+    expect(within(card).queryAllByRole('button')).toEqual([]);
+    expect(within(card).queryByRole('textbox')).toBeNull();
+    // Closed: a way to the terminal.
+    await user.click(drawerToggle());
+    expect(within(card).getByRole('button', { name: 'Show terminal' })).toBeInTheDocument();
+    expect(app.client.answer).not.toHaveBeenCalled();
+    // Made bigger: the next read finds it whole, and the buttons come.
+    app.form(2);
+    expect(optionButton(/^Only push/)).toBeEnabled();
+    expect(within(card).queryByRole('alert')).toBeNull();
+  });
+
+  it('VIEW-4.6: a read that finds no form for it is never ready: the buttons stay off, and say why once the wait is over', () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    try {
+      // No Transcript time: the wait counts from the spell's start, and it's just over.
+      const since = NOW - 60_000;
+      vi.setSystemTime(since + FORM_WAIT_MS);
+      const app = open({ statusSince: since }, [question([q()])]);
+      app.emit({ ...confirmed(), prompt: null, answerable: false, detail: 'no_form' });
+      const card = screen.getByTestId('chat').querySelector('[data-kind="question"]') as HTMLElement;
+      expect(within(card).getByRole('alert')).toHaveTextContent(QUESTION_NOT_SHOWN);
+      expect(within(card).queryAllByRole('button')).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  /** A read that says nothing of the screen: Fleet timed out, or its output was cut short. */
+  const FAILED = { prompt: null, answerable: false, detail: null, pane: null } as const;
+
+  it('VIEW-4.7: one read that fails keeps the form as it was: what you picked and typed stays, with no line and no Esc, and the next good read brings the buttons back', async () => {
+    const user = userEvent.setup();
+    // Reads of this Needs you spell (the row's `statusSince`), so Esc would show if the question were blocked.
+    const since = NOW - 5_000;
+    const app = open({ statusSince: since }, [question([q({ multiSelect: true })])]);
+    app.form(1, { since });
+    await user.click(optionButton(/^Only push/));
+    await user.type(typeField(), 'and tag it');
+    // The question was asked long ago; one `--list` times out.
+    app.emit({ ...confirmed(2), ...FAILED, since });
+    const card = screen.getByTestId('chat').querySelector('[data-kind="question"]') as HTMLElement;
+    expect(within(card).queryByRole('alert')).toBeNull();
+    expect(within(header()).queryByRole('button', { name: 'Esc' })).toBeNull();
+    expectLocked(optionButton(/^Only push/));
+    expect(optionButton(/^Only push/)).toHaveAttribute('aria-pressed', 'true');
+    expect(typeField()).toHaveValue('and tag it');
+    // The next read is good: the buttons are back, with what was picked and typed.
+    app.form(3, { since });
+    expect(optionButton(/^Only push/)).toBeEnabled();
+    expect(optionButton(/^Only push/)).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('textbox', { name: 'Type something: Next step' })).toHaveValue('and tag it');
+    await user.click(submit()!);
+    expect(app.client.answer).toHaveBeenCalledWith('a', { kind: 'question', question: 'toolu_13', answers: [{ options: [1], text: 'and tag it' }], epoch: 3 });
+  });
+
+  it('VIEW-4.6: reads that keep failing say Lookout can’t check it after 5 s; what you picked and typed comes back with the buttons', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    try {
+      vi.setSystemTime(NOW);
+      const user = userEvent.setup();
+      const since = NOW - 60_000;
+      const app = open({ statusSince: since }, [question([q({ multiSelect: true })])]);
+      app.form(1, { since });
+      await user.click(optionButton(/^Only push/));
+      await user.type(screen.getByRole('textbox', { name: 'Type something: Next step' }), 'and tag it');
+      app.emit({ ...confirmed(2), ...FAILED, since });
+      const card = screen.getByTestId('chat').querySelector('[data-kind="question"]') as HTMLElement;
+      act(() => vi.advanceTimersByTime(READ_WAIT_MS - 1_000));
+      expect(within(card).queryByRole('alert')).toBeNull();
+      // The reads after it fail too (the server sends nothing new for them).
+      act(() => vi.advanceTimersByTime(1_000));
+      expect(within(card).getByRole('alert')).toHaveTextContent(QUESTION_UNCHECKED);
+      expect(within(card).queryByRole('textbox')).toBeNull();
+      expect(within(header()).getByRole('button', { name: 'Esc' })).toBeInTheDocument();
+      // Fleet answers again.
+      app.form(3, { since });
+      expect(within(card).queryByRole('alert')).toBeNull();
+      expect(optionButton(/^Only push/)).toBeEnabled();
+      expect(optionButton(/^Only push/)).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByRole('textbox', { name: 'Type something: Next step' })).toHaveValue('and tag it');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('VIEW-4.7: a question just asked waits quietly for its form: locked, no line, no Esc; 5 s on without it, the line says the terminal doesn’t show it', () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    try {
+      vi.setSystemTime(NOW);
+      const app = open({ statusSince: NOW - 60_000 }, [question([q()], { ts: new Date(NOW).toISOString() })]);
+      app.emit({ ...confirmed(), prompt: null, answerable: false, detail: 'no_form', since: NOW - 60_000 });
+      const card = screen.getByTestId('chat').querySelector('[data-kind="question"]') as HTMLElement;
+      expectLocked(optionButton(/^Only push/));
+      expect(within(card).queryByRole('alert')).toBeNull();
+      expect(within(header()).queryByRole('button', { name: 'Esc' })).toBeNull();
+      act(() => vi.advanceTimersByTime(FORM_WAIT_MS - 1_000));
+      expect(within(card).queryByRole('alert')).toBeNull();
+      act(() => vi.advanceTimersByTime(1_000));
+      expect(within(card).getByRole('alert')).toHaveTextContent(QUESTION_NOT_SHOWN);
+      expect(within(header()).getByRole('button', { name: 'Esc' })).toBeInTheDocument();
+      expect(app.client.answer).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('VIEW-4.7: a read that fails while you type keeps focus in the field: it turns read-only, so keys go nowhere and `j` doesn’t switch Sessions', async () => {
+    const user = userEvent.setup();
+    const since = NOW - 5_000;
+    const app = open({ statusSince: since }, [question([q({ multiSelect: true })])]);
+    // Another Session in the list: `j` on the page would select it.
+    app.emit({ type: 'sessions', upsert: [row({ id: 'b' })], remove: [] });
+    app.form(1, { since });
+    await user.click(optionButton(/^Only push/));
+    await user.type(typeField(), 'and tag');
+    app.emit({ ...confirmed(2), ...FAILED, since });
+    expect(typeField()).toHaveFocus();
+    expectLocked(typeField());
+    expect(typeField()).toHaveAttribute('readonly');
+    await user.keyboard('j');
+    expect(typeField()).toHaveValue('and tag');
+    expect(window.location.pathname).toBe('/s/a');
+    // The option buttons don't drop focus either.
+    optionButton(/^Only push/).focus();
+    app.emit({ ...confirmed(3), ...FAILED, since });
+    expect(optionButton(/^Only push/)).toHaveFocus();
+    expectLocked(optionButton(/^Only push/));
+    // Fleet answers again: typing goes on where it was.
+    app.form(4, { since });
+    await user.click(typeField());
+    await user.keyboard(' it');
+    expect(typeField()).toHaveValue('and tag it');
+    expect(window.location.pathname).toBe('/s/a');
+  });
+
+  it('VIEW-4.7: failed reads are waited out after a read that confirmed the form, or before any read in the spell; after a line says why, failed reads keep that line and the Esc button for 5 s', () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    try {
+      vi.setSystemTime(NOW);
+      const since = NOW - 5_000;
+      const app = open({ statusSince: since }, [question([q()])]);
+      const card = screen.getByTestId('chat').querySelector('[data-kind="question"]') as HTMLElement;
+      const esc = () => within(header()).queryByRole('button', { name: 'Esc' });
+      const fit = doesntFit('question', { cols: 80, rows: 24 });
+      const clipped = { prompt: { kind: 'question', id: null, untouched: false }, answerable: false, detail: 'clipped', pane: { cols: 80, rows: 24 }, since } as const;
+      // The spell's first read fails: waited out, quietly.
+      app.emit({ ...confirmed(1), ...FAILED, since });
+      expect(within(card).queryByRole('alert')).toBeNull();
+      expect(esc()).toBeNull();
+      // The form doesn't fit: the line says so, with Esc.
+      app.emit({ ...confirmed(2), ...clipped });
+      const line = within(card).getByRole('alert');
+      expect(line).toHaveTextContent(fit);
+      expect(esc()).toBeInTheDocument();
+      // One read times out: the same line stays, the same element (not read out again), with Esc;
+      // the locked form doesn't come back.
+      app.emit({ ...confirmed(3), ...FAILED, since });
+      expect(within(card).getByRole('alert')).toBe(line);
+      expect(line).toHaveTextContent(fit);
+      expect(esc()).toBeInTheDocument();
+      expect(within(card).queryByRole('textbox')).toBeNull();
+      // The next read says why again: nothing changed on the way.
+      app.emit({ ...confirmed(4), ...clipped });
+      expect(within(card).getByRole('alert')).toBe(line);
+      expect(line).toHaveTextContent(fit);
+      // Reads that keep failing: the line holds for 5 s from the first, then says Lookout can't check.
+      app.emit({ ...confirmed(5), ...FAILED, since });
+      act(() => vi.advanceTimersByTime(READ_WAIT_MS - 1_000));
+      expect(within(card).getByRole('alert')).toHaveTextContent(fit);
+      act(() => vi.advanceTimersByTime(1_000));
+      expect(within(card).getByRole('alert')).toHaveTextContent(QUESTION_UNCHECKED);
+      expect(esc()).toBeInTheDocument();
+      // A read that says why brings its own line back.
+      app.emit({ ...confirmed(6), ...clipped });
+      expect(within(card).getByRole('alert')).toHaveTextContent(fit);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('VIEW-4.6: what you picked and typed is still there after viewing another Session and coming back', async () => {
+    const user = userEvent.setup();
+    const entries = [question([q({ multiSelect: true })])];
+    const app = open({}, entries);
+    app.emit({ type: 'sessions', upsert: [row({ id: 'b' })], remove: [] });
+    app.form();
+    await user.click(optionButton(/^Only push/));
+    await user.type(typeField(), 'and tag it');
+    await user.click(rowEl('b'));
+    expect(screen.queryByRole('textbox', { name: 'Type something: Next step' })).toBeNull();
+    await user.click(rowEl('a'));
+    // Viewed again, the server sends its chat and reads the screen again.
+    app.emit({ type: 'chat', sessionId: 'a', op: 'reset', entries, before: null, queue: [] });
+    expect(optionButton(/^Only push/)).toHaveAttribute('aria-pressed', 'true');
+    expect(typeField()).toHaveValue('and tag it');
+    app.form(2);
+    expect(optionButton(/^Only push/)).toBeEnabled();
+    await user.click(submit()!);
+    expect(app.client.answer).toHaveBeenCalledWith('a', { kind: 'question', question: 'toolu_13', answers: [{ options: [1], text: 'and tag it' }], epoch: 2 });
   });
 
   it('VIEW-4.1: no buttons for Codex, a Session in another app, one that doesn’t Need you, or while a permission prompt is on screen', () => {
@@ -614,8 +865,8 @@ describe('Esc (VIEW-4.5)', () => {
   /** A Session that Needs you (on `/usage`'s panel, say), and the server's read of its screen in this spell. */
   function waiting(options: Parameters<typeof renderApp>[1] = {}, entries: ChatEntry[] = []) {
     const app = open({ statusSince: SPELL }, entries, options);
-    const read = (p: ScreenPrompt | null, since: number | null = SPELL, epoch = 1) =>
-      app.emit({ type: 'prompt', sessionId: 'a', prompt: p, epoch, uncertain: null, since });
+    const read = (p: ScreenPrompt | null, since: number | null = SPELL, epoch = 1, over: Partial<PromptEvent> = {}) =>
+      app.emit({ type: 'prompt', sessionId: 'a', prompt: p, epoch, uncertain: null, since, ...over });
     return { ...app, read };
   }
 
@@ -653,7 +904,7 @@ describe('Esc (VIEW-4.5)', () => {
 
   it('VIEW-4.5: never beside a question’s buttons; once Lookout won’t answer it, Esc shows', async () => {
     const app = waiting({}, [question([q()])]);
-    app.read(null);
+    app.read({ kind: 'question', id: 'toolu_13', untouched: true }, SPELL, 1, { answerable: true });
     const card = screen.getByTestId('chat').querySelector('[data-kind="question"]') as HTMLElement;
     expect(within(card).getAllByRole('button').length).toBeGreaterThan(0);
     expect(escButton()).toBeNull();

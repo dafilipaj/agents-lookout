@@ -1,8 +1,8 @@
 import type { QuestionAnswer } from '@shared/types.ts';
 import { Circle, CircleDot, ShieldQuestion, Square, SquareCheck, TerminalSquare } from 'lucide-react';
-import { type ComponentPropsWithoutRef, type KeyboardEvent, useState } from 'react';
+import { type ComponentPropsWithoutRef, type KeyboardEvent, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { type Draft, type PermissionPanel, type QuestionPanel, type TerminalLink, answersOnClick, draftAnswers, emptyDraft, pick, typeText } from '@/lib/answers';
+import { type Draft, type DraftKeeper, type PermissionPanel, type QuestionPanel, type TerminalLink, answersOnClick, draftAnswers, emptyDraft, pick, typeText } from '@/lib/answers';
 import type { QuestionEntry } from '@/lib/chat';
 import { linkify } from '@/lib/links';
 import { cn } from '@/lib/utils';
@@ -56,13 +56,31 @@ export function TerminalNote({
  * VIEW-4.1: a pending question's options as buttons. One question with one choice answers on
  * click; several questions, a multi-select one, or a typed answer are picked, then submitted.
  * "Type something" works as in the terminal: with one choice it replaces the option, with several
- * it joins them.
+ * it joins them. VIEW-4.6: what's picked and typed is kept in `kept` (App's, for this Session, by
+ * question id), so a form a read or a Session switch took away comes back as it was. VIEW-4.7:
+ * while it waits for a read (`reading`) it's locked with `aria-disabled`, not `disabled`, so focus
+ * stays put rather than dropping to the page, where `j`/`k` switch Sessions.
  */
-export function QuestionForm({ entry, panel, onSubmit }: { entry: QuestionEntry; panel: QuestionPanel; onSubmit(answers: QuestionAnswer[]): void }) {
+export function QuestionForm({
+  entry,
+  panel,
+  onSubmit,
+  kept,
+}: {
+  entry: QuestionEntry;
+  panel: QuestionPanel;
+  onSubmit(answers: QuestionAnswer[]): void;
+  kept?: DraftKeeper;
+}) {
   const questions = entry.questions;
-  const [drafts, setDrafts] = useState<Draft[]>(() => questions.map(() => emptyDraft));
+  const [drafts, setDrafts] = useState<readonly Draft[]>(() => kept?.get(entry.id) ?? questions.map(() => emptyDraft));
+  useEffect(() => {
+    kept?.set(entry.id, drafts);
+  }, [kept, entry.id, drafts]);
   const oneClick = answersOnClick(questions);
   const locked = panel.phase !== 'ready';
+  // Locked, but focusable: what has focus keeps it, and clicks and Enter do nothing.
+  const waiting = panel.phase === 'reading';
   const answers = draftAnswers(questions, drafts);
   const typed = drafts.some((d) => d.text.trim() !== '');
   const withSubmit = !oneClick || typed;
@@ -98,9 +116,11 @@ export function QuestionForm({ entry, panel, onSubmit }: { entry: QuestionEntry;
                         type="button"
                         // A toggle while picks are submitted later; a plain button when the click answers.
                         aria-pressed={oneClick ? undefined : chosen}
-                        disabled={locked}
+                        disabled={locked && !waiting}
+                        aria-disabled={waiting || undefined}
                         data-picked={chosen || undefined}
                         onClick={() => {
+                          if (locked) return;
                           if (oneClick) {
                             update(qi, pick(q, emptyDraft, oi));
                             onSubmit([{ options: [oi] }]);
@@ -108,7 +128,7 @@ export function QuestionForm({ entry, panel, onSubmit }: { entry: QuestionEntry;
                         }}
                         className={cn(
                           'flex w-full gap-2 rounded-md border bg-background px-2.5 py-1.5 text-left text-[13px] transition-colors outline-none',
-                          'hover:border-foreground/40 hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-60',
+                          'hover:border-foreground/40 hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-60 aria-disabled:pointer-events-none aria-disabled:opacity-60',
                           chosen ? 'border-foreground/40 bg-accent font-medium' : 'border-border',
                         )}
                       >
@@ -130,11 +150,13 @@ export function QuestionForm({ entry, panel, onSubmit }: { entry: QuestionEntry;
                 aria-label={`Type something: ${name}`}
                 placeholder="Type something…"
                 maxLength={2000}
-                disabled={locked}
+                disabled={locked && !waiting}
+                readOnly={waiting}
+                aria-disabled={waiting || undefined}
                 value={d.text}
                 onChange={(e) => update(qi, typeText(q, d, e.target.value))}
                 onKeyDown={onKeyDown}
-                className="mt-1 h-8 w-full rounded-md border border-input bg-background px-2.5 text-[13px] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/25 disabled:opacity-60 dark:bg-input/20"
+                className="mt-1 h-8 w-full rounded-md border border-input bg-background px-2.5 text-[13px] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/25 disabled:opacity-60 aria-disabled:opacity-60 dark:bg-input/20"
               />
             </section>
           );
@@ -150,7 +172,13 @@ export function QuestionForm({ entry, panel, onSubmit }: { entry: QuestionEntry;
           live region stays mounted, empty, so its first change is announced. */}
       <div className={cn('flex items-center gap-3', (withSubmit || progress) && 'mt-2.5 min-h-7')} data-slot="answer-actions">
         {withSubmit && (
-          <Button size="sm" className="h-7" disabled={locked || !answers} onClick={submit}>
+          <Button
+            size="sm"
+            className="h-7 aria-disabled:pointer-events-none aria-disabled:opacity-50"
+            disabled={(locked && !waiting) || !answers}
+            aria-disabled={(waiting && !!answers) || undefined}
+            onClick={submit}
+          >
             {panel.phase === 'sending' ? 'Sending…' : 'Submit'}
           </Button>
         )}

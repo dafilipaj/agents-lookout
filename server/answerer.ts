@@ -1,4 +1,16 @@
-import type { AnswerRequest, AnswerResult, EscStatus, PromptChoice, QuestionAnswer, ScreenPrompt, ServerEvent, SessionRow } from '../shared/types.ts';
+import {
+  ANSWER_DETAILS,
+  type AnswerDetail,
+  type AnswerRequest,
+  type AnswerResult,
+  type EscStatus,
+  type PaneSize,
+  type PromptChoice,
+  type QuestionAnswer,
+  type ScreenPrompt,
+  type ServerEvent,
+  type SessionRow,
+} from '../shared/types.ts';
 import { EndError, closeTarget, isPidOnly } from './closer.ts';
 import type { RunError, Runner } from './exec.ts';
 import type { FleetListResult } from './fleet.ts';
@@ -30,6 +42,12 @@ const MAX_TEXT = 2000;
 const MAX_CHOICES = 10;
 const MAX_DETAIL_LINES = 60;
 const MAX_LINE = 500;
+/** A terminal's size Lookout takes from Fleet (`pane`), in characters a side. */
+const MAX_PANE = 10_000;
+/** Fleet's failure kinds: what the refusal log (VIEW-4.8) writes as they are (a `detail` must be one of its fixed set). */
+const CODE = /^[a-z][a-z_]{0,39}$/;
+/** A Session id the refusal log writes as it is: a `session_id`, or `<harness>:<pid>`. */
+const SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9:._-]{0,127}$/;
 
 export class AnswerError extends Error {
   readonly status: number;
@@ -55,6 +73,8 @@ export interface AnswererOptions {
   /** What every tab has answered or stopped, per Session (see `AnswerLedger`). */
   ledger: AnswerLedger;
   env?: NodeJS.ProcessEnv;
+  /** VIEW-4.8: the server's log, one line per answer Fleet refused; `console.warn` by default. */
+  log?: (line: string) => void;
 }
 
 const env = (opts: { env?: NodeJS.ProcessEnv }) => cleanEnv(opts.env ?? process.env);
@@ -111,11 +131,15 @@ const screenKey = (p: ScreenPrompt | null) => (p === null ? null : p.kind === 'p
 
 /**
  * A read of the screen. `ok`: Fleet said what the terminal shows (`prompt`, null when it shows no
- * prompt Lookout answers). Not `ok`: the read failed or can't be trusted (Fleet missing or timed
- * out, the Session gone, malformed output, an answer for another Session); the tabs see no prompt,
- * but it's no proof the prompt has gone.
+ * prompt Lookout answers), whether it could answer it now (`answerable`), why not (`detail`, one of
+ * Fleet's codes, never screen text) and the terminal's size (`pane`) (VIEW-4.6); `oldFleet` when it
+ * said nothing of `answerable`, as a Fleet older than Lookout's pin doesn't. Not `ok`: the read
+ * failed or can't be trusted (Fleet missing or timed out, the Session gone, malformed output, an
+ * answer for another Session); the tabs see no prompt, but it's no proof the prompt has gone.
  */
-export type PromptRead = { ok: true; prompt: ScreenPrompt | null } | { ok: false };
+export type PromptRead =
+  | { ok: true; prompt: ScreenPrompt | null; answerable: boolean; detail: AnswerDetail | null; pane: PaneSize | null; oldFleet?: boolean }
+  | { ok: false };
 
 const FAILED_READ: PromptRead = { ok: false };
 
@@ -139,9 +163,28 @@ export async function listPrompt(opts: Pick<AnswererOptions, 'runner' | 'fleetBi
   if (res.harness !== row.harness) return FAILED_READ;
   if (!isPidOnly(row) && res.session_id !== row.id) return FAILED_READ;
   // Only Fleet's `null` says the screen shows no prompt; anything else that isn't a prompt is malformed.
-  if (res.prompt === null) return { ok: true, prompt: null };
-  if (!isRecord(res.prompt) || typeof res.prompt.kind !== 'string') return FAILED_READ;
-  return { ok: true, prompt: parseScreenPrompt(res.prompt) };
+  let prompt: ScreenPrompt | null = null;
+  if (res.prompt !== null) {
+    if (!isRecord(res.prompt) || typeof res.prompt.kind !== 'string') return FAILED_READ;
+    prompt = parseScreenPrompt(res.prompt);
+  }
+  // VIEW-4.6: a Fleet older than the pin says nothing of it: its own state, so the tabs say to update it.
+  if (!Object.hasOwn(res, 'answerable')) return { ok: true, prompt, answerable: false, detail: null, pane: parsePane(res.pane), oldFleet: true };
+  // Only Fleet's `true` lets a question be answered; a code Lookout doesn't know says nothing.
+  return { ok: true, prompt, answerable: res.answerable === true, detail: parseDetail(res.detail), pane: parsePane(res.pane) };
+}
+
+/** VIEW-4.6: Fleet's `detail`, when it's one of the codes Lookout knows; else null. */
+export function parseDetail(value: unknown): AnswerDetail | null {
+  return typeof value === 'string' && (ANSWER_DETAILS as readonly string[]).includes(value) ? (value as AnswerDetail) : null;
+}
+
+/** VIEW-4.6: Fleet's `pane`, `{cols, rows}` as whole numbers from 1 to 10,000; else null. */
+export function parsePane(value: unknown): PaneSize | null {
+  if (!isRecord(value)) return null;
+  const { cols, rows } = value;
+  const side = (n: unknown): n is number => typeof n === 'number' && Number.isSafeInteger(n) && n >= 1 && n <= MAX_PANE;
+  return side(cols) && side(rows) ? { cols, rows } : null;
 }
 
 /**
@@ -465,6 +508,11 @@ export class PromptWatch {
     }
     // A failed read shows the tabs no prompt, but keeps an uncertain mark (see `seen`).
     const prompt = result?.ok ? result.prompt : null;
+    // VIEW-4.6: whether Fleet could answer it now, why not, and the terminal's size; nothing read: none.
+    const answerable = result?.ok ? result.answerable : false;
+    const detail = result?.ok ? result.detail : null;
+    const pane = result?.ok ? result.pane : null;
+    const oldFleet = result?.ok ? result.oldFleet === true : false;
     let uncertain: string | null = null;
     if (row) {
       ledger.seen(row, epoch, result);
@@ -473,10 +521,10 @@ export class PromptWatch {
     // VIEW-4.5: the Needs you spell the read was made in, so a tab can tell a read from this spell
     // from one of an earlier one; a new spell is news even when the screen reads the same.
     const since = read && row ? row.statusSince : null;
-    const key = JSON.stringify({ read, prompt, changed, uncertain, since });
+    const key = JSON.stringify({ read, prompt, changed, uncertain, since, answerable, detail, pane, oldFleet });
     if (key !== p.key) {
       p.key = key;
-      p.last = { prompt, epoch, uncertain, since };
+      p.last = { prompt, epoch, uncertain, since, answerable, detail, pane, oldFleet };
       for (const [clientId, sessionId] of this.viewers) {
         if (sessionId === p.sessionId) this.opts.sendTo(clientId, { type: 'prompt', sessionId, ...p.last });
       }
@@ -504,16 +552,26 @@ interface Poll {
   /** A read is running now. */
   reading: boolean;
   /** The last result sent, or null while there was nothing to say. */
-  last: { prompt: ScreenPrompt | null; epoch: number; uncertain: string | null; since: number | null } | null;
+  last: {
+    prompt: ScreenPrompt | null;
+    epoch: number;
+    uncertain: string | null;
+    since: number | null;
+    answerable: boolean;
+    detail: AnswerDetail | null;
+    pane: PaneSize | null;
+    oldFleet: boolean;
+  } | null;
   /**
    * What was last sent: whether the screen was read, the prompt, the Session's last answer (whatever
-   * it typed), the uncertain mark, and the Needs you spell the read was made in (VIEW-4.5).
+   * it typed), the uncertain mark, the Needs you spell the read was made in (VIEW-4.5), and whether
+   * Fleet could answer it, why not, the terminal's size and whether Fleet is too old to say (VIEW-4.6).
    */
   key: string;
 }
 
 /** A Session that doesn't Need you, never answered from here: nothing to tell a tab. */
-const NOTHING = JSON.stringify({ read: false, prompt: null, changed: 0, uncertain: null, since: null });
+const NOTHING = JSON.stringify({ read: false, prompt: null, changed: 0, uncertain: null, since: null, answerable: false, detail: null, pane: null, oldFleet: false });
 
 // ---------------------------------------------------------------------------------------------
 // Answering (VIEW-4.1–4.3)
@@ -594,8 +652,16 @@ export async function answerPrompt(opts: AnswererOptions, sessionId: string, req
         env: env(opts),
       });
     } catch (err) {
-      const failure = answerFailure(err as RunError);
+      const e = err as RunError;
+      const res = parseObject(e.stdout);
+      const failure = answerFailure(e, res, req);
       if (failure.typed) outcome = 'uncertain';
+      // The outcome is settled first: a log that throws changes nothing about it.
+      try {
+        logRefusal(opts, row, req, res);
+      } catch {
+        // Nothing to do: the refusal still reaches the tab.
+      }
       throw failure.error;
     }
     const res = parseObject(stdout);
@@ -642,17 +708,48 @@ const TYPED: Readonly<Record<string, string>> = {
   send_failed: 'Typing failed part-way. Check the terminal and finish there.',
 };
 
-/** Why the answer failed, and whether keys may have gone out before it did (`typed`). */
-function answerFailure(e: RunError): { error: AnswerError; typed: boolean } {
+/**
+ * VIEW-4.6: a prompt taller than the terminal (Fleet's `detail: "clipped"`), with the terminal's
+ * size when Fleet gave it: it can't be read whole, so it isn't answered. A Session Lookout started
+ * has no window to make bigger: it's answered from a terminal app opened on it.
+ */
+function doesntFit(kind: AnswerRequest['kind'], pane: PaneSize | null): string {
+  const what = kind === 'question' ? 'question' : 'prompt';
+  const size = pane ? ` (${pane.cols}×${pane.rows})` : '';
+  return `This ${what} doesn’t fit in the terminal${size}, so nothing was typed. Open the Session in a terminal app and answer it there. A bigger terminal lets Lookout answer ${what}s like this.`;
+}
+
+/** Why the answer failed (`res`: Fleet's failure object, when it printed one), and whether keys may have gone out before it did (`typed`). */
+function answerFailure(e: RunError, res: Record<string, unknown> | null, req: AnswerRequest): { error: AnswerError; typed: boolean } {
   if (e.code === 'ENOENT') return { error: new AnswerError(503, 'Fleet isn’t installed, so nothing was typed.'), typed: false };
   if (e.timedOut) return { error: new AnswerError(504, 'Fleet took too long. It may have been answered; check the terminal.'), typed: true };
   if (/unrecognized subcommand/i.test(e.stderr ?? '')) return { error: new AnswerError(501, 'This Fleet can’t answer prompts yet. Update the Fleet fork.'), typed: false };
-  const res = parseObject(e.stdout);
   const kind = typeof res?.kind === 'string' ? res.kind : null;
+  if (kind === 'prompt_incomplete' && res?.detail === 'clipped') return { error: new AnswerError(409, doesntFit(req.kind, parsePane(res.pane))), typed: false };
   if (kind && Object.hasOwn(REFUSED, kind)) return { error: new AnswerError(409, REFUSED[kind]!), typed: false };
   // Anything else may have come after a key: the tabs' buttons for what they last read are stale.
   if (kind && Object.hasOwn(TYPED, kind)) return { error: new AnswerError(502, TYPED[kind]!), typed: true };
   return { error: new AnswerError(502, `Couldn’t answer: ${fleetReason(res, e)}. Check the terminal.`), typed: true };
+}
+
+/**
+ * VIEW-4.8: one line on the server's log for an answer Fleet refused (its failure object, before or
+ * after a key): what was answered, Fleet's kind and reason code, the Session, the question's or
+ * prompt's id, and the terminal's size. Each value is checked first (`detail` against Fleet's fixed
+ * set); one that doesn't fit is `other`, an absent one `none`. Never Fleet's `error`, which may
+ * quote the screen, nor anything from the Transcript.
+ */
+function logRefusal(opts: Pick<AnswererOptions, 'log'>, row: SessionRow, req: AnswerRequest, res: Record<string, unknown> | null): void {
+  if (res?.ok !== false || typeof res.kind !== 'string') return;
+  const absent = (v: unknown) => v === null || v === undefined;
+  const code = (v: unknown) => (absent(v) ? 'none' : typeof v === 'string' && CODE.test(v) ? v : 'other');
+  const detail = absent(res.detail) ? 'none' : (parseDetail(res.detail) ?? 'other');
+  const size = parsePane(res.pane);
+  const pane = absent(res.pane) ? 'none' : size ? `${size.cols}x${size.rows}` : 'other';
+  const id = req.kind === 'permission' ? (PROMPT_ID.test(req.prompt) ? req.prompt : 'other') : QUESTION_ID.test(req.question) ? req.question : 'other';
+  const session = SESSION_ID.test(row.id) ? row.id : 'other';
+  const line = `lookout: answer refused: ${req.kind} kind=${code(res.kind)} detail=${detail} session=${session} id=${id} pane=${pane}`;
+  (opts.log ?? ((l: string) => console.warn(l)))(line);
 }
 
 // ---------------------------------------------------------------------------------------------

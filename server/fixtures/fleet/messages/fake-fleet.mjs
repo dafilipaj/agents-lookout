@@ -26,14 +26,18 @@
 //   `answer <id:…|pid:…> --json [--allow-attached] (--list | --choice <n> [--prompt <id>] |
 //   --question <tool_use_id> --answers <json>)` (VIEW-4, the Fleet fork's "Answering prompts"):
 //   `--list` reports the row's `fake_prompt` (a permission prompt, `{ kind: 'permission',
-//   incomplete: true, reason }`, a question form, or null); without one, a `waiting` row whose
-//   Transcript has a pending question shows that question's form, untouched. `--choice` and
-//   `--question` check what Fleet checks (the prompt on screen and untouched, its id, the choice,
-//   the question pending and the one waiting, the Session `waiting`, the answers' shape) and fail
-//   with Fleet's kinds; with FAKE_FLEET_DIR an answer clears the prompt, records a question's
-//   answer and turns the row `busy`. A row's `fake_answer` (any kind, e.g. `busy`,
-//   `outcome_uncertain`, `prompt_changed`) makes every answer fail with it; `fake_attached: true`
-//   (or the `iterm` backend) is `human_attached` unless `--allow-attached`.
+//   incomplete: true, reason }`, a question form, a cut-off one `{ kind: 'question', incomplete:
+//   true, id: null, … }`, or null); without one, a `waiting` row whose Transcript has a pending
+//   question shows that question's form, untouched. Beside it, as the fork from ec4ed52 does,
+//   `answerable`, `detail` (why not: the row's `fake_detail`, else what the prompt shows: `no_form`,
+//   `clipped`, `cursor_moved`, `touched`) and `pane` (the row's `fake_pane`, default 200x50; `null`
+//   too). `--choice` and `--question` check what Fleet checks (the prompt on screen, whole and
+//   untouched, its id, the choice, the question pending and the one waiting, the Session
+//   `waiting`, the answers' shape) and fail with Fleet's kinds, each failure with `detail` and
+//   `pane`; with FAKE_FLEET_DIR an answer clears the prompt, records a question's answer and turns
+//   the row `busy`. A row's `fake_answer` (any kind, e.g. `busy`, `outcome_uncertain`,
+//   `prompt_changed`, `prompt_incomplete`) makes every answer fail with it, and `fake_detail`;
+//   `fake_attached: true` (or the `iterm` backend) is `human_attached` unless `--allow-attached`.
 //   `keys <id:…|pid:…> <key>… --json` (VIEW-4.4) presses nothing: it checks the key names
 //   (`invalid_key`) and answers as Fleet does; a row's `fake_keys` (`busy`, `backend_failed`, …)
 //   makes it fail with that kind. It doesn't change Status: edit list.json for that.
@@ -299,64 +303,87 @@ function screenPrompt(row) {
 
 const out = (v) => process.stdout.write(`${JSON.stringify(v)}\n`);
 
+/** The pane's size `answer` reports: the row's `fake_pane` (`null` too), else 200x50. */
+const paneOf = (row) => (row.fake_pane !== undefined ? row.fake_pane : { cols: 200, rows: 50 });
+
+/** Why `--choice` / `--question` would fail the screen checks now (`--list`'s `detail`), or null. */
+function screenDetail(row, prompt) {
+  if (row.fake_detail !== undefined) return row.fake_detail;
+  if (prompt === null) return 'no_form';
+  if (prompt.incomplete) return 'clipped';
+  if (prompt.kind === 'permission') return prompt.selected === 1 ? null : 'cursor_moved';
+  if (prompt.kind === 'question') return prompt.untouched ? null : 'touched';
+  return null;
+}
+
 /** `answer` (VIEW-4): the Fleet fork's contract, docs/cli.md "Answering prompts". Types nothing. */
 function answer(args) {
   const { opts, pos } = parse(args);
-  if (!opts.json) fail('usage', 'this fake only speaks --json');
+  // Before the target is known, a failure has no reason code and no pane.
+  const early = (kind, error) => fail(kind, error, { detail: null, pane: null });
+  if (!opts.json) early('usage', 'this fake only speaks --json');
   const modes = [opts.list === true, opts.choice !== undefined, opts.question !== undefined].filter(Boolean).length;
-  if (modes !== 1) fail('usage', 'give one of --list, --choice <n>, --question <tool_use_id> --answers <json>');
-  if ((opts.answers !== undefined) !== (opts.question !== undefined)) fail('usage', '--answers goes with --question (and it needs one)');
+  if (modes !== 1) early('usage', 'give one of --list, --choice <n>, --question <tool_use_id> --answers <json>');
+  if ((opts.answers !== undefined) !== (opts.question !== undefined)) early('usage', '--answers goes with --question (and it needs one)');
   const target = pos[0] ?? '';
   const row = resolveExact(target);
-  if (!row) fail('target_not_found', `no session matches '${target}'`);
+  if (!row) early('target_not_found', `no session matches '${target}'`);
   const base = { ok: true, session_id: row.session_id, harness: row.harness };
   const prompt = screenPrompt(row);
-  if (opts.list) return out({ ...base, prompt });
+  if (opts.list) {
+    const detail = screenDetail(row, prompt);
+    return out({ ...base, prompt, answerable: detail === null, detail, pane: paneOf(row) });
+  }
+  // Every failure from here on carries a reason code (null where it isn't a screen check) and the pane.
+  const refuse = (kind, error, detail = null, extra = {}) => fail(kind, error, { detail, pane: paneOf(row), ...extra });
   const promptKind = opts.choice !== undefined ? 'permission' : 'question';
   if (row.fake_answer) {
-    fail(row.fake_answer, `fake ${row.fake_answer}`, row.fake_answer === 'outcome_uncertain' ? { screen: prompt, prompt_kind: promptKind, steps: [] } : {});
+    refuse(row.fake_answer, `fake ${row.fake_answer}`, row.fake_detail ?? null, row.fake_answer === 'outcome_uncertain' ? { screen: prompt, prompt_kind: promptKind, steps: [] } : {});
   }
-  if (opts.question !== undefined && row.harness !== 'claude') fail('harness_unsupported', `${row.harness} questions are not answerable here (Claude Code only)`);
-  if (!opts['allow-attached'] && (row.fake_attached || row.backend === 'iterm')) fail('human_attached', 'a terminal client is attached to the session; nothing typed');
-  if (row.backend === 'unknown') fail('backend_unsupported', `${row.display_title} has no terminal fleet can read and type into`);
-  return opts.choice !== undefined ? choose(row, base, prompt, opts) : answerQuestion(row, base, prompt, opts);
+  if (opts.question !== undefined && row.harness !== 'claude') refuse('harness_unsupported', `${row.harness} questions are not answerable here (Claude Code only)`);
+  if (!opts['allow-attached'] && (row.fake_attached || row.backend === 'iterm')) refuse('human_attached', 'a terminal client is attached to the session; nothing typed');
+  if (row.backend === 'unknown') refuse('backend_unsupported', `${row.display_title} has no terminal fleet can read and type into`);
+  return opts.choice !== undefined ? choose(row, base, prompt, opts, refuse) : answerQuestion(row, base, prompt, opts, refuse);
 }
 
-function choose(row, base, prompt, opts) {
+function choose(row, base, prompt, opts, refuse) {
   const n = Number(opts.choice);
-  if (!Number.isInteger(n) || n < 1) fail('usage', `--choice takes an answer's number, not ${JSON.stringify(opts.choice)}`);
-  if (prompt?.kind === 'permission' && prompt.incomplete) fail('prompt_incomplete', `${prompt.reason ?? 'the prompt cannot be read whole'}; nothing typed`);
-  if (prompt?.kind !== 'permission') fail('prompt_not_on_screen', 'the terminal is not showing a permission prompt; nothing typed');
-  if (opts.prompt !== undefined && opts.prompt !== prompt.id) fail('prompt_not_on_screen', `the terminal shows a different prompt now (${prompt.id}: "${prompt.title}"); nothing typed`);
-  if (prompt.selected !== 1) fail('prompt_not_on_screen', "someone moved the prompt's cursor (it is not on answer 1) — answer it in the terminal; nothing typed");
+  if (!Number.isInteger(n) || n < 1) refuse('usage', `--choice takes an answer's number, not ${JSON.stringify(opts.choice)}`);
+  if (prompt?.kind === 'permission' && prompt.incomplete) refuse('prompt_incomplete', `${prompt.reason ?? 'the prompt cannot be read whole'}; nothing typed`, row.fake_detail ?? 'clipped');
+  if (prompt?.kind !== 'permission') refuse('prompt_not_on_screen', 'the terminal is not showing a permission prompt; nothing typed', prompt ? 'different_prompt' : 'no_form');
+  if (opts.prompt !== undefined && opts.prompt !== prompt.id) refuse('prompt_not_on_screen', `the terminal shows a different prompt now (${prompt.id}: "${prompt.title}"); nothing typed`, 'different_prompt');
+  if (prompt.selected !== 1) refuse('prompt_not_on_screen', "someone moved the prompt's cursor (it is not on answer 1) — answer it in the terminal; nothing typed", 'cursor_moved');
   const choice = prompt.choices.find((c) => c.n === n);
-  if (!choice) fail('choice_invalid', `the prompt has answers 1–${prompt.choices.length}, not ${n}`);
+  if (!choice) refuse('choice_invalid', `the prompt has answers 1–${prompt.choices.length}, not ${n}`);
   updateRow(row, { fake_prompt: null, status: 'busy', waiting_for: null });
   const { key: _key, ...shown } = choice;
   out({ ...base, answered: !dryRun, ...(dryRun ? { dry_run: true } : {}), prompt_kind: 'permission', prompt, choice: shown, method: 'key', steps: [{ key: String(n) }] });
 }
 
-function answerQuestion(row, base, prompt, opts) {
+function answerQuestion(row, base, prompt, opts, refuse) {
   let answers;
   try {
     answers = JSON.parse(opts.answers);
   } catch (e) {
-    fail('answer_invalid', `--answers is not JSON: ${e.message}`);
+    refuse('answer_invalid', `--answers is not JSON: ${e.message}`);
   }
   const s = row.session_id ? read(row.session_id) : null;
-  if (!s) fail('transcript_not_found', 'the session has no transcript yet');
+  if (!s) refuse('transcript_not_found', 'the session has no transcript yet');
   const all = s.entries.filter((e) => e.kind === 'question');
   const q = all.find((e) => e.id === opts.question);
-  if (!q) fail('question_not_found', `no question ${opts.question} in this session`);
-  if (q.status === 'abandoned') fail('question_not_active', `question ${q.id} was abandoned (a new prompt came before any answer)`);
-  if (q.status !== 'pending') fail('question_answered', `question ${q.id} is already ${q.status}`);
+  if (!q) refuse('question_not_found', `no question ${opts.question} in this session`);
+  if (q.status === 'abandoned') refuse('question_not_active', `question ${q.id} was abandoned (a new prompt came before any answer)`);
+  if (q.status !== 'pending') refuse('question_answered', `question ${q.id} is already ${q.status}`);
   const waiting = all.filter((e) => e.status === 'pending').map((e) => e.id);
-  if (waiting.length !== 1 || waiting[0] !== q.id) fail('question_not_active', `question ${q.id} is not the one call waiting (waiting: ${waiting.join(', ')})`);
-  if (row.status !== 'waiting') fail('not_waiting', `the session is ${row.status}, not waiting on a question`);
-  const checked = validateAnswers(answers, q.questions);
-  if (prompt?.kind !== 'question' || prompt.id !== q.id || !prompt.untouched) {
-    fail('prompt_not_on_screen', 'the form has been touched (moved, ticked, typed or answered) — answer it there; nothing typed');
+  if (waiting.length !== 1 || waiting[0] !== q.id) refuse('question_not_active', `question ${q.id} is not the one call waiting (waiting: ${waiting.join(', ')})`);
+  if (row.status !== 'waiting') refuse('not_waiting', `the session is ${row.status}, not waiting on a question`);
+  const checked = validateAnswers(answers, q.questions, refuse);
+  if (prompt?.kind === 'question' && prompt.incomplete) {
+    refuse('prompt_incomplete', "the question form's answers run off the captured screen (taller than the terminal) — answer it there; nothing typed", row.fake_detail ?? 'clipped');
   }
+  if (prompt?.kind !== 'question') refuse('prompt_not_on_screen', 'the terminal is not showing a question form; nothing typed', prompt ? 'different_prompt' : 'no_form');
+  if (prompt.id !== q.id) refuse('prompt_not_on_screen', 'the terminal shows a different question form; nothing typed', 'different_prompt');
+  if (!prompt.untouched) refuse('prompt_not_on_screen', 'the form has been touched (moved, ticked, typed or answered) — answer it there; nothing typed', 'touched');
   if (writable && !dryRun) {
     s.revision = (s.revision ?? 0) + 1;
     q.status = 'answered';
@@ -372,19 +399,19 @@ function answerQuestion(row, base, prompt, opts) {
 }
 
 /** Fleet's `validate_answer`: one answer per question, options in range, single-select exactly one. */
-function validateAnswers(answers, questions) {
-  if (!Array.isArray(answers) || answers.length !== questions.length) fail('answer_invalid', `answers must be an array of ${questions.length}`);
+function validateAnswers(answers, questions, refuse) {
+  if (!Array.isArray(answers) || answers.length !== questions.length) refuse('answer_invalid', `answers must be an array of ${questions.length}`);
   return answers.map((a, i) => {
     const q = questions[i];
     const opts = Array.isArray(a?.options) ? a.options : [];
-    if (opts.some((n) => !Number.isInteger(n) || n < 0 || n >= q.options.length)) fail('answer_invalid', `answers[${i}].options: unknown option`);
+    if (opts.some((n) => !Number.isInteger(n) || n < 0 || n >= q.options.length)) refuse('answer_invalid', `answers[${i}].options: unknown option`);
     const raw = typeof a?.text === 'string' ? a.text : '';
     // eslint-disable-next-line no-control-regex -- as Fleet: no control characters
-    if (/[\u0000-\u001f\u007f-\u009f]/.test(raw)) fail('answer_invalid', `answers[${i}].text must be a single line without control characters`);
+    if (/[\u0000-\u001f\u007f-\u009f]/.test(raw)) refuse('answer_invalid', `answers[${i}].text must be a single line without control characters`);
     const text = raw.trim();
     const options = [...new Set(opts)].sort((x, y) => x - y);
     if (q.multiSelect ? options.length === 0 && !text : options.length + (text ? 1 : 0) !== 1) {
-      fail('answer_invalid', `answers[${i}]: pick ${q.multiSelect ? 'at least one option' : 'exactly one option'} or type something`);
+      refuse('answer_invalid', `answers[${i}]: pick ${q.multiSelect ? 'at least one option' : 'exactly one option'} or type something`);
     }
     return { options, text };
   });

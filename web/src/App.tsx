@@ -15,7 +15,18 @@ import { StartingView } from '@/components/StartingView';
 import { WorkPanel } from '@/components/WorkPanel';
 import { type LookoutClient, SaveError } from '@/lib/client';
 import { tidySentAt } from '@/lib/activity';
-import { type AnswerAttempt, LOST_ANSWER, LOST_STOP, type SendFailure, type StopRequest, processKey, promptKey, questionKey } from '@/lib/answers';
+import {
+  type AnswerAttempt,
+  LOST_ANSWER,
+  LOST_STOP,
+  type QuestionDrafts,
+  type SendFailure,
+  type StopRequest,
+  processKey,
+  promptKey,
+  questionKey,
+  tidyQuestionDrafts,
+} from '@/lib/answers';
 import { FileLinks } from '@/lib/files';
 import { type PanelNav, type RightLayout, type RightTab, loadLayout, saveLayout, toggleTab } from '@/lib/right-sidebar';
 import { useAnyModalOpen } from '@/lib/modal';
@@ -67,6 +78,8 @@ export function App({ client }: { client: LookoutClient }) {
   // VIEW: per-Session view state, kept here so it outlives switching and follows a Codex
   // Session whose id changes. Drafts and in-flight sends are plain mutable records.
   const [drafts] = useState(() => new Map<string, string>());
+  // VIEW-4.6: a question's picks and text, by Session, then question, as the composer's drafts.
+  const [questionDrafts] = useState<QuestionDrafts>(() => new Map());
   const inFlight = useRef(new Set<string>());
   const [sending, setSending] = useState<ReadonlySet<string>>(new Set());
   // VIEW-3.4: the last failed send per Session, so it shows whichever composer is mounted; VIEW-3.7:
@@ -104,6 +117,9 @@ export function App({ client }: { client: LookoutClient }) {
   // has definitely ended; in-flight sends and anything while the list isn't known stay.
   const tidyCtx = { live: state.sessions, aliases: state.aliases, listKnown: listKnown(state), inFlight: sending };
   if (tidySentAt(sentAt, tidyCtx) !== sentAt) setSentAt((m) => tidySentAt(m, tidyCtx));
+  // VIEW-4.6: a question's draft goes once it's answered or dismissed, or its Session ended.
+  const known = listKnown(state);
+  useEffect(() => tidyQuestionDrafts(questionDrafts, { live: state.sessions, listKnown: known, chats: state.chats }), [questionDrafts, state.sessions, known, state.chats]);
   useEffect(() => {
     if (!selectedId || !successor || !state.sessions.has(successor)) return;
     const draft = drafts.get(selectedId);
@@ -566,6 +582,7 @@ export function App({ client }: { client: LookoutClient }) {
             drawerOpen={drawerOpen}
             onToggleDrawer={toggleDrawer}
             drafts={drafts}
+            questionDrafts={questionDrafts}
             sending={sending}
             sendErrors={sendErrors}
             onEdit={clearSendError}

@@ -600,7 +600,7 @@ function Question({ entry, label }: { entry: QuestionEntry; label: string }) {
         </span>
       </p>
       {live && panel && panel.phase !== 'blocked' ? (
-        <QuestionForm entry={entry} panel={panel} onSubmit={(answers) => live.submit(entry.id, answers)} />
+        <QuestionForm entry={entry} panel={panel} onSubmit={(answers) => live.submit(entry.id, answers)} kept={live.drafts} />
       ) : (
         <div className="space-y-3">
           {entry.questions.map((q, qi) => {

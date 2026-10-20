@@ -3,13 +3,25 @@ import { describe, expect, it } from 'vitest';
 import { NOW, row } from '@/test/helpers';
 import {
   type AnswerAttempt,
+  type Draft,
   ESC_POINTER,
+  FORM_WAIT_MS,
   INCOMPLETE,
+  QUESTION_LAYOUT,
+  QUESTION_MISMATCH,
+  QUESTION_NOT_SHOWN,
+  QUESTION_OLD_FLEET,
+  QUESTION_OTHER,
   QUESTION_TOUCHED,
+  QUESTION_UNCHECKED,
+  type QuestionDrafts,
+  READ_WAIT_MS,
   STOP_SETTLE_MS,
+  type ScreenState,
   TOUCHED,
   UNCERTAIN,
   answersOnClick,
+  doesntFit,
   draftAnswers,
   emptyDraft,
   escButton,
@@ -19,6 +31,7 @@ import {
   questionPanel,
   sendErrorText,
   stopButton,
+  tidyQuestionDrafts,
   typeText,
   typeable,
 } from './answers';
@@ -37,6 +50,17 @@ const PERMISSION: Extract<ScreenPrompt, { kind: 'permission' }> = {
 const SINCE = NOW - 5_000;
 const waiting = (over: Partial<SessionRow> = {}) => row({ id: 'a', status: 'needs-you', statusSince: SINCE, ...over });
 const screen = (prompt: ScreenPrompt | null, epoch = 1, uncertain: string | null = null) => ({ prompt, epoch, uncertain });
+/** A read that shows question toolu_1's form, untouched, as Fleet can answer it now (VIEW-4.6). */
+const form = (epoch = 1, over: Partial<ScreenState> = {}): ScreenState => ({
+  prompt: { kind: 'question', id: 'toolu_1', untouched: true },
+  epoch,
+  uncertain: null,
+  since: SINCE,
+  answerable: true,
+  detail: null,
+  pane: { cols: 200, rows: 50 },
+  ...over,
+});
 const attempt = (over: Partial<AnswerAttempt>): AnswerAttempt => ({ key: 'p:p2.0badc0de', phase: 'sending', message: null, epoch: null, read: 1, since: SINCE, ...over });
 
 const q = (over: Partial<ChatQuestion> = {}): ChatQuestion => ({
@@ -98,9 +122,8 @@ describe('the permission prompt’s panel (VIEW-4.2, VIEW-4.3)', () => {
     // The other tab's answer was refused before typing: the server's next read is the same prompt, with a newer epoch.
     expect(permissionPanel(waiting(), false, screen(PERMISSION, 8), inFlight)).toEqual({ kind: 'buttons', prompt: PERMISSION, sending: false });
     const q = (over: Partial<AnswerAttempt>) => attempt({ key: 'q:toolu_1', ...over });
-    const form = (epoch: number) => screen({ kind: 'question', id: 'toolu_1', untouched: true }, epoch);
-    expect(questionPanel(waiting(), false, [pendingQ()], form(7), q({ phase: 'stale', message: inFlight.message, read: 7 }))).toMatchObject({ phase: 'blocked', message: inFlight.message });
-    expect(questionPanel(waiting(), false, [pendingQ()], form(8), q({ phase: 'stale', message: inFlight.message, read: 7 }))).toEqual({ id: 'toolu_1', phase: 'ready', message: null });
+    expect(questionPanel(waiting(), false, [pendingQ()], form(7), q({ phase: 'stale', message: inFlight.message, read: 7 }), NOW)).toMatchObject({ phase: 'blocked', message: inFlight.message });
+    expect(questionPanel(waiting(), false, [pendingQ()], form(8), q({ phase: 'stale', message: inFlight.message, read: 7 }), NOW)).toEqual({ id: 'toolu_1', phase: 'ready', message: null });
   });
 
   it('VIEW-4.3: an answer from any tab may have landed on it: no buttons, in every tab', () => {
@@ -111,31 +134,28 @@ describe('the permission prompt’s panel (VIEW-4.2, VIEW-4.3)', () => {
 
 describe('the question’s panel (VIEW-4.1)', () => {
   it('VIEW-4.1: the one pending question of a Claude Code Session that Needs you can be answered', () => {
-    expect(questionPanel(waiting(), false, [pendingQ()], screen(null), undefined)).toEqual({ id: 'toolu_1', phase: 'ready', message: null });
-    expect(questionPanel(waiting(), false, [pendingQ()], screen({ kind: 'question', id: 'toolu_1', untouched: true }), undefined)).toMatchObject({ phase: 'ready' });
-    expect(questionPanel(waiting(), false, [pendingQ()], screen({ kind: 'question', id: null, untouched: false }), undefined)).toMatchObject({ phase: 'ready' });
+    expect(questionPanel(waiting(), false, [pendingQ()], form(), undefined, NOW)).toEqual({ id: 'toolu_1', phase: 'ready', message: null });
   });
 
-  it('VIEW-4.1: none for Codex, a Session that can’t be answered, two pending, none pending, another form or a permission prompt on screen', () => {
-    expect(questionPanel(waiting({ harness: 'codex' }), false, [pendingQ()], undefined, undefined)).toBeNull();
-    expect(questionPanel(waiting({ status: 'busy' }), false, [pendingQ()], undefined, undefined)).toBeNull();
-    expect(questionPanel(waiting(), true, [pendingQ()], undefined, undefined)).toBeNull();
-    expect(questionPanel(waiting({ controllable: false, backend: 'unknown' }), false, [pendingQ()], undefined, undefined)).toBeNull();
-    expect(questionPanel(waiting(), false, [pendingQ('toolu_1'), pendingQ('toolu_2')], undefined, undefined)).toBeNull();
-    expect(questionPanel(waiting(), false, [pendingQ('toolu_1', 'answered')], undefined, undefined)).toBeNull();
-    expect(questionPanel(waiting(), false, [pendingQ()], screen({ kind: 'question', id: 'toolu_9', untouched: true }), undefined)).toBeNull();
-    expect(questionPanel(waiting(), false, [pendingQ()], screen(PERMISSION), undefined)).toBeNull();
-    expect(questionPanel(waiting(), false, [pendingQ()], screen({ kind: 'incomplete' }), undefined)).toBeNull();
+  it('VIEW-4.1: none for Codex, a Session that can’t be answered, two pending, none pending, or a permission prompt on screen', () => {
+    expect(questionPanel(waiting({ harness: 'codex' }), false, [pendingQ()], undefined, undefined, NOW)).toBeNull();
+    expect(questionPanel(waiting({ status: 'busy' }), false, [pendingQ()], undefined, undefined, NOW)).toBeNull();
+    expect(questionPanel(waiting(), true, [pendingQ()], undefined, undefined, NOW)).toBeNull();
+    expect(questionPanel(waiting({ controllable: false, backend: 'unknown' }), false, [pendingQ()], undefined, undefined, NOW)).toBeNull();
+    expect(questionPanel(waiting(), false, [pendingQ('toolu_1'), pendingQ('toolu_2')], undefined, undefined, NOW)).toBeNull();
+    expect(questionPanel(waiting(), false, [pendingQ('toolu_1', 'answered')], undefined, undefined, NOW)).toBeNull();
+    expect(questionPanel(waiting(), false, [pendingQ()], screen(PERMISSION), undefined, NOW)).toBeNull();
+    expect(questionPanel(waiting(), false, [pendingQ()], screen({ kind: 'incomplete' }), undefined, NOW)).toBeNull();
   });
 
   it('VIEW-4.3: sending, sent, refused, or touched in the terminal', () => {
     const a = (over: Partial<AnswerAttempt>) => attempt({ key: 'q:toolu_1', ...over });
-    expect(questionPanel(waiting(), false, [pendingQ()], undefined, a({}))).toMatchObject({ phase: 'sending' });
-    expect(questionPanel(waiting(), false, [pendingQ()], undefined, a({ phase: 'sent', epoch: 3 }))).toMatchObject({ phase: 'sent' });
-    expect(questionPanel(waiting(), false, [pendingQ()], undefined, a({ phase: 'refused', message: 'why' }))).toEqual({ id: 'toolu_1', phase: 'blocked', message: 'why' });
+    expect(questionPanel(waiting(), false, [pendingQ()], undefined, a({}), NOW)).toMatchObject({ phase: 'sending' });
+    expect(questionPanel(waiting(), false, [pendingQ()], undefined, a({ phase: 'sent', epoch: 3 }), NOW)).toMatchObject({ phase: 'sent' });
+    expect(questionPanel(waiting(), false, [pendingQ()], undefined, a({ phase: 'refused', message: 'why' }), NOW)).toEqual({ id: 'toolu_1', phase: 'blocked', message: 'why' });
     // A refusal from an earlier Needs you spell doesn't count.
-    expect(questionPanel(waiting({ statusSince: SINCE + 1 }), false, [pendingQ()], screen(null), a({ phase: 'refused', message: 'why' }))).toMatchObject({ phase: 'ready' });
-    expect(questionPanel(waiting(), false, [pendingQ()], screen({ kind: 'question', id: 'toolu_1', untouched: false }), undefined)).toEqual({
+    expect(questionPanel(waiting({ statusSince: SINCE + 1 }), false, [pendingQ()], form(), a({ phase: 'refused', message: 'why' }), NOW)).toMatchObject({ phase: 'ready' });
+    expect(questionPanel(waiting(), false, [pendingQ()], form(1, { prompt: { kind: 'question', id: 'toolu_1', untouched: false }, answerable: false, detail: 'touched' }), undefined, NOW)).toEqual({
       id: 'toolu_1',
       phase: 'blocked',
       message: QUESTION_TOUCHED,
@@ -144,22 +164,190 @@ describe('the question’s panel (VIEW-4.1)', () => {
 
   it('VIEW-4.3: answered from another tab (until a newer read), or maybe answered from any tab: no form', () => {
     const a = (over: Partial<AnswerAttempt>) => attempt({ key: 'q:toolu_1', ...over });
-    expect(questionPanel(waiting(), false, [pendingQ()], screen(null, 4), a({ phase: 'stale', message: 'already', read: 4 }))).toEqual({ id: 'toolu_1', phase: 'blocked', message: 'already' });
-    expect(questionPanel(waiting(), false, [pendingQ()], screen(null, 5), a({ phase: 'stale', message: 'already', read: 4 }))).toMatchObject({ phase: 'ready' });
-    expect(questionPanel(waiting(), false, [pendingQ()], screen(null, 5, 'q:toolu_1'), undefined)).toEqual({ id: 'toolu_1', phase: 'blocked', message: UNCERTAIN });
+    expect(questionPanel(waiting(), false, [pendingQ()], form(4), a({ phase: 'stale', message: 'already', read: 4 }), NOW)).toEqual({ id: 'toolu_1', phase: 'blocked', message: 'already' });
+    expect(questionPanel(waiting(), false, [pendingQ()], form(5), a({ phase: 'stale', message: 'already', read: 4 }), NOW)).toMatchObject({ phase: 'ready' });
+    expect(questionPanel(waiting(), false, [pendingQ()], form(5, { uncertain: 'q:toolu_1' }), undefined, NOW)).toEqual({ id: 'toolu_1', phase: 'blocked', message: UNCERTAIN });
   });
 
   it('VIEW-4.1: text the server couldn’t take keeps the form, with why', () => {
     const invalid = attempt({ key: 'q:toolu_1', phase: 'invalid', message: 'The answer is too long.' });
-    expect(questionPanel(waiting(), false, [pendingQ()], screen(null), invalid)).toEqual({ id: 'toolu_1', phase: 'ready', message: 'The answer is too long.' });
+    expect(questionPanel(waiting(), false, [pendingQ()], form(), invalid, NOW)).toEqual({ id: 'toolu_1', phase: 'ready', message: 'The answer is too long.' });
   });
 
   it('VIEW-4.3: before the tab’s first read of the screen it waits for one: no epoch to answer with, which the server would refuse', () => {
-    expect(questionPanel(waiting(), false, [pendingQ()], undefined, undefined)).toEqual({ id: 'toolu_1', phase: 'reading', message: null });
-    // A read with nothing on screen is enough: it carries the epoch.
-    expect(questionPanel(waiting(), false, [pendingQ()], screen(null, 3), undefined)).toMatchObject({ phase: 'ready' });
+    expect(questionPanel(waiting(), false, [pendingQ()], undefined, undefined, NOW)).toEqual({ id: 'toolu_1', phase: 'reading', message: null });
+    // A read that shows the form, untouched and answerable, carries the epoch.
+    expect(questionPanel(waiting(), false, [pendingQ()], form(3), undefined, NOW)).toMatchObject({ phase: 'ready' });
     // An answer already on its way, or sent, still shows as such.
-    expect(questionPanel(waiting(), false, [pendingQ()], undefined, attempt({ key: 'q:toolu_1', phase: 'sent', epoch: 4 }))).toMatchObject({ phase: 'sent' });
+    expect(questionPanel(waiting(), false, [pendingQ()], undefined, attempt({ key: 'q:toolu_1', phase: 'sent', epoch: 4 }), NOW)).toMatchObject({ phase: 'sent' });
+  });
+});
+
+describe('a question Fleet can’t answer now (VIEW-4.6, VIEW-4.7)', () => {
+  /** A read with nothing Fleet can answer: `detail` says why. Past the wait for the form, unless said otherwise. */
+  const unconfirmed = (prompt: ScreenPrompt | null, detail: ScreenState['detail'], pane: ScreenState['pane'] = { cols: 200, rows: 50 }): ScreenState => ({
+    prompt,
+    epoch: 1,
+    uncertain: null,
+    since: SINCE,
+    answerable: false,
+    detail,
+    pane,
+  });
+  const CUT: ScreenPrompt = { kind: 'question', id: null, untouched: false };
+  /** The question (no Transcript time) appeared when the spell began: this is when its wait for the form is over (VIEW-4.7). */
+  const WAITED = SINCE + FORM_WAIT_MS;
+  const panel = (s: ScreenState, now = WAITED, entry = pendingQ(), r = waiting()) => questionPanel(r, false, [entry], s, undefined, now);
+  const blocked = (message: string) => ({ id: 'toolu_1', phase: 'blocked', message });
+  const reading = { id: 'toolu_1', phase: 'reading', message: null };
+
+  it('VIEW-4.6: buttons only when the latest read shows this question’s form, untouched, and Fleet says it can answer it now', () => {
+    expect(panel(form())).toEqual({ id: 'toolu_1', phase: 'ready', message: null });
+    // Fleet doesn't say so (`answerable` absent or `false`, with no reason): no buttons.
+    expect(panel(form(1, { answerable: undefined, detail: undefined, pane: undefined }))).toEqual(blocked(QUESTION_UNCHECKED));
+    expect(panel(form(1, { answerable: false, detail: null }))).toEqual(blocked(QUESTION_UNCHECKED));
+    // A form without its id, or another question's, even one Fleet could answer.
+    expect(panel(form(1, { prompt: { kind: 'question', id: null, untouched: true } }))).toEqual(blocked(QUESTION_UNCHECKED));
+    expect(panel(form(1, { prompt: { kind: 'question', id: 'toolu_9', untouched: true } }))).toEqual(blocked(QUESTION_OTHER));
+    // Touched in the terminal.
+    expect(panel(form(1, { prompt: { kind: 'question', id: 'toolu_1', untouched: false }, answerable: true }))).toEqual(blocked(QUESTION_TOUCHED));
+  });
+
+  it('VIEW-4.6: a form taller than the terminal says it doesn’t fit, with the terminal’s size, to answer it from a terminal app, where a bigger terminal lets Lookout answer it', () => {
+    const message = doesntFit('question', { cols: 80, rows: 24 });
+    expect(message).toBe(
+      'This question doesn’t fit in the terminal (80×24), so Lookout can’t read it whole. Open the Session in a terminal app and answer it there. A bigger terminal lets Lookout answer questions like this.',
+    );
+    expect(panel(unconfirmed(CUT, 'clipped', { cols: 80, rows: 24 }))).toEqual(blocked(message));
+    // Without a size from Fleet, the line leaves it out.
+    expect(panel(unconfirmed(CUT, 'clipped', null))).toEqual(
+      blocked('This question doesn’t fit in the terminal, so Lookout can’t read it whole. Open the Session in a terminal app and answer it there. A bigger terminal lets Lookout answer questions like this.'),
+    );
+  });
+
+  it('VIEW-4.6: each of Fleet’s reasons in plain words, and to answer in the terminal', () => {
+    expect(panel(unconfirmed(CUT, 'layout_unsupported'))).toEqual(blocked(QUESTION_LAYOUT));
+    expect(panel(unconfirmed({ kind: 'question', id: 'toolu_1', untouched: false }, 'touched'))).toEqual(blocked(QUESTION_TOUCHED));
+    expect(panel(unconfirmed({ kind: 'question', id: 'toolu_1', untouched: true }, 'cursor_moved'))).toEqual(blocked(QUESTION_TOUCHED));
+    expect(panel(unconfirmed(null, 'no_form'))).toEqual(blocked(QUESTION_NOT_SHOWN));
+    // Its tabs, question or options aren't this question's: it may be this one, drawn wrapped or cut short.
+    for (const detail of ['tabs', 'question', 'options'] as const) {
+      expect(panel(unconfirmed({ kind: 'question', id: null, untouched: false }, detail)), detail).toEqual(blocked(QUESTION_MISMATCH));
+    }
+    expect(QUESTION_MISMATCH).toMatch(/^The form in the terminal doesn’t match this question/);
+    // A form no pending question accounts for, or another question's id: a different question.
+    expect(panel(unconfirmed({ kind: 'question', id: null, untouched: false }, 'different_prompt'))).toEqual(blocked(QUESTION_OTHER));
+    // A failed read (or a code Lookout doesn't know): it can't check.
+    expect(panel(unconfirmed(null, null, null))).toEqual(blocked(QUESTION_UNCHECKED));
+    // Every line is Lookout's own words, and says where to answer instead.
+    for (const message of [QUESTION_LAYOUT, QUESTION_OTHER, QUESTION_MISMATCH, QUESTION_NOT_SHOWN, QUESTION_UNCHECKED]) expect(message).toMatch(/Answer it in the terminal\.$/);
+    expect(doesntFit('question', null)).toMatch(/Open the Session in a terminal app and answer it there\./);
+    expect(QUESTION_TOUCHED).toMatch(/Finish it there\.$/);
+  });
+
+  it('VIEW-4.6: a Fleet older than the pin, which doesn’t say whether it could answer, says so at once: update the Fleet fork', () => {
+    const old = form(1, { answerable: false, detail: null, pane: null, oldFleet: true });
+    expect(panel(old)).toEqual(blocked(QUESTION_OLD_FLEET));
+    // At once: not a read to wait out.
+    expect(panel(old, SINCE)).toEqual(blocked(QUESTION_OLD_FLEET));
+    expect(QUESTION_OLD_FLEET).toBe('This Fleet can’t check questions yet, so Lookout won’t answer this one. Update the Fleet fork, or answer it in the terminal.');
+    // A form started in the terminal still says so.
+    expect(panel({ ...old, prompt: { kind: 'question', id: 'toolu_1', untouched: false } })).toEqual(blocked(QUESTION_TOUCHED));
+  });
+
+  it('VIEW-4.6: a permission prompt taller than the terminal says it doesn’t fit, in the same words; other prompts Fleet can’t read whole keep theirs', () => {
+    const cut = (detail: ScreenState['detail']) => unconfirmed({ kind: 'incomplete' }, detail, { cols: 80, rows: 24 });
+    expect(permissionPanel(waiting(), false, cut('clipped'), undefined)).toEqual({ kind: 'message', prompt: null, message: doesntFit('prompt', { cols: 80, rows: 24 }) });
+    expect(doesntFit('prompt', { cols: 80, rows: 24 })).toBe(
+      'This prompt doesn’t fit in the terminal (80×24), so Lookout can’t read it whole. Open the Session in a terminal app and answer it there. A bigger terminal lets Lookout answer prompts like this.',
+    );
+    expect(permissionPanel(waiting(), false, cut('layout_unsupported'), undefined)).toEqual({ kind: 'message', prompt: null, message: INCOMPLETE });
+    expect(permissionPanel(waiting(), false, cut(null), undefined)).toEqual({ kind: 'message', prompt: null, message: INCOMPLETE });
+  });
+
+  it('VIEW-4.7: for 5 s after the question appears, a read without its form waits, disabled and quiet; then the line says why', () => {
+    const asked = NOW - 1_000;
+    const entry = { ...pendingQ(), ts: new Date(asked).toISOString() } as ChatEntry;
+    for (const s of [unconfirmed(null, 'no_form'), unconfirmed(null, null, null), unconfirmed(CUT, 'options'), form(1, { prompt: { kind: 'question', id: 'toolu_9', untouched: true } })]) {
+      expect(panel(s, asked, entry)).toEqual(reading);
+      expect(panel(s, asked + FORM_WAIT_MS - 1, entry)).toEqual(reading);
+      expect(panel(s, asked + FORM_WAIT_MS, entry)).toMatchObject({ phase: 'blocked' });
+    }
+    expect(panel(unconfirmed(null, 'no_form'), asked + FORM_WAIT_MS, entry)).toEqual(blocked(QUESTION_NOT_SHOWN));
+    // The form drawn in time: buttons, no line ever shown.
+    expect(panel(form(), asked + 500, entry)).toEqual({ id: 'toolu_1', phase: 'ready', message: null });
+  });
+
+  it('VIEW-4.7: the wait counts from the later of the question’s Transcript time and the Needs you spell’s start; without either, there is none', () => {
+    const entry = { ...pendingQ(), ts: new Date(NOW - 60_000).toISOString() } as ChatEntry;
+    // The spell began after the question was written (a second question in one spell starts it from its own time).
+    const spell = waiting({ statusSince: NOW - 2_000 });
+    expect(panel(unconfirmed(null, 'no_form'), NOW, entry, spell)).toEqual(reading);
+    expect(panel(unconfirmed(null, 'no_form'), NOW + 3_000, entry, spell)).toEqual(blocked(QUESTION_NOT_SHOWN));
+    const later = { ...pendingQ(), ts: new Date(NOW - 2_000).toISOString() } as ChatEntry;
+    expect(panel(unconfirmed(null, 'no_form'), NOW, later, waiting({ statusSince: NOW - 60_000 }))).toEqual(reading);
+    expect(panel(unconfirmed(null, 'no_form'), NOW, pendingQ(), waiting({ statusSince: null }))).toEqual(blocked(QUESTION_NOT_SHOWN));
+  });
+
+  it('VIEW-4.7: a read that says nothing (it failed) is waited out for 5 s from the first of them, however long ago the question appeared; then the line says Lookout can’t check it', () => {
+    const failed = (unread: number | null) => ({ ...unconfirmed(null, null, null), unread });
+    // The form was confirmed long ago; then a read fails at `at`.
+    const at = WAITED + 60_000;
+    expect(READ_WAIT_MS).toBe(5_000);
+    expect(panel(failed(at), at)).toEqual(reading);
+    expect(panel(failed(at), at + READ_WAIT_MS - 1)).toEqual(reading);
+    expect(panel(failed(at), at + READ_WAIT_MS)).toEqual(blocked(QUESTION_UNCHECKED));
+    // Not timed (no `unread`): said at once, past the wait for the form.
+    expect(panel(failed(null), at)).toEqual(blocked(QUESTION_UNCHECKED));
+    // A read that says why is never waited out this way.
+    expect(panel({ ...unconfirmed(null, 'no_form'), unread: at }, at)).toEqual(blocked(QUESTION_NOT_SHOWN));
+    // Esc stays hidden meanwhile (VIEW-4.5).
+    const esc = (now: number) => escButton(waiting(), false, failed(at), { permission: null, question: panel(failed(at), now) }, undefined, undefined, now);
+    expect(esc(at + READ_WAIT_MS - 1)).toBeNull();
+    expect(esc(at + READ_WAIT_MS)).toEqual({ pressing: false, error: null });
+  });
+
+  it('VIEW-4.7: a form that doesn’t fit, one Lookout can’t answer, or one started in the terminal is said at once', () => {
+    const asked = NOW;
+    const entry = { ...pendingQ(), ts: new Date(asked).toISOString() } as ChatEntry;
+    expect(panel(unconfirmed(CUT, 'clipped', { cols: 80, rows: 24 }), asked, entry)).toEqual(blocked(doesntFit('question', { cols: 80, rows: 24 })));
+    expect(panel(unconfirmed(CUT, 'layout_unsupported'), asked, entry)).toEqual(blocked(QUESTION_LAYOUT));
+    expect(panel(unconfirmed({ kind: 'question', id: 'toolu_1', untouched: false }, 'touched'), asked, entry)).toEqual(blocked(QUESTION_TOUCHED));
+  });
+
+  it('VIEW-4.7: Esc stays hidden while the form is waited for, and shows once the line says why (VIEW-4.5)', () => {
+    const asked = NOW - 1_000;
+    const entry = { ...pendingQ(), ts: new Date(asked).toISOString() } as ChatEntry;
+    const s = unconfirmed(null, 'no_form');
+    const esc = (now: number) => escButton(waiting(), false, s, { permission: null, question: panel(s, now, entry) }, undefined, undefined, now);
+    expect(esc(asked)).toBeNull();
+    expect(esc(asked + FORM_WAIT_MS)).toEqual({ pressing: false, error: null });
+    // A form that doesn't fit has no buttons from the start: Esc too.
+    const cut = unconfirmed(CUT, 'clipped');
+    expect(escButton(waiting(), false, cut, { permission: null, question: panel(cut, asked, entry) }, undefined, undefined, asked)).toEqual({ pressing: false, error: null });
+  });
+});
+describe('kept question drafts (VIEW-4.6)', () => {
+  it('VIEW-4.6: a question’s draft goes once the tab’s chat shows it answered, dismissed or abandoned, and a Session’s once it ended; a chat the tab doesn’t hold keeps them', () => {
+    const d: readonly Draft[] = [{ picked: [1], text: 'and tag it' }];
+    const kept: QuestionDrafts = new Map([
+      ['a', new Map([['toolu_1', d], ['toolu_2', d], ['toolu_3', d], ['toolu_4', d]])],
+      ['ended', new Map([['toolu_5', d]])],
+      ['unheld', new Map([['toolu_6', d]])],
+    ]);
+    const live = new Map([['a', waiting()], ['unheld', waiting({ id: 'unheld' })]]);
+    const entry = (id: string, status: 'pending' | 'answered' | 'declined' | 'abandoned') => ({ ...pendingQ(id), status }) as ChatEntry;
+    const chats = new Map([['a', { entries: [entry('toolu_1', 'pending'), entry('toolu_2', 'answered'), entry('toolu_3', 'declined'), entry('toolu_4', 'abandoned')] }]]);
+    // While the list isn't known, a Session missing from it may not have ended.
+    tidyQuestionDrafts(kept, { live, listKnown: false, chats });
+    expect([...kept.keys()]).toEqual(['a', 'ended', 'unheld']);
+    expect([...kept.get('a')!.keys()]).toEqual(['toolu_1']);
+    expect(kept.get('a')!.get('toolu_1')).toBe(d);
+    tidyQuestionDrafts(kept, { live, listKnown: true, chats });
+    expect([...kept.keys()]).toEqual(['a', 'unheld']);
+    // Its last question answered, the Session's entry goes too.
+    tidyQuestionDrafts(kept, { live, listKnown: true, chats: new Map([['a', { entries: [entry('toolu_1', 'answered')] }]]) });
+    expect([...kept.keys()]).toEqual(['unheld']);
   });
 });
 

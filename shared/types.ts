@@ -133,8 +133,22 @@ export type ServerEvent =
    * it. `uncertain`: an answer whose outcome Lookout can't tell was for this prompt (`p:<id>`) or
    * question (`q:<id>`), so no tab offers to answer it again. `since`: the Needs you spell the read
    * was made in (the row's `statusSince` when it began), null when nothing was read (VIEW-4.5).
+   * `answerable`, `detail`, `pane`: whether Fleet could answer it now, why not, and the terminal's
+   * size (VIEW-4.6); `false`, null, null when nothing was read or the read failed. `oldFleet`: the
+   * read came from a Fleet older than Lookout's pin, which says nothing of `answerable` (VIEW-4.6).
    */
-  | { type: 'prompt'; sessionId: string; prompt: ScreenPrompt | null; epoch: number; uncertain?: string | null; since?: number | null }
+  | {
+      type: 'prompt';
+      sessionId: string;
+      prompt: ScreenPrompt | null;
+      epoch: number;
+      uncertain?: string | null;
+      since?: number | null;
+      answerable?: boolean;
+      detail?: AnswerDetail | null;
+      pane?: PaneSize | null;
+      oldFleet?: boolean;
+    }
   | ChatEvent;
 
 /**
@@ -148,6 +162,22 @@ export type ScreenPrompt =
   | { kind: 'permission'; id: string; title: string; detail: string[]; choices: PromptChoice[]; untouched: boolean }
   | { kind: 'incomplete' }
   | { kind: 'question'; id: string | null; untouched: boolean };
+
+/**
+ * VIEW-4.6: why Fleet can't answer the prompt on screen now (`answer --list`'s `detail`, the fork's
+ * fixed set; never screen text). `no_form`: no form of that kind; `clipped`: not all of it on
+ * screen (taller than the terminal); `layout_unsupported`: a layout Fleet doesn't read; `tabs`,
+ * `question`, `options`, `different_prompt`: another form; `touched`, `cursor_moved`: started in
+ * the terminal.
+ */
+export type AnswerDetail = 'no_form' | 'clipped' | 'layout_unsupported' | 'tabs' | 'question' | 'options' | 'touched' | 'cursor_moved' | 'different_prompt';
+export const ANSWER_DETAILS: readonly AnswerDetail[] = ['no_form', 'clipped', 'layout_unsupported', 'tabs', 'question', 'options', 'touched', 'cursor_moved', 'different_prompt'];
+
+/** The terminal's size, in characters (`answer`'s `pane`). */
+export interface PaneSize {
+  cols: number;
+  rows: number;
+}
 
 /** One choice of a permission prompt: its number on screen and its wording. */
 export interface PromptChoice {

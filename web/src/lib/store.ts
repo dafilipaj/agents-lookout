@@ -69,7 +69,8 @@ export interface Preview {
 }
 
 export type Action =
-  | { type: 'event'; event: ServerEvent }
+  /** `at`: when the tab got it (its clock); VIEW-4.7 times reads that say nothing from it. */
+  | { type: 'event'; event: ServerEvent; at?: number }
   | { type: 'connection'; connected: boolean }
   /** VIEW-1: the tab now views this Session's chat. */
   | { type: 'chat-view'; sessionId: string | null }
@@ -202,8 +203,33 @@ export function reducer(state: LookoutState, action: Action): LookoutState {
     }
     case 'preview':
       return { ...state, previews: new Map(state.previews).set(e.sessionId, { text: e.text, error: e.error }) };
-    case 'prompt':
-      return { ...state, prompts: new Map(state.prompts).set(e.sessionId, { prompt: e.prompt, epoch: e.epoch, uncertain: e.uncertain ?? null, since: e.since ?? null }) };
+    case 'prompt': {
+      // VIEW-4.7: a read that says nothing of whether it can be answered (it failed) is timed from
+      // the first of its run, so one slow read is waited out rather than said. After a read that
+      // said why not, the run keeps that read's reason (`carried`) instead of going quiet, which
+      // would hide the line and Esc and bring the form back, or swap the line out and back.
+      const says = e.answerable === true || (e.detail ?? null) !== null || e.oldFleet === true;
+      const since = e.since ?? null;
+      const before = state.prompts.get(e.sessionId);
+      const spell = before !== undefined && before.since === since ? before : undefined;
+      const unread = says ? null : (spell?.unread ?? action.at ?? null);
+      const kept = !says && spell !== undefined && spell.answerable !== true && (spell.detail != null || spell.oldFleet === true) ? spell : undefined;
+      return {
+        ...state,
+        prompts: new Map(state.prompts).set(e.sessionId, {
+          prompt: e.prompt,
+          epoch: e.epoch,
+          uncertain: e.uncertain ?? null,
+          since,
+          answerable: e.answerable === true,
+          detail: kept ? (kept.detail ?? null) : (e.detail ?? null),
+          pane: kept ? (kept.pane ?? null) : (e.pane ?? null),
+          oldFleet: kept ? kept.oldFleet === true : e.oldFleet === true,
+          unread,
+          carried: kept !== undefined,
+        }),
+      };
+    }
     case 'launches': {
       let started = state.started;
       if (e.started.length) {
@@ -283,7 +309,7 @@ export function useLookout(client: LookoutClient): [LookoutState, Dispatch<Actio
   useEffect(
     () =>
       client.subscribe({
-        onEvent: (event) => dispatch({ type: 'event', event }),
+        onEvent: (event) => dispatch({ type: 'event', event, at: Date.now() }),
         onConnection: (connected) => dispatch({ type: 'connection', connected }),
       }),
     [client],

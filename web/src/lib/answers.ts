@@ -1,4 +1,4 @@
-import type { ChatEntry, ChatQuestion, EscStatus, HeldReason, QuestionAnswer, ScreenPrompt, SessionRow } from '@shared/types.ts';
+import type { AnswerDetail, ChatEntry, ChatQuestion, EscStatus, HeldReason, PaneSize, QuestionAnswer, ScreenPrompt, SessionRow } from '@shared/types.ts';
 import { createContext } from 'react';
 
 /**
@@ -17,6 +17,25 @@ export interface ScreenState {
   uncertain: string | null;
   /** VIEW-4.5: the Needs you spell the read was made in (the row's `statusSince`); null or absent when nothing was read. */
   since?: number | null;
+  /** VIEW-4.6: Fleet could answer the prompt on screen now; false or absent when it can't, or nothing was read. */
+  answerable?: boolean;
+  /** VIEW-4.6: why it can't, as Fleet's code; null or absent when it can, nothing was read, or the code is one Lookout doesn't know. */
+  detail?: AnswerDetail | null;
+  /** VIEW-4.6: the terminal's size, when Fleet gave it. */
+  pane?: PaneSize | null;
+  /** VIEW-4.6: the read came from a Fleet older than Lookout's pin, which doesn't say whether it could answer. */
+  oldFleet?: boolean;
+  /**
+   * VIEW-4.7: when this tab's reads stopped saying whether the question can be answered (no
+   * `answerable`, no `detail`: a read that failed or timed out), on the tab's clock; null or absent
+   * while they say.
+   */
+  unread?: number | null;
+  /**
+   * VIEW-4.7: `detail`, `pane` and `oldFleet` are the last read's that said why not, kept through
+   * the failed reads since (`unread`), so its line stays for `READ_WAIT_MS` instead of flickering.
+   */
+  carried?: boolean;
 }
 
 /** VIEW-4: the latest answer this tab sent to a Session, and what came of it. */
@@ -66,6 +85,40 @@ export const LOST_ANSWER = 'Lost the connection to Lookout. It may have been ans
 export const LOST_STOP = 'Lost the connection to Lookout. Esc may have been pressed; check the terminal.';
 export const TOUCHED = 'This prompt was changed in the terminal, so Lookout won’t answer it. Answer it there.';
 export const QUESTION_TOUCHED = 'You started answering in the terminal, so Lookout won’t. Finish it there.';
+/** VIEW-4.6: why a question can't be answered from here, by Fleet's reason (`detail`). */
+export const QUESTION_LAYOUT = 'Lookout can’t answer this kind of question. Answer it in the terminal.';
+export const QUESTION_OTHER = 'The terminal shows a different question, so Lookout won’t answer this one. Answer it in the terminal.';
+/** Its tabs, question or options aren't this question's: maybe another, maybe this one drawn wrapped or cut short. */
+export const QUESTION_MISMATCH = 'The form in the terminal doesn’t match this question, so Lookout won’t answer it. Answer it in the terminal.';
+export const QUESTION_NOT_SHOWN = 'The terminal doesn’t show this question, so Lookout won’t answer it. Answer it in the terminal.';
+export const QUESTION_UNCHECKED = 'Lookout can’t check this question in the terminal right now, so it won’t answer it. Answer it in the terminal.';
+/** A Fleet older than Lookout's pin: it can answer, but can't say beforehand whether it will (as the server says of a Fleet without `answer`). */
+export const QUESTION_OLD_FLEET = 'This Fleet can’t check questions yet, so Lookout won’t answer this one. Update the Fleet fork, or answer it in the terminal.';
+
+/**
+ * VIEW-4.6: a question form, or a permission prompt, taller than the terminal (Fleet's `clipped`),
+ * with its size when Fleet gave it. A Session Lookout started has no window to make bigger (the
+ * Terminal preview only shows the same pane): it's answered from a terminal app opened on it, and
+ * a bigger one fits the next.
+ */
+export function doesntFit(what: 'question' | 'prompt', pane: PaneSize | null | undefined): string {
+  const size = pane ? ` (${pane.cols}×${pane.rows})` : '';
+  return `This ${what} doesn’t fit in the terminal${size}, so Lookout can’t read it whole. Open the Session in a terminal app and answer it there. A bigger terminal lets Lookout answer ${what}s like this.`;
+}
+
+/**
+ * VIEW-4.7: how long a question just asked waits for its form to be drawn before its panel says the
+ * terminal doesn't show it. Claude Code writes the question to the Transcript a moment before it
+ * draws the form, and a read in between isn't worth an alert.
+ */
+export const FORM_WAIT_MS = 5_000;
+
+/**
+ * VIEW-4.7: how long reads that say nothing (one failed, or timed out: `--list` gives up after 4 s)
+ * are waited out, from the first of them, before the question's panel says Lookout can't check it.
+ * One slow read isn't worth an alert, the Esc button, or the form going away.
+ */
+export const READ_WAIT_MS = 5_000;
 
 /** Buttons only for a running, Controllable Session that Needs you (VIEW-4.1, 4.2; VIEW-5.2, 5.3). */
 function answerable(row: SessionRow, ended: boolean): boolean {
@@ -94,7 +147,7 @@ export type PermissionPanel =
 export function permissionPanel(row: SessionRow, ended: boolean, screen: ScreenState | undefined, attempt: AnswerAttempt | undefined): PermissionPanel | null {
   const p = screen?.prompt;
   if (!answerable(row, ended) || !p || p.kind === 'question') return null;
-  if (p.kind === 'incomplete') return { kind: 'message', prompt: null, message: INCOMPLETE };
+  if (p.kind === 'incomplete') return { kind: 'message', prompt: null, message: screen.detail === 'clipped' ? doesntFit('prompt', screen.pane) : INCOMPLETE };
   // An answer landed after this was read: it's stale, whatever it shows (the next read says what's there now).
   if (attempt?.phase === 'sent' && attempt.epoch !== null && screen.epoch < attempt.epoch) return null;
   const a = attemptFor(attempt, promptKey(p.id), row, screen);
@@ -109,10 +162,13 @@ export interface QuestionPanel {
   /** The question's tool_use id. */
   id: string;
   /**
-   * `blocked`: Lookout won't answer it (it was refused, or touched in the terminal); `message` says
-   * why. `ready` with a `message`: the last answer couldn't be taken as written; fix it in the form.
-   * `reading`: the tab has no read of the screen yet, so no epoch to answer with; the buttons wait
-   * for it, disabled (the server would refuse the answer as read before it started).
+   * `blocked`: Lookout won't answer it (it was refused, touched in the terminal, or the latest read
+   * doesn't show its form as Fleet could answer it, VIEW-4.6); `message` says why. `ready` with a
+   * `message`: the last answer couldn't be taken as written; fix it in the form. `reading`: the tab
+   * has no read of the screen yet, so no epoch to answer with (the server would refuse the answer as
+   * read before it started), a question just asked waits for its form to be drawn, or a read that
+   * failed is waited out (VIEW-4.7); the buttons wait, locked but keeping focus, with what was picked
+   * and typed.
    */
   phase: 'ready' | 'reading' | 'sending' | 'sent' | 'blocked';
   message: string | null;
@@ -121,7 +177,8 @@ export interface QuestionPanel {
 /**
  * VIEW-4.1: the question the chat can answer, and how its answer went; null when none can. Only
  * Claude Code's (Fleet reads no Codex question forms), and only the one call waiting, as Fleet
- * answers no other.
+ * answers no other. VIEW-4.6: its buttons only once the latest read shows its form, untouched, and
+ * Fleet could answer it now; otherwise why, by Fleet's reason (see `notAnswerable`).
  */
 export function questionPanel(
   row: SessionRow,
@@ -129,6 +186,7 @@ export function questionPanel(
   entries: readonly ChatEntry[],
   screen: ScreenState | undefined,
   attempt: AnswerAttempt | undefined,
+  now: number,
 ): QuestionPanel | null {
   if (!answerable(row, ended) || row.harness !== 'claude') return null;
   const p = screen?.prompt ?? null;
@@ -137,15 +195,49 @@ export function questionPanel(
   const pending = entries.filter((e): e is Extract<ChatEntry, { kind: 'question' }> => e.kind === 'question' && e.status === 'pending');
   if (pending.length !== 1) return null;
   const q = pending[0]!;
-  if (p?.id && p.id !== q.id) return null;
   const a = attemptFor(attempt, questionKey(q.id), row, screen);
   if (a?.phase === 'refused' || a?.phase === 'stale') return { id: q.id, phase: 'blocked', message: a.message };
   if (a?.phase === 'sending' || a?.phase === 'sent') return { id: q.id, phase: a.phase, message: null };
   if (screen?.uncertain === questionKey(q.id)) return { id: q.id, phase: 'blocked', message: UNCERTAIN };
-  if (p && p.id === q.id && !p.untouched) return { id: q.id, phase: 'blocked', message: QUESTION_TOUCHED };
   // No read of the screen yet: nothing to answer with until the first one comes.
   if (!screen) return { id: q.id, phase: 'reading', message: null };
-  return { id: q.id, phase: 'ready', message: a?.phase === 'invalid' ? a.message : null };
+  if (p?.id === q.id && p.untouched && screen.answerable === true) return { id: q.id, phase: 'ready', message: a?.phase === 'invalid' ? a.message : null };
+  const why = notAnswerable(q, screen, row, now);
+  return why === null ? { id: q.id, phase: 'reading', message: null } : { id: q.id, phase: 'blocked', message: why };
+}
+
+/**
+ * VIEW-4.6/4.7: why the pending question `q` can't be answered from the latest read, in plain words
+ * by Fleet's reason; null while it waits. A form started in the terminal, one taller than the
+ * terminal, one in a layout Fleet doesn't read, and a Fleet too old to say are said at once. The
+ * rest (no form, another question's, or no read Lookout can use) wait `FORM_WAIT_MS` from when the
+ * question appeared: its Transcript time, or the Needs you spell's start if that's later. A read
+ * that says nothing (it failed) also waits `READ_WAIT_MS` from the first such read (`unread`).
+ */
+function notAnswerable(q: Extract<ChatEntry, { kind: 'question' }>, screen: ScreenState, row: SessionRow, now: number): string | null {
+  // A line kept through failed reads (`carried`) gives way after READ_WAIT_MS of them.
+  if (screen.carried && screen.unread != null && now - screen.unread >= READ_WAIT_MS) return QUESTION_UNCHECKED;
+  const p = screen.prompt;
+  const form = p?.kind === 'question' ? p : null;
+  if ((form?.id === q.id && !form.untouched) || screen.detail === 'touched' || screen.detail === 'cursor_moved') return QUESTION_TOUCHED;
+  if (screen.detail === 'clipped') return doesntFit('question', screen.pane);
+  if (screen.detail === 'layout_unsupported') return QUESTION_LAYOUT;
+  if (screen.oldFleet) return QUESTION_OLD_FLEET;
+  const asked = Math.max(row.statusSince ?? -Infinity, Date.parse(q.ts ?? '') || -Infinity);
+  if (now - asked < FORM_WAIT_MS) return null;
+  if (form?.id && form.id !== q.id) return QUESTION_OTHER;
+  switch (screen.detail) {
+    case 'no_form':
+      return QUESTION_NOT_SHOWN;
+    case 'tabs':
+    case 'question':
+    case 'options':
+      return QUESTION_MISMATCH;
+    case 'different_prompt':
+      return QUESTION_OTHER;
+    default:
+      return screen.unread != null && now - screen.unread < READ_WAIT_MS ? null : QUESTION_UNCHECKED;
+  }
 }
 
 /** VIEW-4.1: one question with one choice answers on click; several questions, or a multi-select one, are picked, then submitted. */
@@ -160,6 +252,36 @@ export interface Draft {
 }
 
 export const emptyDraft: Draft = { picked: [], text: '' };
+
+/** VIEW-4.6: where a question form keeps its picks and text, by the question's tool_use id (a Map will do). */
+export interface DraftKeeper {
+  get(questionId: string): readonly Draft[] | undefined;
+  set(questionId: string, drafts: readonly Draft[]): void;
+}
+
+/** VIEW-4.6: the questions' picks and text, kept by App per Session (by its id), then per question. */
+export type QuestionDrafts = Map<string, Map<string, readonly Draft[]>>;
+
+/**
+ * VIEW-4.6: lets go of drafts whose question is no longer pending: one the tab's chat for its
+ * Session shows answered, declined or abandoned, and all of a Session that ended (once the list is
+ * known). A Session whose chat the tab doesn't hold keeps its drafts until its chat or its end says.
+ */
+export function tidyQuestionDrafts(
+  kept: QuestionDrafts,
+  ctx: { live: ReadonlyMap<string, unknown>; listKnown: boolean; chats: ReadonlyMap<string, { entries: readonly ChatEntry[] }> },
+): void {
+  for (const [sessionId, questions] of kept) {
+    if (ctx.listKnown && !ctx.live.has(sessionId)) {
+      kept.delete(sessionId);
+      continue;
+    }
+    for (const e of ctx.chats.get(sessionId)?.entries ?? []) {
+      if (e.kind === 'question' && e.status !== 'pending') questions.delete(e.id);
+    }
+    if (questions.size === 0) kept.delete(sessionId);
+  }
+}
 
 /** Picking option `i`: toggles it when several can be picked; otherwise it's the one answer (any text goes, as in the terminal). */
 export function pick(q: ChatQuestion, d: Draft, i: number): Draft {
@@ -235,8 +357,9 @@ export const ESC_HINT = 'Press Esc in the Session: closes a panel or menu, or ca
  * buttons for it: a panel or a menu (`/usage`'s, which only Esc closes), a prompt Fleet can't read, or
  * one Lookout won't answer. Only once a read of the screen made in this Needs you spell has reached
  * the tab: before it, a permission prompt's buttons may be a second away, and Esc would decline it.
- * Never beside answer buttons (ready, waiting for the first read, sending, sent), nor while this
- * tab's answer is on its way or landed after the latest read; never with Stop, which is for Busy.
+ * Never beside answer buttons (ready, waiting for the first read or for a question's form to be
+ * drawn, sending, sent), nor while this tab's answer is on its way or landed after the latest read;
+ * never with Stop, which is for Busy.
  * One click, one Esc; then "Pressing Esc…", disabled, until the Status leaves Needs you, or for 10 s.
  */
 export function escButton(
@@ -271,6 +394,12 @@ export interface Answering {
   panel: QuestionPanel | null;
   submit(questionId: string, answers: QuestionAnswer[]): void;
   terminal: TerminalLink;
+  /**
+   * VIEW-4.6: what was picked and typed, per question (by its tool_use id), kept by App for this
+   * Session: a read that blocks the form, or viewing another Session, takes it away until it's
+   * mounted again as it was.
+   */
+  drafts: DraftKeeper;
 }
 
 /** Given by the Session view to the chat's questions (their rows are memoized; the context still reaches them). */
