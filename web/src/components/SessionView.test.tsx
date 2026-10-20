@@ -104,6 +104,34 @@ describe('Session view header', () => {
     }
   });
 
+  it("VIEW-5.9: the Status tag is in its Status's colour, updating live; an ended Session's stays muted", () => {
+    const app = renderApp('/s/a');
+    const tag = () => header().querySelector<HTMLElement>('[data-field="status"]')!;
+    const colours = {
+      'needs-you': ['bg-needs-you-soft', 'text-needs-you-text'],
+      busy: ['bg-busy-soft', 'text-busy-text'],
+      idle: ['bg-idle-soft', 'text-idle-text'],
+      unknown: ['bg-idle-soft', 'text-idle-text'],
+    } as const;
+    // Every colour a tag could take, so a stray one (the neutral grey Busy and Idle had) fails too.
+    const any = ['bg-muted', 'text-muted-foreground', 'text-foreground/80', ...new Set(Object.values(colours).flat())];
+    const labels = { 'needs-you': 'Needs you', busy: 'Busy', idle: 'Idle', unknown: 'Unknown' } as const;
+    app.snapshot([row({ id: 'a', status: 'busy' })]);
+    for (const status of ['busy', 'needs-you', 'idle', 'unknown'] as const) {
+      app.emit({ type: 'sessions', upsert: [row({ id: 'a', status })], remove: [] });
+      expect(tag()).toHaveTextContent(labels[status]);
+      for (const c of any) expect(tag().classList.contains(c), `${status}: ${c}`).toBe((colours[status] as readonly string[]).includes(c));
+      // The age reads in the tag's own colour: dimmed, it fell below 4.5:1 (sessions.test.ts measures them).
+      const age = tag().querySelector('span')!;
+      expect(age).toHaveTextContent(/^· \d+[smhd]$/);
+      expect([...age.classList].filter((c) => c.startsWith('opacity-') || c.startsWith('text-'))).toEqual([]);
+    }
+
+    app.emit({ type: 'sessions', upsert: [], remove: ['a'] });
+    expect(tag()).toHaveTextContent('Ended');
+    for (const c of any) expect(tag().classList.contains(c), `ended: ${c}`).toBe(c === 'bg-muted' || c === 'text-muted-foreground');
+  });
+
   it('VIEW-5.4: with nothing selected, the "Select a Session" hint stays', () => {
     const app = renderApp('/');
     app.snapshot([row({ id: 'a' })]);

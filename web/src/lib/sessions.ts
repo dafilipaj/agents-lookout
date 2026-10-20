@@ -10,6 +10,47 @@ export const STATUS_LABEL: Record<Status, string> = {
   unknown: 'Unknown',
 };
 
+/**
+ * Each Status's colour, from the theme's Status tokens (light and dark values in index.css), so a
+ * Status has one colour wherever it shows. SIDE-3.6: the sidebar row's strip; Unknown's is dashed,
+ * like its marker's ring.
+ */
+export const STATUS_STRIP_CLASS: Record<Status, string> = {
+  'needs-you': 'bg-needs-you',
+  busy: 'bg-busy',
+  idle: 'bg-idle',
+  unknown: 'bg-[repeating-linear-gradient(to_bottom,var(--color-idle)_0_3px,transparent_3px_6px)]',
+};
+
+/**
+ * SIDE-3.7, 3.9, 3.11: a sidebar row's background at rest, under the pointer and selected, and the
+ * colour of its quieter text (the second line, a View only title). On the Needs you tint that text is
+ * the foreground at 70%, since `muted-foreground` fell to 3.6:1 on the selected tint in dark mode.
+ * Every text on every background here keeps 4.5:1 or more in both modes (sessions.test.ts).
+ */
+export const ROW_TONE = {
+  needsYou: {
+    rest: 'bg-needs-you/12',
+    hover: 'hover:bg-needs-you/20',
+    selected: 'bg-needs-you/26 hover:bg-needs-you/26 ring-needs-you/70',
+    quiet: 'text-foreground/70',
+  },
+  plain: {
+    rest: '',
+    hover: 'hover:bg-sidebar-accent/60',
+    selected: 'bg-sidebar-accent hover:bg-sidebar-accent ring-foreground/15',
+    quiet: 'text-muted-foreground',
+  },
+} as const;
+
+/** VIEW-5.9: the header's Status tag, tinted in its Status's colour with text in its readable shade. */
+export const STATUS_TAG_CLASS: Record<Status, string> = {
+  'needs-you': 'bg-needs-you-soft text-needs-you-text',
+  busy: 'bg-busy-soft text-busy-text',
+  idle: 'bg-idle-soft text-idle-text',
+  unknown: 'bg-idle-soft text-idle-text',
+};
+
 /** VIEW-5.5 (UX): context usage reads normal up to 40%, as a warning above 40%, as danger above 60%. */
 export type ContextLevel = 'normal' | 'warning' | 'danger';
 

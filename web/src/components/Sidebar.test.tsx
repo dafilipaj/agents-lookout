@@ -2,6 +2,7 @@ import { FLEET_INSTALL_COMMAND } from '@shared/defaults.ts';
 import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ROW_TONE } from '@/lib/sessions';
 import { NOW, field, renderApp, row, rowEl, settings, visibleTitles } from '@/test/helpers';
 
 beforeEach(() => {
@@ -187,6 +188,133 @@ describe('status at a glance', () => {
 
     app.emit({ type: 'sessions', upsert: [row({ id: 'old', status: 'busy', statusSince: Date.now() })], remove: [] });
     expect(rowEl('old')).toHaveAttribute('data-dimmed', 'false');
+  });
+
+  it("SIDE-3.6: each row has a strip down its left edge in its Status's colour; a View only row's is fainter", () => {
+    const app = renderApp();
+    app.snapshot([
+      row({ id: 'n', status: 'needs-you' }),
+      row({ id: 'b', status: 'busy' }),
+      row({ id: 'i', status: 'idle' }),
+      row({ id: 'u', status: 'unknown' }),
+      row({ id: 'v', status: 'busy', backend: 'unknown', controllable: false }),
+    ]);
+    const strip = (id: string) => field(id, 'strip')!;
+    for (const id of ['n', 'b', 'i', 'u', 'v']) {
+      expect(strip(id)).toHaveClass('absolute', 'left-0.5', 'w-[3px]');
+      expect(rowEl(id).firstElementChild).toBe(strip(id));
+    }
+    expect(strip('n')).toHaveClass('bg-needs-you');
+    expect(strip('b')).toHaveClass('bg-busy');
+    expect(strip('i')).toHaveClass('bg-idle');
+    expect(strip('u').className).toMatch(/bg-\[repeating-linear-gradient\(.*var\(--color-idle\)/); // dashed, like its marker
+    expect(strip('v')).toHaveClass('bg-busy', 'opacity-60');
+    expect(strip('b')).not.toHaveClass('opacity-60');
+
+    // It follows the Status live.
+    app.emit({ type: 'sessions', upsert: [row({ id: 'b', status: 'needs-you', statusSince: NOW })], remove: [] });
+    expect(strip('b')).toHaveClass('bg-needs-you');
+    expect(strip('b')).not.toHaveClass('bg-busy');
+  });
+
+  it('SIDE-3.7: a Needs you row is tinted with the Needs you colour, Controllable or View only; no other Status tints its row', () => {
+    const app = renderApp();
+    const other = { backend: 'unknown' as const, controllable: false };
+    app.snapshot([
+      row({ id: 'n', status: 'needs-you' }),
+      row({ id: 'vn', status: 'needs-you', ...other }),
+      row({ id: 'b', status: 'busy' }),
+      row({ id: 'i', status: 'idle' }),
+      row({ id: 'u', status: 'unknown' }),
+      row({ id: 'vb', status: 'busy', ...other }),
+    ]);
+    // The background at rest: classes without a variant (`hover:` is SIDE-3.9's).
+    const background = (id: string) => [...rowEl(id).classList].filter((c) => c.startsWith('bg-'));
+    expect(background('n')).toEqual(['bg-needs-you/12']);
+    expect(background('vn')).toEqual(['bg-needs-you/12']);
+    for (const id of ['b', 'i', 'u', 'vb']) expect(background(id)).toEqual([]);
+
+    app.emit({ type: 'sessions', upsert: [row({ id: 'b', status: 'needs-you', statusSince: NOW })], remove: [] });
+    expect(background('b')).toEqual(['bg-needs-you/12']);
+    app.emit({ type: 'sessions', upsert: [row({ id: 'n', status: 'idle', statusSince: NOW })], remove: [] });
+    expect(background('n')).toEqual([]);
+  });
+
+  it('SIDE-3.9 (support): the selected row has a ring on every Status, and the pointer changes a Needs you row too', () => {
+    const app = renderApp('/s/n');
+    app.snapshot([row({ id: 'n', status: 'needs-you' }), row({ id: 'n2', status: 'needs-you' }), row({ id: 'b', status: 'busy' })]);
+    expect(rowEl('n')).toHaveClass('ring-1', 'bg-needs-you/26');
+    expect(rowEl('n2')).not.toHaveClass('ring-1');
+    // Under the pointer, a tinted row gets more tint than at rest, but less than the selected one.
+    expect(rowEl('n2')).toHaveClass('bg-needs-you/12', 'hover:bg-needs-you/20');
+    expect(rowEl('b')).not.toHaveClass('ring-1');
+
+    app.emit({ type: 'sessions', upsert: [row({ id: 'n', status: 'busy', statusSince: NOW })], remove: [] });
+    expect(rowEl('n')).toHaveClass('ring-1', 'bg-sidebar-accent');
+    expect(rowEl('b')).toHaveClass('hover:bg-sidebar-accent/60');
+  });
+
+  it("SIDE-3.11: a row's texts and backgrounds are the colours the contrast check measures (ROW_TONE), in both sections", () => {
+    const app = renderApp('/s/n-sel');
+    const other = { backend: 'unknown' as const, controllable: false };
+    app.snapshot([
+      row({ id: 'n', status: 'needs-you', waitingFor: 'input needed' }),
+      row({ id: 'n-sel', status: 'needs-you' }),
+      row({ id: 'b', status: 'busy' }),
+      row({ id: 'vn', status: 'needs-you', waitingFor: 'input needed', ...other }),
+      row({ id: 'vb', status: 'busy', ...other }),
+    ]);
+    const classes = (s: string) => s.split(/\s+/).filter(Boolean);
+    // A class without its variants (`dark:text-x` → `text-x`); brackets keep theirs (`text-[color:red]`).
+    const base = (c: string) => c.replace(/^(?:[\w-]+:)*/, '');
+    // Text colours, arbitrary ones (`text-[#abc]`, `text-(--x)`) included; sizes and alignment aren't.
+    const NOT_COLOUR = /^text-(?:xs|sm|base|lg|\d?xl|left|center|right|justify|start|end|wrap|nowrap|balance|pretty|ellipsis|clip|\[[\d.]+(?:px|rem|em)\])$/;
+    const colours = (el: Element) => [...el.classList].filter((c) => base(c).startsWith('text-') && !NOT_COLOUR.test(base(c)));
+    const opacities = (el: Element) => [...el.classList].filter((c) => base(c).startsWith('opacity-'));
+    const sidebar = screen.getByRole('complementary', { name: 'Session sidebar' });
+    // What paints a text: every colour and opacity class from it up to the sidebar, which sets the
+    // foreground. None of these rows is dimmed, so no opacity belongs anywhere on the way.
+    const painted = (el: Element) => {
+      const out: string[] = [];
+      for (let e: Element | null = el; e && e !== sidebar; e = e.parentElement) out.push(...colours(e), ...opacities(e));
+      return out;
+    };
+    const secondLine = (id: string) => field(id, 'repo')!.closest('div')!;
+    const tones = { n: ROW_TONE.needsYou, 'n-sel': ROW_TONE.needsYou, vn: ROW_TONE.needsYou, b: ROW_TONE.plain, vb: ROW_TONE.plain };
+    for (const [id, tone] of Object.entries(tones)) {
+      expect(painted(secondLine(id)), id).toEqual([tone.quiet]);
+      // Nothing inside the line paints its own colour or fades over the measured one.
+      expect([...secondLine(id).querySelectorAll('*')].flatMap((e) => [...colours(e), ...opacities(e)]), id).toEqual([]);
+    }
+    // A View only title is the quieter text; a Controllable one takes the sidebar's foreground.
+    expect(painted(field('vn', 'title')!)).toEqual([ROW_TONE.needsYou.quiet]);
+    expect(painted(field('vb', 'title')!)).toEqual([ROW_TONE.plain.quiet]);
+    for (const id of ['n', 'n-sel', 'b']) expect(painted(field(id, 'title')!), id).toEqual([]);
+    expect(sidebar).toHaveClass('text-sidebar-foreground');
+    expect(opacities(sidebar)).toEqual([]);
+    for (const id of ['n', 'vn']) expect(painted(field(id, 'waiting-for')!), id).toEqual(['text-needs-you-text']);
+    // The backgrounds measured: at rest and under the pointer, and selected.
+    expect(rowEl('n')).toHaveClass(...classes(ROW_TONE.needsYou.rest), ...classes(ROW_TONE.needsYou.hover));
+    expect(rowEl('n-sel')).toHaveClass(...classes(ROW_TONE.needsYou.selected));
+    expect(rowEl('b')).toHaveClass(...classes(ROW_TONE.plain.hover));
+  });
+
+  it("SIDE-3.10: the strip is hidden from screen readers, and a row's accessible name is what it was", () => {
+    const app = renderApp();
+    app.snapshot([
+      row({ id: 'fix-rates', status: 'needs-you', waitingFor: 'input needed', contextPct: 41, statusSince: NOW - 120_000, git: { repo: 'harbor', worktree: 'lantern', branch: 'x' } }),
+      row({ id: 'port-search', status: 'busy', harness: 'codex' }),
+      row({ id: 'notes', status: 'idle', git: null, cwd: '/tmp/field-notes' }),
+      row({ id: 'pane', status: 'unknown', backend: 'unknown', controllable: false }),
+    ]);
+    for (const id of ['fix-rates', 'port-search', 'notes', 'pane']) expect(field(id, 'strip')).toHaveAttribute('aria-hidden', 'true');
+    // The names the rows had before the strip, pinned: the marker's Status, title, Harness, repo,
+    // where it works, age, context and what it waits for.
+    expect(rowEl('fix-rates')).toHaveAccessibleName('Needs youfix-ratesClaude Code harborWorktreelantern2m41% input needed');
+    expect(rowEl('port-search')).toHaveAccessibleName('Busyport-searchCodex workBranchmain1m');
+    expect(rowEl('notes')).toHaveAccessibleName('IdlenotesClaude Code field-notes1m');
+    expect(rowEl('pane')).toHaveAccessibleName('UnknownpaneClaude Code workBranchmain1m');
+    expect(screen.getByRole('option', { name: /^Busyport-search/ })).toBe(rowEl('port-search'));
   });
 
   it('SIDE-3.5 / SIDE-7.2: a changed idle threshold applies without reloading', () => {

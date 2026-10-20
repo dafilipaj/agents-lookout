@@ -3,7 +3,7 @@ title: Session sidebar
 code: SIDE
 status: Done
 created: 2026-10-16
-updated: 2026-10-17
+updated: 2026-10-20
 ---
 
 # Session sidebar
@@ -43,6 +43,12 @@ The sidebar lists every live Session on this Host that Fleet finds, whichever te
 - [x] SIDE-3.3 The browser tab title shows how many Sessions need you, e.g. "(2) Lookout", and no count when none do. (test)
 - [x] SIDE-3.4 Status markers and row text update live, also while the pointer is over the sidebar. Only reordering waits: rows don't move while the pointer is over the sidebar, and pending moves apply once it leaves. (manual)
 - [x] SIDE-3.5 A Session Idle for longer than the idle threshold (default 4 h, SIDE-7) is dimmed. It returns to normal as soon as its Status changes. (test)
+- [x] SIDE-3.6 Each row has a strip down its left edge in its Status's colour: amber for Needs you, blue for Busy, grey for Idle, and grey dashed for Unknown, like its marker's dashed ring. A View only row's strip is fainter, as its marker is. (test)
+- [x] SIDE-3.7 A Needs you row's background is tinted with the Needs you colour, Controllable or View only, so the rows that want action stand out. No other Status tints its row. (test)
+- [x] SIDE-3.8 The Status markers in the sidebar are a size up from the header's (18 px for Needs you, the others in proportion), and a row's second and third lines stay aligned with its title, "Starting…" rows included. (manual)
+- [x] SIDE-3.9 On every Status, a tinted Needs you row included, the selected row and the row under the pointer are each clearly visible and tell apart from each other, in light and dark mode. The keyboard moves the selection (SIDE-5), so a row selected from the keyboard looks like one selected by click. (manual)
+- [x] SIDE-3.10 The strip and the tint are decoration, hidden from screen readers: a row's accessible name stays what it was (its marker's Status, title, Harness, repo, where it works, age and context). (test)
+- [x] SIDE-3.11 Every text on a row keeps a contrast of 4.5:1 or more against the row's background at rest, under the pointer and selected, in light and dark mode. A dimmed long-Idle row (SIDE-3.5) and a stale list (SIDE-6.2) are faint on purpose and don't count. (test)
 
 ### SIDE-4 Switch Sessions
 
@@ -113,7 +119,9 @@ The app shell: the Session sidebar, the main pane and the right sidebar (HIST, W
 - "View only" holds the Sessions that aren't Controllable, in the same Status order. Keyboard navigation, ⌘1–9, ⌘J and the filter run across both sections, and hover-freeze (SIDE-3.4) applies to both.
 - "Starting…" rows (LAUNCH-4) sit above both sections and are rows like any other for ↑/↓, j/k and ⌘1–9 (LAUNCH-4.7): the first of them is ⌘1, and a failed one takes no number. ⌘J skips them (they never Need you), and the filter leaves them in place. Selecting one shows the start in the main pane (LAUNCH-4.6).
 
-- Markers: ◆ Needs you, ● Busy, ○ Idle, ? Unknown.
+- Markers: ◆ Needs you, ● Busy, ○ Idle, ? Unknown. In the sidebar they're a size up from the header's (SIDE-3.8): an 18 px box, the diamond filling it, the dot and ring at 13 px, Unknown's ring at 15 px.
+- Status strip (SIDE-3.6): a 3 px rounded bar at the row's left edge, 4 px short of its top and bottom, in the Status's colour (Unknown's dashed). A View only row's is at 60%, like its marker; a dimmed long-Idle row (SIDE-3.5) dims it with the rest of the row. "Starting…" rows (LAUNCH-4) have no Status, so no strip; their icon sits in a box the marker's size, so every title starts at the same x.
+- Row states (SIDE-3.7, 3.9): a Needs you row is tinted at rest, more under the pointer, and most when selected, with an amber ring. Other rows are plain at rest, light grey under the pointer, and grey with a thin ring when selected. The ring is what tells the selected row from the one under the pointer. On a Needs you row the quieter text (the second line, a View only title) is the foreground at 70% instead of the muted grey, so it keeps 4.5:1 on every step of the tint (SIDE-3.11).
 - `[wt]` and `[br]` stand for the worktree and branch icons (e.g. lucide `FolderGit2` and `GitBranch`).
 - ⚙ opens Settings.
 - Empty state: "No live Sessions", with a hint to start one (N, or `claude` / `codex` in iTerm2). With only view-only Sessions, the same hint sits above the "View only" header.
@@ -137,6 +145,7 @@ The app shell: the Session sidebar, the main pane and the right sidebar (HIST, W
   - The Worktree's name is the basename of `--show-toplevel`.
   - The repo name comes from the common git dir's parent (for a bare repo, the common dir's own name minus `.git`).
   - Outside git, the row shows the working directory's name instead.
+- **Status colours (SIDE-3.6, 3.7):** the theme's Status tokens in `web/src/index.css` (`--needs-you`, `--busy`, `--idle`, each with a light and a dark value). `STATUS_STRIP_CLASS` in `web/src/lib/sessions.ts` gives each Status's strip, and `STATUS_TAG_CLASS` beside it the header's tag (VIEW-5.9), so a Status has one colour wherever it shows. The Needs you tint and its pointer and selected steps are the Needs you colour at 12%, 20% and 26%, which reads in both modes. `ROW_TONE` beside them holds each row state's background and quieter text, and a test computes every text's contrast on every state from the tokens, compositing as the browser does (SIDE-3.11). The lowest ratios: 5.4:1 for the quieter text on a selected Needs you row in dark mode, 4.7:1 for what it waits for on a selected one in light mode, 4.6:1 for the muted grey on a selected plain row in light mode. The muted grey alone fell to 4.1:1 (light) and 3.6:1 (dark) on the selected tint.
 - **Settings:** stored by the server in `~/.config/lookout/settings.json`, not in browser storage. A change is pushed to every open tab over the same event stream.
 - **Session identity:** `session_id` when present, otherwise `<harness>:<pid>`. Fleet's `session_id` is Claude's UUID, so Codex rows may not have one.
 - **Prerequisite:** Fleet installed and pinned with `cargo install --git https://github.com/ilucin/fleet --rev 38a461c --locked fleet`.
@@ -149,6 +158,7 @@ The app shell: the Session sidebar, the main pane and the right sidebar (HIST, W
 - **Sessions that aren't Controllable get their own "View only" section**, not hidden: awareness without promising control, and the ones you can act on stay on top. An eye icon on the row was tried and read as the opposite.
 - **The server polls Fleet and pushes to the UI**: one Fleet call serves every open tab.
 - **The main pane is its own spec (VIEW)**: keeps this one small enough to finish.
+- **A strip on every row, a tint only on Needs you (SIDE-3.6, 3.7)**: the strip makes every Status readable down the list's edge; tinting only the rows that want action keeps them standing out.
 - **One grid with subgrid columns (SIDE-8)**: lines that line up because they're the same grid line can't drift when one side's content changes; matched heights would.
 
 ## Open questions
@@ -170,3 +180,5 @@ None.
 - 2026-10-17: SIDE-8.1: the dock row has one resting height in every view (the empty composer with the status line), so the dock line and the usage panel no longer move when switching views (they jumped about 20 px going to Settings). The past-Session note's title stays on one line and its detail on two, like the banners. Hovered or focused (Tab), a banner or the note stays clamped and shows its full text in an overlay above the dock line, so it doesn't grow the dock either. The resting height comes from an invisible empty composer in the sidebar's dock, not a number, and an empty composer no longer sizes to a long placeholder.
 - 2026-10-19: Done: every acceptance criterion is ticked.
 - 2026-10-19: SIDE-8.1: the right sidebar's header cell is now its tab strip (History, Work; WORK-1.8), not History's search bar, and the header line holds with either tab open.
+- 2026-10-20: Changed from Dario's testing: the Statuses didn't stand out in the sidebar, and the markers were small. Added SIDE-3.6–3.10: a strip in its Status's colour on every row, the Needs you tint (already there) made a requirement, markers a size up, the selected row and the one under the pointer visible on every Status (on a Needs you row the pointer changed nothing, and elsewhere selected and hovered rows looked alike), and accessible names unchanged.
+- 2026-10-20: Review: on a Needs you row under the pointer or selected, the muted second line and View only titles fell below 4.5:1 (down to 3.6:1 in dark mode). Added SIDE-3.11; that text is the foreground at 70% on the tint, and a test checks every row text's contrast in both modes.

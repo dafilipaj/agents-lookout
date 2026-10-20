@@ -27,6 +27,8 @@ export default defineConfig({
           environment: 'jsdom',
           include: ['web/src/**/*.test.{ts,tsx}'],
           setupFiles: ['web/src/test/setup.ts'],
+          // A `?raw` CSS import is the file's text (tests read index.css's tokens); other CSS stays empty.
+          css: { include: [/\.css\?raw$/] },
         },
       },
     ],

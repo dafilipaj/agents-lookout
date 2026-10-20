@@ -20,7 +20,7 @@ import {
   stopButton,
 } from '@/lib/answers';
 import type { Chat as ChatState, Preview } from '@/lib/store';
-import { CONTEXT_LEVEL_CLASS, HARNESS_NAME, STATUS_LABEL, contextLevel, location } from '@/lib/sessions';
+import { CONTEXT_LEVEL_CLASS, HARNESS_NAME, STATUS_LABEL, STATUS_TAG_CLASS, contextLevel, location } from '@/lib/sessions';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { PromptCard } from './Answering';
@@ -338,16 +338,13 @@ function Header({
           <span
             className={cn(
               'ml-auto shrink-0 rounded-full px-2 py-0.5 text-[12px] font-medium',
-              ended
-                ? 'bg-muted text-muted-foreground'
-                : row.status === 'needs-you'
-                  ? 'bg-needs-you-soft text-needs-you-text'
-                  : 'bg-muted text-foreground/80',
+              // VIEW-5.9: in its Status's colour; the age in the same colour (dimmed, it fell below 4.5:1).
+              ended ? 'bg-muted text-muted-foreground' : STATUS_TAG_CLASS[row.status],
             )}
             data-field="status"
           >
             {ended ? 'Ended' : STATUS_LABEL[row.status]}
-            {!ended && age && <span className="font-normal opacity-70 @max-[32rem]:hidden"> · {age}</span>}
+            {!ended && age && <span className="font-normal @max-[32rem]:hidden"> · {age}</span>}
           </span>
           {key?.error && <StopError id={stopErrorId} message={key.error} />}
         </div>

@@ -40,10 +40,11 @@ export function LaunchItem({ launch, now, selected, onSelect, onDismiss }: Props
       )}
     >
       <div className="flex items-center gap-2">
+        {/* As wide as a Session row's marker (18 px), so the titles line up (SIDE-3.8). */}
         {failed ? (
-          <CircleX aria-label="Didn't start" className="size-3.5 shrink-0 text-destructive" />
+          <CircleX aria-label="Didn't start" className="mx-px size-4 shrink-0 text-destructive" />
         ) : (
-          <LoaderCircle aria-label="Starting" className="size-3.5 shrink-0 animate-spin text-muted-foreground" />
+          <LoaderCircle aria-label="Starting" className="mx-px size-4 shrink-0 animate-spin text-muted-foreground" />
         )}
         <span className="min-w-0 flex-1 truncate text-[13px] leading-5 font-medium" title={launch.title}>
           {launch.title}
@@ -65,14 +66,14 @@ export function LaunchItem({ launch, now, selected, onSelect, onDismiss }: Props
           <HarnessIcon harness={launch.harness} />
         )}
       </div>
-      <div className="flex items-center gap-1 pl-5.5 text-[11.5px] leading-4 text-muted-foreground">
+      <div className="flex items-center gap-1 pl-6.5 text-[11.5px] leading-4 text-muted-foreground">
         <span className="min-w-0 flex-1 truncate" title={launch.directory}>
           {failed ? "Didn't start" : 'Starting…'} · {dir}
         </span>
         <span className="shrink-0 tabular-nums">{formatAge(now - launch.startedAt)}</span>
       </div>
       {failed && !selected && (
-        <div className="mt-1 pl-5.5">
+        <div className="mt-1 pl-6.5">
           {launch.error && <p className="text-[11.5px] leading-4 text-destructive">{launch.error}</p>}
           {launch.terminal && launch.terminal.length > 0 && (
             <pre

@@ -1,7 +1,7 @@
 import type { SessionRow } from '@shared/types.ts';
 import { FolderGit2, GitBranch } from 'lucide-react';
 import { memo, useEffect, useRef } from 'react';
-import { STATUS_LABEL, location } from '@/lib/sessions';
+import { ROW_TONE, STATUS_LABEL, STATUS_STRIP_CLASS, location } from '@/lib/sessions';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { HarnessIcon } from './HarnessIcon';
@@ -27,6 +27,7 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
 
   const loc = location(row);
   const needsYou = row.status === 'needs-you';
+  const tone = needsYou ? ROW_TONE.needsYou : ROW_TONE.plain;
   const age = row.statusSince !== null ? formatAge(now - row.statusSince) : null;
 
   return (
@@ -42,20 +43,26 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
       onClick={() => onSelect(row.id)}
       className={cn(
         'group relative cursor-default select-none rounded-md px-2 py-1.5 transition-[background-color,opacity] duration-150',
-        'hover:bg-sidebar-accent/70',
-        selected && 'bg-sidebar-accent hover:bg-sidebar-accent',
-        needsYou && 'bg-needs-you-soft hover:bg-needs-you-soft',
-        needsYou && selected && 'ring-1 ring-needs-you/50 ring-inset',
+        // SIDE-3.7 / 3.9: a Needs you row is tinted, more under the pointer, most when selected; the
+        // ring is what tells the selected row from the one under the pointer, on every Status.
+        tone.rest,
+        tone.hover,
+        selected && cn(tone.selected, 'ring-1 ring-inset'),
         dimmed && 'opacity-45',
       )}
     >
-      {needsYou && <span aria-hidden className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-needs-you" />}
+      {/* SIDE-3.6: the Status's colour down the left edge; decoration, so screen readers skip it. */}
+      <span
+        aria-hidden
+        data-field="strip"
+        className={cn('absolute inset-y-1 left-0.5 w-[3px] rounded-full', STATUS_STRIP_CLASS[row.status], !row.controllable && 'opacity-60')}
+      />
       <div className="flex items-center gap-2">
-        <StatusMarker status={row.status} className={cn(!row.controllable && 'opacity-60 grayscale')} />
+        <StatusMarker status={row.status} className={cn('size-4.5', !row.controllable && 'opacity-60 grayscale')} />
         <span
           className={cn(
             'min-w-0 flex-1 truncate text-[13px] leading-5',
-            row.controllable ? 'font-medium' : 'text-muted-foreground',
+            row.controllable ? 'font-medium' : tone.quiet,
           )}
           title={row.title}
           data-field="title"
@@ -66,7 +73,7 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
           <HarnessIcon harness={row.harness} className={cn(!row.controllable && 'opacity-70')} />
         </span>
       </div>
-      <div className="flex items-center gap-1 pl-5.5 text-[11.5px] leading-4 text-muted-foreground">
+      <div className={cn('flex items-center gap-1 pl-6.5 text-[11.5px] leading-4', tone.quiet)}>
         <span className="flex min-w-0 flex-1 items-center gap-1">
           {row.git && (
             <span className="max-w-[45%] shrink-0 truncate" title={row.git.repo} data-field="repo">
@@ -108,7 +115,7 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
       </div>
       {needsYou && row.waitingFor && (
         <div
-          className="truncate pl-5.5 text-[11.5px] leading-4 font-medium text-needs-you-text"
+          className="truncate pl-6.5 text-[11.5px] leading-4 font-medium text-needs-you-text"
           title={row.waitingFor}
           data-field="waiting-for"
         >
