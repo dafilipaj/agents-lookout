@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { SettingsError, defaultSettings } from '../shared/settings.ts';
+import { PRODUCTIVE_EMAIL_ERROR, SettingsError, defaultSettings, parseProductiveEmail } from '../shared/settings.ts';
 import { SettingsStore, defaultSettingsPath, expandHome } from './settings.ts';
 
 const D = defaultSettings();
@@ -18,7 +18,7 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }));
 describe('SettingsStore', () => {
   it('starts from defaults when there is no file', async () => {
     const store = new SettingsStore(file);
-    expect(await store.load()).toEqual({ idleThresholdHours: 4, startDirectories: ['~/Projects/work'], lastLaunch: null });
+    expect(await store.load()).toEqual({ idleThresholdHours: 4, startDirectories: ['~/Projects/work'], lastLaunch: null, productiveEmail: null });
   });
 
   it('SIDE-7.2: a saved value is written to the file and survives a restart', async () => {
@@ -93,6 +93,59 @@ describe('SettingsStore', () => {
     expect(() => store.update({ lastLaunch: last })).toThrow(/can't be changed/);
     await store.update({ lastLaunch: last }, 'server');
     expect((await new SettingsStore(file).load()).lastLaunch).toEqual(last);
+  });
+
+  it('WORK-2.7: the Productive email is saved trimmed, otherwise as typed; empty clears it', async () => {
+    const store = new SettingsStore(file);
+    expect((await store.load()).productiveEmail).toBeNull();
+    await store.update({ productiveEmail: '  Lamp.Lighter+work@Example.com\t' });
+    expect(store.get().productiveEmail).toBe('Lamp.Lighter+work@Example.com');
+    expect((await new SettingsStore(file).load()).productiveEmail).toBe('Lamp.Lighter+work@Example.com');
+    await store.update({ productiveEmail: '   ' });
+    expect(store.get().productiveEmail).toBeNull();
+    await store.update({ productiveEmail: 'lamplighter@example.com' });
+    await store.update({ productiveEmail: null });
+    expect(store.get().productiveEmail).toBeNull();
+  });
+
+  it('WORK-2.7: whitespace inside, not exactly one @ with text on both sides, or over 254 characters is refused, and the saved value stays', async () => {
+    const store = new SettingsStore(file);
+    await store.load();
+    await store.update({ productiveEmail: 'lamplighter@example.com' });
+    const local = (n: number) => `${'a'.repeat(n - '@example.com'.length)}@example.com`;
+    for (const bad of ['lamp lighter@example.com', 'lamp\u00a0lighter@example.com', 'lamp@light@example.com', 'lamplighter.example.com', '@example.com', 'lamplighter@', '@', local(255), 42, ['a@b.c']]) {
+      let err: unknown;
+      try {
+        store.update({ productiveEmail: bad });
+      } catch (e) {
+        err = e;
+      }
+      expect(err, JSON.stringify(bad)).toBeInstanceOf(SettingsError);
+      expect((err as SettingsError).message).toBe(PRODUCTIVE_EMAIL_ERROR);
+      expect((err as SettingsError).field).toBe('productiveEmail');
+    }
+    expect(store.get().productiveEmail).toBe('lamplighter@example.com');
+    expect(PRODUCTIVE_EMAIL_ERROR).toBe('Enter an email such as name@example.com');
+    // 254 characters is still an email, as is anything with one @ and text on both sides.
+    expect(parseProductiveEmail(local(254))).toBe(local(254));
+    expect(parseProductiveEmail('a@b')).toBe('a@b');
+    // A stored value the parser refuses reads as no email (WORK-2.6).
+    writeFileSync(join(dir, 'bad-email.json'), JSON.stringify({ productiveEmail: 'not an email' }));
+    expect((await new SettingsStore(join(dir, 'bad-email.json')).load()).productiveEmail).toBeNull();
+  });
+
+  it('WORK-2.7: a comma anywhere is refused, since tb-prod would send the value as a list of emails, and the saved value stays', async () => {
+    const store = new SettingsStore(file);
+    await store.load();
+    await store.update({ productiveEmail: 'lamplighter@example.com' });
+    for (const bad of ['x,colleague@example.com', 'lamplighter@example.com,', ',lamplighter@example.com', 'lamp,lighter@example.com', 'lamplighter@example,com', ' x , keeper@example.com ']) {
+      expect(() => store.update({ productiveEmail: bad }), bad).toThrow(new SettingsError('productiveEmail', PRODUCTIVE_EMAIL_ERROR));
+      expect(() => parseProductiveEmail(bad), bad).toThrow(PRODUCTIVE_EMAIL_ERROR);
+    }
+    expect(store.get().productiveEmail).toBe('lamplighter@example.com');
+    // A stored one reads as no email (WORK-2.6): no query runs for it.
+    writeFileSync(join(dir, 'comma-email.json'), JSON.stringify({ productiveEmail: 'x,colleague@example.com' }));
+    expect((await new SettingsStore(join(dir, 'comma-email.json')).load()).productiveEmail).toBeNull();
   });
 
   it('expands ~ in paths', () => {

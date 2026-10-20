@@ -1,4 +1,4 @@
-import { type Settings, defaultSettings } from '@shared/settings.ts';
+import { type SettingsView, defaultSettings } from '@shared/settings.ts';
 import type { ChatPage, FleetHealth, LaunchView, ServerEvent, SessionRow } from '@shared/types.ts';
 import type { UsageSnapshot } from '@shared/usage.ts';
 import type { WorkSnapshot } from '@shared/work.ts';
@@ -21,7 +21,8 @@ export interface LookoutState {
    */
   aliases: ReadonlyMap<string, string>;
   fleet: FleetHealth;
-  settings: Settings;
+  /** As the server sends them: the stored settings, and the Productive email's suggestion (WORK-2.5). */
+  settings: SettingsView;
   /** Starts in flight (LAUNCH-4): "Starting…" rows, and failed ones. */
   launches: readonly LaunchView[];
   /** Launches Fleet now reports: launch id → the Session it became. */
@@ -86,7 +87,13 @@ export type Action =
    * while the request's row is still this tab's own: once the server has listed it, its list is the
    * truth, so a late answer can't bring back a start that was dismissed meanwhile.
    */
-  | { type: 'launch-answered'; id: string; launch: LaunchView | null };
+  | { type: 'launch-answered'; id: string; launch: LaunchView | null }
+  /**
+   * A settings save answered with the server's `settings`, asked while the tab had `since`. It's
+   * taken at once, so the page shows what was saved before the `settings` event, unless an event
+   * landed meanwhile: that one, or a later one still to come, is at least as new (WORK-2.5).
+   */
+  | { type: 'settings-saved'; since: SettingsView; settings: SettingsView };
 
 export const initialState: LookoutState = {
   loaded: false,
@@ -95,7 +102,7 @@ export const initialState: LookoutState = {
   lastKnown: new Map(),
   aliases: new Map(),
   fleet: { state: 'starting' },
-  settings: defaultSettings(),
+  settings: { ...defaultSettings(), productiveEmailSuggestion: null },
   launches: [],
   started: new Map(),
   requested: new Map(),
@@ -132,6 +139,9 @@ export function reducer(state: LookoutState, action: Action): LookoutState {
       requested.set(served.id, { launch: served, answered: true });
     }
     return { ...state, requested };
+  }
+  if (action.type === 'settings-saved') {
+    return state.settings === action.since ? { ...state, settings: action.settings } : state;
   }
   if (action.type === 'connection') {
     return action.connected === state.connected ? state : { ...state, connected: action.connected };

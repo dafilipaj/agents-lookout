@@ -1,6 +1,6 @@
 /**
- * WORK: open PRs and Review requests from `tb-pr` (and, from slice C on, Tasks from `tb-prod`), as
- * the server sends them to the UI. Contract: docs/features/tasks-and-prs/SPEC.md, "Lookout's side".
+ * WORK: open PRs and Review requests from `tb-pr`, and Tasks from `tb-prod`, as the server sends
+ * them to the UI. Contract: docs/features/tasks-and-prs/SPEC.md, "Lookout's side".
  */
 
 /** The `tb-pr` columns Lookout shows (WORK-3.1): Mine is the first three, Review requests the last. */
@@ -88,8 +88,52 @@ export interface PrSection {
   taskIds: boolean | null;
 }
 
+/** WORK-6.2: where a Task opens, Fantastic's canonical task path in organization 109 (Non-goals). */
+export const TASK_URL_BASE = 'https://app.fantastic.productive.io/109-productive/tasks/';
+export const taskUrl = (id: string): string => `${TASK_URL_BASE}${id}`;
+
+export interface WorkTask {
+  /** Productive's id: ASCII digits. */
+  id: string;
+  title: string;
+  /** The project's name; null when tb-prod didn't include it. */
+  project: string | null;
+  /** The workflow status's name; null when tb-prod didn't include it. */
+  status: string | null;
+  /** The status's category: 1 not started, 2 started; null for anything else. */
+  statusCategory: 'not-started' | 'started' | null;
+  /** `YYYY-MM-DD`, null when unset (WORK-2.2). */
+  dueDate: string | null;
+  /** ms since epoch; null when unreadable. */
+  lastActivityAt: number | null;
+  /** `type_id` 3 (WORK-2.2). */
+  milestone: boolean;
+  /** WORK-6.2: built on the server, always `TASK_URL_BASE` + id. */
+  url: string;
+  /** WORK-2.3, WORK-2.4: the Task's Linked PRs and Sessions, from Links (WORK-4); null until those are built. */
+  links: null;
+}
+
+/** WORK-2.6: no Productive email is saved, so Tasks isn't read. */
+export type TaskSourceState = WorkSourceState | 'no-email';
+
+export interface TaskSection {
+  state: TaskSourceState;
+  /** As `PrSection`'s: a plain sentence, never tb-prod's own text (WORK-7.7). */
+  reason: string | null;
+  /** The build command (WORK-7.1, WORK-7.8), or `tb-prod config init` (WORK-7.2). */
+  fix: string | null;
+  /** As `PrSection`'s, and only ever for a list read for the saved email (WORK-2.8). */
+  stale: boolean;
+  /** When Lookout's read of the Tasks shown ended, ms since epoch; tb-prod has no cache (WORK-1.3). */
+  fetchedAt: number | null;
+  /** WORK-2.1: most recently active first, at most 100. */
+  tasks: WorkTask[];
+}
+
 export interface WorkSnapshot {
   prs: PrSection;
+  tasks: TaskSection;
   /** WORK-8.2, WORK-8.4: until when Refresh is refused, ms since epoch; null when it isn't. */
   refresh: {
     /** The 60 s server-wide cooldown after a forced read was accepted. */

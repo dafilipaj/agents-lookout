@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { type IncomingMessage, type Server, type ServerResponse, createServer } from 'node:http';
-import { SettingsError } from '../shared/settings.ts';
+import { type Settings, SettingsError, type SettingsView } from '../shared/settings.ts';
 import type { AnswerRequest, AnswerResult, ChatPage, EndResult, EndTarget, EscStatus, Harness, HarnessOption, HistoryDetail, HistoryPage, LaunchView, ResumeResult, ServerEvent } from '../shared/types.ts';
 import type { PathAnswer } from '../shared/files.ts';
 import type { UsageSnapshot } from '../shared/usage.ts';
@@ -21,6 +21,8 @@ export interface AppOptions {
   guard: GuardConfig;
   monitor: Pick<SessionMonitor, 'snapshot' | 'watch'>;
   settings: Pick<SettingsStore, 'get' | 'update' | 'onChange'>;
+  /** WORK-2.5: `git config --global user.email`, read once at startup; sent with the settings, never stored. */
+  productiveEmailSuggestion?: string | null;
   launcher: {
     list(): LaunchView[];
     recentStarts(): { launchId: string; sessionId: string }[];
@@ -58,7 +60,7 @@ export interface AppOptions {
     detail(sessionId: string, harness: Harness): Promise<HistoryDetail>;
     resume(input: unknown): Promise<ResumeResult>;
   };
-  /** WORK: PRs through tb-pr, read only while a tab has Work open. */
+  /** WORK: Tasks through tb-prod and PRs through tb-pr, read only while a tab has Work open. */
   work: {
     snapshot(): WorkSnapshot;
     /** A tab opened Work; the returned function says it closed it. */
@@ -116,7 +118,9 @@ export function createApp(opts: AppOptions): LookoutApp {
     const res = clients.get(clientId);
     if (res) send(res, event);
   };
-  opts.settings.onChange((settings) => broadcast({ type: 'settings', settings }));
+  /** WORK-2.5: the settings as sent, with what isn't stored. */
+  const view = (settings: Settings): SettingsView => ({ ...settings, productiveEmailSuggestion: opts.productiveEmailSuggestion ?? null });
+  opts.settings.onChange((settings) => broadcast({ type: 'settings', settings: view(settings) }));
 
   const handleEvents = (req: IncomingMessage, res: ServerResponse) => {
     res.writeHead(200, {
@@ -128,7 +132,7 @@ export function createApp(opts: AppOptions): LookoutApp {
     res.write('retry: 1000\n\n');
     const clientId = randomUUID();
     const { sessions, fleet } = opts.monitor.snapshot();
-    send(res, { type: 'snapshot', sessions, fleet, settings: opts.settings.get(), launches: opts.launcher.list(),
+    send(res, { type: 'snapshot', sessions, fleet, settings: view(opts.settings.get()), launches: opts.launcher.list(),
       started: opts.launcher.recentStarts(),
       clientId,
       usage: opts.usage.snapshot(),
@@ -161,12 +165,12 @@ export function createApp(opts: AppOptions): LookoutApp {
       case 'GET /api/events':
         return handleEvents(req, res);
       case 'GET /api/settings':
-        return json(res, 200, opts.settings.get());
+        return json(res, 200, view(opts.settings.get()));
       case 'PUT /api/settings': {
         const body = await readJson(req, res, MAX_BODY, null);
         if (body === NO_BODY) return;
         try {
-          return json(res, 200, await opts.settings.update(body));
+          return json(res, 200, view(await opts.settings.update(body)));
         } catch (err) {
           if (err instanceof SettingsError) return json(res, 400, { error: err.message, field: err.field });
           throw err;

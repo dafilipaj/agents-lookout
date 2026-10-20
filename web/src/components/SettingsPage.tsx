@@ -1,4 +1,4 @@
-import type { Settings } from '@shared/settings.ts';
+import { PRODUCTIVE_EMAIL_ERROR, type Settings, type SettingsView, parseProductiveEmail } from '@shared/settings.ts';
 import { ArrowLeft, Folder, X } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -7,8 +7,8 @@ import { Label } from '@/components/ui/label';
 import { PlainView } from './Shell';
 
 interface Props {
-  settings: Settings;
-  save(patch: Partial<Settings>): Promise<Settings>;
+  settings: SettingsView;
+  save(patch: Partial<Settings>): Promise<unknown>;
   onBack(): void;
 }
 
@@ -91,9 +91,93 @@ export function SettingsPage({ settings, save, onBack }: Props) {
           )}
         </form>
 
+        <ProductiveEmail settings={settings} save={save} />
+
         <StartDirectories settings={settings} save={save} />
       </div>
     </PlainView>
+  );
+}
+
+/**
+ * WORK-2.5, WORK-2.7: whose Tasks Work reads. While none is saved, the field holds the address from
+ * `git config --global user.email` as a suggestion, saved only when you press Save. A value the
+ * server would refuse is refused here with its words, and so is anything the server refuses;
+ * either way the saved email stays. An empty field clears it (WORK-2.6). A save says "Saved", or
+ * "Cleared", only while the saved email is still the one it saved: never "Saved" beside the
+ * suggestion, which isn't saved.
+ */
+function ProductiveEmail({ settings, save }: Pick<Props, 'settings' | 'save'>) {
+  // What's typed; null while it shows the saved email, or the suggestion when none is saved.
+  const [draft, setDraft] = useState<string | null>(null);
+  const [state, setState] = useState<{ kind: 'idle' | 'saving' } | { kind: 'saved'; email: string | null } | { kind: 'error'; message: string }>({ kind: 'idle' });
+  const suggested = settings.productiveEmail === null ? settings.productiveEmailSuggestion : null;
+  const value = draft ?? settings.productiveEmail ?? suggested ?? '';
+  const showsSuggestion = draft === null && suggested !== null;
+  const done = state.kind === 'saved' && state.email === settings.productiveEmail ? (state.email === null ? 'Cleared' : 'Saved') : null;
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    let email: string | null;
+    try {
+      email = parseProductiveEmail(value);
+    } catch {
+      setState({ kind: 'error', message: PRODUCTIVE_EMAIL_ERROR });
+      return;
+    }
+    setState({ kind: 'saving' });
+    try {
+      await save({ productiveEmail: email });
+      setDraft(null);
+      setState({ kind: 'saved', email });
+    } catch (err) {
+      setState({ kind: 'error', message: err instanceof Error ? err.message : 'Saving failed.' });
+    }
+  };
+
+  return (
+    <form onSubmit={submit} noValidate className="mt-4 rounded-lg border border-border bg-card p-4">
+      <Label htmlFor="productive-email" className="text-[13px]">
+        Productive email
+      </Label>
+      <p id="productive-email-help" className="mt-1 text-[12.5px] text-muted-foreground">
+        Work lists the open Tasks assigned to this email in Productive. Leave it empty to read none.
+      </p>
+      <div className="mt-3 flex items-center gap-2">
+        <Input
+          id="productive-email"
+          type="text"
+          inputMode="email"
+          autoComplete="email"
+          spellCheck={false}
+          placeholder="name@example.com"
+          aria-describedby={showsSuggestion ? 'productive-email-help productive-email-suggestion' : 'productive-email-help'}
+          aria-invalid={state.kind === 'error'}
+          className="h-8 min-w-0 flex-1"
+          value={value}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            setState({ kind: 'idle' });
+          }}
+        />
+        <Button type="submit" size="sm" className="h-8" disabled={state.kind === 'saving' || (draft === null && !showsSuggestion)}>
+          Save
+        </Button>
+        <span role="status" className="ml-1 text-[12.5px] text-muted-foreground">
+          {done}
+        </span>
+      </div>
+      {showsSuggestion && (
+        <p id="productive-email-suggestion" className="mt-2 text-[12.5px] text-muted-foreground" data-field="suggestion">
+          From your git config. Not saved yet: press Save to use it.
+        </p>
+      )}
+      {state.kind === 'error' && (
+        <p role="alert" className="mt-2 text-[12.5px] text-destructive">
+          {state.message}
+        </p>
+      )}
+    </form>
   );
 }
 

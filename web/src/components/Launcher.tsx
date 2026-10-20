@@ -25,12 +25,14 @@ interface Props {
   now: number;
   /** Starts the Session; throws with a message for people when it fails. */
   onStart(req: LaunchRequest): Promise<void>;
+  /** Where focus goes when it closes: prevent the event to place it yourself. It has no Trigger to return to. */
+  onCloseAutoFocus?(e: Event): void;
 }
 
 const FALLBACK_LABEL: Record<LaunchHarness, string> = { claude: 'Claude Code', codex: 'Codex' };
 
 /** The launcher (LAUNCH-1 … LAUNCH-4). */
-export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, harnesses, usage, now, onStart }: Props) {
+export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, harnesses, usage, now, onStart, onCloseAutoFocus }: Props) {
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<{ message: string; field: string | null } | null>(null);
@@ -84,6 +86,7 @@ export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, h
           e.preventDefault();
           promptRef.current?.focus();
         }}
+        onCloseAutoFocus={onCloseAutoFocus}
       >
         <form onSubmit={submit} onKeyDown={onKeyDown} aria-label="New Session">
           <div className="border-b border-border px-5 pt-4 pb-3">

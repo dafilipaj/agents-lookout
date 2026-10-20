@@ -1,5 +1,5 @@
 import type { PathAnswer } from '@shared/files.ts';
-import type { Settings } from '@shared/settings.ts';
+import type { Settings, SettingsView } from '@shared/settings.ts';
 import type { WorkRefreshResult } from '@shared/work.ts';
 import { HELD_REASONS, type AnswerRequest, type AnswerResult, type ChatPage, type EndResult, type EndTarget, type Harness, type HarnessOption, type HeldReason, type HistoryDetail, type HistoryPage, type LaunchRequest, type LaunchView, type ResumeResult, type ServerEvent } from '@shared/types.ts';
 
@@ -11,7 +11,7 @@ export interface ClientListener {
 /** How the UI talks to the Lookout server. Tests pass a fake. */
 export interface LookoutClient {
   subscribe(listener: ClientListener): () => void;
-  saveSettings(patch: Partial<Settings>): Promise<Settings>;
+  saveSettings(patch: Partial<Settings>): Promise<SettingsView>;
   harnesses(): Promise<HarnessOption[]>;
   /** LAUNCH-4.2: `launchId` is the tab's own, so its row is selected before this answers. */
   launch(req: LaunchRequest, launchId: string): Promise<LaunchView>;
@@ -261,7 +261,7 @@ export function createHttpClient(): LookoutClient {
         es?.close();
       };
     },
-    saveSettings: (patch) => call<Settings>(() => send('PUT', '/api/settings', patch), 'Saving'),
+    saveSettings: (patch) => call<SettingsView>(() => send('PUT', '/api/settings', patch), 'Saving'),
     harnesses: async () => (await call<{ harnesses: HarnessOption[] }>(() => fetch('/api/harnesses'), 'Loading Harnesses')).harnesses,
     launch: async (req, launchId) => (await call<{ launch: LaunchView }>(() => send('POST', '/api/launch', { ...req, launchId }), 'Starting')).launch,
     dismissLaunch: async (id) => {

@@ -1,4 +1,4 @@
-import { act, screen } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { renderApp, row, rowEl } from '@/test/helpers';
@@ -130,8 +130,9 @@ describe('settings page', () => {
     expect(input).toHaveValue(4);
     await user.clear(input);
     await user.type(input, '2.5');
-    await user.click(screen.getByRole('button', { name: 'Save' }));
+    const form = within(input.closest('form')!);
+    await user.click(form.getByRole('button', { name: 'Save' }));
     expect(app.saveSettings).toHaveBeenCalledWith({ idleThresholdHours: 2.5 });
-    expect(await screen.findByText('Saved')).toBeInTheDocument();
+    expect(await form.findByText('Saved')).toBeInTheDocument();
   });
 });

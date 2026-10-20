@@ -1,4 +1,4 @@
-import type { LaunchHarness, Settings } from './settings.ts';
+import type { LaunchHarness, SettingsView } from './settings.ts';
 import type { UsageSnapshot } from './usage.ts';
 import type { WorkSnapshot } from './work.ts';
 
@@ -101,7 +101,7 @@ export type ServerEvent =
       type: 'snapshot';
       sessions: SessionRow[];
       fleet: FleetHealth;
-      settings: Settings;
+      settings: SettingsView;
       launches: LaunchView[];
       /** Starts completed in the last 60 s, so a tab that reconnects can still select its Session. */
       started: { launchId: string; sessionId: string }[];
@@ -110,14 +110,14 @@ export type ServerEvent =
       /** USAGE: the latest numbers, or null before the first read. */
       usage: UsageSnapshot | null;
       /**
-       * WORK: the latest PRs (and, from slice C, Tasks), and when Refresh is back. This server always
+       * WORK: the latest PRs and Tasks, and when Refresh is back. This server always
        * sends it; it's optional only so that UI tests can leave it out.
        */
       work?: WorkSnapshot;
     }
   /** USAGE: new numbers (sent to every tab, only when they changed). */
   | { type: 'usage'; usage: UsageSnapshot }
-  /** WORK: the latest PRs and Refresh state (sent to every tab, only when something changed). */
+  /** WORK: the latest PRs, Tasks and Refresh state (sent to every tab, only when something changed). */
   | { type: 'work'; work: WorkSnapshot }
   /** VIEW-2: what the Session's terminal shows, as plain text; sent only to tabs previewing it. */
   | { type: 'preview'; sessionId: string; text: string | null; error: string | null }
@@ -125,7 +125,7 @@ export type ServerEvent =
   | { type: 'launches'; launches: LaunchView[]; started: { launchId: string; sessionId: string }[] }
   | { type: 'sessions'; upsert: SessionRow[]; remove: string[] }
   | { type: 'fleet'; fleet: FleetHealth }
-  | { type: 'settings'; settings: Settings }
+  | { type: 'settings'; settings: SettingsView }
   /**
    * VIEW-4: the prompt the Session's terminal shows, read with `fleet answer --list` while a tab
    * views it and it Needs you; sent only to the tabs viewing it, only when it changed. `epoch` is

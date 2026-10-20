@@ -1,7 +1,7 @@
 import { accessSync, constants } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
-import { TB_PR_INSTALL_COMMAND } from '../shared/defaults.ts';
+import { TB_PROD_INSTALL_COMMAND, TB_PROD_SIGN_IN_COMMAND, TB_PR_INSTALL_COMMAND } from '../shared/defaults.ts';
 import {
   CHIP_OF,
   type CiState,
@@ -14,21 +14,24 @@ import {
   REVIEW_COLUMNS,
   ROT_BUCKETS,
   type RotBucket,
+  type TaskSection,
   type WorkPr,
   type WorkRefreshResult,
   type WorkSnapshot,
   type WorkSourceState,
+  type WorkTask,
+  taskUrl,
 } from '../shared/work.ts';
 import type { RunError, RunOptions, Runner } from './exec.ts';
 import { cleanEnv } from './launcher.ts';
 import { sanitizeLine } from './sanitize.ts';
 
 /**
- * WORK: open PRs and Review requests through `tb-pr` (decision 0005), contract in
- * docs/features/tasks-and-prs/SPEC.md, "Sources" and "Lookout's side". Everything tb-pr prints is
- * validated and bounded here; every failure becomes a redacted one-line reason here, and nothing
- * here logs or rethrows a `RunError` (WORK-7.7). Tasks (`tb-prod`) join in slice C as a second
- * source with its own `ReadLane`.
+ * WORK: open PRs and Review requests through `tb-pr`, and Tasks through `tb-prod` (decision 0005),
+ * contract in docs/features/tasks-and-prs/SPEC.md, "Sources" and "Lookout's side". Everything they
+ * print is validated and bounded here; every failure becomes a plain reason here, what the tool said
+ * goes only to the server's log, redacted and one line, and nothing here logs or rethrows a
+ * `RunError` (WORK-7.7). Each source has its own `ReadLane`.
  */
 
 /** WORK-8.1: reads every 5 minutes, counted from the end of the last read. */
@@ -37,6 +40,10 @@ export const WORK_INTERVAL_MS = 5 * 60_000;
 export const WORK_COOLDOWN_MS = 60_000;
 /** A cold fetch takes several seconds (Sources). */
 export const TB_PR_TIMEOUT_MS = 20_000;
+/** Per page of Tasks; one takes 0.3 s (Sources). */
+export const TB_PROD_TIMEOUT_MS = 10_000;
+/** WORK-2.1: 5 pages of 20, up to 100 Tasks. */
+export const MAX_TASK_PAGES = 5;
 /** WORK-8.4: a rate limit holds GitHub reads at least this long… */
 export const RATE_LIMIT_MIN_MS = 5 * 60_000;
 /** …and at most this long, GitHub's core window. */
@@ -394,6 +401,199 @@ export function classifyTbPrFailure(err: unknown, now: number): PrReadFailure {
   return failure('error', PR_REASON.failed);
 }
 
+// --- Reading `tb-prod query tasks` (WORK-2) -----------------------------------------------------
+
+/**
+ * WORK's filter (Sources): the open Tasks assigned to `email`, in active projects, task lists and
+ * folders. `folder_status` needs tb-prod 1.2.0 (WORK-7.8).
+ */
+export function tasksFilter(email: string): string {
+  const conditions = [
+    { field: 'assignee.email', operator: 'eq', value: email },
+    { field: 'project.status', operator: 'eq', value: '1' },
+    { field: 'task_list_status', operator: 'eq', value: '1' },
+    { field: 'folder_status', operator: 'eq', value: '1' },
+    { field: 'workflow_status_category_id', operator: 'not_eq', value: '3' },
+  ];
+  return JSON.stringify({ op: 'and', conditions });
+}
+
+/**
+ * One page of WORK's Tasks query (Sources). The sort is one argument: as two, clap would read
+ * `-last_activity_at` as a flag.
+ */
+export function tasksQueryArgv(email: string, page: number): string[] {
+  return ['query', 'tasks', '--filter', tasksFilter(email), '--include', 'project,workflow_status', '--sort=-last_activity_at', '--page', String(page)];
+}
+
+/** tb-prod printed something that isn't a page of Tasks Lookout can read; `detail` is for the server's log only. */
+export class TbProdShapeError extends Error {
+  readonly detail: string;
+  constructor(detail: string) {
+    super(detail);
+    this.detail = detail;
+  }
+}
+
+export interface TasksPage {
+  tasks: WorkTask[];
+  hasNextPage: boolean;
+}
+
+const DUE_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * One page of `tb-prod query tasks` (JSON:API: `data`, `included`, `meta`), validated. A Task without
+ * an id, or a page without `data` or `meta.hasNextPage`, throws TbProdShapeError: a renamed field
+ * must fail the read, never leave Tasks silently missing (or Work saying "No open tasks"). What's only
+ * shown (project, status, due date) is null when unreadable.
+ */
+export function parseTasksPage(stdout: string): TasksPage {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    throw new TbProdShapeError("query tasks didn't print JSON");
+  }
+  if (!isObj(parsed) || !Array.isArray(parsed.data)) throw new TbProdShapeError('query tasks printed no data list');
+  if (!isObj(parsed.meta) || typeof parsed.meta.hasNextPage !== 'boolean') throw new TbProdShapeError('query tasks printed no meta.hasNextPage');
+  const included = new Map<string, Json>();
+  for (const r of Array.isArray(parsed.included) ? parsed.included : []) {
+    if (isObj(r) && typeof r.type === 'string' && typeof r.id === 'string') included.set(`${r.type}:${r.id}`, isObj(r.attributes) ? r.attributes : {});
+  }
+  const related = (rels: unknown, name: string, type: string): Json | null => {
+    const data = isObj(rels) && isObj(rels[name]) ? rels[name].data : null;
+    return isObj(data) && typeof data.id === 'string' ? (included.get(`${type}:${data.id}`) ?? null) : null;
+  };
+  const tasks = parsed.data.map((raw: unknown, i): WorkTask => {
+    if (!isObj(raw) || typeof raw.id !== 'string' || !/^[0-9]{1,20}$/.test(raw.id)) throw new TbProdShapeError(`Task ${i + 1} of the page has no id`);
+    const a = isObj(raw.attributes) ? raw.attributes : {};
+    const project = related(raw.relationships, 'project', 'projects');
+    const status = related(raw.relationships, 'workflow_status', 'workflow_statuses');
+    const category = status?.category_id;
+    return {
+      id: raw.id,
+      title: displayText(a.title, MAX_TITLE) ?? `Task ${raw.id}`,
+      project: displayText(project?.name, MAX_TITLE),
+      status: displayText(status?.name, MAX_TITLE),
+      statusCategory: category === 1 ? 'not-started' : category === 2 ? 'started' : null,
+      dueDate: typeof a.due_date === 'string' && DUE_DATE.test(a.due_date) ? a.due_date : null,
+      lastActivityAt: rfc3339(a.last_activity_at),
+      milestone: a.type_id === 3,
+      url: taskUrl(raw.id),
+      links: null,
+    };
+  });
+  return { tasks, hasNextPage: parsed.meta.hasNextPage };
+}
+
+/** Pages read one after another: a Task that moved to a later page meanwhile shows once, where it was first seen. */
+export function mergePages(pages: readonly TasksPage[]): WorkTask[] {
+  const seen = new Set<string>();
+  const tasks: WorkTask[] = [];
+  for (const task of pages.flatMap((p) => p.tasks)) {
+    if (seen.has(task.id)) continue;
+    seen.add(task.id);
+    tasks.push(task);
+  }
+  return tasks;
+}
+
+export interface TaskReadFailure {
+  state: Exclude<WorkSourceState, 'loading' | 'ok'>;
+  /** A plain sentence that says what to do (UX, "Errors"); never tb-prod's own text. */
+  reason: string;
+  fix: string | null;
+  /** What tb-prod said, redacted and one line, for the server's log only (WORK-7.7); null when there's nothing to add. */
+  detail: string | null;
+}
+
+/** UX, "Errors": why a Tasks read failed, and what to do, in plain words. */
+export const TASK_REASON = {
+  notInstalled: "tb-prod isn't installed. Work reads Tasks through it: build it from cli-toolbox's main, then press Refresh.",
+  outdated: "tb-prod is older than 1.2.0, which Work needs to read Tasks. Build it from cli-toolbox's main, then press Refresh.",
+  signedOut: `tb-prod isn't signed in to Productive. Run ${TB_PROD_SIGN_IN_COMMAND}, then press Refresh.`,
+  denied: "Productive denied access to your Tasks. Check what tb-prod's token's account can see, then press Refresh.",
+  serverError: 'Productive had a server error. Try Refresh later.',
+  refused: 'Productive refused the request. Try Refresh later.',
+  queryRefused: "tb-prod refused Work's query. Check that tb-prod and Lookout are up to date, then press Refresh.",
+  timedOut: 'tb-prod took too long to answer. Try Refresh later.',
+  failed: "tb-prod couldn't read your Tasks. Try Refresh later.",
+  unreadable: "tb-prod printed Tasks Lookout can't read. Check that tb-prod and Lookout are up to date, then press Refresh.",
+  /** WORK-2.8: the email changed while the read ran, or before it began; its result isn't used. */
+  emailChanged: 'The Productive email changed, so that read was dropped.',
+  cancelled: 'The read was cancelled.',
+  closed: 'Work was closed in every tab before the read began.',
+} as const;
+
+/** tb-prod's JSON error on stdout (`json_error.rs`): only its code, its message and `details.status`. */
+function tbProdJsonError(stdout: unknown): { code: string; error: string; status: number | null } | null {
+  if (typeof stdout !== 'string' || !stdout.trim().startsWith('{')) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    return null;
+  }
+  if (!isObj(parsed) || typeof parsed.code !== 'string') return null;
+  const status = isObj(parsed.details) && typeof parsed.details.status === 'number' ? parsed.details.status : null;
+  return { code: parsed.code, error: typeof parsed.error === 'string' ? parsed.error : '', status };
+}
+
+/**
+ * WORK-7.8: tb-prod 1.1.x's refusal of WORK's filter, `Unknown filter field 'folder_status'` with
+ * `board_status`, 1.1.x's name for it, among the keys it lists as available. Anything else naming
+ * `folder_status`, such as a bad operator or a later tb-prod that renamed the key again, isn't.
+ */
+function isTbProd11Refusal(error: string): boolean {
+  const available = /^Unknown filter field 'folder_status' on tasks\. Available: (.*)$/.exec(error)?.[1];
+  return available !== undefined && available.split(', ').includes('board_status');
+}
+
+/**
+ * Turns a failed `tb-prod` run into a plain reason (WORK-7, UX "Errors"). "Not signed in" exactly as
+ * WORK-7.6 says: exit 1 with "No config found" on stderr, a JSON `config_error`, or a JSON `api_error`
+ * with status 401; a 403 is access denied, a failed read. tb-prod 1.1.x's `invalid_filter` for
+ * `folder_status` is a tb-prod older than 1.2.0 (WORK-7.8). What tb-prod said goes only to `detail`,
+ * for the log: its JSON error's code and message, or the first line of its stderr; Productive's
+ * answer (`details.body`) is never read.
+ */
+export function classifyTbProdFailure(err: unknown): TaskReadFailure {
+  const e = (typeof err === 'object' && err !== null ? err : {}) as RunError;
+  const stderr = stripAnsi(typeof e.stderr === 'string' ? e.stderr : '');
+  const code = typeof e.code === 'number' ? e.code : null;
+  const json = code === null ? null : tbProdJsonError(e.stdout);
+  const detail = json ? sanitizeLine(`${json.code}: ${json.error}`) : (sanitizeLine(stderr) ?? (code === null ? null : `exit ${code}`));
+  const failure = (state: TaskReadFailure['state'], reason: string, opts: Partial<Pick<TaskReadFailure, 'fix' | 'detail'>> = {}): TaskReadFailure => ({
+    state,
+    reason,
+    fix: opts.fix ?? null,
+    detail: opts.detail === undefined ? detail : opts.detail,
+  });
+  // Lookout's own wording, not tb-prod's.
+  if (err instanceof WorkCommandRefused) return failure('error', err.message, { detail: null });
+  if (err instanceof TbProdShapeError) return failure('error', TASK_REASON.unreadable, { detail: sanitizeLine(err.detail) });
+  if (e.code === 'ENOENT') return failure('not-installed', TASK_REASON.notInstalled, { fix: TB_PROD_INSTALL_COMMAND, detail: null });
+  if (e.aborted) return failure('error', TASK_REASON.cancelled, { detail: null });
+  if (e.timedOut) return failure('error', TASK_REASON.timedOut, { detail: null });
+  if (json) {
+    const signedOut = () => failure('signed-out', TASK_REASON.signedOut, { fix: TB_PROD_SIGN_IN_COMMAND });
+    if (json.code === 'config_error') return signedOut();
+    if (json.code === 'api_error') {
+      if (json.status === 401) return signedOut();
+      if (json.status === 403) return failure('error', TASK_REASON.denied);
+      return failure('error', json.status !== null && json.status >= 500 ? TASK_REASON.serverError : TASK_REASON.refused);
+    }
+    if (json.code === 'invalid_filter' && isTbProd11Refusal(json.error)) return failure('error', TASK_REASON.outdated, { fix: TB_PROD_INSTALL_COMMAND });
+    if (json.code === 'invalid_filter' || json.code === 'invalid_json') return failure('error', TASK_REASON.queryRefused);
+    return failure('error', TASK_REASON.failed);
+  }
+  if (code === 1 && stderr.includes('No config found')) return failure('signed-out', TASK_REASON.signedOut, { fix: TB_PROD_SIGN_IN_COMMAND });
+  // clap's usage error: tb-prod couldn't parse the call, which retrying won't change.
+  if (code === 2) return failure('error', TASK_REASON.queryRefused);
+  return failure('error', TASK_REASON.failed);
+}
+
 // --- One read at a time per source (WORK-8.3) ---------------------------------------------------
 
 /**
@@ -458,21 +658,30 @@ export class ReadLane<A, R> {
 export interface WorkMonitorOptions {
   runner: Runner;
   tbPrBin: () => string;
+  tbProdBin: () => string;
   onChange(work: WorkSnapshot): void;
+  /** WORK-2: the saved Productive email at startup; `setProductiveEmail` follows changes. */
+  productiveEmail?: string | null;
   env?: NodeJS.ProcessEnv;
   now?: () => number;
-  /** The server's log, for what tb-pr said (redacted, one line); never the UI's (WORK-7.7). */
-  log?: (line: string) => void;
+  /** The server's log, for what tb-pr or tb-prod said (redacted, one line); never the UI's (WORK-7.7). */
+  log?: (line: string, tool: WorkTool) => void;
   intervalMs?: number;
   cooldownMs?: number;
   tbPrTimeoutMs?: number;
+  tbProdTimeoutMs?: number;
 }
 
 /** A PR read: forced runs `tb-pr refresh` first (WORK-8.2). */
 interface PrAsk {
   forced: boolean;
 }
+/** A Tasks read, for one email. tb-prod has no cache, so a forced one is the same read (WORK-8.3). */
+interface TaskAsk {
+  email: string;
+}
 type ReadResult = { ok: true } | { ok: false; reason: string };
+type WorkSource = 'prs' | 'tasks';
 
 /**
  * `refresh()`'s answer, with its HTTP status: refused while no tab has Work open (409), during the
@@ -495,19 +704,37 @@ const emptyPrs = (): PrSection => ({
   taskIds: null,
 });
 
+/** WORK-2.6, WORK-2.8: nothing read for this email yet, or no email to read for. */
+const emptyTasks = (email: string | null): TaskSection => ({
+  state: email === null ? 'no-email' : 'loading',
+  reason: null,
+  fix: null,
+  stale: false,
+  fetchedAt: null,
+  tasks: [],
+});
+
 /**
  * One poller for every tab, shaped like `UsageMonitor` (WORK, "Lookout's side"): it reads only
- * while a tab has Work open (`watch()`), every 5 minutes from the end of the last read; opening
- * Work reads when the data is more than 5 minutes old; Refresh forces a read, at most once a minute
- * server-wide; a rate limit holds every GitHub read (WORK-8). Results go to `onChange` only when
- * something changed. `close()` cancels what runs and waits until it has exited.
+ * while a tab has Work open (`watch()`), Tasks and PRs in parallel, every 5 minutes from the end of
+ * the last read; opening Work reads each source whose data is more than 5 minutes old, and Tasks
+ * when they haven't been read for the saved email; a saved email reads Tasks; Refresh forces a read,
+ * at most once a minute server-wide; a rate limit holds every GitHub read (WORK-8). Results go to
+ * `onChange` only when something changed. `close()` cancels what runs and waits until it has exited.
  */
 export class WorkMonitor {
   private prs: PrSection = emptyPrs();
+  private tasks: TaskSection;
+  /** WORK-2: the saved Productive email; Tasks are read for it alone. */
+  private email: string | null;
   /** WORK-7.5: per column, when it was last read without a `column_issues` entry. In memory only. */
   private readonly confirmed = new Map<PrColumn, number>();
   private lastIssues: PrColumnIssue[] = [];
-  private lastReadEnd: number | null = null;
+  /**
+   * Per source, the end of its last read that gave data ("more than 5 minutes old", WORK-8.1): a
+   * Tasks-only read never makes the PRs look fresh, nor a PR read the Tasks.
+   */
+  private readonly lastReadEnd: Record<WorkSource, number | null> = { prs: null, tasks: null };
   private cooldownUntil: number | null = null;
   private githubBlockedUntil: number | null = null;
   private watchers = 0;
@@ -515,15 +742,22 @@ export class WorkMonitor {
   private current: WorkSnapshot | null = null;
   private readonly abort = new AbortController();
   private readonly lane: ReadLane<PrAsk, ReadResult>;
+  private readonly taskLane: ReadLane<TaskAsk, ReadResult>;
   private readonly opts: WorkMonitorOptions;
   private readonly now: () => number;
 
   constructor(opts: WorkMonitorOptions) {
     this.opts = opts;
     this.now = opts.now ?? Date.now;
+    this.email = opts.productiveEmail ?? null;
+    this.tasks = emptyTasks(this.email);
     this.lane = new ReadLane<PrAsk, ReadResult>(
       (ask) => this.readPrs(ask),
       (a, b) => a.forced === b.forced,
+    );
+    this.taskLane = new ReadLane<TaskAsk, ReadResult>(
+      (ask) => this.readTasks(ask),
+      (a, b) => a.email === b.email,
     );
     this.current = this.build();
   }
@@ -545,14 +779,28 @@ export class WorkMonitor {
       if (released) return;
       released = true;
       this.watchers--;
-      if (this.watchers === 0) this.closedEverywhere(PR_REASON.closed);
+      if (this.watchers === 0) this.closedEverywhere('closed');
     };
   }
 
   /**
+   * WORK-2.8: a different saved Productive email drops the Tasks kept for the previous one at once.
+   * While a tab has Work open, its Tasks are read now, or once a read for another email ends (whose
+   * result is then discarded); otherwise when Work next opens (WORK-8.1). Null: no email, no query
+   * (WORK-2.6).
+   */
+  setProductiveEmail(email: string | null): void {
+    if (email === this.email) return;
+    this.email = email;
+    this.tasks = emptyTasks(email);
+    this.publish();
+    if (email !== null && this.watchers > 0 && !this.abort.signal.aborted) void this.taskLane.request({ email });
+  }
+
+  /**
    * WORK-8.2: a forced read, refused while no tab has Work open (WORK-8.1), during the 60 s cooldown
-   * and while GitHub is rate limited (WORK-8.4). Accepted, it starts the cooldown at once and answers
-   * with the read's outcome.
+   * and while GitHub is rate limited (WORK-8.4). Accepted, it starts the cooldown at once, reads PRs
+   * and, with an email saved, Tasks, and answers once both reads end.
    */
   async refresh(): Promise<RefreshAnswer> {
     const now = this.now();
@@ -567,43 +815,74 @@ export class WorkMonitor {
     // Accepted: no scheduled read while it waits or runs; its end re-arms the schedule.
     this.disarm();
     this.publish();
-    const r = await this.lane.request({ forced: true });
-    return { status: 200, result: r.ok ? { ok: true } : { ok: false, error: r.reason } };
+    const reads = [this.lane.request({ forced: true })];
+    if (this.email !== null) reads.push(this.taskLane.request({ email: this.email }));
+    const failed = [...new Set((await Promise.all(reads)).flatMap((r) => (r.ok ? [] : [r.reason])))];
+    return { status: 200, result: failed.length === 0 ? { ok: true } : { ok: false, error: failed.join(' ') } };
   }
 
   /** Stops polling, cancels running commands, and resolves once they have exited. */
   async close(): Promise<void> {
     this.watchers = 0;
-    this.closedEverywhere(PR_REASON.cancelled);
+    this.closedEverywhere('cancelled');
     this.abort.abort();
-    await this.lane.idle();
+    await Promise.all([this.lane.idle(), this.taskLane.idle()]);
   }
 
-  /** WORK-8.1: with Work closed everywhere, nothing is read: no schedule, and waiting reads are dropped. */
-  private closedEverywhere(reason: string): void {
+  /**
+   * WORK-8.1: with Work closed everywhere, nothing is read: no schedule, and waiting reads are
+   * dropped, each lane with its own reason.
+   */
+  private closedEverywhere(why: 'closed' | 'cancelled'): void {
     this.disarm();
-    this.lane.drop({ ok: false, reason });
+    this.lane.drop({ ok: false, reason: PR_REASON[why] });
+    this.taskLane.drop({ ok: false, reason: TASK_REASON[why] });
   }
 
   private blocked(now = this.now()): boolean {
     return this.githubBlockedUntil !== null && now < this.githubBlockedUntil;
   }
 
+  /**
+   * WORK-8.1: opening Work reads each source whose data is more than 5 minutes old, by its own age,
+   * and Tasks not read yet for the saved email however fresh the PRs. PRs wait while GitHub is rate
+   * limited (WORK-8.4). With nothing to read, the schedule stands: 5 minutes from the end of the last
+   * read of either kind, or sooner when a rate limit holding old PRs ends.
+   */
   private opened(): void {
     const now = this.now();
-    const age = this.lastReadEnd === null ? Infinity : now - this.lastReadEnd;
-    if (age > this.interval) this.scheduled();
-    else if (!this.timer && !this.lane.busy) this.arm(this.interval - age);
+    const old = (source: WorkSource) => {
+      const end = this.lastReadEnd[source];
+      return end === null || now - end > this.interval;
+    };
+    const prsOld = old('prs');
+    const readTasks = this.email !== null && (this.tasks.state === 'loading' || old('tasks'));
+    const readPrs = prsOld && !this.blocked(now);
+    if (readTasks) void this.taskLane.request({ email: this.email! });
+    if (readPrs) void this.lane.request({ forced: false });
+    // A read started here, or one in flight, re-arms the schedule when it ends.
+    if (readTasks || readPrs || this.timer || this.lane.busy || this.taskLane.busy) return;
+    const last = Math.max(this.lastReadEnd.prs ?? -Infinity, this.lastReadEnd.tasks ?? -Infinity);
+    let delay = this.interval - (now - last);
+    if (prsOld && this.blocked(now)) delay = Math.min(delay, this.githubBlockedUntil! - now);
+    this.arm(delay);
   }
 
-  /** A plain read, unless GitHub is rate limited: then the next try comes when that ends. */
+  /**
+   * A read of both sources: Tasks when an email is saved, PRs unless GitHub is rate limited. With
+   * nothing to read, the next try comes when the rate limit ends, or with the schedule.
+   */
   private scheduled(): void {
     if (this.abort.signal.aborted) return;
-    if (this.blocked()) {
-      this.arm(this.githubBlockedUntil! - this.now());
-      return;
-    }
-    void this.lane.request({ forced: false });
+    if (this.email !== null) void this.taskLane.request({ email: this.email });
+    if (!this.blocked()) void this.lane.request({ forced: false });
+    else if (this.email === null) this.arm(this.nextDelay());
+  }
+
+  /** WORK-8.1: 5 minutes; WORK-8.4: sooner when a rate limit ends before then. */
+  private nextDelay(): number {
+    const interval = this.interval;
+    return this.blocked() ? Math.min(interval, this.githubBlockedUntil! - this.now()) : interval;
   }
 
   private arm(delay: number): void {
@@ -621,9 +900,27 @@ export class WorkMonitor {
     this.timer = null;
   }
 
+  /**
+   * A read ended. The schedule counts from here (WORK-8.1), and the source it read is that new; a
+   * read that gave no data (`null`, a discarded Tasks read) re-arms it without making either newer.
+   */
+  private ended(source: WorkSource | null): void {
+    if (source !== null) this.lastReadEnd[source] = this.now();
+    if (this.watchers > 0) this.arm(this.nextDelay());
+    this.publish();
+  }
+
   private tbPr(argv: readonly string[]): Promise<string> {
     return runWorkCommand(this.opts.runner, 'tb-pr', this.opts.tbPrBin(), argv, {
       timeoutMs: this.opts.tbPrTimeoutMs ?? TB_PR_TIMEOUT_MS,
+      env: cleanEnv(this.opts.env ?? process.env),
+      signal: this.abort.signal,
+    });
+  }
+
+  private tbProd(argv: readonly string[]): Promise<string> {
+    return runWorkCommand(this.opts.runner, 'tb-prod', this.opts.tbProdBin(), argv, {
+      timeoutMs: this.opts.tbProdTimeoutMs ?? TB_PROD_TIMEOUT_MS,
       env: cleanEnv(this.opts.env ?? process.env),
       signal: this.abort.signal,
     });
@@ -649,19 +946,54 @@ export class WorkMonitor {
     } catch (err) {
       if (this.abort.signal.aborted) return { ok: false, reason: PR_REASON.cancelled };
       const failure = classifyTbPrFailure(err, this.now());
-      if (failure.detail) this.log(failure.detail);
+      if (failure.detail) this.log(failure.detail, 'tb-pr');
       result = this.fail(failure);
     }
-    this.lastReadEnd = this.now();
-    if (this.watchers > 0) this.arm(this.interval);
-    this.publish();
+    this.ended('prs');
     return result;
+  }
+
+  /**
+   * One Tasks read for `ask.email`: up to 5 pages, one after another, each its own `tb-prod` call
+   * (WORK-2.1). A failure on any page fails the read: no partial list. Its result is used only if
+   * its email is still the saved one, checked after each page (WORK-2.8). Never throws.
+   */
+  private async readTasks(ask: TaskAsk): Promise<ReadResult> {
+    if (this.abort.signal.aborted) return { ok: false, reason: TASK_REASON.cancelled };
+    // Only the saved email's Tasks are read: one saved over while this waited isn't (WORK-2.8).
+    if (ask.email !== this.email) return { ok: false, reason: TASK_REASON.emailChanged };
+    this.disarm();
+    let result: ReadResult;
+    try {
+      const pages: TasksPage[] = [];
+      for (let page = 1; page <= MAX_TASK_PAGES; page++) {
+        pages.push(parseTasksPage(await this.tbProd(tasksQueryArgv(ask.email, page))));
+        // An email saved over meanwhile stops the paging: no page follows for a read that's discarded.
+        if (ask.email !== this.email) return this.discarded();
+        if (!pages.at(-1)!.hasNextPage) break;
+      }
+      result = this.acceptTasks(mergePages(pages));
+    } catch (err) {
+      if (this.abort.signal.aborted) return { ok: false, reason: TASK_REASON.cancelled };
+      const failure = classifyTbProdFailure(err);
+      if (failure.detail) this.log(failure.detail, 'tb-prod');
+      if (ask.email !== this.email) return this.discarded();
+      result = this.failTasks(failure);
+    }
+    this.ended('tasks');
+    return result;
+  }
+
+  /** WORK-2.8: a Tasks read for an email no longer saved: its result isn't used. */
+  private discarded(): ReadResult {
+    this.ended(null);
+    return { ok: false, reason: TASK_REASON.emailChanged };
   }
 
   private accept(board: PrBoard): ReadResult {
     const now = this.now();
     if (every401(board)) {
-      this.log('api error 401 in every column');
+      this.log('api error 401 in every column', 'tb-pr');
       return this.fail({ state: 'signed-out', reason: PR_REASON.signedOut, fix: SIGN_IN_COMMAND, blockedUntil: null, detail: null });
     }
     if (boardRateLimited(board)) this.block(now + RATE_LIMIT_MIN_MS);
@@ -694,13 +1026,24 @@ export class WorkMonitor {
     return { ok: false, reason: f.reason };
   }
 
+  private acceptTasks(tasks: WorkTask[]): ReadResult {
+    this.tasks = { state: 'ok', reason: null, fix: null, stale: false, fetchedAt: this.now(), tasks };
+    return { ok: true };
+  }
+
+  /** WORK-7.3: as `fail`. The list kept is always the saved email's: a new email dropped the old one (WORK-2.8). */
+  private failTasks(f: TaskReadFailure): ReadResult {
+    this.tasks = { ...this.tasks, state: f.state, reason: f.reason, fix: f.fix, stale: this.tasks.fetchedAt !== null };
+    return { ok: false, reason: f.reason };
+  }
+
   private marks(): PrSection['marks'] {
     return { mine: marksFor(MINE_COLUMNS, this.lastIssues, this.confirmed), reviewRequests: marksFor(REVIEW_COLUMNS, this.lastIssues, this.confirmed) };
   }
 
-  /** What tb-pr said, already redacted and one line: the server's log only (WORK-7.7). */
-  private log(line: string): void {
-    (this.opts.log ?? ((l: string) => console.warn(`lookout: tb-pr: ${l}`)))(line);
+  /** What tb-pr or tb-prod said, already redacted and one line: the server's log only (WORK-7.7). */
+  private log(line: string, tool: WorkTool): void {
+    (this.opts.log ?? ((l: string, t: WorkTool) => console.warn(`lookout: ${t}: ${l}`)))(line, tool);
   }
 
   private block(until: number): void {
@@ -708,7 +1051,7 @@ export class WorkMonitor {
   }
 
   private build(): WorkSnapshot {
-    return { prs: this.prs, refresh: { cooldownUntil: this.cooldownUntil, githubBlockedUntil: this.githubBlockedUntil } };
+    return { prs: this.prs, tasks: this.tasks, refresh: { cooldownUntil: this.cooldownUntil, githubBlockedUntil: this.githubBlockedUntil } };
   }
 
   private publish(): void {

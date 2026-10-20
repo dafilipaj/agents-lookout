@@ -9,6 +9,16 @@ export interface Settings {
   startDirectories: string[];
   /** LAUNCH-1.2: the choices of the last successful start. Written by the server only. */
   lastLaunch: LastLaunch | null;
+  /** WORK-2: whose Tasks Work reads; null until one is saved (WORK-2.6). */
+  productiveEmail: string | null;
+}
+
+/**
+ * What the server sends as settings: the stored ones, plus what it never stores (WORK-2.5):
+ * `git config --global user.email` as a suggestion for the Productive email, null when git has none.
+ */
+export interface SettingsView extends Settings {
+  productiveEmailSuggestion: string | null;
 }
 
 export type LaunchHarness = 'claude' | 'codex';
@@ -49,6 +59,30 @@ export function parseStartDirectory(value: unknown, field = 'startDirectories'):
   return dir;
 }
 
+/** WORK-2.7: why a Productive email is refused. */
+export const PRODUCTIVE_EMAIL_ERROR = 'Enter an email such as name@example.com';
+const MAX_EMAIL = 254;
+
+/**
+ * WORK-2.7: a Productive email, trimmed, otherwise as typed. Empty (or null) clears it. Refused with
+ * whitespace or a comma inside, without exactly one `@` with text on both sides, or longer than 254
+ * characters. The comma as a precaution: tb-prod sends a filter value holding one exactly as it
+ * sends a list of values, which it joins with commas, so `x,colleague@example.com` can't be told
+ * from two people; Productive keeps it whole today, but wouldn't if either side changed (Sources).
+ * Every other character tb-prod percent-encodes, so it can't change the query.
+ */
+export function parseProductiveEmail(value: unknown, field = 'productiveEmail'): string | null {
+  if (value === null) return null;
+  if (typeof value !== 'string') throw new SettingsError(field, PRODUCTIVE_EMAIL_ERROR);
+  const email = value.trim();
+  if (email === '') return null;
+  const parts = email.split('@');
+  if (/[\s,]/.test(email) || parts.length !== 2 || !parts[0] || !parts[1] || [...email].length > MAX_EMAIL) {
+    throw new SettingsError(field, PRODUCTIVE_EMAIL_ERROR);
+  }
+  return email;
+}
+
 const fields: { [K in keyof Settings]: Field<Settings[K]> } = {
   idleThresholdHours: {
     default: 4,
@@ -85,6 +119,10 @@ const fields: { [K in keyof Settings]: Field<Settings[K]> } = {
       }
       return { harness: v.harness, model: v.model, directory: parseStartDirectory(v.directory, field) };
     },
+  },
+  productiveEmail: {
+    default: null,
+    parse: parseProductiveEmail,
   },
 };
 

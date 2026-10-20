@@ -1,9 +1,12 @@
+import { TB_PROD_INSTALL_COMMAND, TB_PROD_SIGN_IN_COMMAND } from '@shared/defaults.ts';
+import { PRODUCTIVE_EMAIL_ERROR } from '@shared/settings.ts';
 import type { HistoryItem } from '@shared/types.ts';
-import type { ColumnMark, PrSection, WorkPr, WorkSnapshot } from '@shared/work.ts';
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import type { ColumnMark, PrSection, TaskSection, WorkPr, WorkSnapshot, WorkTask } from '@shared/work.ts';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { REFRESH_FAILED, REFRESH_NOT_WATCHED, SaveError } from '@/lib/client';
+import { initialState, reducer } from '@/lib/store';
 import { ageLevel } from '@/lib/work';
 import { renderApp, row, rowEl, settings } from '@/test/helpers';
 
@@ -41,10 +44,37 @@ function prs(over: Partial<PrSection> = {}): PrSection {
   };
 }
 
-const snap = (p: Partial<PrSection> = {}, refresh: Partial<WorkSnapshot['refresh']> = {}): WorkSnapshot => ({
+/** Synthetic Tasks only: invented projects, titles and ids. */
+const task = (over: Partial<WorkTask> & { id: string; title: string }): WorkTask => ({
+  project: 'Lantern Works',
+  status: 'In progress',
+  statusCategory: 'started',
+  dueDate: null,
+  lastActivityAt: Date.now() - 3_600_000,
+  milestone: false,
+  url: `https://app.fantastic.productive.io/109-productive/tasks/${over.id}`,
+  links: null,
+  ...over,
+});
+
+const YEAR = new Date().getFullYear();
+const LIGHT = task({ id: '41000101', title: 'Light the harbor lanterns' });
+const BELLS = task({ id: '41000102', title: 'Tune the harbor bells', project: 'Harbor Bells', status: 'Not started', statusCategory: 'not-started', dueDate: `${YEAR}-11-04`, milestone: true });
+
+/** No Productive email saved: Tasks isn't read (WORK-2.6). The PR tests' default. */
+const NO_EMAIL: TaskSection = { state: 'no-email', reason: null, fix: null, stale: false, fetchedAt: null, tasks: [] };
+
+function tasks(over: Partial<TaskSection> = {}): TaskSection {
+  return { state: 'ok', reason: null, fix: null, stale: false, fetchedAt: Date.now() - 150_000, tasks: [LIGHT, BELLS], ...over };
+}
+
+const snap = (p: Partial<PrSection> = {}, refresh: Partial<WorkSnapshot['refresh']> = {}, t: TaskSection = NO_EMAIL): WorkSnapshot => ({
   prs: prs(p),
+  tasks: t,
   refresh: { cooldownUntil: null, githubBlockedUntil: null, ...refresh },
 });
+/** Work with Tasks read for a saved email. */
+const withTasks = (t: Partial<TaskSection> = {}, p: Partial<PrSection> = {}) => snap(p, {}, tasks(t));
 
 const workPanel = () => screen.getByTestId('work-panel');
 const tab = (name: 'History' | 'Work') => screen.getByRole('tab', { name });
@@ -55,12 +85,33 @@ const selectedPr = () => options().find((o) => o.getAttribute('aria-selected') =
 const group = (name: 'Mine' | 'Review requests') => within(workPanel()).getByRole('group', { name });
 const option = (id: string) => options().find((o) => o.getAttribute('data-pr') === id)!;
 const rowButton = (id: string, action: 'open' | 'review') => option(id).querySelector<HTMLElement>(`[data-action="${action}"]`);
+const taskList = () => within(workPanel()).getByRole('listbox', { name: 'Tasks', hidden: true });
+const taskOption = (id: string) => options().find((o) => o.getAttribute('data-task') === id)!;
+const taskButton = (id: string, action: 'open' | 'start') => taskOption(id).querySelector<HTMLElement>(`[data-action="${action}"]`);
+/** Every row, Tasks and PRs, top to bottom, by its Task id or its repo#number. */
+const shownRows = () => options().map((o) => o.getAttribute('data-task') ?? o.getAttribute('data-pr'));
+const selectedRow = () => {
+  const o = options().find((x) => x.getAttribute('aria-selected') === 'true');
+  return o ? (o.getAttribute('data-task') ?? o.getAttribute('data-pr')) : null;
+};
+const tasksRegion = () => within(workPanel()).getByRole('region', { name: 'Tasks' });
 
 function openApp(path = '/', work: WorkSnapshot | null = snap(), options: Parameters<typeof renderApp>[1] = {}, current = settings()) {
   const app = renderApp(path, options);
   app.snapshot([row({ id: 'alpha' }), row({ id: 'beta' })], { state: 'ok' }, current);
   if (work) app.emit({ type: 'work', work });
   return app;
+}
+
+/**
+ * A click on a button as Safari and Firefox on macOS give it: the button doesn't take focus, so the
+ * closest focusable element around it, Work itself, does.
+ */
+function clickUnfocused(button: HTMLElement) {
+  fireEvent.mouseDown(button);
+  act(() => workPanel().focus());
+  fireEvent.mouseUp(button);
+  fireEvent.click(button);
 }
 
 /** WORK-6.3: what Lookout opened in a new tab, through `window.open`. */
@@ -175,45 +226,73 @@ describe('the Work tab (WORK-1)', () => {
     }
   });
 
-  it('WORK-1.3: PRs shows its count and how old its data is', async () => {
-    openApp();
+  it('WORK-1.3: Work has two sections, Tasks then PRs, each with its count and how old its data is', async () => {
+    openApp('/', withTasks({ fetchedAt: Date.now() - 7 * 60_000 }));
     await userEvent.setup().keyboard('w');
+    expect(within(workPanel()).getAllByRole('region').map((r) => r.getAttribute('data-section'))).toEqual(['tasks', 'prs']);
     const prsSection = within(workPanel()).getByRole('region', { name: 'PRs' });
     expect(within(prsSection).getByText('4')).toHaveAttribute('data-field', 'count');
     expect(prsSection.querySelector('[data-field="updated"]')).toHaveTextContent('updated 2m ago');
+    expect(tasksRegion().querySelector('[data-field="count"]')).toHaveTextContent(/^2 open$/);
+    expect(tasksRegion().querySelector('[data-field="updated"]')).toHaveTextContent('updated 7m ago');
+    expect(within(workPanel()).getByRole('heading', { name: 'Tasks' })).toBeInTheDocument();
   });
 
-  it('WORK-1.5: the filter shows All by default, and PRs shows the PRs section with both groups; Tasks isn’t offered until slice C; the choice is remembered', async () => {
+  it('WORK-1.5: the filter offers All (the default), Tasks and PRs; Tasks shows only Tasks, PRs only PRs with both groups; the choice is remembered', async () => {
     const user = userEvent.setup();
-    const app = openApp();
+    const app = openApp('/', withTasks());
     await user.keyboard('w');
     const filter = within(workPanel()).getByRole('group', { name: 'Show' });
-    expect(within(filter).getAllByRole('button').map((b) => b.textContent)).toEqual(['All', 'PRs']);
-    expect(within(filter).getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true');
-    await user.click(within(filter).getByRole('button', { name: 'PRs' }));
+    const choice = (name: string) => within(filter).getByRole('button', { name });
+    const sections = () => within(workPanel()).queryAllByRole('region').map((r) => r.getAttribute('data-section'));
+    expect(within(filter).getAllByRole('button').map((b) => b.textContent)).toEqual(['All', 'Tasks', 'PRs']);
+    expect(choice('All')).toHaveAttribute('aria-pressed', 'true');
+    expect(sections()).toEqual(['tasks', 'prs']);
+    expect(shownRows()).toEqual(['41000101', '41000102', 'anvil#2101', 'willow#2102', 'kettle#2103', 'willow#2106']);
+    await user.click(choice('Tasks'));
+    expect(choice('Tasks')).toHaveAttribute('aria-pressed', 'true');
+    expect(sections()).toEqual(['tasks']);
+    expect(shownRows()).toEqual(['41000101', '41000102']);
+    await user.click(choice('PRs'));
+    expect(sections()).toEqual(['prs']);
     expect(group('Mine')).toBeInTheDocument();
     expect(group('Review requests')).toBeInTheDocument();
+    expect(shownRows()).toEqual(['anvil#2101', 'willow#2102', 'kettle#2103', 'willow#2106']);
     app.unmount();
-    openApp();
+    openApp('/', withTasks());
     expect(within(workPanel()).getByRole('button', { name: 'PRs' })).toHaveAttribute('aria-pressed', 'true');
   });
 
-  it('WORK-1.5: a remembered Tasks filter reads as All, with the PRs showing', () => {
+  it('WORK-1.5: a remembered Tasks filter shows Tasks only', () => {
     window.localStorage.setItem('lookout.right', JSON.stringify({ open: true, width: 360, tab: 'work', workFilter: 'tasks' }));
-    openApp();
-    expect(within(workPanel()).getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true');
-    expect(shown()).toEqual(['anvil#2101', 'willow#2102', 'kettle#2103', 'willow#2106']);
+    openApp('/', withTasks());
+    expect(within(workPanel()).getByRole('button', { name: 'Tasks' })).toHaveAttribute('aria-pressed', 'true');
+    expect(shownRows()).toEqual(['41000101', '41000102']);
+    expect(within(workPanel()).queryByRole('region', { name: 'PRs' })).toBeNull();
   });
 
-  it('WORK-1.6 (support): switching the filter shows the latest PRs at once, without asking the server for a read', async () => {
+  it('WORK-1.5: an unknown remembered filter reads as All', () => {
+    window.localStorage.setItem('lookout.right', JSON.stringify({ open: true, width: 360, tab: 'work', workFilter: 'reviews' }));
+    openApp('/', withTasks());
+    expect(within(workPanel()).getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('WORK-1.6 (support): switching the filter shows the hidden section’s latest data at once, without asking the server for a read', async () => {
     const user = userEvent.setup();
-    const app = openApp();
+    const app = openApp('/', withTasks());
     await user.keyboard('w');
+    await waitFor(() => expect(app.client.watchWork).toHaveBeenCalledWith('tab-1', true));
+    // The watch is said once, when Work opens: no switch says it again, or closes it and reopens it.
+    const watches = vi.mocked(app.client.watchWork).mock.calls.length;
     await user.click(within(workPanel()).getByRole('button', { name: 'PRs' }));
-    app.emit({ type: 'work', work: snap({ mine: [DRAFT], reviewRequests: [] }) });
+    app.emit({ type: 'work', work: withTasks({ tasks: [BELLS] }, { mine: [DRAFT], reviewRequests: [] }) });
+    await user.click(within(workPanel()).getByRole('button', { name: 'Tasks' }));
+    expect(shownRows()).toEqual(['41000102']);
     await user.click(within(workPanel()).getByRole('button', { name: 'All' }));
-    expect(shown()).toEqual(['anvil#2101']);
+    expect(shownRows()).toEqual(['41000102', 'anvil#2101']);
     expect(app.client.refreshWork).not.toHaveBeenCalled();
+    expect(vi.mocked(app.client.watchWork).mock.calls).toHaveLength(watches);
+    expect(vi.mocked(app.client.watchWork).mock.calls.at(-1)).toEqual(['tab-1', true]);
   });
 
   it('WORK-1.7: with focus in Work, ↑/↓ and j/k move through the rows of both groups without acting; Enter acts like a click', async () => {
@@ -351,6 +430,239 @@ describe('the Work tab (WORK-1)', () => {
     expect(within(workPanel()).queryByRole('listbox')).toBeNull();
   });
 
+  it('WORK-1.7: ↑/↓ and j/k run on from the last Task into the PRs and back, focus following the selection into the list that holds it', async () => {
+    const user = userEvent.setup();
+    openApp('/s/alpha', withTasks());
+    await user.keyboard('w');
+    await waitFor(() => expect(taskList()).toHaveFocus());
+    expect(selectedRow()).toBe('41000101');
+    expect(taskList()).toHaveAttribute('aria-activedescendant', taskOption('41000101').id);
+    await user.keyboard('j');
+    expect(selectedRow()).toBe('41000102');
+    await user.keyboard('{ArrowDown}');
+    expect(selectedRow()).toBe('anvil#2101');
+    // Focus moved with it: the list in focus shows its selected row, the other none.
+    expect(listbox()).toHaveFocus();
+    expect(listbox()).toHaveAttribute('aria-activedescendant', option('anvil#2101').id);
+    expect(taskList()).not.toHaveAttribute('aria-activedescendant');
+    await user.keyboard('k');
+    expect(selectedRow()).toBe('41000102');
+    expect(taskList()).toHaveFocus();
+    // Nothing acted; Enter on a Task without a Linked Session does nothing (UX, "Row clicks").
+    await user.keyboard('{Enter}');
+    expect(window.location.pathname).toBe('/s/alpha');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    // A click on a PR row selects it; the tab strip moves the rows without taking focus from it.
+    await user.click(option('willow#2102'));
+    expect(selectedRow()).toBe('willow#2102');
+    tab('Work').focus();
+    await user.keyboard('kk');
+    expect(selectedRow()).toBe('41000102');
+    expect(tab('Work')).toHaveFocus();
+  });
+
+  it('WORK-1.7: only the list holding the selection is in the Tab order; a click into the other list selects its first row, so O opens what the focused list shows', async () => {
+    const user = userEvent.setup();
+    const opened = spyOpen();
+    openApp('/s/alpha', withTasks());
+    await user.keyboard('w');
+    await waitFor(() => expect(taskList()).toHaveFocus());
+    expect(selectedRow()).toBe('41000101');
+    expect(taskList()).toHaveAttribute('tabindex', '0');
+    expect(listbox()).toHaveAttribute('tabindex', '-1');
+    // Tab doesn't land on the PRs, which don't hold the selection.
+    await user.tab();
+    expect(listbox()).not.toHaveFocus();
+    // A click on the PRs' group heading focuses them and selects their first row: O opens that PR, not the Task.
+    await user.click(within(group('Review requests')).getByText('Review requests'));
+    expect(listbox()).toHaveFocus();
+    expect(selectedRow()).toBe('anvil#2101');
+    expect(listbox()).toHaveAttribute('aria-activedescendant', option('anvil#2101').id);
+    expect(taskList()).not.toHaveAttribute('aria-activedescendant');
+    expect(listbox()).toHaveAttribute('tabindex', '0');
+    expect(taskList()).toHaveAttribute('tabindex', '-1');
+    await user.keyboard('o');
+    expect(opened.map(([url]) => url)).toEqual([DRAFT.url]);
+    // Shift+Tab passes over the Tasks; Tab from the filter comes back to the PRs, holding the selection.
+    await user.tab({ shift: true });
+    expect(taskList()).not.toHaveFocus();
+    within(workPanel()).getByRole('button', { name: 'PRs' }).focus();
+    await user.tab();
+    expect(listbox()).toHaveFocus();
+    expect(selectedRow()).toBe('anvil#2101');
+  });
+
+  it('WORK-1.7: a read that moves the selection out of the focused list takes focus with it, so O opens the row it shows', async () => {
+    const user = userEvent.setup();
+    const opened = spyOpen();
+    const app = openApp('/s/alpha', withTasks());
+    await user.keyboard('w');
+    await waitFor(() => expect(taskList()).toHaveFocus());
+    await user.keyboard('jjj');
+    expect(selectedRow()).toBe('willow#2102');
+    expect(listbox()).toHaveFocus();
+    // The read drops the selected PR: the selection moves to the first visible row, a Task, and focus goes with it.
+    app.emit({ type: 'work', work: withTasks({}, { mine: [DRAFT, APPROVED] }) });
+    expect(selectedRow()).toBe('41000101');
+    expect(taskList()).toHaveFocus();
+    expect(taskList()).toHaveAttribute('aria-activedescendant', taskOption('41000101').id);
+    expect(listbox()).not.toHaveAttribute('aria-activedescendant');
+    expect(listbox()).toHaveAttribute('tabindex', '-1');
+    await user.keyboard('o');
+    expect(opened.map(([url]) => url)).toEqual([LIGHT.url]);
+  });
+
+  it('WORK-1.7: focus that reaches the other list without a click in it, as a script’s, goes on to the list holding the selection and moves nothing', async () => {
+    const user = userEvent.setup();
+    const opened = spyOpen();
+    openApp('/s/alpha', withTasks());
+    await user.keyboard('w');
+    await waitFor(() => expect(taskList()).toHaveFocus());
+    expect(selectedRow()).toBe('41000101');
+    act(() => listbox().focus());
+    expect(taskList()).toHaveFocus();
+    expect(selectedRow()).toBe('41000101');
+    expect(taskList()).toHaveAttribute('aria-activedescendant', taskOption('41000101').id);
+    await user.keyboard('o');
+    expect(opened.map(([url]) => url)).toEqual([LIGHT.url]);
+  });
+
+  it('WORK-1.7: closing the launcher that R or Start Session opened, without a start, gives focus back to the list holding the selection, so j/k move Work, not the Session sidebar', async () => {
+    const user = userEvent.setup();
+    openApp('/s/alpha', withTasks());
+    await user.keyboard('w');
+    await waitFor(() => expect(taskList()).toHaveFocus());
+    await user.keyboard('jjjjj');
+    expect(selectedRow()).toBe('willow#2106');
+    await user.keyboard('r');
+    await screen.findByRole('dialog');
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(listbox()).toHaveFocus());
+    await user.keyboard('k');
+    expect(selectedRow()).toBe('kettle#2103');
+    expect(window.location.pathname).toBe('/s/alpha');
+    // Start Session's button, then Escape: back to the Tasks, holding the Task it was pressed on.
+    await user.click(taskButton('41000102', 'start')!);
+    await screen.findByRole('dialog');
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(taskList()).toHaveFocus());
+    await user.keyboard('j');
+    expect(selectedRow()).toBe('anvil#2101');
+    expect(window.location.pathname).toBe('/s/alpha');
+  });
+
+  it('WORK-1.7: a list that shows up while Work itself has focus, as after a click on a heading, leaves the selection on the row still showing and focuses the list that holds it', async () => {
+    const user = userEvent.setup();
+    const opened = spyOpen();
+    const app = openApp('/s/alpha', withTasks({ state: 'loading', fetchedAt: null, tasks: [] }));
+    await user.keyboard('w');
+    await waitFor(() => expect(listbox()).toHaveFocus());
+    await user.keyboard('j');
+    expect(selectedRow()).toBe('willow#2102');
+    // Nothing focusable holds the Tasks heading, so a click on it puts focus on Work itself.
+    await user.click(within(tasksRegion()).getByRole('heading', { name: 'Tasks' }));
+    expect(workPanel()).toHaveFocus();
+    // The read brings the Tasks: willow#2102 still shows, so it stays selected, and focus goes to its list.
+    app.emit({ type: 'work', work: withTasks() });
+    expect(shownRows()).toEqual(['41000101', '41000102', 'anvil#2101', 'willow#2102', 'kettle#2103', 'willow#2106']);
+    expect(selectedRow()).toBe('willow#2102');
+    expect(listbox()).toHaveFocus();
+    expect(listbox()).toHaveAttribute('tabindex', '0');
+    expect(taskList()).toHaveAttribute('tabindex', '-1');
+    await user.keyboard('o');
+    expect(opened.map(([url]) => url)).toEqual([READY.url]);
+  });
+
+  it('WORK-1.7: switching from PRs to All while Work itself has focus, as a filter click leaves it in Safari and Firefox, keeps the selected PR and focuses its list', async () => {
+    const user = userEvent.setup();
+    const opened = spyOpen();
+    openApp('/s/alpha', withTasks());
+    await user.keyboard('w');
+    await waitFor(() => expect(taskList()).toHaveFocus());
+    clickUnfocused(within(workPanel()).getByRole('button', { name: 'PRs' }));
+    expect(workPanel()).toHaveFocus();
+    expect(selectedRow()).toBe('anvil#2101');
+    await user.keyboard('j');
+    expect(selectedRow()).toBe('willow#2102');
+    // All brings the Tasks list back: the selection stays on the PR, and focus goes to the PRs.
+    clickUnfocused(within(workPanel()).getByRole('button', { name: 'All' }));
+    expect(shownRows()).toEqual(['41000101', '41000102', 'anvil#2101', 'willow#2102', 'kettle#2103', 'willow#2106']);
+    expect(selectedRow()).toBe('willow#2102');
+    expect(listbox()).toHaveFocus();
+    expect(taskList()).not.toHaveAttribute('aria-activedescendant');
+    await user.keyboard('o');
+    expect(opened.map(([url]) => url)).toEqual([READY.url]);
+  });
+
+  it('WORK-1.7: a PRs list with only “Possibly out of date” marks, no rows, is in the Tab order while no list holds the selection', async () => {
+    const user = userEvent.setup();
+    const marks = { mine: [], reviewRequests: [{ columns: ['waiting_on_me'], reason: "GitHub's rate limit is used up", confirmedAt: Date.now() - 45_000 }] } satisfies PrSection['marks'];
+    const app = openApp('/s/alpha', withTasks({ tasks: [] }, { mine: [], reviewRequests: [], marks }));
+    await user.keyboard('w');
+    await waitFor(() => expect(listbox()).toHaveFocus());
+    expect(options()).toEqual([]);
+    expect(listbox()).toHaveAttribute('tabindex', '0');
+    // Tab from the filter comes back to it.
+    within(workPanel()).getByRole('button', { name: 'PRs' }).focus();
+    await user.tab();
+    expect(listbox()).toHaveFocus();
+    // A Task shows up and holds the selection: only the Tasks are in the Tab order.
+    app.emit({ type: 'work', work: withTasks({ tasks: [LIGHT] }, { mine: [], reviewRequests: [], marks }) });
+    expect(selectedRow()).toBe('41000101');
+    expect(taskList()).toHaveFocus();
+    expect(taskList()).toHaveAttribute('tabindex', '0');
+    expect(listbox()).toHaveAttribute('tabindex', '-1');
+  });
+
+  it('WORK-1.7: when the focused Tasks list’s last row goes, the PRs list takes focus, and Work itself once neither is left', async () => {
+    const user = userEvent.setup();
+    const app = openApp('/s/alpha', withTasks());
+    await user.keyboard('w');
+    await waitFor(() => expect(taskList()).toHaveFocus());
+    app.emit({ type: 'work', work: withTasks({ tasks: [] }) });
+    expect(within(workPanel()).queryByRole('listbox', { name: 'Tasks' })).toBeNull();
+    expect(listbox()).toHaveFocus();
+    expect(selectedRow()).toBe('anvil#2101');
+    app.emit({ type: 'work', work: withTasks({ tasks: [] }, { mine: [], reviewRequests: [] }) });
+    expect(workPanel()).toHaveFocus();
+    await user.keyboard('jk');
+    expect(window.location.pathname).toBe('/s/alpha');
+    // Opening Work again focuses the list that holds the selected row.
+    app.emit({ type: 'work', work: withTasks() });
+    await user.keyboard('jjj');
+    expect(selectedRow()).toBe('willow#2102');
+    await user.click(tab('History'));
+    await user.click(tab('Work'));
+    await waitFor(() => expect(listbox()).toHaveFocus());
+    expect(selectedRow()).toBe('willow#2102');
+  });
+
+  it('WORK-1.9: a filter change that hides the selected row moves the selection to the first visible row', async () => {
+    const user = userEvent.setup();
+    const app = openApp('/', withTasks());
+    await user.keyboard('w');
+    await user.keyboard('jjj');
+    expect(selectedRow()).toBe('willow#2102');
+    await user.click(within(workPanel()).getByRole('button', { name: 'Tasks' }));
+    expect(selectedRow()).toBe('41000101');
+    await user.keyboard('j');
+    expect(selectedRow()).toBe('41000102');
+    // Back to All: the Task is still visible, so it stays selected.
+    await user.click(within(workPanel()).getByRole('button', { name: 'All' }));
+    expect(selectedRow()).toBe('41000102');
+    await user.click(within(workPanel()).getByRole('button', { name: 'PRs' }));
+    expect(selectedRow()).toBe('anvil#2101');
+    // A read that removes the selected Task: the first visible row.
+    await user.click(within(workPanel()).getByRole('button', { name: 'Tasks' }));
+    await user.keyboard('j');
+    expect(selectedRow()).toBe('41000102');
+    app.emit({ type: 'work', work: withTasks({ tasks: [LIGHT] }) });
+    expect(selectedRow()).toBe('41000101');
+    // Tasks empty under the Tasks filter: none.
+    app.emit({ type: 'work', work: withTasks({ tasks: [] }) });
+    expect(selectedRow()).toBeNull();
+  });
+
   it('WORK-1.10: with Work open, a Session row click selects it, and the composer takes W, H, O, R, j and k as text without moving Work', async () => {
     const user = userEvent.setup();
     const opened = spyOpen();
@@ -369,6 +681,193 @@ describe('the Work tab (WORK-1)', () => {
     expect(opened).toEqual([]);
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(window.location.pathname).toBe('/s/beta');
+  });
+});
+
+describe('Tasks (WORK-2)', () => {
+  it('WORK-2.1: Tasks lists every Task the server read, in its order (most recently active first), as one listbox', async () => {
+    const many = Array.from({ length: 30 }, (_, i) => task({ id: String(41_000_200 + i), title: `Polish lantern ${i + 1}`, lastActivityAt: Date.now() - i * 60_000 }));
+    openApp('/', withTasks({ tasks: many }));
+    await userEvent.setup().keyboard('w');
+    expect(within(workPanel()).getAllByRole('listbox').map((l) => l.getAttribute('aria-label'))).toEqual(['Tasks', 'PRs']);
+    expect(within(taskList()).getAllByRole('option').map((o) => o.getAttribute('data-task'))).toEqual(many.map((t) => t.id));
+    expect(taskList()).toHaveAttribute('tabindex', '0');
+    expect(tasksRegion().querySelector('[data-field="count"]')).toHaveTextContent(/^30 open$/);
+    // An option holds nothing focusable or interactive, as a PR's doesn't.
+    for (const o of within(taskList()).getAllByRole('option')) {
+      expect(o.querySelectorAll('button, a, input, select, textarea, [tabindex], [role="button"], [role="link"]')).toHaveLength(0);
+    }
+  });
+
+  it('WORK-2.2: each Task shows its title, project and status, its due date when set, and a milestone marked as one; a screen reader hears them as its name', async () => {
+    const NEXT = task({ id: '41000103', title: 'Count the lamp oil', dueDate: `${YEAR + 1}-01-05` });
+    const BARE = task({ id: '41000104', title: 'Sweep the pier', project: null, status: null, statusCategory: null });
+    openApp('/', withTasks({ tasks: [LIGHT, BELLS, NEXT, BARE] }));
+    await userEvent.setup().keyboard('w');
+    const field = (id: string, name: string) => taskOption(id).querySelector(`[data-field="${name}"]`);
+    expect(field('41000101', 'title')).toHaveTextContent('Light the harbor lanterns');
+    expect(field('41000101', 'project')).toHaveTextContent('Lantern Works');
+    expect(field('41000101', 'status')).toHaveTextContent('In progress');
+    // No due date and no milestone: no line for them.
+    expect(field('41000101', 'due')).toBeNull();
+    expect(field('41000101', 'milestone')).toBeNull();
+    expect(taskOption('41000101').children).toHaveLength(3); // the keys' description, the title line, project and status
+    expect(field('41000102', 'milestone')).toHaveTextContent('milestone');
+    expect(field('41000102', 'due')).toHaveTextContent(/^due Nov 4$/);
+    expect(field('41000102', 'due')!.getAttribute('title')).toMatch(/^Due .*4/);
+    // Another year's date says its year.
+    expect(field('41000103', 'due')).toHaveTextContent(`due Jan 5, ${YEAR + 1}`);
+    expect(field('41000103', 'milestone')).toBeNull();
+    // What tb-prod didn't give is left out.
+    expect(field('41000104', 'project')).toBeNull();
+    expect(field('41000104', 'status')).toBeNull();
+    expect(taskOption('41000104').children).toHaveLength(2);
+    expect(taskOption('41000101')).toHaveAccessibleName('Light the harbor lanterns Lantern Works In progress');
+    expect(taskOption('41000102')).toHaveAccessibleName('Tune the harbor bells Harbor Bells Not started milestone due Nov 4');
+    expect(taskOption('41000104')).toHaveAccessibleName('Sweep the pier');
+    expect(taskOption('41000102')).toHaveAccessibleDescription('S starts a Session on it, O opens it in Fantastic.');
+  });
+
+  it('Tasks says “Loading” until its first read for the saved email ends, and “No open tasks” only after a read that succeeded', async () => {
+    const app = openApp('/', snap({}, {}, tasks({ state: 'loading', fetchedAt: null, tasks: [] })));
+    await userEvent.setup().keyboard('w');
+    expect(tasksRegion()).toHaveTextContent(/Tasks\s*· Loading…/);
+    expect(within(tasksRegion()).queryByText('No open tasks')).toBeNull();
+    expect(tasksRegion().querySelector('[data-field="count"]')).toBeNull();
+    app.emit({ type: 'work', work: withTasks({ tasks: [] }) });
+    expect(within(tasksRegion()).getByText('No open tasks')).toBeInTheDocument();
+    expect(tasksRegion()).not.toHaveTextContent('Loading');
+    expect(tasksRegion().querySelector('[data-field="count"]')).toHaveTextContent(/^0 open$/);
+  });
+
+  it('WORK-2.6: until an email is saved, Tasks says “Set your Productive email in Settings”, whose link opens Settings with Work still open; PRs works as usual', async () => {
+    const user = userEvent.setup();
+    openApp('/s/alpha');
+    await user.keyboard('w');
+    expect(tasksRegion().querySelector('[data-field="no-email"]')).toHaveTextContent(/^Set your Productive email in Settings$/);
+    expect(within(tasksRegion()).queryByRole('listbox')).toBeNull();
+    expect(within(tasksRegion()).queryByRole('alert')).toBeNull();
+    expect(within(tasksRegion()).queryByText('No open tasks')).toBeNull();
+    expect(shownRows()).toEqual(['anvil#2101', 'willow#2102', 'kettle#2103', 'willow#2106']);
+    const link = within(tasksRegion()).getByRole('link', { name: 'Settings' });
+    expect(link).toHaveAttribute('href', '/settings');
+    await user.click(link);
+    expect(window.location.pathname).toBe('/settings');
+    expect(screen.getByLabelText('Productive email')).toBeInTheDocument();
+    expect(tab('Work')).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('WORK-2.5 (support): while no email is saved, the field holds git’s address as an unsaved suggestion, and Save saves it', async () => {
+    const user = userEvent.setup();
+    const app = openApp('/settings', snap(), {}, settings({ productiveEmailSuggestion: 'lamplighter@example.com' }));
+    const field = screen.getByLabelText('Productive email');
+    const form = field.closest('form')!;
+    expect(field).toHaveValue('lamplighter@example.com');
+    expect(field).toHaveAccessibleDescription(/From your git config\. Not saved yet: press Save to use it\./);
+    expect(app.saveSettings).not.toHaveBeenCalled();
+    await user.click(within(form).getByRole('button', { name: 'Save' }));
+    expect(app.saveSettings).toHaveBeenCalledWith({ productiveEmail: 'lamplighter@example.com' });
+    // The server answered before its `settings` event: its answer counts, so "Saved" never sits beside "Not saved yet".
+    await waitFor(() => expect(within(form).getByRole('status')).toHaveTextContent('Saved'));
+    expect(field).toHaveValue('lamplighter@example.com');
+    expect(screen.queryByText(/Not saved yet/)).toBeNull();
+    expect(within(form).getByRole('button', { name: 'Save' })).toBeDisabled();
+  });
+
+  it('WORK-2.5 (support): a save’s answer is the tab’s settings at once, unless a settings event landed while it was pending', () => {
+    const since = settings({ productiveEmailSuggestion: 'lamplighter@example.com' });
+    const before = reducer(initialState, { type: 'event', event: { type: 'settings', settings: since } });
+    const answer = settings({ productiveEmail: 'lamplighter@example.com', productiveEmailSuggestion: 'lamplighter@example.com' });
+    expect(reducer(before, { type: 'settings-saved', since, settings: answer }).settings).toBe(answer);
+    // Another tab's save landed meanwhile: its event, or a later one still to come, is as new, so the answer is dropped.
+    const other = settings({ productiveEmail: 'keeper@example.com', productiveEmailSuggestion: 'lamplighter@example.com' });
+    const moved = reducer(before, { type: 'event', event: { type: 'settings', settings: other } });
+    expect(reducer(moved, { type: 'settings-saved', since, settings: answer })).toBe(moved);
+  });
+
+  it('WORK-2.5 (support): a saved email shows as saved, with no suggestion; without one from git, the field starts empty', async () => {
+    const saved = openApp('/settings', snap(), {}, settings({ productiveEmail: 'keeper@example.com', productiveEmailSuggestion: 'lamplighter@example.com' }));
+    expect(screen.getByLabelText('Productive email')).toHaveValue('keeper@example.com');
+    expect(screen.queryByText(/From your git config/)).toBeNull();
+    expect(within(screen.getByLabelText('Productive email').closest('form')!).getByRole('button', { name: 'Save' })).toBeDisabled();
+    saved.unmount();
+    openApp('/settings', snap(), {}, settings());
+    expect(screen.getByLabelText('Productive email')).toHaveValue('');
+    expect(screen.queryByText(/From your git config/)).toBeNull();
+    expect(within(screen.getByLabelText('Productive email').closest('form')!).getByRole('button', { name: 'Save' })).toBeDisabled();
+  });
+
+  it('WORK-2.7: a refused email shows “Enter an email such as name@example.com”, keeps what was typed and the saved email; it’s saved trimmed', async () => {
+    const user = userEvent.setup();
+    const app = openApp('/settings', snap(), {}, settings({ productiveEmail: 'keeper@example.com' }));
+    const field = screen.getByLabelText('Productive email');
+    const save = within(field.closest('form')!).getByRole('button', { name: 'Save' });
+    for (const typed of ['lamp lighter@example.com', 'lamplighter@example.com,keeper@example.com', 'lamp@lighter@example.com', '@example.com', 'lamplighter@', 'lamplighter', `${'a'.repeat(243)}@example.com`]) {
+      await user.clear(field);
+      await user.type(field, typed);
+      await user.click(save);
+      expect(screen.getByRole('alert'), typed).toHaveTextContent(PRODUCTIVE_EMAIL_ERROR);
+      expect(field, typed).toHaveValue(typed);
+      expect(field, typed).toHaveAttribute('aria-invalid', 'true');
+    }
+    expect(app.saveSettings).not.toHaveBeenCalled();
+    // Trimmed, otherwise as typed.
+    await user.clear(field);
+    await user.type(field, '  Lamp.Lighter+work@example.com ');
+    expect(screen.queryByRole('alert')).toBeNull();
+    await user.click(save);
+    expect(app.saveSettings).toHaveBeenCalledWith({ productiveEmail: 'Lamp.Lighter+work@example.com' });
+  });
+
+  it('WORK-2.7: a value the server refuses shows its words, and the saved email stays', async () => {
+    const user = userEvent.setup();
+    const app = openApp('/settings', snap(), { saveSettings: async () => Promise.reject(new SaveError(PRODUCTIVE_EMAIL_ERROR, 'productiveEmail', 400)) }, settings({ productiveEmail: 'keeper@example.com' }));
+    const field = screen.getByLabelText('Productive email');
+    await user.clear(field);
+    await user.type(field, 'other@example.com');
+    await user.click(within(field.closest('form')!).getByRole('button', { name: 'Save' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(PRODUCTIVE_EMAIL_ERROR);
+    expect(field).toHaveValue('other@example.com');
+    expect(app.saveSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it('WORK-2.7: saving an empty field clears the email, and Tasks goes back to “Set your Productive email”; git’s address shows again as a suggestion', async () => {
+    const user = userEvent.setup();
+    const app = openApp('/settings', withTasks(), {}, settings({ productiveEmail: 'keeper@example.com', productiveEmailSuggestion: 'lamplighter@example.com' }));
+    await user.click(screen.getByRole('button', { name: 'Work' }));
+    expect(within(tasksRegion()).getAllByRole('option')).toHaveLength(2);
+    const field = screen.getByLabelText('Productive email');
+    const form = field.closest('form')!;
+    await user.clear(field);
+    await user.click(within(form).getByRole('button', { name: 'Save' }));
+    expect(app.saveSettings).toHaveBeenCalledWith({ productiveEmail: null });
+    // "Cleared", never "Saved" beside git's address, which isn't saved: before the server's event and after it.
+    await waitFor(() => expect(within(form).getByRole('status')).toHaveTextContent('Cleared'));
+    expect(field).toHaveValue('lamplighter@example.com');
+    // The server says so: the settings without an email, and Tasks as no-email (both tested on the server).
+    app.emit({ type: 'settings', settings: settings({ productiveEmail: null, productiveEmailSuggestion: 'lamplighter@example.com' }) });
+    app.emit({ type: 'work', work: snap() });
+    expect(tasksRegion().querySelector('[data-field="no-email"]')).toHaveTextContent('Set your Productive email in Settings');
+    expect(within(tasksRegion()).queryByRole('option')).toBeNull();
+    expect(field).toHaveValue('lamplighter@example.com');
+    expect(screen.getByText('From your git config. Not saved yet: press Save to use it.')).toBeInTheDocument();
+    expect(within(form).getByRole('status')).toHaveTextContent('Cleared');
+    expect(within(form).queryByText('Saved')).toBeNull();
+  });
+
+  it('WORK-2.8 (support): after a different email is saved, Tasks shows “Loading” without the previous list, then the new email’s Tasks', async () => {
+    const user = userEvent.setup();
+    const app = openApp('/', withTasks());
+    await user.keyboard('w');
+    expect(within(tasksRegion()).getAllByRole('option')).toHaveLength(2);
+    // The server dropped the list for the new email (tested there): Loading, no rows, no count.
+    app.emit({ type: 'work', work: snap({}, {}, tasks({ state: 'loading', fetchedAt: null, tasks: [] })) });
+    expect(tasksRegion()).toHaveTextContent(/Loading…/);
+    expect(within(tasksRegion()).queryByRole('option')).toBeNull();
+    expect(tasksRegion().querySelector('[data-field="count"]')).toBeNull();
+    const NEW = task({ id: '41000301', title: 'Ring the fog bell' });
+    app.emit({ type: 'work', work: withTasks({ tasks: [NEW] }) });
+    expect(shownRows()[0]).toBe('41000301');
   });
 });
 
@@ -561,17 +1060,111 @@ describe('actions (WORK-5, WORK-6)', () => {
     expect(window.location.pathname).toBe('/s/alpha');
   });
 
-  it('WORK-6.1 (support): every PR row has an Open in browser button, its tooltip naming it and O; it opens the PR in a new tab', async () => {
+  it('WORK-6.1: every Task, PR and Review request row has an Open in browser button, its tooltip naming it and O; it opens the row in a new tab', async () => {
     const opened = spyOpen();
     const user = userEvent.setup();
-    openApp();
+    openApp('/', withTasks());
     await user.keyboard('w');
     const buttons = options().map((o) => o.querySelector<HTMLElement>('[data-action="open"]')!);
-    expect(buttons).toHaveLength(4);
-    for (const b of buttons) expect(b).toHaveAttribute('title', 'Open on GitHub (O)');
-    await user.click(buttons[3]!);
+    expect(buttons).toHaveLength(6);
+    expect(buttons.map((b) => b.getAttribute('title'))).toEqual([
+      'Open in Fantastic (O)',
+      'Open in Fantastic (O)',
+      'Open on GitHub (O)',
+      'Open on GitHub (O)',
+      'Open on GitHub (O)',
+      'Open on GitHub (O)',
+    ]);
+    await user.click(buttons[5]!);
     expect(opened).toEqual([[REVIEW.url, '_blank', 'noopener,noreferrer']]);
+    await user.click(buttons[1]!);
+    expect(opened.at(-1)).toEqual([BELLS.url, '_blank', 'noopener,noreferrer']);
+    expect(selectedRow()).toBe('41000102');
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('WORK-6.2 (support): a Task opens its Fantastic URL from the server, never the old app', async () => {
+    const opened = spyOpen();
+    const user = userEvent.setup();
+    openApp('/', withTasks());
+    await user.keyboard('w');
+    await user.click(taskButton('41000101', 'open')!);
+    expect(opened).toEqual([['https://app.fantastic.productive.io/109-productive/tasks/41000101', '_blank', 'noopener,noreferrer']]);
+    expect(opened[0]![0]).not.toMatch(/app\.productive\.io/);
+  });
+
+  it('WORK-6.4: O on a selected Task opens it in Fantastic, as its button does, moving nothing', async () => {
+    const user = userEvent.setup();
+    const opened = spyOpen();
+    openApp('/s/alpha', withTasks());
+    await user.keyboard('wj');
+    expect(selectedRow()).toBe('41000102');
+    await user.keyboard('o');
+    expect(opened).toEqual([[BELLS.url, '_blank', 'noopener,noreferrer']]);
+    expect(selectedRow()).toBe('41000102');
+    expect(window.location.pathname).toBe('/s/alpha');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    // R does nothing on a Task.
+    await user.keyboard('r');
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('WORK-5.1: Start Session on a Task opens the launcher with the Task’s URL as the prompt and nothing else, on the last start’s choices; Start sends that prompt', async () => {
+    const user = userEvent.setup();
+    const app = openApp('/', withTasks(), {}, settings({ lastLaunch: { harness: 'codex', model: 'gpt-6-astra', directory: '~/Projects/work' } }));
+    await user.keyboard('w');
+    expect(taskButton('41000101', 'start')).toHaveAttribute('title', 'Start Session (S)');
+    // A PR row has no Start Session.
+    expect(option('anvil#2101').querySelector('[data-action="start"]')).toBeNull();
+    await user.click(taskButton('41000102', 'start')!);
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByLabelText('Prompt')).toHaveValue(BELLS.url);
+    expect(screen.getByLabelText('Name')).toHaveValue('');
+    expect(await screen.findByRole('radio', { name: /Codex/ })).toBeChecked();
+    expect(selectedRow()).toBe('41000102');
+    expect(app.client.launch).not.toHaveBeenCalled();
+    // Editable before Start; Start sends what's there.
+    await user.type(screen.getByLabelText('Prompt'), ' then plan it');
+    await waitFor(() => expect(screen.getByRole('button', { name: /Start/ })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: /Start/ }));
+    expect(app.client.launch).toHaveBeenCalledWith(
+      { directory: '~/Projects/work', harness: 'codex', model: 'gpt-6-astra', name: '', prompt: `${BELLS.url} then plan it` },
+      expect.any(String),
+    );
+    // A start selects the new Session's row: focus isn't taken back to Work.
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await new Promise((r) => setTimeout(r, 10));
+    expect(taskList()).not.toHaveFocus();
+  });
+
+  it('WORK-5.1: S starts a Session on the selected Task as Start Session does, with Caps Lock too; on a PR, with Shift or a modifier, or as a held key’s repeat it does nothing', async () => {
+    const user = userEvent.setup();
+    const app = openApp('/s/alpha', withTasks());
+    await user.keyboard('w');
+    await waitFor(() => expect(taskList()).toHaveFocus());
+    await user.keyboard('jj');
+    expect(selectedRow()).toBe('anvil#2101');
+    await user.keyboard('s');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    await user.keyboard('k');
+    expect(selectedRow()).toBe('41000102');
+    expect(taskOption('41000102')).toHaveAccessibleDescription('S starts a Session on it, O opens it in Fantastic.');
+    await user.keyboard('{Shift>}s{/Shift}');
+    fireEvent.keyDown(taskList(), { key: 's', metaKey: true });
+    fireEvent.keyDown(taskList(), { key: 's', ctrlKey: true });
+    // A held key's repeats aren't presses.
+    fireEvent.keyDown(taskList(), { key: 's', repeat: true });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    // Caps Lock: the key is "S" without Shift.
+    fireEvent.keyDown(taskList(), { key: 'S' });
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByLabelText('Prompt')).toHaveValue(BELLS.url);
+    expect(selectedRow()).toBe('41000102');
+    expect(window.location.pathname).toBe('/s/alpha');
+    // Under the launcher, Work's keys stand down.
+    fireEvent.keyDown(taskList(), { key: 's' });
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
+    expect(app.client.launch).not.toHaveBeenCalled();
   });
 
   it('WORK-6.4: O opens the selected row as its button does, moving nothing; with Caps Lock too; once while held; not with Shift or a modifier, not in a text field, not under a modal', async () => {
@@ -599,6 +1192,60 @@ describe('actions (WORK-5, WORK-6)', () => {
     await screen.findByRole('dialog');
     fireEvent.keyDown(listbox(), { key: 'o' });
     expect(opened).toHaveLength(2);
+  });
+});
+
+describe('when tb-prod can’t be read (WORK-7)', () => {
+  const failedTasks = (over: Partial<TaskSection>) => snap({}, {}, tasks({ fetchedAt: null, tasks: [], ...over }));
+
+  it('WORK-7.1 (support): tb-prod not installed: the Tasks section says so and gives the command that builds it from cli-toolbox’s main; PRs works as usual', async () => {
+    openApp('/', failedTasks({ state: 'not-installed', reason: "tb-prod isn't installed.", fix: TB_PROD_INSTALL_COMMAND }));
+    await userEvent.setup().keyboard('w');
+    const alert = within(tasksRegion()).getByRole('alert');
+    expect(alert).toHaveTextContent("tb-prod isn't installed");
+    expect(alert).toHaveTextContent("Work reads your Tasks through tb-prod. Build it from cli-toolbox's main, then press Refresh:");
+    expect(within(alert).getByText(TB_PROD_INSTALL_COMMAND)).toBeInTheDocument();
+    expect(within(tasksRegion()).queryByText('No open tasks')).toBeNull();
+    expect(shownRows()).toEqual(['anvil#2101', 'willow#2102', 'kettle#2103', 'willow#2106']);
+  });
+
+  it('WORK-7.2 (support): tb-prod not signed in: the Tasks section says so once and shows tb-prod config init', async () => {
+    openApp('/', failedTasks({ state: 'signed-out', reason: "tb-prod isn't signed in to Productive. Run tb-prod config init, then press Refresh.", fix: TB_PROD_SIGN_IN_COMMAND }));
+    await userEvent.setup().keyboard('w');
+    const alert = within(tasksRegion()).getByRole('alert');
+    expect(alert).toHaveTextContent("tb-prod isn't signed in to Productive");
+    expect(alert.textContent!.match(/signed in/g)).toHaveLength(1);
+    expect(alert).toHaveTextContent('Run this, then press Refresh:');
+    expect(within(alert).getByText('tb-prod config init')).toBeInTheDocument();
+  });
+
+  it('WORK-7.3 (support): a failed Tasks read keeps the last list, marked old, with the plain reason; without a list, the reason alone', async () => {
+    const app = openApp('/', withTasks());
+    await userEvent.setup().keyboard('w');
+    expect(tasksRegion().querySelector('[data-field="old"]')).toBeNull();
+    const reason = "Productive denied access to your Tasks. Check what tb-prod's token's account can see, then press Refresh.";
+    app.emit({ type: 'work', work: withTasks({ state: 'error', reason, stale: true }) });
+    expect(tasksRegion().querySelector('[data-field="old"]')).toHaveTextContent('old');
+    const alert = within(tasksRegion()).getByRole('alert');
+    expect(alert).toHaveTextContent("Couldn't update Tasks");
+    expect(alert).toHaveTextContent(reason);
+    expect(alert).toHaveTextContent('Showing the last list, from 2m ago.');
+    expect(within(tasksRegion()).getAllByRole('option')).toHaveLength(2);
+    app.emit({ type: 'work', work: failedTasks({ state: 'error', reason }) });
+    expect(within(tasksRegion()).getByRole('alert')).toHaveTextContent("Couldn't read Tasks");
+    expect(tasksRegion().querySelector('[data-field="old"]')).toBeNull();
+    expect(within(tasksRegion()).queryByRole('option')).toBeNull();
+    expect(within(tasksRegion()).queryByText('No open tasks')).toBeNull();
+  });
+
+  it('WORK-7.8: a tb-prod older than 1.2.0 says so, with the command that builds it from cli-toolbox’s main', async () => {
+    const reason = "tb-prod is older than 1.2.0, which Work needs to read Tasks. Build it from cli-toolbox's main, then press Refresh.";
+    openApp('/', failedTasks({ state: 'error', reason, fix: TB_PROD_INSTALL_COMMAND }));
+    await userEvent.setup().keyboard('w');
+    const alert = within(tasksRegion()).getByRole('alert');
+    expect(alert).toHaveTextContent("Couldn't read Tasks");
+    expect(alert.querySelector('[data-field="reason"]')).toHaveTextContent(reason);
+    expect(within(alert).getByText(TB_PROD_INSTALL_COMMAND)).toBeInTheDocument();
   });
 });
 

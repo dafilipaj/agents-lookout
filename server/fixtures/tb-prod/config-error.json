@@ -1,0 +1,4 @@
+{
+  "code": "config_error",
+  "error": "No config found. Run `tb-prod config init --token <TOKEN>` or create secrets.toml with [productive] section"
+}

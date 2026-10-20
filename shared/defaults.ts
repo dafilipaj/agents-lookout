@@ -16,6 +16,13 @@ export const TB_SESSION_INSTALL_COMMAND =
 export const TB_PR_INSTALL_COMMAND =
   'gh api -H "Accept: application/vnd.github.raw" repos/productiveio/cli-toolbox/contents/scripts/install.sh | bash -s -- tb-pr';
 
-/** How cli-toolbox installs tb-prod (WORK-7.1); it lands in ~/.local/bin. */
+/**
+ * How to get a tb-prod that reads WORK's filter (WORK-7.1, WORK-7.8): built from cli-toolbox's `main`,
+ * since no release has `folder_status` and its install script no longer installs tb-prod. It lands in
+ * ~/.local/bin. The repo is private, so cargo fetches through the git CLI and its GitHub sign-in.
+ */
 export const TB_PROD_INSTALL_COMMAND =
-  'gh api -H "Accept: application/vnd.github.raw" repos/productiveio/cli-toolbox/contents/scripts/install.sh | bash -s -- tb-prod';
+  'CARGO_NET_GIT_FETCH_WITH_CLI=true cargo install --git https://github.com/productiveio/cli-toolbox --branch main --locked --root ~/.local tb-prod';
+
+/** WORK-7.2: what signs tb-prod in to Productive. */
+export const TB_PROD_SIGN_IN_COMMAND = 'tb-prod config init';

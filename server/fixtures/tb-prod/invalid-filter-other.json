@@ -1,0 +1,9 @@
+{
+  "code": "invalid_filter",
+  "details": {
+    "errors": [
+      "Invalid operator 'contains' for field 'workflow_status_category_id' (workflow_status_category). Valid: [\"eq\", \"not_eq\"]"
+    ]
+  },
+  "error": "Invalid operator 'contains' for field 'workflow_status_category_id' (workflow_status_category). Valid: [\"eq\", \"not_eq\"]"
+}

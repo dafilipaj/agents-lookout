@@ -192,7 +192,7 @@ export interface WorldSpec {
   /** The fake `tb-pr` on PATH and what it answers; absent unless declared. */
   tbPr: TbPrDecl | null;
   /** `lastLaunch`: what the launcher remembers as started last (WORK-5.2). */
-  settings: Partial<Pick<Settings, 'idleThresholdHours' | 'startDirectories' | 'lastLaunch'>>;
+  settings: Partial<Pick<Settings, 'idleThresholdHours' | 'startDirectories' | 'lastLaunch' | 'productiveEmail'>>;
 }
 
 /** A declaration this slice can't build yet: the World refuses it instead of ignoring it. */

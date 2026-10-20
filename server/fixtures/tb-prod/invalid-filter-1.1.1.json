@@ -1,0 +1,9 @@
+{
+  "code": "invalid_filter",
+  "details": {
+    "errors": [
+      "Unknown filter field 'folder_status' on tasks. Available: due_date, task_list_status, title, assignee_id, workflow_status_category_id, closed_at, board_status, created_at, tags, description, project_id, task_number, worked_time, start_date, last_activity, type_id, public_access, parent_task_id, creator_id, task_list_id, remaining_time, initial_estimate, workflow_status_id, task_type, subscriber_id"
+    ]
+  },
+  "error": "Unknown filter field 'folder_status' on tasks. Available: due_date, task_list_status, title, assignee_id, workflow_status_category_id, closed_at, board_status, created_at, tags, description, project_id, task_number, worked_time, start_date, last_activity, type_id, public_access, parent_task_id, creator_id, task_list_id, remaining_time, initial_estimate, workflow_status_id, task_type, subscriber_id"
+}

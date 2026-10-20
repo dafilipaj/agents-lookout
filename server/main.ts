@@ -8,7 +8,7 @@ import { endSession } from './closer.ts';
 import { run } from './exec.ts';
 import { checkSessionPaths } from './files.ts';
 import { fetchFleetList, resolveFleetBin } from './fleet.ts';
-import { GitCache, readGitLocation } from './git.ts';
+import { GitCache, readGitLocation, readGlobalGitEmail } from './git.ts';
 import { History, resolveTbSessionBin, resumePast } from './history.ts';
 import { Launcher } from './launcher.ts';
 import { SessionMonitor } from './monitor.ts';
@@ -32,6 +32,8 @@ const guard = { allowedHosts: new Set<string>(), allowedOrigins: new Set<string>
 
 const settings = new SettingsStore(defaultSettingsPath(env));
 await settings.load();
+// WORK-2.5: read once; sent with the settings as a suggestion, never stored.
+const productiveEmailSuggestion = await readGlobalGitEmail(run, env);
 
 const git = new GitCache({
   read: (cwd) => readGitLocation(run, cwd),
@@ -80,13 +82,19 @@ const usage = new UsageMonitor({
 const work = new WorkMonitor({
   runner: run,
   tbPrBin: () => resolveWorkBin('tb-pr', env),
+  tbProdBin: () => resolveWorkBin('tb-prod', env),
+  productiveEmail: settings.get().productiveEmail,
   onChange: (w) => app.broadcast({ type: 'work', work: w }),
 });
+// WORK-2.8: a saved Productive email drops the Tasks kept for the previous one, and reads its own.
+// Registered before the app's own listener, so tabs hear the list dropped before the new email.
+settings.onChange((s) => work.setProductiveEmail(s.productiveEmail));
 
 const app = createApp({
   guard,
   monitor,
   settings,
+  productiveEmailSuggestion,
   launcher,
   viewer,
   usage,

@@ -1,5 +1,5 @@
 import type { PathAnswer } from '@shared/files.ts';
-import { type Settings, defaultSettings } from '@shared/settings.ts';
+import { type Settings, type SettingsView, defaultSettings } from '@shared/settings.ts';
 import type { ChatPage, FleetHealth, HarnessOption, HistoryDetail, HistoryPage, LaunchRequest, LaunchView, ResumeResult, ServerEvent, SessionRow } from '@shared/types.ts';
 import { act, render } from '@testing-library/react';
 import { vi } from 'vitest';
@@ -8,7 +8,7 @@ import type { ClientListener, HistoryQuery, LookoutClient } from '@/lib/client';
 
 export const NOW = Date.UTC(2026, 9, 16, 12, 0, 0);
 
-export const settings = (over: Partial<Settings> = {}): Settings => ({ ...defaultSettings(), ...over });
+export const settings = (over: Partial<SettingsView> = {}): SettingsView => ({ ...defaultSettings(), productiveEmailSuggestion: null, ...over });
 
 export function row(over: Partial<SessionRow> & { id: string }): SessionRow {
   return {
@@ -71,13 +71,16 @@ interface RenderOptions {
   resume?: LookoutClient['resume'];
   refreshWork?: LookoutClient['refreshWork'];
   checkPaths?: LookoutClient['checkPaths'];
+  saveSettings?: LookoutClient['saveSettings'];
 }
 
 /** Renders the whole app against a fake server the test drives. */
 export function renderApp(path = '/', options: RenderOptions = {}) {
   window.history.replaceState(null, '', path);
   let listener: ClientListener | null = null;
-  const saveSettings = vi.fn(async (patch: Partial<Settings>): Promise<Settings> => settings(patch));
+  // The fake server's settings: the last ones the test sent, which a save patches and answers with, as the server does.
+  let served = settings();
+  const saveSettings = vi.fn(options.saveSettings ?? (async (patch: Partial<Settings>): Promise<SettingsView> => (served = { ...served, ...patch })));
   const client: LookoutClient = {
     subscribe(l) {
       listener = l;
@@ -119,9 +122,10 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
   const utils = render(<App client={client} />);
   const emit = (event: ServerEvent) =>
     act(() => {
+      if (event.type === 'snapshot' || event.type === 'settings') served = event.settings;
       listener!.onEvent(event);
     });
-  const snapshot = (sessions: SessionRow[], fleet: FleetHealth = { state: 'ok' }, current: Settings = settings()) =>
+  const snapshot = (sessions: SessionRow[], fleet: FleetHealth = { state: 'ok' }, current: SettingsView = settings()) =>
     emit({ type: 'snapshot', sessions, fleet, settings: current, launches: [], started: [], clientId: 'tab-1', usage: null });
   const connection = (connected: boolean) =>
     act(() => {

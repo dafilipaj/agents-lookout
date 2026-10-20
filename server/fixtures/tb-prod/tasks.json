@@ -1,0 +1,142 @@
+{
+  "data": [
+    {
+      "attributes": {
+        "closed_at": null,
+        "created_at": "2026-09-02T09:15:44.000+02:00",
+        "description": "<p>All twelve, east wing first.</p>",
+        "due_date": null,
+        "initial_estimate": 240,
+        "last_activity_at": "2026-10-19T14:12:03.000+02:00",
+        "number": "118",
+        "private": false,
+        "start_date": null,
+        "task_number": "118",
+        "title": "Polish the brass lanterns",
+        "type_id": 1,
+        "updated_at": "2026-10-19T14:12:03.000+02:00"
+      },
+      "id": "41000001",
+      "relationships": {
+        "assignee": { "meta": { "included": false } },
+        "project": { "data": { "id": "7001", "type": "projects" } },
+        "task_list": { "meta": { "included": false } },
+        "workflow_status": { "data": { "id": "8001", "type": "workflow_statuses" } }
+      },
+      "type": "tasks"
+    },
+    {
+      "attributes": {
+        "closed_at": null,
+        "created_at": "2026-10-01T11:00:00.000+02:00",
+        "description": null,
+        "due_date": "2026-10-24",
+        "initial_estimate": null,
+        "last_activity_at": "2026-10-18T09:30:00.000+02:00",
+        "number": "42",
+        "private": false,
+        "start_date": "2026-10-20",
+        "task_number": "42",
+        "title": "Ring the harbor bells at noon",
+        "type_id": 1,
+        "updated_at": "2026-10-18T09:30:00.000+02:00"
+      },
+      "id": "41000002",
+      "relationships": {
+        "assignee": { "meta": { "included": false } },
+        "project": { "data": { "id": "7002", "type": "projects" } },
+        "task_list": { "meta": { "included": false } },
+        "workflow_status": { "data": { "id": "8002", "type": "workflow_statuses" } }
+      },
+      "type": "tasks"
+    },
+    {
+      "attributes": {
+        "closed_at": null,
+        "created_at": "2026-08-20T08:00:00.000+02:00",
+        "description": null,
+        "due_date": "2026-11-01",
+        "initial_estimate": null,
+        "last_activity_at": "2026-10-10T16:45:10.000+02:00",
+        "number": "100",
+        "private": false,
+        "start_date": null,
+        "task_number": "100",
+        "title": "Q4 lantern launch",
+        "type_id": 3,
+        "updated_at": "2026-10-10T16:45:10.000+02:00"
+      },
+      "id": "41000003",
+      "relationships": {
+        "assignee": { "meta": { "included": false } },
+        "project": { "data": { "id": "7001", "type": "projects" } },
+        "task_list": { "meta": { "included": false } },
+        "workflow_status": { "data": { "id": "8003", "type": "workflow_statuses" } }
+      },
+      "type": "tasks"
+    },
+    {
+      "attributes": {
+        "closed_at": null,
+        "created_at": "2026-07-14T10:20:00.000+02:00",
+        "description": null,
+        "due_date": null,
+        "initial_estimate": null,
+        "last_activity_at": "2026-09-30T12:00:00.000+02:00",
+        "number": "7",
+        "private": false,
+        "start_date": null,
+        "task_number": "7",
+        "title": "Sweep the lighthouse stairs",
+        "type_id": 1,
+        "updated_at": "2026-09-30T12:00:00.000+02:00"
+      },
+      "id": "41000004",
+      "relationships": {
+        "assignee": { "meta": { "included": false } },
+        "project": { "data": { "id": "7002", "type": "projects" } },
+        "task_list": { "meta": { "included": false } },
+        "workflow_status": { "data": { "id": "8003", "type": "workflow_statuses" } }
+      },
+      "type": "tasks"
+    }
+  ],
+  "included": [
+    {
+      "attributes": { "archived_at": null, "name": "Lantern Works", "project_number": "LW-3", "project_type_id": 2 },
+      "id": "7001",
+      "relationships": { "company": { "meta": { "included": false } } },
+      "type": "projects"
+    },
+    {
+      "attributes": { "category_id": 2, "color_id": 4, "name": "In progress", "position": 2 },
+      "id": "8001",
+      "relationships": { "workflow": { "meta": { "included": false } } },
+      "type": "workflow_statuses"
+    },
+    {
+      "attributes": { "archived_at": null, "name": "Harbor Bells", "project_number": "HB-1", "project_type_id": 2 },
+      "id": "7002",
+      "relationships": { "company": { "meta": { "included": false } } },
+      "type": "projects"
+    },
+    {
+      "attributes": { "category_id": 2, "color_id": 6, "name": "Review", "position": 3 },
+      "id": "8002",
+      "relationships": { "workflow": { "meta": { "included": false } } },
+      "type": "workflow_statuses"
+    },
+    {
+      "attributes": { "category_id": 1, "color_id": 1, "name": "Not started", "position": 1 },
+      "id": "8003",
+      "relationships": { "workflow": { "meta": { "included": false } } },
+      "type": "workflow_statuses"
+    }
+  ],
+  "meta": {
+    "currentPage": 1,
+    "hasNextPage": false,
+    "totalCount": 4,
+    "totalPages": 1
+  }
+}

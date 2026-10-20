@@ -1,4 +1,4 @@
-import { CHIP_OF, type ColumnMark, type PrSection, type WorkPr, type WorkSnapshot } from '@shared/work.ts';
+import { CHIP_OF, type ColumnMark, type PrSection, type TaskSection, type WorkPr, type WorkSnapshot, type WorkTask } from '@shared/work.ts';
 import type { WorkFilter } from './right-sidebar.ts';
 import { CONTEXT_LEVEL_CLASS } from './sessions.ts';
 import { formatAge } from './time.ts';
@@ -8,17 +8,17 @@ export type PrGroup = 'mine' | 'reviewRequests';
 export const PR_GROUPS: readonly PrGroup[] = ['mine', 'reviewRequests'];
 export const PR_GROUP_LABEL: Record<PrGroup, string> = { mine: 'Mine', reviewRequests: 'Review requests' };
 
-/** One row of Work: a PR (Tasks come with slice C). */
-export interface WorkRow {
-  /** Stable across reads, for the keyboard selection (WORK-1.9). */
-  key: string;
-  kind: 'pr';
-  group: PrGroup;
-  pr: WorkPr;
-}
+/** One row of Work: a Task (WORK-2) or a PR (WORK-3). `key` is stable across reads, for the keyboard selection (WORK-1.9). */
+export type WorkRow = { key: string; kind: 'task'; task: WorkTask } | { key: string; kind: 'pr'; group: PrGroup; pr: WorkPr };
 
+export const taskKey = (task: WorkTask) => `task:${task.id}`;
 export const prKey = (pr: WorkPr) => `pr:${pr.url}`;
 
+/** WORK-6: where a row opens in the browser: a Task in Fantastic (WORK-6.2), a PR on GitHub (WORK-6.3). */
+export const rowUrl = (row: WorkRow) => (row.kind === 'task' ? row.task.url : row.pr.url);
+
+/** WORK-1.5: whether the filter shows the Tasks section. */
+export const showsTasks = (filter: WorkFilter) => filter === 'all' || filter === 'tasks';
 /** WORK-1.5: whether the filter shows the PRs section. */
 export const showsPrs = (filter: WorkFilter) => filter === 'all' || filter === 'prs';
 
@@ -27,10 +27,18 @@ export function hasPrLists(prs: PrSection): boolean {
   return prs.state === 'ok' || prs.stale;
 }
 
-/** The rows of the visible sections, top to bottom: what ↑/↓ and j/k move through (WORK-1.7). */
+/** As `hasPrLists`, for Tasks: only ever a list read for the saved email (WORK-2.8). */
+export function hasTaskList(tasks: TaskSection): boolean {
+  return tasks.state === 'ok' || tasks.stale;
+}
+
+/** The rows of the visible sections, top to bottom, Tasks then PRs: what ↑/↓ and j/k move through (WORK-1.7). */
 export function visibleRows(work: WorkSnapshot | null, filter: WorkFilter): WorkRow[] {
-  if (!work || !showsPrs(filter) || !hasPrLists(work.prs)) return [];
-  return PR_GROUPS.flatMap((group) => work.prs[group].map((pr): WorkRow => ({ key: prKey(pr), kind: 'pr', group, pr })));
+  if (!work) return [];
+  const tasks = showsTasks(filter) && hasTaskList(work.tasks) ? work.tasks.tasks.map((task): WorkRow => ({ key: taskKey(task), kind: 'task', task })) : [];
+  const prs =
+    showsPrs(filter) && hasPrLists(work.prs) ? PR_GROUPS.flatMap((group) => work.prs[group].map((pr): WorkRow => ({ key: prKey(pr), kind: 'pr', group, pr }))) : [];
+  return [...tasks, ...prs];
 }
 
 /**
@@ -68,6 +76,26 @@ export const AGE_LEVEL_CLASS: Record<AgeLevel, string> = {
 
 /** WORK-5.2: the launcher's prompt for a Review request. */
 export const reviewPrompt = (url: string) => `/p-codex:dual-review ${url}`;
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * WORK-2.2: a Task's due date, `YYYY-MM-DD` as tb-prod gives it, a day without a time zone: "due Oct
+ * 24", with the year when it isn't this year's ("due Jan 5, 2027"), and the full date for its hover.
+ * Null for a date it can't read.
+ */
+export function formatDue(dueDate: string, now: number): { text: string; title: string } | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dueDate);
+  if (!m) return null;
+  const [year, month, day] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const date = new Date(year, month - 1, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
+  const sameYear = year === new Date(now).getFullYear();
+  return {
+    text: `due ${MONTHS[month - 1]} ${day}${sameYear ? '' : `, ${year}`}`,
+    title: `Due ${date.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`,
+  };
+}
 
 /**
  * WORK-7.5: one entry of a group's "possibly out of date" mark, with the UI's ages (`formatAge`).

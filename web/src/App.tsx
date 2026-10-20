@@ -1,6 +1,6 @@
 import type { LaunchHarness } from '@shared/settings.ts';
 import type { AnswerRequest, ChatPage, EndTarget, EscStatus, HistoryItem, LaunchRequest, LaunchView, ResumeResult, SessionRow, Status } from '@shared/types.ts';
-import type { WorkPr } from '@shared/work.ts';
+import type { WorkPr, WorkTask } from '@shared/work.ts';
 import { hasReset } from '@shared/usage.ts';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { HistoryPanel } from '@/components/HistoryPanel';
@@ -139,10 +139,21 @@ export function App({ client }: { client: LookoutClient }) {
   );
   // LAUNCH-4.2: the server's launches, then this tab's own it doesn't list yet.
   const launches = useMemo(() => shownLaunches(state), [state]);
-  const save = useCallback((patch: Parameters<LookoutClient['saveSettings']>[0]) => client.saveSettings(patch), [client]);
+  // The save's answer shows at once, before the server's `settings` event (WORK-2.5, UX Settings).
+  const savedSince = state.settings;
+  const save = useCallback(
+    async (patch: Parameters<LookoutClient['saveSettings']>[0]) => {
+      const settings = await client.saveSettings(patch);
+      dispatch({ type: 'settings-saved', since: savedSince, settings });
+      return settings;
+    },
+    [client, dispatch, savedSince],
+  );
 
   // LAUNCH: the launcher. Its draft outlives closing it (LAUNCH-1.3); null = start fresh.
   const [launcherOpen, setLauncherOpen] = useState(false);
+  // Opened from Work (Review, Start Session): closing it without a start gives focus back to Work.
+  const launchedFromWork = useRef(false);
   // Background shortcuts stand down while any modal (the launcher, End Session) is open.
   const modalOpen = useAnyModalOpen();
   const [draft, setDraft] = useState<LaunchDraft | null>(null);
@@ -224,6 +235,7 @@ export function App({ client }: { client: LookoutClient }) {
       // A server that picked its own id: follow it while the row is still selected.
       if (launch.id !== id && pending.here()) navigate({ name: 'launch', id: launch.id }, { replace: true });
       setDraft(null);
+      launchedFromWork.current = false; // the new Session's row is selected now
       setLauncherOpen(false);
     },
     [client, requestLaunch, navigate],
@@ -293,6 +305,15 @@ export function App({ client }: { client: LookoutClient }) {
   // WORK-1.7: the tab strip's ↑/↓ and j/k, handed to the open panel.
   const historyNav = useRef<PanelNav>(null);
   const workNav = useRef<PanelNav>(null);
+  // A launcher opened from Work gives focus back to Work when it closes without a start, to the list
+  // holding the selected row, rather than to the page, where j/k would move the Session sidebar
+  // (WORK UX, Focus).
+  const launcherClosed = useCallback((e: Event) => {
+    if (!launchedFromWork.current) return;
+    launchedFromWork.current = false;
+    e.preventDefault();
+    setRightFocus((f) => ({ ...f, work: f.work + 1 }));
+  }, []);
   // WORK-5.2: Review opens the launcher with its prompt and nothing else; you press Start. Always
   // Claude Code, whatever was started last: the prompt is a Claude Code plugin command. Its model is
   // the last one only when the last start was Claude Code's.
@@ -300,6 +321,17 @@ export function App({ client }: { client: LookoutClient }) {
     (pr: WorkPr) => {
       const last = initialDraft(state.settings);
       setDraft({ ...last, harness: 'claude', model: last.harness === 'claude' ? last.model : '', prompt: reviewPrompt(pr.url) });
+      launchedFromWork.current = true;
+      openLauncher();
+    },
+    [state.settings, openLauncher],
+  );
+  // WORK-5.1: Start Session on a Task opens the launcher with the Task's URL as its prompt and nothing
+  // else, on the last start's Harness, model and directory; you press Start.
+  const startOnTask = useCallback(
+    (task: WorkTask) => {
+      setDraft({ ...initialDraft(state.settings), prompt: task.url });
+      launchedFromWork.current = true;
       openLauncher();
     },
     [state.settings, openLauncher],
@@ -623,7 +655,9 @@ export function App({ client }: { client: LookoutClient }) {
                 onFilter={(workFilter) => updateLayout({ workFilter })}
                 now={now}
                 focusKey={rightFocus.work}
+                onStart={startOnTask}
                 onReview={review}
+                onOpenSettings={() => navigate({ name: 'settings' })}
                 keyboardEnabled={!modalOpen}
                 navRef={workNav}
               />
@@ -644,6 +678,7 @@ export function App({ client }: { client: LookoutClient }) {
         usage={state.usage}
         now={now}
         onStart={start}
+        onCloseAutoFocus={launcherClosed}
       />
     </div>
   );

@@ -1,0 +1,8 @@
+{
+  "code": "api_error",
+  "details": {
+    "body": "{\"errors\":[{\"status\":\"401\",\"title\":\"Unauthorized\",\"detail\":\"Invalid or expired token\"}]}",
+    "status": 401
+  },
+  "error": "API error (401)"
+}

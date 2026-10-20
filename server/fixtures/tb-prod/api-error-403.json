@@ -1,0 +1,8 @@
+{
+  "code": "api_error",
+  "details": {
+    "body": "{\"errors\":[{\"status\":\"403\",\"title\":\"Forbidden\",\"detail\":\"You don't have permission to access this resource\"}]}",
+    "status": 403
+  },
+  "error": "API error (403)"
+}

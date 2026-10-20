@@ -8,15 +8,19 @@ import type { ServerEvent } from '../shared/types.ts';
 import { type LookoutApp, createApp } from './app.ts';
 import type { RunError } from './exec.ts';
 import { SettingsStore } from './settings.ts';
-import { PR_REASON, WORK_COOLDOWN_MS, WorkMonitor } from './work.ts';
+import { PR_REASON, TASK_REASON, WORK_COOLDOWN_MS, WorkMonitor } from './work.ts';
 
 /** WORK's API: the `work` event, `PUT /api/work/watch` and `POST /api/work/refresh`, over a real WorkMonitor and a scripted tb-pr. */
 
 const LIST = readFileSync(new URL('./fixtures/tb-pr/list.json', import.meta.url), 'utf8');
+const TASKS = readFileSync(new URL('./fixtures/tb-prod/tasks.json', import.meta.url), 'utf8');
+/** What `git config --global user.email` said at startup (WORK-2.5). */
+const SUGGESTION = 'lamplighter@example.com';
 const TOKEN = 'test-token';
 const FAKE_TOKENS = ['ghp_FAKEfake0123456789', 'tok3n-s3cret-v4lue'];
 
 let dir: string;
+let settings: SettingsStore;
 let app: LookoutApp;
 let work: WorkMonitor;
 let port: number;
@@ -32,8 +36,8 @@ beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'lookout-work-'));
   calls = [];
   now = Date.parse('2026-10-19T10:00:00Z');
-  answers = { list: LIST, refresh: 'refreshed 7 PR(s)\n' };
-  const settings = new SettingsStore(join(dir, 'settings.json'));
+  answers = { list: LIST, refresh: 'refreshed 7 PR(s)\n', query: TASKS };
+  settings = new SettingsStore(join(dir, 'settings.json'));
   await settings.load();
   work = new WorkMonitor({
     runner: async (_file, args) => {
@@ -43,9 +47,12 @@ beforeEach(async () => {
       throw a;
     },
     tbPrBin: () => '/bin/tb-pr',
+    tbProdBin: () => '/bin/tb-prod',
     now: () => now,
     onChange: (w) => app.broadcast({ type: 'work', work: w }),
   });
+  // As server/main.ts wires it (WORK-2.8).
+  settings.onChange((s) => work.setProductiveEmail(s.productiveEmail));
   const unused = async () => {
     throw new Error('unused');
   };
@@ -53,6 +60,7 @@ beforeEach(async () => {
     guard: { allowedHosts: hosts, allowedOrigins: origins, token: TOKEN },
     monitor: { snapshot: () => ({ sessions: [], fleet: { state: 'ok' } }), watch: () => () => {} },
     settings,
+    productiveEmailSuggestion: SUGGESTION,
     launcher: { list: () => [], recentStarts: () => [], harnesses: async () => [], start: unused, dismiss: () => false },
     usage: { snapshot: () => null, watch: () => () => {}, refreshJev: async () => {}, refresh: async () => {} },
     work,
@@ -253,6 +261,113 @@ describe('WORK over the API', () => {
     expect(printed).toHaveLength(1);
     expect(printed[0]).toMatch(/^lookout: tb-pr: GitHub API error \(502\): [^\n]*$/);
     for (const spy of logged) spy.mockRestore();
+    await tab.close();
+  });
+});
+
+describe('Tasks and the Productive email over the API (WORK-2)', () => {
+  const tasksCalls = () => calls.filter((c) => c.startsWith('query tasks '));
+  const emailIn = (c: string) => /"assignee\.email","operator":"eq","value":"([^"]*)"/.exec(c)?.[1];
+
+  it('WORK-2.5: the settings carry the git suggestion, in GET, PUT’s answer, the snapshot and the `settings` event; it is never stored, and a client can’t write it', async () => {
+    expect((await call('GET', '/api/settings')).body).toMatchObject({ productiveEmail: null, productiveEmailSuggestion: SUGGESTION });
+    const tab = await stream();
+    const snap = tab.events[0]!;
+    expect(snap.type === 'snapshot' && snap.settings.productiveEmailSuggestion).toBe(SUGGESTION);
+    const saved = await call('PUT', '/api/settings', { idleThresholdHours: 2 });
+    expect(saved.body).toMatchObject({ idleThresholdHours: 2, productiveEmail: null, productiveEmailSuggestion: SUGGESTION });
+    await vi.waitFor(() => expect(tab.events.some((e) => e.type === 'settings')).toBe(true));
+    const event = tab.events.find((e) => e.type === 'settings');
+    expect(event?.type === 'settings' && event.settings.productiveEmailSuggestion).toBe(SUGGESTION);
+    // Saved only when you save it: the file never has it.
+    const stored = JSON.parse(readFileSync(join(dir, 'settings.json'), 'utf8')) as Record<string, unknown>;
+    expect(stored).not.toHaveProperty('productiveEmailSuggestion');
+    expect(stored).not.toHaveProperty('productiveEmail');
+    expect(await call('PUT', '/api/settings', { productiveEmailSuggestion: 'x@example.com' })).toMatchObject({ status: 400 });
+    await tab.close();
+  });
+
+  it('WORK-2.7: an invalid Productive email is refused with "Enter an email such as name@example.com", and the saved value stays; empty clears it', async () => {
+    expect((await call('PUT', '/api/settings', { productiveEmail: '  lamplighter@example.com ' })).body.productiveEmail).toBe('lamplighter@example.com');
+    for (const bad of ['lamp lighter@example.com', 'lamplighter', 'a@b@c', 'x,colleague@example.com']) {
+      expect(await call('PUT', '/api/settings', { productiveEmail: bad })).toEqual({ status: 400, body: { error: 'Enter an email such as name@example.com', field: 'productiveEmail' } });
+    }
+    expect(settings.get().productiveEmail).toBe('lamplighter@example.com');
+    expect((await call('PUT', '/api/settings', { productiveEmail: '' })).body.productiveEmail).toBeNull();
+    expect(work.snapshot().tasks.state).toBe('no-email');
+  });
+
+  it('WORK-2.6: without a saved email, the snapshot says `no-email` and no tb-prod runs; PRs are read as usual', async () => {
+    const tab = await stream();
+    const snap = tab.events[0]!;
+    expect(snap.type === 'snapshot' && snap.work?.tasks.state).toBe('no-email');
+    await call('PUT', '/api/work/watch', { clientId: tab.clientId, open: true });
+    await vi.waitFor(() => expect(work.snapshot().prs.state).toBe('ok'));
+    expect(await call('POST', '/api/work/refresh')).toEqual({ status: 200, body: { ok: true } });
+    expect(tasksCalls()).toEqual([]);
+    expect(calls).toEqual(['list --json', 'refresh', 'list --json']);
+    await tab.close();
+  });
+
+  it('WORK-2.8: saving an email while a tab has Work open reads its Tasks at once, and the `work` event carries them; with Work closed, the read waits until Work opens', async () => {
+    await call('PUT', '/api/settings', { productiveEmail: 'keeper@example.com' });
+    expect(tasksCalls()).toEqual([]);
+    const tab = await stream();
+    await call('PUT', '/api/work/watch', { clientId: tab.clientId, open: true });
+    await vi.waitFor(() => expect(work.snapshot().tasks.state).toBe('ok'));
+    expect(tasksCalls().map(emailIn)).toEqual(['keeper@example.com']);
+
+    // Once the first read's events are in, every event after this one follows the save.
+    await vi.waitFor(() => expect(tab.events.findLast((e) => e.type === 'work')).toMatchObject({ work: { tasks: { state: 'ok' }, prs: { state: 'ok' } } }));
+    const before = tab.events.length;
+    await call('PUT', '/api/settings', { productiveEmail: 'lamplighter@example.com' });
+    await vi.waitFor(() => expect(tasksCalls()).toHaveLength(2));
+    expect(emailIn(tasksCalls()[1]!)).toBe('lamplighter@example.com');
+    // What the tab heard: the list dropped ("Loading", no Tasks) before the new email itself, so it never
+    // shows the new address over the old list; then the new email's Tasks.
+    const after = () => tab.events.slice(before).map((e) => (e.type === 'work' ? `work:${e.work.tasks.state}` : e.type));
+    await vi.waitFor(() => expect(after()).toEqual(['work:loading', 'settings', 'work:ok']));
+    const works = tab.events.slice(before).flatMap((e) => (e.type === 'work' ? [e.work.tasks] : []));
+    expect(works[0]!.tasks).toEqual([]);
+    expect(works[1]!.tasks.map((t) => t.url)[0]).toBe('https://app.fantastic.productive.io/109-productive/tasks/41000001');
+    await tab.close();
+  });
+
+  it('WORK-8.2: Refresh reads Tasks too, and answers with the plain reason of a Tasks read that failed', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await call('PUT', '/api/settings', { productiveEmail: 'lamplighter@example.com' });
+    const tab = await stream();
+    await call('PUT', '/api/work/watch', { clientId: tab.clientId, open: true });
+    await vi.waitFor(() => expect(work.snapshot().tasks.state).toBe('ok'));
+    const denied = JSON.stringify({ code: 'api_error', details: { body: 'nope', status: 403 }, error: 'API error (403)' });
+    answers.query = Object.assign(new Error('tb-prod exited with 1'), { code: 1, stderr: '', stdout: denied });
+    expect(await call('POST', '/api/work/refresh')).toEqual({ status: 200, body: { ok: false, error: TASK_REASON.denied } });
+    expect(tasksCalls()).toHaveLength(2);
+    expect(warn.mock.calls).toEqual([['lookout: tb-prod: api_error: API error (403)']]);
+    warn.mockRestore();
+    await tab.close();
+  });
+
+  it('WORK-8.4: with an email saved and GitHub rate limited, Refresh answers 429 and runs no tb-prod either', async () => {
+    await call('PUT', '/api/settings', { productiveEmail: 'lamplighter@example.com' });
+    answers.list = Object.assign(new Error('tb-pr exited with 1'), {
+      code: 1,
+      stdout: '',
+      stderr: readFileSync(new URL('./fixtures/tb-pr/stderr-rate-limited-reset.txt', import.meta.url), 'utf8'), // resets at 10:42:17 UTC
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const tab = await stream();
+    await call('PUT', '/api/work/watch', { clientId: tab.clientId, open: true });
+    await vi.waitFor(() => expect(work.snapshot()).toMatchObject({ prs: { reason: PR_REASON.rateLimited }, tasks: { state: 'ok' } }));
+    const until = Date.parse('2026-10-19T10:42:17Z');
+    expect(work.snapshot().refresh.githubBlockedUntil).toBe(until);
+    const before = [...calls];
+    expect(await call('POST', '/api/work/refresh')).toEqual({ status: 429, body: { ok: false, error: 'GitHub is rate limited', until } });
+    // Refused for both sources: neither tool ran, and no cooldown started.
+    expect(calls).toEqual(before);
+    expect(tasksCalls()).toHaveLength(1);
+    expect(work.snapshot().refresh.cooldownUntil).toBeNull();
+    warn.mockRestore();
     await tab.close();
   });
 });

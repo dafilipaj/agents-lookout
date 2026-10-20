@@ -1,10 +1,10 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { run } from './exec.ts';
-import { GitCache, readGitLocation, repoName } from './git.ts';
+import { GitCache, readGitLocation, readGlobalGitEmail, repoName } from './git.ts';
 
 let root: string;
 const git = (cwd: string, ...args: string[]) =>
@@ -64,6 +64,31 @@ describe('reading where a Session works', () => {
     expect(repoName('/x/work/.git', '/x/work-wt')).toBe('work');
     expect(repoName('/x/work.git', '/x/wt')).toBe('work');
     expect(repoName('/x/super/.git/modules/sub', '/x/super/sub')).toBe('sub');
+  });
+});
+
+describe('the Productive email suggestion (WORK-2.5)', () => {
+  /** A HOME of its own, so git reads only the `~/.gitconfig` written here, never the real one. */
+  const homeWith = (gitconfig: string | null) => {
+    const home = join(root, `home-${Math.random().toString(36).slice(2)}`);
+    mkdirSync(home);
+    if (gitconfig !== null) writeFileSync(join(home, '.gitconfig'), gitconfig);
+    return { PATH: process.env.PATH, HOME: home };
+  };
+
+  it('WORK-2.5: is `git config --global user.email`, as git reads it from ~/.gitconfig', async () => {
+    expect(await readGlobalGitEmail(run, homeWith('[user]\n\tname = Lamp Lighter\n\temail = "lamplighter@example.com"\n'))).toBe('lamplighter@example.com');
+  });
+
+  it('WORK-2.5: is null when git has none, or one that couldn’t be saved as is (WORK-2.7)', async () => {
+    expect(await readGlobalGitEmail(run, homeWith(null))).toBeNull();
+    expect(await readGlobalGitEmail(run, homeWith('[user]\n\tname = Lamp Lighter\n'))).toBeNull();
+    expect(await readGlobalGitEmail(run, homeWith('[user]\n\temail = "Lamp Lighter"\n'))).toBeNull();
+    expect(await readGlobalGitEmail(run, homeWith('[user]\n\temail = "x,colleague@example.com"\n'))).toBeNull();
+    const failing = vi.fn(async () => {
+      throw Object.assign(new Error('spawn git ENOENT'), { code: 'ENOENT' });
+    });
+    expect(await readGlobalGitEmail(failing)).toBeNull();
   });
 });
 

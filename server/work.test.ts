@@ -1,13 +1,18 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { TB_PR_INSTALL_COMMAND } from '../shared/defaults.ts';
+import { TB_PROD_INSTALL_COMMAND, TB_PR_INSTALL_COMMAND } from '../shared/defaults.ts';
+import { parseProductiveEmail } from '../shared/settings.ts';
 import type { WorkSnapshot } from '../shared/work.ts';
 import type { RunError, RunOptions } from './exec.ts';
 import { sanitizeLine } from './sanitize.ts';
 import {
+  MAX_TASK_PAGES,
   PR_REASON,
   RATE_LIMIT_MIN_MS,
   ReadLane,
+  TASK_REASON,
+  TB_PROD_TIMEOUT_MS,
+  TbProdShapeError,
   TbPrShapeError,
   WORK_COOLDOWN_MS,
   WORK_INTERVAL_MS,
@@ -15,15 +20,19 @@ import {
   WorkMonitor,
   acceptPrUrl,
   byUrgency,
+  classifyTbProdFailure,
   classifyTbPrFailure,
   every401,
   isAllowedWorkCommand,
   marksFor,
+  mergePages,
+  parseTasksPage,
   parseTbPrList,
   plainIssue,
   rateLimitedUntil,
   resolveWorkBin,
   runWorkCommand,
+  tasksQueryArgv,
 } from './work.ts';
 
 /**
@@ -437,7 +446,7 @@ describe('WorkMonitor reads (WORK-8, PRs)', () => {
     events = [];
     logged = [];
     tb = scriptedTbPr();
-    monitor = new WorkMonitor({ runner: tb.runner, tbPrBin: () => '/bin/tb-pr', onChange: (w) => events.push(w), log: (l) => logged.push(l) });
+    monitor = new WorkMonitor({ runner: tb.runner, tbPrBin: () => '/bin/tb-pr', tbProdBin: () => '/bin/tb-prod', onChange: (w) => events.push(w), log: (l) => logged.push(l) });
   });
   afterEach(async () => {
     for (const c of tb.calls) c.answer(failedRun('test over'));
@@ -687,7 +696,7 @@ describe('WorkMonitor reads (WORK-8, PRs)', () => {
     expect(monitor.snapshot().prs).toEqual({ ...good, state: 'error', reason: PR_REASON.unreadable, stale: true });
     expect(logged).toEqual(['a PR in draft_mine (#2101) has no GitHub URL']);
     // With no earlier list: the reason, and no lists at all.
-    const fresh = new WorkMonitor({ runner: tb.runner, tbPrBin: () => '/bin/tb-pr', onChange: () => {}, log: () => {} });
+    const fresh = new WorkMonitor({ runner: tb.runner, tbPrBin: () => '/bin/tb-pr', tbProdBin: () => '/bin/tb-prod', onChange: () => {}, log: () => {} });
     fresh.watch();
     await settle();
     await answerLast(withBoard((b) => delete b.columns.waiting_on_me[0].number));
@@ -780,5 +789,757 @@ describe('WorkMonitor reads (WORK-8, PRs)', () => {
     await closing;
     await vi.advanceTimersByTimeAsync(WORK_INTERVAL_MS * 2);
     expect(tb.calls).toHaveLength(1);
+  });
+});
+
+// --- Tasks (slice C) -----------------------------------------------------------------------------
+
+/**
+ * Fixtures in `fixtures/tb-prod/` are tb-prod's output, written from its source: a page as 1.2.0's
+ * `query` prints Productive's JSON:API (`commands/resource/query.rs`), JSON errors as `json_error.rs`
+ * prints them, the config error as `run_main!` does, and 1.1.1's answer to WORK's filter
+ * (`invalid-filter-1.1.1.json`, its schema's keys in HashMap order). Invented projects, Tasks and people.
+ */
+const prodFixture = (name: string) => readFileSync(new URL(`./fixtures/tb-prod/${name}`, import.meta.url), 'utf8');
+const TASKS = prodFixture('tasks.json');
+const ME = 'lamplighter@example.com';
+const OTHER = 'keeper@example.com';
+/** A failed tb-prod run: its JSON error on stdout, or its words on stderr. */
+const prodFailed = (out: { stdout?: string; stderr?: string }, code = 1): RunError =>
+  Object.assign(new Error(`tb-prod exited with ${code}`), { code, stdout: out.stdout ?? '', stderr: out.stderr ?? '', timedOut: false });
+const titles = (tasks: { title: string }[]) => tasks.map((t) => t.title);
+
+/** `n` open Tasks as a JSON:API page holds them, most recently active first. */
+function taskRows(n: number, from = 0) {
+  return Array.from({ length: n }, (_, i) => ({
+    id: String(50_000 + from + i),
+    type: 'tasks',
+    attributes: { title: `Task ${from + i}`, due_date: null, type_id: 1, last_activity_at: new Date(Date.UTC(2026, 9, 19) - (from + i) * 60_000).toISOString() },
+    relationships: {},
+  }));
+}
+/** Page `page` of `rows`, as tb-prod prints it: 20 per page, with `meta.hasNextPage`. */
+function pageOf(rows: unknown[], page: number): string {
+  const totalPages = Math.max(1, Math.ceil(rows.length / 20));
+  return JSON.stringify({ data: rows.slice((page - 1) * 20, page * 20), included: [], meta: { totalCount: rows.length, totalPages, currentPage: page, hasNextPage: page < totalPages } });
+}
+
+describe('reading `tb-prod query tasks` (WORK-2)', () => {
+  it('WORK-2.1: the query is WORK’s filter for the email (open Tasks in active projects, task lists and folders), most recently active first, one page per call', () => {
+    const argv = tasksQueryArgv(ME, 2);
+    expect(argv).toEqual(['query', 'tasks', '--filter', expect.any(String), '--include', 'project,workflow_status', '--sort=-last_activity_at', '--page', '2']);
+    expect(JSON.parse(argv[3]!)).toEqual({
+      op: 'and',
+      conditions: [
+        { field: 'assignee.email', operator: 'eq', value: ME },
+        { field: 'project.status', operator: 'eq', value: '1' },
+        { field: 'task_list_status', operator: 'eq', value: '1' },
+        { field: 'folder_status', operator: 'eq', value: '1' },
+        { field: 'workflow_status_category_id', operator: 'not_eq', value: '3' },
+      ],
+    });
+    // Any status but closed, milestones included: nothing filters by type.
+    expect(argv[3]).not.toContain('type_id');
+    // An email is data in the filter's JSON, never an argument of its own.
+    expect(JSON.parse(tasksQueryArgv('a"b@example.com --page 9', 1)[3]!).conditions[0].value).toBe('a"b@example.com --page 9');
+    expect(isAllowedWorkCommand('tb-prod', argv)).toBe(true);
+  });
+
+  it('WORK-2.2: each Task has its title, project, status, due date when set, and whether it is a milestone; WORK-2.1: in tb-prod’s order', () => {
+    const { tasks, hasNextPage } = parseTasksPage(TASKS);
+    expect(hasNextPage).toBe(false);
+    expect(titles(tasks)).toEqual(['Polish the brass lanterns', 'Ring the harbor bells at noon', 'Q4 lantern launch', 'Sweep the lighthouse stairs']);
+    expect(tasks[0]).toEqual({
+      id: '41000001',
+      title: 'Polish the brass lanterns',
+      project: 'Lantern Works',
+      status: 'In progress',
+      statusCategory: 'started',
+      dueDate: null,
+      lastActivityAt: Date.parse('2026-10-19T12:12:03Z'),
+      milestone: false,
+      url: 'https://app.fantastic.productive.io/109-productive/tasks/41000001',
+      links: null,
+    });
+    expect(tasks.map((t) => [t.project, t.status, t.statusCategory, t.dueDate, t.milestone])).toEqual([
+      ['Lantern Works', 'In progress', 'started', null, false],
+      ['Harbor Bells', 'Review', 'started', '2026-10-24', false],
+      ['Lantern Works', 'Not started', 'not-started', '2026-11-01', true],
+      ['Harbor Bells', 'Not started', 'not-started', null, false],
+    ]);
+  });
+
+  it('WORK-6.2: each Task’s URL is built on the server, in Fantastic, never the old app', () => {
+    for (const t of parseTasksPage(TASKS).tasks) {
+      expect(t.url).toBe(`https://app.fantastic.productive.io/109-productive/tasks/${t.id}`);
+      expect(t.url).not.toContain('app.productive.io');
+    }
+  });
+
+  it('WORK-2.2: what is only shown is bounded, and null when unreadable; a title falls back to the Task', () => {
+    const page = JSON.parse(TASKS) as Loose;
+    page.data[0].attributes.title = 'Two\nlines \u001b[31mred\u001b[0m';
+    page.data[1].attributes.title = 'x'.repeat(400);
+    page.data[2].attributes.title = null;
+    page.data[0].attributes.due_date = '24.10.2026';
+    page.data[1].relationships.project = { meta: { included: false } };
+    page.data[3].relationships.workflow_status.data.id = '9999';
+    page.included.find((r: Loose) => r.id === '8002').attributes.category_id = 3;
+    const tasks = parseTasksPage(JSON.stringify(page)).tasks;
+    expect(tasks.map((t) => t.title)).toEqual(['Two lines red', `${'x'.repeat(299)}…`, 'Task 41000003', 'Sweep the lighthouse stairs']);
+    expect(tasks[0]!.dueDate).toBeNull();
+    expect(tasks[1]!.project).toBeNull();
+    expect(tasks[1]!.statusCategory).toBeNull();
+    expect(tasks[3]).toMatchObject({ status: null, statusCategory: null, project: 'Harbor Bells' });
+  });
+
+  it('WORK-2.1: Tasks Lookout can’t read, a Task without a digit id or a page without data or meta.hasNextPage, are a shape error, never a shorter list', () => {
+    const broken: ((p: Loose) => void)[] = [
+      (p) => delete p.data[1].id,
+      (p) => (p.data[1].id = 41000002),
+      (p) => (p.data[1].id = '41000002abc'),
+      (p) => (p.data[1] = 'a Task'),
+      (p) => delete p.data,
+      (p) => delete p.meta.hasNextPage,
+      (p) => (p.meta.hasNextPage = 'no'),
+      (p) => delete p.meta,
+    ];
+    for (const mutate of broken) {
+      const page = JSON.parse(TASKS) as Loose;
+      mutate(page);
+      expect(() => parseTasksPage(JSON.stringify(page)), mutate.toString()).toThrow(TbProdShapeError);
+    }
+    for (const text of ['', 'not json', '[]', 'null']) expect(() => parseTasksPage(text), text).toThrow(TbProdShapeError);
+  });
+
+  // tb-prod percent-encodes every character of a filter value but A-Z a-z 0-9 - . _ ~ (`urlencoding::encode`
+  // in `Query::to_query_string`), and builds the key from the field alone: these can't change the query.
+  it.each([
+    ['the query string’s own characters, & = ? and #, which can’t start another parameter', ['lamp&lighter@example.com', 'lamp=lighter@example.com', 'lamp?page=9@example.com', 'lamp#lighter@example.com']],
+    ['percent, plus and underscore, which arrive as themselves, never a space, a wildcard or a decoded comma', ['lamp%lighter@example.com', 'lamp%2Clighter@example.com', 'lamp+work@example.com', 'lamp_lighter@example.com']],
+    ['brackets, which stay in the value, never the key', ['lamp[0]lighter@example.com', 'lamplighter@[192.0.2.1]', ']x[@example.com']],
+  ])('WORK-2.7: %s, are kept as typed and reach tb-prod as one `eq` value in the filter’s JSON', (_, emails) => {
+    for (const email of emails) {
+      expect(parseProductiveEmail(email), email).toBe(email);
+      expect(JSON.parse(tasksQueryArgv(email, 1)[3]!).conditions[0], email).toEqual({ field: 'assignee.email', operator: 'eq', value: email });
+    }
+  });
+
+  it('WORK-2.1: a Task that moved to a later page while the pages were read shows once, where it was first seen', () => {
+    const rows = taskRows(22);
+    const first = parseTasksPage(pageOf(rows, 1));
+    // Between the calls, a Task on page 1 moved down and shows again on page 2.
+    const second = parseTasksPage(pageOf([...rows.slice(0, 20), rows[3], ...rows.slice(20)], 2));
+    expect(mergePages([first, second]).map((t) => t.id)).toEqual(rows.map((r) => r.id));
+  });
+});
+
+describe('tb-prod failures (WORK-7)', () => {
+  const PLAIN: readonly string[] = Object.values(TASK_REASON);
+
+  it('WORK-7.6: "not signed in" from tb-prod’s recorded outputs: exit 1 with "No config found", a JSON config_error, or an api_error with status 401', () => {
+    const cases: [string, RunError][] = [
+      ['stderr-no-config.txt', prodFailed({ stderr: prodFixture('stderr-no-config.txt') })],
+      ['stderr-colored-no-config.txt', prodFailed({ stderr: prodFixture('stderr-colored-no-config.txt') })],
+      ['config-error.json', prodFailed({ stdout: prodFixture('config-error.json') })],
+      ['api-error-401.json', prodFailed({ stdout: prodFixture('api-error-401.json') })],
+    ];
+    for (const [name, err] of cases) {
+      expect(classifyTbProdFailure(err), name).toMatchObject({ state: 'signed-out', reason: TASK_REASON.signedOut, fix: 'tb-prod config init' });
+    }
+    // "No config found" counts on exit 1 only, as WORK-7.6 says.
+    expect(classifyTbProdFailure(prodFailed({ stderr: prodFixture('stderr-no-config.txt') }, 3)).state).toBe('error');
+  });
+
+  it('WORK-7.6: an api_error with status 403 isn’t "not signed in": it’s a failed read saying Productive denied access', () => {
+    expect(classifyTbProdFailure(prodFailed({ stdout: prodFixture('api-error-403.json') }))).toEqual({
+      state: 'error',
+      reason: TASK_REASON.denied,
+      fix: null,
+      detail: 'api_error: API error (403)',
+    });
+    expect(TASK_REASON.denied).toMatch(/^Productive denied access/);
+  });
+
+  it('WORK-7.1: a tb-prod that isn’t installed says so, with the command that builds it from cli-toolbox’s main', () => {
+    const enoent = Object.assign(new Error('spawn tb-prod ENOENT'), { code: 'ENOENT' });
+    expect(classifyTbProdFailure(enoent)).toEqual({ state: 'not-installed', reason: TASK_REASON.notInstalled, fix: TB_PROD_INSTALL_COMMAND, detail: null });
+    expect(TB_PROD_INSTALL_COMMAND).toMatch(/^CARGO_NET_GIT_FETCH_WITH_CLI=true cargo install --git https:\/\/github\.com\/productiveio\/cli-toolbox --branch main --locked --root ~\/\.local tb-prod$/);
+  });
+
+  it('WORK-7.8: tb-prod 1.1.1’s invalid_filter naming folder_status says tb-prod is older than 1.2.0, with the build command; any other invalid_filter is a failed read', () => {
+    expect(classifyTbProdFailure(prodFailed({ stdout: prodFixture('invalid-filter-1.1.1.json') }))).toMatchObject({
+      state: 'error',
+      reason: TASK_REASON.outdated,
+      fix: TB_PROD_INSTALL_COMMAND,
+      detail: expect.stringMatching(/^invalid_filter: Unknown filter field 'folder_status' on tasks\. Available: /),
+    });
+    expect(TASK_REASON.outdated).toMatch(/^tb-prod is older than 1\.2\.0/);
+    expect(classifyTbProdFailure(prodFailed({ stdout: prodFixture('invalid-filter-other.json') }))).toMatchObject({ state: 'error', reason: TASK_REASON.queryRefused, fix: null });
+    // clap's usage error (exit 2): a call tb-prod can't parse.
+    expect(classifyTbProdFailure(prodFailed({ stderr: prodFixture('stderr-usage.txt') }, 2))).toMatchObject({ state: 'error', reason: TASK_REASON.queryRefused, fix: null });
+  });
+
+  it('WORK-7.8: only 1.1.x’s message says tb-prod is older than 1.2.0, `Unknown filter field \'folder_status\'` with board_status among the available keys; any other invalid_filter naming folder_status is a refused query', () => {
+    const invalidFilter = (error: string) => prodFailed({ stdout: JSON.stringify({ code: 'invalid_filter', details: { errors: [error] }, error }, null, 2) });
+    const v11 = (JSON.parse(prodFixture('invalid-filter-1.1.1.json')) as { error: string }).error;
+    expect(classifyTbProdFailure(invalidFilter(v11))).toMatchObject({ reason: TASK_REASON.outdated, fix: TB_PROD_INSTALL_COMMAND });
+    for (const error of [
+      // A later tb-prod that renamed the key again: building from main wouldn't help.
+      v11.replace('board_status', 'container_status'),
+      // 1.2.0 refusing an operator, as its validate_condition words it.
+      'Invalid operator \'contains\' for field \'folder_status\' (archivable_status). Valid: ["eq", "not_eq"]',
+      'Unknown filter field \'folder_status\' on related resource projects.',
+    ]) {
+      expect(classifyTbProdFailure(invalidFilter(error)), error).toMatchObject({ state: 'error', reason: TASK_REASON.queryRefused, fix: null });
+    }
+  });
+
+  it('WORK-7.3: any other failure is a failed read whose reason says, in plain words, what failed and what to do; tb-prod’s own text goes only to `detail`, for the log', () => {
+    const apiError = (status: number) => prodFailed({ stdout: JSON.stringify({ code: 'api_error', details: { body: '<html>oops</html>', status }, error: `API error (${status})` }, null, 2) });
+    const cases: [unknown, string, string | null][] = [
+      [apiError(502), TASK_REASON.serverError, 'api_error: API error (502)'],
+      [apiError(422), TASK_REASON.refused, 'api_error: API error (422)'],
+      [prodFailed({ stdout: '{\n  "code": "internal_error",\n  "error": "HTTP error: error sending request for url (https://api.productive.io/api/v2/tasks)"\n}\n' }), TASK_REASON.failed, 'internal_error: HTTP error: error sending request for url (https://api.productive.io/api/v2/tasks)'],
+      [prodFailed({ stderr: 'Error: Config error: TOML parse error at line 1\n' }), TASK_REASON.failed, 'Config error: TOML parse error at line 1'],
+      [prodFailed({}, 101), TASK_REASON.failed, 'exit 101'],
+      [Object.assign(new Error('x'), { timedOut: true, code: null }), TASK_REASON.timedOut, null],
+      [new TbProdShapeError('Task 2 of the page has no id'), TASK_REASON.unreadable, 'Task 2 of the page has no id'],
+    ];
+    for (const [err, reason, detail] of cases) {
+      expect(classifyTbProdFailure(err), reason).toMatchObject({ state: 'error', reason, fix: null, detail });
+    }
+    // Every reason is Lookout's own sentence: no JSON, no "Error:", no status line, no HTML from tb-prod or Productive.
+    for (const [err] of cases) expect(PLAIN).toContain(classifyTbProdFailure(err).reason);
+    expect(PLAIN.filter((r) => /<|API error|exit \d|\{|_error/.test(r))).toEqual([]);
+    // Productive's answer (`details.body`) is never read, not even for the log.
+    expect(JSON.stringify(cases.map(([err]) => classifyTbProdFailure(err)))).not.toContain('oops');
+  });
+
+  it('WORK-7.7: token-like text on tb-prod’s stdout and stderr reaches neither the reason nor the logged detail, which is one line', () => {
+    const leakyJson = prodFailed({
+      stdout: JSON.stringify({ code: 'internal_error', error: `HTTP error: GET https://api.productive.io/x?access_token=tok3n-s3cret-v4lue failed, Authorization: token sekr1t-header ${FAKE_TOKENS[0]}\nline two ${FAKE_TOKENS[1]}` }),
+      stderr: leaky,
+    });
+    const leakyStderr = prodFailed({ stdout: `token=tok3n-s3cret-v4lue ${FAKE_TOKENS[0]}`, stderr: leaky });
+    for (const err of [leakyJson, leakyStderr]) {
+      const { reason, detail } = classifyTbProdFailure(err);
+      expect(reason).toBe(TASK_REASON.failed);
+      expect(detail).not.toContain('\n');
+      expect(FAKE_TOKENS.filter((t) => `${reason} ${detail}`.includes(t))).toEqual([]);
+    }
+  });
+});
+
+/** A scripted tb-pr and tb-prod: each call waits until the test answers it. */
+function scriptedTools() {
+  type Call = { tool: 'tb-pr' | 'tb-prod'; argv: string[]; answered: boolean; answer: (out: string | RunError) => void; signal?: AbortSignal; timeoutMs: number };
+  const calls: Call[] = [];
+  const runner = (file: string, args: readonly string[], opts: RunOptions) =>
+    new Promise<string>((resolve, reject) => {
+      const call: Call = {
+        tool: file.endsWith('tb-prod') ? 'tb-prod' : 'tb-pr',
+        argv: [...args],
+        answered: false,
+        signal: opts.signal,
+        timeoutMs: opts.timeoutMs,
+        answer: (out) => {
+          call.answered = true;
+          if (typeof out === 'string') resolve(out);
+          else reject(out);
+        },
+      };
+      calls.push(call);
+    });
+  const of = (tool: Call['tool']) => calls.filter((c) => c.tool === tool);
+  return {
+    runner,
+    calls,
+    of,
+    /** Each tb-prod call's email and page. */
+    prodAsks: () => of('tb-prod').map((c) => `${JSON.parse(c.argv[3]!).conditions[0].value} p${c.argv[8]}`),
+    prArgvs: () => of('tb-pr').map((c) => c.argv.join(' ')),
+    pending: (tool: Call['tool']) => of(tool).filter((c) => !c.answered),
+  };
+}
+
+describe('WorkMonitor reads Tasks (WORK-2, WORK-8)', () => {
+  let events: WorkSnapshot[];
+  let logged: [string, string][];
+  let monitor: WorkMonitor;
+  let tools: ReturnType<typeof scriptedTools>;
+  const T0 = Date.parse('2026-10-20T09:00:00Z');
+
+  const make = (email: string | null) =>
+    new WorkMonitor({
+      runner: tools.runner,
+      tbPrBin: () => '/bin/tb-pr',
+      tbProdBin: () => '/bin/tb-prod',
+      productiveEmail: email,
+      onChange: (w) => events.push(w),
+      log: (line, tool) => logged.push([tool, line]),
+    });
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(T0);
+    events = [];
+    logged = [];
+    tools = scriptedTools();
+    monitor = make(ME);
+  });
+  afterEach(async () => {
+    for (const c of tools.calls) if (!c.answered) c.answer(failedRun('test over'));
+    await monitor.close();
+    vi.useRealTimers();
+  });
+
+  const settle = () => vi.advanceTimersByTimeAsync(0);
+  /** Answers the oldest unanswered call of `tool`. */
+  const answer = async (tool: 'tb-pr' | 'tb-prod', out: string | RunError) => {
+    const call = tools.pending(tool)[0];
+    if (!call) throw new Error(`no ${tool} call to answer`);
+    call.answer(out);
+    await settle();
+  };
+  /** Answers a whole Tasks read of `rows`, page by page. */
+  const answerTasks = async (rows: unknown[]) => {
+    for (let page = 1; tools.pending('tb-prod').length > 0; page++) await answer('tb-prod', pageOf(rows, page));
+  };
+  const tasks = () => monitor.snapshot().tasks;
+
+  it('WORK-2.6: with no Productive email saved, Tasks is `no-email` and no tb-prod runs; PRs work as usual', async () => {
+    const none = make(null);
+    expect(none.snapshot().tasks).toEqual({ state: 'no-email', reason: null, fix: null, stale: false, fetchedAt: null, tasks: [] });
+    none.watch();
+    await settle();
+    await answer('tb-pr', LIST);
+    expect(none.snapshot().prs.state).toBe('ok');
+    const forced = none.refresh();
+    await settle();
+    await answer('tb-pr', fixture('stdout-refresh.txt'));
+    await answer('tb-pr', LIST);
+    expect(await forced).toEqual({ status: 200, result: { ok: true } });
+    await vi.advanceTimersByTimeAsync(WORK_INTERVAL_MS * 3);
+    expect(tools.of('tb-prod')).toEqual([]);
+    expect(none.snapshot().tasks.state).toBe('no-email');
+    for (const c of tools.pending('tb-pr')) c.answer(LIST);
+    await none.close();
+  });
+
+  it('WORK-2.1, WORK-8.1: a tab opening Work reads Tasks and PRs in parallel; Tasks list the saved email’s, in tb-prod’s order, with when they were read', async () => {
+    expect(tasks().state).toBe('loading');
+    monitor.watch();
+    await settle();
+    // Both started before either answered.
+    expect(tools.prodAsks()).toEqual([`${ME} p1`]);
+    expect(tools.prArgvs()).toEqual(['list --json']);
+    expect(tools.of('tb-prod')[0]!.timeoutMs).toBe(TB_PROD_TIMEOUT_MS);
+    vi.setSystemTime(T0 + 300);
+    await answer('tb-prod', TASKS);
+    expect(tasks()).toMatchObject({ state: 'ok', reason: null, fix: null, stale: false, fetchedAt: T0 + 300 });
+    expect(titles(tasks().tasks)).toEqual(['Polish the brass lanterns', 'Ring the harbor bells at noon', 'Q4 lantern launch', 'Sweep the lighthouse stairs']);
+    expect(events.at(-1)!.tasks.tasks).toHaveLength(4);
+    await answer('tb-pr', LIST);
+    expect(monitor.snapshot().prs.state).toBe('ok');
+  });
+
+  it('WORK-2.1: a page with more after it reads the next, up to 5 pages (100 Tasks); 20 Tasks or fewer take one call', async () => {
+    monitor.watch();
+    await settle();
+    await answerTasks(taskRows(23));
+    expect(tools.prodAsks()).toEqual([`${ME} p1`, `${ME} p2`]);
+    expect(tasks().tasks.map((t) => t.title)).toEqual(taskRows(23).map((r) => r.attributes.title));
+
+    await answer('tb-pr', LIST);
+    await vi.advanceTimersByTimeAsync(WORK_INTERVAL_MS);
+    await answerTasks(taskRows(130));
+    expect(tools.prodAsks().slice(2)).toEqual([1, 2, 3, 4, 5].map((p) => `${ME} p${p}`));
+    expect(MAX_TASK_PAGES).toBe(5);
+    expect(tasks().tasks).toHaveLength(100);
+    expect(tasks().tasks.at(-1)!.title).toBe('Task 99');
+
+    await answer('tb-pr', LIST);
+    await vi.advanceTimersByTimeAsync(WORK_INTERVAL_MS);
+    await answerTasks(taskRows(20));
+    expect(tools.prodAsks().slice(7)).toEqual([`${ME} p1`]);
+    expect(tasks().tasks).toHaveLength(20);
+  });
+
+  it('WORK-7.3: a failure on any page fails the whole read: the last list stays, marked old, with the reason; with none, the reason alone', async () => {
+    monitor.watch();
+    await settle();
+    // The first read fails on page 2: no partial list.
+    await answer('tb-prod', pageOf(taskRows(23), 1));
+    await answer('tb-prod', prodFailed({ stdout: prodFixture('api-error-403.json') }));
+    expect(tasks()).toEqual({ state: 'error', reason: TASK_REASON.denied, fix: null, stale: false, fetchedAt: null, tasks: [] });
+    expect(logged).toEqual([['tb-prod', 'api_error: API error (403)']]);
+
+    await answer('tb-pr', LIST);
+    await vi.advanceTimersByTimeAsync(WORK_INTERVAL_MS);
+    await answer('tb-prod', TASKS);
+    const good = tasks();
+    expect(good.state).toBe('ok');
+
+    await answer('tb-pr', LIST);
+    await vi.advanceTimersByTimeAsync(WORK_INTERVAL_MS);
+    await answer('tb-prod', Object.assign(new Error('timed out'), { timedOut: true, code: null }));
+    expect(tasks()).toEqual({ ...good, state: 'error', reason: TASK_REASON.timedOut, stale: true });
+
+    await answer('tb-pr', LIST);
+    await vi.advanceTimersByTimeAsync(WORK_INTERVAL_MS);
+    await answer('tb-prod', TASKS);
+    expect(tasks()).toEqual({ ...good, fetchedAt: Date.now() });
+  });
+
+  it('WORK-7.1, WORK-7.2: tb-prod not installed or not signed in: Tasks says so with its fix, and PRs work as usual', async () => {
+    monitor.watch();
+    await settle();
+    await answer('tb-prod', Object.assign(new Error('spawn tb-prod ENOENT'), { code: 'ENOENT' }));
+    await answer('tb-pr', LIST);
+    expect(tasks()).toMatchObject({ state: 'not-installed', reason: TASK_REASON.notInstalled, fix: TB_PROD_INSTALL_COMMAND, tasks: [] });
+    expect(monitor.snapshot().prs.state).toBe('ok');
+    await vi.advanceTimersByTimeAsync(WORK_INTERVAL_MS);
+    await answer('tb-prod', prodFailed({ stdout: prodFixture('api-error-401.json') }));
+    expect(tasks()).toMatchObject({ state: 'signed-out', reason: TASK_REASON.signedOut, fix: 'tb-prod config init' });
+  });
+
+  it('WORK-8.1: every 5 minutes from the end of the last read, both sources; with Work closed everywhere, nothing, not even for a newly saved email', async () => {
+    const close = monitor.watch();
+    await settle();
+    await answer('tb-prod', TASKS);
+    await vi.advanceTimersByTimeAsync(2_000);
+    await answer('tb-pr', LIST); // the last read ends here
+    await vi.advanceTimersByTimeAsync(WORK_INTERVAL_MS - 1);
+    expect(tools.calls).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(tools.prodAsks()).toEqual([`${ME} p1`, `${ME} p1`]);
+    expect(tools.prArgvs()).toEqual(['list --json', 'list --json']);
+    await answer('tb-prod', TASKS);
+    await answer('tb-pr', LIST);
+
+    close();
+    monitor.setProductiveEmail(OTHER);
+    await vi.advanceTimersByTimeAsync(WORK_INTERVAL_MS * 3);
+    expect(tools.calls).toHaveLength(4);
+    expect(tasks()).toMatchObject({ state: 'loading', tasks: [] });
+  });
+
+  it('WORK-8.1: opening Work reads Tasks not yet read for the saved email, however fresh the PRs; otherwise it waits for the schedule', async () => {
+    const none = make(null);
+    const first = none.watch();
+    await settle();
+    await answer('tb-pr', LIST);
+    first();
+    none.setProductiveEmail(ME);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(tools.of('tb-prod')).toEqual([]);
+    // A minute later, a tab opens Work: the PRs are fresh, the Tasks not read yet.
+    const second = none.watch();
+    await settle();
+    expect(tools.prodAsks()).toEqual([`${ME} p1`]);
+    expect(tools.prArgvs()).toEqual(['list --json']);
+    await answer('tb-prod', TASKS);
+    expect(none.snapshot().tasks.state).toBe('ok');
+    second();
+    // Read now, and fresh: opening again reads nothing.
+    none.watch();
+    await settle();
+    expect(tools.calls).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(WORK_INTERVAL_MS);
+    expect(tools.calls).toHaveLength(4);
+    for (const c of tools.pending('tb-pr')) c.answer(LIST);
+    for (const c of tools.pending('tb-prod')) c.answer(TASKS);
+    await none.close();
+  });
+
+  it('WORK-8.1: opening Work reads each source by its own age: a Tasks-only read never makes the PRs look fresh, nor a PR read the Tasks', async () => {
+    const first = monitor.watch();
+    await settle();
+    await answer('tb-prod', TASKS);
+    await answer('tb-pr', LIST);
+    // 4 minutes on, a new email is saved: its Tasks are read, the PRs aren't.
+    await vi.advanceTimersByTimeAsync(4 * 60_000);
+    monitor.setProductiveEmail(OTHER);
+    await settle();
+    await answer('tb-prod', TASKS);
+    first();
+    // At 8 minutes a tab opens Work: the PRs are 8 minutes old, the Tasks 4. The PRs are read at
+    // once, not at 9 minutes with the schedule.
+    await vi.advanceTimersByTimeAsync(4 * 60_000);
+    const second = monitor.watch();
+    await settle();
+    expect(tools.prArgvs()).toEqual(['list --json', 'list --json']);
+    expect(tools.prodAsks()).toEqual([`${ME} p1`, `${OTHER} p1`]);
+    await answer('tb-pr', LIST);
+    second();
+    // At 10 minutes: the Tasks are 6 minutes old, the PRs 2. The Tasks alone are read.
+    await vi.advanceTimersByTimeAsync(2 * 60_000);
+    monitor.watch();
+    await settle();
+    expect(tools.prodAsks()).toEqual([`${ME} p1`, `${OTHER} p1`, `${OTHER} p1`]);
+    expect(tools.prArgvs()).toEqual(['list --json', 'list --json']);
+    await answer('tb-prod', TASKS);
+    // The schedule still counts from the end of the last read of either kind, and reads both.
+    await vi.advanceTimersByTimeAsync(WORK_INTERVAL_MS - 1);
+    expect(tools.calls).toHaveLength(5);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(tools.calls).toHaveLength(7);
+  });
+
+  it('WORK-2.8: saving a different email drops the kept list at once and, with Work open, reads the new email’s Tasks at once', async () => {
+    monitor.watch();
+    await settle();
+    await answer('tb-prod', TASKS);
+    await answer('tb-pr', LIST);
+    const n = events.length;
+    monitor.setProductiveEmail(OTHER);
+    // Dropped at once, and every tab hears it: "Loading", never the previous address's list.
+    expect(tasks()).toEqual({ state: 'loading', reason: null, fix: null, stale: false, fetchedAt: null, tasks: [] });
+    expect(events).toHaveLength(n + 1);
+    expect(events.at(-1)!.tasks.tasks).toEqual([]);
+    await settle();
+    expect(tools.prodAsks()).toEqual([`${ME} p1`, `${OTHER} p1`]);
+    // Its read fails: the reason, without a list (WORK-7.3).
+    await answer('tb-prod', prodFailed({ stdout: prodFixture('api-error-403.json') }));
+    expect(tasks()).toEqual({ state: 'error', reason: TASK_REASON.denied, fix: null, stale: false, fetchedAt: null, tasks: [] });
+    // Saving the same email again changes nothing and reads nothing.
+    monitor.setProductiveEmail(OTHER);
+    await settle();
+    expect(tools.of('tb-prod')).toHaveLength(2);
+  });
+
+  it('WORK-2.8, WORK-8.3: a new email’s read waits for one running for another email, whose result is discarded; only the newest saved email is read', async () => {
+    monitor.watch();
+    await settle();
+    expect(tools.prodAsks()).toEqual([`${ME} p1`]);
+    monitor.setProductiveEmail(OTHER);
+    monitor.setProductiveEmail('third@example.com');
+    await settle();
+    // It waits: one Tasks read at a time.
+    expect(tools.prodAsks()).toEqual([`${ME} p1`]);
+    await answer('tb-prod', TASKS);
+    // The previous email's Tasks are discarded: still "Loading".
+    expect(tasks()).toMatchObject({ state: 'loading', tasks: [] });
+    expect(events.some((e) => e.tasks.tasks.length > 0)).toBe(false);
+    // The email saved over meanwhile isn't read; the newest is.
+    expect(tools.prodAsks()).toEqual([`${ME} p1`, 'third@example.com p1']);
+    await answer('tb-prod', pageOf(taskRows(2), 1));
+    expect(tasks()).toMatchObject({ state: 'ok', tasks: [{ title: 'Task 0' }, { title: 'Task 1' }] });
+
+    // A failure for an email no longer saved is discarded too: its reason never shows.
+    await answer('tb-pr', LIST);
+    await vi.advanceTimersByTimeAsync(WORK_INTERVAL_MS);
+    expect(tools.pending('tb-prod')).toHaveLength(1);
+    monitor.setProductiveEmail(ME);
+    await answer('tb-prod', prodFailed({ stdout: prodFixture('api-error-401.json') }));
+    expect(tasks()).toMatchObject({ state: 'loading', reason: null, tasks: [] });
+    await settle();
+    expect(tools.prodAsks().at(-1)).toBe(`${ME} p1`);
+  });
+
+  it('WORK-2.8: an email saved over while the pages are read stops the paging: no page follows the one in flight, and the new email’s read starts then', async () => {
+    monitor.watch();
+    await settle();
+    await answer('tb-pr', LIST);
+    // 100 Tasks: page 1 says there's more, and page 2 is asked for.
+    await answer('tb-prod', pageOf(taskRows(100), 1));
+    expect(tools.prodAsks()).toEqual([`${ME} p1`, `${ME} p2`]);
+    monitor.setProductiveEmail(OTHER);
+    await settle();
+    await answer('tb-prod', pageOf(taskRows(100), 2));
+    // No page 3 for an email no longer saved: the new email's read runs next.
+    expect(tools.prodAsks()).toEqual([`${ME} p1`, `${ME} p2`, `${OTHER} p1`]);
+    expect(tasks()).toMatchObject({ state: 'loading', tasks: [] });
+    await answer('tb-prod', pageOf(taskRows(2), 1));
+    expect(tasks()).toMatchObject({ state: 'ok', tasks: [{ title: 'Task 0' }, { title: 'Task 1' }] });
+    expect(tools.of('tb-prod')).toHaveLength(3);
+  });
+
+  it('WORK-2.7, WORK-2.6: clearing the email goes back to `no-email`; a read running for the old one is discarded, and none follows', async () => {
+    monitor.watch();
+    await settle();
+    monitor.setProductiveEmail(null);
+    expect(tasks()).toEqual({ state: 'no-email', reason: null, fix: null, stale: false, fetchedAt: null, tasks: [] });
+    await answer('tb-prod', TASKS);
+    expect(tasks().state).toBe('no-email');
+    await answer('tb-pr', LIST);
+    await vi.advanceTimersByTimeAsync(WORK_INTERVAL_MS);
+    await answer('tb-pr', LIST);
+    await vi.advanceTimersByTimeAsync(WORK_INTERVAL_MS);
+    expect(tools.of('tb-prod')).toHaveLength(1);
+    expect(tools.prArgvs()).toEqual(['list --json', 'list --json', 'list --json']);
+  });
+
+  it('WORK-8.3: two tabs opening at once share one Tasks read; Refresh joins a Tasks read in flight for the same email, but runs tb-pr refresh', async () => {
+    monitor.watch();
+    monitor.watch();
+    await settle();
+    expect(tools.prodAsks()).toEqual([`${ME} p1`]);
+    await answer('tb-pr', LIST);
+    const forced = monitor.refresh();
+    await settle();
+    expect(tools.prodAsks()).toEqual([`${ME} p1`]);
+    expect(tools.prArgvs()).toEqual(['list --json', 'refresh']);
+    await answer('tb-prod', TASKS);
+    await answer('tb-pr', fixture('stdout-refresh.txt'));
+    await answer('tb-pr', LIST);
+    expect(await forced).toEqual({ status: 200, result: { ok: true } });
+    expect(tools.of('tb-prod')).toHaveLength(1);
+  });
+
+  it('WORK-8.2: Refresh reads Tasks too and answers once both reads end, with the reasons of those that failed', async () => {
+    monitor.watch();
+    await settle();
+    await answer('tb-prod', TASKS);
+    await answer('tb-pr', LIST);
+    const forced = monitor.refresh();
+    await settle();
+    expect(tools.prodAsks()).toEqual([`${ME} p1`, `${ME} p1`]);
+    expect(tools.prArgvs()).toEqual(['list --json', 'refresh']);
+    await answer('tb-pr', fixture('stdout-refresh.txt'));
+    await answer('tb-pr', LIST);
+    let done = false;
+    void forced.then(() => (done = true));
+    await settle();
+    expect(done).toBe(false); // the Tasks read still runs
+    await answer('tb-prod', prodFailed({ stdout: prodFixture('invalid-filter-1.1.1.json') }));
+    expect(await forced).toEqual({ status: 200, result: { ok: false, error: TASK_REASON.outdated } });
+    expect(tasks()).toMatchObject({ state: 'error', reason: TASK_REASON.outdated, fix: TB_PROD_INSTALL_COMMAND, stale: true });
+
+    await vi.advanceTimersByTimeAsync(WORK_COOLDOWN_MS);
+    const both = monitor.refresh();
+    await settle();
+    await answer('tb-pr', failedRun('Error: GitHub API error (500): oops'));
+    await answer('tb-prod', prodFailed({ stdout: prodFixture('api-error-403.json') }));
+    expect(await both).toEqual({ status: 200, result: { ok: false, error: `${PR_REASON.serverError} ${TASK_REASON.denied}` } });
+  });
+
+  it('WORK-8.4: while GitHub is rate limited, scheduled reads read Tasks only, and the next comes when the limit ends', async () => {
+    vi.setSystemTime(Date.parse('2026-10-20T10:00:00Z'));
+    monitor.watch();
+    await settle();
+    await answer('tb-prod', TASKS);
+    await answer('tb-pr', failedRun(fixture('stderr-rate-limited-reset.txt'))); // resets at 10:42:17 UTC
+    const until = Date.parse('2026-10-20T10:42:17Z');
+    expect(monitor.snapshot().refresh.githubBlockedUntil).toBe(until);
+    await vi.advanceTimersByTimeAsync(WORK_INTERVAL_MS);
+    expect(tools.prodAsks()).toHaveLength(2);
+    expect(tools.prArgvs()).toEqual(['list --json']);
+    await answer('tb-prod', TASKS);
+    // Every 5 minutes, Tasks alone, until the limit ends.
+    while (Date.now() + WORK_INTERVAL_MS < until) {
+      await vi.advanceTimersByTimeAsync(WORK_INTERVAL_MS);
+      await answer('tb-prod', TASKS);
+    }
+    expect(tools.prArgvs()).toEqual(['list --json']);
+    await vi.advanceTimersByTimeAsync(until - Date.now());
+    expect(tools.prArgvs()).toEqual(['list --json', 'list --json']);
+  });
+
+  it('WORK-8.4: with an email saved and GitHub rate limited, Refresh answers 429 and runs no tb-prod either; scheduled reads read Tasks only', async () => {
+    vi.setSystemTime(Date.parse('2026-10-20T10:00:00Z'));
+    monitor.watch();
+    await settle();
+    await answer('tb-prod', TASKS);
+    await answer('tb-pr', failedRun(fixture('stderr-rate-limited-reset.txt'))); // resets at 10:42:17 UTC
+    const until = Date.parse('2026-10-20T10:42:17Z');
+    const refused = { status: 429, result: { ok: false, error: 'GitHub is rate limited', until } };
+    expect(await monitor.refresh()).toEqual(refused);
+    await settle();
+    expect(tools.prodAsks()).toEqual([`${ME} p1`]);
+    expect(monitor.snapshot().refresh.cooldownUntil).toBeNull();
+    // The schedule reads Tasks, and Tasks alone; Refresh stays refused for both.
+    await vi.advanceTimersByTimeAsync(WORK_INTERVAL_MS);
+    expect(tools.prodAsks()).toEqual([`${ME} p1`, `${ME} p1`]);
+    await answer('tb-prod', TASKS);
+    expect(await monitor.refresh()).toEqual(refused);
+    await settle();
+    expect(tools.of('tb-prod')).toHaveLength(2);
+    expect(tools.prArgvs()).toEqual(['list --json']);
+  });
+
+  it('WORK-8.1, WORK-8.4: Tasks-only reads during a rate limit never make the PRs look fresh: opening Work after it ended reads the PRs at once', async () => {
+    vi.setSystemTime(Date.parse('2026-10-20T10:35:00Z'));
+    const first = monitor.watch();
+    await settle();
+    await answer('tb-prod', TASKS);
+    await answer('tb-pr', failedRun(fixture('stderr-rate-limited-reset.txt'))); // resets at 10:42:17 UTC
+    // 10:40: the schedule reads Tasks alone.
+    await vi.advanceTimersByTimeAsync(WORK_INTERVAL_MS);
+    await answer('tb-prod', TASKS);
+    expect(tools.prArgvs()).toEqual(['list --json']);
+    // Work closes at 10:41; the limit ends at 10:42:17 with Work closed.
+    await vi.advanceTimersByTimeAsync(60_000);
+    first();
+    await vi.advanceTimersByTimeAsync(2 * 60_000);
+    // 10:43: the Tasks are 3 minutes old, the PRs 8. The PRs are read at once, not at 10:45.
+    monitor.watch();
+    await settle();
+    expect(tools.prArgvs()).toEqual(['list --json', 'list --json']);
+    expect(tools.prodAsks()).toEqual([`${ME} p1`, `${ME} p1`]);
+  });
+
+  it('WORK-8.1, WORK-8.4: opening Work while a rate limit still holds old PRs reads them when it ends, not 5 minutes after the last Tasks read', async () => {
+    vi.setSystemTime(Date.parse('2026-10-20T10:35:00Z'));
+    const first = monitor.watch();
+    await settle();
+    await answer('tb-prod', TASKS);
+    await answer('tb-pr', failedRun(fixture('stderr-rate-limited-reset.txt'))); // resets at 10:42:17 UTC
+    await vi.advanceTimersByTimeAsync(WORK_INTERVAL_MS);
+    await answer('tb-prod', TASKS); // 10:40, Tasks alone
+    first();
+    // 10:42: still limited. Nothing is read on opening…
+    await vi.advanceTimersByTimeAsync(2 * 60_000);
+    monitor.watch();
+    await settle();
+    expect(tools.calls).toHaveLength(3);
+    // …and the PRs are read as the limit ends, at 10:42:17.
+    await vi.advanceTimersByTimeAsync(Date.parse('2026-10-20T10:42:17Z') - Date.now() - 1);
+    expect(tools.prArgvs()).toEqual(['list --json']);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(tools.prArgvs()).toEqual(['list --json', 'list --json']);
+  });
+
+  it('WORK-7.7: a failing tb-prod with token-like stdout and stderr leaves none of it in the snapshot, the events, the Refresh answer or the log', async () => {
+    const consoles = [vi.spyOn(console, 'error'), vi.spyOn(console, 'log'), vi.spyOn(console, 'warn'), vi.spyOn(console, 'info')];
+    const leak = () =>
+      prodFailed({
+        stdout: JSON.stringify({ code: 'api_error', details: { body: `token=tok3n-s3cret-v4lue ${FAKE_TOKENS[0]}`, status: 500 }, error: `API error (500): ${FAKE_TOKENS[0]} Authorization: token sekr1t-header` }),
+        stderr: leaky,
+      });
+    monitor.watch();
+    await settle();
+    await answer('tb-prod', leak());
+    await answer('tb-pr', LIST);
+    const forced = monitor.refresh();
+    await settle();
+    await answer('tb-prod', prodFailed({ stdout: `token=tok3n-s3cret-v4lue ${FAKE_TOKENS[1]}`, stderr: leaky }));
+    await answer('tb-pr', fixture('stdout-refresh.txt'));
+    await answer('tb-pr', LIST);
+    const result = await forced;
+    const seen = JSON.stringify([result, monitor.snapshot(), events, logged]);
+    expect(FAKE_TOKENS.filter((t) => seen.includes(t))).toEqual([]);
+    expect(tasks().reason).toBe(TASK_REASON.failed);
+    expect(logged.map(([tool]) => tool)).toEqual(['tb-prod', 'tb-prod']);
+    for (const [, line] of logged) expect(line).not.toContain('\n');
+    for (const spy of consoles) {
+      expect(spy).not.toHaveBeenCalled();
+      spy.mockRestore();
+    }
+  });
+
+  it('close() cancels a Tasks read in flight, and no page follows it', async () => {
+    monitor.watch();
+    await settle();
+    const call = tools.of('tb-prod')[0]!;
+    const closing = monitor.close();
+    expect(call.signal?.aborted).toBe(true);
+    call.answer(Object.assign(new Error('cancelled'), { aborted: true }));
+    for (const c of tools.pending('tb-pr')) c.answer(Object.assign(new Error('cancelled'), { aborted: true }));
+    await closing;
+    await vi.advanceTimersByTimeAsync(WORK_INTERVAL_MS * 2);
+    expect(tools.of('tb-prod')).toHaveLength(1);
+    expect(tasks().state).toBe('loading');
   });
 });

@@ -1,8 +1,22 @@
 import { basename, dirname } from 'node:path';
+import { parseProductiveEmail } from '../shared/settings.ts';
 import type { GitLocation } from '../shared/types.ts';
 import type { Runner } from './exec.ts';
 
 const GIT_TIMEOUT_MS = 3000;
+
+/**
+ * WORK-2.5: the suggestion for the Productive email, `git config --global user.email`, kept only when
+ * it would be saved as is (WORK-2.7). Null when git has none, or can't be run.
+ */
+export async function readGlobalGitEmail(runner: Runner, env: NodeJS.ProcessEnv = process.env): Promise<string | null> {
+  try {
+    const out = await runner('git', ['config', '--global', 'user.email'], { timeoutMs: GIT_TIMEOUT_MS, env: { ...env, GIT_OPTIONAL_LOCKS: '0' } });
+    return parseProductiveEmail(out);
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Reads where a directory sits in git, with argv only (never a shell string).

@@ -67,7 +67,7 @@ beforeAll(async () => {
       },
     },
     usage,
-    work: new WorkMonitor({ runner: async () => '', tbPrBin: () => '/nonexistent/tb-pr', onChange: () => {} }),
+    work: new WorkMonitor({ runner: async () => '', tbPrBin: () => '/nonexistent/tb-pr', tbProdBin: () => '/nonexistent/tb-prod', onChange: () => {} }),
     viewer: { watch: () => {}, drop: () => {}, send: async () => {}, earlier: async () => ({ entries: [], before: null }) },
     staticDir: null,
   });

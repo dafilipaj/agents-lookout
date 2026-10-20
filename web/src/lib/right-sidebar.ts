@@ -17,13 +17,10 @@ export interface PanelNav {
   move(delta: 1 | -1): void;
 }
 
-/**
- * WORK-1.5: which of Work's sections show. Tasks joins with slice C (WORK Dependencies): until then
- * the filter doesn't offer it, and a remembered `tasks` reads as All.
- */
-export type WorkFilter = 'all' | 'prs';
-export const WORK_FILTERS: readonly WorkFilter[] = ['all', 'prs'];
-export const WORK_FILTER_LABEL: Record<WorkFilter, string> = { all: 'All', prs: 'PRs' };
+/** WORK-1.5: which of Work's sections show: both, Tasks only, or PRs only (both PR groups). */
+export type WorkFilter = 'all' | 'tasks' | 'prs';
+export const WORK_FILTERS: readonly WorkFilter[] = ['all', 'tasks', 'prs'];
+export const WORK_FILTER_LABEL: Record<WorkFilter, string> = { all: 'All', tasks: 'Tasks', prs: 'PRs' };
 
 /** HIST-1.3: the width bounds, in px. */
 export const RIGHT_MIN_WIDTH = 280;
@@ -63,7 +60,6 @@ export function loadLayout(): RightLayout {
     open: r.open === true,
     width: typeof r.width === 'number' && Number.isFinite(r.width) ? clampWidth(r.width) : RIGHT_DEFAULT_WIDTH,
     tab: RIGHT_TABS.includes(r.tab as RightTab) ? (r.tab as RightTab) : 'history',
-    // A remembered `tasks` (slice C's choice) reads as All until Tasks exists.
     workFilter: WORK_FILTERS.includes(r.workFilter as WorkFilter) ? (r.workFilter as WorkFilter) : 'all',
   };
 }

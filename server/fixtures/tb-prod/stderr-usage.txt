@@ -1,0 +1,7 @@
+error: unexpected argument '-l' found
+
+  tip: to pass '-l' as a value, use '-- -l'
+
+Usage: tb-prod query [OPTIONS] <RESOURCE_TYPE>
+
+For more information, try '--help'.
