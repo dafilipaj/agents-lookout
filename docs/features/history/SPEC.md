@@ -97,7 +97,7 @@ Finding last week's Session means remembering its directory and running `claude 
     - a flag for Headless Sessions, with a filter.
   - Built as pluggable Transcript sources, one per Harness vendor. Claude Code is the first source and Codex the second. Another vendor's agent is one new source, with no changes to the index, search or the `--json` shape.
   - HIST can ship before Gap 1 closes: Codex rows appear once the PR merges, with no change in Lookout.
-  - Built and reviewed 2026-10-16 (tb-session 0.3.0, branch `feature/tb-session-sources`, PR not yet open). What the 0.3.0 contract means for HIST:
+  - Built and reviewed 2026-10-16 (tb-session 0.3.0, branch `feature/tb-session-sources`), released 2026-10-20 as `tb-session-v0.3.0`, which also indexes Pi Sessions (`harness: "pi"`). What the 0.3.0 contract means for HIST:
     - Rows carry `harness` and `headless`. `headless` is `true`, `false` or `null`; `null` means unknown, for Sessions indexed by 0.2 whose Transcript is gone. The default view uses `--headless exclude`, which keeps `null` rows.
     - A row whose Transcript was deleted stays in the index with `transcript_missing: true`. It can't be resumed.
     - An empty `project_path` is left out of the JSON.
@@ -176,3 +176,4 @@ None.
 - 2026-10-19: Work (WORK-1) is the right sidebar's second panel, so the tab strip HIST-1.1 waited for is there: History and Work in the header row, History's search field below it, and the sidebar named "Right sidebar". Its open state and width (HIST-1.3) are kept with the active tab, read from HIST's old key the first time. Closed, the rail has a button for each tab.
 - 2026-10-19: HIST-1.1 and the UX reworded to what the right sidebar does now: History is one of its tabs; `H` opens it on History, switches to History from Work, and closes it when History is showing; the tab strip stands in for the "History" heading, and the sidebar is named "Right sidebar". The mock-up shows the tab strip, with the search field below it. With focus on the tab strip, j/k and ↑/↓ move through History's results, never the Session sidebar's, and ←/→ move between the tabs (WORK-1.7).
 - 2026-10-19: HIST-1.1 retagged `(test)`: switching from Work, the sidebar's name and the missing "History" heading are tested under its ID, next to the button, `H` and the search box's focus.
+- 2026-10-20: tb-session 0.3.0 is released and installed. It also indexes Pi Sessions; their rows are left out, as before (pi is a non-goal). Behaviour tests use the release (TEST spec).

@@ -8,8 +8,8 @@
   },
   "tbSession": {
     "repo": "https://github.com/productiveio/cli-toolbox",
-    "branch": "feature/tb-session-sources",
-    "rev": "8c69a8a18d5a901344f6f9b8b445d8994b461f1a",
+    "branch": "main",
+    "rev": "33a26f351391f567c25df1472429da81dd272c0d",
     "package": "tb-session",
     "bin": "tb-session",
     "version": "0.3.0"

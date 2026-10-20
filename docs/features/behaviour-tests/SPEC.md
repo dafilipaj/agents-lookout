@@ -190,7 +190,7 @@ A failed Behaviour test leaves its report in `e2e/.report/` (git-ignored), with 
   - A naive id regex would flag `UTF-8`, and the requirement ids `SIDE-5`, `HIST-1` to `HIST-3` used in `describe` titles.
 - **On this Mac:**
   - tmux 3.6a is in `/opt/homebrew/bin`, and `codex` is in nvm's bin, not in a fallback directory.
-  - tb-session 0.2.0 is installed; HIST is built against 0.3.0, which is unreleased (cli-toolbox branch `feature/tb-session-sources`).
+  - tb-session 0.3.0 is installed, the release HIST is built against (tag `tb-session-v0.3.0`, 2026-10-20).
   - Playwright's Chromium 1243 is cached, but Playwright isn't a dependency yet.
   - The repo has no CI and no hooks.
 
@@ -354,7 +354,7 @@ scenario(
 
 ### Pins
 
-- `e2e/pins.json` holds `{ fleet: { repo, rev }, tbSession: { repo, rev } }`: the fork `dafilipaj/fleet` at a commit on branch `lookout`, and cli-toolbox at the `feature/tb-session-sources` commit until 0.3.0 is released, then at its release tag.
+- `e2e/pins.json` holds `{ fleet: { repo, rev }, tbSession: { repo, rev } }`: the fork `dafilipaj/fleet` at a commit on branch `lookout`, and cli-toolbox at tb-session's release tag (`tb-session-v0.3.0` since 2026-10-20; before that, the `feature/tb-session-sources` commit).
 - `pnpm e2e:setup` runs `cargo install --git <repo> --rev <rev> --locked --root .cache/<package>-<rev7>` for each, and installs Playwright's Chromium. It never touches `~/.cargo/bin`, `~/.local/bin` or anything else outside the repo, apart from cargo's download cache and Playwright's browser cache. Git fetches go through the git CLI (`CARGO_NET_GIT_FETCH_WITH_CLI`), since cli-toolbox is private.
 - Before it checks or installs anything, `pnpm e2e:setup` refuses a `.cache`, install root, `bin/` or binary that is a symlink or resolves outside the repo: `cargo install --root` follows links, so one pointing at `~/.cargo` would install over the user's own binaries. The World checks the same before it uses a pin.
 - A pin's `rev` is the full commit. The World checks the revision cargo recorded for the install (`.crates2.json` in the install root), and `--version` against the pin's `version` when it names one, before the first test and again when a World starts (TEST-1.3). `--version` runs with a scratch `HOME` inside `.cache/` as its working directory and a `PATH` holding nothing: tb-session's `--version` looks for a newer release with `gh` and caches it under `~/Library/Caches`.
@@ -428,3 +428,4 @@ None.
 - 2026-10-19: Fixes from the second review of the World's side of WORK. The fake `tb-prod` refuses a query without `--sort` and an ascending one: it answers only WORK's `-last_activity_at`. A call a fake refuses while the World stops gets its report, read in `stop()` before the World's directories go (TEST-2.4). The World takes only RFC 3339 times, in UTC for tb-pr's, and refuses `review_mine` and `ready_to_merge_mine` flagged with different reasons. A Behaviour test shows a page can't register a service worker (TEST-1.7).
 - 2026-10-19: Fixes from the third review of the World's side of WORK. A report collected before the World stops keeps its panes, and its files (the server log, the calls log, the fakes' answers) are read again once the World's processes are gone, so a call refused while it stopped is in it (TEST-2.4). `world.tbProd.hanging()` and `world.tbPr.hanging()` wait until a call has read a declared timeout, so a test measures the fake's silence from then, not from a slow start. The World refuses a day its month doesn't have, February 29 outside a leap year included, in RFC 3339 times and a Task's `dueDate`.
 - 2026-10-19: For WORK's PRs (slice B). A Behaviour test (TEST-1.5) reads the fake `tb-pr`'s boards and declared failures with WORK's own parser (`parseTbPrList`, `classifyTbPrFailure` in `server/work.ts`), and checks that every PR has tb-pr 0.3.1's fields in their order, so the fake and WORK's reading of tb-pr can't drift apart unnoticed; a change to that parser can now fail TEST's self-tests too. `.settings()` also takes `lastLaunch`, for WORK-5.2. The fakes' tests use invented repos, people and emails.
+- 2026-10-20: tb-session 0.3.0 is released (`tb-session-v0.3.0`), so `e2e/pins.json` moves from the `feature/tb-session-sources` commit to the release commit `33a26f3`, the one Dario has installed.
