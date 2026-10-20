@@ -143,6 +143,16 @@
   }
 }
 
+/*
+ * VIEW-1.16: a scroll bar with no track of its own. Chrome on macOS draws a classic scroll bar (when
+ * scroll bars always show) as a lighter track with a line on each side; with the standard properties
+ * set, the track takes the background behind it and only a thin thumb shows.
+ */
+@utility scrollbar-blend {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--muted-foreground) 50%, transparent) transparent;
+}
+
 @keyframes busy-pulse {
   0%,
   100% {

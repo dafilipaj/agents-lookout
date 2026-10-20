@@ -1,3 +1,4 @@
+import type { PathAnswer } from '@shared/files.ts';
 import type { Settings } from '@shared/settings.ts';
 import type { WorkRefreshResult } from '@shared/work.ts';
 import { HELD_REASONS, type AnswerRequest, type AnswerResult, type ChatPage, type EndResult, type EndTarget, type Harness, type HarnessOption, type HeldReason, type HistoryDetail, type HistoryPage, type LaunchRequest, type LaunchView, type ResumeResult, type ServerEvent } from '@shared/types.ts';
@@ -21,6 +22,8 @@ export interface LookoutClient {
   watch(clientId: string, sessionId: string | null, preview: boolean): Promise<void>;
   /** VIEW-3: types a message into the Session and submits it. */
   sendMessage(sessionId: string, text: string): Promise<void>;
+  /** VIEW-1.18: which of these paths are files, relative to the Session's folder; at most 100. */
+  checkPaths(sessionId: string, paths: string[]): Promise<PathAnswer[]>;
   /** VIEW-5.6: ends the Session through Fleet (its Harness exits, its Session host closes). */
   endSession(sessionId: string, target: EndTarget): Promise<EndResult>;
   /** VIEW-4.1–4.3: answers the prompt the Session waits on, only while its terminal still shows it untouched. */
@@ -323,6 +326,8 @@ export function createHttpClient(): LookoutClient {
     escSession: async (sessionId) => {
       await call(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/stop`, { status: 'needs-you' }), 'Pressing Esc');
     },
+    checkPaths: async (sessionId, paths) =>
+      (await call<{ paths: PathAnswer[] }>(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/paths`, { paths }), 'Checking paths')).paths,
     sendMessage: async (sessionId, text) => {
       await call(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/send`, { text }), 'Sending');
     },

@@ -1,3 +1,4 @@
+import type { PathAnswer } from '@shared/files.ts';
 import { type Settings, defaultSettings } from '@shared/settings.ts';
 import type { ChatPage, FleetHealth, HarnessOption, HistoryDetail, HistoryPage, LaunchRequest, LaunchView, ResumeResult, ServerEvent, SessionRow } from '@shared/types.ts';
 import { act, render } from '@testing-library/react';
@@ -69,6 +70,7 @@ interface RenderOptions {
   pastSession?: LookoutClient['pastSession'];
   resume?: LookoutClient['resume'];
   refreshWork?: LookoutClient['refreshWork'];
+  checkPaths?: LookoutClient['checkPaths'];
 }
 
 /** Renders the whole app against a fake server the test drives. */
@@ -94,6 +96,8 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
     watchWork: vi.fn(async () => {}),
     refreshWork: vi.fn(options.refreshWork ?? (async () => ({ ok: true as const }))),
     sendMessage: vi.fn(options.sendMessage ?? (async () => {})),
+    // VIEW-1.18: no path is a file unless the test says so.
+    checkPaths: vi.fn(options.checkPaths ?? (async (_id: string, paths: string[]): Promise<PathAnswer[]> => paths.map((path) => ({ path, exists: false, absolute: null })))),
     endSession: vi.fn(options.endSession ?? (async () => ({ how: 'exit' as const }))),
     answer: vi.fn(options.answer ?? (async () => ({ epoch: 1 }))),
     stopSession: vi.fn(options.stopSession ?? (async () => {})),

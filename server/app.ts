@@ -2,10 +2,12 @@ import { randomUUID } from 'node:crypto';
 import { type IncomingMessage, type Server, type ServerResponse, createServer } from 'node:http';
 import { SettingsError } from '../shared/settings.ts';
 import type { AnswerRequest, AnswerResult, ChatPage, EndResult, EndTarget, EscStatus, Harness, HarnessOption, HistoryDetail, HistoryPage, LaunchView, ResumeResult, ServerEvent } from '../shared/types.ts';
+import type { PathAnswer } from '../shared/files.ts';
 import type { UsageSnapshot } from '../shared/usage.ts';
 import type { WorkSnapshot } from '../shared/work.ts';
 import { AnswerError, parseAnswerRequest, parseEscStatus } from './answerer.ts';
 import { EndError, parseEndTarget } from './closer.ts';
+import { PathsError } from './files.ts';
 import { type FindQuery, HistoryError, parseFindQuery } from './history.ts';
 import { LaunchError } from './launcher.ts';
 import type { SessionMonitor } from './monitor.ts';
@@ -46,6 +48,10 @@ export interface AppOptions {
     /** VIEW-4.4/4.5: Esc, through `fleet keys`, only while the Session is still in `status` (Stop: Busy; the Esc button: Needs you). */
     stop(sessionId: string, status: EscStatus): Promise<void>;
   };
+  /** VIEW-1.18: which of a batch of paths are files, for one Session's file links (VIEW-1.17). */
+  files: {
+    check(sessionId: string, body: unknown): Promise<PathAnswer[]>;
+  };
   /** HIST: past Sessions through tb-session, and resuming one. */
   history: {
     find(q: FindQuery): Promise<HistoryPage>;
@@ -84,6 +90,8 @@ const MAX_END_BODY = 1024;
 const MAX_ANSWER_BODY = 160 * 1024;
 /** VIEW-4.5: `{ status }`, the Status the Esc button was shown in. */
 const MAX_STOP_BODY = 1024;
+/** VIEW-1.18: up to 100 paths of up to 1,024 characters, JSON-escaped. */
+const MAX_PATHS_BODY = 64 * 1024;
 
 const SECURITY_HEADERS = {
   'x-content-type-options': 'nosniff',
@@ -313,6 +321,25 @@ export function createApp(opts: AppOptions): LookoutApp {
       } catch (err) {
         // `stale`: the tab's read was older than another tab's answer; it holds until a newer read.
         if (err instanceof AnswerError) return json(res, err.status, err.kind ? { error: err.message, kind: err.kind } : { error: err.message });
+        throw err;
+      }
+    }
+    // VIEW-1.18: which paths are files. It changes nothing, but its batch doesn't fit a URL, so it's
+    // a POST, and the guard asks the token and Origin as for every POST.
+    const pathsMatch = /^\/api\/sessions\/([^/]{1,200})\/paths$/.exec(url.pathname);
+    if (pathsMatch && req.method === 'POST') {
+      let sessionId: string;
+      try {
+        sessionId = decodeURIComponent(pathsMatch[1]!);
+      } catch {
+        return json(res, 400, { error: 'invalid session id' });
+      }
+      const body = await readJson(req, res, MAX_PATHS_BODY, null);
+      if (body === NO_BODY) return;
+      try {
+        return json(res, 200, { paths: await opts.files.check(sessionId, body) });
+      } catch (err) {
+        if (err instanceof PathsError) return json(res, err.status, { error: err.message });
         throw err;
       }
     }

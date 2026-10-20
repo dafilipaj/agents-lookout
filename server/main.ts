@@ -6,6 +6,7 @@ import { AnswerLedger } from './answerer.ts';
 import { createApp } from './app.ts';
 import { endSession } from './closer.ts';
 import { run } from './exec.ts';
+import { checkSessionPaths } from './files.ts';
 import { fetchFleetList, resolveFleetBin } from './fleet.ts';
 import { GitCache, readGitLocation } from './git.ts';
 import { History, resolveTbSessionBin, resumePast } from './history.ts';
@@ -106,6 +107,8 @@ const app = createApp({
         target,
       ),
   },
+  // VIEW-1.18: a Session's file links, resolved against the cwd of its last listed row.
+  files: { check: (id, body) => checkSessionPaths({ lookup: (sid) => monitor.get(sid) }, id, body) },
   history: {
     find: (q) => history.find(q),
     detail: (id, harness) => history.detail(id, harness),

@@ -16,6 +16,7 @@ import { WorkPanel } from '@/components/WorkPanel';
 import { type LookoutClient, SaveError } from '@/lib/client';
 import { tidySentAt } from '@/lib/activity';
 import { type AnswerAttempt, LOST_ANSWER, LOST_STOP, type SendFailure, type StopRequest, processKey, promptKey, questionKey } from '@/lib/answers';
+import { FileLinks } from '@/lib/files';
 import { type PanelNav, type RightLayout, type RightTab, loadLayout, saveLayout, toggleTab } from '@/lib/right-sidebar';
 import { useAnyModalOpen } from '@/lib/modal';
 import { type HarnessState, type LaunchDraft, initialDraft } from '@/lib/launch';
@@ -473,6 +474,8 @@ export function App({ client }: { client: LookoutClient }) {
   // VIEW-1.6: "Show earlier" is a plain request; Chat hands the page back once it has noted
   // its scroll position, and the store puts it above the history.
   const loadEarlier = useCallback((sessionId: string, before: string) => client.earlierMessages(sessionId, before), [client]);
+  // VIEW-1.17: file links, checked by the server per Session (VIEW-1.18); only the main pane gets them.
+  const fileLinks = useMemo(() => new FileLinks((sessionId, paths) => client.checkPaths(sessionId, paths)), [client]);
   const addPage = useCallback(
     (sessionId: string, before: string, epoch: number, page: ChatPage) => dispatch({ type: 'chat-page', sessionId, before, epoch, page }),
     [dispatch],
@@ -569,6 +572,7 @@ export function App({ client }: { client: LookoutClient }) {
             onSend={sendMessage}
             chat={(selectedId && state.chats.get(selectedId)) || null}
             onEarlier={loadEarlier}
+            fileLinks={fileLinks}
             onPage={addPage}
             onFollowing={onFollowing}
             sentAt={sentAt}

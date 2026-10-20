@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { Fragment, type ReactNode } from 'react';
 
 /**
  * How the chat's web links look and open (VIEW-1.12): in a new tab, sending no referrer, in their
@@ -74,18 +74,53 @@ export function textParts(text: string): TextPart[] {
   return parts;
 }
 
+export interface AddressSpan {
+  text: string;
+  /** Inside an http(s) address, whether it's linked or not. */
+  address: boolean;
+}
+
+/**
+ * The text cut into runs outside and inside http(s) addresses, in order: joined, they're the text
+ * exactly. Every address counts, also one that isn't linked: one that doesn't parse, or a bare IPv6
+ * host that GFM leaves as text in prose. VIEW-1.17 looks for file paths only outside them.
+ */
+export function addressSpans(text: string): AddressSpan[] {
+  const spans: AddressSpan[] = [];
+  let from = 0;
+  for (const m of text.matchAll(ADDRESS)) {
+    const address = trimAddress(m[0]);
+    if (m.index > from) spans.push({ text: text.slice(from, m.index), address: false });
+    spans.push({ text: address, address: true });
+    from = m.index + address.length;
+  }
+  if (from < text.length) spans.push({ text: text.slice(from), address: false });
+  return spans;
+}
+
+/** `between` on the text outside every address; addresses stay text. */
+function outsideAddresses(text: string, between: (text: string) => ReactNode): ReactNode {
+  const spans = addressSpans(text);
+  if (!spans.some((s) => s.address)) return between(text);
+  return spans.map((s, i) => (s.address ? s.text : <Fragment key={i}>{between(s.text)}</Fragment>));
+}
+
 /**
  * VIEW-1.12: plain text with its http(s) addresses as links. The text reads and copies as before:
  * each link holds exactly the characters it replaces. Never use it inside a button or a link.
+ * `between` renders the text outside addresses (VIEW-1.17's file paths), so nothing it finds is ever
+ * inside one, linked or not.
  */
-export function linkify(text: string): ReactNode {
+export function linkify(text: string, between?: (text: string) => ReactNode): ReactNode {
   const parts = textParts(text);
-  if (!parts.some((p) => p.href)) return text;
+  if (!parts.some((p) => p.href)) return between ? outsideAddresses(text, between) : text;
   return parts.map((p, i) =>
     p.href ? (
       <a key={i} href={p.href} target="_blank" rel={LINK_REL} className={LINK_CLASS} dir="ltr">
         {p.text}
       </a>
+    ) : between ? (
+      <Fragment key={i}>{outsideAddresses(p.text, between)}</Fragment>
     ) : (
       p.text
     ),

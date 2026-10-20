@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { request } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -9,6 +9,7 @@ import { AnswerError } from './answerer.ts';
 import { type LookoutApp, createApp } from './app.ts';
 import { EndError } from './closer.ts';
 import type { FleetRow } from './fleet.ts';
+import { checkSessionPaths } from './files.ts';
 import { HistoryError } from './history.ts';
 import { SettingsStore } from './settings.ts';
 import { chatViewer } from './test/helpers.ts';
@@ -101,6 +102,8 @@ beforeEach(async () => {
         stops.push(status === 'busy' ? sessionId : `${sessionId} (${status})`);
       },
     },
+    // VIEW-1.18: the real check, against this test's folder as the Session's cwd.
+    files: { check: (sessionId, body) => checkSessionPaths({ lookup: (id) => (id === 'gone' ? null : { cwd: join(dir, 'repo') }) }, sessionId, body) },
     history: {
       find: async (q) => {
         finds.push(q);
@@ -364,6 +367,48 @@ describe('the chat (VIEW-1)', () => {
     app.sendTo(clientId, { type: 'chat', sessionId: 's', op: 'append', entries: [{ kind: 'assistant', cursor: 'c9', ts: null, text: '**hi**', final: true }], updated: [], queue: [] });
     expect(await tab.next()).toMatchObject({ type: 'chat', op: 'append', sessionId: 's' });
     tab.close();
+  });
+});
+
+describe('VIEW-1.18 route', () => {
+  const json = { 'content-type': 'application/json' };
+  const check = (id: string, headers: Record<string, string>, body: unknown) =>
+    call('POST', `/api/sessions/${encodeURIComponent(id)}/paths`, { ...json, ...headers }, JSON.stringify(body));
+
+  it('VIEW-1.18: the path check answers, in order, only whether each path is a file and its absolute path; it needs our Origin and the token as every POST', async () => {
+    mkdirSync(join(dir, 'repo', 'src'), { recursive: true });
+    writeFileSync(join(dir, 'repo', 'src', 'app.ts'), 'secret contents');
+    const body = { paths: ['src/app.ts', 'src/missing.ts', 'src', '~/src/app.ts', `${dir}/repo/src/app.ts`] };
+    expect((await check('abc', { 'x-lookout-token': TOKEN }, body)).status).toBe(403); // no Origin
+    expect((await check('abc', { origin }, body)).status).toBe(403); // no token
+    expect((await check('abc', { origin: 'https://evil.example', 'x-lookout-token': TOKEN }, body)).status).toBe(403);
+    expect((await call('GET', '/api/sessions/abc/paths', { origin })).status).toBe(404);
+
+    const ok = await check('abc', { origin, 'x-lookout-token': TOKEN }, body);
+    expect(ok.status).toBe(200);
+    const app = join(dir, 'repo', 'src', 'app.ts');
+    expect(JSON.parse(ok.body)).toEqual({
+      paths: [
+        { path: 'src/app.ts', exists: true, absolute: app },
+        { path: 'src/missing.ts', exists: false, absolute: null },
+        { path: 'src', exists: false, absolute: null }, // a folder isn't a file
+        { path: '~/src/app.ts', exists: false, absolute: null },
+        { path: `${dir}/repo/src/app.ts`, exists: true, absolute: app },
+      ],
+    });
+    expect(ok.body).not.toContain('secret contents');
+  });
+
+  it('VIEW-1.18: a bad batch is refused whole, an unknown Session is a 404, and the body is bounded', async () => {
+    const h = { origin, 'x-lookout-token': TOKEN };
+    for (const body of [null, [], { paths: [] }, { paths: 'src/a.ts' }, { paths: [1] }, { paths: Array.from({ length: 101 }, (_, i) => `a${i}.ts`) }]) {
+      const res = await check('abc', h, body);
+      expect(res.status, JSON.stringify(body)).toBe(400);
+    }
+    expect((await check('gone', h, { paths: ['a.ts'] })).status).toBe(404);
+    expect((await check('abc', h, { paths: ['x'.repeat(70 * 1024)] })).status).toBe(413);
+    expect((await call('POST', '/api/sessions/abc/paths', { ...h, 'content-type': 'text/plain' }, '{}')).status).toBe(415);
+    expect((await call('POST', '/api/sessions/%E0%A4%A/paths', { ...json, ...h }, '{"paths":["a.ts"]}')).status).toBe(400);
   });
 });
 

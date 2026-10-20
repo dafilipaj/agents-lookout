@@ -1,7 +1,9 @@
-import type { ChatEntry, ChatPage } from '@shared/types.ts';
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import type { ChatEntry, ChatPage, HistoryDetail } from '@shared/types.ts';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { COPY_FEEDBACK_MS } from '@/components/Markdown';
+import { BATCH_DELAY_MS, pathParts, vscodeHref } from '@/lib/files';
 import { CACHED_ENTRIES, MAX_CHAT_ENTRIES, answerFor, applyChatEvent, applyPage, chatItems, emptyChat, setFollowing, toolsLabel } from '@/lib/chat';
 import { textParts } from '@/lib/links';
 import { initialState, reducer } from '@/lib/store';
@@ -412,6 +414,247 @@ describe('links (VIEW-1.12)', () => {
       expect(row.querySelector('a')).not.toBeNull();
       expect(row).toHaveClass('truncate', ...whole);
     }
+  });
+});
+
+describe('code blocks (VIEW-1.14, VIEW-1.15)', () => {
+  const draft = 'Hey team, the chat polish lands today.\n\n  Shout if anything looks off after you pull.  ';
+  const reply = () => agent(`Here's a draft:\n\n\`\`\`\n${draft}\n\`\`\`\n\nAnd the type:\n\n\`\`\`ts\nexport const LINK_REL = 'noopener';\n\`\`\``);
+  let restore: (() => void) | null = null;
+  const clipboard = (writeText: (text: string) => Promise<void>) => {
+    const had = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    restore = () => (had ? Object.defineProperty(navigator, 'clipboard', had) : delete (navigator as { clipboard?: unknown }).clipboard);
+  };
+  afterEach(() => {
+    restore?.();
+    restore = null;
+    vi.useRealTimers();
+  });
+
+  it('VIEW-1.14: every code block has a "Copy code" button; a click copies the text between its fences and reads "Copied" for 2 s', async () => {
+    const writeText = vi.fn(async () => {});
+    clipboard(writeText);
+    const { reset } = open();
+    reset([reply()]);
+    const buttons = screen.getAllByRole('button', { name: 'Copy code' });
+    expect(buttons).toHaveLength(2);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    fireEvent.click(buttons[0]!);
+    await act(async () => {});
+    expect(writeText).toHaveBeenCalledWith(draft); // exactly as written: no line break added at its end
+    expect(buttons[0]).toHaveTextContent('Copied');
+    expect(buttons[0]).toHaveAccessibleName('Copy code'); // it keeps its name…
+    expect(buttons[0]!.parentElement!.querySelector('[role="status"]')).toHaveTextContent('Copied'); // …and says the outcome
+    act(() => vi.advanceTimersByTime(COPY_FEEDBACK_MS - 1));
+    expect(buttons[0]).toHaveTextContent('Copied');
+    act(() => vi.advanceTimersByTime(1));
+    expect(buttons[0]).not.toHaveTextContent('Copied');
+    expect(buttons[0]!.parentElement!.querySelector('[role="status"]')).toHaveTextContent('');
+
+    fireEvent.click(buttons[1]!);
+    await act(async () => {});
+    expect(writeText).toHaveBeenLastCalledWith("export const LINK_REL = 'noopener';");
+  });
+
+  it('VIEW-1.14: "Couldn’t copy" when the browser refuses, or has no clipboard', async () => {
+    clipboard(async () => {
+      throw new DOMException('Document is not focused.', 'NotAllowedError');
+    });
+    const { reset } = open();
+    reset([reply()]);
+    const [button] = screen.getAllByRole('button', { name: 'Copy code' });
+    fireEvent.click(button!);
+    expect(await within(button!).findByText("Couldn't copy")).toBeInTheDocument();
+    expect(button).toHaveClass('text-destructive');
+    restore?.();
+    restore = null;
+    Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true });
+    restore = () => delete (navigator as { clipboard?: unknown }).clipboard;
+    const [, second] = screen.getAllByRole('button', { name: 'Copy code' });
+    fireEvent.click(second!);
+    expect(await within(second!).findByText("Couldn't copy")).toBeInTheDocument();
+  });
+
+  it('VIEW-1.14: the button shows on hover or keyboard focus, Tab reaches it, and it stays in the corner while the block scrolls', async () => {
+    const user = userEvent.setup();
+    const { reset } = open();
+    reset([agent('See https://example.com/a\n\n```ts\nconst a = 1;\n```')]);
+    const button = screen.getByRole('button', { name: 'Copy code' });
+    // Hidden, not removed: it stays focusable.
+    expect(button).toHaveClass('opacity-0', 'group-hover/code:opacity-100', 'focus-visible:opacity-100');
+    expect(button.closest('.group\\/code')).not.toBeNull();
+    // Outside the block that scrolls, positioned over its corner.
+    expect(button.closest('pre')).toBeNull();
+    expect(button).toHaveClass('absolute', 'top-1.5', 'right-1.5');
+    screen.getByRole('link', { name: 'https://example.com/a' }).focus();
+    await user.tab();
+    expect(button).toHaveFocus();
+  });
+
+  it('VIEW-1.15: a block without a language, or with text, txt or plain, wraps; one with another language scrolls sideways', () => {
+    const { reset } = open();
+    reset([agent(['```\nplain\n```', '```text\ntext\n```', '```TXT\ntxt\n```', '```plain\nplain\n```', '```ts\nts\n```', '```sh\nsh\n```'].join('\n\n'))]);
+    const blocks = [...document.querySelectorAll('[data-kind="assistant"] pre')];
+    expect(blocks.map((b) => b.classList.contains('whitespace-pre-wrap'))).toEqual([true, true, true, true, false, false]);
+    expect(blocks.map((b) => b.classList.contains('overflow-x-auto'))).toEqual([false, false, false, false, true, true]);
+    expect(blocks.slice(0, 4).every((b) => b.classList.contains('break-words'))).toBe(true);
+  });
+
+  it('VIEW-1.19: a wrapped block makes room for the copy button on its first line only, and the room holds no text', () => {
+    // Only the structure: whether the first line clears the button is layout, checked by hand in Chromium.
+    const { reset } = open();
+    reset([agent(['```\nplain\n```', '```text\ntext\n```', '```TXT\ntxt\n```', '```plain\nplain\n```', '```ts\nts\n```', '```sh\nsh\n```'].join('\n\n'))]);
+    const blocks = [...document.querySelectorAll('[data-kind="assistant"] pre')];
+    const room = blocks.map((b) => b.querySelector(':scope > [data-copy-room]'));
+    expect(room.map(Boolean)).toEqual([true, true, true, true, false, false]);
+    for (const r of room.slice(0, 4)) {
+      expect(r).toBe(r!.parentElement!.firstElementChild);
+      expect(r).toHaveClass('float-right', 'h-[1lh]', 'w-28');
+      expect(r).toHaveAttribute('aria-hidden');
+      expect(r!.textContent).toBe('');
+    }
+    expect(blocks[0]!.textContent).toBe('plain\n');
+  });
+});
+
+describe('file links (VIEW-1.17)', () => {
+  const ROOT = '/Users/me/Projects/acme-app';
+  /** A server that knows these files, by the path as asked. */
+  const knows = (files: Record<string, string>) =>
+    vi.fn(async (_id: string, paths: string[]) => paths.map((path) => ({ path, exists: path in files, absolute: files[path] ?? null })));
+  const vscode = (el: Element = document.body) => [...el.querySelectorAll('a[href^="vscode:"]')].map((a) => a.getAttribute('href'));
+  const found = (text: string) => pathParts(text).flatMap((p) => (p.ref ? [p.text] : []));
+
+  it('VIEW-1.17: a path in your prompt, a slash command, a reply’s prose and inline code, and a tool-call line opens in VS Code once the server finds the file', async () => {
+    const checkPaths = knows({
+      'src/rates.ts': `${ROOT}/src/rates.ts`,
+      'README.md': '/Users/me/My Projects/acme-app/README.md',
+      [`${ROOT}/app/deal.rb`]: `${ROOT}/app/deal.rb`,
+    });
+    const { reset } = open('a', {}, { checkPaths });
+    const prompt = 'Fix src/rates.ts:12 and keep README.md current.';
+    reset([
+      you(prompt),
+      { kind: 'command', cursor: c(), ts: null, text: '/review src/rates.ts' },
+      agent('Rounding is in `src/rates.ts:12:5`; see **README.md**. The file src/gone.ts is missing.\n\n```\nsrc/rates.ts\n```'),
+      tool('Read', `${ROOT}/app/deal.rb`),
+    ]);
+    await waitFor(() => expect(vscode()).toHaveLength(6));
+    expect(vscode(document.querySelector('[data-kind="user"]')!)).toEqual([`vscode://file${ROOT}/src/rates.ts:12`, 'vscode://file/Users/me/My%20Projects/acme-app/README.md']);
+    expect(vscode(document.querySelector('[data-kind="command"]')!)).toEqual([`vscode://file${ROOT}/src/rates.ts`]);
+    const reply = document.querySelector('[data-kind="assistant"]')!;
+    expect(vscode(reply)).toEqual([`vscode://file${ROOT}/src/rates.ts:12:5`, 'vscode://file/Users/me/My%20Projects/acme-app/README.md']);
+    expect(reply.querySelector('code a')).toHaveTextContent('src/rates.ts:12:5');
+    expect(reply.querySelector('strong a')).toHaveTextContent('README.md');
+    expect(reply.querySelector('pre a')).toBeNull(); // a code block's paths stay text
+    expect(reply).toHaveTextContent('The file src/gone.ts is missing.');
+    expect(vscode(document.querySelector('[data-kind="tool_call"]')!)).toEqual([`vscode://file${ROOT}/app/deal.rb`]);
+
+    const link = within(document.querySelector('[data-kind="user"]') as HTMLElement).getByRole('link', { name: 'src/rates.ts:12' });
+    expect(link).toHaveAttribute('title', 'Open in VS Code');
+    expect(link).not.toHaveAttribute('target'); // a plain click: Chrome hands it to VS Code, the page stays
+    expect(document.querySelector('[data-kind="user"]')!.lastElementChild!.textContent).toBe(prompt);
+    // One request for every path the chat shows, each asked once.
+    expect(checkPaths).toHaveBeenCalledTimes(1);
+    expect(checkPaths.mock.calls[0]![0]).toBe('a');
+    expect([...checkPaths.mock.calls[0]![1]].sort()).toEqual([`${ROOT}/app/deal.rb`, 'README.md', 'src/gone.ts', 'src/rates.ts']);
+  });
+
+  it('VIEW-1.17: :line and :line:col go into the link; a range opens at its first line', () => {
+    expect(pathParts('src/a.ts:12, src/b.ts:3:7 and src/c.ts:12-20.').filter((p) => p.ref).map((p) => [p.text, p.ref])).toEqual([
+      ['src/a.ts:12', { path: 'src/a.ts', line: 12, col: null }],
+      ['src/b.ts:3:7', { path: 'src/b.ts', line: 3, col: 7 }],
+      ['src/c.ts:12-20', { path: 'src/c.ts', line: 12, col: null }],
+    ]);
+    expect(vscodeHref('/a/b c/d.ts', 12, 7)).toBe('vscode://file/a/b%20c/d.ts:12:7');
+    expect(vscodeHref('/a/@scope/d#e.ts', null, null)).toBe('vscode://file/a/%40scope/d%23e.ts');
+  });
+
+  it('VIEW-1.17: a path needs a known extension and no spaces; version numbers, abbreviations, sentence ends, ~ and $VAR paths and addresses stay text', () => {
+    const cases: [string, string[]][] = [
+      ['Bumped React to 19.3.1, Vite to v8.3.4 and node@22.1.0 (2.1.170).', []],
+      ['Use it, e.g. on Fridays, i.e. rarely, etc. and so on.', []],
+      ['I fixed the app. Then the rates. Done at 9 a.m.', []],
+      ['https://example.com/docs/README.md, ftp://x.dev/a.md, file:///Users/me/a.md and user@host:src/a.md', []],
+      ['~/notes/todo.md, $HOME/a.md, %APPDATA%/b.json, C:\\a\\b.ts and //src/a.ts', []],
+      ['Makefile, Dockerfile, .env, .gitignore, notes.unknownext, src/a.ts.bak and src/a.ts-old', []],
+      ['src/my file.ts', ['file.ts']], // no spaces: at most the last word could be one
+      ['Built with Node.js.', ['Node.js']], // a candidate: the server drops what isn't there
+      ['(src/a.ts), "src/b.tsx", `src/c.js`, **src/d.md**, src/e.rb. src/f.py: and --config=g.json', ['src/a.ts', 'src/b.tsx', 'src/c.js', 'src/d.md', 'src/e.rb', 'src/f.py', 'g.json']],
+      ['./a.ts ../b/c.ts /abs/d.ts .github/workflows/ci.yml .eslintrc.json Gemfile.lock src/čaj.md', ['./a.ts', '../b/c.ts', '/abs/d.ts', '.github/workflows/ci.yml', '.eslintrc.json', 'Gemfile.lock', 'src/čaj.md']],
+      ['Rates.TS and README.MD', ['Rates.TS', 'README.MD']],
+    ];
+    for (const [text, paths] of cases) {
+      expect(found(text), text).toEqual(paths);
+      expect(pathParts(text).map((p) => p.text).join(''), text).toBe(text);
+    }
+  });
+
+  it('VIEW-1.17: a long run with no path, and a long text of short ones, are cut in well under a second', () => {
+    const started = performance.now();
+    expect(found(`${'a.'.repeat(100_000)}ts`)).toEqual([]); // one run, too long to be a path
+    expect(found(`${'ab/'.repeat(160)}x.ts`)).toHaveLength(1); // 484 characters
+    expect(found(`${'ab/'.repeat(170)}x.ts`)).toEqual([]); // 514: longer than any path
+    expect(found('see src/a.ts, '.repeat(20_000))).toHaveLength(20_000);
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
+  it('VIEW-1.17: never inside a web address or a Markdown link’s text; a link’s code isn’t linked again', async () => {
+    const checkPaths = knows({ 'src/rates.ts': `${ROOT}/src/rates.ts`, 'docs/a.md': `${ROOT}/docs/a.md` });
+    const { reset } = open('a', {}, { checkPaths });
+    reset([
+      you('See https://example.com/src/rates.ts and src/rates.ts'),
+      agent('Read [docs/a.md](https://example.com/docs/a.md) or [`src/rates.ts`](https://example.com/b), then src/rates.ts.'),
+    ]);
+    await waitFor(() => expect(vscode()).toHaveLength(2));
+    const prompt = document.querySelector('[data-kind="user"]')!;
+    expect([...prompt.querySelectorAll('a')].map((a) => a.getAttribute('href'))).toEqual(['https://example.com/src/rates.ts', `vscode://file${ROOT}/src/rates.ts`]);
+    const reply = document.querySelector('[data-kind="assistant"]')!;
+    expect([...reply.querySelectorAll('a')].map((a) => a.getAttribute('href'))).toEqual(['https://example.com/docs/a.md', 'https://example.com/b', `vscode://file${ROOT}/src/rates.ts`]);
+    expect(reply.querySelectorAll('a a')).toHaveLength(0);
+    expect(checkPaths.mock.calls.flatMap((call) => call[1])).toEqual(['src/rates.ts']);
+  });
+
+  it('VIEW-1.17: never inside an address that isn’t linked either: a bare IPv6 host GFM leaves as text in prose, or one that doesn’t parse', async () => {
+    const checkPaths = knows({ 'README.md': `${ROOT}/README.md`, 'src/a.ts': `${ROOT}/src/a.ts` });
+    const { reset } = open('a', {}, { checkPaths });
+    const prompt = 'Open http://[bad/?file=README.md, then README.md';
+    // Emphasis, strikethrough and code cut an address GFM doesn't link (an IPv6 host, a host with
+    // `_`) into several nodes: it still runs on to the next space. So does one that starts in code
+    // right after a word, where the text as it reads has no address start.
+    const split = 'Served at https://[::1]:8080/?f=*x*README.md, http://my_host.dev/a~~b~~src/a.ts, http://my_host.dev/a`x`src/a.ts and https://[::1]:8080/?f=`README.md`, Run`https://[::1]:8080/?f=`README.md; then src/a.ts.';
+    reset([you(prompt), agent(`Served at https://[::1]:8080/?file=README.md; \`https://[::1]:8080/?file=README.md\`; edit README.md.\n\n${split}`)]);
+    await waitFor(() => expect(vscode()).toHaveLength(3));
+    const yours = document.querySelector('[data-kind="user"]')!;
+    expect(yours.querySelectorAll('a')).toHaveLength(1); // the address doesn't parse: no web link either
+    expect(yours.querySelector('a')!.previousSibling!.textContent).toBe(', then ');
+    expect(yours.lastElementChild!.textContent).toBe(prompt);
+    const reply = document.querySelector('[data-kind="assistant"]')!;
+    // The code links the part of the address it holds, as code does.
+    expect([...reply.querySelectorAll('a')].map((a) => a.getAttribute('href'))).toEqual(['https://[::1]:8080/?file=README.md', `vscode://file${ROOT}/README.md`, 'https://[::1]:8080/?f=', `vscode://file${ROOT}/src/a.ts`]);
+    expect(reply.querySelector('a[href^="vscode:"]')!.previousSibling!.textContent).toBe('; edit ');
+    expect(reply.querySelectorAll('a[href^="vscode:"]')[1]!.previousSibling!.textContent).toBe('; then ');
+    expect(reply).toHaveTextContent('Served at https://[::1]:8080/?file=README.md;');
+    expect([...reply.querySelectorAll('p')].at(-1)!.textContent).toBe(split.replace(/[*`]|~~/g, ''));
+    expect(checkPaths.mock.calls.flatMap((call) => call[1]).sort()).toEqual(['README.md', 'src/a.ts']);
+  });
+
+  it('VIEW-1.17: a past Session’s chat has no file links, and asks nothing', async () => {
+    const checkPaths = knows({ 'src/rates.ts': `${ROOT}/src/rates.ts` });
+    const pastSession = vi.fn(async (): Promise<HistoryDetail> => ({
+      item: { sessionId: 'gone-1', harness: 'claude', headless: false, title: 'rates', projectPath: ROOT, repo: 'acme-app', branch: null, lastActiveAt: null, snippet: null, blocked: 'folder-gone' },
+      source: 'transcript',
+      preview: 'latest',
+      totalMessages: 2,
+      entries: [you('Fix src/rates.ts'), agent('Done in `src/rates.ts`.')],
+    }));
+    renderApp('/h/claude/gone-1', { pastSession, checkPaths }).snapshot([]);
+    const view = await screen.findByTestId('past-session');
+    expect(await within(view).findByText('Fix src/rates.ts')).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, BATCH_DELAY_MS * 3));
+    expect(vscode(view)).toEqual([]);
+    expect(checkPaths).not.toHaveBeenCalled();
   });
 });
 

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { AnswerContext } from '@/lib/answers';
 import { type ChatItem, type QuestionEntry, type ToolCall, answerFor, chatItems, clockTime, toolsLabel } from '@/lib/chat';
 import { type Echo, IN_TERMINAL, NOT_TAKEN, NO_ECHOES, isCommand } from '@/lib/echoes';
+import { FileLinksContext, SessionFilesContext } from '@/lib/files';
 import { linkify } from '@/lib/links';
 import { JUMP_MARGIN_PX, chatMarks, firstLine, stepMark } from '@/lib/marks';
 import { HARNESS_NAME } from '@/lib/sessions';
@@ -13,6 +14,7 @@ import type { Chat as ChatState } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import { AnswerInTerminal, ChoiceIcon, QuestionForm, TerminalNote } from './Answering';
 import { ChatRail, MarkShape } from './ChatRail';
+import { LinkedText } from './FilePath';
 import { Markdown } from './Markdown';
 
 /** At most this far from the bottom still counts as "at the bottom" (VIEW-1.5). */
@@ -55,6 +57,9 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
   const queue = chat?.queue ?? NONE;
   const before = chat?.before ?? null;
   const items = useMemo(() => chatItems(entries), [entries]);
+  // VIEW-1.17: this Session's file links; none in a past Session's chat, which has no registry.
+  const fileLinks = useContext(FileLinksContext);
+  const files = useMemo(() => fileLinks?.session(sessionId) ?? null, [fileLinks, sessionId]);
 
   // VIEW-1.5: follow new entries while at the bottom; once scrolled up, stay put.
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -329,49 +334,52 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
   }
 
   return (
-    <div className="@container relative flex min-h-24 flex-1">
-      <div
-        ref={scrollRef}
-        onScroll={onScroll}
-        onWheel={release}
-        onTouchMove={release}
-        onPointerDown={releaseOnScrollBar}
-        className="h-full min-w-0 flex-1 overflow-y-auto"
-        aria-label="Chat"
-        // SIDE-5 leaves the arrow keys to the chat when they come from inside it: they scroll it.
-        data-scroll-keys
-        data-testid="chat"
-      >
-        <div ref={content} className="flex min-h-full flex-col">
-          {body}
-          <div ref={tail}>{activity}</div>
-        </div>
-      </div>
-      {chat?.loaded && (
-        <ChatRail
-          scrollRef={scrollRef}
-          listRef={list}
-          marks={marks}
-          version={rendered}
-          jumped={jumped}
-          canLoadEarlier={canLoadEarlier}
-          loadingEarlier={loadingEarlier}
-          onEarlier={loadEarlier}
-          onJump={jumpTo}
-        />
-      )}
-      {!following && chat?.loaded && items.length > 0 && (
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={jumpToLatest}
-          className="absolute right-5 bottom-3 h-7 gap-1.5 rounded-full border border-border text-[12px] shadow-sm"
+    <SessionFilesContext.Provider value={files}>
+      <div className="@container relative flex min-h-24 flex-1">
+        <div
+          ref={scrollRef}
+          onScroll={onScroll}
+          onWheel={release}
+          onTouchMove={release}
+          onPointerDown={releaseOnScrollBar}
+          // VIEW-1.16: the scroll bar's track takes the chat's background, with no border.
+          className="scrollbar-blend h-full min-w-0 flex-1 overflow-y-auto"
+          aria-label="Chat"
+          // SIDE-5 leaves the arrow keys to the chat when they come from inside it: they scroll it.
+          data-scroll-keys
+          data-testid="chat"
         >
-          {unseen > 0 ? `${unseen} new · Jump to latest` : 'Jump to latest'}
-          <ArrowDown className="size-3.5" />
-        </Button>
-      )}
-    </div>
+          <div ref={content} className="flex min-h-full flex-col">
+            {body}
+            <div ref={tail}>{activity}</div>
+          </div>
+        </div>
+        {chat?.loaded && (
+          <ChatRail
+            scrollRef={scrollRef}
+            listRef={list}
+            marks={marks}
+            version={rendered}
+            jumped={jumped}
+            canLoadEarlier={canLoadEarlier}
+            loadingEarlier={loadingEarlier}
+            onEarlier={loadEarlier}
+            onJump={jumpTo}
+          />
+        )}
+        {!following && chat?.loaded && items.length > 0 && (
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={jumpToLatest}
+            className="absolute right-5 bottom-3 h-7 gap-1.5 rounded-full border border-border text-[12px] shadow-sm"
+          >
+            {unseen > 0 ? `${unseen} new · Jump to latest` : 'Jump to latest'}
+            <ArrowDown className="size-3.5" />
+          </Button>
+        )}
+      </div>
+    </SessionFilesContext.Provider>
   );
 }
 
@@ -410,7 +418,9 @@ function Item({ item, label, startsTurn }: RowProps) {
       return (
         <div className="flex flex-col items-end" data-kind="command">
           <Meta who="You" ts={e.ts} />
-          <code className="max-w-[85%] rounded-md border border-border px-2.5 py-1 font-mono text-[12.5px] break-all">{linkify(e.text)}</code>
+          <code className="max-w-[85%] rounded-md border border-border px-2.5 py-1 font-mono text-[12.5px] break-all">
+            <LinkedText text={e.text} />
+          </code>
         </div>
       );
     case 'assistant':
@@ -500,7 +510,7 @@ function Prompt({ text, ts, state }: { text: string; ts: string | null; state: '
           queued && 'border border-dashed border-border bg-transparent text-muted-foreground',
         )}
       >
-        {linkify(text)}
+        <LinkedText text={text} />
       </div>
     </div>
   );
@@ -528,7 +538,7 @@ function ToolCalls({ calls }: { calls: ToolCall[] }) {
         <Wrench className="size-3.5 shrink-0 opacity-70" />
         <span className="shrink-0 font-medium text-foreground/75">{c.tool}</span>
         <span className={cn(TRUNCATED, 'font-mono text-[11.5px]')} title={c.summary}>
-          {linkify(c.summary)}
+          <LinkedText text={c.summary} />
         </span>
       </div>
     );
@@ -550,7 +560,7 @@ function ToolCalls({ calls }: { calls: ToolCall[] }) {
             <li key={c.cursor} className="flex min-w-0 items-center gap-2 text-[12.5px] text-muted-foreground">
               <span className="shrink-0 font-medium text-foreground/75">{c.tool}</span>
               <span className={cn(TRUNCATED, 'font-mono text-[11.5px]')} title={c.summary}>
-                {linkify(c.summary)}
+                <LinkedText text={c.summary} />
               </span>
             </li>
           ))}
