@@ -92,7 +92,7 @@ const app = createApp({
   work,
   sessions: {
     answer: (id, req) => viewer.answer(id, req),
-    stop: (id) => viewer.stopSession(id),
+    stop: (id, status) => viewer.stopSession(id, status),
     end: (id, target) =>
       endSession(
         {

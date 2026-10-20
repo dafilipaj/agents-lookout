@@ -1,5 +1,5 @@
 import type { AnswerRequest, ChatPage, EndTarget, SessionRow } from '@shared/types.ts';
-import { ChevronDown, CircleSlash, CircleStop, FolderGit2, GitBranch, Info, Power, SendHorizontal, TerminalSquare } from 'lucide-react';
+import { ChevronDown, CircleSlash, CircleStop, FolderGit2, GitBranch, Info, OctagonX, Power, SendHorizontal, TerminalSquare } from 'lucide-react';
 import { type ComponentPropsWithRef, type ComponentPropsWithoutRef, type KeyboardEvent, type ReactNode, type RefObject, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '@/components/ui/dialog';
@@ -9,10 +9,14 @@ import {
   type AnswerAttempt,
   AnswerContext,
   type Answering,
+  ESC_HINT,
   type ScreenState,
+  type SendFailure,
   type StopRequest,
+  escButton,
   permissionPanel,
   questionPanel,
+  sendErrorText,
   stopButton,
 } from '@/lib/answers';
 import type { Chat as ChatState, Preview } from '@/lib/store';
@@ -39,8 +43,8 @@ export interface SessionViewProps {
   drafts: Map<string, string>;
   /** Sessions with a send in flight. */
   sending: ReadonlySet<string>;
-  /** VIEW-3.4: the last failed send per Session. */
-  sendErrors: ReadonlyMap<string, string>;
+  /** VIEW-3.4: the last failed send per Session; VIEW-3.7: with why Fleet held it, when it did. */
+  sendErrors: ReadonlyMap<string, SendFailure>;
   /** The box was edited: its error is stale. */
   onEdit(sessionId: string): void;
   /** Resolves true once sent; false when it failed (App keeps the error) or one is in flight. */
@@ -64,9 +68,11 @@ export interface SessionViewProps {
   attempt: AnswerAttempt | undefined;
   /** VIEW-4.1–4.3: answers the prompt; App keeps the outcome (and opens the terminal on a refusal). */
   onAnswer(row: SessionRow, req: AnswerRequest): void;
-  /** VIEW-4.4: the last Stop pressed for this Session. */
+  /** VIEW-4.4/4.5: the last Stop, or Esc, pressed for this Session. */
   stopRequest: StopRequest | undefined;
   onStop(row: SessionRow): void;
+  /** VIEW-4.5: presses Esc in a Session that Needs you with no answer buttons. */
+  onEsc(row: SessionRow): void;
 }
 
 /** VIEW: the selected Session. Mounted per Session (`key`), so its local state is its own. */
@@ -94,6 +100,7 @@ export function SessionView({
   onAnswer,
   stopRequest,
   onStop,
+  onEsc,
 }: SessionViewProps) {
   const controls = row.controllable && !ended;
 
@@ -103,6 +110,8 @@ export function SessionView({
   const questionId = question?.id ?? null;
   const questionPhase = question?.phase ?? null;
   const questionMessage = question?.message ?? null;
+  // VIEW-4.5: Esc, where Lookout offers no answer buttons for what the Session waits on.
+  const esc = escButton(row, ended, screen, { permission, question }, attempt, stopRequest, now);
   const showTerminal = () => onToggleDrawer(row, true);
   // The epoch of the last read of the screen goes with every answer: the server refuses one read
   // before another tab's answer, or before it started (0 before any read: the question's buttons
@@ -196,7 +205,16 @@ export function SessionView({
   // composer (or the ended / View only banner) and the status line, under the shell's dock line.
   return (
     <ShellView>
-      <Header row={row} ended={ended} now={now} onEnd={onEnd} stop={stopButton(row, ended, stopRequest, now)} onStop={() => onStop(row)} />
+      <Header
+        row={row}
+        ended={ended}
+        now={now}
+        onEnd={onEnd}
+        stop={stopButton(row, ended, stopRequest, now)}
+        onStop={() => onStop(row)}
+        esc={esc}
+        onEsc={() => onEsc(row)}
+      />
       <ShellCell row="body" className="flex flex-col overflow-hidden">
         <AnswerContext.Provider value={answering}>
           <Chat
@@ -247,7 +265,7 @@ export function SessionView({
             title={row.title}
             drafts={drafts}
             sending={sending.has(row.id)}
-            error={sendErrors.get(row.id) ?? null}
+            error={sendErrorText(sendErrors.get(row.id), esc !== null)}
             onEdit={onEdit}
             onSend={send}
             inputRef={composerRef}
@@ -271,6 +289,8 @@ function Header({
   onEnd,
   stop,
   onStop,
+  esc,
+  onEsc,
 }: {
   row: SessionRow;
   ended: boolean;
@@ -278,10 +298,18 @@ function Header({
   onEnd: SessionViewProps['onEnd'];
   stop: ReturnType<typeof stopButton>;
   onStop(): void;
+  esc: ReturnType<typeof escButton>;
+  onEsc(): void;
 }) {
   const age = row.statusSince !== null ? formatAge(now - row.statusSince) : null;
   const title = useRef<HTMLHeadingElement>(null);
   const stopErrorId = useId();
+  // VIEW-4.4 Stop while Busy, or VIEW-4.5 Esc while it Needs you: never both (one Status at a time).
+  const key: EscKeyProps | null = stop
+    ? { label: 'Stop', pressingLabel: 'Stopping…', hint: null, icon: <CircleStop className="size-3.5" />, pressing: stop.stopping, error: stop.error, onPress: onStop }
+    : esc
+      ? { label: 'Esc', pressingLabel: 'Pressing Esc…', hint: ESC_HINT, icon: <OctagonX className="size-3.5" />, pressing: esc.pressing, error: esc.error, onPress: onEsc }
+      : null;
   return (
     // Positioned, so the bubble with Stop's whole error sizes to the pane and stays inside it.
     <PaneHeader aria-label="Session" className="@container relative">
@@ -321,11 +349,11 @@ function Header({
             {ended ? 'Ended' : STATUS_LABEL[row.status]}
             {!ended && age && <span className="font-normal opacity-70 @max-[32rem]:hidden"> · {age}</span>}
           </span>
-          {stop?.error && <StopError id={stopErrorId} message={stop.error} />}
+          {key?.error && <StopError id={stopErrorId} message={key.error} />}
         </div>
         {/* ITERM's "Open in iTerm2" goes here too. */}
         <div data-slot="header-actions" className="flex shrink-0 items-center gap-1.5 empty:hidden">
-          {stop && <Stop stopping={stop.stopping} error={stop.error} errorId={stopErrorId} onStop={onStop} />}
+          {key && <EscKey {...key} errorId={stopErrorId} />}
           <EndSession row={row} eligible={!ended && row.controllable && row.ownHost} onEnd={onEnd} fallbackFocus={title} />
         </div>
       </div>
@@ -333,26 +361,41 @@ function Header({
   );
 }
 
+interface EscKeyProps {
+  label: string;
+  /** What it reads while the Esc is on its way and for 10 s after. */
+  pressingLabel: string;
+  /** Its tooltip when it isn't pressing: what it does (VIEW-4.5's Esc); null to show its label. */
+  hint: string | null;
+  icon: ReactNode;
+  pressing: boolean;
+  error: string | null;
+  onPress(): void;
+}
+
 /**
  * VIEW-4.4: Stop, while the Session is Busy: one click, one Esc. Then "Stopping…", disabled until
  * the Status leaves Busy or 10 s pass, since in Claude Code a second Esc opens its rewind menu.
+ * VIEW-4.5: the Esc button is the same for a Session that Needs you with no answer buttons
+ * ("Pressing Esc…" until the Status leaves Needs you), its tooltip saying what Esc does there.
  * Why the last one failed is its tooltip and its description too, so it's there when the header
  * is too narrow to show it beside the button; there, the button turns the error's colour instead.
  */
-function Stop({ stopping, error, errorId, onStop }: { stopping: boolean; error: string | null; errorId: string; onStop(): void }) {
-  const label = stopping ? 'Stopping…' : 'Stop';
+function EscKey({ label, pressingLabel, hint, icon, pressing, error, errorId, onPress }: EscKeyProps & { errorId: string }) {
+  const shown = pressing ? pressingLabel : label;
+  const tip = pressing ? pressingLabel : (hint ?? label);
   return (
     <Button
       variant="outline"
       size="xs"
       className={cn('h-7 shrink-0 gap-1.5 px-2 text-[12px]', error && '@max-[20rem]:text-destructive')}
-      title={error ? `${label}\n${error}` : label}
+      title={error ? `${tip}\n${error}` : tip}
       aria-describedby={error ? errorId : undefined}
-      disabled={stopping}
-      onClick={onStop}
+      disabled={pressing}
+      onClick={onPress}
     >
-      <CircleStop className="size-3.5" />
-      <span className="@max-[26rem]:sr-only">{label}</span>
+      {icon}
+      <span className="@max-[26rem]:sr-only">{shown}</span>
     </Button>
   );
 }

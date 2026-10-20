@@ -1,16 +1,18 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { request } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { AnswerRequest, EndTarget, ServerEvent } from '../shared/types.ts';
+import type { AnswerRequest, EndTarget, EscStatus, ServerEvent } from '../shared/types.ts';
 import { AnswerError } from './answerer.ts';
 import { type LookoutApp, createApp } from './app.ts';
 import { EndError } from './closer.ts';
+import type { FleetRow } from './fleet.ts';
 import { HistoryError } from './history.ts';
 import { SettingsStore } from './settings.ts';
-import { ViewError } from './viewer.ts';
+import { chatViewer } from './test/helpers.ts';
+import { HELD_MESSAGE, ViewError, type Viewer } from './viewer.ts';
 import { WorkMonitor } from './work.ts';
 
 let dir: string;
@@ -70,6 +72,7 @@ beforeEach(async () => {
       watch: (clientId: string, sessionId: string | null, preview: boolean) => void watches.push({ clientId, sessionId, preview }),
       drop: (clientId: string) => void dropped.push(clientId),
       send: async (sessionId: string, input: unknown) => {
+        if (real) return real.viewer.send(sessionId, input);
         if (sessionId === 'gone') throw new ViewError(404, "This Session isn't running.");
         sent.push({ sessionId, input });
       },
@@ -92,9 +95,10 @@ beforeEach(async () => {
         answers.push({ sessionId, req });
         return { epoch: 7 };
       },
-      stop: async (sessionId: string) => {
+      stop: async (sessionId: string, status: EscStatus) => {
+        if (real) return real.viewer.stopSession(sessionId, status);
         if (sessionId === 'idle') throw new AnswerError(409, 'This Session isn’t working on anything now, so Esc wasn’t pressed.');
-        stops.push(sessionId);
+        stops.push(status === 'busy' ? sessionId : `${sessionId} (${status})`);
       },
     },
     history: {
@@ -122,10 +126,44 @@ beforeEach(async () => {
   origins.add(origin);
 });
 afterEach(async () => {
+  real?.viewer.stop();
+  real = null;
   app.server.closeAllConnections();
   await new Promise((r) => app.server.close(r));
   rmSync(dir, { recursive: true, force: true });
 });
+
+/**
+ * VIEW-3.7, VIEW-4.5 end to end: while set, the routes' sends and Stops go to a real Viewer over the
+ * fake `fleet` executable (real processes), its fixtures copied into the test's directory.
+ */
+let real: { viewer: Viewer; fleetDir: string; log: string } | null = null;
+
+const FAKE_FLEET = new URL('./fixtures/fleet/messages/fake-fleet.mjs', import.meta.url).pathname;
+const FAKE_FLEET_FIXTURES = new URL('./fixtures/fleet/messages/', import.meta.url).pathname;
+
+/** Points the routes at a real Viewer over the fake `fleet`, its rows changed by `patch` (by session id) first. */
+function useFakeFleet(patch: Record<string, Record<string, unknown>> = {}) {
+  const fleetDir = join(dir, 'fleet');
+  cpSync(FAKE_FLEET_FIXTURES, fleetDir, { recursive: true });
+  const listFile = join(fleetDir, 'list.json');
+  const rows = (JSON.parse(readFileSync(listFile, 'utf8')) as FleetRow[]).map((r) => ({ ...r, ...(r.session_id ? patch[r.session_id] : undefined) }));
+  writeFileSync(listFile, JSON.stringify(rows));
+  const log = join(dir, 'fleet.log');
+  const env = { PATH: process.env.PATH, FAKE_FLEET_DIR: fleetDir, FAKE_FLEET_LOG: log };
+  real = { viewer: chatViewer(FAKE_FLEET, env, rows).viewer, fleetDir, log };
+  return real;
+}
+
+/** The fake `fleet` calls that would type or press a key. */
+const typedByFleet = () =>
+  real && existsSync(real.log)
+    ? readFileSync(real.log, 'utf8')
+        .trim()
+        .split('\n')
+        .map((l) => JSON.parse(l) as string[])
+        .filter((a) => a.includes('send') || a.includes('keys'))
+    : [];
 
 function call(method: string, path: string, headers: Record<string, string> = {}, body?: string) {
   return new Promise<{ status: number; body: string }>((resolve, reject) => {
@@ -277,6 +315,30 @@ describe('following a Session (VIEW)', () => {
     expect(tooBig.status).toBe(413);
     expect(JSON.parse(tooBig.body)).toEqual({ error: 'The message is too long.', field: 'text' });
   });
+
+  it.each(['text', 'prompt', 'no_input_box', 'unreadable'] as const)(
+    'VIEW-3.7: end to end, a send the fake `fleet` holds for `%s` is a 409 with its reason and plain words, never what the box holds; nothing is typed',
+    async (why) => {
+      const CODEX = 'bbbbbbbb-0000-4000-8000-000000000102'; // idle, in its own Session host
+      const t = useFakeFleet({ [CODEX]: { fake_send: why, fake_input: 'TOKEN=sk-live-0123456789abcdef' } });
+      const res = await call('POST', `/api/sessions/${CODEX}/send`, { ...json, origin, 'x-lookout-token': TOKEN }, '{"text":"Reply with OK"}');
+      expect(res.status).toBe(409);
+      expect(JSON.parse(res.body)).toEqual({ error: HELD_MESSAGE[why], field: null, kind: 'send_held', reason: why });
+      expect(res.body).not.toContain('sk-live');
+      // Fleet was asked to type only into an empty box, and typed nothing: the Transcript has no new prompt.
+      expect(typedByFleet()).toEqual([['--local', 'send', '--json', '--require-empty', '--', CODEX, 'Reply with OK']]);
+      expect(readFileSync(join(t.fleetDir, 'sessions', `${CODEX}.json`), 'utf8')).not.toContain('Reply with OK');
+    },
+  );
+
+  it('VIEW-3.7: end to end, an empty box takes the message: 200, and the fake `fleet` records it', async () => {
+    const CODEX = 'bbbbbbbb-0000-4000-8000-000000000102'; // idle, in its own Session host
+    const t = useFakeFleet();
+    const res = await call('POST', `/api/sessions/${CODEX}/send`, { ...json, origin, 'x-lookout-token': TOKEN }, '{"text":"Reply with OK"}');
+    expect(res.status).toBe(200);
+    expect(JSON.parse(res.body)).toEqual({ ok: true });
+    expect(readFileSync(join(t.fleetDir, 'sessions', `${CODEX}.json`), 'utf8')).toContain('Reply with OK');
+  });
 });
 
 describe('the chat (VIEW-1)', () => {
@@ -425,6 +487,46 @@ describe('VIEW-4 routes', () => {
     const idle = await stop('idle', { origin, 'x-lookout-token': TOKEN });
     expect(idle.status).toBe(409);
     expect(JSON.parse(idle.body)).toEqual({ error: 'This Session isn’t working on anything now, so Esc wasn’t pressed.' });
+  });
+
+  it('VIEW-4.5: the Esc button takes Stop’s route with the Status it was shown in: Origin and token; any other body is refused before anything runs', async () => {
+    const esc = (body: string, headers: Record<string, string> = { ...json, origin, 'x-lookout-token': TOKEN }) => call('POST', '/api/sessions/abc/stop', headers, body);
+    expect((await esc('{"status":"needs-you"}', { ...json, origin })).status).toBe(403);
+    expect((await esc('{"status":"needs-you"}', { ...json, 'x-lookout-token': TOKEN })).status).toBe(403);
+    expect(stops).toEqual([]);
+    expect((await esc('{"status":"needs-you"}')).status).toBe(200);
+    expect((await esc('{"status":"busy"}')).status).toBe(200);
+    expect(stops).toEqual(['abc (needs-you)', 'abc']);
+    for (const bad of ['{}', '{"status":"idle"}', '"needs-you"', '[]', 'null']) {
+      const res = await esc(bad);
+      expect(res.status).toBe(400);
+      expect(JSON.parse(res.body)).toEqual({ error: 'Invalid request.' });
+    }
+    expect((await esc('not json')).status).toBe(400);
+    expect((await esc(JSON.stringify({ status: 'needs-you', pad: 'x'.repeat(2_000) }))).status).toBe(413);
+    expect(stops).toHaveLength(2);
+  });
+
+  it('VIEW-4.5: end to end, Esc for a Session that Needs you presses `fleet keys id:<session_id> Escape --json` once; Stop for it, or Esc for one that doesn’t, presses nothing', async () => {
+    const WAITING = 'aaaaaaaa-0000-4000-8000-000000000101'; // Needs you
+    const IDLE = 'dddddddd-0000-4000-8000-000000000104';
+    useFakeFleet();
+    const headers = { ...json, origin, 'x-lookout-token': TOKEN };
+    const stop = await call('POST', `/api/sessions/${WAITING}/stop`, { origin, 'x-lookout-token': TOKEN });
+    expect(stop.status).toBe(409);
+    expect(JSON.parse(stop.body)).toEqual({ error: 'This Session isn’t working on anything now, so Esc wasn’t pressed.' });
+    const idle = await call('POST', `/api/sessions/${IDLE}/stop`, headers, '{"status":"needs-you"}');
+    expect(idle.status).toBe(409);
+    expect(JSON.parse(idle.body)).toEqual({ error: 'This Session isn’t waiting on you now, so Esc wasn’t pressed.' });
+    expect(typedByFleet()).toEqual([]);
+    const ok = await call('POST', `/api/sessions/${WAITING}/stop`, headers, '{"status":"needs-you"}');
+    expect(ok.status).toBe(200);
+    expect(typedByFleet()).toEqual([['--local', 'keys', `id:${WAITING}`, 'Escape', '--json']]);
+    // A second Esc in the same spell, from any tab, within 10 s: refused, nothing pressed.
+    const again = await call('POST', `/api/sessions/${WAITING}/stop`, headers, '{"status":"needs-you"}');
+    expect(again.status).toBe(409);
+    expect(JSON.parse(again.body)).toEqual({ error: 'Esc was just pressed in this Session, so it wasn’t pressed again. Give it a few seconds.' });
+    expect(typedByFleet()).toHaveLength(1);
   });
 });
 

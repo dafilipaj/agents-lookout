@@ -1,6 +1,7 @@
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
+import { ESC_POINTER } from '@/lib/answers';
 import { SaveError } from '@/lib/client';
 import { contextLevel } from '@/lib/sessions';
 import { renderApp, row, rowEl, settings } from '@/test/helpers';
@@ -430,6 +431,37 @@ describe('composer', () => {
     await user.type(box, 'Reply with OK{Enter}');
     expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't send: session has no terminal handle");
     expect(box).toHaveValue('Reply with OK');
+  });
+
+  it.each([
+    ['text', "The Session's input box already holds text, so nothing was sent. Send or clear it in the terminal, then try again.", null],
+    ['prompt', 'The Session is waiting on a prompt, so nothing was sent. Answer it, then try again.', ESC_POINTER.prompt],
+    ['no_input_box', "The Session's input box isn't on screen (a panel, a menu or the transcript view is open), so nothing was sent. Press Esc to close it, then try again.", ESC_POINTER.no_input_box],
+    ['unreadable', "Fleet can't read the Session's input box, so nothing was sent. Send it from the terminal instead.", null],
+  ] as const)('VIEW-3.7: a send held for `%s` keeps the text, shows why where a failed send’s error goes, drops the dimmed message, and points to Esc while it shows', async (why, message, pointer) => {
+    const user = userEvent.setup();
+    const held = new SaveError(message, null, 409, { kind: 'send_held', reason: why });
+    let refuse: () => void = () => {};
+    const sendMessage = vi.fn(() => new Promise<void>((_, reject) => (refuse = () => reject(held))));
+    const app = renderApp('/s/a', { sendMessage });
+    // `/usage` left its panel open: the Session Needs you, and the server's read of this spell shows nothing Lookout answers.
+    app.snapshot([row({ id: 'a', status: 'needs-you', statusSince: 1_000, waitingFor: 'dialog open' })]);
+    app.emit({ type: 'chat', sessionId: 'a', op: 'reset', entries: [], before: null, queue: [] });
+    app.emit({ type: 'prompt', sessionId: 'a', prompt: null, epoch: 1, uncertain: null, since: 1_000 });
+    expect(within(header()).getByRole('button', { name: 'Esc' })).toBeInTheDocument();
+    const box = screen.getByRole('textbox', { name: 'Message' });
+    await user.type(box, 'Reply with OK{Enter}');
+    // On its way, dimmed in the chat (VIEW-1.13); held, it goes.
+    expect(document.querySelector('[data-echo]')).toHaveTextContent('Reply with OK');
+    await act(async () => refuse());
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(pointer ? `${message} ${pointer}` : message);
+    expect(box).toHaveValue('Reply with OK');
+    expect(document.querySelector('[data-echo]')).toBeNull();
+    // The Esc button goes (the panel closed): so does the pointer, the message stays.
+    app.emit({ type: 'sessions', upsert: [row({ id: 'a', status: 'idle', statusSince: 2_000 })], remove: [] });
+    expect(within(header()).queryByRole('button', { name: 'Esc' })).toBeNull();
+    expect(screen.getByRole('alert').textContent).toBe(message);
   });
 
   it('VIEW-3.5: each Session keeps its own unsent draft while switching', async () => {

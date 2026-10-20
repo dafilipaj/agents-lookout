@@ -203,7 +203,7 @@ export function reducer(state: LookoutState, action: Action): LookoutState {
     case 'preview':
       return { ...state, previews: new Map(state.previews).set(e.sessionId, { text: e.text, error: e.error }) };
     case 'prompt':
-      return { ...state, prompts: new Map(state.prompts).set(e.sessionId, { prompt: e.prompt, epoch: e.epoch, uncertain: e.uncertain ?? null }) };
+      return { ...state, prompts: new Map(state.prompts).set(e.sessionId, { prompt: e.prompt, epoch: e.epoch, uncertain: e.uncertain ?? null, since: e.since ?? null }) };
     case 'launches': {
       let started = state.started;
       if (e.started.length) {

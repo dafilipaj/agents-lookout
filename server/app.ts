@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { type IncomingMessage, type Server, type ServerResponse, createServer } from 'node:http';
 import { SettingsError } from '../shared/settings.ts';
-import type { AnswerRequest, AnswerResult, ChatPage, EndResult, EndTarget, Harness, HarnessOption, HistoryDetail, HistoryPage, LaunchView, ResumeResult, ServerEvent } from '../shared/types.ts';
+import type { AnswerRequest, AnswerResult, ChatPage, EndResult, EndTarget, EscStatus, Harness, HarnessOption, HistoryDetail, HistoryPage, LaunchView, ResumeResult, ServerEvent } from '../shared/types.ts';
 import type { UsageSnapshot } from '../shared/usage.ts';
 import type { WorkSnapshot } from '../shared/work.ts';
-import { AnswerError, parseAnswerRequest } from './answerer.ts';
+import { AnswerError, parseAnswerRequest, parseEscStatus } from './answerer.ts';
 import { EndError, parseEndTarget } from './closer.ts';
 import { type FindQuery, HistoryError, parseFindQuery } from './history.ts';
 import { LaunchError } from './launcher.ts';
@@ -43,8 +43,8 @@ export interface AppOptions {
     end(sessionId: string, target: EndTarget): Promise<EndResult>;
     /** VIEW-4.1–4.3: `fleet answer`, only while the terminal still shows that prompt untouched. */
     answer(sessionId: string, req: AnswerRequest): Promise<AnswerResult>;
-    /** VIEW-4.4: Esc, through `fleet keys`, only while the Session is Busy. */
-    stop(sessionId: string): Promise<void>;
+    /** VIEW-4.4/4.5: Esc, through `fleet keys`, only while the Session is still in `status` (Stop: Busy; the Esc button: Needs you). */
+    stop(sessionId: string, status: EscStatus): Promise<void>;
   };
   /** HIST: past Sessions through tb-session, and resuming one. */
   history: {
@@ -82,6 +82,8 @@ const MAX_SEND_BODY = MAX_MESSAGE * 8;
 const MAX_END_BODY = 1024;
 /** VIEW-4.1: up to 10 answers of 2,000 characters of text each, JSON-escaped, plus their options. */
 const MAX_ANSWER_BODY = 160 * 1024;
+/** VIEW-4.5: `{ status }`, the Status the Esc button was shown in. */
+const MAX_STOP_BODY = 1024;
 
 const SECURITY_HEADERS = {
   'x-content-type-options': 'nosniff',
@@ -258,7 +260,8 @@ export function createApp(opts: AppOptions): LookoutApp {
         await opts.viewer.send(sessionId, body);
         return json(res, 200, { ok: true });
       } catch (err) {
-        if (err instanceof ViewError) return json(res, err.status, { error: err.message, field: err.field });
+        // VIEW-3.7: a held send says so, and why; never what the input box holds.
+        if (err instanceof ViewError) return json(res, err.status, { error: err.message, field: err.field, ...(err.held ? { kind: 'send_held', reason: err.held.reason } : {}) });
         throw err;
       }
     }
@@ -294,7 +297,14 @@ export function createApp(opts: AppOptions): LookoutApp {
       }
       try {
         if (answerMatch[2] === 'stop') {
-          await opts.sessions.stop(sessionId);
+          // VIEW-4.5: the Esc button names the Status it was shown in; Stop sends no body (Busy).
+          let status: EscStatus = 'busy';
+          if (req.headers['content-type'] !== undefined) {
+            const body = await readJson(req, res, MAX_STOP_BODY, null);
+            if (body === NO_BODY) return;
+            status = parseEscStatus(body);
+          }
+          await opts.sessions.stop(sessionId, status);
           return json(res, 200, { ok: true });
         }
         const body = await readJson(req, res, MAX_ANSWER_BODY, { error: 'The answer is too long.', field: 'answers' });

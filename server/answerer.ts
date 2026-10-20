@@ -1,4 +1,4 @@
-import type { AnswerRequest, AnswerResult, PromptChoice, QuestionAnswer, ScreenPrompt, ServerEvent, SessionRow } from '../shared/types.ts';
+import type { AnswerRequest, AnswerResult, EscStatus, PromptChoice, QuestionAnswer, ScreenPrompt, ServerEvent, SessionRow } from '../shared/types.ts';
 import { EndError, closeTarget, isPidOnly } from './closer.ts';
 import type { RunError, Runner } from './exec.ts';
 import type { FleetListResult } from './fleet.ts';
@@ -304,13 +304,17 @@ export class AnswerLedger {
    * by then counts as reached, as does the one the Stop was asked in. The monitor may date a spell up
    * to one poll late (for Codex, Fleet's time is the Transcript's last write, or none), so a spell
    * dated up to one monitor interval after the Esc counts as reached too.
+   *
+   * VIEW-4.5: the Esc button shares the guard: one Esc per Status spell every 10 s, from Stop or Esc.
    */
-  beginStop(row: SessionRow): void {
+  beginStop(row: SessionRow, status: EscStatus = 'busy'): void {
     const s = this.entry(row);
     const last = s.stop;
     const reached =
       last !== null && (last.since === row.statusSince || (row.statusSince !== null && row.statusSince <= last.at + MONITOR_INTERVAL_MS));
-    if (s.stopping || (reached && this.now() - last.at < STOP_SETTLE_MS)) throw new AnswerError(409, STOPPED_ELSEWHERE);
+    if (s.stopping || (reached && this.now() - last.at < STOP_SETTLE_MS)) {
+      throw new AnswerError(409, status === 'busy' ? STOPPED_ELSEWHERE : ESC_ELSEWHERE);
+    }
     s.stopping = true;
   }
 
@@ -355,6 +359,7 @@ const ANSWERED_ELSEWHERE = 'This was already answered from another tab, so nothi
 const MAYBE_ELSEWHERE = 'Another tab’s answer to this may have gone through, so nothing was typed. Check the terminal.';
 const UNCERTAIN_HERE = 'It may have been answered, but Lookout can’t tell, so nothing was typed. Check the terminal.';
 const STOPPED_ELSEWHERE = 'Esc was just pressed in this Session, so it wasn’t pressed again. Give it a few seconds to stop.';
+const ESC_ELSEWHERE = 'Esc was just pressed in this Session, so it wasn’t pressed again. Give it a few seconds.';
 
 /**
  * VIEW-4.2: reads the prompt of every Session some tab views, but calls Fleet only while that
@@ -465,10 +470,13 @@ export class PromptWatch {
       ledger.seen(row, epoch, result);
       uncertain = ledger.uncertainFor(row);
     }
-    const key = JSON.stringify({ read, prompt, changed, uncertain });
+    // VIEW-4.5: the Needs you spell the read was made in, so a tab can tell a read from this spell
+    // from one of an earlier one; a new spell is news even when the screen reads the same.
+    const since = read && row ? row.statusSince : null;
+    const key = JSON.stringify({ read, prompt, changed, uncertain, since });
     if (key !== p.key) {
       p.key = key;
-      p.last = { prompt, epoch, uncertain };
+      p.last = { prompt, epoch, uncertain, since };
       for (const [clientId, sessionId] of this.viewers) {
         if (sessionId === p.sessionId) this.opts.sendTo(clientId, { type: 'prompt', sessionId, ...p.last });
       }
@@ -496,13 +504,16 @@ interface Poll {
   /** A read is running now. */
   reading: boolean;
   /** The last result sent, or null while there was nothing to say. */
-  last: { prompt: ScreenPrompt | null; epoch: number; uncertain: string | null } | null;
-  /** What was last sent: whether the screen was read, the prompt, the Session's last answer (whatever it typed) and the uncertain mark. */
+  last: { prompt: ScreenPrompt | null; epoch: number; uncertain: string | null; since: number | null } | null;
+  /**
+   * What was last sent: whether the screen was read, the prompt, the Session's last answer (whatever
+   * it typed), the uncertain mark, and the Needs you spell the read was made in (VIEW-4.5).
+   */
   key: string;
 }
 
 /** A Session that doesn't Need you, never answered from here: nothing to tell a tab. */
-const NOTHING = JSON.stringify({ read: false, prompt: null, changed: 0, uncertain: null });
+const NOTHING = JSON.stringify({ read: false, prompt: null, changed: 0, uncertain: null, since: null });
 
 // ---------------------------------------------------------------------------------------------
 // Answering (VIEW-4.1–4.3)
@@ -645,7 +656,25 @@ function answerFailure(e: RunError): { error: AnswerError; typed: boolean } {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Stop (VIEW-4.4)
+// Stop (VIEW-4.4) and Esc (VIEW-4.5)
+
+/** How Stop and the Esc button word what they say: Stop speaks of stopping, Esc of pressing it. */
+const ESC_WORDS: Readonly<Record<EscStatus, { otherApp: string; check: string; notNow: string; there: string; failed: string }>> = {
+  busy: {
+    otherApp: 'This Session runs in another app, so Lookout can’t stop it.',
+    check: 'Couldn’t check that the Session is still working, so Esc wasn’t pressed. Try again.',
+    notNow: 'This Session isn’t working on anything now, so Esc wasn’t pressed.',
+    there: 'Stop it in the terminal.',
+    failed: 'Couldn’t stop it',
+  },
+  'needs-you': {
+    otherApp: 'This Session runs in another app, so Lookout can’t press Esc in it.',
+    check: 'Couldn’t check that the Session is still waiting on you, so Esc wasn’t pressed. Try again.',
+    notNow: 'This Session isn’t waiting on you now, so Esc wasn’t pressed.',
+    there: 'Press Esc in the terminal.',
+    failed: 'Couldn’t press Esc',
+  },
+};
 
 /**
  * VIEW-4.4: interrupts a Busy Session as Esc does in its terminal: `fleet keys <target> Escape
@@ -653,21 +682,25 @@ function answerFailure(e: RunError): { error: AnswerError; typed: boolean } {
  * the key, since Esc on a prompt would decline it. One Esc per Busy spell every 10 s, whichever tab
  * asks: in Claude Code a second Esc opens its rewind menu.
  *
+ * VIEW-4.5: the Esc button is the same for a Session that Needs you (`status`): a fresh list must
+ * still have it Needs you, and the same guard holds, so one Esc per spell every 10 s from either.
+ *
  * Known gap: a prompt can appear between the fresh list and the key (Technical approach).
  */
-export async function stopSession(opts: AnswererOptions, sessionId: string): Promise<void> {
+export async function stopSession(opts: AnswererOptions, sessionId: string, status: EscStatus = 'busy'): Promise<void> {
+  const words = ESC_WORDS[status];
   const known = opts.lookup(sessionId);
   if (!known) throw new AnswerError(404, 'This Session isn’t running.');
-  if (!known.controllable) throw new AnswerError(409, 'This Session runs in another app, so Lookout can’t stop it.');
-  opts.ledger.beginStop(known);
+  if (!known.controllable) throw new AnswerError(409, words.otherApp);
+  opts.ledger.beginStop(known, status);
   let pressed = false;
   try {
     const fresh = await opts.freshList();
-    if (fresh.kind !== 'ok') throw new AnswerError(503, 'Couldn’t check that the Session is still working, so Esc wasn’t pressed. Try again.');
+    if (fresh.kind !== 'ok') throw new AnswerError(503, words.check);
     const row = freshRows(fresh).find((r) => (isPidOnly(known) ? sameProcess(known, r) : r.id === known.id && r.harness === known.harness));
     if (!row) throw new AnswerError(409, 'This Session is no longer running, so Esc wasn’t pressed.');
-    if (row.status !== 'busy') throw new AnswerError(409, 'This Session isn’t working on anything now, so Esc wasn’t pressed.');
-    if (!row.controllable) throw new AnswerError(409, 'This Session runs in another app, so Lookout can’t stop it.');
+    if (row.status !== status) throw new AnswerError(409, words.notNow);
+    if (!row.controllable) throw new AnswerError(409, words.otherApp);
     let stdout: string;
     try {
       stdout = await opts.runner(opts.fleetBin(), ['--local', 'keys', exactTarget(row), 'Escape', '--json'], {
@@ -675,34 +708,52 @@ export async function stopSession(opts: AnswererOptions, sessionId: string): Pro
         env: env(opts),
       });
     } catch (err) {
-      const failure = stopFailure(err as RunError);
+      const failure = stopFailure(err as RunError, status);
       pressed = failure.pressed;
       throw failure.error;
     }
     pressed = true;
-    if (parseObject(stdout)?.ok !== true) throw new AnswerError(502, 'Couldn’t stop it: Fleet gave an unexpected answer. Check the terminal.');
+    if (parseObject(stdout)?.ok !== true) throw new AnswerError(502, `${words.failed}: Fleet gave an unexpected answer. Check the terminal.`);
   } finally {
     opts.ledger.endStop(known, pressed);
   }
 }
 
-const NOT_PRESSED: Readonly<Record<string, string>> = {
-  busy: 'Fleet is typing into this Session right now, so Esc wasn’t pressed. Try again.',
-  target_not_found: 'This Session is no longer running, so Esc wasn’t pressed.',
-  target_ambiguous: 'Fleet couldn’t tell which Session this is, so Esc wasn’t pressed. Stop it in the terminal.',
-  target_invalid: 'Fleet couldn’t tell which Session this is, so Esc wasn’t pressed. Stop it in the terminal.',
-  backend_unsupported: 'Lookout can’t reach this Session’s terminal, so Esc wasn’t pressed. Stop it there.',
-};
+/** Fleet's refusals before any key went out, for Stop or Esc; null for anything else. */
+function notPressed(kind: string, status: EscStatus): string | null {
+  const there = ESC_WORDS[status].there;
+  switch (kind) {
+    case 'busy':
+      return 'Fleet is typing into this Session right now, so Esc wasn’t pressed. Try again.';
+    case 'target_not_found':
+      return 'This Session is no longer running, so Esc wasn’t pressed.';
+    case 'target_ambiguous':
+    case 'target_invalid':
+      return `Fleet couldn’t tell which Session this is, so Esc wasn’t pressed. ${there}`;
+    case 'backend_unsupported':
+      return `Lookout can’t reach this Session’s terminal, so Esc wasn’t pressed. ${status === 'busy' ? 'Stop it there.' : 'Press it there.'}`;
+    default:
+      return null;
+  }
+}
 
-/** Why Stop failed, and whether Esc may have gone out before it did (`pressed`). */
-function stopFailure(e: RunError): { error: AnswerError; pressed: boolean } {
+/** Why Stop (or Esc) failed, and whether Esc may have gone out before it did (`pressed`). */
+function stopFailure(e: RunError, status: EscStatus): { error: AnswerError; pressed: boolean } {
   if (e.code === 'ENOENT') return { error: new AnswerError(503, 'Fleet isn’t installed, so Esc wasn’t pressed.'), pressed: false };
   if (e.timedOut) return { error: new AnswerError(504, 'Fleet took too long. Check the terminal.'), pressed: true };
   if (/unrecognized subcommand/i.test(e.stderr ?? '')) return { error: new AnswerError(501, 'This Fleet can’t press keys yet. Update the Fleet fork.'), pressed: false };
   const res = parseObject(e.stdout);
   const kind = typeof res?.kind === 'string' ? res.kind : null;
-  if (kind && Object.hasOwn(NOT_PRESSED, kind)) return { error: new AnswerError(409, NOT_PRESSED[kind]!), pressed: false };
-  return { error: new AnswerError(502, `Couldn’t stop it: ${fleetReason(res, e)}. Check the terminal.`), pressed: true };
+  const refused = kind ? notPressed(kind, status) : null;
+  if (refused) return { error: new AnswerError(409, refused), pressed: false };
+  return { error: new AnswerError(502, `${ESC_WORDS[status].failed}: ${fleetReason(res, e)}. Check the terminal.`), pressed: true };
+}
+
+/** VIEW-4.5: Stop's optional body, the Status Esc is for: none is Stop (Busy); anything else is refused. */
+export function parseEscStatus(body: unknown): EscStatus {
+  const status = typeof body === 'object' && body !== null && !Array.isArray(body) ? (body as Record<string, unknown>).status : undefined;
+  if (status === 'busy' || status === 'needs-you') return status;
+  throw new AnswerError(400, 'Invalid request.');
 }
 
 // ---------------------------------------------------------------------------------------------

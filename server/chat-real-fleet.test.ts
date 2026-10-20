@@ -7,7 +7,7 @@ import type { ChatEvent, SessionRow } from '../shared/types.ts';
 import { run } from './exec.ts';
 import { fetchFleetList } from './fleet.ts';
 import { chatViewer, replay } from './test/helpers.ts';
-import type { Viewer } from './viewer.ts';
+import { OLD_FLEET_SEND, ViewError, type Viewer } from './viewer.ts';
 
 /**
  * The chat against the real Fleet fork at its pin (`e2e/pins.json`, installed into `.cache/` by
@@ -111,6 +111,21 @@ describe('the chat against the real pinned Fleet', { timeout: 15_000 }, () => {
     appendFileSync(path, `${JSON.stringify(line('assistant', 'Exported 12 invoices.', WORKTREE))}\n`);
     await vi.waitFor(() => expect(shown(events)).toEqual(['Export the invoices, in a Worktree', 'Entered the Worktree fix-export.', 'Exported 12 invoices.']), { timeout: 5000 });
     expect(problems(events)).toEqual([]);
+  });
+
+  // A held send needs a terminal Fleet reads the input box from (a Fake Harness, TEST-1.4): a
+  // canned Session has none, so Fleet refuses it before any read. What the pinned Fleet can show
+  // here is that it takes the flags Lookout's send passes, and that its refusal reaches the tab as
+  // its own reason, not as an unknown flag.
+  it('VIEW-3.7: the pinned Fleet takes `send --json --require-empty`; a Session it can’t type into is its own refusal, and nothing is typed', async () => {
+    listed(REPO);
+    filedUnder(REPO, [line('user', 'Hello', REPO)]);
+    const { events } = await view();
+    await vi.waitFor(() => expect(shown(events)).toEqual(['Hello']), { timeout: 5000 });
+    const err = await viewer!.send(SESSION, { text: 'Reply with OK' }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ViewError);
+    expect(err).toMatchObject({ status: 502, held: null, message: expect.stringMatching(/^Couldn't send: fixture mode/) });
+    expect((err as ViewError).message).not.toBe(OLD_FLEET_SEND);
   });
 
   it.each([

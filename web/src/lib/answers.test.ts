@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { NOW, row } from '@/test/helpers';
 import {
   type AnswerAttempt,
+  ESC_POINTER,
   INCOMPLETE,
   QUESTION_TOUCHED,
   STOP_SETTLE_MS,
@@ -11,10 +12,12 @@ import {
   answersOnClick,
   draftAnswers,
   emptyDraft,
+  escButton,
   permissionPanel,
   pick,
   processKey,
   questionPanel,
+  sendErrorText,
   stopButton,
   typeText,
   typeable,
@@ -215,14 +218,83 @@ describe('Stop (VIEW-4.4)', () => {
   });
 
   it('VIEW-4.4: "Stopping…" while the Esc is on its way and for 10 s after, in the same Busy spell; a failure enables it again', () => {
-    expect(stopButton(busy, false, { at: NOW, since: SINCE, pending: true, error: null }, NOW + 60_000)).toEqual({ stopping: true, error: null });
-    expect(stopButton(busy, false, { at: NOW, since: SINCE, pending: false, error: null }, NOW + STOP_SETTLE_MS - 1)).toEqual({ stopping: true, error: null });
-    expect(stopButton(busy, false, { at: NOW, since: SINCE, pending: false, error: null }, NOW + STOP_SETTLE_MS)).toEqual({ stopping: false, error: null });
-    expect(stopButton(busy, false, { at: NOW, since: SINCE - 1, pending: false, error: null }, NOW)).toEqual({ stopping: false, error: null });
-    expect(stopButton(busy, false, { at: NOW, since: SINCE, pending: false, error: 'why' }, NOW)).toEqual({ stopping: false, error: 'why' });
+    expect(stopButton(busy, false, { at: NOW, status: 'busy', since: SINCE, pending: true, error: null }, NOW + 60_000)).toEqual({ stopping: true, error: null });
+    expect(stopButton(busy, false, { at: NOW, status: 'busy', since: SINCE, pending: false, error: null }, NOW + STOP_SETTLE_MS - 1)).toEqual({ stopping: true, error: null });
+    expect(stopButton(busy, false, { at: NOW, status: 'busy', since: SINCE, pending: false, error: null }, NOW + STOP_SETTLE_MS)).toEqual({ stopping: false, error: null });
+    expect(stopButton(busy, false, { at: NOW, status: 'busy', since: SINCE - 1, pending: false, error: null }, NOW)).toEqual({ stopping: false, error: null });
+    expect(stopButton(busy, false, { at: NOW, status: 'busy', since: SINCE, pending: false, error: 'why' }, NOW)).toEqual({ stopping: false, error: 'why' });
   });
 
   it('VIEW-4.4: a Session’s Stop and answers follow its process, not its id', () => {
     expect(processKey({ harness: 'codex', pid: 77 })).toBe('codex:77');
+  });
+});
+
+describe('Esc (VIEW-4.5)', () => {
+  /** A read of the screen made in the row's Needs you spell. */
+  const read = (prompt: ScreenPrompt | null, epoch = 1, since: number | null = SINCE) => ({ prompt, epoch, uncertain: null, since });
+  type Shown = Parameters<typeof escButton>[3];
+  const none: Shown = { permission: null, question: null };
+  const esc = (r: SessionRow, s: Parameters<typeof escButton>[2], shown: Shown = none, a?: AnswerAttempt, req?: Parameters<typeof escButton>[5], now = NOW) =>
+    escButton(r, false, s, shown, a, req, now);
+
+  it('VIEW-4.5: while a Controllable Session Needs you and a read made in this spell shows nothing Lookout answers', () => {
+    expect(esc(waiting(), read(null))).toEqual({ pressing: false, error: null });
+    // A prompt Fleet can't read whole: no buttons, so Esc.
+    const incomplete = read({ kind: 'incomplete' });
+    expect(esc(waiting(), incomplete, { permission: permissionPanel(waiting(), false, incomplete, undefined), question: null })).toEqual({ pressing: false, error: null });
+    expect(escButton(waiting(), true, read(null), none, undefined, undefined, NOW)).toBeNull();
+    expect(esc(waiting({ controllable: false, backend: 'unknown' }), read(null))).toBeNull();
+    for (const status of ['busy', 'idle', 'unknown'] as const) expect(esc(waiting({ status }), read(null))).toBeNull();
+  });
+
+  it('VIEW-4.5: not before a read made in this Needs you spell reaches the tab: a permission prompt’s buttons may be a second away', () => {
+    expect(esc(waiting(), undefined)).toBeNull();
+    expect(esc(waiting(), read(null, 1, null))).toBeNull(); // read while it didn't Need you
+    expect(esc(waiting(), read(null, 1, SINCE - 60_000))).toBeNull(); // an earlier spell's
+    expect(esc(waiting(), { prompt: null, epoch: 1, uncertain: null })).toBeNull(); // a server before spells
+  });
+
+  it('VIEW-4.5: never beside answer buttons: a permission prompt’s, or a question’s (ready, waiting for the first read, sending, sent)', () => {
+    const p = read(PERMISSION);
+    expect(esc(waiting(), p, { permission: permissionPanel(waiting(), false, p, undefined), question: null })).toBeNull();
+    for (const phase of ['ready', 'reading', 'sending', 'sent'] as const) {
+      expect(esc(waiting(), read(null), { permission: null, question: { id: 'toolu_1', phase, message: null } })).toBeNull();
+    }
+    // Lookout won't answer it (refused, touched, uncertain): the buttons are gone, so Esc.
+    expect(esc(waiting(), read(null), { permission: null, question: { id: 'toolu_1', phase: 'blocked', message: QUESTION_TOUCHED } })).toEqual({ pressing: false, error: null });
+    const touched = read({ ...PERMISSION, untouched: false });
+    expect(esc(waiting(), touched, { permission: permissionPanel(waiting(), false, touched, undefined), question: null })).toEqual({ pressing: false, error: null });
+  });
+
+  it('VIEW-4.5: not while this tab’s answer is on its way, or landed after the latest read', () => {
+    expect(esc(waiting(), read(null, 5), none, attempt({ phase: 'sending' }))).toBeNull();
+    expect(esc(waiting(), read(null, 5), none, attempt({ phase: 'sent', epoch: 6 }))).toBeNull();
+    expect(esc(waiting(), read(null, 6), none, attempt({ phase: 'sent', epoch: 6 }))).toEqual({ pressing: false, error: null });
+    expect(esc(waiting(), read(null, 6), none, attempt({ phase: 'refused', message: TOUCHED }))).toEqual({ pressing: false, error: null });
+  });
+
+  it('VIEW-4.5: "Pressing Esc…" while the Esc is on its way and for 10 s after, in the same Needs you spell; a failure enables it again; a Stop never counts', () => {
+    const at = (over: Partial<Parameters<typeof escButton>[5] & object> = {}) => ({ at: NOW, status: 'needs-you' as const, since: SINCE, pending: false, error: null, ...over });
+    expect(esc(waiting(), read(null), none, undefined, at({ pending: true }), NOW + 60_000)).toEqual({ pressing: true, error: null });
+    expect(esc(waiting(), read(null), none, undefined, at(), NOW + STOP_SETTLE_MS - 1)).toEqual({ pressing: true, error: null });
+    expect(esc(waiting(), read(null), none, undefined, at(), NOW + STOP_SETTLE_MS)).toEqual({ pressing: false, error: null });
+    expect(esc(waiting(), read(null), none, undefined, at({ since: SINCE - 1 }))).toEqual({ pressing: false, error: null });
+    expect(esc(waiting(), read(null), none, undefined, at({ error: 'why' }))).toEqual({ pressing: false, error: 'why' });
+    // The same spell number from a Stop: not this button's.
+    expect(esc(waiting(), read(null), none, undefined, at({ status: 'busy', pending: true }))).toEqual({ pressing: false, error: null });
+    expect(stopButton(row({ id: 'a', status: 'busy', statusSince: SINCE }), false, at({ pending: true }), NOW)).toEqual({ stopping: false, error: null });
+  });
+});
+
+describe('a held send in the composer (VIEW-3.7)', () => {
+  it('VIEW-3.7: while the Esc button shows, a send held for no input box or a prompt points to it; other reasons, and other failures, read as sent', () => {
+    expect(sendErrorText(null, true)).toBeNull();
+    expect(sendErrorText({ message: 'No box.', held: 'no_input_box' }, true)).toBe(`No box. ${ESC_POINTER.no_input_box}`);
+    expect(sendErrorText({ message: 'A prompt.', held: 'prompt' }, true)).toBe(`A prompt. ${ESC_POINTER.prompt}`);
+    expect(sendErrorText({ message: 'No box.', held: 'no_input_box' }, false)).toBe('No box.');
+    expect(sendErrorText({ message: 'Text.', held: 'text' }, true)).toBe('Text.');
+    expect(sendErrorText({ message: 'Unreadable.', held: 'unreadable' }, true)).toBe('Unreadable.');
+    expect(sendErrorText({ message: "Couldn't send: x", held: null }, true)).toBe("Couldn't send: x");
   });
 });

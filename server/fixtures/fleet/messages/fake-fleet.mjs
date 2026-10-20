@@ -9,6 +9,13 @@
 //   FAKE_FLEET_DIR   fixture dir: list.json, sessions/<id>.json. Without it, the committed
 //                    fixtures next to this file are read, and nothing is ever written.
 //   FAKE_FLEET_LOG   when set, each call's argv is appended to it as one JSON line
+//   `send [--json] [--force] [--require-empty] -- <target> <text>` (VIEW-3, VIEW-3.7; the Fleet
+//   fork's "Sending"): a row's `fake_send` says what its input box shows: `text` (`fake_input`, or
+//   a draft, is in the box) or `prompt` hold the send; `no_input_box` and `unreadable` hold it only
+//   with `--require-empty`, else it's typed with a warning; `--force` types whatever it shows. Held:
+//   exit 3, nothing typed, the message on stderr, and with `--json` `{ ok: false, host, kind:
+//   "send_held", reason, error, input? }` (`input` only for `text` and `unreadable`). Any other
+//   `fake_send` (`busy`, `backend_failed`, …) fails with that kind.
 //   A list row's `fake_close` (`busy`, `host_shared`, `io`) makes `close` fail with that kind, and
 //   `fake_close_how` (`killed`) says how a close went; default `exit`. `busy` and `host_shared`
 //   carry the contract's `reason`: the row's `fake_close_reason` (`locked`, `editor_open`;
@@ -92,7 +99,7 @@ function fail(kind, error, extra = {}) {
 }
 
 /** Options that take no value. */
-const FLAGS = new Set(['json', 'list', 'allow-attached']);
+const FLAGS = new Set(['json', 'list', 'allow-attached', 'force', 'require-empty']);
 
 /** Positional args after `--`, and `--opt value` / `--opt=value` options. */
 function parse(args) {
@@ -195,11 +202,34 @@ function messages(args) {
 
 const now = () => new Date().toISOString();
 
+/** What `send` says for each reason it holds (the Fleet fork's wording, never the box's text). */
+const HELD = {
+  text: 'the input box already holds text; nothing sent',
+  prompt: 'a prompt is waiting for its answer; nothing sent',
+  no_input_box: 'no input box on screen; nothing sent',
+  unreadable: 'cannot tell whether the input box is empty; nothing sent',
+};
+
 function send(args) {
-  const { pos } = parse(args);
+  const { opts, pos } = parse(args);
   const [target, text] = pos;
   const row = resolve(target ?? '');
   if (!row) fail('target_not_found', `no session matches '${target}'`);
+  const shows = opts.force ? null : (row.fake_send ?? null);
+  let warning = null;
+  if (shows && !Object.hasOwn(HELD, shows)) fail(shows, `fake ${shows}; nothing sent`);
+  if (shows === 'text' || shows === 'prompt' || ((shows === 'no_input_box' || shows === 'unreadable') && opts['require-empty'])) {
+    if (opts.json) {
+      const input = shows === 'text' || shows === 'unreadable' ? { input: row.fake_input ?? 'a draft left in the box' } : {};
+      process.stdout.write(`${JSON.stringify({ ok: false, host: 'fake', kind: 'send_held', reason: shows, error: HELD[shows], ...input })}\n`);
+    }
+    process.stderr.write(`Error: ${HELD[shows]}\n`);
+    process.exit(3);
+  }
+  if (shows) {
+    warning = shows;
+    process.stderr.write(`warning: typed without knowing the input box was empty: ${HELD[shows]}\n`);
+  }
   const s = row.session_id ? read(row.session_id) : null;
   if (s && writable) {
     if (s.busy) (s.queue ??= []).push({ text, ts: now() });
@@ -209,7 +239,8 @@ function send(args) {
     }
     save(row.session_id, s);
   }
-  process.stdout.write(`sent to ${row.display_title}\n`);
+  if (opts.json) out({ ok: true, host: 'fake', target: { session_id: row.session_id, pid: row.pid }, ...(warning ? { warning } : {}) });
+  else process.stdout.write(`sent to ${row.display_title}\n`);
 }
 
 function peek(args) {

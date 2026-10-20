@@ -131,9 +131,10 @@ export type ServerEvent =
    * views it and it Needs you; sent only to the tabs viewing it, only when it changed. `epoch` is
    * the server's answer epoch when the read began (see `AnswerResult`); an answer goes back with
    * it. `uncertain`: an answer whose outcome Lookout can't tell was for this prompt (`p:<id>`) or
-   * question (`q:<id>`), so no tab offers to answer it again.
+   * question (`q:<id>`), so no tab offers to answer it again. `since`: the Needs you spell the read
+   * was made in (the row's `statusSince` when it began), null when nothing was read (VIEW-4.5).
    */
-  | { type: 'prompt'; sessionId: string; prompt: ScreenPrompt | null; epoch: number; uncertain?: string | null }
+  | { type: 'prompt'; sessionId: string; prompt: ScreenPrompt | null; epoch: number; uncertain?: string | null; since?: number | null }
   | ChatEvent;
 
 /**
@@ -177,6 +178,19 @@ export type AnswerRequest =
 export interface AnswerResult {
   epoch: number;
 }
+
+/**
+ * VIEW-4.4/4.5: the Status Esc is pressed for: `busy` is Stop, `needs-you` the Esc button. The
+ * server presses only while a fresh list still has the Session in it.
+ */
+export type EscStatus = Extract<Status, 'busy' | 'needs-you'>;
+
+/**
+ * VIEW-3.7: why Fleet held a send (`fleet send --require-empty`): text in the input box, a prompt
+ * waiting in its place, no input box on screen, or one Fleet can't read. Nothing was typed.
+ */
+export type HeldReason = 'text' | 'prompt' | 'no_input_box' | 'unreadable';
+export const HELD_REASONS: readonly HeldReason[] = ['text', 'prompt', 'no_input_box', 'unreadable'];
 
 /**
  * VIEW-1: one chat entry, from `fleet messages --json` (Transcript order). Kinds Lookout doesn't

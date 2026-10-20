@@ -1,5 +1,5 @@
 import { asSent } from '../shared/message.ts';
-import type { AnswerRequest, AnswerResult, ChatPage, ServerEvent, SessionRow } from '../shared/types.ts';
+import { HELD_REASONS, type AnswerRequest, type AnswerResult, type ChatPage, type EscStatus, type HeldReason, type ServerEvent, type SessionRow } from '../shared/types.ts';
 import { type AnswerLedger, type AnswererOptions, PromptWatch, answerPrompt, stopSession } from './answerer.ts';
 import { ChatFeed } from './chat.ts';
 import { isCursor } from './messages.ts';
@@ -19,12 +19,25 @@ const SEND_TIMEOUT_MS = 15_000;
 export class ViewError extends Error {
   readonly status: number;
   readonly field: string | null;
-  constructor(status: number, message: string, field: string | null = null) {
+  /** VIEW-3.7: Fleet held the send (`send_held`), and why; `reason` is null for one Lookout doesn't know. */
+  readonly held: { reason: HeldReason | null } | null;
+  constructor(status: number, message: string, field: string | null = null, held: { reason: HeldReason | null } | null = null) {
     super(message);
     this.status = status;
     this.field = field;
+    this.held = held;
   }
 }
+
+/** VIEW-3.7: what a held send says, by Fleet's reason (VIEW-6.6's words). Never what the box holds. */
+export const HELD_MESSAGE: Readonly<Record<HeldReason, string>> = {
+  text: "The Session's input box already holds text, so nothing was sent. Send or clear it in the terminal, then try again.",
+  prompt: 'The Session is waiting on a prompt, so nothing was sent. Answer it, then try again.',
+  no_input_box: "The Session's input box isn't on screen (a panel, a menu or the transcript view is open), so nothing was sent. Press Esc to close it, then try again.",
+  unreadable: "Fleet can't read the Session's input box, so nothing was sent. Send it from the terminal instead.",
+};
+export const HELD_OTHER = 'Fleet held the message, so nothing was sent. Check the terminal.';
+export const OLD_FLEET_SEND = "This Fleet can't check the Session's input box before sending, so nothing was sent. Update the Fleet fork.";
 
 /**
  * How Fleet should find a Session: its full session id, or its pid when it has none (a Codex
@@ -158,9 +171,9 @@ export class Viewer {
     return answerPrompt(this.answerer, sessionId, req);
   }
 
-  /** VIEW-4.4: one Esc for a Busy Session (see `stopSession`). */
-  stopSession(sessionId: string): Promise<void> {
-    return stopSession(this.answerer, sessionId);
+  /** VIEW-4.4/4.5: one Esc for a Session in `status`: Stop while Busy, the Esc button while it Needs you (see `stopSession`). */
+  stopSession(sessionId: string, status: EscStatus = 'busy'): Promise<void> {
+    return stopSession(this.answerer, sessionId, status);
   }
 
   stop(): void {
@@ -186,7 +199,8 @@ export class Viewer {
 
   /**
    * VIEW-3: `fleet send` types the text into the Session (a paste when it has line breaks)
-   * and submits it. Only for a Session Fleet lists right now as Controllable.
+   * and submits it. Only for a Session Fleet lists right now as Controllable. VIEW-3.7: only into
+   * an empty input box (`--require-empty`); Fleet holds the send otherwise, and nothing is typed.
    */
   async send(sessionId: string, input: unknown): Promise<void> {
     const raw = typeof input === 'object' && input !== null ? (input as Record<string, unknown>).text : undefined;
@@ -201,12 +215,13 @@ export class Viewer {
     const row = this.controllable(sessionId);
     const target = await this.target(row);
     try {
-      await this.opts.runner(this.opts.fleetBin(), ['--local', 'send', '--', target, text], {
+      // Exit 0 is sent, whatever stdout says: the text was typed.
+      await this.opts.runner(this.opts.fleetBin(), ['--local', 'send', '--json', '--require-empty', '--', target, text], {
         timeoutMs: SEND_TIMEOUT_MS,
         env: this.env,
       });
     } catch (err) {
-      throw new ViewError(502, `Couldn't send: ${reason(err, 'the Session host refused the message.')}`);
+      throw sendFailure(err as RunError);
     }
   }
 
@@ -290,6 +305,34 @@ export class Viewer {
     poller.timer = setTimeout(() => void this.poll(sessionId, poller), this.opts.intervalMs ?? PREVIEW_INTERVAL_MS);
     poller.timer.unref?.();
   }
+}
+
+/**
+ * Why a send failed. VIEW-3.7: a held one (`send_held`) says why by its reason, in Lookout's own
+ * words; Fleet's `input` (what the box holds, maybe a secret) and `error` are never used. A Fleet
+ * without the flags types nothing, and says so. Anything else is Fleet's reason, as before.
+ */
+function sendFailure(e: RunError): ViewError {
+  const held = heldReason(e.stdout);
+  if (held !== undefined) return new ViewError(409, held ? HELD_MESSAGE[held] : HELD_OTHER, null, { reason: held });
+  if (e.code !== 'ENOENT' && !e.timedOut && /unexpected argument '--(json|require-empty)'/i.test(e.stderr ?? '')) {
+    return new ViewError(501, OLD_FLEET_SEND);
+  }
+  return new ViewError(502, `Couldn't send: ${reason(e, 'the Session host refused the message.')}`);
+}
+
+/** A held send's reason: undefined when it wasn't held, null for a reason Lookout doesn't know. Only `kind` and `reason` are read. */
+function heldReason(stdout: string | undefined): HeldReason | null | undefined {
+  if (!stdout?.trim()) return undefined;
+  let v: unknown;
+  try {
+    v = JSON.parse(stdout);
+  } catch {
+    return undefined;
+  }
+  if (typeof v !== 'object' || v === null || (v as { kind?: unknown }).kind !== 'send_held') return undefined;
+  const r = (v as { reason?: unknown }).reason;
+  return HELD_REASONS.find((h) => h === r) ?? null;
 }
 
 /** A reason for people. Anything from tmux is reworded: the UI never names tmux (0001). */

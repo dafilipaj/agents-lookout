@@ -3,7 +3,7 @@ import type { ServerEvent, SessionRow } from '../shared/types.ts';
 import { AnswerLedger } from './answerer.ts';
 import type { RunOptions } from './exec.ts';
 import type { FleetListResult, FleetRow } from './fleet.ts';
-import { MAX_MESSAGE, ViewError, Viewer, fleetTarget } from './viewer.ts';
+import { HELD_OTHER, MAX_MESSAGE, OLD_FLEET_SEND, ViewError, Viewer, fleetTarget } from './viewer.ts';
 
 const fleetRow = (over: Partial<FleetRow>): FleetRow => ({
   pid: 1,
@@ -214,10 +214,62 @@ describe('composer', () => {
   it('VIEW-3.2: sends the text through `fleet send`, line breaks included, as an argv entry after `--`', async () => {
     const t = setup();
     await t.viewer.send('sess-a', { text: '-rf line one\r\n  line two\n' });
-    expect(t.calls[0]).toMatchObject({ file: '/bin/fleet', args: ['--local', 'send', '--', 'sess-a', '-rf line one\n  line two\n'] });
+    expect(t.calls[0]).toMatchObject({ file: '/bin/fleet', args: ['--local', 'send', '--json', '--require-empty', '--', 'sess-a', '-rf line one\n  line two\n'] });
     expect(Object.keys(t.calls[0]!.opts.env!)).toEqual(['PATH']); // nothing inherited from a Claude Session
     await t.viewer.send('codex:77', { text: 'OK' });
-    expect(t.calls[1]!.args).toEqual(['--local', 'send', '--', '77', 'OK']);
+    expect(t.calls[1]!.args).toEqual(['--local', 'send', '--json', '--require-empty', '--', '77', 'OK']);
+  });
+
+  it('VIEW-3.7: every send asks Fleet to type only into an empty input box (`--json --require-empty`, never `--force`); exit 0 is sent, whatever it prints', async () => {
+    const t = setup({ send: async () => '{"ok":true,"host":"local","target":{"session_id":"sess-a","pid":4242}}\n' });
+    await t.viewer.send('sess-a', { text: '/usage' });
+    expect(t.calls[0]!.args).toEqual(['--local', 'send', '--json', '--require-empty', '--', 'sess-a', '/usage']);
+    expect(t.calls[0]!.args).not.toContain('--force');
+    const odd = setup({ send: async () => 'sent, in some other words\n' });
+    await expect(odd.viewer.send('sess-a', { text: 'hi' })).resolves.toBeUndefined();
+  });
+
+  it.each([
+    ['text', "The Session's input box already holds text, so nothing was sent. Send or clear it in the terminal, then try again."],
+    ['prompt', 'The Session is waiting on a prompt, so nothing was sent. Answer it, then try again.'],
+    ['no_input_box', "The Session's input box isn't on screen (a panel, a menu or the transcript view is open), so nothing was sent. Press Esc to close it, then try again."],
+    ['unreadable', "Fleet can't read the Session's input box, so nothing was sent. Send it from the terminal instead."],
+  ] as const)('VIEW-3.7: a send Fleet held for `%s` is a 409 saying why in plain words, never with what the box holds', async (why, message) => {
+    const secret = '! export TOKEN=sk-live-0123456789abcdef';
+    const t = setup({
+      send: async () => {
+        throw Object.assign(new Error('exit 3'), {
+          code: 3,
+          stdout: JSON.stringify({ ok: false, host: 'local', kind: 'send_held', reason: why, error: `held: ${secret}`, input: secret }),
+          stderr: `Error: held: ${secret}\n`,
+        });
+      },
+    });
+    const err = await t.viewer.send('sess-a', { text: 'hi' }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ViewError);
+    expect(err).toMatchObject({ status: 409, message, field: null, held: { reason: why } });
+    expect(JSON.stringify({ ...(err as ViewError), message: (err as ViewError).message })).not.toContain('sk-live');
+  });
+
+  it('VIEW-3.7: a held send for a reason Lookout doesn’t know says so plainly; a Fleet without the flags says to update it; other failures are as before', async () => {
+    const held = setup({
+      send: async () => {
+        throw Object.assign(new Error('exit 3'), { code: 3, stdout: '{"ok":false,"kind":"send_held","reason":"overlay","error":"x","input":"draft"}', stderr: '' });
+      },
+    });
+    await expect(held.viewer.send('sess-a', { text: 'hi' })).rejects.toMatchObject({ status: 409, message: HELD_OTHER, held: { reason: null } });
+    const old = setup({
+      send: async () => {
+        throw Object.assign(new Error('exit 2'), { code: 2, stdout: '', stderr: "error: unexpected argument '--require-empty' found\n\nUsage: fleet send <TARGET> <TEXT>\n" });
+      },
+    });
+    await expect(old.viewer.send('sess-a', { text: 'hi' })).rejects.toMatchObject({ status: 501, message: OLD_FLEET_SEND, held: null });
+    const busy = setup({
+      send: async () => {
+        throw Object.assign(new Error('exit 1'), { code: 1, stdout: '{"ok":false,"host":"local","kind":"busy","error":"another fleet command is typing; nothing sent"}', stderr: 'Error: another fleet command is typing; nothing sent\n' });
+      },
+    });
+    await expect(busy.viewer.send('sess-a', { text: 'hi' })).rejects.toMatchObject({ status: 502, message: "Couldn't send: another fleet command is typing; nothing sent", held: null });
   });
 
   it('refuses Sessions it cannot type into, empty and oversized messages; nothing is typed', async () => {

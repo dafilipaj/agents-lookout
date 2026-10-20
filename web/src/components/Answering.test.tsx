@@ -2,7 +2,7 @@ import type { AnswerResult, ChatEntry, ChatQuestion, ScreenPrompt, SessionRow } 
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { INCOMPLETE, LOST_ANSWER, LOST_STOP, QUESTION_TOUCHED, STOP_SETTLE_MS, TOUCHED, UNCERTAIN } from '@/lib/answers';
+import { ESC_HINT, INCOMPLETE, LOST_ANSWER, LOST_STOP, QUESTION_TOUCHED, STOP_SETTLE_MS, TOUCHED, UNCERTAIN } from '@/lib/answers';
 import { SaveError } from '@/lib/client';
 import { NOW, renderApp, row } from '@/test/helpers';
 
@@ -603,6 +603,134 @@ describe('Stop (VIEW-4.4)', () => {
     await user.click(stopButton()!);
     expect(header().querySelector('[data-slot="stop-error"]')).toHaveTextContent(LOST_STOP);
     expect(stopButton()).toHaveAccessibleDescription(LOST_STOP);
+    expect(drawerToggle()).toHaveAttribute('aria-expanded', 'true');
+  });
+});
+
+describe('Esc (VIEW-4.5)', () => {
+  const SPELL = NOW - 5_000;
+  const escButton = () => within(header()).queryByRole('button', { name: /^(Esc|Pressing Esc…)$/ });
+  const stopButton = () => within(header()).queryByRole('button', { name: /^(Stop|Stopping…)$/ });
+  /** A Session that Needs you (on `/usage`'s panel, say), and the server's read of its screen in this spell. */
+  function waiting(options: Parameters<typeof renderApp>[1] = {}, entries: ChatEntry[] = []) {
+    const app = open({ statusSince: SPELL }, entries, options);
+    const read = (p: ScreenPrompt | null, since: number | null = SPELL, epoch = 1) =>
+      app.emit({ type: 'prompt', sessionId: 'a', prompt: p, epoch, uncertain: null, since });
+    return { ...app, read };
+  }
+
+  afterEach(() => vi.useRealTimers());
+
+  it('VIEW-4.5: Esc is in the header’s actions while a Controllable Session Needs you and a read of this spell shows no answer buttons; never with Stop, nor before that read', () => {
+    const app = waiting();
+    // No read of this spell yet: a permission prompt's buttons may be a second away.
+    expect(escButton()).toBeNull();
+    app.read(null, null);
+    expect(escButton()).toBeNull();
+    app.read(null);
+    expect(escButton()).toHaveTextContent('Esc');
+    expect(escButton()).toHaveAttribute('title', ESC_HINT);
+    expect(escButton()!.querySelector('svg')).toHaveClass('lucide-octagon-x');
+    expect(header().querySelector('[data-slot="header-actions"]')).toContainElement(escButton());
+    expect(stopButton()).toBeNull();
+    // A permission prompt Lookout answers: its buttons, and no Esc beside them.
+    app.read(PERMISSION);
+    expect(choices()).toHaveLength(3);
+    expect(escButton()).toBeNull();
+    // One it can't read whole: no buttons, so Esc.
+    app.read({ kind: 'incomplete' });
+    expect(card()).toHaveTextContent(INCOMPLETE);
+    expect(escButton()).toHaveTextContent('Esc');
+    // Busy: Stop, not Esc.
+    app.emit({ type: 'sessions', upsert: [row({ id: 'a', status: 'busy', statusSince: NOW })], remove: [] });
+    expect(escButton()).toBeNull();
+    expect(stopButton()).toHaveTextContent('Stop');
+    // Not for a Session in another app.
+    app.emit({ type: 'sessions', upsert: [row({ id: 'a', status: 'needs-you', statusSince: SPELL, backend: 'unknown', controllable: false })], remove: [] });
+    app.read(null);
+    expect(escButton()).toBeNull();
+  });
+
+  it('VIEW-4.5: never beside a question’s buttons; once Lookout won’t answer it, Esc shows', async () => {
+    const app = waiting({}, [question([q()])]);
+    app.read(null);
+    const card = screen.getByTestId('chat').querySelector('[data-kind="question"]') as HTMLElement;
+    expect(within(card).getAllByRole('button').length).toBeGreaterThan(0);
+    expect(escButton()).toBeNull();
+    // Touched in the terminal: Lookout won't answer it.
+    app.read({ kind: 'question', id: 'toolu_13', untouched: false });
+    expect(await screen.findByText(QUESTION_TOUCHED)).toBeInTheDocument();
+    expect(escButton()).toHaveTextContent('Esc');
+  });
+
+  it('VIEW-4.5: one click sends one Esc; then "Pressing Esc…" stays disabled until the Status leaves Needs you', async () => {
+    const user = userEvent.setup();
+    const app = waiting();
+    app.read(null);
+    await user.click(escButton()!);
+    expect(app.client.escSession).toHaveBeenCalledWith('a');
+    expect(app.client.stopSession).not.toHaveBeenCalled();
+    await waitFor(() => expect(escButton()).toHaveTextContent('Pressing Esc…'));
+    expect(escButton()).toBeDisabled();
+    expect(escButton()).toHaveAttribute('title', 'Pressing Esc…');
+    await user.click(escButton()!);
+    expect(app.client.escSession).toHaveBeenCalledOnce();
+    // The panel closed: Idle, and the button goes.
+    app.emit({ type: 'sessions', upsert: [row({ id: 'a', status: 'idle', statusSince: NOW + 1_000 })], remove: [] });
+    expect(escButton()).toBeNull();
+    // Needs you again, a new spell: Esc once its read comes.
+    app.emit({ type: 'sessions', upsert: [row({ id: 'a', status: 'needs-you', statusSince: NOW + 5_000 })], remove: [] });
+    expect(escButton()).toBeNull();
+    app.read(null, NOW + 5_000);
+    expect(escButton()).toHaveTextContent('Esc');
+    expect(escButton()).toBeEnabled();
+  });
+
+  it('VIEW-4.5: still Needs you 10 s after the Esc, it can be pressed again', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    vi.setSystemTime(NOW);
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const app = waiting();
+    app.read(null);
+    await user.click(escButton()!);
+    await waitFor(() => expect(escButton()).toHaveTextContent('Pressing Esc…'));
+    act(() => vi.advanceTimersByTime(STOP_SETTLE_MS - 1_000));
+    expect(escButton()).toBeDisabled();
+    act(() => vi.advanceTimersByTime(2_000));
+    expect(escButton()).toHaveTextContent('Esc');
+    expect(escButton()).toBeEnabled();
+  });
+
+  it('VIEW-4.5: a failed Esc says why beside the button, as Stop’s does, and it can be pressed again', async () => {
+    const user = userEvent.setup();
+    const why = 'This Session isn’t waiting on you now, so Esc wasn’t pressed.';
+    const escSession = vi.fn<(id: string) => Promise<void>>().mockRejectedValueOnce(new SaveError(why, null, 409)).mockResolvedValueOnce(undefined);
+    const app = waiting({ escSession });
+    app.read(null);
+    await user.click(escButton()!);
+    const alert = header().querySelector<HTMLElement>('[data-slot="stop-error"]')!;
+    expect(alert).toHaveAttribute('role', 'alert');
+    expect(alert).toHaveTextContent(why);
+    expect(escButton()).toBeEnabled();
+    expect(escButton()).toHaveAttribute('title', `${ESC_HINT}\n${why}`);
+    expect(escButton()).toHaveAccessibleDescription(why);
+    expect(escButton()).toHaveClass('@max-[20rem]:text-destructive', 'shrink-0');
+    expect(escButton()!.querySelector('span')).toHaveClass('@max-[26rem]:sr-only');
+    await user.click(escButton()!);
+    await waitFor(() => expect(escButton()).toHaveTextContent('Pressing Esc…'));
+    expect(header().querySelector('[data-slot="stop-error"]')).toBeNull();
+  });
+
+  it('VIEW-4.5: a lost connection may have pressed Esc: it says so and opens the terminal', async () => {
+    const user = userEvent.setup();
+    const app = waiting({ escSession: vi.fn(async () => Promise.reject(new SaveError('Couldn’t reach the Lookout server.', null, null, { lost: true }))) });
+    app.read(null);
+    // Needs you opens the drawer on its own (VIEW-2.2): close it first, as you might.
+    await user.click(drawerToggle());
+    expect(drawerToggle()).toHaveAttribute('aria-expanded', 'false');
+    await user.click(escButton()!);
+    expect(header().querySelector('[data-slot="stop-error"]')).toHaveTextContent(LOST_STOP);
+    expect(escButton()).toHaveAccessibleDescription(LOST_STOP);
     expect(drawerToggle()).toHaveAttribute('aria-expanded', 'true');
   });
 });

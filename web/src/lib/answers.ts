@@ -1,4 +1,4 @@
-import type { ChatEntry, ChatQuestion, QuestionAnswer, ScreenPrompt, SessionRow } from '@shared/types.ts';
+import type { ChatEntry, ChatQuestion, EscStatus, HeldReason, QuestionAnswer, ScreenPrompt, SessionRow } from '@shared/types.ts';
 import { createContext } from 'react';
 
 /**
@@ -15,6 +15,8 @@ export interface ScreenState {
   epoch: number;
   /** An answer whose outcome Lookout can't tell was for this prompt (`p:<id>`) or question (`q:<id>`), from any tab. */
   uncertain: string | null;
+  /** VIEW-4.5: the Needs you spell the read was made in (the row's `statusSince`); null or absent when nothing was read. */
+  since?: number | null;
 }
 
 /** VIEW-4: the latest answer this tab sent to a Session, and what came of it. */
@@ -37,10 +39,12 @@ export interface AnswerAttempt {
   since: number | null;
 }
 
-/** VIEW-4.4: a Stop this tab pressed. */
+/** VIEW-4.4/4.5: a Stop, or an Esc, this tab pressed. */
 export interface StopRequest {
   at: number;
-  /** The Busy spell it belongs to: the row's `statusSince` when it was pressed. */
+  /** The Status it was pressed in: `busy` for Stop, `needs-you` for the Esc button. */
+  status: EscStatus;
+  /** The spell it belongs to: the row's `statusSince` when it was pressed. */
   since: number | null;
   /** The request is in flight. */
   pending: boolean;
@@ -198,10 +202,61 @@ export function draftAnswers(questions: readonly ChatQuestion[], drafts: readonl
  */
 export function stopButton(row: SessionRow, ended: boolean, req: StopRequest | undefined, now: number): { stopping: boolean; error: string | null } | null {
   if (ended || !row.controllable || row.status !== 'busy') return null;
-  const r = req && req.since === row.statusSince ? req : null;
+  const r = req && req.status === 'busy' && req.since === row.statusSince ? req : null;
   if (!r) return { stopping: false, error: null };
   if (r.error) return { stopping: false, error: r.error };
   return { stopping: r.pending || now - r.at < STOP_SETTLE_MS, error: null };
+}
+
+/** VIEW-3.4, VIEW-3.7: a failed send's message, and why Fleet held it when it did (null otherwise, or for a reason Lookout doesn't know). */
+export interface SendFailure {
+  message: string;
+  held: HeldReason | null;
+}
+
+/** VIEW-3.7: while the Esc button shows, what a send held for no input box, or for a prompt, adds. */
+export const ESC_POINTER: Readonly<Partial<Record<HeldReason, string>>> = {
+  no_input_box: 'The Esc button at the top of the pane does that.',
+  prompt: 'Or cancel it with the Esc button at the top of the pane.',
+};
+
+/** VIEW-3.7: the composer's error; a held send points to the Esc button while it shows (VIEW-4.5). */
+export function sendErrorText(failure: SendFailure | null | undefined, escShown: boolean): string | null {
+  if (!failure) return null;
+  const pointer = escShown && failure.held ? ESC_POINTER[failure.held] : undefined;
+  return pointer ? `${failure.message} ${pointer}` : failure.message;
+}
+
+/** VIEW-4.5: the Esc button's tooltip: what it does. */
+export const ESC_HINT = 'Press Esc in the Session: closes a panel or menu, or cancels the prompt';
+
+/**
+ * VIEW-4.5: the Esc button, for a Controllable Session that Needs you while Lookout shows no answer
+ * buttons for it: a panel or a menu (`/usage`'s, which only Esc closes), a prompt Fleet can't read, or
+ * one Lookout won't answer. Only once a read of the screen made in this Needs you spell has reached
+ * the tab: before it, a permission prompt's buttons may be a second away, and Esc would decline it.
+ * Never beside answer buttons (ready, waiting for the first read, sending, sent), nor while this
+ * tab's answer is on its way or landed after the latest read; never with Stop, which is for Busy.
+ * One click, one Esc; then "Pressing Esc…", disabled, until the Status leaves Needs you, or for 10 s.
+ */
+export function escButton(
+  row: SessionRow,
+  ended: boolean,
+  screen: ScreenState | undefined,
+  shown: { permission: PermissionPanel | null; question: QuestionPanel | null },
+  attempt: AnswerAttempt | undefined,
+  req: StopRequest | undefined,
+  now: number,
+): { pressing: boolean; error: string | null } | null {
+  if (!answerable(row, ended)) return null;
+  if (!screen || screen.since == null || screen.since !== row.statusSince) return null;
+  if (shown.permission?.kind === 'buttons') return null;
+  if (shown.question && shown.question.phase !== 'blocked') return null;
+  if (attempt?.phase === 'sending' || (attempt?.phase === 'sent' && attempt.epoch !== null && screen.epoch < attempt.epoch)) return null;
+  const r = req && req.status === 'needs-you' && req.since === row.statusSince ? req : null;
+  if (!r) return { pressing: false, error: null };
+  if (r.error) return { pressing: false, error: r.error };
+  return { pressing: r.pending || now - r.at < STOP_SETTLE_MS, error: null };
 }
 
 /** The Terminal preview (VIEW-2): where to answer when Lookout won't (VIEW-4.3). */

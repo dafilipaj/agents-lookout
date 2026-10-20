@@ -241,7 +241,7 @@ describe('following the prompt (VIEW-4.2)', () => {
     expect(t.runner).toHaveBeenCalledTimes(1);
     expect(t.runner.mock.calls[0]![1]).toEqual(['--local', 'answer', 'id:sess-a', '--list', '--json']);
     expect(t.sent).toEqual([
-      { clientId: 'tab-1', event: { type: 'prompt', sessionId: 'sess-a', prompt: expect.objectContaining({ id: 'p2.0badc0de' }), epoch: expect.any(Number), uncertain: null } },
+      { clientId: 'tab-1', event: { type: 'prompt', sessionId: 'sess-a', prompt: expect.objectContaining({ id: 'p2.0badc0de' }), epoch: expect.any(Number), uncertain: null, since: 0 } },
     ]);
 
     await vi.advanceTimersByTimeAsync(1000);
@@ -274,7 +274,7 @@ describe('following the prompt (VIEW-4.2)', () => {
     t.state.prompt = null;
     await vi.advanceTimersByTimeAsync(1000);
     expect(t.runner).toHaveBeenCalledTimes(1);
-    expect(prompts(t.sent)).toEqual([{ type: 'prompt', sessionId: 'sess-a', prompt: null, epoch: expect.any(Number), uncertain: null }]);
+    expect(prompts(t.sent)).toEqual([{ type: 'prompt', sessionId: 'sess-a', prompt: null, epoch: expect.any(Number), uncertain: null, since: 0 }]);
     t.state.prompt = PERMISSION;
     await vi.advanceTimersByTimeAsync(1000);
     expect(t.runner).toHaveBeenCalledTimes(2);
@@ -295,6 +295,29 @@ describe('following the prompt (VIEW-4.2)', () => {
     expect(t.w.following()).toEqual([]);
     await vi.advanceTimersByTimeAsync(3000);
     expect(t.runner).toHaveBeenCalledTimes(2);
+  });
+
+  it('VIEW-4.5: a read carries the Needs you spell it was made in; a new spell reaches the tabs even when the screen reads the same; none is read outside Needs you', async () => {
+    const t = watch({ statusSince: 1_000 });
+    t.state.prompt = null; // a panel: nothing Lookout answers
+    t.w.view('tab-1', 'sess-a');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(prompts(t.sent)).toEqual([{ type: 'prompt', sessionId: 'sess-a', prompt: null, epoch: expect.any(Number), uncertain: null, since: 1_000 }]);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(t.sent).toHaveLength(1);
+
+    // Busy for a moment, between two polls of the read: it says nothing was read.
+    t.state.row = { ...t.state.row, status: 'busy', statusSince: 2_000 };
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(prompts(t.sent).at(-1)).toMatchObject({ prompt: null, since: null });
+    // A new Needs you spell, the same screen: sent again, with its spell.
+    t.state.row = { ...t.state.row, status: 'needs-you', statusSince: 3_000 };
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(prompts(t.sent).at(-1)).toMatchObject({ prompt: null, since: 3_000 });
+    expect(t.sent).toHaveLength(3);
+    // A tab that starts viewing gets it, spell included.
+    t.w.view('tab-2', 'sess-a');
+    expect(t.sent.at(-1)).toMatchObject({ clientId: 'tab-2', event: { since: 3_000 } });
   });
 
   it('VIEW-4.3: after an answer to this Session, the next read reaches the tabs even when the prompt looks the same; an answer to another doesn’t', async () => {
@@ -974,5 +997,100 @@ describe('Stop (VIEW-4.4)', () => {
     // The fake checks key names as Fleet does.
     const raw = await run(FAKE_FLEET, ['--local', 'keys', `id:${IDLE}`, 'Esc', '--json'], { timeoutMs: 5000, env }).catch((e: { stdout: string }) => e.stdout);
     expect(JSON.parse(raw)).toMatchObject({ ok: false, kind: 'invalid_key' });
+  });
+});
+
+describe('Esc (VIEW-4.5)', () => {
+  const esc = (t: Awaited<ReturnType<typeof setup>>, id: string) => stopSession(t.opts, id, 'needs-you');
+  const ESCAPED = 'Esc was just pressed in this Session, so it wasn’t pressed again. Give it a few seconds.';
+
+  it('VIEW-4.5: Esc presses `fleet keys id:<session_id> Escape --json`, only while a fresh list still has the Session Needs you', async () => {
+    editRow(bySession(IDLE), { status: 'waiting' });
+    const t = await setup();
+    await esc(t, IDLE);
+    expect(typed()).toEqual([['--local', 'keys', `id:${IDLE}`, 'Escape', '--json']]);
+  });
+
+  it('VIEW-4.5: a Session that no longer Needs you gets no key, nor one that ended or is in another app; Stop never presses for one that Needs you', async () => {
+    editRow(bySession(IDLE), { status: 'waiting' });
+    const t = await setup();
+    // Stop's check holds: Esc on a prompt would decline it.
+    expect(await refusal(t.stop(IDLE))).toEqual({ status: 409, message: 'This Session isn’t working on anything now, so Esc wasn’t pressed.' });
+    for (const status of ['busy', 'idle']) {
+      editRow(bySession(IDLE), { status });
+      expect(await refusal(esc(t, IDLE))).toEqual({ status: 409, message: 'This Session isn’t waiting on you now, so Esc wasn’t pressed.' });
+    }
+    const file = join(dir, 'fleet', 'list.json');
+    writeFileSync(file, JSON.stringify((JSON.parse(readFileSync(file, 'utf8')) as FleetRow[]).filter((r) => r.session_id !== IDLE)));
+    expect(await refusal(esc(t, IDLE))).toEqual({ status: 409, message: 'This Session is no longer running, so Esc wasn’t pressed.' });
+    expect(await refusal(esc(t, VIEW_ONLY))).toEqual({ status: 409, message: 'This Session runs in another app, so Lookout can’t press Esc in it.' });
+    expect(await refusal(esc(t, 'nope'))).toEqual({ status: 404, message: 'This Session isn’t running.' });
+    expect(typed()).toEqual([]);
+  });
+
+  it('VIEW-4.5: a pid target is pressed by its exact pid, after the fresh list', async () => {
+    editRow((r) => r.pid === 61005, { status: 'waiting' });
+    const t = await setup();
+    await esc(t, NO_ID);
+    expect(typed()).toEqual([['--local', 'keys', 'pid:61005', 'Escape', '--json']]);
+  });
+
+  it('VIEW-4.5: one Esc per spell every 10 s, from either button and any tab: a second is refused, and so is one right after Stop’s', async () => {
+    editRow(bySession(IDLE), { status: 'waiting' });
+    const t = await setup();
+    let clock = 1_000_000;
+    let monitored: SessionRow = { ...t.known.find((r) => r.id === IDLE)!, statusSince: 990_000 };
+    const opts = { ...t.opts, lookup: (id: string) => (id === IDLE ? monitored : null), ledger: new AnswerLedger({ now: () => clock }) };
+    // Two tabs, 0 ms apart.
+    const [a, b] = await Promise.allSettled([stopSession(opts, IDLE, 'needs-you'), stopSession(opts, IDLE, 'needs-you')]);
+    expect(a.status).toBe('fulfilled');
+    expect(b).toMatchObject({ status: 'rejected', reason: { status: 409, message: ESCAPED } });
+    expect(typed()).toHaveLength(1);
+    clock += 5_000;
+    expect(await refusal(stopSession(opts, IDLE, 'needs-you'))).toEqual({ status: 409, message: ESCAPED });
+    // 10 s after the Esc, still Needs you: it can be pressed again.
+    clock += STOP_SETTLE_MS - 5_000;
+    await stopSession(opts, IDLE, 'needs-you');
+    expect(typed()).toHaveLength(2);
+
+    // Stop in a Busy spell, then Needs you within one monitor poll of its Esc: that's the spell it reached.
+    clock += 60_000;
+    editRow(bySession(IDLE), { status: 'busy' });
+    monitored = { ...monitored, status: 'busy', statusSince: clock - 3_000 };
+    await stopSession(opts, IDLE, 'busy');
+    editRow(bySession(IDLE), { status: 'waiting' });
+    monitored = { ...monitored, status: 'needs-you', statusSince: clock + MONITOR_INTERVAL_MS };
+    clock += MONITOR_INTERVAL_MS + 500;
+    expect(await refusal(stopSession(opts, IDLE, 'needs-you'))).toEqual({ status: 409, message: ESCAPED });
+    expect(typed()).toHaveLength(3);
+  });
+
+  it('VIEW-4.5: Fleet’s refusals are said in plain words for Esc; nothing names tmux', async () => {
+    editRow(bySession(IDLE), { status: 'waiting', fake_keys: 'busy' });
+    let t = await setup();
+    expect(await refusal(esc(t, IDLE))).toEqual({ status: 409, message: 'Fleet is typing into this Session right now, so Esc wasn’t pressed. Try again.' });
+    editRow(bySession(IDLE), { fake_keys: 'backend_unsupported' });
+    t = await setup();
+    expect(await refusal(esc(t, IDLE))).toEqual({ status: 409, message: 'Lookout can’t reach this Session’s terminal, so Esc wasn’t pressed. Press it there.' });
+    editRow(bySession(IDLE), { fake_keys: 'target_ambiguous' });
+    t = await setup();
+    expect(await refusal(esc(t, IDLE))).toEqual({ status: 409, message: 'Fleet couldn’t tell which Session this is, so Esc wasn’t pressed. Press Esc in the terminal.' });
+    editRow(bySession(IDLE), { fake_keys: null });
+    const failing = (stdout: string) => ({
+      ...t.opts,
+      ledger: new AnswerLedger(),
+      runner: vi.fn(async (f: string, a: readonly string[], o: RunOptions) =>
+        a.includes('keys') ? Promise.reject(Object.assign(new Error('exit 1'), { code: 1, stdout, stderr: '' })) : runner(f, a, o),
+      ),
+    });
+    expect(await refusal(stopSession(failing('{"ok":false,"kind":"backend_failed","error":"tmux send-keys failed"}'), IDLE, 'needs-you'))).toEqual({
+      status: 502,
+      message: 'Couldn’t press Esc: the Session host refused. Check the terminal.',
+    });
+    const fresh = { ...t.opts, ledger: new AnswerLedger(), freshList: async () => ({ kind: 'error' as const, message: 'fleet failed' }) };
+    expect(await refusal(stopSession(fresh as typeof t.opts, IDLE, 'needs-you'))).toEqual({
+      status: 503,
+      message: 'Couldn’t check that the Session is still waiting on you, so Esc wasn’t pressed. Try again.',
+    });
   });
 });

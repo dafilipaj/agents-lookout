@@ -1,6 +1,6 @@
 import type { Settings } from '@shared/settings.ts';
 import type { WorkRefreshResult } from '@shared/work.ts';
-import type { AnswerRequest, AnswerResult, ChatPage, EndResult, EndTarget, Harness, HarnessOption, HistoryDetail, HistoryPage, LaunchRequest, LaunchView, ResumeResult, ServerEvent } from '@shared/types.ts';
+import { HELD_REASONS, type AnswerRequest, type AnswerResult, type ChatPage, type EndResult, type EndTarget, type Harness, type HarnessOption, type HeldReason, type HistoryDetail, type HistoryPage, type LaunchRequest, type LaunchView, type ResumeResult, type ServerEvent } from '@shared/types.ts';
 
 export interface ClientListener {
   onEvent(event: ServerEvent): void;
@@ -27,6 +27,8 @@ export interface LookoutClient {
   answer(sessionId: string, req: AnswerRequest): Promise<AnswerResult>;
   /** VIEW-4.4: interrupts a Busy Session, as Esc does in its terminal. */
   stopSession(sessionId: string): Promise<void>;
+  /** VIEW-4.5: presses Esc in a Session that Needs you (a panel, a menu, a prompt Lookout doesn't answer). */
+  escSession(sessionId: string): Promise<void>;
   /** USAGE-2.1: the details opened; have the server check Jev again. */
   refreshJev(): Promise<void>;
   /** USAGE-2.2: a window's reset passed; have the server read the limits again. */
@@ -60,18 +62,21 @@ export class SaveError extends Error {
   readonly field: string | null;
   /** The HTTP status, when the server answered. */
   readonly status: number | null;
-  /** The server's kind of refusal, when it gives one (VIEW-4's `stale`). */
+  /** The server's kind of refusal, when it gives one (VIEW-4's `stale`, VIEW-3.7's `send_held`). */
   readonly kind: string | null;
+  /** VIEW-3.7: why Fleet held a send, when it did and Lookout knows the reason. */
+  readonly reason: HeldReason | null;
   /**
    * No answer came back from Lookout's server: the connection failed, or something in between (a
    * dev proxy while the server restarts) answered instead. The request may still have run.
    */
   readonly lost: boolean;
-  constructor(message: string, field: string | null = null, status: number | null = null, extra: { kind?: string | null; lost?: boolean } = {}) {
+  constructor(message: string, field: string | null = null, status: number | null = null, extra: { kind?: string | null; reason?: HeldReason | null; lost?: boolean } = {}) {
     super(message);
     this.field = field;
     this.status = status;
     this.kind = extra.kind ?? null;
+    this.reason = extra.reason ?? null;
     this.lost = extra.lost ?? false;
   }
 }
@@ -130,11 +135,12 @@ export function createHttpClient(): LookoutClient {
     } catch (err) {
       throw err instanceof SaveError ? err : new SaveError("Couldn't reach the Lookout server.", null, null, { lost: true });
     }
-    const body = (await res.json().catch(() => ({}))) as T & { error?: string; field?: string | null; kind?: string };
+    const body = (await res.json().catch(() => ({}))) as T & { error?: string; field?: string | null; kind?: string; reason?: unknown };
     if (!res.ok) {
       // Lookout's server always says why; a failure without a reason came from something in between.
       const lost = typeof body.error !== 'string' && res.status >= 500;
-      throw new SaveError(body.error ?? `${what} failed (${res.status}).`, body.field ?? null, res.status, { kind: body.kind ?? null, lost });
+      const reason = HELD_REASONS.find((r) => r === body.reason) ?? null;
+      throw new SaveError(body.error ?? `${what} failed (${res.status}).`, body.field ?? null, res.status, { kind: body.kind ?? null, reason, lost });
     }
     return body;
   };
@@ -312,6 +318,10 @@ export function createHttpClient(): LookoutClient {
     answer: (sessionId, req) => call<AnswerResult>(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/answer`, req), 'Answering'),
     stopSession: async (sessionId) => {
       await call(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/stop`), 'Stopping');
+    },
+    // VIEW-4.5: Stop's route, for a Session that Needs you: the server presses only while it still does.
+    escSession: async (sessionId) => {
+      await call(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/stop`, { status: 'needs-you' }), 'Pressing Esc');
     },
     sendMessage: async (sessionId, text) => {
       await call(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/send`, { text }), 'Sending');

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { REFRESH_FAILED, REFRESH_NOT_WATCHED, createHttpClient } from './client';
+import { REFRESH_FAILED, REFRESH_NOT_WATCHED, SaveError, createHttpClient } from './client';
 
 type Pending = { url: string; init: RequestInit | undefined; resolve: (r: Response) => void };
 
@@ -139,5 +139,39 @@ describe('Work (WORK-8)', () => {
     await settle();
     post()[4]!.resolve(new Response('Bad gateway', { status: 502 }));
     await expect(fifth).rejects.toMatchObject({ message: "Couldn't reach the Lookout server.", status: 502, lost: true });
+  });
+});
+
+describe('sending and pressing Esc (VIEW-3.7, VIEW-4.5)', () => {
+  it('VIEW-3.7: a held send rejects with its reason, which only a known one sets; nothing else from the server rides along', async () => {
+    const client = createHttpClient();
+    const held = (payload: unknown) => {
+      const sent = client.sendMessage('a', 'Reply with OK').catch((e: unknown) => e);
+      return { sent, answer: async () => {
+        await settle();
+        pending.at(-1)!.resolve(Response.json(payload, { status: 409 }));
+        return sent;
+      } };
+    };
+    const known = await held({ error: 'The Session is waiting on a prompt, so nothing was sent. Answer it, then try again.', field: null, kind: 'send_held', reason: 'prompt' }).answer();
+    expect(known).toBeInstanceOf(SaveError);
+    expect(known).toMatchObject({ status: 409, kind: 'send_held', reason: 'prompt', lost: false, message: 'The Session is waiting on a prompt, so nothing was sent. Answer it, then try again.' });
+    const unknown = await held({ error: 'Fleet held the message, so nothing was sent. Check the terminal.', field: null, kind: 'send_held', reason: 'overlay' }).answer();
+    expect(unknown).toMatchObject({ kind: 'send_held', reason: null });
+    expect(pending.at(-1)!.url).toBe('/api/sessions/a/send');
+  });
+
+  it('VIEW-4.5: Esc posts to Stop’s route with the Status it was shown in; Stop posts no body', async () => {
+    const client = createHttpClient();
+    void client.escSession('a b');
+    await settle();
+    expect(pending.at(-1)!.url).toBe('/api/sessions/a%20b/stop');
+    expect(pending.at(-1)!.init).toMatchObject({ method: 'POST', headers: { 'content-type': 'application/json', 'x-lookout-token': 'tok' } });
+    expect(body(pending.at(-1)!)).toEqual({ status: 'needs-you' });
+    pending.at(-1)!.resolve(Response.json({ ok: true }));
+    void client.stopSession('a');
+    await settle();
+    expect(pending.at(-1)!.url).toBe('/api/sessions/a/stop');
+    expect(pending.at(-1)!.init?.body).toBeUndefined();
   });
 });

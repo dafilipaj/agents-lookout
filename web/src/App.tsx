@@ -1,5 +1,5 @@
 import type { LaunchHarness } from '@shared/settings.ts';
-import type { AnswerRequest, ChatPage, EndTarget, HistoryItem, LaunchRequest, LaunchView, ResumeResult, SessionRow, Status } from '@shared/types.ts';
+import type { AnswerRequest, ChatPage, EndTarget, EscStatus, HistoryItem, LaunchRequest, LaunchView, ResumeResult, SessionRow, Status } from '@shared/types.ts';
 import type { WorkPr } from '@shared/work.ts';
 import { hasReset } from '@shared/usage.ts';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -15,7 +15,7 @@ import { StartingView } from '@/components/StartingView';
 import { WorkPanel } from '@/components/WorkPanel';
 import { type LookoutClient, SaveError } from '@/lib/client';
 import { tidySentAt } from '@/lib/activity';
-import { type AnswerAttempt, LOST_ANSWER, LOST_STOP, type StopRequest, processKey, promptKey, questionKey } from '@/lib/answers';
+import { type AnswerAttempt, LOST_ANSWER, LOST_STOP, type SendFailure, type StopRequest, processKey, promptKey, questionKey } from '@/lib/answers';
 import { type PanelNav, type RightLayout, type RightTab, loadLayout, saveLayout, toggleTab } from '@/lib/right-sidebar';
 import { useAnyModalOpen } from '@/lib/modal';
 import { type HarnessState, type LaunchDraft, initialDraft } from '@/lib/launch';
@@ -68,8 +68,9 @@ export function App({ client }: { client: LookoutClient }) {
   const [drafts] = useState(() => new Map<string, string>());
   const inFlight = useRef(new Set<string>());
   const [sending, setSending] = useState<ReadonlySet<string>>(new Set());
-  // VIEW-3.4: the last failed send per Session, so it shows whichever composer is mounted.
-  const [sendErrors, setSendErrors] = useState<ReadonlyMap<string, string>>(new Map());
+  // VIEW-3.4: the last failed send per Session, so it shows whichever composer is mounted; VIEW-3.7:
+  // with why Fleet held it, so the composer can point to the Esc button while it shows.
+  const [sendErrors, setSendErrors] = useState<ReadonlyMap<string, SendFailure>>(new Map());
   const [overrides, setOverrides] = useState<ReadonlyMap<string, DrawerOverride>>(new Map());
   // VIEW-1.10: when you last sent to each Session from the composer.
   const [sentAt, setSentAt] = useState<ReadonlyMap<string, number>>(new Map());
@@ -354,12 +355,12 @@ export function App({ client }: { client: LookoutClient }) {
       inFlight.current.add(sessionId);
       setSending((s) => new Set(s).add(sessionId));
       const ids = () => [sessionId, aliases.current.get(sessionId)].filter((x): x is string => !!x);
-      const setError = (message: string | null) =>
+      const setError = (failure: SendFailure | null) =>
         setSendErrors((m) => {
           const next = new Map(m);
           for (const id of ids()) {
-            if (message === null) next.delete(id);
-            else next.set(id, message);
+            if (failure === null) next.delete(id);
+            else next.set(id, failure);
           }
           return next;
         });
@@ -369,7 +370,9 @@ export function App({ client }: { client: LookoutClient }) {
         for (const id of ids()) if (drafts.get(id) === text) drafts.delete(id);
         return true;
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Sending failed.');
+        // VIEW-3.7: a held send is a failed one; its reason is kept for the Esc button's pointer.
+        const held = err instanceof SaveError && err.kind === 'send_held' ? err.reason : null;
+        setError({ message: err instanceof Error ? err.message : 'Sending failed.', held });
         return false;
       } finally {
         const ids = [sessionId, aliases.current.get(sessionId)].filter((x): x is string => !!x);
@@ -417,23 +420,26 @@ export function App({ client }: { client: LookoutClient }) {
   );
 
   // VIEW-4.4: one Esc per click; the button stays "Stopping…" until the Status leaves Busy, or 10 s
-  // after the Esc landed (StopRequest, `stopButton`).
+  // after the Esc landed (StopRequest, `stopButton`). VIEW-4.5: the Esc button is the same for a
+  // Session that Needs you ("Pressing Esc…", `escButton`); each request keeps the Status it's for.
   const stopSession = useCallback(
-    async (row: SessionRow) => {
+    async (row: SessionRow, status: EscStatus) => {
       const key = processKey(row);
       if (stopsInFlight.current.has(key)) return;
       stopsInFlight.current.add(key);
       const since = row.statusSince;
       const at = Date.now();
-      setStops((m) => new Map(m).set(key, { at, since, pending: true, error: null }));
+      setStops((m) => new Map(m).set(key, { at, status, since, pending: true, error: null }));
       const settle = (next: StopRequest) => setStops((m) => (m.get(key)?.at === at ? new Map(m).set(key, next) : m));
       try {
-        await client.stopSession(row.id);
-        settle({ at: Date.now(), since, pending: false, error: null });
+        if (status === 'busy') await client.stopSession(row.id);
+        else await client.escSession(row.id);
+        settle({ at: Date.now(), status, since, pending: false, error: null });
       } catch (err) {
         // A lost connection may have pressed Esc: say so, and show the terminal.
         const lost = err instanceof SaveError && err.lost;
-        settle({ at, since, pending: false, error: lost ? LOST_STOP : err instanceof Error ? err.message : 'Couldn’t stop it.' });
+        const failed = status === 'busy' ? 'Couldn’t stop it.' : 'Couldn’t press Esc.';
+        settle({ at, status, since, pending: false, error: lost ? LOST_STOP : err instanceof Error ? err.message : failed });
         if (lost) toggleDrawer(row, true);
       } finally {
         stopsInFlight.current.delete(key);
@@ -572,7 +578,8 @@ export function App({ client }: { client: LookoutClient }) {
             attempts={attempts}
             onAnswer={(row, req) => void answerPrompt(row, req)}
             stops={stops}
-            onStop={(row) => void stopSession(row)}
+            onStop={(row) => void stopSession(row, 'busy')}
+            onEsc={(row) => void stopSession(row, 'needs-you')}
           />
         )}
       </main>
