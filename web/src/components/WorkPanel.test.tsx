@@ -4,6 +4,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { REFRESH_FAILED, REFRESH_NOT_WATCHED, SaveError } from '@/lib/client';
+import { ageLevel } from '@/lib/work';
 import { renderApp, row, rowEl, settings } from '@/test/helpers';
 
 /** Synthetic PRs only: invented repos, numbers and titles. */
@@ -47,7 +48,7 @@ const snap = (p: Partial<PrSection> = {}, refresh: Partial<WorkSnapshot['refresh
 
 const workPanel = () => screen.getByTestId('work-panel');
 const tab = (name: 'History' | 'Work') => screen.getByRole('tab', { name });
-const listbox = () => within(workPanel()).getByRole('listbox', { name: 'PRs and review requests', hidden: true });
+const listbox = () => within(workPanel()).getByRole('listbox', { name: 'PRs', hidden: true });
 const options = () => within(workPanel()).queryAllByRole('option', { hidden: true });
 const shown = () => options().map((o) => o.getAttribute('data-pr'));
 const selectedPr = () => options().find((o) => o.getAttribute('aria-selected') === 'true')?.getAttribute('data-pr') ?? null;
@@ -182,19 +183,19 @@ describe('the Work tab (WORK-1)', () => {
     expect(prsSection.querySelector('[data-field="updated"]')).toHaveTextContent('updated 2m ago');
   });
 
-  it('WORK-1.5: the filter shows All by default, and PRs and review requests shows the PRs section with both groups; Tasks isn’t offered until slice C; the choice is remembered', async () => {
+  it('WORK-1.5: the filter shows All by default, and PRs shows the PRs section with both groups; Tasks isn’t offered until slice C; the choice is remembered', async () => {
     const user = userEvent.setup();
     const app = openApp();
     await user.keyboard('w');
     const filter = within(workPanel()).getByRole('group', { name: 'Show' });
-    expect(within(filter).getAllByRole('button').map((b) => b.textContent)).toEqual(['All', 'PRs and review requests']);
+    expect(within(filter).getAllByRole('button').map((b) => b.textContent)).toEqual(['All', 'PRs']);
     expect(within(filter).getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true');
-    await user.click(within(filter).getByRole('button', { name: 'PRs and review requests' }));
+    await user.click(within(filter).getByRole('button', { name: 'PRs' }));
     expect(group('Mine')).toBeInTheDocument();
     expect(group('Review requests')).toBeInTheDocument();
     app.unmount();
     openApp();
-    expect(within(workPanel()).getByRole('button', { name: 'PRs and review requests' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(workPanel()).getByRole('button', { name: 'PRs' })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('WORK-1.5: a remembered Tasks filter reads as All, with the PRs showing', () => {
@@ -208,7 +209,7 @@ describe('the Work tab (WORK-1)', () => {
     const user = userEvent.setup();
     const app = openApp();
     await user.keyboard('w');
-    await user.click(within(workPanel()).getByRole('button', { name: 'PRs and review requests' }));
+    await user.click(within(workPanel()).getByRole('button', { name: 'PRs' }));
     app.emit({ type: 'work', work: snap({ mine: [DRAFT], reviewRequests: [] }) });
     await user.click(within(workPanel()).getByRole('button', { name: 'All' }));
     expect(shown()).toEqual(['anvil#2101']);
@@ -341,7 +342,7 @@ describe('the Work tab (WORK-1)', () => {
     app.emit({ type: 'work', work: snap({ mine: [DRAFT, READY] }) });
     expect(selectedPr()).toBe('anvil#2101');
     // A filter change keeps it while it's visible.
-    await user.click(within(workPanel()).getByRole('button', { name: 'PRs and review requests' }));
+    await user.click(within(workPanel()).getByRole('button', { name: 'PRs' }));
     await user.click(within(workPanel()).getByRole('button', { name: 'All' }));
     expect(selectedPr()).toBe('anvil#2101');
     // Work empty: none selected.
@@ -450,6 +451,48 @@ describe('PRs (WORK-3)', () => {
     app.emit({ type: 'work', work: snap({ reviewRequests: [{ ...REVIEW, ci: 'passing' }] }) });
     expect(ci()).toHaveAccessibleName('CI passing');
     expect(ci()).not.toHaveTextContent('no CI');
+  });
+
+  it('WORK-3.5: a PR’s age reads green under 3 days, amber from 3 to 10 days, red over 10, in both groups, keeping its text and hover; without an opening time it stays muted', async () => {
+    const DAY = 86_400_000;
+    const MIN = 60_000;
+    expect([0, 3 * DAY - 1, 3 * DAY, 10 * DAY, 10 * DAY + 1].map(ageLevel)).toEqual(['recent', 'recent', 'aging', 'aging', 'old']);
+    const opened = (number: number, ago: number, over: Partial<WorkPr> = {}) => pr({ repo: 'anvil', number, createdAt: Date.now() - ago, ...over });
+    const review = (number: number, ago: number) => opened(number, ago, { chip: null, column: 'waiting_on_me' });
+    const edges = [3 * DAY - MIN, 3 * DAY + MIN, 10 * DAY - MIN, 10 * DAY + MIN];
+    openApp(
+      '/',
+      snap({
+        mine: [...edges.map((ago, i) => opened(3101 + i, ago)), opened(3105, 0, { createdAt: null, ageDays: 12 })],
+        reviewRequests: edges.map((ago, i) => review(3111 + i, ago)),
+      }),
+    );
+    await userEvent.setup().keyboard('w');
+    const colours = ['text-ok-text', 'text-needs-you-text', 'text-destructive-text', 'text-muted-foreground'];
+    const age = (number: number) => option(`anvil#${number}`).querySelector('[data-field="age"]')!;
+    const cases = [
+      [3101, '2d', 'recent', 'text-ok-text'],
+      [3102, '3d', 'aging', 'text-needs-you-text'],
+      [3103, '9d', 'aging', 'text-needs-you-text'],
+      [3104, '10d', 'old', 'text-destructive-text'],
+      [3111, '2d', 'recent', 'text-ok-text'],
+      [3112, '3d', 'aging', 'text-needs-you-text'],
+      [3113, '9d', 'aging', 'text-needs-you-text'],
+      [3114, '10d', 'old', 'text-destructive-text'],
+    ] as const;
+    for (const [number, text, level, cls] of cases) {
+      expect(age(number), `#${number}`).toHaveTextContent(new RegExp(`^${text}$`));
+      expect(age(number), `#${number}`).toHaveAttribute('data-level', level);
+      for (const c of colours) expect(age(number).classList.contains(c), `#${number} ${c}`).toBe(c === cls);
+      expect(age(number).getAttribute('title'), `#${number}`).toMatch(/^Opened /);
+    }
+    // The age is still in the row's name: colour is never the only cue.
+    expect(option('anvil#3104')).toHaveAccessibleName(/ 10d /);
+    // Without an opening time: tb-pr's days, muted as before, with no hover.
+    expect(age(3105)).toHaveTextContent(/^12d$/);
+    expect(age(3105)).not.toHaveAttribute('data-level');
+    for (const c of colours) expect(age(3105).classList.contains(c), c).toBe(c === 'text-muted-foreground');
+    expect(age(3105)).not.toHaveAttribute('title');
   });
 
   it('No open PRs or review requests, when both groups are empty', async () => {

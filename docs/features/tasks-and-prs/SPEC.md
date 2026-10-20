@@ -3,7 +3,7 @@ title: "Tasks and PRs"
 code: "WORK"
 status: "In Progress"
 created: "2026-10-19"
-updated: "2026-10-19"
+updated: "2026-10-20"
 ---
 
 # Tasks and PRs
@@ -37,13 +37,13 @@ The right sidebar gets a second tab, Work, next to History.
 - [x] WORK-1.2 Which tab is open is remembered across reloads, along with whether the sidebar is open and its width (HIST-1.3). (test)
 - [ ] WORK-1.3 Work has two sections, Tasks and PRs. Each shows its count and how old its data is ("updated 2m ago"). (test)
 - [x] WORK-1.4 With Work open, the Session sidebar and the main pane stay fully visible beside it, neither covered nor pushed out of the grid (HIST-1.2). (manual)
-- [ ] WORK-1.5 A filter at the top of Work has three options: All (the default), Tasks, and PRs and review requests. Tasks shows only the Tasks section; PRs and review requests shows only the PRs section, with both its groups. The choice is remembered across reloads. (test)
+- [ ] WORK-1.5 A filter at the top of Work has three options: All (the default), Tasks, and PRs. Tasks shows only the Tasks section; PRs shows only the PRs section, with both its groups, Mine and Review requests. The choice is remembered across reloads. (test)
 - [ ] WORK-1.6 Switching the filter shows the chosen section's latest data at once, and the switch starts no read: a hidden section is still read on schedule (WORK-8). (e2e)
 - [ ] WORK-1.7 With focus in Work, or on the right sidebar's tab strip, Refresh or Close, ↑/↓ and j/k move through the rows of the visible sections without acting, and never reach the Session sidebar; Enter acts like a click on the row (HIST-2.7). ←/→ on the tab strip move between the tabs, as a tablist does. (test)
   - Open: Enter can't be checked yet. A row's click acts on its Linked Sessions, and until Links (WORK-4) a row has none, so it does nothing.
 - [x] WORK-1.8 The tab strip (History, Work) sits in the header row where History's search field is today, lined up with the rest of the grid (SIDE-8), with History's search field and Work's filter below it. (manual)
 - [ ] WORK-1.9 The keyboard selection stays on the same item while that item is visible. When a filter change or a read removes it, the selection moves to the first visible row, or to none when Work is empty. (test)
-  - Open: a filter change can't remove a row yet. Until Tasks (slice C), the filter has only All and PRs and review requests, which show the same rows; a read that removes the selected row is tested.
+  - Open: a filter change can't remove a row yet. Until Tasks (slice C), the filter has only All and PRs, which show the same rows; a read that removes the selected row is tested.
 - [x] WORK-1.10 With Work open, clicking a Session row in the Session sidebar selects it and shows it in the main pane, and the composer takes typed text, `W`, `H`, `O`, `j` and `k` included, without moving Work's selection or switching the tab. (test)
 - [ ] WORK-1.11 With Work open, a message sent from the composer reaches the selected Session and its reply shows, as with Work closed. (e2e)
 
@@ -65,6 +65,7 @@ The right sidebar gets a second tab, Work, next to History.
 - [ ] WORK-3.3 "No CI" never looks like passing. A Review request shows "no CI" while `tb-pr` gives it no CI state, and its real CI state once `tb-pr` does (Gap 1). (test)
   - Open: the "no CI" half is tested; the real CI state of a Review request waits on Gap 1 (Dependencies), which no `tb-pr` has yet.
 - [ ] WORK-3.4 A PR shows its Linked Task (title) and its Linked Sessions, and the Session marker and row click behave as in WORK-2.4. (e2e)
+- [x] WORK-3.5 A PR's age, in Mine and in Review requests, is coloured by how long ago the PR was opened: green under 3 days, amber from 3 days up to and including 10 days, red over 10 days. The age text stays, so colour is never the only cue, and its hover still gives the opening date. A PR without an opening time keeps the age's muted colour. (test)
 
 ### WORK-4 Links
 
@@ -170,7 +171,7 @@ Planned, but not in v1:
 ```
 
 - **One grid (SIDE-8):** the tab strip sits in the header row, where History's search field is today. History keeps its search field below the tab strip once there are two tabs. Work's filter sits in the same place.
-- **Filter (WORK-1.5):** a three-option segmented control, "All", "Tasks", "PRs and review requests". The mock-up shortens the last one. Until slice C brings Tasks, "Tasks" isn't offered (Dependencies).
+- **Filter (WORK-1.5):** a three-option segmented control, "All", "Tasks", "PRs". "PRs" covers both PR groups, Review requests included. Until slice C brings Tasks, "Tasks" isn't offered (Dependencies).
 - **Markers and buttons** (lucide icons, [0008](../../decisions/0008-lucide-icons-only.md)):
   - a circle with a dot (`CircleDot`): a Linked Session is live;
   - an empty circle (`Circle`): only past Linked Sessions;
@@ -180,6 +181,7 @@ Planned, but not in v1:
   - [↗] is "Open in browser" (`ExternalLink`), on every row. Its tooltip: "Open in Fantastic (O)" on a Task, "Open on GitHub (O)" on a PR.
   - A row's buttons are for the mouse. As in History, each section's rows are the options of one focusable listbox, each PR group a `group` in it, and an option holds nothing focusable: the keyboard acts on the selected row with Enter, `O` and `R`, and a screen reader hears those keys in the row's description. A row's name is its content, as History's rows' are: repo, number, chip, CI state, age and title.
   - ⟳ is Refresh (`RefreshCw`). While it's cooling down or GitHub is rate limited, it's disabled, and its hover says why and when it's back (WORK-8.2, WORK-8.4).
+- **Age colour (WORK-3.5):** a PR's age reads green under 3 days, amber from 3 to 10 days and red over 10 days, in the app's tokens with their light and dark values: `ok-text` for green, the context meter's warning colour `needs-you-text` (VIEW-5.5) for amber, and `destructive-text` for red. The two `-text` tokens are darker in light mode than `ok` and `destructive`, so the small age text keeps 4.5:1 contrast on a selected row. Exactly 3 and exactly 10 days are amber. An age shows whole days rounded down, so in practice "2d" and younger read green, "3d" to "9d" amber, and "10d" and older red. The text and its "Opened …" hover stay; a PR without an opening time (only tb-pr's `age_days`) keeps the muted colour.
 - **Row clicks (WORK-2.4):**
   - The row selects its live Linked Session with the latest activity, or, with none live, resumes the past one with the latest activity.
   - A row without a Linked Session does nothing; its buttons do.
@@ -365,12 +367,13 @@ All Links are found on the server by matching ids and URLs Lookout already knows
     - Task: the Task's URL (WORK-6.2), nothing else.
     - Review request: `/p-codex:dual-review <PR URL>`, with Claude Code as the Harness and its last-used model when the last start was Claude Code's, else its default (WORK-5.2).
 - **Open in browser (WORK-6):** `window.open(url, '_blank', 'noopener,noreferrer')`, from the row's button or the `O` key: the button sits inside the row's option, so it's no link (UX, Markers and buttons). The server builds the Task URL from the id; the PR URL is `tb-pr`'s `url`, accepted only when it starts with `https://github.com/`.
+- **Age colour (WORK-3.5):** computed in the browser from the PR's `createdAt` and the same clock as its age text, so the colour changes with the text: `ageLevel` in `web/src/lib/work.ts` gives the level, and the row takes its amber class from the context meter's (`CONTEXT_LEVEL_CLASS`, `web/src/lib/sessions.ts`), so both change together; green and red use `text-ok-text` and `text-destructive-text` (`web/src/index.css`). Nothing changes on the server.
 - **Right sidebar:** a generic container with an active tab, History or Work (`RightSidebar.tsx`), its layout kept in this browser under `lookout.right` (`web/src/lib/right-sidebar.ts`), read from HIST's old `lookout.history` when that key is missing or unreadable. Work's filter is stored next to the active tab. Its tab strip is the sidebar's header cell (HIST-1.1, SIDE-8.1).
 
 ### Dependencies
 
 - **Gap 1** (tb-pr) for WORK-4.1 and the CI half of WORK-3.3.
-- **Slice C** (Tasks) for the filter's Tasks choice (WORK-1.5): until then the filter offers All and PRs and review requests, and a remembered Tasks reads as All.
+- **Slice C** (Tasks) for the filter's Tasks choice (WORK-1.5): until then the filter offers All and PRs, and a remembered Tasks reads as All.
 - **World fakes** (TEST) for the `(e2e)` criteria:
   - **fake `tb-prod` and `tb-pr`**, which a World may provide next to `claude`, `codex`, `tb-jev` and `curl` (TEST-1.2 and TEST-1.5, since 2026-10-19), for every `(e2e)` criterion here but WORK-1.11 and WORK-2.5. WORK-7.1 declares them absent. Built (`e2e/fakes/`):
     - **fake `tb-prod`**: answers `query tasks` with the Tasks declared for the email in its filter, as JSON:API pages, or with a declared failure (no config, an `api_error` with status 401 or 403, a timeout). It logs each argv and fails the test on any other subcommand, and on any query but the one under Sources: that filter exactly, sorted by `last_activity_at`. Where tb-prod would refuse the call itself (clap's usage error, `invalid_filter`), it prints what tb-prod prints. So a change to the Tasks filter is a change to the fake, checked against tb-prod's schema.
@@ -424,3 +427,5 @@ All Links are found on the server by matching ids and URLs Lookout already knows
 - 2026-10-19: First review of slice B. Errors and marks say in plain words what's wrong and what to do, never tb-pr's own text, which goes only to the server's log, redacted and one line (UX, Errors); WORK-7.5's entries name the reason in plain words, and Review requests' no longer repeat the group's name; signed out is said once. A board with a PR Lookout can't read, other than one under another owner, is a failed read, never "No open PRs or review requests". Review always starts Claude Code, since its prompt is a Claude Code plugin command, and `R` reviews the selected Review request (WORK-5.2). Each section's rows are one focusable listbox with a `group` per PR group, and an option holds nothing focusable: Review and Open are mouse targets, the keyboard has Enter, `O` and `R` (UX, Markers and buttons), and Open in browser is `window.open`. On the tab strip, Refresh or Close, j/k and ↑/↓ go to the open panel, never the Session sidebar, and ←/→ move between the tabs (WORK-1.7, UX). Refresh is refused while no tab has Work open, and waiting reads are dropped when the last tab closes it (WORK-8.1). `O` and `R` work with Caps Lock on. The filter's Tasks choice waits for slice C, and a remembered Tasks reads as All (Dependencies). Unticked WORK-1.7, since Enter has nothing to act on until Links (WORK-4), and WORK-3.3, whose CI half waits on Gap 1.
 - 2026-10-19: Second review of slice B. A PR row's name is its content, as History's rows' are, so a screen reader hears its chip, CI state and age (UX, Markers and buttons). Focus follows the PR list: it moves in when the list shows up, and back to Work when the last row goes, never to the page (UX, Focus). `O` and `R` act once per press, not once per key repeat. A Refresh refused with 409, failed with 500 or not answered says so in plain words at the top of Work (UX, Errors). The schedule is off while a read runs and once a Refresh is accepted, so no scheduled read lines up behind a Refresh (Reads, cooldown and coalescing). Redaction also covers secrets under longer names, such as `access_token=` and `client_secret=` in a query (WORK-7.7). The tab strip moves the open panel's rows through a handle the panel gives it, not a key event of its own. The mock-up's repos are invented. Unticked WORK-1.9, since no filter change can remove a row before Tasks, and WORK-5.2, whose Behaviour tests now press `R` and see Claude Code chosen after a Codex start, but can't see the start until a World can declare a Harness (TEST-1.4).
 - 2026-10-19: Third review of slice B. Redaction bounds how far back it looks for a URL's scheme (32 characters) and a secret's longer name (64), so long dash-joined text in a tool's error no longer blocks the server for seconds (WORK-7.7). The PRs count is heard as "4 open". Unticked WORK-6.4, whose Task half waits on Task rows (slice C).
+- 2026-10-20: Changed from Dario's testing: the filter's second option is "PRs", not "PRs and review requests", and the PRs list's accessible name is "PRs" too (WORK-1.5, UX). Added WORK-3.5: a PR's age is coloured by how long ago it was opened, green under 3 days, amber from 3 to 10 days and red over 10, in the `ok` token and the context meter's warning and danger tokens (VIEW-5.5), with its text and hover kept; a PR without an opening time keeps the muted age. Its test covers just under and just over 3 and 10 days. Ticked WORK-3.5.
+- 2026-10-20: First review: green and red ages use darker text tokens in light mode (`ok-text`, `destructive-text`), so the small text keeps 4.5:1 contrast on a selected row.

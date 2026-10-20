@@ -283,7 +283,7 @@ scenario(
   async ({ page, world }) => {
     await openWork(page);
     await world.step('the PRs to show', () => expect(work(page).getByRole('option')).toHaveCount(3));
-    await work(page).getByRole('button', { name: 'PRs and review requests' }).click();
+    await work(page).getByRole('button', { name: 'PRs', exact: true }).click();
     await expect(work(page).getByRole('option')).toHaveCount(3);
     await work(page).getByRole('button', { name: 'All' }).click();
     await expect(work(page).getByRole('option')).toHaveCount(3);

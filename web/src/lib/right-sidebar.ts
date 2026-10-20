@@ -23,7 +23,7 @@ export interface PanelNav {
  */
 export type WorkFilter = 'all' | 'prs';
 export const WORK_FILTERS: readonly WorkFilter[] = ['all', 'prs'];
-export const WORK_FILTER_LABEL: Record<WorkFilter, string> = { all: 'All', prs: 'PRs and review requests' };
+export const WORK_FILTER_LABEL: Record<WorkFilter, string> = { all: 'All', prs: 'PRs' };
 
 /** HIST-1.3: the width bounds, in px. */
 export const RIGHT_MIN_WIDTH = 280;

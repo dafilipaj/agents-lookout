@@ -1,5 +1,6 @@
 import { CHIP_OF, type ColumnMark, type PrSection, type WorkPr, type WorkSnapshot } from '@shared/work.ts';
 import type { WorkFilter } from './right-sidebar.ts';
+import { CONTEXT_LEVEL_CLASS } from './sessions.ts';
 import { formatAge } from './time.ts';
 
 /** WORK-3.1: the two PR groups, in the order they show. */
@@ -40,6 +41,30 @@ export function keepSelection(current: string | null, rows: readonly WorkRow[]):
   if (current !== null && rows.some((r) => r.key === current)) return current;
   return rows[0]?.key ?? null;
 }
+
+const DAY_MS = 86_400_000;
+
+/**
+ * WORK-3.5: how old a PR reads, by the time since it was opened: recent under 3 days, aging from 3
+ * days up to and including 10, old over 10.
+ */
+export type AgeLevel = 'recent' | 'aging' | 'old';
+
+export function ageLevel(ms: number): AgeLevel {
+  if (ms > 10 * DAY_MS) return 'old';
+  if (ms >= 3 * DAY_MS) return 'aging';
+  return 'recent';
+}
+
+/**
+ * The age's colour for each level: green, then the context meter's warning colour (VIEW-5.5), then red.
+ * Green and red use their darker text tokens, so the small age text stays readable on a selected row.
+ */
+export const AGE_LEVEL_CLASS: Record<AgeLevel, string> = {
+  recent: 'text-ok-text',
+  aging: CONTEXT_LEVEL_CLASS.warning!,
+  old: 'text-destructive-text',
+};
 
 /** WORK-5.2: the launcher's prompt for a Review request. */
 export const reviewPrompt = (url: string) => `/p-codex:dual-review ${url}`;

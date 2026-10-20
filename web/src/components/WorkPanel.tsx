@@ -4,7 +4,7 @@ import { type KeyboardEvent, type MouseEvent, type ReactNode, type Ref, useCallb
 import { type PanelNav, WORK_FILTERS, WORK_FILTER_LABEL, type WorkFilter } from '@/lib/right-sidebar';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
-import { PR_GROUPS, PR_GROUP_LABEL, type PrGroup, type WorkRow, backIn, describeMark, hasPrLists, keepSelection, prKey, showsPrs, visibleRows } from '@/lib/work';
+import { AGE_LEVEL_CLASS, PR_GROUPS, PR_GROUP_LABEL, type PrGroup, type WorkRow, ageLevel, backIn, describeMark, hasPrLists, keepSelection, prKey, showsPrs, visibleRows } from '@/lib/work';
 
 export interface WorkPanelProps {
   work: WorkSnapshot | null;
@@ -220,7 +220,7 @@ function PrsSection({ prs, blockedUntil, now: clock, selected, listRef, onRow, o
         <div
           ref={listRef}
           role="listbox"
-          aria-label="PRs and review requests"
+          aria-label="PRs"
           aria-activedescendant={active ? rowId(active) : undefined}
           tabIndex={0}
           className="flex flex-col outline-none"
@@ -338,6 +338,8 @@ interface PrRowProps {
 function PrRow({ row, now, active, onClick, onOpen, onReview }: PrRowProps) {
   const { pr } = row;
   const age = pr.createdAt !== null ? formatAge(now - pr.createdAt) : pr.ageDays !== null ? formatAge(pr.ageDays * DAY_MS) : null;
+  // WORK-3.5: coloured by the time since it was opened; without an opening time, muted as before.
+  const level = pr.createdAt !== null ? ageLevel(now - pr.createdAt) : null;
   const isReview = row.group === 'reviewRequests';
   const keysId = `${rowId(row.key)}-keys`;
   const act = (then: () => void) => (e: MouseEvent) => {
@@ -376,7 +378,12 @@ function PrRow({ row, now, active, onClick, onOpen, onReview }: PrRowProps) {
         <Ci ci={pr.ci} />{' '}
         {age && (
           <>
-            <span className="shrink-0 text-[12px] text-muted-foreground" data-field="age" title={pr.createdAt !== null ? `Opened ${new Date(pr.createdAt).toLocaleString()}` : undefined}>
+            <span
+              className={cn('shrink-0 text-[12px]', level ? AGE_LEVEL_CLASS[level] : 'text-muted-foreground')}
+              data-field="age"
+              data-level={level ?? undefined}
+              title={pr.createdAt !== null ? `Opened ${new Date(pr.createdAt).toLocaleString()}` : undefined}
+            >
               {age}
             </span>{' '}
           </>
