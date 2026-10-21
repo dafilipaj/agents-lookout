@@ -597,6 +597,35 @@ describe('answering (VIEW-4.1–4.3)', () => {
     expect((await rows()).find((r) => r.id === CODEX)).toMatchObject({ status: 'busy' });
   });
 
+  it('VIEW-4.9: Claude Code’s confirmation of a command from the composer, as the fork reads it, gets its choices as buttons in the terminal’s wording and is answered by its number', async () => {
+    // What the fork's `answer --list` gives for the dialog `/effort high` opens while the prompt cache is warm.
+    const confirm = {
+      kind: 'permission',
+      id: 'p2.6a955058',
+      title: 'Change effort level?',
+      detail: [
+        'Your next response will be slower and use more tokens',
+        'This conversation is cached for the current effort level. Switching to high',
+        'means the full history gets re-read on your next message.',
+      ],
+      choices: [
+        { n: 1, label: 'Yes, switch to high' },
+        { n: 2, label: 'No, go back' },
+      ],
+      selected: 1,
+      untouched: true,
+    };
+    editRow(bySession(IDLE), { status: 'waiting', fake_prompt: confirm });
+    const t = await setup();
+    expect(await listPrompt(t.opts, t.known.find((r) => r.id === IDLE)!)).toMatchObject({
+      ok: true,
+      prompt: { kind: 'permission', id: 'p2.6a955058', title: 'Change effort level?', detail: confirm.detail, choices: confirm.choices, untouched: true },
+      answerable: true,
+    });
+    expect(await t.answer(IDLE, { kind: 'permission', prompt: 'p2.6a955058', choice: 1, epoch: 41 })).toEqual({ epoch: 42 });
+    expect(typed()).toEqual([['--local', 'answer', `id:${IDLE}`, '--json', '--allow-attached', '--choice', '1', '--prompt', 'p2.6a955058']]);
+  });
+
   it('VIEW-4.3: another prompt on screen, or the same one touched in the terminal, is refused: nothing is typed and the pane says to answer in the terminal', async () => {
     editRow(bySession(CODEX), { status: 'waiting', fake_prompt: { ...PERMISSION, id: 'p2.feedf00d' } });
     let t = await setup();

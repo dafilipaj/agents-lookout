@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { asSent } from '../shared/message.ts';
 import type { ServerEvent, SessionRow } from '../shared/types.ts';
 import { AnswerLedger } from './answerer.ts';
 import type { RunOptions } from './exec.ts';
@@ -290,6 +291,19 @@ describe('composer', () => {
       await expect(t.viewer.send('sess-a', { text: bad })).rejects.toMatchObject({ status: 400, field: 'text' });
     }
     expect(t.calls).toHaveLength(1);
+  });
+
+  it('VIEW-3.8: a slash command goes without the blanks before it, so the Harness runs it; any other message keeps them', async () => {
+    const t = setup();
+    for (const text of [' /model sonnet', '\t /effort high', '\n  /usage', ' \r\n/review 42\nwith a note']) {
+      await t.viewer.send('sess-a', { text });
+    }
+    expect(t.calls.map((c) => c.args.at(-1))).toEqual(['/model sonnet', '/effort high', '/usage', '/review 42\nwith a note']);
+    await t.viewer.send('sess-a', { text: '  indented, not a command /model' });
+    await t.viewer.send('sess-a', { text: ' !ls' });
+    expect(t.calls.slice(4).map((c) => c.args.at(-1))).toEqual(['  indented, not a command /model', ' !ls']);
+    // The tab pairs the message with its copy the way the server sends it (VIEW-1.13).
+    expect(asSent(' /model sonnet')).toBe('/model sonnet');
   });
 
   it('VIEW-3.2: multi-line text is pasted, so its tabs arrive intact (Makefiles, Go, TSV)', async () => {
