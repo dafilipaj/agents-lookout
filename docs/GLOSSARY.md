@@ -10,6 +10,8 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Controllable**: A Session Lookout can bring to the front and type into, because Fleet knows its terminal (backend `tmux` or `iterm`). Sessions in other apps, such as Claude Desktop or IDE terminals, aren't.
 
+**Effort**: The reasoning effort a Session's model runs at, such as `medium`, `high` or `xhigh`. Changed with `/effort` in Claude Code, or in Codex's `/model` picker. Comes from Fleet, read from the Transcript.
+
 **Fake Harness**: A stand-in for Claude Code or Codex in a World. It runs in the World's tmux, registers and writes Transcripts the way the real Harness does, and answers from a script, so the real Fleet and tb-session see it as a Session. It never calls a model.
 
 **Harness**: The agent CLI a Session runs: Claude Code or Codex. (Fleet also knows pi; not a goal for Lookout.)

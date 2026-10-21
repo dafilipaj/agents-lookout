@@ -17,6 +17,7 @@ const row = (id: string, status: Status, statusSince: number | null): SessionRow
   controllable: true,
   ownHost: true,
   model: null,
+  effort: null,
   procStart: null,
 });
 

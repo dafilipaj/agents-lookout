@@ -35,6 +35,7 @@ const row = (over: Partial<SessionRow> & { id: string }): SessionRow => ({
   controllable: true,
   ownHost: true,
   model: null,
+  effort: null,
   procStart: null,
   ...over,
 });

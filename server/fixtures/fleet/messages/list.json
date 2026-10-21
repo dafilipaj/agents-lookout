@@ -14,6 +14,7 @@
     },
     "harness": "claude",
     "model": "claude-opus-5-5",
+    "effort": "high",
     "proc_start": "2026-10-14T08:12:03Z",
     "fake_screen": [
       "",
@@ -45,6 +46,7 @@
     },
     "harness": "codex",
     "model": "gpt-6-astra",
+    "effort": "xhigh",
     "proc_start": "2026-10-14T07:55:41Z"
   },
   {
@@ -62,6 +64,7 @@
     },
     "harness": "claude",
     "model": "claude-sonnet-5-5",
+    "effort": null,
     "proc_start": "2026-10-14T08:01:17.250Z"
   },
   {
@@ -77,6 +80,7 @@
     "context": null,
     "harness": "claude",
     "model": "claude-opus-5-5",
+    "effort": "medium",
     "proc_start": "2026-10-14T09:30:00Z"
   },
   {
@@ -92,6 +96,7 @@
     "context": null,
     "harness": "claude",
     "model": "claude-opus-5-5",
+    "effort": "high",
     "proc_start": "2026-10-14T09:42:09Z"
   }
 ]

@@ -25,6 +25,11 @@ export interface FleetRow {
   /** `claude` | `codex` | `pi` */
   harness: string;
   model: string | null;
+  /**
+   * VIEW-5.11: the reasoning effort the Transcript last recorded (`high`, `xhigh` …); null when
+   * unknown. Missing from a Fleet older than the fork's `effort` field.
+   */
+  effort?: string | null;
   /** The agent process's start time, RFC 3339 UTC; null when Fleet can't read it (VIEW-5.6). */
   proc_start?: string | null;
 }

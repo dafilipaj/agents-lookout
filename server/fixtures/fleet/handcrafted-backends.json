@@ -21,6 +21,7 @@
     "stack": null,
     "harness": "claude",
     "model": "claude-sonnet-5-5",
+    "effort": "high",
     "transcript": null,
     "origin": null
   },
@@ -46,6 +47,7 @@
     "stack": null,
     "harness": "codex",
     "model": null,
+    "effort": null,
     "transcript": null,
     "origin": null
   },
@@ -136,6 +138,7 @@
     "context": { "used": 20000, "window": 258400, "pct": 8, "model": "gpt-6-astra" },
     "harness": "codex",
     "model": "gpt-6-astra",
+    "effort": "xhigh",
     "future_field": { "added": "later" }
   },
   { "not": "a session row" }

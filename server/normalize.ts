@@ -46,6 +46,17 @@ export function procStart(value: unknown): string | null {
   return Number.isFinite(ms) && new Date(ms).toISOString().slice(0, 19) === value.slice(0, 19) ? value : null;
 }
 
+/** A short word, as Harnesses name their effort levels (`medium`, `xhigh`, `max`). */
+const EFFORT = /^[A-Za-z0-9_-]{1,16}$/;
+
+/**
+ * VIEW-5.11: Fleet's `effort` as given when it is a short word; null when it's missing (an older
+ * Fleet), null, not a string, empty or too long, so the status line shows nothing in its place.
+ */
+export function effort(value: unknown): string | null {
+  return typeof value === 'string' && EFFORT.test(value) ? value : null;
+}
+
 export interface NormalizeDeps {
   /** Git location for a working directory; null when not a git dir or not read yet. */
   git(cwd: string): GitLocation | null;
@@ -83,6 +94,7 @@ export function normalizeRows(rows: readonly FleetRow[], deps: NormalizeDeps): S
       controllable: backend !== 'unknown',
       ownHost: perHost.get(tmuxHost(r) ?? '') === 1,
       model: r.model ?? null,
+      effort: effort(r.effort),
       procStart: procStart(r.proc_start),
     });
   }

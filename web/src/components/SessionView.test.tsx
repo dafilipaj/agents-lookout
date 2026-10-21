@@ -78,6 +78,38 @@ describe('Session view header', () => {
     expect(line.getAttribute('title')).toContain(long);
   });
 
+  it('VIEW-5.11: the Effort follows the model as its own part, updating live, and nothing takes its place without one', () => {
+    const app = renderApp('/s/a');
+    const git = { repo: 'work', worktree: 'crm-rates', branch: 'x' };
+    app.snapshot([row({ id: 'a', model: 'claude-opus-5-5', effort: 'medium', contextPct: 41, git })]);
+    const line = statusLine();
+    const effort = () => line.querySelector('[data-field="effort"]');
+    expect(effort()).toHaveTextContent(/^medium effort$/);
+    // Right after the model, before the context usage.
+    expect(effort()!.previousElementSibling!.previousElementSibling).toBe(line.querySelector('[data-field="model"]'));
+    expect(line).toHaveAttribute('title', 'work · crm-rates · claude-opus-5-5 · medium effort · 41% context');
+
+    // `/effort high`: Fleet reports it once the next reply reaches the Transcript.
+    app.emit({ type: 'sessions', upsert: [row({ id: 'a', model: 'claude-opus-5-5', effort: 'high', contextPct: 42, git })], remove: [] });
+    expect(effort()).toHaveTextContent(/^high effort$/);
+
+    // No Effort (null, or an older Fleet without the field): no part, no extra separator.
+    app.emit({ type: 'sessions', upsert: [row({ id: 'a', model: 'claude-opus-5-5', effort: null, contextPct: 42, git })], remove: [] });
+    expect(effort()).toBeNull();
+    expect(line).toHaveAttribute('title', 'work · crm-rates · claude-opus-5-5 · 42% context');
+    expect(line.textContent).toBe('work·crm-rates·claude-opus-5-5·42% context');
+  });
+
+  it('VIEW-5.11: it keeps the line one line: the Effort truncates like the other parts', () => {
+    const app = renderApp('/s/a');
+    app.snapshot([row({ id: 'a', model: 'gpt-6-luna', harness: 'codex', effort: 'xhigh', contextPct: 9 })]);
+    const line = statusLine();
+    expect(line).toHaveClass('whitespace-nowrap', 'overflow-hidden', 'h-7');
+    expect(line.querySelector('[data-field="effort"]')).toHaveClass('truncate', 'min-w-0');
+    expect(line.querySelector('[data-field="effort"]')).toHaveAttribute('title', 'xhigh effort');
+    expect(line.getAttribute('title')).toContain('gpt-6-luna · xhigh effort');
+  });
+
   it('VIEW-5.5: without a composer (a view-only or ended Session) the status line sits at the bottom of the pane', () => {
     const app = renderApp('/s/orca');
     app.snapshot([row({ id: 'orca', backend: 'unknown', controllable: false, contextPct: 12 })]);

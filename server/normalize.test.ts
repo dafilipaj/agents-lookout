@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { GitLocation } from '../shared/types.ts';
 import type { FleetRow } from './fleet.ts';
-import { normalizeRows, procStart, sessionId, toStatus } from './normalize.ts';
+import { effort, normalizeRows, procStart, sessionId, toStatus } from './normalize.ts';
 
 const fixture = (name: string): FleetRow[] =>
   JSON.parse(readFileSync(new URL(`./fixtures/fleet/${name}`, import.meta.url), 'utf8')).filter(
@@ -37,6 +37,7 @@ describe('fleet list → sidebar rows', () => {
         controllable: true,
         ownHost: true,
         model: 'claude-opus-5-5',
+        effort: null,
         procStart: null,
       },
       {
@@ -54,6 +55,7 @@ describe('fleet list → sidebar rows', () => {
         controllable: true,
         ownHost: true,
         model: 'gpt-6-astra',
+        effort: null,
         procStart: null,
       },
       {
@@ -71,6 +73,7 @@ describe('fleet list → sidebar rows', () => {
         controllable: false,
         ownHost: false,
         model: 'claude-opus-5-5',
+        effort: null,
         procStart: null,
       },
       {
@@ -88,6 +91,7 @@ describe('fleet list → sidebar rows', () => {
         controllable: false,
         ownHost: false,
         model: 'claude-opus-5-5',
+        effort: null,
         procStart: null,
       },
     ]);
@@ -105,6 +109,26 @@ describe('fleet list → sidebar rows', () => {
     // An empty display title still gives the row a name.
     expect(rows[3]!.title).toBe('claude 50004');
     expect(rows[3]!.statusSince).toBeNull();
+  });
+
+  it('VIEW-5.11: Fleet\'s `effort` reaches the row, and a Fleet without the field (the 2026-10-16 recording) gives null', () => {
+    const rows = normalizeRows(fixture('handcrafted-backends.json'), deps);
+    expect(rows.map((r) => [r.id, r.effort])).toEqual([
+      ['aaaaaaaa-0000-4000-8000-000000000001', 'high'],
+      ['codex:50002', null],
+      ['cccccccc-0000-4000-8000-000000000003', null],
+      ['dddddddd-0000-4000-8000-000000000004', null],
+      ['ffffffff-0000-4000-8000-000000000006', 'xhigh'],
+    ]);
+    expect(normalizeRows(fixture('messages/list.json'), deps).map((r) => r.effort)).toEqual(['high', 'xhigh', null, 'medium', 'high']);
+    expect(normalizeRows(fixture('recorded-2026-10-16.json'), deps).every((r) => r.effort === null)).toBe(true);
+  });
+
+  it('VIEW-5.11: an effort is kept only as a short word; anything else is null', () => {
+    for (const ok of ['low', 'medium', 'high', 'xhigh', 'max', 'extra-high', 'x_2']) expect(effort(ok)).toBe(ok);
+    for (const bad of [undefined, null, '', ' ', 'high ', 'very high', 'x'.repeat(17), 3, true, {}, ['high'], '<b>high</b>']) {
+      expect(effort(bad)).toBeNull();
+    }
   });
 
   it('SIDE-1.5: only tmux and iTerm2 Sessions are Controllable', () => {

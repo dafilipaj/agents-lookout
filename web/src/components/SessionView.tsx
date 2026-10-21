@@ -587,14 +587,15 @@ function EndSession({
 /**
  * VIEW-5.5: where the Session works, its model and context use, on one line under the composer
  * (at the bottom of the pane when there's none), like a terminal's status line. At narrow widths
- * each part truncates; the whole line is in its tooltip.
+ * each part truncates; the whole line is in its tooltip. VIEW-5.11: the Effort follows the model.
  */
 function StatusLine({ row }: { row: SessionRow }) {
   const loc = location(row);
   const where = row.git ? row.git.repo : row.cwd;
   const context = row.contextPct !== null ? `${row.contextPct}% context` : null;
   const ctxLevel = row.contextPct !== null ? contextLevel(row.contextPct) : null;
-  const parts = [where, loc?.name, row.model, context].filter((p): p is string => !!p);
+  const effort = row.effort ? `${row.effort} effort` : null;
+  const parts = [where, loc?.name, row.model, effort, context].filter((p): p is string => !!p);
   if (!parts.length) return null;
   const dot = (
     <span aria-hidden className="shrink-0 opacity-60">
@@ -629,9 +630,17 @@ function StatusLine({ row }: { row: SessionRow }) {
           </span>
         </>
       )}
-      {context && (
+      {effort && (
         <>
           {(where || loc || row.model) && dot}
+          <span className="min-w-0 truncate" data-field="effort" title={effort}>
+            {effort}
+          </span>
+        </>
+      )}
+      {context && (
+        <>
+          {(where || loc || row.model || effort) && dot}
           <span
             className={cn('shrink-0', ctxLevel && CONTEXT_LEVEL_CLASS[ctxLevel])}
             data-field="context"

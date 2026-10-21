@@ -46,6 +46,8 @@ export interface SessionRow {
    */
   ownHost: boolean;
   model: string | null;
+  /** VIEW-5.11: the Session's Effort as Fleet read it (`high`, `xhigh` …); null when unknown. */
+  effort: string | null;
   /**
    * VIEW-5.6: the agent process's start time (RFC 3339, UTC) as Fleet read it; null when it
    * couldn't. With `pid` it names this process generation, so End Session never closes a

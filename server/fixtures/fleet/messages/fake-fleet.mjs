@@ -485,6 +485,7 @@ function spawn(args) {
       context: null,
       harness,
       model: null,
+      effort: null,
       proc_start: new Date().toISOString(),
     });
     if (later) writeFileSync(join(dir, 'pending.json'), `${JSON.stringify([...pending(), { at: Date.now(), row: all[0] }], null, 2)}\n`);

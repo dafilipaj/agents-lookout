@@ -245,7 +245,7 @@ describe('following the prompt (VIEW-4.2)', () => {
 
   const baseRow = (id: string, over: Partial<SessionRow> = {}): SessionRow => ({
     id, pid: 4242, harness: 'claude', title: id, status: 'needs-you', waitingFor: null, statusSince: 0, contextPct: null, cwd: '/x', git: null,
-    backend: 'tmux', controllable: true, ownHost: true, model: null, procStart: null, ...over,
+    backend: 'tmux', controllable: true, ownHost: true, model: null, effort: null, procStart: null, ...over,
   });
 
   /** A PromptWatch over Sessions `sess-a` (and `sess-b`), with a Fleet whose reads take `delayMs`. */
@@ -941,7 +941,7 @@ describe('following whether it can be answered (VIEW-4.6)', () => {
   it('VIEW-4.6: the tabs get whether Fleet could answer the prompt, why not and the pane’s size, and hear when any of them changes', async () => {
     const row: SessionRow = {
       id: 'sess-a', pid: 4242, harness: 'claude', title: 'a', status: 'needs-you', waitingFor: null, statusSince: 0, contextPct: null, cwd: '/x', git: null,
-      backend: 'tmux', controllable: true, ownHost: true, model: null, procStart: null,
+      backend: 'tmux', controllable: true, ownHost: true, model: null, effort: null, procStart: null,
     };
     const CUT_PROMPT = { kind: 'question', incomplete: true, id: null, questions: null, active: null, untouched: false };
     let list: Record<string, unknown> = { prompt: CUT_PROMPT, answerable: false, detail: 'clipped', pane: { cols: 80, rows: 24 }, error: 'should never travel' };

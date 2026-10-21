@@ -26,6 +26,7 @@ export function row(over: Partial<SessionRow> & { id: string }): SessionRow {
     ownHost: false,
     procStart: '2026-10-14T08:12:03Z',
     model: null,
+    effort: null,
     ...over,
   };
 }
