@@ -4,7 +4,7 @@ A personal UI for watching and controlling agent Sessions (Claude Code, Codex) a
 
 ## Specs come first
 
-How specs work: `docs/README.md`. Terms: `docs/GLOSSARY.md`.
+How specs work: `docs/README.md`. Terms: `docs/GLOSSARY.md`. What's next, in order: `docs/PLAN.md`.
 
 - Don't build a user-visible feature unless its spec (`docs/features/<slug>/SPEC.md`) is `Ready` or `In Progress`. Fixes and refactors don't need a spec.
 - Build only what the requirements say. Anything under Non-goals is out, even if it looks easy.

@@ -9,6 +9,7 @@ docs/
   README.md              this file: the process
   GLOSSARY.md            concepts, each defined once
   BACKLOG.md             ideas for later that aren't specced yet
+  PLAN.md                what's next, in order: spec changes, bugs and fixes
   features/
     README.md            index of features and their status
     <slug>/SPEC.md       one folder per feature; mockups and screenshots sit next to SPEC.md
