@@ -1,4 +1,4 @@
-import { CHIP_OF, type ColumnMark, type PrSection, type TaskSection, type WorkPr, type WorkSnapshot, type WorkTask } from '@shared/work.ts';
+import { CHIP_OF, type ColumnMark, type PrSection, type TaskSection, type WorkPr, type WorkSessionLink, type WorkSnapshot, type WorkTask } from '@shared/work.ts';
 import type { WorkFilter } from './right-sidebar.ts';
 import { CONTEXT_LEVEL_CLASS } from './sessions.ts';
 import { formatAge } from './time.ts';
@@ -16,6 +16,20 @@ export const prKey = (pr: WorkPr) => `pr:${pr.url}`;
 
 /** WORK-6: where a row opens in the browser: a Task in Fantastic (WORK-6.2), a PR on GitHub (WORK-6.3). */
 export const rowUrl = (row: WorkRow) => (row.kind === 'task' ? row.task.url : row.pr.url);
+
+/** WORK-2.4, WORK-3.4: the Session a Work row selects on click or Enter. */
+export function sessionToOpen(sessions: readonly WorkSessionLink[]): WorkSessionLink | null {
+  const live = sessions.filter((session) => session.live);
+  const candidates = live.length > 0 ? live : sessions;
+  return (
+    [...candidates].sort(
+      (a, b) =>
+        (b.modifiedAt ?? -Infinity) - (a.modifiedAt ?? -Infinity) ||
+        (b.createdAt ?? -Infinity) - (a.createdAt ?? -Infinity) ||
+        a.sessionId.localeCompare(b.sessionId),
+    )[0] ?? null
+  );
+}
 
 /** WORK-1.5: whether the filter shows the Tasks section. */
 export const showsTasks = (filter: WorkFilter) => filter === 'all' || filter === 'tasks';

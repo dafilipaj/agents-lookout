@@ -47,11 +47,23 @@ const launcher = new Launcher({
   onChange: (launches, started) => app.broadcast({ type: 'launches', launches, started }),
 });
 
+const work = new WorkMonitor({
+  runner: run,
+  tbPrBin: () => resolveWorkBin('tb-pr', env),
+  tbProdBin: () => resolveWorkBin('tb-prod', env),
+  tbSessionBin: () => resolveTbSessionBin(env),
+  productiveEmail: settings.get().productiveEmail,
+  onChange: (w) => app.broadcast({ type: 'work', work: w }),
+});
+
 const monitor = new SessionMonitor({
   fetchList: () => fetchFleetList(run, resolveFleetBin(env)),
   git,
   onEvent: (e) => app.broadcast(e),
-  onList: (rows) => launcher.observe(rows),
+  onList: (rows) => {
+    launcher.observe(rows);
+    work.setLiveSessions(rows.flatMap((row) => (row.session_id ? [row.session_id] : [])));
+  },
 });
 
 const viewer = new Viewer({
@@ -79,13 +91,6 @@ const usage = new UsageMonitor({
   onChange: (u) => app.broadcast({ type: 'usage', usage: u }),
 });
 
-const work = new WorkMonitor({
-  runner: run,
-  tbPrBin: () => resolveWorkBin('tb-pr', env),
-  tbProdBin: () => resolveWorkBin('tb-prod', env),
-  productiveEmail: settings.get().productiveEmail,
-  onChange: (w) => app.broadcast({ type: 'work', work: w }),
-});
 // WORK-2.8: a saved Productive email drops the Tasks kept for the previous one, and reads its own.
 // Registered before the app's own listener, so tabs hear the list dropped before the new email.
 settings.onChange((s) => work.setProductiveEmail(s.productiveEmail));

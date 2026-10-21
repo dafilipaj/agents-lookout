@@ -1,6 +1,6 @@
 import { type ChildProcess, execFile, spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { accessSync, closeSync, constants, existsSync, openSync, readFileSync, writeFileSync } from 'node:fs';
+import { accessSync, closeSync, constants, existsSync, openSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { chmod, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { request } from 'node:http';
 import { type Server, createServer } from 'node:net';
@@ -10,6 +10,7 @@ import { promisify } from 'node:util';
 import { FakeControl, readViolations } from '../fakes/control.ts';
 import type { FakeViolation } from '../fakes/index.ts';
 import { BrowserGuard } from './browser.ts';
+import type { FleetRow } from '../../server/fleet.ts';
 import { type GitIdentityDecl, type TbPrDecl, type TbProdDecl, type WorldSpec, checkTbPr, checkTbProd } from './builder.ts';
 import { type Budget, WaitTimedOut, type Waiting, Waits } from './budget.ts';
 import { REPO_ROOT, checkPins } from './pins.ts';
@@ -29,6 +30,18 @@ import {
 import { type WorldEntry, recordLeftovers, reserveWorld, sweepWorld } from './registry.ts';
 
 const execFileP = promisify(execFile);
+
+export function readJsonArray<T>(path: string): T[] {
+  const value: unknown = JSON.parse(readFileSync(path, 'utf8'));
+  if (!Array.isArray(value)) throw new Error(`World sidecar must be a JSON array: ${path}`);
+  return value as T[];
+}
+
+function writeWorldJson(path: string, value: unknown): void {
+  const temporary = `${path}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`;
+  writeFileSync(temporary, JSON.stringify(value));
+  renameSync(temporary, path);
+}
 
 /**
  * A running World (TEST-1): a temporary HOME and settings, a PATH holding only what the World
@@ -181,6 +194,9 @@ export interface RunningWorld extends Waiting {
   readonly tbProd: FakeControl<TbProdDecl>;
   /** The fake `tb-pr`'s controls (TEST-1.6), as `tbProd`'s. */
   readonly tbPr: FakeControl<TbPrDecl>;
+  /** Test controls that add CLI JSON rows without bypassing Fleet or tb-session's command boundary. */
+  readonly fleet: { gainSession(row: FleetRow): void };
+  readonly tbSession: { indexSession(row: Record<string, unknown>): void };
   /** Calls the World's fakes refused to answer so far; each fails the Behaviour test (TEST-1.5, `StopReport.violations`). */
   violations(): FakeViolation[];
   /** The URLs the World's pages asked for outside its Lookout origin, each aborted (TEST-1.7). */
@@ -316,6 +332,9 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
   const bin = join(root, 'bin');
   const logs = join(root, 'logs');
   const fleetDir = join(root, 'fleet');
+  const tbSessionDir = join(root, 'tb-session');
+  const fleetExtrasPath = join(fleetDir, 'extra-rows.json');
+  const tbSessionExtrasPath = join(tbSessionDir, 'extra-results.json');
   const callsLog = join(logs, 'calls.log');
   const violationsLog = join(logs, 'violations.jsonl');
   const serverLogPath = join(logs, 'server.log');
@@ -522,12 +541,14 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
   try {
     await step(
       Promise.all(
-        [bin, logs, join(root, 'tmp'), join(root, 'work'), fleetDir, join(fleetDir, 'locks'), join(home, 'Projects', 'work'), join(home, '.config', 'lookout')].map((d) =>
+        [bin, logs, join(root, 'tmp'), join(root, 'work'), fleetDir, join(fleetDir, 'locks'), tbSessionDir, join(home, 'Projects', 'work'), join(home, '.config', 'lookout')].map((d) =>
           mkdir(d, { recursive: true }),
         ),
       ),
     );
     await writeFile(callsLog, '');
+    await writeFile(fleetExtrasPath, '[]');
+    await writeFile(tbSessionExtrasPath, '[]');
 
     // TEST-1.9: a trap on the default socket in the World's TMUX_TMPDIR. Anything that ignored the
     // `-L` server would knock here.
@@ -550,7 +571,16 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
     await writeExecutable(join(bin, 'ps'), fillTemplate('ps', {}));
     for (const [name, real] of [['fleet', bins.fleet], ['tb-session', bins.tbSession]] as const) {
       if (!real) continue;
-      await writeExecutable(join(bin, name), fillTemplate('logged', { NAME: name, LOG: callsLog, REAL: real, SELF: join(bin, name) }));
+      const extras = name === 'fleet' ? fleetExtrasPath : tbSessionExtrasPath;
+      await writeExecutable(join(bin, name), fillTemplate('logged', {
+        NAME: name,
+        LOG: callsLog,
+        REAL: real,
+        SELF: join(bin, name),
+        NODE: process.execPath,
+        MERGE_SCRIPT: join(REPO_ROOT, 'e2e/shims/merge-json.mjs'),
+        EXTRAS: extras,
+      }));
     }
     // TEST-1.2, TEST-1.5: the declared fakes, each run by node from e2e/fakes/ through a wrapper that
     // logs its argv, with a directory of its own for the answer it reads when a call starts (TEST-1.6).
@@ -703,6 +733,12 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
     calls: () => readText(callsLog).split('\n').filter(Boolean),
     tbProd,
     tbPr,
+    fleet: {
+      gainSession: (row) => writeWorldJson(fleetExtrasPath, [...readJsonArray<FleetRow>(fleetExtrasPath).filter((existing) => existing.session_id !== row.session_id), row]),
+    },
+    tbSession: {
+      indexSession: (row) => writeWorldJson(tbSessionExtrasPath, [...readJsonArray<Record<string, unknown>>(tbSessionExtrasPath).filter((existing) => existing.session_id !== row.session_id), row]),
+    },
     violations: () => readViolations(violationsLog),
     browserRequests: () => browser.requests(),
     serverLog: () => readText(serverLogPath),

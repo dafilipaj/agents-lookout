@@ -11,4 +11,29 @@ export FLEET_PATH_ONLY
 line="$(/bin/date +%H:%M:%S) @NAME@"
 for a in "$@"; do printf -v q '%q' "$a"; line="$line $q"; done
 printf '%s\n' "$line" >> '@LOG@'
+if [ "@NAME@" = fleet ] && [ "$#" -eq 3 ] && [ "$1" = --local ] && [ "$2" = list ] && [ "$3" = --json ]; then
+  raw='@EXTRAS@.raw.'$$
+  '@REAL@' "$@" > "$raw"
+  code=$?
+  if [ "$code" -ne 0 ]; then rm -f "$raw"; exit "$code"; fi
+  '@NODE@' '@MERGE_SCRIPT@' fleet "$raw" '@EXTRAS@' "$@"
+  code=$?
+  rm -f "$raw"
+  exit "$code"
+fi
+if [ "@NAME@" = tb-session ] && [ "$1" = search ]; then
+  raw='@EXTRAS@.raw.'$$
+  '@REAL@' "$@" > "$raw"
+  code=$?
+  if [ "$code" -ne 0 ]; then rm -f "$raw"; exit "$code"; fi
+  '@NODE@' '@MERGE_SCRIPT@' tb-session "$raw" '@EXTRAS@' "$@"
+  code=$?
+  printf '%s tb-session-finished %s\n' "$(/bin/date +%H:%M:%S)" "$code" >> '@LOG@'
+  rm -f "$raw"
+  exit "$code"
+fi
+if [ "@NAME@" = tb-session ] && [ "$1" = show ]; then
+  shown="$('@NODE@' '@MERGE_SCRIPT@' tb-session-show - '@EXTRAS@' "$@")"
+  if [ -n "$shown" ]; then printf '%s\n' "$shown"; exit 0; fi
+fi
 exec -a '@SELF@' '@REAL@' "$@"

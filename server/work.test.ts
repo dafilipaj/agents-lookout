@@ -106,6 +106,7 @@ describe('reading `tb-pr list --json` (tb-pr 0.3.1)', () => {
       chip: 'draft',
       column: 'draft_mine',
       taskIds: null,
+      links: null,
     });
     const all = Object.values(board.columns).flat();
     const by = (n: number) => all.find((p) => p.number === n)!;
@@ -343,6 +344,13 @@ describe('column confirmation times (WORK-7.5)', () => {
 });
 
 describe('the argv allowlist (WORK-5.3)', () => {
+  it('WORK-4.3: tb-session searches use bounded Task URL tokens, never a bare Task id', () => {
+    const prefix = ['search', '--all-projects', '--limit', '200', '--json', '--'];
+    expect(isAllowedWorkCommand('tb-session', [...prefix, 'tasks/41000001'])).toBe(true);
+    expect(isAllowedWorkCommand('tb-session', [...prefix, 'task=41000001'])).toBe(true);
+    expect(isAllowedWorkCommand('tb-session', [...prefix, '41000001'])).toBe(false);
+  });
+
   it('WORK-5.3: only `tb-pr list --json`, `tb-pr refresh` and `tb-prod query tasks` run; anything else is refused before a process starts', async () => {
     expect(isAllowedWorkCommand('tb-pr', ['list', '--json'])).toBe(true);
     expect(isAllowedWorkCommand('tb-pr', ['refresh'])).toBe(true);
@@ -426,10 +434,12 @@ describe('ReadLane (WORK-8.3)', () => {
 /** A scripted tb-pr: each call waits until the test answers it. */
 function scriptedTbPr() {
   const calls: { argv: string[]; answer: (out: string | RunError) => void; signal?: AbortSignal }[] = [];
-  const runner = (_file: string, args: readonly string[], opts: RunOptions) =>
-    new Promise<string>((resolve, reject) => {
+  const runner = (_file: string, args: readonly string[], opts: RunOptions) => {
+    if (_file.endsWith('tb-session')) return Promise.resolve(JSON.stringify({ results: [] }));
+    return new Promise<string>((resolve, reject) => {
       calls.push({ argv: [...args], signal: opts.signal, answer: (out) => (typeof out === 'string' ? resolve(out) : reject(out)) });
     });
+  };
   return { runner, calls, argvs: () => calls.map((c) => c.argv.join(' ')) };
 }
 
@@ -446,7 +456,7 @@ describe('WorkMonitor reads (WORK-8, PRs)', () => {
     events = [];
     logged = [];
     tb = scriptedTbPr();
-    monitor = new WorkMonitor({ runner: tb.runner, tbPrBin: () => '/bin/tb-pr', tbProdBin: () => '/bin/tb-prod', onChange: (w) => events.push(w), log: (l) => logged.push(l) });
+    monitor = new WorkMonitor({ runner: tb.runner, tbPrBin: () => '/bin/tb-pr', tbProdBin: () => '/bin/tb-prod', tbSessionBin: () => '/bin/tb-session', onChange: (w) => events.push(w), log: (l) => logged.push(l) });
   });
   afterEach(async () => {
     for (const c of tb.calls) c.answer(failedRun('test over'));
@@ -696,7 +706,7 @@ describe('WorkMonitor reads (WORK-8, PRs)', () => {
     expect(monitor.snapshot().prs).toEqual({ ...good, state: 'error', reason: PR_REASON.unreadable, stale: true });
     expect(logged).toEqual(['a PR in draft_mine (#2101) has no GitHub URL']);
     // With no earlier list: the reason, and no lists at all.
-    const fresh = new WorkMonitor({ runner: tb.runner, tbPrBin: () => '/bin/tb-pr', tbProdBin: () => '/bin/tb-prod', onChange: () => {}, log: () => {} });
+    const fresh = new WorkMonitor({ runner: tb.runner, tbPrBin: () => '/bin/tb-pr', tbProdBin: () => '/bin/tb-prod', tbSessionBin: () => '/bin/tb-session', onChange: () => {}, log: () => {} });
     fresh.watch();
     await settle();
     await answerLast(withBoard((b) => delete b.columns.waiting_on_me[0].number));
@@ -1035,8 +1045,9 @@ describe('tb-prod failures (WORK-7)', () => {
 function scriptedTools() {
   type Call = { tool: 'tb-pr' | 'tb-prod'; argv: string[]; answered: boolean; answer: (out: string | RunError) => void; signal?: AbortSignal; timeoutMs: number };
   const calls: Call[] = [];
-  const runner = (file: string, args: readonly string[], opts: RunOptions) =>
-    new Promise<string>((resolve, reject) => {
+  const runner = (file: string, args: readonly string[], opts: RunOptions) => {
+    if (file.endsWith('tb-session')) return Promise.resolve(JSON.stringify({ results: [] }));
+    return new Promise<string>((resolve, reject) => {
       const call: Call = {
         tool: file.endsWith('tb-prod') ? 'tb-prod' : 'tb-pr',
         argv: [...args],
@@ -1051,6 +1062,7 @@ function scriptedTools() {
       };
       calls.push(call);
     });
+  };
   const of = (tool: Call['tool']) => calls.filter((c) => c.tool === tool);
   return {
     runner,
@@ -1075,6 +1087,7 @@ describe('WorkMonitor reads Tasks (WORK-2, WORK-8)', () => {
       runner: tools.runner,
       tbPrBin: () => '/bin/tb-pr',
       tbProdBin: () => '/bin/tb-prod',
+      tbSessionBin: () => '/bin/tb-session',
       productiveEmail: email,
       onChange: (w) => events.push(w),
       log: (line, tool) => logged.push([tool, line]),

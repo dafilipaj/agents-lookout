@@ -1,7 +1,7 @@
 import { TB_PROD_INSTALL_COMMAND, TB_PROD_SIGN_IN_COMMAND } from '@shared/defaults.ts';
 import { PRODUCTIVE_EMAIL_ERROR } from '@shared/settings.ts';
 import type { HistoryItem } from '@shared/types.ts';
-import type { ColumnMark, PrSection, TaskSection, WorkPr, WorkSnapshot, WorkTask } from '@shared/work.ts';
+import type { ColumnMark, PrSection, PrTaskRef, TaskSection, WorkPr, WorkSessionLink, WorkSnapshot, WorkTask } from '@shared/work.ts';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -21,6 +21,7 @@ const pr = (over: Partial<WorkPr> & { repo: string; number: number }): WorkPr =>
   chip: 'draft',
   column: 'draft_mine',
   taskIds: [],
+  links: null,
   ...over,
 });
 
@@ -71,6 +72,7 @@ function tasks(over: Partial<TaskSection> = {}): TaskSection {
 const snap = (p: Partial<PrSection> = {}, refresh: Partial<WorkSnapshot['refresh']> = {}, t: TaskSection = NO_EMAIL): WorkSnapshot => ({
   prs: prs(p),
   tasks: t,
+  sessionLinks: { state: 'ok', reason: null, fix: null },
   refresh: { cooldownUntil: null, githubBlockedUntil: null, ...refresh },
 });
 /** Work with Tasks read for a saved email. */
@@ -726,6 +728,117 @@ describe('Tasks (WORK-2)', () => {
     expect(taskOption('41000102')).toHaveAccessibleName('Tune the harbor bells Harbor Bells Not started milestone due Nov 4');
     expect(taskOption('41000104')).toHaveAccessibleName('Sweep the pier');
     expect(taskOption('41000102')).toHaveAccessibleDescription('S starts a Session on it, O opens it in Fantastic.');
+  });
+
+  it('WORK-2.3, WORK-3.4, WORK-4.5: Tasks and PRs show their links, with the source and Session reasons on hover', async () => {
+    const linkedSession = (sessionId: string, reason: WorkSessionLink['reason'], over: Partial<WorkSessionLink> = {}): WorkSessionLink => ({
+      sessionId,
+      harness: 'claude',
+      title: sessionId,
+      createdAt: 100,
+      modifiedAt: 100,
+      live: false,
+      reason,
+      ...over,
+    });
+    const taskSession = linkedSession('task-start', 'started on this Task', { live: true, modifiedAt: 300 });
+    const prSession = linkedSession('pr-start', 'through PR #2101', { live: true, modifiedAt: 200 });
+    const linkedTask = task({
+      ...LIGHT,
+      links: {
+        prs: [{ repo: 'anvil', number: 2101, url: DRAFT.url, chip: 'draft', ci: 'passing', sources: ['branch'] as PrTaskRef['source'][] }],
+        sessions: [prSession, taskSession],
+        incomplete: true,
+      },
+    });
+    const linkedPr = {
+      ...DRAFT,
+      taskIds: [{ id: LIGHT.id, source: 'branch' } as PrTaskRef],
+      links: {
+        tasks: [{ id: LIGHT.id, title: LIGHT.title, sources: ['branch'] as PrTaskRef['source'][] }],
+        sessions: [linkedSession('opener', 'probably opened this PR (the earliest Session that mentions it)')],
+        incomplete: true,
+      },
+    };
+    openApp('/s/alpha', withTasks({ tasks: [linkedTask] }, { mine: [linkedPr], reviewRequests: [] }));
+    const user = userEvent.setup();
+    await user.keyboard('w');
+
+    const linkedPrLine = taskOption(LIGHT.id).querySelector('[data-field="linked-pr"]')!;
+    expect(linkedPrLine).toHaveTextContent('#2101draft');
+    expect(linkedPrLine.querySelector('[data-field="ci"]')).toHaveAttribute('data-ci', 'passing');
+    expect(linkedPrLine).toHaveAttribute('title', 'branch');
+    const taskMarker = taskOption(LIGHT.id).querySelector('[data-session-marker]')!;
+    expect(taskMarker.querySelector('svg')).toHaveClass('text-ok-text');
+    expect(taskMarker).toHaveAttribute('title', 'through PR #2101\nstarted on this Task\nLinks may be incomplete');
+    expect(taskOption(LIGHT.id)).toHaveAttribute('title', 'Links may be incomplete');
+
+    const linkedTaskLine = option('anvil#2101').querySelector('[data-field="linked-task"]')!;
+    expect(linkedTaskLine).toHaveTextContent(LIGHT.title);
+    expect(linkedTaskLine).toHaveAttribute('title', 'branch');
+    const prMarker = option('anvil#2101').querySelector('[data-session-marker]')!;
+    expect(prMarker).toHaveAttribute('title', 'probably opened this PR (the earliest Session that mentions it)\nLinks may be incomplete');
+
+    // Clicking a marker acts on the row and opens its newest live Linked Session.
+    await user.click(taskMarker);
+    expect(window.location.pathname).toBe('/s/task-start');
+  });
+
+  it('WORK-4.1: an older tb-pr explains once that Task links need a newer tb-pr', async () => {
+    openApp('/', snap({ taskIds: false }));
+    await userEvent.setup().keyboard('w');
+    expect(within(workPanel()).getAllByText('Task links need a newer tb-pr.')).toHaveLength(1);
+    expect(within(workPanel()).getByRole('region', { name: 'PRs' }).querySelector('[data-field="task-link-version"]')).toBeInTheDocument();
+  });
+
+  it('WORK-7.4: a tb-session failure hides Session markers while keeping Task and PR links', async () => {
+    const failed = withTasks({ tasks: [task({ ...LIGHT, links: { prs: [{ repo: 'anvil', number: 2101, url: DRAFT.url, chip: 'draft', ci: 'passing', sources: ['body'] }], sessions: [
+      { sessionId: 'past', harness: 'claude', title: 'past', createdAt: 1, modifiedAt: 2, live: false, reason: 'started on this Task' },
+    ], incomplete: false } })] }, { mine: [DRAFT], reviewRequests: [] });
+    failed.sessionLinks = { state: 'error', reason: "tb-session couldn't search Sessions. Try Refresh later.", fix: null };
+    openApp('/', failed);
+    await userEvent.setup().keyboard('w');
+    expect(workPanel().querySelectorAll('[data-session-marker]')).toHaveLength(0);
+    expect(workPanel()).toHaveTextContent("Session links are unavailable. tb-session couldn't search Sessions. Try Refresh later.");
+    expect(taskOption(LIGHT.id).querySelector('[data-field="linked-pr"]')).toHaveTextContent('#2101draft');
+    expect(taskOption(LIGHT.id).querySelector('[data-field="linked-pr"] [data-field="ci"]')).toHaveAttribute('data-ci', 'passing');
+  });
+
+  it('WORK-1.7: Enter acts like a click when the selected Task has a Linked Session', async () => {
+    const linked = task({
+      ...LIGHT,
+      links: {
+        prs: [],
+        sessions: [{ sessionId: 'linked-live', harness: 'claude', title: 'Linked session', createdAt: 100, modifiedAt: 200, live: true, reason: 'started on this Task' }],
+        incomplete: false,
+      },
+    });
+    openApp('/s/alpha', withTasks({ tasks: [linked] }));
+    const user = userEvent.setup();
+    await user.keyboard('w');
+    await waitFor(() => expect(taskList()).toHaveFocus());
+    await user.keyboard('{Enter}');
+    expect(window.location.pathname).toBe('/s/linked-live');
+  });
+
+  it('WORK-3.4: after Fleet removes a live Session, the marker clears and the row resumes the latest past Session', async () => {
+    const links = {
+      tasks: [], incomplete: false,
+      sessions: [
+        { sessionId: 'vanished', harness: 'claude' as const, title: 'vanished', createdAt: 100, modifiedAt: 150, live: true, reason: 'started on this PR' as const },
+        { sessionId: 'latest-past', harness: 'claude' as const, title: 'past', createdAt: 90, modifiedAt: 200, live: false, reason: 'started on this PR' as const },
+      ],
+    };
+    const app = openApp('/s/alpha', snap({ mine: [pr({ ...DRAFT, links })] }), { resume: async () => ({ kind: 'live', sessionId: 'latest-past' }) });
+    const user = userEvent.setup();
+    await user.keyboard('w');
+    const marker = () => option('anvil#2101').querySelector('[data-session-marker] svg');
+    expect(marker()).toHaveClass('text-ok-text');
+    app.emit({ type: 'work', work: snap({ mine: [pr({ ...DRAFT, links: { ...links, sessions: links.sessions.map((session) => ({ ...session, live: false })) } })] }) });
+    await waitFor(() => expect(marker()).toHaveClass('text-muted-foreground'));
+    await user.click(option('anvil#2101'));
+    await waitFor(() => expect(app.client.resume).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(app.client.resume).mock.calls[0]?.[1]).toBe('latest-past');
   });
 
   it('Tasks says “Loading” until its first read for the saved email ends, and “No open tasks” only after a read that succeeded', async () => {

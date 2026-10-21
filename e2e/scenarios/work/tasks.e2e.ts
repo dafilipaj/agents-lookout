@@ -95,6 +95,180 @@ const serverSettings = (page: Page) => page.evaluate(async () => (await fetch('/
 const tasksRead = (w: RunningWorld) => w.waitUntil('the Tasks read to end', async () => (await serverWork(w)).tasks.state === 'ok');
 
 scenario(
+  'WORK-4.9: each Tasks or PRs read searches tb-session with --limit 200 for every current item',
+  world().tbProd({ tasks: { [ME]: MINE.slice(0, 1) } }).tbPr({ board: { columns: { draft_mine: [BOARD.columns!.draft_mine![0]!] } } }).settings({ productiveEmail: ME }),
+  async ({ page, world }) => {
+    await openWork(page);
+    await world.step('the Task and PR to show', async () => {
+      await expect(taskRows(page)).toHaveCount(1);
+      await expect(prRows(page)).toHaveCount(1);
+    });
+    const linkSearches = () => world.calls().filter((call) => /\btb-session search\b/.test(call));
+    const finished = () => world.calls().filter((call) => /\btb-session-finished 0\b/.test(call));
+    await world.waitUntil('the three Link searches to end', () => linkSearches().length === 3 && finished().length === 3);
+    expect(linkSearches()).toHaveLength(3);
+    expect(linkSearches().every((call) => /--limit 200/.test(call))).toBe(true);
+
+    await page.getByRole('button', { name: 'Refresh' }).click();
+    await world.waitUntil('Refresh and its three more Link searches to end', () => world.tbProd.calls().length === 2 && world.tbPr.calls().length === 3 && linkSearches().length === 6 && finished().length === 6);
+    expect(linkSearches()).toHaveLength(6);
+    expect(linkSearches().every((call) => /--limit 200/.test(call))).toBe(true);
+  },
+);
+
+const fleetRow = (id: string, title: string, cwd: string) => ({
+  pid: 43000 + id.length, session_id: id, cwd, status: 'idle' as const, waiting_for: null, updated_at: Date.now(),
+  backend: 'tmux' as const, tmux_session: id, display_title: title, context: null, harness: 'claude' as const, model: null,
+});
+const indexed = (id: string, prompt: string, createdAt: string, modifiedAt: string, cwd: string) => ({
+  session_id: id, harness: 'claude', summary: id, first_prompt: prompt, created_at: createdAt, modified_at: modifiedAt, project_path: cwd,
+});
+const WICKS = taskUrl('41000301');
+
+scenario(
+  'WORK-2.4: a Task with a live Linked Session shows a live marker, and a click selects the live one with the latest activity, a tie going to the later-created',
+  world().tbProd({ tasks: { [ME]: MINE.slice(0, 1) } }).tbPr({ board: { columns: {} } }).settings({ productiveEmail: ME }),
+  async ({ page, world }) => {
+    // A past Session is the most recent of all; a live one still wins. Two live ones tie on activity.
+    world.tbSession.indexSession(indexed('00000000-0000-4000-8000-0000000000a1', `Start ${WICKS}`, '2026-10-20T10:00:00Z', '2026-10-21T09:00:00Z', world.home));
+    world.tbSession.indexSession(indexed('00000000-0000-4000-8000-0000000000a2', `Start ${WICKS}`, '2026-10-19T10:00:00Z', '2026-10-20T12:00:00Z', world.home));
+    world.tbSession.indexSession(indexed('00000000-0000-4000-8000-0000000000a3', `Start ${WICKS}`, '2026-10-19T11:00:00Z', '2026-10-20T12:00:00Z', world.home));
+    world.fleet.gainSession(fleetRow('00000000-0000-4000-8000-0000000000a2', 'Wicks old', world.home));
+    world.fleet.gainSession(fleetRow('00000000-0000-4000-8000-0000000000a3', 'Wicks new', world.home));
+    await expect(sessionSidebar(page).getByText('Wicks new')).toBeVisible();
+    await page.keyboard.press('w');
+    await expect(page.getByRole('tab', { name: 'Work' })).toHaveAttribute('aria-selected', 'true');
+    const row = taskRows(page).filter({ hasText: 'Trim the lamp wicks' });
+    await expect(row.locator('[data-session-marker] svg')).toHaveClass(/text-ok-text/);
+    await row.locator('[data-session-marker]').click();
+    await expect(page).toHaveURL(/\/s\/00000000-0000-4000-8000-0000000000a3$/);
+    expect(world.calls().filter((call) => /\bspawn\b/.test(call))).toEqual([]);
+  },
+);
+
+scenario(
+  'WORK-2.4: with no live Linked Session the marker is past, and a click resumes the one with the latest activity',
+  world().tbProd({ tasks: { [ME]: MINE.slice(0, 1) } }).tbPr({ board: { columns: {} } }).settings({ productiveEmail: ME }),
+  async ({ page, world }) => {
+    world.tbSession.indexSession(indexed('00000000-0000-4000-8000-0000000000b1', `Start ${WICKS}`, '2026-10-20T10:00:00Z', '2026-10-20T11:00:00Z', world.home));
+    world.tbSession.indexSession(indexed('00000000-0000-4000-8000-0000000000b2', `Start ${WICKS}`, '2026-10-19T10:00:00Z', '2026-10-20T12:00:00Z', world.home));
+    await openWork(page);
+    const row = taskRows(page).filter({ hasText: 'Trim the lamp wicks' });
+    await expect(row.locator('[data-session-marker] svg')).toHaveClass(/text-muted-foreground/);
+    await row.click();
+    await world.waitUntil('Fleet to be asked to resume the latest past Session', () => world.calls().some((call) => /\bspawn --resume 00000000-0000-4000-8000-0000000000b2\b/.test(call)));
+    expect(world.calls().filter((call) => /\bspawn --resume 00000000-0000-4000-8000-0000000000b1\b/.test(call))).toEqual([]);
+  },
+);
+
+const ANVIL_PR = 'https://github.com/productiveio/anvil/pull/2101';
+const ANVIL_BOARD: TbPrBoardDecl = {
+  columns: { draft_mine: [{ number: 2101, repo: 'anvil', title: 'Sharpen the anvil corners', check_state: 'success', task_ids: [{ id: '41000301', source: 'body' }] }] },
+};
+
+scenario(
+  'WORK-3.4: a PR shows its Linked Task, and its marker and click act as a Task’s do: a live Linked Session is selected over a more recent past one',
+  world().tbProd({ tasks: { [ME]: MINE.slice(0, 1) } }).tbPr({ board: ANVIL_BOARD }).settings({ productiveEmail: ME }),
+  async ({ page, world }) => {
+    world.tbSession.indexSession(indexed('00000000-0000-4000-8000-0000000000c1', `Review ${ANVIL_PR}`, '2026-10-20T10:00:00Z', '2026-10-21T09:00:00Z', world.home));
+    world.tbSession.indexSession(indexed('00000000-0000-4000-8000-0000000000c2', `Review ${ANVIL_PR}`, '2026-10-19T10:00:00Z', '2026-10-20T12:00:00Z', world.home));
+    world.fleet.gainSession(fleetRow('00000000-0000-4000-8000-0000000000c2', 'Anvil review', world.home));
+    await expect(sessionSidebar(page).getByText('Anvil review')).toBeVisible();
+    await page.keyboard.press('w');
+    await expect(page.getByRole('tab', { name: 'Work' })).toHaveAttribute('aria-selected', 'true');
+    const row = prRows(page).filter({ hasText: 'Sharpen the anvil corners' });
+    await expect(row.locator('[data-field="linked-task"]')).toContainText('Trim the lamp wicks');
+    await expect(row.locator('[data-session-marker] svg')).toHaveClass(/text-ok-text/);
+    await row.click();
+    await expect(page).toHaveURL(/\/s\/00000000-0000-4000-8000-0000000000c2$/);
+    expect(world.calls().filter((call) => /\bspawn\b/.test(call))).toEqual([]);
+  },
+);
+
+scenario(
+  'WORK-3.4: a PR with only past Linked Sessions shows a past marker, and a click resumes the one with the latest activity',
+  world().tbProd({ tasks: { [ME]: MINE.slice(0, 1) } }).tbPr({ board: ANVIL_BOARD }).settings({ productiveEmail: ME }),
+  async ({ page, world }) => {
+    world.tbSession.indexSession(indexed('00000000-0000-4000-8000-0000000000d1', `Review ${ANVIL_PR}`, '2026-10-20T10:00:00Z', '2026-10-20T11:00:00Z', world.home));
+    world.tbSession.indexSession(indexed('00000000-0000-4000-8000-0000000000d2', `Review ${ANVIL_PR}`, '2026-10-19T10:00:00Z', '2026-10-20T12:00:00Z', world.home));
+    await openWork(page);
+    const row = prRows(page).filter({ hasText: 'Sharpen the anvil corners' });
+    await expect(row.locator('[data-session-marker] svg')).toHaveClass(/text-muted-foreground/);
+    await row.click();
+    await world.waitUntil('Fleet to be asked to resume the latest past Session', () => world.calls().some((call) => /\bspawn --resume 00000000-0000-4000-8000-0000000000d2\b/.test(call)));
+    expect(world.calls().filter((call) => /\bspawn --resume 00000000-0000-4000-8000-0000000000d1\b/.test(call))).toEqual([]);
+  },
+);
+
+scenario(
+  'WORK-4.9: a newly listed Session links after tb-session indexes its Task prompt',
+  world().tbProd({ tasks: { [ME]: MINE.slice(0, 1) } }).tbPr({ board: { columns: { draft_mine: [BOARD.columns!.draft_mine![0]!] } } }).settings({ productiveEmail: ME }),
+  async ({ page, world }) => {
+    world.tbSession.indexSession({
+      session_id: 'older-task-session', harness: 'claude', summary: 'Earlier lamp work',
+      first_prompt: `Start ${taskUrl('41000301')}`,
+      created_at: '2026-10-20T10:00:00Z', modified_at: '2026-10-20T11:00:00Z',
+    });
+    await openWork(page);
+    const taskRow = taskRows(page).filter({ hasText: 'Trim the lamp wicks' });
+    await expect(taskRow).toHaveCount(1);
+    // A past marker proves the initial searches have returned before Fleet gains a Session.
+    await expect(taskRow.locator('[data-session-marker] svg')).toHaveClass(/text-muted-foreground/);
+    const linkSearches = () => world.calls().filter((call) => /\btb-session search\b/.test(call));
+    const finished = () => world.calls().filter((call) => /\btb-session-finished 0\b/.test(call));
+    await world.waitUntil('the initial Link searches to finish', () => linkSearches().length === 3 && finished().length === 3);
+
+    world.fleet.gainSession({
+      pid: 42321,
+      session_id: 'work-link-task-session',
+      cwd: world.home,
+      status: 'idle',
+      waiting_for: null,
+      updated_at: Date.now(),
+      backend: 'tmux',
+      tmux_session: 'work-link-task-session',
+      display_title: 'Task link session',
+      context: null,
+      harness: 'claude',
+      model: null,
+    });
+    await expect(sessionSidebar(page).getByText('Task link session')).toBeVisible();
+    const fleetObservedAt = Date.now();
+
+    await world.waitUntil('Fleet to finish fresh Link searches', () => linkSearches().length >= 6 && finished().length >= 6);
+    await expect(taskRow.locator('[data-session-marker] svg')).toHaveClass(/text-muted-foreground/);
+    world.tbSession.indexSession({
+      session_id: 'work-link-task-session',
+      harness: 'claude',
+      summary: 'Trim the lamp wicks',
+      first_prompt: `Start ${taskUrl('41000301')}`,
+      created_at: new Date(fleetObservedAt - 60_000).toISOString(),
+      modified_at: new Date(fleetObservedAt).toISOString(),
+    });
+
+    await world.step('the Task Link to appear within 10 s of Fleet listing its Session', async () => {
+      await expect(taskRow.locator('[data-session-marker] svg')).toHaveClass(/text-ok-text/, { timeout: Math.max(1, 10_000 - (Date.now() - fleetObservedAt)) });
+    });
+    expect(Date.now() - fleetObservedAt).toBeLessThanOrEqual(10_000);
+    await expect(taskRow.locator('[data-session-marker]')).toHaveAttribute('title', 'started on this Task');
+  },
+);
+
+scenario(
+  'WORK-7.4: without tb-session, Tasks and PRs remain visible without Session markers and Work explains why',
+  world().without('tb-session').tbProd({ tasks: { [ME]: MINE.slice(0, 1) } }).tbPr({ board: { columns: { draft_mine: [BOARD.columns!.draft_mine![0]!] } } }).settings({ productiveEmail: ME }),
+  async ({ page, world }) => {
+    await openWork(page);
+    await world.step('both Work lists to show', async () => {
+      await expect(taskRows(page)).toHaveCount(1);
+      await expect(prRows(page)).toHaveCount(1);
+    });
+    await expect(work(page).locator('[data-field="session-link-problem"]')).toContainText("tb-session isn't installed");
+    await expect(work(page).locator('[data-session-marker]')).toHaveCount(0);
+  },
+);
+
+scenario(
   'WORK-8.5: two tabs opening Work at the same moment in a fresh World run tb-prod once per page of Tasks',
   world().tbProd({ tasks: { [ME]: TASKS } }).tbPr({ board: BOARD }).settings({ productiveEmail: ME }),
   async ({ page, world }) => {

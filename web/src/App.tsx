@@ -1,6 +1,6 @@
 import type { LaunchHarness } from '@shared/settings.ts';
 import type { AnswerRequest, ChatPage, EndTarget, EscStatus, HistoryItem, LaunchRequest, LaunchView, ResumeResult, SessionRow, Status } from '@shared/types.ts';
-import type { WorkPr, WorkTask } from '@shared/work.ts';
+import type { WorkPr, WorkSessionLink, WorkTask } from '@shared/work.ts';
 import { hasReset } from '@shared/usage.ts';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { HistoryPanel } from '@/components/HistoryPanel';
@@ -364,6 +364,24 @@ export function App({ client }: { client: LookoutClient }) {
     },
     [client, navigate, requestLaunch],
   );
+  const openLinkedSession = useCallback(
+    (session: WorkSessionLink) => {
+      const item: HistoryItem = {
+        sessionId: session.sessionId,
+        harness: session.harness,
+        headless: null,
+        title: session.title,
+        projectPath: null,
+        repo: null,
+        branch: null,
+        lastActiveAt: session.modifiedAt,
+        snippet: null,
+        blocked: null,
+      };
+      return openPast(item, session.live);
+    },
+    [openPast],
+  );
 
   // VIEW-2.2: the drawer is open while the Session Needs you, unless you toggled it during the
   // current Status (an override is tied to that Status and when it began).
@@ -657,6 +675,7 @@ export function App({ client }: { client: LookoutClient }) {
                 focusKey={rightFocus.work}
                 onStart={startOnTask}
                 onReview={review}
+                onOpenSession={openLinkedSession}
                 onOpenSettings={() => navigate({ name: 'settings' })}
                 keyboardEnabled={!modalOpen}
                 navRef={workNav}

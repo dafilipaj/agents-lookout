@@ -1,7 +1,7 @@
 import { accessSync, constants } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
-import { TB_PROD_INSTALL_COMMAND, TB_PROD_SIGN_IN_COMMAND, TB_PR_INSTALL_COMMAND } from '../shared/defaults.ts';
+import { TB_PROD_INSTALL_COMMAND, TB_PROD_SIGN_IN_COMMAND, TB_PR_INSTALL_COMMAND, TB_SESSION_INSTALL_COMMAND } from '../shared/defaults.ts';
 import {
   CHIP_OF,
   type CiState,
@@ -17,6 +17,7 @@ import {
   type TaskSection,
   type WorkPr,
   type WorkRefreshResult,
+  type SessionLinkSection,
   type WorkSnapshot,
   type WorkSourceState,
   type WorkTask,
@@ -25,6 +26,7 @@ import {
 import type { RunError, RunOptions, Runner } from './exec.ts';
 import { cleanEnv } from './launcher.ts';
 import { sanitizeLine } from './sanitize.ts';
+import { buildWorkLinks, parseSessionSearch, TbSessionShapeError, type SessionSearchResult } from './work-links.ts';
 
 /**
  * WORK: open PRs and Review requests through `tb-pr`, and Tasks through `tb-prod` (decision 0005),
@@ -42,6 +44,12 @@ export const WORK_COOLDOWN_MS = 60_000;
 export const TB_PR_TIMEOUT_MS = 20_000;
 /** Per page of Tasks; one takes 0.3 s (Sources). */
 export const TB_PROD_TIMEOUT_MS = 10_000;
+/** One tb-session search; its 200 result cap keeps each output bounded (WORK-4.8). */
+export const TB_SESSION_TIMEOUT_MS = 20_000;
+/** WORK-4.9: how many `tb-session search` processes one Link run starts at once. */
+const LINK_SEARCH_CONCURRENCY = 12;
+const LINK_RETRY_WINDOW_MS = 10_000;
+const LINK_RETRY_INTERVAL_MS = 1_000;
 /** WORK-2.1: 5 pages of 20, up to 100 Tasks. */
 export const MAX_TASK_PAGES = 5;
 /** WORK-8.4: a rate limit holds GitHub reads at least this long… */
@@ -54,15 +62,16 @@ const MAX_URL = 500;
 
 // --- Binaries and the argv allowlist (WORK-5.3) -------------------------------------------------
 
-export type WorkTool = 'tb-pr' | 'tb-prod';
-const BIN_ENV: Record<WorkTool, string> = { 'tb-pr': 'LOOKOUT_TB_PR_BIN', 'tb-prod': 'LOOKOUT_TB_PROD_BIN' };
+export type WorkTool = 'tb-pr' | 'tb-prod' | 'tb-session';
+type WorkDataTool = Exclude<WorkTool, 'tb-session'>;
+const BIN_ENV: Record<WorkDataTool, string> = { 'tb-pr': 'LOOKOUT_TB_PR_BIN', 'tb-prod': 'LOOKOUT_TB_PROD_BIN' };
 
 /**
  * Finds `tb-pr` or `tb-prod` like tb-session: `LOOKOUT_TB_PR_BIN` / `LOOKOUT_TB_PROD_BIN`, then
  * PATH, then `~/.local/bin` (where cli-toolbox installs them; a server started by launchd has a
  * short PATH). Unfound, the bare name: running it fails with ENOENT, "not installed" (WORK-7.1).
  */
-export function resolveWorkBin(tool: WorkTool, env: NodeJS.ProcessEnv = process.env): string {
+export function resolveWorkBin(tool: WorkDataTool, env: NodeJS.ProcessEnv = process.env): string {
   const override = env[BIN_ENV[tool]];
   if (override) return override;
   const dirs = (env.PATH ?? '').split(delimiter).filter(Boolean);
@@ -85,6 +94,11 @@ export function resolveWorkBin(tool: WorkTool, env: NodeJS.ProcessEnv = process.
  * reaches an argv.
  */
 export function isAllowedWorkCommand(tool: WorkTool, argv: readonly string[]): boolean {
+  if (tool === 'tb-session') {
+    const query = argv[6];
+    return argv.length === 7 && argv.slice(0, 6).join(' ') === 'search --all-projects --limit 200 --json --' &&
+      (typeof query === 'string' && (/^https:\/\/github\.com\/productiveio\/[A-Za-z0-9._-]+\/pull\/[0-9]+$/i.test(query) || /^(?:tasks\/|task=)[0-9]{1,20}$/i.test(query)));
+  }
   if (tool === 'tb-pr') {
     return (argv.length === 2 && argv[0] === 'list' && argv[1] === '--json') || (argv.length === 1 && argv[0] === 'refresh');
   }
@@ -223,6 +237,7 @@ export function parsePr(raw: unknown, column: PrColumn): WorkPr | null {
     chip: column === 'waiting_on_me' ? null : CHIP_OF[column],
     column,
     taskIds: readTaskIds(raw.task_ids),
+    links: null,
   };
 }
 
@@ -659,6 +674,7 @@ export interface WorkMonitorOptions {
   runner: Runner;
   tbPrBin: () => string;
   tbProdBin: () => string;
+  tbSessionBin: () => string;
   onChange(work: WorkSnapshot): void;
   /** WORK-2: the saved Productive email at startup; `setProductiveEmail` follows changes. */
   productiveEmail?: string | null;
@@ -670,6 +686,7 @@ export interface WorkMonitorOptions {
   cooldownMs?: number;
   tbPrTimeoutMs?: number;
   tbProdTimeoutMs?: number;
+  tbSessionTimeoutMs?: number;
 }
 
 /** A PR read: forced runs `tb-pr refresh` first (WORK-8.2). */
@@ -714,6 +731,18 @@ const emptyTasks = (email: string | null): TaskSection => ({
   tasks: [],
 });
 
+const emptySessionLinks = (): SessionLinkSection => ({ state: 'loading', reason: null, fix: null });
+
+function classifyTbSessionFailure(err: unknown): SessionLinkSection & { detail: string | null } {
+  const e = (typeof err === 'object' && err !== null ? err : {}) as RunError;
+  if (err instanceof WorkCommandRefused) return { state: 'error', reason: 'Lookout refused an unexpected tb-session search.', fix: null, detail: null };
+  if (err instanceof TbSessionShapeError) return { state: 'error', reason: "tb-session returned Sessions Lookout can't read. Check that tb-session and Lookout are up to date, then press Refresh.", fix: null, detail: sanitizeLine(err.message) };
+  if (e.code === 'ENOENT') return { state: 'not-installed', reason: "tb-session isn't installed. Install it to show linked Sessions, then press Refresh.", fix: TB_SESSION_INSTALL_COMMAND, detail: null };
+  if (e.aborted) return { state: 'error', reason: 'The Session search was cancelled.', fix: null, detail: null };
+  if (e.timedOut) return { state: 'error', reason: 'tb-session took too long to search Sessions. Try Refresh later.', fix: null, detail: null };
+  return { state: 'error', reason: "tb-session couldn't search Sessions. Try Refresh later.", fix: null, detail: sanitizeLine(e.stderr ?? e.message) };
+}
+
 /**
  * One poller for every tab, shaped like `UsageMonitor` (WORK, "Lookout's side"): it reads only
  * while a tab has Work open (`watch()`), Tasks and PRs in parallel, every 5 minutes from the end of
@@ -725,6 +754,21 @@ const emptyTasks = (email: string | null): TaskSection => ({
 export class WorkMonitor {
   private prs: PrSection = emptyPrs();
   private tasks: TaskSection;
+  private sessionLinks: SessionLinkSection = emptySessionLinks();
+  private readonly prSearches = new Map<string, SessionSearchResult>();
+  private readonly taskSearches = new Map<string, SessionSearchResult>();
+  private readonly taskQuerySearches = new Map<string, Map<string, SessionSearchResult>>();
+  private readonly latestLinkQueries = new Map<string, number>();
+  private linkQueryVersion = 0;
+  private linkRunVersion = 0;
+  private readonly urgentLinkRuns = new Set<Promise<void>>();
+  private urgentLinkRun: Promise<void> | null = null;
+  private normalLinkAbort: AbortController | null = null;
+  private liveSessions = new Set<string>();
+  private readonly awaitingSessionLinks = new Map<string, number>();
+  private linkRetryTimer: NodeJS.Timeout | null = null;
+  private linkRun: Promise<void> | null = null;
+  private readonly pendingLinkScopes = new Set<'prs' | 'tasks' | 'all'>();
   /** WORK-2: the saved Productive email; Tasks are read for it alone. */
   private email: string | null;
   /** WORK-7.5: per column, when it was last read without a `column_issues` entry. In memory only. */
@@ -773,7 +817,7 @@ export class WorkMonitor {
   /** A tab opened Work (WORK-8.1); the returned function says it closed it. */
   watch(): () => void {
     this.watchers++;
-    this.opened();
+    if (!this.opened()) void this.requestLinkSearch('all');
     let released = false;
     return () => {
       if (released) return;
@@ -795,6 +839,19 @@ export class WorkMonitor {
     this.tasks = emptyTasks(email);
     this.publish();
     if (email !== null && this.watchers > 0 && !this.abort.signal.aborted) void this.taskLane.request({ email });
+  }
+
+  /** The SessionMonitor's latest Fleet list: update live markers and search after a new Session appears (WORK-4.9). */
+  setLiveSessions(sessionIds: readonly string[]): void {
+    const next = new Set(sessionIds);
+    const addedIds = [...next].filter((id) => !this.liveSessions.has(id));
+    const added = addedIds.length > 0;
+    const changed = added || [...this.liveSessions].some((id) => !next.has(id));
+    if (!changed) return;
+    this.liveSessions = next;
+    if (this.sessionLinks.state === 'ok') this.applyLinks();
+    this.publish();
+    if (added && this.watchers > 0 && !this.abort.signal.aborted) this.searchForNewSessions(addedIds);
   }
 
   /**
@@ -826,7 +883,7 @@ export class WorkMonitor {
     this.watchers = 0;
     this.closedEverywhere('cancelled');
     this.abort.abort();
-    await Promise.all([this.lane.idle(), this.taskLane.idle()]);
+    await Promise.all([this.lane.idle(), this.taskLane.idle(), this.linkRun, ...this.urgentLinkRuns]);
   }
 
   /**
@@ -835,6 +892,10 @@ export class WorkMonitor {
    */
   private closedEverywhere(why: 'closed' | 'cancelled'): void {
     this.disarm();
+    if (this.linkRetryTimer) clearTimeout(this.linkRetryTimer);
+    this.linkRetryTimer = null;
+    this.awaitingSessionLinks.clear();
+    this.pendingLinkScopes.clear();
     this.lane.drop({ ok: false, reason: PR_REASON[why] });
     this.taskLane.drop({ ok: false, reason: TASK_REASON[why] });
   }
@@ -849,7 +910,7 @@ export class WorkMonitor {
    * limited (WORK-8.4). With nothing to read, the schedule stands: 5 minutes from the end of the last
    * read of either kind, or sooner when a rate limit holding old PRs ends.
    */
-  private opened(): void {
+  private opened(): boolean {
     const now = this.now();
     const old = (source: WorkSource) => {
       const end = this.lastReadEnd[source];
@@ -860,12 +921,14 @@ export class WorkMonitor {
     const readPrs = prsOld && !this.blocked(now);
     if (readTasks) void this.taskLane.request({ email: this.email! });
     if (readPrs) void this.lane.request({ forced: false });
+    const sourceRead = readTasks || readPrs || this.lane.busy || this.taskLane.busy;
     // A read started here, or one in flight, re-arms the schedule when it ends.
-    if (readTasks || readPrs || this.timer || this.lane.busy || this.taskLane.busy) return;
+    if (sourceRead || this.timer) return sourceRead;
     const last = Math.max(this.lastReadEnd.prs ?? -Infinity, this.lastReadEnd.tasks ?? -Infinity);
     let delay = this.interval - (now - last);
     if (prsOld && this.blocked(now)) delay = Math.min(delay, this.githubBlockedUntil! - now);
     this.arm(delay);
+    return false;
   }
 
   /**
@@ -926,6 +989,189 @@ export class WorkMonitor {
     });
   }
 
+  private tbSession(query: string, signal: AbortSignal): Promise<string> {
+    const argv = ['search', '--all-projects', '--limit', '200', '--json', '--', query];
+    if (!isAllowedWorkCommand('tb-session', argv)) return Promise.reject(new WorkCommandRefused('Lookout refused an unexpected tb-session search'));
+    return this.opts.runner(this.opts.tbSessionBin(), argv, {
+      timeoutMs: this.opts.tbSessionTimeoutMs ?? TB_SESSION_TIMEOUT_MS,
+      env: cleanEnv(this.opts.env ?? process.env),
+      signal,
+    });
+  }
+
+  /** Coalesces source reads by item type; Fleet-list changes refresh both kinds of search. */
+  private requestLinkSearch(scope: 'prs' | 'tasks' | 'all', urgent = false): Promise<void> {
+    if (this.watchers === 0 || this.abort.signal.aborted) return Promise.resolve();
+    if (urgent) {
+      if (this.urgentLinkRun) return this.urgentLinkRun;
+      // A normal tb-session process may be waiting on the shared SQLite index. Stop it and wait
+      // for its process group to exit before the time-sensitive Fleet search uses that index.
+      const previous = this.linkRun;
+      this.normalLinkAbort?.abort();
+      const run = (async () => {
+        if (previous) await previous;
+        if (this.watchers > 0 && !this.abort.signal.aborted) await this.readLinks(new Set(['all']), true, this.abort.signal);
+      })();
+      this.urgentLinkRun = run;
+      this.urgentLinkRuns.add(run);
+      void run.finally(() => {
+        this.urgentLinkRuns.delete(run);
+        if (this.urgentLinkRun === run) this.urgentLinkRun = null;
+        if (this.pendingLinkScopes.size > 0 && this.watchers > 0 && !this.abort.signal.aborted) void this.requestLinkSearch('all');
+      });
+      return run;
+    }
+    this.pendingLinkScopes.add(scope);
+    if (this.urgentLinkRun) return this.urgentLinkRun;
+    if (this.linkRun) return this.linkRun;
+    const controller = new AbortController();
+    this.normalLinkAbort = controller;
+    const run = (async () => {
+      while (this.pendingLinkScopes.size > 0 && this.watchers > 0 && !this.abort.signal.aborted && !controller.signal.aborted) {
+        const scopes = new Set(this.pendingLinkScopes);
+        this.pendingLinkScopes.clear();
+        await this.readLinks(scopes, false, AbortSignal.any([this.abort.signal, controller.signal]));
+      }
+    })();
+    this.linkRun = run.finally(() => {
+      this.linkRun = null;
+      if (this.normalLinkAbort === controller) this.normalLinkAbort = null;
+      if (this.pendingLinkScopes.size > 0 && !this.urgentLinkRun && this.watchers > 0 && !this.abort.signal.aborted) void this.requestLinkSearch('all');
+    });
+    return this.linkRun;
+  }
+
+  /** Re-checks a newly listed Session while tb-session may still be indexing its prompt (WORK-4.9). */
+  private searchForNewSessions(sessionIds: readonly string[]): void {
+    const deadline = this.now() + LINK_RETRY_WINDOW_MS;
+    for (const id of sessionIds) this.awaitingSessionLinks.set(id, deadline);
+    void this.requestLinkSearch('all', true);
+    this.scheduleLinkRetry();
+  }
+
+  private scheduleLinkRetry(): void {
+    if (this.linkRetryTimer || this.awaitingSessionLinks.size === 0) return;
+    const now = this.now();
+    for (const [id, deadline] of this.awaitingSessionLinks) {
+      if (!this.liveSessions.has(id) || this.isSessionLinked(id) || deadline <= now) this.awaitingSessionLinks.delete(id);
+    }
+    if (this.awaitingSessionLinks.size === 0 || this.watchers === 0 || this.abort.signal.aborted) return;
+    const deadline = Math.min(...this.awaitingSessionLinks.values());
+    const delay = Math.min(LINK_RETRY_INTERVAL_MS, Math.max(0, deadline - now));
+    this.linkRetryTimer = setTimeout(() => {
+      this.linkRetryTimer = null;
+      if (this.watchers === 0 || this.abort.signal.aborted) return;
+      for (const [id, until] of this.awaitingSessionLinks) {
+        if (!this.liveSessions.has(id) || this.isSessionLinked(id) || until <= this.now()) this.awaitingSessionLinks.delete(id);
+      }
+      if (this.awaitingSessionLinks.size === 0) return;
+      void this.requestLinkSearch('all', true);
+      this.scheduleLinkRetry();
+    }, delay);
+    this.linkRetryTimer.unref?.();
+  }
+
+  private isSessionLinked(sessionId: string): boolean {
+    return [
+      ...this.prs.mine.flatMap((pr) => pr.links?.sessions ?? []),
+      ...this.prs.reviewRequests.flatMap((pr) => pr.links?.sessions ?? []),
+      ...this.tasks.tasks.flatMap((task) => task.links?.sessions ?? []),
+    ].some((session) => session.sessionId === sessionId);
+  }
+
+  /** Searches PR and Task URLs after reads, and both after a Fleet Session (WORK-4.9). */
+  private async readLinks(scopes: ReadonlySet<'prs' | 'tasks' | 'all'>, urgent: boolean, signal: AbortSignal): Promise<void> {
+    const runVersion = ++this.linkRunVersion;
+    const prs = this.prs.state === 'ok' || this.prs.stale ? [...this.prs.mine, ...this.prs.reviewRequests] : [];
+    const tasks = this.email !== null && (this.tasks.state === 'ok' || this.tasks.stale) ? this.tasks.tasks : [];
+    for (const url of this.prSearches.keys()) if (!prs.some((pr) => pr.url === url)) this.prSearches.delete(url);
+    for (const id of this.taskSearches.keys()) if (!tasks.some((task) => task.id === id)) {
+      this.taskSearches.delete(id);
+      this.taskQuerySearches.delete(id);
+    }
+    const forceAll = scopes.has('all') || this.sessionLinks.state !== 'ok';
+    const searchPrs = forceAll || scopes.has('prs')
+      ? prs
+      : prs.filter((pr) => !this.prSearches.has(pr.url));
+    const searchTasks = forceAll || scopes.has('tasks')
+      ? tasks
+      : tasks.filter((task) => !this.taskSearches.has(task.id));
+    // Each search first re-indexes the Transcripts that changed, so a run's searches share one SQLite
+    // index: at most LINK_SEARCH_CONCURRENCY run at once, the rest wait their turn.
+    let running = 0;
+    const waiting: (() => void)[] = [];
+    const search = async (key: string, query: string, accept: (result: SessionSearchResult) => void): Promise<unknown | null> => {
+      if (running >= LINK_SEARCH_CONCURRENCY) await new Promise<void>((resolve) => waiting.push(resolve));
+      else running++;
+      try {
+        return await searchNow(key, query, accept);
+      } finally {
+        const next = waiting.shift();
+        if (next) next();
+        else running--;
+      }
+    };
+    const searchNow = async (key: string, query: string, accept: (result: SessionSearchResult) => void): Promise<unknown | null> => {
+      const version = ++this.linkQueryVersion;
+      this.latestLinkQueries.set(key, version);
+      try {
+        const result = parseSessionSearch(await this.tbSession(query, signal));
+        if (this.latestLinkQueries.get(key) !== version || signal.aborted || this.watchers === 0 || this.abort.signal.aborted) return null;
+        accept(result);
+        if (urgent) this.sessionLinks = { state: 'ok', reason: null, fix: null };
+        this.applyLinks();
+        this.publish();
+        return null;
+      } catch (err) {
+        return !signal.aborted && this.latestLinkQueries.get(key) === version ? err : null;
+      }
+    };
+    const jobs = [
+      ...searchPrs.map((pr) => search(`pr:${pr.url}`, pr.url, (result) => this.prSearches.set(pr.url, result))),
+      ...searchTasks.flatMap((task) => ['tasks/', 'task='].map((prefix) => {
+        const query = `${prefix}${task.id}`;
+        return search(`task:${task.id}:${query}`, query, (result) => {
+          const byQuery = this.taskQuerySearches.get(task.id) ?? new Map<string, SessionSearchResult>();
+          byQuery.set(query, result);
+          this.taskQuerySearches.set(task.id, byQuery);
+          const sessions = new Map([...byQuery.values()].flatMap((value) => value.sessions).map((session) => [session.sessionId, session]));
+          this.taskSearches.set(task.id, {
+            sessions: [...sessions.values()],
+            incomplete: [...byQuery.values()].some((value) => value.incomplete),
+          });
+        });
+      })),
+    ];
+    const failures = (await Promise.all(jobs)).filter((value) => value !== null);
+    if (this.watchers === 0 || signal.aborted || this.abort.signal.aborted || runVersion !== this.linkRunVersion) return;
+    if (failures.length > 0) {
+      const failure = classifyTbSessionFailure(failures[0]);
+      if (failure.detail) this.log(failure.detail, 'tb-session');
+      this.prSearches.clear();
+      this.taskSearches.clear();
+      this.taskQuerySearches.clear();
+      this.sessionLinks = { state: failure.state, reason: failure.reason, fix: failure.fix };
+    } else {
+      this.sessionLinks = { state: 'ok', reason: null, fix: null };
+    }
+    // Rebuild the PR → Task Links even when tb-session is unavailable.
+    this.applyLinks();
+    this.publish();
+  }
+
+  private applyLinks(): void {
+    const prs = [...this.prs.mine, ...this.prs.reviewRequests];
+    const linked = buildWorkLinks(prs, this.tasks.tasks, { prs: this.prSearches, tasks: this.taskSearches }, this.liveSessions);
+    const byUrl = new Map(linked.prs.map((pr) => [pr.url, pr]));
+    this.prs = {
+      ...this.prs,
+      mine: this.prs.mine.map((pr) => byUrl.get(pr.url) ?? pr),
+      reviewRequests: this.prs.reviewRequests.map((pr) => byUrl.get(pr.url) ?? pr),
+    };
+    const byId = new Map(linked.tasks.map((task) => [task.id, task]));
+    this.tasks = { ...this.tasks, tasks: this.tasks.tasks.map((task) => byId.get(task.id) ?? task) };
+  }
+
   /**
    * One PR read. Forced: `tb-pr refresh`, then `list --json` only if the refresh succeeded (it has
    * cleared tb-pr's cache either way, so a list after a failed refresh would fetch again).
@@ -950,6 +1196,7 @@ export class WorkMonitor {
       result = this.fail(failure);
     }
     this.ended('prs');
+    void this.requestLinkSearch('prs');
     return result;
   }
 
@@ -981,6 +1228,7 @@ export class WorkMonitor {
       result = this.failTasks(failure);
     }
     this.ended('tasks');
+    void this.requestLinkSearch('tasks');
     return result;
   }
 
@@ -1015,6 +1263,7 @@ export class WorkMonitor {
       marks: this.marks(),
       taskIds: board.taskIds,
     };
+    this.applyLinks();
     return { ok: true };
   }
 
@@ -1028,6 +1277,7 @@ export class WorkMonitor {
 
   private acceptTasks(tasks: WorkTask[]): ReadResult {
     this.tasks = { state: 'ok', reason: null, fix: null, stale: false, fetchedAt: this.now(), tasks };
+    this.applyLinks();
     return { ok: true };
   }
 
@@ -1051,7 +1301,7 @@ export class WorkMonitor {
   }
 
   private build(): WorkSnapshot {
-    return { prs: this.prs, tasks: this.tasks, refresh: { cooldownUntil: this.cooldownUntil, githubBlockedUntil: this.githubBlockedUntil } };
+    return { prs: this.prs, tasks: this.tasks, sessionLinks: this.sessionLinks, refresh: { cooldownUntil: this.cooldownUntil, githubBlockedUntil: this.githubBlockedUntil } };
   }
 
   private publish(): void {

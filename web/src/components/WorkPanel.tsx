@@ -1,5 +1,5 @@
-import type { ColumnMark, PrSection, TaskSection, WorkPr, WorkSnapshot, WorkTask } from '@shared/work.ts';
-import { CircleCheck, CircleDashed, CircleX, ExternalLink, LoaderCircle, Milestone, Play, TriangleAlert } from 'lucide-react';
+import type { ColumnMark, PrSection, TaskSection, WorkPr, WorkSessionLink, WorkSnapshot, WorkTask } from '@shared/work.ts';
+import { Circle, CircleCheck, CircleDashed, CircleDot, CircleX, ExternalLink, LoaderCircle, Milestone, Play, TriangleAlert } from 'lucide-react';
 import { type FocusEvent, type KeyboardEvent, type MouseEvent, type ReactNode, type Ref, type RefObject, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { type PanelNav, WORK_FILTERS, WORK_FILTER_LABEL, type WorkFilter } from '@/lib/right-sidebar';
 import { formatAge } from '@/lib/time';
@@ -19,6 +19,7 @@ import {
   keepSelection,
   prKey,
   rowUrl,
+  sessionToOpen,
   showsPrs,
   showsTasks,
   taskKey,
@@ -37,6 +38,8 @@ export interface WorkPanelProps {
   onStart(task: WorkTask): void;
   /** WORK-5.2: "Review" on a Review request. */
   onReview(pr: WorkPr): void;
+  /** WORK-2.4, WORK-3.4: open the selected Linked Session. */
+  onOpenSession(session: WorkSessionLink): Promise<void>;
   /** WORK-2.6: the link to Settings, while no Productive email is saved. */
   onOpenSettings(): void;
   /** False while a modal is open: Work's keys stand down (WORK-6.4). */
@@ -92,7 +95,7 @@ function openInBrowser(url: string) {
  * through both sections' rows, and focus follows the selection into the list that holds it, the only
  * list in the Tab order (UX, Focus).
  */
-export function WorkPanel({ work, filter, onFilter, now, focusKey, onStart, onReview, onOpenSettings, keyboardEnabled, navRef }: WorkPanelProps) {
+export function WorkPanel({ work, filter, onFilter, now, focusKey, onStart, onReview, onOpenSession, onOpenSettings, keyboardEnabled, navRef }: WorkPanelProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const tasksList = useRef<HTMLDivElement | null>(null);
   const prsList = useRef<HTMLDivElement | null>(null);
@@ -100,6 +103,7 @@ export function WorkPanel({ work, filter, onFilter, now, focusKey, onStart, onRe
   // WORK-1.9: the selection follows its item while it's visible, else the first visible row.
   const rows = visibleRows(work, filter);
   const [selected, setSelected] = useState<string | null>(null);
+  const [sessionOpenError, setSessionOpenError] = useState<string | null>(null);
   const current = keepSelection(selected, rows);
   if (current !== selected) setSelected(current);
   // Which list holds the selected row: the only one in the Tab order (UX, Focus).
@@ -160,10 +164,15 @@ export function WorkPanel({ work, filter, onFilter, now, focusKey, onStart, onRe
   };
   // The tab strip moves the rows through this, not through a key event of its own (WORK-1.7).
   useImperativeHandle(navRef, () => ({ move }));
-  // A row acts on its Linked Sessions (WORK-2.4, WORK-3.4). Links come with WORK-4; until then no row
-  // has one, and a row without a Linked Session does nothing: its buttons do (UX, "Row clicks").
+  // A row acts on its newest live Linked Session, or newest past one if none is live (WORK-2.4, WORK-3.4).
   const activate = (row: WorkRow) => {
-    void row;
+    if (work?.sessionLinks.state !== 'ok') return;
+    const linked = row.kind === 'task' ? row.task.links?.sessions : row.pr.links?.sessions;
+    const session = linked?.length ? sessionToOpen(linked) : null;
+    if (session) {
+      setSessionOpenError(null);
+      void onOpenSession(session).catch((err: unknown) => setSessionOpenError(err instanceof Error ? err.message : "Couldn't open the linked Session."));
+    }
   };
   const review = (row: WorkRow) => {
     if (row.kind === 'pr' && row.group === 'reviewRequests') onReview(row.pr);
@@ -231,9 +240,11 @@ export function WorkPanel({ work, filter, onFilter, now, focusKey, onStart, onRe
         </div>
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto pb-2">
+        {sessionOpenError && <p role="alert" className="mx-2 rounded-md border border-destructive/30 px-2 py-1.5 text-[12px] text-destructive">{sessionOpenError}</p>}
         {showsTasks(filter) && tasks && (
           <TasksSection
             tasks={tasks}
+            sessionsAvailable={work?.sessionLinks.state === 'ok'}
             now={now}
             selected={current}
             listRef={attachTasks}
@@ -251,6 +262,7 @@ export function WorkPanel({ work, filter, onFilter, now, focusKey, onStart, onRe
         {showsPrs(filter) && prs && (
           <PrsSection
             prs={prs}
+            sessionsAvailable={work?.sessionLinks.state === 'ok'}
             blockedUntil={work?.refresh.githubBlockedUntil ?? null}
             now={now}
             selected={current}
@@ -264,6 +276,12 @@ export function WorkPanel({ work, filter, onFilter, now, focusKey, onStart, onRe
               review(row);
             }}
           />
+        )}
+        {work && work.sessionLinks.state !== 'ok' && work.sessionLinks.state !== 'loading' && (
+          <p role="status" className="mx-2 mb-1 rounded-md border border-needs-you/30 px-2 py-1.5 text-[12px] text-muted-foreground" data-field="session-link-problem">
+            <span className="font-medium text-foreground">Session links are unavailable.</span>{' '}
+            {work.sessionLinks.reason}{work.sessionLinks.fix ? ` ${work.sessionLinks.fix}` : ''}
+          </p>
         )}
       </div>
     </div>
@@ -354,6 +372,7 @@ function Problem({ title, reason, how, fix, stale, fetchedAt, now }: ProblemProp
 
 interface TasksSectionProps {
   tasks: TaskSection;
+  sessionsAvailable: boolean;
   now: number;
   selected: string | null;
   listRef: Ref<HTMLDivElement>;
@@ -366,7 +385,7 @@ interface TasksSectionProps {
 }
 
 /** WORK-2: Tasks, with its count and age (WORK-1.3), the email it needs (WORK-2.6), its problems (WORK-7) and its rows in one listbox. */
-function TasksSection({ tasks, now: clock, selected, listRef, onListFocus, onListPress, onRow, onOpen, onStart, onOpenSettings }: TasksSectionProps) {
+function TasksSection({ tasks, sessionsAvailable, now: clock, selected, listRef, onListFocus, onListPress, onRow, onOpen, onStart, onOpenSettings }: TasksSectionProps) {
   // The page's clock ticks once a second, so it can be just behind the data it shows: never show ages from before the read.
   const now = Math.max(clock, tasks.fetchedAt ?? clock);
   const list = hasTaskList(tasks);
@@ -423,7 +442,7 @@ function TasksSection({ tasks, now: clock, selected, listRef, onListFocus, onLis
         >
           {tasks.tasks.map((task) => {
             const row: WorkRow = { key: taskKey(task), kind: 'task', task };
-            return <TaskRow key={row.key} task={task} rowKey={row.key} now={now} active={row.key === active} onClick={() => onRow(row)} onOpen={() => onOpen(row)} onStart={() => onStart(row)} />;
+            return <TaskRow key={row.key} task={task} rowKey={row.key} now={now} active={row.key === active} sessionsAvailable={sessionsAvailable} onClick={() => onRow(row)} onOpen={() => onOpen(row)} onStart={() => onStart(row)} />;
           })}
         </div>
       )}
@@ -436,6 +455,7 @@ interface TaskRowProps {
   rowKey: string;
   now: number;
   active: boolean;
+  sessionsAvailable: boolean;
   onClick(): void;
   onOpen(): void;
   onStart(): void;
@@ -446,7 +466,7 @@ interface TaskRowProps {
  * either. A screen reader hears them all as the option's name. Start Session and Open in browser are
  * mouse targets; the keyboard reaches Open as `O` (the row's description says so).
  */
-function TaskRow({ task, rowKey, now, active, onClick, onOpen, onStart }: TaskRowProps) {
+function TaskRow({ task, rowKey, now, active, sessionsAvailable, onClick, onOpen, onStart }: TaskRowProps) {
   const due = task.dueDate === null ? null : formatDue(task.dueDate, now);
   const keysId = `${rowId(rowKey)}-keys`;
   const act = (then: () => void) => (e: MouseEvent) => {
@@ -460,6 +480,7 @@ function TaskRow({ task, rowKey, now, active, onClick, onOpen, onStart }: TaskRo
       aria-selected={active}
       aria-describedby={keysId}
       data-task={task.id}
+      title={task.links?.incomplete ? 'Links may be incomplete' : undefined}
       onClick={onClick}
       className={cn('flex min-w-0 cursor-default flex-col gap-0.5 rounded-md px-2 py-1.5 text-[13px] hover:bg-sidebar-accent/60', active && 'bg-sidebar-accent')}
     >
@@ -472,6 +493,7 @@ function TaskRow({ task, rowKey, now, active, onClick, onOpen, onStart }: TaskRo
         <span className="min-w-0 truncate" data-field="title" title={task.title}>
           {task.title}
         </span>{' '}
+        <SessionMarker sessions={sessionsAvailable ? task.links?.sessions ?? [] : []} incomplete={task.links?.incomplete ?? false} />
         <span className="ml-auto flex shrink-0 items-center gap-0.5" aria-hidden>
           {/* WORK-5.1: the launcher, its prompt the Task's URL; you press Start. */}
           <RowButton title="Start Session (S)" action="start" onClick={act(onStart)}>
@@ -502,6 +524,17 @@ function TaskRow({ task, rowKey, now, active, onClick, onOpen, onStart }: TaskRo
           )}{' '}
         </div>
       )}
+      {task.links && task.links.prs.length > 0 && (
+        <div className="flex min-w-0 flex-wrap items-center gap-1 text-[12px] text-muted-foreground" data-field="linked-prs">
+          {task.links.prs.map((linked) => (
+            <span key={linked.url} className="inline-flex items-center gap-1" title={linked.sources.map((source) => (source === 'body' ? 'PR body' : 'branch')).join(', ')} data-field="linked-pr">
+              <span className="font-medium text-foreground">#{linked.number}</span>
+              {linked.chip ? <span className={cn('rounded-full border px-1.5 text-[10.5px] leading-4 font-medium', CHIP_CLASS[linked.chip])}>{linked.chip}</span> : <span>Review request</span>}
+              <Ci ci={linked.ci} />
+            </span>
+          ))}
+        </div>
+      )}
       {(task.milestone || due) && (
         <div className="flex min-w-0 items-center gap-1.5 text-[12px] text-muted-foreground">
           {task.milestone && (
@@ -523,8 +556,24 @@ function TaskRow({ task, rowKey, now, active, onClick, onOpen, onStart }: TaskRo
   );
 }
 
+/** WORK-2.4, WORK-3.4, WORK-4.5: one status marker; its hover lists the reason for each Linked Session. */
+function SessionMarker({ sessions, incomplete }: { sessions: readonly WorkSessionLink[]; incomplete: boolean }) {
+  if (sessions.length === 0) return null;
+  const live = sessions.some((session) => session.live);
+  const reasons: string[] = [...new Set(sessions.map((session) => session.reason))];
+  if (incomplete) reasons.push('Links may be incomplete');
+  const title = reasons.join('\n');
+  const Marker = live ? CircleDot : Circle;
+  return (
+    <span data-session-marker title={title} aria-hidden="true" className="flex size-4 shrink-0 items-center justify-center">
+      <Marker className={cn('size-3.5', live ? 'text-ok-text' : 'text-muted-foreground')} />
+    </span>
+  );
+}
+
 interface PrsSectionProps {
   prs: PrSection;
+  sessionsAvailable: boolean;
   /** WORK-8.4: until when GitHub is rate limited, for how long a failed read waits. */
   blockedUntil: number | null;
   now: number;
@@ -538,7 +587,7 @@ interface PrsSectionProps {
 }
 
 /** WORK-3: PRs, with its count and age (WORK-1.3), its problems (WORK-7) and its two groups in one listbox. */
-function PrsSection({ prs, blockedUntil, now: clock, selected, listRef, onListFocus, onListPress, onRow, onOpen, onReview }: PrsSectionProps) {
+function PrsSection({ prs, sessionsAvailable, blockedUntil, now: clock, selected, listRef, onListFocus, onListPress, onRow, onOpen, onReview }: PrsSectionProps) {
   // The page's clock ticks once a second, so it can be just behind the data it shows: never show ages from before the fetch.
   const now = Math.max(clock, prs.fetchedAt ?? clock);
   const lists = hasPrLists(prs);
@@ -550,6 +599,7 @@ function PrsSection({ prs, blockedUntil, now: clock, selected, listRef, onListFo
   return (
     <section aria-labelledby="work-prs-heading" data-section="prs" className="flex flex-col">
       <SectionHeader id="work-prs-heading" title="PRs" count={lists ? count : null} fetchedAt={prs.fetchedAt} now={now} loading={prs.state === 'loading'} stale={prs.stale} />
+      {prs.taskIds === false && <p className="px-3 pb-1 text-[12px] text-muted-foreground" data-field="task-link-version">Task links need a newer tb-pr.</p>}
       {prs.state !== 'ok' && prs.state !== 'loading' && (
         <Problem
           title={prs.state === 'not-installed' ? "tb-pr isn't installed" : prs.state === 'signed-out' ? "tb-pr isn't signed in to GitHub" : prs.stale ? "Couldn't update PRs" : "Couldn't read PRs"}
@@ -575,7 +625,7 @@ function PrsSection({ prs, blockedUntil, now: clock, selected, listRef, onListFo
           className="flex flex-col outline-none"
         >
           {groups.map((g) => (
-            <PrGroupView key={g} group={g} prs={prs[g]} marks={prs.marks[g]} now={now} selected={active} onRow={onRow} onOpen={onOpen} onReview={onReview} />
+            <PrGroupView key={g} group={g} prs={prs[g]} marks={prs.marks[g]} sessionsAvailable={sessionsAvailable} now={now} selected={active} onRow={onRow} onOpen={onOpen} onReview={onReview} />
           ))}
         </div>
       )}
@@ -587,6 +637,7 @@ interface PrGroupProps {
   group: PrGroup;
   prs: WorkPr[];
   marks: ColumnMark[];
+  sessionsAvailable: boolean;
   now: number;
   selected: string | null;
   onRow(row: WorkRow): void;
@@ -595,7 +646,7 @@ interface PrGroupProps {
 }
 
 /** WORK-3.1: one PR group, a `group` of the listbox, labelled by its name and described by its mark (WORK-7.5). */
-function PrGroupView({ group, prs, marks, now, selected, onRow, onOpen, onReview }: PrGroupProps) {
+function PrGroupView({ group, prs, marks, sessionsAvailable, now, selected, onRow, onOpen, onReview }: PrGroupProps) {
   const label = `work-group-${group}`;
   const markId = `work-marks-${group}`;
   return (
@@ -624,7 +675,7 @@ function PrGroupView({ group, prs, marks, now, selected, onRow, onOpen, onReview
         <div role="presentation" className="flex flex-col gap-px px-1.5">
           {prs.map((pr) => {
             const row: WorkRow = { key: prKey(pr), kind: 'pr', group, pr };
-            return <PrRow key={row.key} rowKey={row.key} group={group} pr={pr} now={now} active={row.key === selected} onClick={() => onRow(row)} onOpen={() => onOpen(row)} onReview={() => onReview(row)} />;
+            return <PrRow key={row.key} rowKey={row.key} group={group} pr={pr} now={now} active={row.key === selected} sessionsAvailable={sessionsAvailable} onClick={() => onRow(row)} onOpen={() => onOpen(row)} onReview={() => onReview(row)} />;
           })}
         </div>
       )}
@@ -644,6 +695,7 @@ interface PrRowProps {
   pr: WorkPr;
   now: number;
   active: boolean;
+  sessionsAvailable: boolean;
   onClick(): void;
   onOpen(): void;
   onReview(): void;
@@ -654,7 +706,7 @@ interface PrRowProps {
  * hears as the option's name; Review and Open in browser as mouse targets, which the keyboard
  * reaches as `R` and `O` (the row's description says so).
  */
-function PrRow({ rowKey, group, pr, now, active, onClick, onOpen, onReview }: PrRowProps) {
+function PrRow({ rowKey, group, pr, now, active, sessionsAvailable, onClick, onOpen, onReview }: PrRowProps) {
   const age = pr.createdAt !== null ? formatAge(now - pr.createdAt) : pr.ageDays !== null ? formatAge(pr.ageDays * DAY_MS) : null;
   // WORK-3.5: coloured by the time since it was opened; without an opening time, muted as before.
   const level = pr.createdAt !== null ? ageLevel(now - pr.createdAt) : null;
@@ -671,6 +723,7 @@ function PrRow({ rowKey, group, pr, now, active, onClick, onOpen, onReview }: Pr
       aria-selected={active}
       aria-describedby={keysId}
       data-pr={`${pr.repo}#${pr.number}`}
+      title={pr.links?.incomplete ? 'Links may be incomplete' : undefined}
       onClick={onClick}
       className={cn('flex min-w-0 cursor-default flex-col gap-0.5 rounded-md px-2 py-1.5 text-[13px] hover:bg-sidebar-accent/60', active && 'bg-sidebar-accent')}
     >
@@ -686,6 +739,7 @@ function PrRow({ rowKey, group, pr, now, active, onClick, onOpen, onReview }: Pr
         <span className="shrink-0 font-medium tabular-nums" data-field="number">
           #{pr.number}
         </span>{' '}
+        <SessionMarker sessions={sessionsAvailable ? pr.links?.sessions ?? [] : []} incomplete={pr.links?.incomplete ?? false} />
         {pr.chip && (
           <>
             <span className={cn('shrink-0 rounded-full border px-1.5 text-[10.5px] leading-4 font-medium', CHIP_CLASS[pr.chip])} data-field="chip">
@@ -721,6 +775,15 @@ function PrRow({ rowKey, group, pr, now, active, onClick, onOpen, onReview }: Pr
       <p className="truncate" data-field="title" title={pr.title}>
         {pr.title}
       </p>
+      {pr.links && pr.links.tasks.length > 0 && (
+        <div className="flex min-w-0 flex-wrap items-center gap-1 text-[12px] text-muted-foreground" data-field="linked-tasks">
+          {pr.links.tasks.map((linked) => (
+            <span key={linked.id} className="truncate" title={linked.sources.map((source) => (source === 'body' ? 'PR body' : 'branch')).join(', ')} data-field="linked-task">
+              {linked.title}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

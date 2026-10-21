@@ -68,7 +68,7 @@ beforeEach(async () => {
       dismiss: () => false,
     },
     usage: { snapshot: () => USAGE, watch: () => () => {}, refreshJev: async () => {}, refresh: async () => {} },
-    work: new WorkMonitor({ runner: async () => '', tbPrBin: () => '/nonexistent/tb-pr', tbProdBin: () => '/nonexistent/tb-prod', onChange: () => {} }),
+    work: new WorkMonitor({ runner: async () => '', tbPrBin: () => '/nonexistent/tb-pr', tbProdBin: () => '/nonexistent/tb-prod', tbSessionBin: () => '/nonexistent/tb-session', onChange: () => {} }),
     viewer: {
       watch: (clientId: string, sessionId: string | null, preview: boolean) => void watches.push({ clientId, sessionId, preview }),
       drop: (clientId: string) => void dropped.push(clientId),

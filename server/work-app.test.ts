@@ -41,6 +41,7 @@ beforeEach(async () => {
   await settings.load();
   work = new WorkMonitor({
     runner: async (_file, args) => {
+      if (_file.endsWith('tb-session')) return JSON.stringify({ results: [] });
       calls.push(args.join(' '));
       const a = answers[args[0]!]!;
       if (typeof a === 'string') return a;
@@ -48,6 +49,7 @@ beforeEach(async () => {
     },
     tbPrBin: () => '/bin/tb-pr',
     tbProdBin: () => '/bin/tb-prod',
+    tbSessionBin: () => '/bin/tb-session',
     now: () => now,
     onChange: (w) => app.broadcast({ type: 'work', work: w }),
   });

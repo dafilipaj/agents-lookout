@@ -1,3 +1,5 @@
+import type { Harness } from './types.ts';
+
 /**
  * WORK: open PRs and Review requests from `tb-pr`, and Tasks from `tb-prod`, as the server sends
  * them to the UI. Contract: docs/features/tasks-and-prs/SPEC.md, "Lookout's side".
@@ -31,6 +33,59 @@ export interface PrTaskRef {
   source: 'branch' | 'body';
 }
 
+/** Why one Session is Linked to a PR or Task (WORK-4.5). */
+export type SessionLinkReason =
+  | 'probably opened this PR (the earliest Session that mentions it)'
+  | 'started on this PR'
+  | 'started on this Task'
+  | `through PR #${number}`;
+
+export interface WorkSessionLink {
+  sessionId: string;
+  harness: Harness;
+  title: string;
+  createdAt: number | null;
+  modifiedAt: number | null;
+  /** Fleet currently lists this Session. */
+  live: boolean;
+  reason: SessionLinkReason;
+}
+
+export interface LinkedTask {
+  id: string;
+  title: string;
+  /** The tb-pr entries that linked this PR to the Task, in tb-pr's order. */
+  sources: PrTaskRef['source'][];
+}
+
+export interface LinkedPr {
+  repo: string;
+  number: number;
+  url: string;
+  chip: PrChip | null;
+  ci: CiState;
+  /** The tb-pr entries that linked this PR to the Task, in tb-pr's order. */
+  sources: PrTaskRef['source'][];
+}
+
+export interface PrLinks {
+  tasks: LinkedTask[];
+  sessions: WorkSessionLink[];
+  incomplete: boolean;
+}
+
+export interface TaskLinks {
+  prs: LinkedPr[];
+  sessions: WorkSessionLink[];
+  incomplete: boolean;
+}
+
+export interface SessionLinkSection {
+  state: 'loading' | 'ok' | 'not-installed' | 'error';
+  reason: string | null;
+  fix: string | null;
+}
+
 export interface WorkPr {
   /** The repo's name in `productiveio`, as tb-pr gives it (`lantern`, not `productiveio/lantern`). */
   repo: string;
@@ -49,6 +104,8 @@ export interface WorkPr {
   column: PrColumn;
   /** tb-pr's `task_ids`; null when this tb-pr doesn't give them (before Gap 1). */
   taskIds: PrTaskRef[] | null;
+  /** WORK-3.4, WORK-4: matching Tasks and Sessions, null until the Link searches run. */
+  links: PrLinks | null;
 }
 
 /**
@@ -110,8 +167,8 @@ export interface WorkTask {
   milestone: boolean;
   /** WORK-6.2: built on the server, always `TASK_URL_BASE` + id. */
   url: string;
-  /** WORK-2.3, WORK-2.4: the Task's Linked PRs and Sessions, from Links (WORK-4); null until those are built. */
-  links: null;
+  /** WORK-2.3, WORK-2.4: the Task's Linked PRs and Sessions, null until the Link searches run. */
+  links: TaskLinks | null;
 }
 
 /** WORK-2.6: no Productive email is saved, so Tasks isn't read. */
@@ -134,6 +191,8 @@ export interface TaskSection {
 export interface WorkSnapshot {
   prs: PrSection;
   tasks: TaskSection;
+  /** WORK-7.4: why Session Links are unavailable; PR → Task Links still work. */
+  sessionLinks: SessionLinkSection;
   /** WORK-8.2, WORK-8.4: until when Refresh is refused, ms since epoch; null when it isn't. */
   refresh: {
     /** The 60 s server-wide cooldown after a forced read was accepted. */
