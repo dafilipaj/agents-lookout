@@ -831,7 +831,8 @@ describe('Stop (VIEW-4.4)', () => {
     expect(info.nextElementSibling).toBe(actions);
     expect([...rowEl.children]).toEqual([info, actions]);
     expect(actions).toHaveClass('shrink-0');
-    const buttons = within(actions as HTMLElement).getAllByRole('button');
+    // (VIEW-5.10's icon-only Copy session ID comes after them; its own test covers it.)
+    const buttons = within(actions as HTMLElement).getAllByRole('button', { name: /^(Stop|End Session)/ });
     expect(buttons.map((b) => b.textContent)).toEqual(['Stop', 'End Session']);
     for (const b of buttons) expect(b).toHaveClass('shrink-0');
     expect([...info.children].filter((c) => c.classList.contains('shrink-0')).map((c) => c.getAttribute('data-field') ?? c.getAttribute('role'))).toEqual([

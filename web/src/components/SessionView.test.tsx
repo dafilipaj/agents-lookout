@@ -1,8 +1,9 @@
-import { act, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ESC_POINTER } from '@/lib/answers';
 import { SaveError } from '@/lib/client';
+import { COPY_FEEDBACK_MS } from '@/lib/copy';
 import { contextLevel } from '@/lib/sessions';
 import { renderApp, row, rowEl, settings } from '@/test/helpers';
 
@@ -130,6 +131,97 @@ describe('Session view header', () => {
     app.emit({ type: 'sessions', upsert: [], remove: ['a'] });
     expect(tag()).toHaveTextContent('Ended');
     for (const c of any) expect(tag().classList.contains(c), `ended: ${c}`).toBe(c === 'bg-muted' || c === 'text-muted-foreground');
+  });
+
+  describe('Copy session ID (VIEW-5.10)', () => {
+    const copyButton = () => within(header()).queryByRole('button', { name: 'Copy session ID' });
+    let restore: (() => void) | null = null;
+    const clipboard = (writeText: (text: string) => Promise<void>) => {
+      const had = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+      Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+      restore = () => (had ? Object.defineProperty(navigator, 'clipboard', had) : delete (navigator as { clipboard?: unknown }).clipboard);
+    };
+    afterEach(() => {
+      restore?.();
+      restore = null;
+      vi.useRealTimers();
+    });
+
+    it('VIEW-5.10: a Session with a session_id has a "Copy session ID" button in the header whose tooltip shows the whole ID; a click copies it and reads "Copied" for 2 s', async () => {
+      const id = '3f2b8c1e-9a47-4d6e-b0c5-7e1d2a9f4b68';
+      const writeText = vi.fn(async () => {});
+      clipboard(writeText);
+      const app = renderApp(`/s/${id}`);
+      app.snapshot([row({ id, ownHost: true })]);
+      const button = copyButton()!;
+      expect(button).toBeInTheDocument();
+      expect(button).toHaveAttribute('title', expect.stringContaining(id));
+      expect(button.querySelector('svg.lucide-copy')).not.toBeNull(); // lucide's icon, never emoji
+      expect(within(header().querySelector('[data-slot="header-actions"]')!).getAllByRole('button').at(-1)).toBe(button); // last: keeps its place
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      fireEvent.click(button);
+      await act(async () => {});
+      expect(writeText).toHaveBeenCalledWith(id);
+      expect(button).toHaveTextContent('Copied');
+      expect(button).toHaveAccessibleName('Copy session ID'); // it keeps its name…
+      expect(within(header()).getByRole('status')).toHaveTextContent('Copied'); // …and says the outcome
+      act(() => vi.advanceTimersByTime(COPY_FEEDBACK_MS - 1));
+      expect(button).toHaveTextContent('Copied');
+      act(() => vi.advanceTimersByTime(1));
+      expect(button).not.toHaveTextContent('Copied');
+      expect(within(header()).getByRole('status')).toHaveTextContent('');
+    });
+
+    it('VIEW-5.10: "Couldn’t copy" when the browser refuses', async () => {
+      clipboard(async () => {
+        throw new DOMException('Document is not focused.', 'NotAllowedError');
+      });
+      const app = renderApp('/s/a');
+      app.snapshot([row({ id: 'a' })]);
+      fireEvent.click(copyButton()!);
+      expect(await within(copyButton()!).findByText("Couldn't copy")).toBeInTheDocument();
+      expect(copyButton()).toHaveClass('text-destructive');
+    });
+
+    it('VIEW-5.10: it is reachable with Tab, and Enter copies', async () => {
+      const user = userEvent.setup();
+      const writeText = vi.fn(async () => {});
+      clipboard(writeText);
+      const app = renderApp('/s/a');
+      app.snapshot([row({ id: 'a' })]);
+      copyButton()!.focus();
+      expect(copyButton()).toHaveFocus();
+      await user.keyboard('{Enter}');
+      expect(writeText).toHaveBeenCalledWith('a');
+    });
+
+    it('VIEW-5.10: a Session without a session_id (a Codex Session before its first prompt) has no button, and gets one with its ID', () => {
+      const app = renderApp('/s/codex%3A42');
+      app.snapshot([row({ id: 'codex:42', pid: 42, harness: 'codex', title: 'codex-run' })]);
+      expect(copyButton()).toBeNull();
+      expect(header()).not.toHaveTextContent('codex:42');
+      app.emit({ type: 'sessions', upsert: [row({ id: 'uuid-1', pid: 42, harness: 'codex', title: 'codex-run' })], remove: ['codex:42'] });
+      expect(copyButton()).toHaveAttribute('title', expect.stringContaining('uuid-1'));
+    });
+
+    it('VIEW-5.10: it shows for a Session that is not Controllable, and for one that has ended', () => {
+      const app = renderApp('/s/orca');
+      app.snapshot([row({ id: 'orca', backend: 'unknown', controllable: false })]);
+      expect(copyButton()).toHaveAttribute('title', expect.stringContaining('orca'));
+      app.emit({ type: 'sessions', upsert: [], remove: ['orca'] });
+      expect(screen.getByText('This Session ended')).toBeInTheDocument();
+      expect(copyButton()).toHaveAttribute('title', expect.stringContaining('orca'));
+    });
+
+    it('VIEW-5.10: it never shrinks, and its word goes below 26rem like the other buttons’', async () => {
+      clipboard(async () => {});
+      const app = renderApp('/s/a');
+      app.snapshot([row({ id: 'a' })]);
+      expect(copyButton()).toHaveClass('shrink-0');
+      fireEvent.click(copyButton()!);
+      await act(async () => {});
+      expect(within(copyButton()!).getByText('Copied')).toHaveClass('@max-[26rem]:sr-only');
+    });
   });
 
   it('VIEW-5.4: with nothing selected, the "Select a Session" hint stays', () => {
@@ -358,7 +450,7 @@ describe('ending the confirmed Session only', () => {
     // Another Session joined its host while the dialog was open: the button goes, the dialog stays.
     app.emit({ type: 'sessions', upsert: [row({ id: 'a', ownHost: false })], remove: [] });
     // (The page behind the dialog is hidden from assistive tech, so look it up in the DOM.)
-    expect(document.querySelector('[data-slot="header-actions"]')).toBeEmptyDOMElement();
+    expect(document.querySelector('[data-slot="header-actions"] [title="End Session"]')).toBeNull();
     await user.click(confirmIn());
     expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Ending…' })).toBeDisabled();
     // And while it's pending.

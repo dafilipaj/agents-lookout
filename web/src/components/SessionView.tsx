@@ -1,9 +1,10 @@
 import type { AnswerRequest, ChatPage, EndTarget, SessionRow } from '@shared/types.ts';
-import { ChevronDown, CircleSlash, CircleStop, FolderGit2, GitBranch, Info, OctagonX, Power, SendHorizontal, TerminalSquare } from 'lucide-react';
+import { Check, ChevronDown, CircleSlash, CircleStop, Copy, FolderGit2, GitBranch, Info, OctagonX, Power, SendHorizontal, TerminalSquare } from 'lucide-react';
 import { type ComponentPropsWithRef, type ComponentPropsWithoutRef, type KeyboardEvent, type ReactNode, type RefObject, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '@/components/ui/dialog';
 import { turnRunning } from '@/lib/activity';
+import { useCopy } from '@/lib/copy';
 import { type Echo, NO_ECHOES, settleEchoes, shown } from '@/lib/echoes';
 import {
   type AnswerAttempt,
@@ -18,6 +19,7 @@ import {
   type StopRequest,
   escButton,
   permissionPanel,
+  processKey,
   questionPanel,
   sendErrorText,
   stopButton,
@@ -371,9 +373,45 @@ function Header({
         <div data-slot="header-actions" className="flex shrink-0 items-center gap-1.5 empty:hidden">
           {key && <EscKey {...key} errorId={stopErrorId} />}
           <EndSession row={row} eligible={!ended && row.controllable && row.ownHost} onEnd={onEnd} fallbackFocus={title} />
+          {/* VIEW-5.10: last, so it keeps its place whether Stop, Esc or End Session show. A
+              Session without a session_id has `<harness>:<pid>` for its id: no button then. */}
+          {row.id !== processKey(row) && <CopySessionId sessionId={row.id} />}
         </div>
       </div>
     </PaneHeader>
+  );
+}
+
+/**
+ * VIEW-5.10: copies the Session's session_id, for resuming it or finding it with `tb-session`.
+ * Icon-only, its tooltip the whole ID; "Copied" (or "Couldn't copy") shows beside the icon for 2 s
+ * as the code blocks' copy button does (VIEW-1.14), and goes below 26rem like the other buttons'
+ * words. The button keeps its name; the outcome is read out in a polite status.
+ */
+function CopySessionId({ sessionId }: { sessionId: string }) {
+  const { state, said, copy } = useCopy(sessionId);
+  return (
+    <>
+      <Button
+        variant="outline"
+        size="xs"
+        className={cn('h-7 shrink-0 gap-1.5 px-2 text-[12px]', state === 'failed' && 'text-destructive hover:text-destructive')}
+        aria-label="Copy session ID"
+        title={`Copy session ID: ${sessionId}`}
+        data-copy={state}
+        onClick={() => void copy()}
+      >
+        {state === 'copied' ? <Check className="size-3.5" aria-hidden /> : <Copy className="size-3.5" aria-hidden />}
+        {said && (
+          <span aria-hidden className="@max-[26rem]:sr-only">
+            {said}
+          </span>
+        )}
+      </Button>
+      <span role="status" className="sr-only">
+        {said}
+      </span>
+    </>
   );
 }
 

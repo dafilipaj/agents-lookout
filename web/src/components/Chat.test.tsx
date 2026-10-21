@@ -2,7 +2,7 @@ import type { ChatEntry, ChatPage, HistoryDetail } from '@shared/types.ts';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { COPY_FEEDBACK_MS } from '@/components/Markdown';
+import { COPY_FEEDBACK_MS } from '@/lib/copy';
 import { BATCH_DELAY_MS, pathParts, vscodeHref } from '@/lib/files';
 import { CACHED_ENTRIES, MAX_CHAT_ENTRIES, answerFor, applyChatEvent, applyPage, chatItems, emptyChat, setFollowing, toolsLabel } from '@/lib/chat';
 import { textParts } from '@/lib/links';

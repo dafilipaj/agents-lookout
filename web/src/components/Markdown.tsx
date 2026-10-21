@@ -1,7 +1,8 @@
 import { Check, Copy } from 'lucide-react';
-import { type ComponentProps, createContext, memo, useContext, useEffect, useRef, useState } from 'react';
+import { type ComponentProps, createContext, memo, useContext } from 'react';
 import ReactMarkdown, { type Components, type ExtraProps } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { useCopy } from '@/lib/copy';
 import { pathParts } from '@/lib/files';
 import { HIDDEN_CHARACTER, HIDDEN_ENCODED, LINK_CLASS, LINK_REL, addressSpans, linkify } from '@/lib/links';
 import { cn } from '@/lib/utils';
@@ -110,26 +111,8 @@ function CodeBlock({ children, node }: ComponentProps<'pre'> & ExtraProps) {
   );
 }
 
-/** VIEW-1.14: how long "Copied" or "Couldn't copy" shows. */
-export const COPY_FEEDBACK_MS = 2000;
-
 function CopyButton({ text }: { text: string }) {
-  const [state, setState] = useState<'idle' | 'copied' | 'failed'>('idle');
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => () => clearTimeout(timer.current), []);
-  const copy = async () => {
-    let copied = false;
-    try {
-      await navigator.clipboard.writeText(text);
-      copied = true;
-    } catch {
-      // No clipboard, or the browser refused.
-    }
-    clearTimeout(timer.current);
-    setState(copied ? 'copied' : 'failed');
-    timer.current = setTimeout(() => setState('idle'), COPY_FEEDBACK_MS);
-  };
-  const said = state === 'copied' ? 'Copied' : state === 'failed' ? "Couldn't copy" : '';
+  const { state, said, copy } = useCopy(text);
   return (
     <>
       <button
