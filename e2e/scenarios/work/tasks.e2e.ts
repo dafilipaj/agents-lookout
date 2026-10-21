@@ -556,6 +556,33 @@ scenario(
 );
 
 scenario(
+  'LAUNCH-1.3: a draft typed in an N-opened launcher comes back with N after a Work launcher was opened and closed in between, and the Work prompt does not',
+  world().tbProd({ tasks: { [ME]: MINE } }).tbPr({ board: BOARD }).settings({ productiveEmail: ME }),
+  async ({ page, world }) => {
+    await openWork(page);
+    const row = taskRows(page).filter({ hasText: 'Paint the pier posts' });
+    await world.step('the Task to show', () => expect(row).toBeVisible());
+    const dialog = page.getByRole('dialog', { name: 'New Session' });
+    // Type a draft in a launcher opened with N, then close it.
+    await page.keyboard.press('n');
+    await expect(dialog).toBeVisible();
+    await dialog.getByLabel('Prompt').fill('my own draft');
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+    // A launcher from Work holds the Task's URL; closing it discards that.
+    await row.getByTitle('Start Session (S)').click();
+    await expect(dialog.getByLabel('Prompt')).toHaveValue(taskUrl('41000303'));
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+    // N: the typed draft is back, the Work prompt is not.
+    await page.keyboard.press('n');
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByLabel('Prompt')).toHaveValue('my own draft');
+    expect(world.calls().filter((c) => /\bfleet\b.*\bspawn\b/.test(c))).toEqual([]);
+  },
+);
+
+scenario(
   'WORK-6.2: Open in Fantastic opens the Task’s Fantastic URL in a new browser tab',
   world().tbProd({ tasks: { [ME]: MINE } }).tbPr({ board: BOARD }).settings({ productiveEmail: ME }),
   async ({ page, world }) => {

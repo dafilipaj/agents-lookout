@@ -150,13 +150,15 @@ export function App({ client }: { client: LookoutClient }) {
     [client, dispatch, savedSince],
   );
 
-  // LAUNCH: the launcher. Its draft outlives closing it (LAUNCH-1.3); null = start fresh.
+  // LAUNCH: the launcher. Its draft outlives closing it (LAUNCH-1.3); null = start fresh. A launcher
+  // opened from Work has a draft of its own, never that one: it lasts until the next open (WORK-5.1).
   const [launcherOpen, setLauncherOpen] = useState(false);
   // Opened from Work (Review, Start Session): closing it without a start gives focus back to Work.
   const launchedFromWork = useRef(false);
   // Background shortcuts stand down while any modal (the launcher, End Session) is open.
   const modalOpen = useAnyModalOpen();
   const [draft, setDraft] = useState<LaunchDraft | null>(null);
+  const [workDraft, setWorkDraft] = useState<LaunchDraft | null>(null);
   const [harnesses, setHarnesses] = useState<HarnessState>({ state: 'loading' });
   const harnessRequest = useRef(false);
   const openLauncher = useCallback(() => {
@@ -172,6 +174,13 @@ export function App({ client }: { client: LookoutClient }) {
     );
   }, [client]);
 
+  // LAUNCH-1.1: N, ⌘N and "+" open the launcher on its own draft; Work's draft goes. Opening it over
+  // an open launcher changes nothing.
+  const openOwnLauncher = useCallback(() => {
+    if (!launcherOpen) setWorkDraft(null);
+    openLauncher();
+  }, [launcherOpen, openLauncher]);
+
   // LAUNCH-1.1: N opens the launcher when focus isn't in a text field. ⌘N does too, but a normal
   // Chrome tab keeps ⌘N for itself; it reaches the page only in an installed-app window.
   useEffect(() => {
@@ -181,11 +190,11 @@ export function App({ client }: { client: LookoutClient }) {
       // ⌘N keeps working in the launcher, but never opens it over another dialog.
       if (modalOpen && !launcherOpen) return;
       e.preventDefault();
-      openLauncher();
+      openOwnLauncher();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [openLauncher, launcherOpen, modalOpen]);
+  }, [openOwnLauncher, launcherOpen, modalOpen]);
 
   // LAUNCH-4.2: Start (or a resume, HIST-3.1) selects its "Starting…" row the moment you press
   // it: the tab picks the launch id and shows the row itself until the server lists it. Whatever
@@ -221,6 +230,8 @@ export function App({ client }: { client: LookoutClient }) {
   const start = useCallback(
     async (req: LaunchRequest) => {
       const id = crypto.randomUUID();
+      // Which launcher this start came from, read now: Esc may close it, and reset the ref, before the answer.
+      const fromWork = launchedFromWork.current;
       const pending = requestLaunch(ownLaunch(id, startTitle(req), req.harness, req.directory));
       let launch: LaunchView;
       try {
@@ -234,7 +245,8 @@ export function App({ client }: { client: LookoutClient }) {
       pending.answered(launch);
       // A server that picked its own id: follow it while the row is still selected.
       if (launch.id !== id && pending.here()) navigate({ name: 'launch', id: launch.id }, { replace: true });
-      setDraft(null);
+      // A start from Work leaves LAUNCH-1.3's draft alone, as it never read it.
+      if (!fromWork) setDraft(null);
       launchedFromWork.current = false; // the new Session's row is selected now
       setLauncherOpen(false);
     },
@@ -320,7 +332,7 @@ export function App({ client }: { client: LookoutClient }) {
   const review = useCallback(
     (pr: WorkPr) => {
       const last = initialDraft(state.settings);
-      setDraft({ ...last, harness: 'claude', model: last.harness === 'claude' ? last.model : '', prompt: reviewPrompt(pr.url) });
+      setWorkDraft({ ...last, harness: 'claude', model: last.harness === 'claude' ? last.model : '', prompt: reviewPrompt(pr.url) });
       launchedFromWork.current = true;
       openLauncher();
     },
@@ -330,7 +342,7 @@ export function App({ client }: { client: LookoutClient }) {
   // else, on the last start's Harness, model and directory; you press Start.
   const startOnTask = useCallback(
     (task: WorkTask) => {
-      setDraft({ ...initialDraft(state.settings), prompt: task.url });
+      setWorkDraft({ ...initialDraft(state.settings), prompt: task.url });
       launchedFromWork.current = true;
       openLauncher();
     },
@@ -593,7 +605,7 @@ export function App({ client }: { client: LookoutClient }) {
         onSelect={onSelect}
         settingsOpen={route.name === 'settings'}
         onOpenSettings={() => navigate(route.name === 'settings' ? { name: 'home' } : { name: 'settings' })}
-        onNewSession={openLauncher}
+        onNewSession={openOwnLauncher}
         launches={launches}
         selectedLaunchId={selectedLaunchId}
         onSelectLaunch={onSelectLaunch}
@@ -690,8 +702,8 @@ export function App({ client }: { client: LookoutClient }) {
       <Launcher
         open={launcherOpen}
         onOpenChange={setLauncherOpen}
-        draft={draft ?? initialDraft(state.settings)}
-        onDraftChange={setDraft}
+        draft={workDraft ?? draft ?? initialDraft(state.settings)}
+        onDraftChange={workDraft ? setWorkDraft : setDraft}
         settings={state.settings}
         harnesses={harnesses}
         usage={state.usage}

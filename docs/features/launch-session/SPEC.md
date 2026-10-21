@@ -22,7 +22,7 @@ Sessions started in Orca can't be controlled from Lookout (SIDE shows them greye
 
 - [x] LAUNCH-1.1 N (when focus isn't in a text field), ⌘N in an installed-app window, or the "+" button at the top of the sidebar, opens the launcher with the cursor in the prompt field. (manual)
 - [x] LAUNCH-1.2 The launcher starts with the Harness, model and start directory you used last. (test)
-- [x] LAUNCH-1.3 Esc closes the launcher; reopening it within the same page load restores what you'd typed. (manual)
+- [x] LAUNCH-1.3 Esc closes the launcher; reopening it with N, ⌘N or the "+" button within the same page load restores what you'd typed in a launcher opened that way. A launcher opened from Work (WORK-5.1, WORK-5.2) neither reads nor writes that draft: closing it without a start discards what it held, edits to its prompt included. (e2e)
 
 ### LAUNCH-2 Choose where
 
@@ -138,3 +138,4 @@ Resolved while building (2026-10-16): `fleet spawn` (the CLI) never answers a tr
 - 2026-10-17: LAUNCH-4.2 amended: Start selects the "Starting…" row at once, and the real Session takes over the selection only while that row is still selected, so you're never pulled away from a Session you moved to. Added LAUNCH-4.6, a starting view in the main pane (name, Harness, directory, time since Start; the error and terminal lines once failed), and LAUNCH-4.7, "Starting…" rows in keyboard navigation. Technical approach: the `/l/<id>` URL and the take-over. HIST's resume does the same (HIST-3.1).
 - 2026-10-17: Review of selecting a start: the tab picks the launch id, so Start selects its row the moment you press it, and a late answer never moves you once you've moved on (LAUNCH-4.2 now holds as written). LAUNCH-4.5: the failed row stays compact while selected. LAUNCH-4.6: the error and lines replace the waiting note. LAUNCH-4.7: a failed start takes no ⌘ number. UX: what follows dismissing the selected start, and where focus goes; the starting view shows each fact once. Technical approach: `launchId`, answers that respect where you are, `started` following an id change.
 - 2026-10-19: Done: every acceptance criterion is ticked.
+- 2026-10-21: Changed from Dario's testing: LAUNCH-1.3's draft belongs to the launcher opened with N, ⌘N or "+". A launcher opened from Work no longer shares it, so a Task's URL or a Review prompt left behind by Esc no longer shows up in the next launcher you open. A start from Work that is answered after Esc closed its launcher leaves the N-opened draft alone too. LAUNCH-1.3 is retagged `(e2e)` (a World can check it) and ticked again on a Behaviour test that passes.

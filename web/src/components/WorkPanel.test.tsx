@@ -1,6 +1,6 @@
 import { TB_PROD_INSTALL_COMMAND, TB_PROD_SIGN_IN_COMMAND } from '@shared/defaults.ts';
 import { PRODUCTIVE_EMAIL_ERROR } from '@shared/settings.ts';
-import type { HistoryItem } from '@shared/types.ts';
+import type { HistoryItem, LaunchView } from '@shared/types.ts';
 import type { ColumnMark, PrSection, PrTaskRef, TaskSection, WorkPr, WorkSessionLink, WorkSnapshot, WorkTask } from '@shared/work.ts';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { REFRESH_FAILED, REFRESH_NOT_WATCHED, SaveError } from '@/lib/client';
 import { initialState, reducer } from '@/lib/store';
 import { ageLevel } from '@/lib/work';
-import { renderApp, row, rowEl, settings } from '@/test/helpers';
+import { launchView, renderApp, row, rowEl, settings } from '@/test/helpers';
 
 /** Synthetic PRs only: invented repos, numbers and titles. */
 const pr = (over: Partial<WorkPr> & { repo: string; number: number }): WorkPr => ({
@@ -551,6 +551,74 @@ describe('the Work tab (WORK-1)', () => {
     await user.keyboard('j');
     expect(selectedRow()).toBe('anvil#2101');
     expect(window.location.pathname).toBe('/s/alpha');
+  });
+
+  it('LAUNCH-1.3: a launcher that Start Session or Review opened and Esc closed leaves no trace: the next one opened with N holds only what was typed in an N-opened one, or nothing', async () => {
+    const user = userEvent.setup();
+    openApp('/s/alpha', withTasks());
+    await user.keyboard('w');
+    await waitFor(() => expect(taskList()).toHaveFocus());
+    // Start Session, with the prompt edited, then Esc: N opens an empty launcher.
+    await user.click(taskButton('41000102', 'start')!);
+    await screen.findByRole('dialog');
+    await user.type(screen.getByLabelText('Prompt'), ' and the bells');
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await user.keyboard('n');
+    await screen.findByRole('dialog');
+    expect(screen.getByLabelText('Prompt')).toHaveValue('');
+    // Typed in an N-opened launcher, it survives a Work launcher opened and closed in between.
+    await user.type(screen.getByLabelText('Prompt'), 'my own draft');
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await user.click(taskButton('41000102', 'start')!);
+    await screen.findByRole('dialog');
+    expect(screen.getByLabelText('Prompt')).not.toHaveValue('my own draft');
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    // Review, the same way: R on a Review request, then N.
+    await waitFor(() => expect(taskList()).toHaveFocus());
+    await user.keyboard('jjjjj');
+    expect(selectedRow()).toBe('willow#2106');
+    await user.keyboard('r');
+    await screen.findByRole('dialog');
+    expect(screen.getByLabelText<HTMLTextAreaElement>('Prompt').value).toContain('/p-codex:dual-review');
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await user.keyboard('n');
+    await screen.findByRole('dialog');
+    expect(screen.getByLabelText('Prompt')).toHaveValue('my own draft');
+  });
+
+  it('LAUNCH-1.3: a start from a Work-opened launcher that Esc closed before the answer comes leaves the N-opened launcher’s draft alone', async () => {
+    const user = userEvent.setup();
+    let answer!: (v: LaunchView) => void;
+    const answered = new Promise<LaunchView>((resolve) => (answer = resolve));
+    const app = openApp('/s/alpha', withTasks(), { launch: () => answered });
+    await user.keyboard('w');
+    await waitFor(() => expect(taskList()).toHaveFocus());
+    // A draft typed in an N-opened launcher.
+    await user.keyboard('n');
+    await screen.findByRole('dialog');
+    await user.type(screen.getByLabelText('Prompt'), 'my own draft');
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    // Start from a Work-opened launcher; Esc closes it while the request is still out.
+    await user.click(taskButton('41000102', 'start')!);
+    await screen.findByRole('dialog');
+    await waitFor(() => expect(screen.getByRole('button', { name: /Start/ })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: /Start/ }));
+    expect(app.client.launch).toHaveBeenCalledTimes(1);
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    // The answer arrives after the launcher is gone.
+    await act(async () => {
+      answer(launchView({ id: 'late-start' }));
+      await answered;
+    });
+    await user.keyboard('n');
+    await screen.findByRole('dialog');
+    expect(screen.getByLabelText('Prompt')).toHaveValue('my own draft');
   });
 
   it('WORK-1.7: a list that shows up while Work itself has focus, as after a click on a heading, leaves the selection on the row still showing and focuses the list that holds it', async () => {
