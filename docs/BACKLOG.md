@@ -112,6 +112,36 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
   - the Fake Harnesses (TEST-1.4), to test runs without real agents.
 - **Added:** 2026-10-19, from Dario.
 
+## Needs you while you look elsewhere: a toast and a count (SIDE)
+
+- **What:**
+  - an in-app toast at the top of the main pane when a Session starts to Need you while another is selected: "<title> needs you · ⌘J", gone on its own after a few seconds, or at once on ⌘J;
+  - a count of the Sessions that Need you in the Filter bar, e.g. a small amber `2` beside `+`, with ⌘J in its tooltip.
+- **Why:** inside the app the only cue is the amber rows themselves. With many rows and the list scrolled, a Needs you row below the fold is invisible, and hover-freeze (SIDE-3.4) can keep it there while the pointer rests on the sidebar. The tab-title count (SIDE-3.3) helps only when the tab is in the background. From the design review of 2026-10-22 (suggestion 6), the main loop's "notice while elsewhere" step.
+- **How (proposal):**
+  - a SIDE UX addition: the Non-goal is OS notifications, not in-app ones, so nothing is contradicted;
+  - the count needs no read of its own: the Session list is always fresh, unlike the Dropped count on the Work button;
+  - the toast is a polite live region that announces the Session once, never a ticking timer;
+  - built from the design system's pieces (DS): a Status chip for the count, Needs you's tokens for the toast.
+- **Costs and risks:** a toast that shows while you're typing an answer elsewhere is a distraction; it should never take focus, and maybe not show while the composer has focus.
+- **Added:** 2026-10-22, from the design review; Dario: not now.
+
+## Narrow widths: collapse columns instead of crushing them (SIDE, VIEW)
+
+- **What:** below about 1000 px the layout stops working rather than degrading. At 560 px with History open the main pane is 0 px wide. At 900 px the header's title and every status-line part are cut to one or two letters.
+- **Why:** half of a 13-inch screen is a real width, and WCAG 1.4.10 asks for reflow. Dario uses Lookout full screen, so not now.
+- **How (proposal, from the design review of 2026-10-22, suggestion 2):**
+  - Keep SIDE-8's one grid, whose reason (lines that line up by construction) still holds, but change which columns it holds by width:
+    - below about 1024 px, the right sidebar becomes an overlay over the main pane;
+    - below about 768 px, the Session sidebar collapses to a 40 px rail of Status markers, titles in tooltips, with `/` or a click expanding it;
+    - the main pane never gets narrower than 20rem.
+  - The right sidebar's width is tied to the window: never more than 40% of it (today a fixed 280–720 px, `lib/right-sidebar.ts`).
+  - Header: below 32rem, End Session and Copy session ID fold into one "…" menu and the title keeps at least 8rem; Stop and the Esc button stay whole. Changes VIEW UX's "the buttons always whole; the title gives way".
+  - Status line: drop whole parts by priority (repo first, then branch, then Effort; keep the model and context usage), with the dropped ones in its tooltip, instead of cutting every part short. Changes VIEW-5.5's "parts that don't fit are truncated".
+  - Small ones: "Jump to latest" gets room under the chat's last line instead of covering it; Work's filter labels fit at 300 px.
+- **Costs and risks:** two breakpoints in the shell's grid, an overlay that needs focus handling and Esc, and the dock row's resting height (SIDE-8.1) checked at each width. Screenshots at 520, 560 and 900 px are in the review.
+- **Added:** 2026-10-22, from the design review; Dario: agreed, postponed.
+
 ## Dropped
 
 Discussed and decided against. Each keeps why, so it isn't proposed again without something new.
