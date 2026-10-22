@@ -53,19 +53,19 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
 - **How (proposal):** a USAGE spec change with a Changelog line first; maybe a Settings toggle per Harness rather than hiding on "not installed" alone, since a leftover `~/.codex` makes Fleet think Codex is installed.
 - **Added:** 2026-10-17, from the review of the TEST spec.
 
-## Switch a Codex Session's model (VIEW-6) once Codex 0.164 ships
+## Switch a Codex Session's model and Effort (VIEW-6, VIEW-7) once Codex 0.164 ships
 
-- **What:** the status line's model menu (VIEW-6) for Codex Sessions too, not only Claude Code ones. Picked up once Codex 0.164 is released as stable and installed here.
-- **Why:** VIEW-6 leaves Codex out because the installed Codex, 0.163, only opens a picker on `/model`, which Fleet would have to drive by keys. Codex 0.164 adds `/model <slug>` with the model inline (openai/codex #54378), so Codex can be switched the way Claude Code is.
+- **What:** the status line's model menu (VIEW-6) and Effort menu (VIEW-7) for Codex Sessions too, not only Claude Code ones. Picked up once Codex 0.164 is released as stable and installed here.
+- **Why:** VIEW-6 and VIEW-7 leave Codex out because the installed Codex, 0.163, only opens a picker on `/model` (the model, then its reasoning effort), which Fleet would have to drive by keys. Codex 0.164 adds `/model [model] --reasoning <level> --speed <tier>` with everything inline (openai/codex #54378, merged 2026-10-15; in the 0.164 alphas), so Codex's model and Effort can be switched the way Claude Code's are.
 - **How (proposal):**
-  - VIEW-6.1 and 6.2 change wording: the menu is for Controllable Claude Code and Codex Sessions, listing the models Fleet gives for the Session's Harness, and only a Session that isn't Controllable or has ended keeps a plain model name. The Technical approach's Codex Known gap goes.
-  - `fleet model` in the fork takes Codex: it types `/model <slug>`, answers no confirmation (Codex asks none), and succeeds once the rollout has a `thread_settings_applied` event with the new model, written after the command began.
-  - Fleet's `list` reads that event for a Codex Session's `model`, so the status line shows the new model at once and Lookout keeps no `pendingModel` for Codex.
+  - VIEW-6.1, 6.2, 7.1 and 7.2 change wording: the menus are for Controllable Claude Code and Codex Sessions, listing the models and levels Fleet gives for the Session's Harness (Codex's levels already come from `models_cache.json`'s `supported_reasoning_levels` through `harness list`, `ultra` included where a model has it), and only a Session that isn't Controllable or has ended keeps plain text. The Technical approach's Codex Known gaps go.
+  - `fleet model` and `fleet effort` in the fork take Codex: they type `/model <slug>` and `/model --reasoning <level>`, answer no confirmation (Codex asks none), and succeed once the rollout has a `thread_settings_applied` event with the new model or `reasoning_effort`, written after the command began.
+  - Fleet's `list` reads that event for a Codex Session's `model` and `effort`, so the status line shows the new value at once and Lookout keeps no `pendingModel` or `pendingEffort` for Codex.
 - **Costs and risks:**
-  - Codex's inline `/model` applies to this session only, while Claude Code's also becomes the default for new Sessions (VIEW-6.4). The menu's note has to say which applies to the Session's Harness.
+  - Codex's inline `/model` applies to this session only and leaves saved defaults alone, while Claude Code's `/model` and `/effort` (below `max`) also become the default for new Sessions (VIEW-6.4, VIEW-7.4). Each menu's note has to say which applies to the Session's Harness.
   - `thread_settings_applied` is written only once the rollout file exists, i.e. after the first prompt, so a switch before it has nothing to succeed on.
-  - Codex accepts `/model` mid-turn (from the next turn), but VIEW-6.3 keeps the menu to Idle Sessions for both Harnesses.
-- **Added:** 2026-10-19, from VIEW-6, where Codex is a Known gap.
+  - Codex accepts `/model` mid-turn (from the next turn), but VIEW-6.3 and VIEW-7.3 keep the menus to Idle Sessions for both Harnesses.
+- **Added:** 2026-10-19, from VIEW-6, where Codex is a Known gap. Effort added 2026-10-22, from VIEW-7.
 
 ## The CLIs Lookout uses, and which can be updated (TOOLS)
 
@@ -111,13 +111,6 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
   - WORK's Tasks and PRs;
   - the Fake Harnesses (TEST-1.4), to test runs without real agents.
 - **Added:** 2026-10-19, from Dario.
-
-## The Effort changes in the status line at once (VIEW)
-
-- **What:** after an `/effort` sent from the composer is applied (VIEW-4.9's "Yes", or no confirmation asked), the status line shows the new Effort right away, not only once the next reply reaches the Transcript (VIEW-5.11).
-- **Why:** low importance. The line is right after the next message, but until then it shows the old level just after you changed it, which reads as if the change didn't take.
-- **How (proposal):** either the status line shows the picked level marked "from the next reply", as VIEW-6.7 does for the model, or Fleet reads the command's output text, which Claude Code writes to the Transcript at once. Settle it with item 9 of the Plan (switching the Effort from the status line), which needs the same thing.
-- **Added:** 2026-10-22, from Dario's testing of VIEW-4.9.
 
 ## Dropped
 

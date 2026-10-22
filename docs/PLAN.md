@@ -40,7 +40,7 @@ Updated: 2026-10-22.
    - "Launches minus finish notifications" is unreliable: it misses nested Subagents and revived ones.
    - Found on the way: Fleet's Codex pairing (`harness.rs:883`) may pick a child rollout, and Fleet drops task notifications Claude takes mid-turn, so some VIEW-1.3 result rows go missing.
    - Check live: a stopped or revived Subagent, a Session exiting or killed mid-run, foreground mode, Codex pairing.
-9. **Switch the Effort from the status line** (VIEW, amend VIEW-6's Non-goals). From Dario's earlier testing, as a second step after VIEW-5.11: the Effort becomes a menu of the levels, like VIEW-6's model menu. VIEW-6 rules out effort today. Build it after VIEW-6 and item 5, since they share the menu and the levels. Claude Code's `/effort <level>` asks for VIEW-4.9's confirmation while the prompt cache is warm.
+9. **Switch the Effort from the status line** (VIEW-7, specced 2026-10-22, nothing built). The Effort becomes a menu of the levels beside VIEW-6's model menu, through a new Fleet `effort` command whose fork commit also adds each model's levels to `harness list`. Claude Code only; Codex waits for 0.164 (Backlog). Build it after VIEW-6, whose menu it reuses; item 5's launcher picker then reuses the same levels.
 
 ## Later, or waiting on something
 
