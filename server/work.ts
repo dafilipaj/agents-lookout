@@ -197,7 +197,12 @@ export function acceptPrUrl(v: unknown): string | null {
   return url && inProductiveio(url) ? url : null;
 }
 
-const CI: Record<string, CiState> = { success: 'passing', failure: 'failing', pending: 'running' };
+const CI = new Map<unknown, CiState>([
+  ['success', 'passing'],
+  ['failure', 'failing'],
+  ['pending', 'running'],
+  ['unknown', 'unknown'],
+]);
 
 function readTaskIds(v: unknown): PrTaskRef[] | null {
   if (!Array.isArray(v)) return null;
@@ -232,8 +237,8 @@ export function parsePr(raw: unknown, column: PrColumn): WorkPr | null {
     createdAt: rfc3339(raw.created_at),
     ageDays: age,
     rotting: ROT_BUCKETS.includes(raw.rotting as RotBucket) ? (raw.rotting as RotBucket) : null,
-    // WORK-3.3: anything but a known state, absence included, is "no CI", never passing.
-    ci: typeof raw.check_state === 'string' ? (CI[raw.check_state] ?? 'none') : 'none',
+    // WORK-3.3: tb-pr's `unknown` is "CI unknown"; anything else it doesn't name, absence included, is "no CI". Never passing.
+    ci: CI.get(raw.check_state) ?? 'none',
     chip: column === 'waiting_on_me' ? null : CHIP_OF[column],
     column,
     taskIds: readTaskIds(raw.task_ids),

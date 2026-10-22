@@ -116,7 +116,8 @@ export interface PrDecl {
   comments_count?: number;
   base_branch?: string | null;
   head_branch?: string;
-  check_state?: 'success' | 'failure' | 'pending';
+  /** `unknown` from tb-pr 0.4.0: it couldn't read the check-runs. */
+  check_state?: 'success' | 'failure' | 'pending' | 'unknown';
   productive_task_id?: string;
   /** From a tb-pr with Gap 1 (WORK-4.1); refused on a board declared `withTaskIds: false`. */
   task_ids?: { id: string; source: 'branch' | 'body' }[];

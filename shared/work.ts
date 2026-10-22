@@ -19,8 +19,11 @@ export const CHIP_OF: Record<Exclude<PrColumn, 'waiting_on_me'>, PrChip> = {
   ready_to_merge_mine: 'approved',
 };
 
-/** WORK-3.2, WORK-3.3: `check_state` success, failure, pending; `none` ("no CI") when tb-pr gives none. Never shown as passing. */
-export type CiState = 'passing' | 'failing' | 'running' | 'none';
+/**
+ * WORK-3.2, WORK-3.3: `check_state` success, failure, pending; `unknown` ("CI unknown") when tb-pr
+ * couldn't read the check-runs (0.4.0); `none` ("no CI") when tb-pr gives none. Neither is ever shown as passing.
+ */
+export type CiState = 'passing' | 'failing' | 'running' | 'unknown' | 'none';
 
 /** tb-pr's rotting buckets, least urgent first. */
 export const ROT_BUCKETS = ['fresh', 'warming', 'stale', 'rotting', 'critical'] as const;

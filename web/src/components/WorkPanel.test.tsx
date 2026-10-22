@@ -1133,6 +1133,24 @@ describe('PRs (WORK-3)', () => {
     expect(ci()).not.toHaveTextContent('no CI');
   });
 
+  it('WORK-3.3: "CI unknown" is spelled out and grey, apart from "no CI" and never like passing, in Mine and in Review requests', async () => {
+    openApp('/', snap({ mine: [{ ...DRAFT, ci: 'unknown' }, APPROVED], reviewRequests: [{ ...REVIEW, ci: 'unknown' }] }));
+    await userEvent.setup().keyboard('w');
+    for (const g of ['Mine', 'Review requests'] as const) {
+      const unknown = within(group(g)).getByRole('img', { name: 'CI unknown' });
+      expect(unknown).toHaveTextContent(/^CI unknown$/);
+      expect(unknown).toHaveClass('text-muted-foreground');
+      expect(unknown.querySelector('svg')).not.toHaveClass('text-ok');
+      expect(unknown).toHaveAttribute('title', 'tb-pr couldn’t read this PR’s CI');
+    }
+    // "no CI" keeps its own words and hover.
+    const none = within(group('Mine')).getByRole('img', { name: 'no CI' });
+    expect(none).toHaveTextContent(/^no CI$/);
+    expect(none).toHaveAttribute('title', 'No CI state from tb-pr');
+    // A screen reader hears it in the row's name.
+    expect(option('anvil#2101')).toHaveAccessibleName('anvil #2101 draft CI unknown 2d Sharpen the anvil corners');
+  });
+
   it('WORK-3.5: a PR’s age reads green under 3 days, amber from 3 to 10 days, red over 10, in both groups, keeping its text and hover; without an opening time it stays muted', async () => {
     const DAY = 86_400_000;
     const MIN = 60_000;

@@ -3,7 +3,7 @@ title: "Tasks and PRs"
 code: "WORK"
 status: "In Progress"
 created: "2026-10-19"
-updated: "2026-10-20"
+updated: "2026-10-22"
 ---
 
 # Tasks and PRs
@@ -49,8 +49,8 @@ The right sidebar gets a second tab, Work, next to History.
 
 - [x] WORK-2.1 Tasks lists every Task assigned to the Productive email in Settings, in all projects: any status that isn't closed, in an active project, task list and folder, milestones included. Most recently active first, up to 100. (test)
 - [x] WORK-2.2 Each Task shows its title, project, status and, when set, its due date. A milestone is marked as one. (test)
-- [x] WORK-2.3 A Task with a Linked PR shows the PR's number, state and CI state (WORK-3.2). (test)
-- [x] WORK-2.4 A Task with Linked Sessions shows a Session marker: a live one if any Session is live, otherwise a past one. Clicking the marker, or the row, selects the live Linked Session with the latest activity when any is live; otherwise it resumes the past Linked Session with the latest activity, as History does (HIST-3). Activity is tb-session's `modified_at`; a tie goes to the later-created Session. (e2e)
+- [x] WORK-2.3 A Task with a Linked PR shows the PR's number, state and CI state (WORK-3.2). Its PR → Task Links need tb-pr 0.4.0 or later (WORK-4.1, Gap 1). (test)
+- [x] WORK-2.4 A Task with Linked Sessions shows a Session marker: a live one if any Session is live, otherwise a past one. Clicking the marker, or the row, selects the live Linked Session with the latest activity when any is live; otherwise it resumes the past Linked Session with the latest activity, as History does (HIST-3). Activity is tb-session's `modified_at`; a tie goes to the later-created Session. Sessions Linked through a PR need tb-pr 0.4.0 or later (WORK-4.4); Sessions started on the Task don't. (e2e)
 - [x] WORK-2.5 Settings has a "Productive email" field. While it's empty, it shows the address from `git config --global user.email` as a suggestion, which is saved only when you save it. Its Behaviour test declares that address with `.gitIdentity()` (TEST-1.5). (e2e)
 - [x] WORK-2.6 Until a Productive email is saved, Tasks shows "Set your Productive email in Settings", with a link to Settings, and runs no query. PRs works as usual. (e2e)
 - [x] WORK-2.7 The Productive email is saved trimmed, otherwise as typed. A value with whitespace or a comma inside, without exactly one `@` with text on both sides, or longer than 254 characters is refused with "Enter an email such as name@example.com", and the saved value stays. Saving an empty field clears it, and Tasks goes back to WORK-2.6. (test)
@@ -59,9 +59,8 @@ The right sidebar gets a second tab, Work, next to History.
 ### WORK-3 PRs
 
 - [x] WORK-3.1 PRs has two groups, Mine (your open PRs) and Review requests, both in `productiveio/*` repos only, and each sorted most urgent first as `tb-pr`'s own table sorts them: by rotting bucket, critical first, then oldest first, with remaining ties by repo and then number. (test)
-- [x] WORK-3.2 Each PR shows its repo, number, title and age, plus its CI state: passing, failing, running, or "no CI". A PR in Mine also has a state chip: draft, ready or approved. (test)
-- [ ] WORK-3.3 "No CI" never looks like passing. A Review request shows "no CI" while `tb-pr` gives it no CI state, and its real CI state once `tb-pr` does (Gap 1). (test)
-  - Open: the "no CI" half is tested; the real CI state of a Review request waits on Gap 1 (Dependencies), which no `tb-pr` has yet.
+- [x] WORK-3.2 Each PR shows its repo, number, title and age, plus its CI state: passing, failing, running, "no CI" or "CI unknown" (WORK-3.3). A PR in Mine also has a state chip: draft, ready or approved. (test)
+- [x] WORK-3.3 Neither "no CI" nor "CI unknown" ever looks like passing: both are grey, their words spelled out. A PR shows "no CI" while `tb-pr` gives it no CI state, and "CI unknown" when its `check_state` is `unknown`, that is, `tb-pr` tried to read its CI and couldn't. A Review request shows its real CI state once `tb-pr` gives one, as tb-pr 0.4.0 does (Gap 1). (test)
 - [x] WORK-3.4 A PR shows its Linked Task (title) and its Linked Sessions, and the Session marker and row click behave as in WORK-2.4. (e2e)
 - [x] WORK-3.5 A PR's age, in Mine and in Review requests, is coloured by how long ago the PR was opened: green under 3 days, amber from 3 days up to and including 10 days, red over 10 days. The age text stays, so colour is never the only cue, and its hover still gives the opening date. A PR without an opening time keeps the age's muted colour. (test)
 
@@ -69,7 +68,7 @@ The right sidebar gets a second tab, Work, next to History.
 
 Lookout joins ids that the Building blocks give it. It never extracts a task id from a branch name or a PR body itself.
 
-- [x] WORK-4.1 A PR is Linked to every Task whose id is in its `task_ids` from `tb-pr` (Gap 1), with that entry's source, "branch" or "PR body". A `tb-pr` without `task_ids` gives no PR → Task Links, and Work says once, in the PRs section, that Task links need a newer `tb-pr`. (test)
+- [x] WORK-4.1 A PR is Linked to every Task whose id is in its `task_ids` from `tb-pr` (Gap 1), with that entry's source, "branch" or "PR body". A `tb-pr` without `task_ids`, older than 0.4.0, gives no PR → Task Links, and Work says once, in the PRs section, that Task links need a newer `tb-pr`. (test)
 - [x] WORK-4.2 A PR's opener is inferred, from the Sessions that tb-session finds for the PR's full URL: those whose first prompt doesn't contain the URL (WORK-4.7), and whose life spans the PR's creation, created no later than the PR's `created_at` and last active no earlier than it (5 minutes' slack each way). The earliest-created of them is the opener. There's at most one, and a search that was cut off (WORK-4.8) names none. A Session with the same URL but a longer PR number never counts. (test)
 - [x] WORK-4.3 A Session is "started on" a PR when its first prompt contains the PR's full URL, and "started on" a Task when its first prompt contains the Task's URL in any of the forms under Linking, both as WORK-4.7 matches them. Task searches find candidates for every accepted URL form before first prompts are checked. A PR or Task can have any number of these. (test)
 - [x] WORK-4.4 A Task is Linked to every Session Linked to one of its PRs, and to the Sessions started on it. (test)
@@ -176,7 +175,7 @@ Planned, but not in v1:
   - a circle with a dot (`CircleDot`): a Linked Session is live;
   - an empty circle (`Circle`): only past Linked Sessions;
   - nothing: no Linked Session.
-  - The mock-up uses ● ○ as shorthand, and ✓ ✗ for the CI icons (`CircleCheck`, `CircleX`; `LoaderCircle` while running; `CircleDashed` for "no CI").
+  - The mock-up uses ● ○ as shorthand, and ✓ ✗ for the CI icons (`CircleCheck`, `CircleX`; `LoaderCircle` while running; `CircleDashed` for "no CI"; `CircleQuestionMark` for "CI unknown", whose hover says tb-pr couldn't read the PR's CI).
   - [▶] is the action button (`Play`): "Start Session" on a Task, "Review" on a Review request. A PR in Mine has none. Its tooltip names its key: "Start Session (S)", "Review (R)".
   - [↗] is "Open in browser" (`ExternalLink`), on every row. Its tooltip: "Open in Fantastic (O)" on a Task, "Open on GitHub (O)" on a PR.
   - A row's buttons are for the mouse. As in History, each section's rows are the options of one focusable listbox ("Tasks", "PRs"), each PR group a `group` in it, and an option holds nothing focusable: the keyboard acts on the selected row with Enter, `O`, `R` and `S`, and a screen reader hears those keys in the row's description ("S starts a Session on it, O opens it in Fantastic." on a Task). A row's name is its content, as History's rows' are: a PR's repo, number, chip, CI state, age and title; a Task's title, project, status, milestone chip and due date.
@@ -238,13 +237,13 @@ Planned, but not in v1:
   - The host is Fantastic's production deploy (`.semaphore/deploy/production.yml` and `apps/web/src/lib/release-stage.ts` in `fantastic-productive`).
   - Every route there sits under `/$workspace`. Only the segment's leading organization id is load-bearing (`/109`, `/109-productive` and `/109-anything` all open organization 109; `lib/workspace.ts`), so the id is required and the slug is for people.
   - `tasks/$id` is one of the router's canonical paths (`CANONICAL_PATHS` and `goRoute` in `router.tsx`): it redirects to the task's own home with its panel open. It mirrors the old app's path, so anything that reads `/tasks/<id>` still finds the id.
-  - Fantastic's PR template uses another form, `…/109-productive/home?task=<id>`, which opens the panel over Home. Lookout doesn't build it, but Gap 1 reads it.
+  - Fantastic's PR template uses another form, `…/109-productive/home?task=<id>`, which opens the panel over Home. Lookout doesn't build it, but tb-pr 0.4.0 reads it (Gap 1).
 - **PRs: `tb-pr list --json`.**
   - It prints `{user, fetched_at, columns: {draft_mine, review_mine, ready_to_merge_mine, waiting_on_me, waiting_on_author, notifications}}`, plus `column_issues` when a column had a problem.
   - Each PR has:
     - `number`, `repo`, `title`, `url`, `author`, `state` (draft, ready, approved), `created_at`, `age_days`, `size`, `rotting`, `comments_count`, `base_branch`;
-    - optionally `head_branch`, `check_state` (success, failure, pending), `productive_task_id`, `changes_requested_by` and `has_new_commits_since_my_review`;
-    - after Gap 1, `task_ids`.
+    - optionally `head_branch`, `check_state` (success, failure, pending, and from 0.4.0 `unknown`: tb-pr couldn't read the check-runs), `productive_task_id`, `changes_requested_by` and `has_new_commits_since_my_review`;
+    - from tb-pr 0.4.0 (Gap 1), `task_ids`, always, `[]` when there are none.
   - Mine is `draft_mine`, `review_mine` and `ready_to_merge_mine`; the column sets the state chip, as it sets each PR's `state`: `draft_mine` → draft, `review_mine` → ready, `ready_to_merge_mine` → approved (tb-pr's own short label for that column is "ready"; Lookout's chips don't use those labels). Review requests are `waiting_on_me`, built from `user-review-requested:@me`, so team requests are left out. The other columns aren't shown (Later).
   - **Order:** `list --json` prints each column in GitHub's search order; only the text table sorts (`flatten` in `commands/list.rs`). Lookout sorts each group the table's way (WORK-3.1): rotting bucket descending (critical, rotting, stale, warming, fresh), then `age_days` descending, then repo and number.
   - **Cache:** tb-pr's own, at `~/.cache/tb-pr/`. A read within 5 minutes of the last fetch is served from it: measured 0.01 s. Otherwise `list` fetches (3.6 s cold) and saves.
@@ -256,7 +255,7 @@ Planned, but not in v1:
     - Rate limits: when GitHub's rate limit refuses the login lookup or a PR's details, reviews or commit, the whole fetch fails with "Error: GitHub API error (403): rate limited — resets at HH:MM:SS UTC …" on stderr (`send_get`), the reset as a UTC time of day without a date. A refused search or notifications page only becomes a `column_issues` reason, which `summarize_fetch_error` cuts to "rate limited", dropping the time. A 429 without GitHub's reset header has no time either.
   - **Scope:** one GitHub org (config `github.org`, default `productiveio`). GitHub's `org:` qualifier doesn't match user-owned repos. All 13 open PRs are in `productiveio`; in the last 30 days 52 PRs were opened there and 6 in personal repos, all already merged.
   - **Auth:** `gh auth token`. Errors print to stderr as "Error: …": without `gh`, "failed to run `gh auth token` …"; signed out, "`gh auth token` failed — run `gh auth login`"; a revoked token, "GitHub API error (401): …", or, with `username_override` set, "api error 401" in every column's `column_issues` and exit 0.
-  - **CI:** `check_state` is a roll-up of GitHub check-runs on the head commit, set today only on your own PRs: on 2026-10-19, 9 of 13 (all passing), missing on the ready-to-merge one. Commit statuses aren't read, so a repo that reports CI only that way shows "no CI".
+  - **CI:** `check_state` is a roll-up of GitHub check-runs on the head commit, set before 0.4.0 only on your own PRs: on 2026-10-19, 9 of 13 (all passing), missing on the ready-to-merge one. tb-pr 0.4.0 also reads it for Review requests, and gives `unknown` when the check-runs read failed (a rate limit, another non-2xx answer, the network) or its answer was unexpected, without failing the fetch. Missing still means no CI to show. Commit statuses aren't read, so a repo that reports CI only that way shows "no CI" (WORK-3.3).
 - **Sessions: `tb-session search --all-projects --limit 200 --json -- <query>`**, one search per PR URL. Each Task uses searches for `tasks/<id>` (both hosts' direct paths) and `task=<id>` (legacy `tasks/task/<id>` paths and Fantastic's query form); the literal first prompt check below rejects unrelated hits. The query follows `--`, as it does for History's searches.
   - Each result row has `session_id`, `first_prompt`, `created_at`, `modified_at`, `git_branch`, `project_path` and `matched_snippet`. A row is live when Fleet's list has its `session_id` (HIST's live check).
   - Without `--limit`, tb-session returns its configured default, 10 Sessions, ranked by FTS5 relevance (BM25), so neither "earliest" nor "every" would hold. With `--limit 200` Lookout gets every match it has seen in practice (at most 9 for one PR), sorts by `created_at` itself, and treats a full 200 as cut off (WORK-4.8).
@@ -270,8 +269,8 @@ All Links are found on the server by matching ids and URLs Lookout already knows
 
 | Link | Rule | Evidence (2026-10-19) | In v1 |
 |---|---|---|---|
-| PR → Task | Head branch `<prefix>/<id>-…` (tb-pr, Gap 1) | 16 of 72 PRs you opened since 2026-08-19. All 6 open PRs that a Task's `PR:` TODO names follow it, and agree with the TODO. | Yes |
-| PR → Task | Task URL in the PR body (tb-pr, Gap 1) | 26 of 72: 6 as `app.productive.io/…/tasks/task/<id>`, 5 as `…/tasks/<id>`, 15 as Fantastic's `…/home?task=<id>`. tb-pr reads none of the 13 open PRs correctly today. | Yes |
+| PR → Task | Head branch `<prefix>/<id>-…`, an id of 5 to 12 digits (tb-pr 0.4.0, Gap 1) | 16 of 72 PRs you opened since 2026-08-19. All 6 open PRs that a Task's `PR:` TODO names follow it, and agree with the TODO. | Yes |
+| PR → Task | Task URL in the PR body, standalone in prose or as a Markdown link's destination, never in code, a link label, another URL or an HTML comment (tb-pr 0.4.0, Gap 1) | 26 of 72: 6 as `app.productive.io/…/tasks/task/<id>`, 5 as `…/tasks/<id>`, 15 as Fantastic's `…/home?task=<id>`. tb-pr reads none of the 13 open PRs correctly today. | Yes |
 | PR → Task | `PR: <url>` TODO on the Task | On 6 of 9 open Tasks, all also found by branch. One `tb-prod` call per Task. | Later |
 | Session opened PR (inferred) | Earliest-created Session whose indexed text has the PR's full URL, among those whose first prompt doesn't and whose life spans the PR's creation | See below: right for 12 of 12 PRs where the opener could be checked. | Yes |
 | Session started on PR | First prompt contains the PR's full URL | Every other Session the URL search found (13, across 3 PRs) had the URL in its first prompt. | Yes |
@@ -299,36 +298,23 @@ All Links are found on the server by matching ids and URLs Lookout already knows
 
 ### Gaps (cli-toolbox PRs, protected `main`)
 
-- **Gap 1, tb-pr (needed for WORK-4.1, and for WORK-3.3 to show CI):** one PR.
-  - **The bug:** `extract_task_id` (`crates/tb-pr/src/core/productive.rs`) matches `https://app\.productive\.io/{org_slug}/tasks/(\w+)`. It reads `/tasks/task/<id>` as the id `task`, takes `123abc` as an id, misses the Fantastic host, and doesn't read the branch.
-  - **New field** on `Pr` (`core/model.rs`): `task_ids: Vec<TaskRef>`, where `TaskRef { id: String, source: "branch" | "body" }`.
-    - Always serialized, `[]` when there are none, so its presence tells Lookout the `tb-pr` is new enough.
-    - One entry per (id, source) pair, branch first, then the body's in order of first appearance. The same id can appear twice, once per source.
+- **Gap 1, tb-pr 0.4.0 (needed for WORK-4.1, the PR → Task half of WORK-2.3 and WORK-2.4, and Review requests' CI in WORK-3.3):** one cli-toolbox PR, not merged yet. What follows is what 0.4.0 does; the parser's details are tb-pr's own: `crates/tb-pr/SPEC.md` (Per-PR data on each card), `SKILL.md` and the doc comments in `core/productive.rs`.
+  - **The bug it fixes:** 0.3.1's `extract_task_id` matched `https://app\.productive\.io/{org_slug}/tasks/(\w+)`. It read `/tasks/task/<id>` as the id `task`, took `123abc` as an id, missed the Fantastic host, and didn't read the branch.
+  - **`task_ids`** on every PR: `[{ id, source: "branch" | "body" }]`.
+    - Always serialized, `[]` when there are none, so its presence tells Lookout the `tb-pr` is new enough (WORK-4.1).
+    - The branch's id first, then the body's in order of first appearance. One entry per (id, source) pair, so the same id can appear once per source.
     - `id` is ASCII digits only.
-  - **Patterns,** for Rust's `regex` crate, which has no lookahead or lookbehind. `[0-9]` instead of `\d`, which also matches non-ASCII digits there. An id ends with an explicit terminator, a character that can't continue an id, or the end of the text; `captures_iter` consumes that character, which no following URL needs.
-    - **Branch,** on `head_branch`: `^[a-z]+/([0-9]{5,})(?:-|$)`, as in `feature/12345678-short-name`.
-    - **Body,** where `{org}` is `regex::escape` of the leading digits of `productive_org_slug` (`109`):
-      - task path, old app or Fantastic: `https://app\.(?:fantastic\.)?productive\.io/{org}(?:-[A-Za-z0-9-]*)?/tasks/(?:task/)?([0-9]+)(?:[^A-Za-z0-9_-]|$)`;
-      - Fantastic query, in two steps, since a single pattern can't say "the first `task` parameter" without lookaround (a lazy one skips an invalid first value and takes a later one):
-        1. `https://app\.fantastic\.productive\.io/{org}(?:-[A-Za-z0-9-]*)?/[^\s?#),|<>"'\[\]]*\?([^\s#),|<>"'\[\]]*)` captures the URL's query, up to whitespace, one of `#),|<>"'[]`, or the end of the text. The path before the `?` stops at the same characters, so neither runs on into a URL written right after it (`…?task=111,https://…`);
-        2. the code splits that query on `&` and takes the first parameter named exactly `task` (its text before the first `=`, or all of it without one). Only that parameter counts: the URL gives an id when its value, after the `=`, matches `^([0-9]+)(?:[^A-Za-z0-9_-]|$)`, and none otherwise, even when a later `task=` is valid.
-    - **Order and duplicates:** the two body patterns' matches are taken in the order they start in the body. A URL that both match (`…/tasks/12345?task=678`) counts once, with the path's id. The same id from either pattern gives one body entry.
-    - URLs for another organization don't count: after `/{org}` comes `-` or `/`, so `/1090-…` doesn't match `109`.
-  - **`productive_task_id`** keeps its name: the first body id, now from the fixed patterns, so digits only. Its old tests expect alphanumeric ids (`abc123xyz`, `one`, `zzz`); they're rewritten with digit ids, and `abc123xyz` now gives none. The TUI and `show` keep using it.
-  - **Cache:** the board is cached under a new key, `board:state:v2` (`BOARD_KEY` in `core/cache.rs`), so a board saved by an older tb-pr, which has no `task_ids`, is neither served nor put back by `merge_with_previous`. Without the new key, serde's default would read it as `task_ids: []` for up to an hour and longer through put-back columns, telling Lookout "new enough, no Links".
-  - **CI for Review requests:** pass `r_wait_me` to `collect_commit_keys_for` for the check-runs fetch, and assign `pr.check_state` in the `waiting_on_me` map, as the draft map does. Fetching alone isn't enough: `build_pr` sets `check_state` to `None` and today only the own-PR paths assign it. Update the `check_state` doc comment on `Pr`. That's one more check-runs call per Review request.
-  - **Tests** the PR must have:
-    - Body, giving `12345`: `https://app.productive.io/109-productive/tasks/12345`; `…/tasks/task/12345` (never `task`); `https://app.fantastic.productive.io/109-productive/tasks/12345`; `…/109-productive/home?task=12345`; `…/home?view=board&task=12345#comments`; `https://app.productive.io/109/tasks/12345`.
-    - Terminators, each giving `12345`: `(…/tasks/12345)`, `…/tasks/12345.`, `…/tasks/12345,`, `…/tasks/12345/`, `…/tasks/12345?x=1`, `…/tasks/12345#c`, `…/home?task=12345&x=1`, `(…/home?task=12345)`, `…/home?task=12345.`, followed by a newline, and at the very end of the body.
-    - Body, giving nothing: `…/tasks/123abc`, `…/tasks/12345_x`, `…/tasks/12345-x`, `…/tasks/task`, `…/tasks/`, `…/home?task=123abc`, `…/home?subtask=12345`, `…/home?mytask=12345`, `https://app.productive.io/42-other/tasks/12345`, `…/1090-x/tasks/12345`, `https://app.fantastic.productive.io/1090-x/home?task=12345`, `https://app.productive.io.example.com/109/tasks/12345`, and `…/tasks/١٢٣٤٥` (Arabic-Indic digits).
-    - First `task` parameter: `?task=12&task=34` gives `12`; `?subtask=1&task=12345` gives `12345`; `?task=123abc&task=456`, `?task=&task=456` and `?task&task=456` give nothing.
-    - Several: two Task URLs give both ids in order; the same id twice in the body gives one entry.
-    - Adjacent, with only a comma between them: `https://app.fantastic.productive.io/109-productive/home?task=111,https://app.fantastic.productive.io/109-productive/home?task=222` and `https://app.fantastic.productive.io/109-productive/tasks/111,https://app.fantastic.productive.io/109-productive/home?task=222` each give `111`, then `222`.
-    - Across both body patterns: `…/home?task=222` before `…/tasks/111` gives `222`, then `111`; `…/tasks/111` before `…/home?task=222` gives `111`, then `222`; `…/tasks/12345` and `…/home?task=12345` in one body give one entry; `…/tasks/12345?task=678` gives `12345` only.
-    - Branch: `feature/12345678-short-name` and `fix/12345678` give `12345678`; `feature/1234-x`, `feature/12345678abc`, `feature/x-12345678`, `Feature/12345678-x` and `main` give nothing.
-    - Combined: branch and body with the same id give two entries, branch first; neither gives `task_ids: []` in `list --json`.
-    - CI: a `waiting_on_me` PR whose head commit has check-runs has `check_state` in the serialized `list --json` output.
-    - Cache: a board saved under the old key isn't used by `list` or by `merge_with_previous`.
+  - **Branch:** `head_branch` as `<prefix>/<id>-…` or `<prefix>/<id>`, a lowercase prefix and an id of 5 to 12 digits, as in `feature/12345678-short-name`.
+  - **Body:** only real URLs count.
+    - `https` only, on exactly `app.productive.io` or `app.fantastic.productive.io`, with no port and no user info.
+    - The first path segment is the organization, `109` or `109-<slug>`, so `/1090-…` and other organizations don't count.
+    - Then `…/tasks/<id>` or `…/tasks/task/<id>` on either host, or, on Fantastic only, the URL's first `task` query parameter (`…/home?task=<id>`). A URL with both counts once, with the path's id.
+    - Path segments and query values are percent-decoded before the id is checked. An id is 1 to 12 ASCII digits; a longer one is ignored, never cut.
+    - A standalone URL in prose and a Markdown link's destination count. Code blocks, inline code, a link's label, a URL inside another URL (`…?next=https://app.productive.io/…`) and HTML comments don't.
+    - A few contrived Markdown shapes are misread, such as an unclosed fence inside an HTML comment; tb-pr's review left them as known limits.
+  - **`productive_task_id`** keeps its name: the first body id, digits only. The TUI and `show` keep using it.
+  - **Cache:** the board is cached under a new key, `board:state:v2` (`BOARD_KEY` in `core/cache.rs`), so a board saved by an older tb-pr, which has no `task_ids`, is neither served nor put back by `merge_with_previous`. `task_ids` is also required when a cached board is read, so an entry without it fails to load and the board is fetched afresh rather than read as "no Links"; put-back columns expire after an hour like any cache read.
+  - **CI for Review requests:** `waiting_on_me` PRs get `check_state` too, one more check-runs call per Review request (Requests per fetch). A check-runs read that fails gives `unknown`, on any PR (Sources, CI; WORK-3.3).
 - **Gap 2, tb-session (Later):** a refs index of the PR URLs, Productive task URLs and branch names seen anywhere in a Transcript (tool calls and results, and Subagent Transcripts), credited to the parent Session, with `tb-session refs --json`. It would replace the per-item searches, mark the true opener from the `gh pr create` result, and find every Session involved in the work. The Library idea (LIB in the Backlog) wants the same mining.
 - **Gap 3, tb-prod (Later):** a way to say "me" in a query, so Lookout doesn't need an email setting: `--assignee me`, or a filter value that resolves to the configured `person_id`.
 
@@ -355,10 +341,10 @@ All Links are found on the server by matching ids and URLs Lookout already knows
       - `state`: `loading` (nothing read yet), `ok`, `not-installed`, `signed-out` or `error`, from the last read;
       - `reason`: why the last read failed, as a plain sentence that says what to do (UX, Errors), never tb-pr's own text, else `null`; `fix`: the install command or `gh auth login`, else `null`;
       - `stale`: the lists are from an earlier read than the last one, which failed (WORK-7.3); `fetchedAt`: tb-pr's `fetched_at` of the lists shown;
-      - `mine` and `reviewRequests`: PRs most urgent first (WORK-3.1), each `{ repo, number, title, url, createdAt, ageDays, rotting, ci, chip, column, taskIds, links }`, with `ci` one of `passing`, `failing`, `running`, `none` (WORK-3.3), `chip` one of `draft`, `ready`, `approved` in Mine and `null` in Review requests, and `taskIds` tb-pr's `task_ids` as `{ id, source: 'branch' | 'body' }`, `null` when tb-pr doesn't give them. `links` is `{ tasks, sessions, incomplete }`: `tasks` holds `{ id, title, sources }` for each Linked Task, and `sessions` holds each Linked Session with the Link's `reason` (WORK-3.4, WORK-4.1, WORK-4.2, WORK-4.3, WORK-4.5). `incomplete` is true when the PR's search returned 200 Sessions (WORK-4.8).
+      - `mine` and `reviewRequests`: PRs most urgent first (WORK-3.1), each `{ repo, number, title, url, createdAt, ageDays, rotting, ci, chip, column, taskIds, links }`, with `ci` one of `passing`, `failing`, `running`, `none` ("no CI") or `unknown` ("CI unknown", tb-pr's `unknown`) (WORK-3.3), `chip` one of `draft`, `ready`, `approved` in Mine and `null` in Review requests, and `taskIds` tb-pr's `task_ids` as `{ id, source: 'branch' | 'body' }`, `null` when tb-pr doesn't give them. `links` is `{ tasks, sessions, incomplete }`: `tasks` holds `{ id, title, sources }` for each Linked Task, and `sessions` holds each Linked Session with the Link's `reason` (WORK-3.4, WORK-4.1, WORK-4.2, WORK-4.3, WORK-4.5). `incomplete` is true when the PR's search returned 200 Sessions (WORK-4.8).
       - A Linked Session is `{ sessionId, harness, title, createdAt, modifiedAt, live, reason }`; `createdAt` and `modifiedAt` are ms since epoch or `null`, and `live` means Fleet currently lists that Session. `reason` is one of `probably opened this PR (the earliest Session that mentions it)`, `started on this PR`, `started on this Task` or `through PR #<n>`. A PR → Task Link's `sources` holds `branch` or `body`, shown as "branch" or "PR body" (WORK-4.5).
       - `marks`: per group, `{ columns, reason, confirmedAt }` entries, one per reason and time, the reason in plain words (WORK-7.5); the UI's `describeMark` words one ("draft: GitHub's search came back empty, last confirmed 40m ago"), with the same ages as the rest of the UI (`formatAge`);
-      - `taskIds`: `false` when the board's PRs have no `task_ids` (a tb-pr older than Gap 1, WORK-4.1), `null` with no PR to tell by.
+      - `taskIds`: `false` when the board's PRs have no `task_ids` (a tb-pr older than 0.4.0, Gap 1, WORK-4.1), `null` with no PR to tell by.
   - **`PUT /api/work/watch`** `{ clientId, open }`: a tab says whether it has Work open, naming its event stream by the snapshot's `clientId`, as `PUT /api/watch` does. A mutation, so the token and Origin. 404 for an unknown stream, 400 when `open` isn't a boolean; saying the same twice changes nothing. A stream that closes counts as Work closed in that tab.
   - **`POST /api/work/refresh`**, no body, a mutation: it answers when the forced read ends, `200 { ok: true }`, or `200 { ok: false, error }` with the plain reason only. Refused, it answers at once: `409 { ok: false, error }` while no tab has Work open (WORK-8.1), or `429 { ok: false, error, until }`, "Refresh was used less than a minute ago" during the cooldown, or "GitHub is rate limited" (WORK-8.4). An accepted one shows its cooldown in a `work` event at once.
 - **Reads, cooldown and coalescing (WORK-8):**
@@ -399,11 +385,11 @@ All Links are found on the server by matching ids and URLs Lookout already knows
 ### Dependencies
 
 - **tb-prod 1.2.0 or later, built from cli-toolbox's `main`,** for every Tasks criterion: no release has `folder_status` (Sources, Versions), and `install.sh` no longer installs tb-prod. WORK-7.1's install line for it is `CARGO_NET_GIT_FETCH_WITH_CLI=true cargo install --git https://github.com/productiveio/cli-toolbox --branch main --locked --root ~/.local tb-prod`, which puts it in `~/.local/bin`, where Lookout looks (Binaries); the repo is private, so cargo fetches through the git CLI and its GitHub sign-in.
-- **Gap 1** (tb-pr) for WORK-4.1 and the CI half of WORK-3.3.
+- **tb-pr 0.4.0 or later** (Gap 1) for WORK-4.1, the PR → Task Links in WORK-2.3 and WORK-2.4, and Review requests' CI in WORK-3.3. An older tb-pr still reads: its PRs have no Task links, and Work says once that they need a newer `tb-pr` (WORK-4.1).
 - **World fakes** (TEST) for the `(e2e)` criteria:
   - **fake `tb-prod` and `tb-pr`**, which a World may provide next to `claude`, `codex`, `tb-jev` and `curl` (TEST-1.2 and TEST-1.5, since 2026-10-19), for every `(e2e)` criterion here but WORK-1.11 and WORK-2.5. WORK-7.1 declares them absent. Built (`e2e/fakes/`):
     - **fake `tb-prod`**: answers `query tasks` with the Tasks declared for the email in its filter, as JSON:API pages, or with a declared failure (no config, an `api_error` with status 401 or 403, a timeout). It logs each argv and fails the test on any other subcommand, and on any query but the one under Sources: that filter exactly, sorted by `last_activity_at`. Where tb-prod would refuse the call itself (clap's usage error, `invalid_filter`), it prints what tb-prod prints. So a change to the Tasks filter is a change to the fake, checked against tb-prod's schema.
-    - **fake `tb-pr`**: answers `list --json` with the declared board, as tb-pr 0.3.1 prints it (columns, `column_issues` with their `restored_from`, with or without `task_ids`), and `refresh` with a declared exit code and 0.3.1's summary, or with a declared failure (`gh auth token`, 401, rate limited with or without a reset time, a timeout). It logs each argv and fails the test on any other subcommand.
+    - **fake `tb-pr`**: answers `list --json` with the declared board, as tb-pr 0.3.1 prints it (columns, `column_issues` with their `restored_from`), or with 0.4.0's `task_ids` and `check_state` `unknown`, and `refresh` with a declared exit code and 0.3.1's summary, or with a declared failure (`gh auth token`, 401, rate limited with or without a reset time, a timeout). It logs each argv and fails the test on any other subcommand.
     - Like `tb-jev`, they are leaves Lookout only maps, and they never touch the network or a real account (TEST Non-goals).
     - A test can change their answer mid-test or hold a call in flight (TEST-1.6), for WORK-2.8 and WORK-7.3.
   - **Fake Harnesses** (TEST-1.4) for the criteria that select, resume or start a Session: WORK-1.11, WORK-2.4, WORK-3.4 and WORK-4.9.
@@ -437,6 +423,7 @@ All Links are found on the server by matching ids and URLs Lookout already knows
 - **`productiveio/*` only**: all 13 open PRs are there, tb-pr searches one org, and personal repos never link to Productive tasks.
 - **Two PR groups, Mine with a state chip, and Review requests**: waiting-on-author is useful but rarely urgent.
 - **"No CI" on Review requests until Gap 1**: calling `gh` from Lookout would put GitHub logic in Lookout, against 0005.
+- **"CI unknown" apart from "no CI"**: tb-pr 0.4.0 tells a failed check-runs read from a PR without CI, and only the first is worth a Refresh; both stay grey, so neither reads as passing.
 - **One feature, WORK, built PRs → Tasks → Links, with a filter**: the panel, the poller and the Links are shared, and one code keeps the criteria in one place; the filter lets you look at one half at a time.
 - **Links by id, no fuzzy matching on titles**: a wrong Link costs more than a missing one.
 
@@ -467,3 +454,4 @@ All Links are found on the server by matching ids and URLs Lookout already knows
 - 2026-10-21: WORK-4.3's Task searches now cover all accepted first-prompt URL forms with two token queries, followed by the existing literal URL check. The prior single canonical URL search missed old Productive paths and Fantastic's query form.
 - 2026-10-21: Clarified WORK-4.5 and the Linked Session shape: branch and PR body describe PR → Task sources, while a Session reason describes its own Link. No Link behavior changed.
 - 2026-10-21: Changed from Dario's testing: the launcher that Start Session or Review opens has a draft of its own (WORK-5.1, WORK-5.2, LAUNCH-1.3). Closing it without a start discards it, so the next launcher opened with N, ⌘N or "+" holds only what was typed in one opened that way.
+- 2026-10-22: Changed from Dario's testing, against tb-pr 0.4.0 (cli-toolbox PR, not merged yet), which implements Gap 1 more strictly than this spec wrote. Gap 1 and the evidence table now say what 0.4.0 does: only `https` URLs on exactly the two Productive hosts, without port or user info; standalone URLs and Markdown link destinations, never code, inline code, link labels, nested URLs or HTML comments; percent-decoded; ids of 1 to 12 digits, 5 to 12 from a branch; the `board:state:v2` cache key. The parser's details stay in tb-pr's own SPEC. `check_state` gains `unknown`, a check-runs read that failed, which Work shows as "CI unknown", grey like "no CI" and never as passing (WORK-3.3, amended and ticked; WORK-3.2). WORK-2.3, 2.4 and 4.1 say their PR → Task Links need tb-pr 0.4.0; an older one still gets WORK-4.1's message.

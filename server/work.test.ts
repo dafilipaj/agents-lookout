@@ -132,20 +132,36 @@ describe('reading `tb-pr list --json` (tb-pr 0.3.1)', () => {
     expect(titles).toContain('#2103');
   });
 
-  it('WORK-3.3: "no CI" is its own state, never passing: missing or unknown check states, and Review requests until tb-pr gives one', () => {
+  it('WORK-3.3: "no CI" is its own state, never passing: missing or unrecognized check states, and Review requests until tb-pr gives one', () => {
     const board = parseTbPrList(LIST);
     expect(board.columns.waiting_on_me.map((p) => p.ci)).toEqual(['none', 'none']);
     const text = withBoard((b) => {
-      b.columns.waiting_on_me[0].check_state = 'success'; // after Gap 1
+      b.columns.waiting_on_me[0].check_state = 'success'; // tb-pr 0.4.0 (Gap 1)
       b.columns.waiting_on_me[1].check_state = 'neutral';
       b.columns.draft_mine[0].check_state = null;
+      b.columns.draft_mine[1].check_state = 'toString'; // not a state, though every object has one
     });
     const after = parseTbPrList(text);
     expect(after.columns.waiting_on_me.map((p) => [p.number, p.ci])).toEqual([
       [2107, 'none'],
       [2106, 'passing'],
     ]);
-    expect(after.columns.draft_mine.find((p) => p.number === 2101)!.ci).toBe('none');
+    const draft = (n: number) => after.columns.draft_mine.find((p) => p.number === n)!.ci;
+    expect([draft(2101), draft(2102)]).toEqual(['none', 'none']);
+  });
+
+  it('WORK-3.3: tb-pr 0.4.0’s `unknown`, a check-runs read that failed, is "CI unknown", in Mine and in Review requests, never passing or "no CI"', () => {
+    const text = withBoard((b) => {
+      b.columns.waiting_on_me[0].check_state = 'unknown';
+      b.columns.review_mine[0].check_state = 'unknown'; // #2104
+      b.columns.waiting_on_me[1].check_state = 'Unknown'; // tb-pr writes it in lower case only
+    });
+    const board = parseTbPrList(text);
+    expect(board.columns.waiting_on_me.map((p) => [p.number, p.ci])).toEqual([
+      [2107, 'none'],
+      [2106, 'unknown'],
+    ]);
+    expect(board.columns.review_mine.find((p) => p.number === 2104)!.ci).toBe('unknown');
   });
 
   const BAD_URLS = [

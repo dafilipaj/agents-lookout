@@ -1,5 +1,5 @@
 import type { ColumnMark, PrSection, TaskSection, WorkPr, WorkSessionLink, WorkSnapshot, WorkTask } from '@shared/work.ts';
-import { Circle, CircleCheck, CircleDashed, CircleDot, CircleX, ExternalLink, LoaderCircle, Milestone, Play, TriangleAlert } from 'lucide-react';
+import { Circle, CircleCheck, CircleDashed, CircleDot, CircleQuestionMark, CircleX, ExternalLink, LoaderCircle, Milestone, Play, TriangleAlert } from 'lucide-react';
 import { type FocusEvent, type KeyboardEvent, type MouseEvent, type ReactNode, type Ref, type RefObject, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { type PanelNav, WORK_FILTERS, WORK_FILTER_LABEL, type WorkFilter } from '@/lib/right-sidebar';
 import { formatAge } from '@/lib/time';
@@ -802,10 +802,19 @@ function RowButton({ title, action, onClick, children }: { title: string; action
   );
 }
 
-const CI_LABEL: Record<WorkPr['ci'], string> = { passing: 'CI passing', failing: 'CI failing', running: 'CI running', none: 'No CI state from tb-pr' };
+const CI_LABEL: Record<WorkPr['ci'], string> = {
+  passing: 'CI passing',
+  failing: 'CI failing',
+  running: 'CI running',
+  unknown: 'CI unknown',
+  none: 'no CI',
+};
+/** The hover: the label, or what the two grey states mean. */
+const CI_TITLE: Record<WorkPr['ci'], string> = { ...CI_LABEL, unknown: 'tb-pr couldn’t read this PR’s CI', none: 'No CI state from tb-pr' };
 
-/** WORK-3.2, WORK-3.3: CI as an icon; "no CI" is spelled out and grey, so it never reads as passing. */
+/** WORK-3.2, WORK-3.3: CI as an icon; "no CI" and "CI unknown" are spelled out and grey, so they never read as passing. */
 function Ci({ ci }: { ci: WorkPr['ci'] }) {
+  const spelled = ci === 'unknown' || ci === 'none';
   const icon =
     ci === 'passing' ? (
       <CircleCheck aria-hidden className="size-3.5 text-ok" />
@@ -813,20 +822,22 @@ function Ci({ ci }: { ci: WorkPr['ci'] }) {
       <CircleX aria-hidden className="size-3.5 text-destructive" />
     ) : ci === 'running' ? (
       <LoaderCircle aria-hidden className="size-3.5 text-busy motion-safe:animate-spin" />
+    ) : ci === 'unknown' ? (
+      <CircleQuestionMark aria-hidden className="size-3.5" />
     ) : (
       <CircleDashed aria-hidden className="size-3.5" />
     );
   return (
     <span
       role="img"
-      aria-label={ci === 'none' ? 'no CI' : CI_LABEL[ci]}
-      title={CI_LABEL[ci]}
+      aria-label={CI_LABEL[ci]}
+      title={CI_TITLE[ci]}
       data-field="ci"
       data-ci={ci}
-      className={cn('flex shrink-0 items-center gap-0.5', ci === 'none' && 'text-[11.5px] text-muted-foreground')}
+      className={cn('flex shrink-0 items-center gap-0.5', spelled && 'text-[11.5px] text-muted-foreground')}
     >
       {icon}
-      {ci === 'none' && <span aria-hidden>no CI</span>}
+      {spelled && <span aria-hidden>{CI_LABEL[ci]}</span>}
     </span>
   );
 }
