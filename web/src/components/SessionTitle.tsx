@@ -219,7 +219,7 @@ export function useSessionTitle({
         autoComplete="off"
         // The title's width, at least 8rem; it gives way like the title on a narrow header.
         style={{ width: `max(8rem, ${width}px)` }}
-        className="h-7 max-w-full min-w-0 rounded-sm border border-input bg-background px-1 text-[15px] font-semibold tracking-tight text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset disabled:text-muted-foreground"
+        className="h-7 max-w-full min-w-0 rounded-sm border border-input bg-background px-1 text-title font-semibold tracking-tight text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset disabled:text-muted-foreground"
         onChange={(e) => {
           const draft = e.currentTarget.value;
           setState((s) => (s.phase.kind === 'editing' ? { ...s, phase: { ...s.phase, draft } } : s));
@@ -259,7 +259,7 @@ export function useSessionTitle({
       <h1
         ref={headingRef}
         tabIndex={-1}
-        className={cn('min-w-5 truncate text-[15px] font-semibold tracking-tight outline-none', ended && 'text-muted-foreground')}
+        className={cn('min-w-5 truncate text-title font-semibold tracking-tight outline-none', ended && 'text-muted-foreground')}
         title={tooltip}
       >
         {content}

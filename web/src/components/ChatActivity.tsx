@@ -36,7 +36,7 @@ export function ChatActivity({ row, ended, entries, sentAt }: ChatActivityProps)
     <div
       data-testid="chat-activity"
       data-activity={activity?.kind}
-      className={cn('mx-auto flex w-full max-w-3xl items-center gap-2 px-6 text-[12.5px]', activity && 'pb-5')}
+      className={cn('mx-auto flex w-full max-w-3xl items-center gap-2 px-6 text-meta', activity && 'pb-5')}
     >
       {activity && (
         <span aria-hidden className="flex size-3.5 shrink-0 items-center justify-center">

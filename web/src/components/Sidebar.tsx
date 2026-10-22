@@ -209,12 +209,12 @@ export function Sidebar(props: SidebarProps) {
             <li role="presentation" className="flex items-baseline gap-1.5 px-2 pt-1 pb-1">
               <span
                 id="view-only-heading"
-                className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase"
+                className="text-caption font-medium tracking-wide text-muted-foreground uppercase"
                 title="Running in another app (an IDE, Claude Desktop, another terminal app): Lookout shows them but can't type into them."
               >
                 View only
               </span>
-              <span className="text-[11px] text-muted-foreground/70 tabular-nums">{viewOnly.length}</span>
+              <span className="text-caption text-muted-foreground/70 tabular-nums">{viewOnly.length}</span>
             </li>
             {viewOnly.map(item)}
           </ul>
@@ -246,10 +246,10 @@ export function Sidebar(props: SidebarProps) {
             placeholder="Filter"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            className="h-7 w-full min-w-0 rounded-md border border-input bg-background/60 pr-6 pl-7 text-[13px] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 dark:bg-input/20 [&::-webkit-search-cancel-button]:hidden"
+            className="h-7 w-full min-w-0 rounded-md border border-input bg-background/60 pr-6 pl-7 text-body outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 dark:bg-input/20 [&::-webkit-search-cancel-button]:hidden"
           />
           {!filter && (
-            <kbd className="pointer-events-none absolute right-1.5 rounded border border-border px-1 font-mono text-[10px] leading-4 text-muted-foreground">
+            <kbd className="pointer-events-none absolute right-1.5 rounded border border-border px-1 font-mono text-caption leading-4 text-muted-foreground">
               /
             </kbd>
           )}
@@ -319,7 +319,7 @@ function Banner({ icon, text, detail }: { icon: ReactNode; text: string; detail?
     <div
       role="status"
       title={detail}
-      className="mx-2.5 my-2 flex items-center gap-1.5 rounded-md border border-needs-you/30 bg-needs-you-soft px-2 py-1.5 text-[12px] leading-4 text-needs-you-text"
+      className="mx-2.5 my-2 flex items-center gap-1.5 rounded-md border border-info-border bg-info-soft px-2 py-1.5 text-meta leading-4 text-info-text"
     >
       {icon}
       <span>{text}</span>
@@ -330,8 +330,8 @@ function Banner({ icon, text, detail }: { icon: ReactNode; text: string; detail?
 function Message({ title, hint }: { title: string; hint?: ReactNode }) {
   return (
     <div className="px-4 py-8 text-center">
-      <p className="text-[13px] font-medium">{title}</p>
-      {hint && <p className="mt-1 text-[12px] leading-5 text-muted-foreground">{hint}</p>}
+      <p className="text-body font-medium">{title}</p>
+      {hint && <p className="mt-1 text-meta leading-5 text-muted-foreground">{hint}</p>}
     </div>
   );
 }
@@ -339,14 +339,14 @@ function Message({ title, hint }: { title: string; hint?: ReactNode }) {
 function NotInstalled({ command }: { command: string }) {
   return (
     <div className="px-3 py-6" role="alert">
-      <p className="text-[13px] font-medium">Fleet isn't installed</p>
-      <p className="mt-1 text-[12px] leading-5 text-muted-foreground">
+      <p className="text-body font-medium">Fleet isn't installed</p>
+      <p className="mt-1 text-meta leading-5 text-muted-foreground">
         Lookout finds Sessions through Fleet. Install it, and the list appears here on its own:
       </p>
-      <pre className="mt-2 rounded-md border border-border bg-background p-2 font-mono text-[11px] leading-4 break-all whitespace-pre-wrap select-all">
+      <pre className="mt-2 rounded-md border border-border bg-background p-2 font-mono text-caption leading-4 break-all whitespace-pre-wrap select-all">
         {command}
       </pre>
-      <p className="mt-2 text-[12px] leading-5 text-muted-foreground">
+      <p className="mt-2 text-meta leading-5 text-muted-foreground">
         Needs Rust&apos;s <Code>cargo</Code>, and <Code>tmux</Code> for Sessions Lookout can control.
       </p>
     </div>
@@ -354,7 +354,7 @@ function NotInstalled({ command }: { command: string }) {
 }
 
 function Code({ children }: { children: ReactNode }) {
-  return <code className="rounded bg-muted px-1 font-mono text-[11px]">{children}</code>;
+  return <code className="rounded bg-muted px-1 font-mono text-caption">{children}</code>;
 }
 
 /** A row keyboard navigation can land on: a "Starting…" row or a Session's. */

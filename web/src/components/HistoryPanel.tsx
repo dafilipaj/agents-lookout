@@ -220,7 +220,7 @@ export function HistoryPanel({ focusKey, sessions, now, search, onOpen, navRef }
             }}
           />
         ))}
-        {results.loadingMore && <p className="px-2 py-2 text-[12px] text-muted-foreground">Loading more…</p>}
+        {results.loadingMore && <p className="px-2 py-2 text-meta text-muted-foreground">Loading more…</p>}
         {!results.loadingMore && results.hasMore && results.auto >= AUTO_FILL_PAGES && <LoadMore onClick={() => loadMore()} />}
       </div>
     );
@@ -240,11 +240,11 @@ export function HistoryPanel({ focusKey, sessions, now, search, onOpen, navRef }
             placeholder="Search past Sessions"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="h-7 w-full min-w-0 rounded-md border border-input bg-background/60 pr-2 pl-7 text-[13px] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 dark:bg-input/20 [&::-webkit-search-cancel-button]:hidden"
+            className="h-7 w-full min-w-0 rounded-md border border-input bg-background/60 pr-2 pl-7 text-body outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 dark:bg-input/20 [&::-webkit-search-cancel-button]:hidden"
           />
         </label>
         <div className="flex min-w-0 items-center gap-2">
-          <label className="flex min-w-0 items-center gap-1.5 text-[12px] text-muted-foreground">
+          <label className="flex min-w-0 items-center gap-1.5 text-meta text-muted-foreground">
             <input type="checkbox" checked={headless} onChange={(e) => setHeadless(e.target.checked)} className="size-3.5" />
             <span className="truncate">Show Headless Sessions</span>
           </label>
@@ -274,7 +274,7 @@ export function HistoryPanel({ focusKey, sessions, now, search, onOpen, navRef }
           </div>
         </div>
         {openError && (
-          <p role="alert" className="rounded-md border border-destructive/30 px-2 py-1.5 text-[12px] text-destructive">
+          <p role="alert" className="rounded-md border border-destructive/30 px-2 py-1.5 text-meta text-destructive">
             {openError}
           </p>
         )}
@@ -311,25 +311,25 @@ function Result({ index, item, live, active, opening, now, onClick }: ResultProp
       title={what}
       onClick={onClick}
       className={cn(
-        'flex cursor-pointer flex-col gap-0.5 rounded-md px-2 py-1.5 text-[13px] hover:bg-sidebar-accent/60',
+        'flex cursor-pointer flex-col gap-0.5 rounded-md px-2 py-1.5 text-body hover:bg-sidebar-accent/60',
         active && 'bg-sidebar-accent',
       )}
     >
       <div className="flex min-w-0 items-center gap-1.5">
-        <span aria-hidden className={cn('flex w-3 shrink-0 justify-center', live ? 'text-busy' : 'text-muted-foreground')} data-field="marker">
+        <span aria-hidden className="flex w-3 shrink-0 justify-center text-muted-foreground" data-field="marker">
           {live ? <CircleDot className="size-3" /> : item.blocked ? <CircleSlash className="size-3" /> : <Circle className="size-3" />}
         </span>
         <span className={cn('min-w-0 flex-1 truncate font-medium', item.blocked && 'text-muted-foreground')} data-field="title">
           {item.title}
         </span>
         {live && (
-          <span className="shrink-0 rounded-full bg-muted px-1.5 text-[11px] font-medium" data-field="live">
+          <span className="shrink-0 rounded-full bg-muted px-1.5 text-caption font-medium" data-field="live">
             live
           </span>
         )}
-        {opening && <span className="shrink-0 text-[11px] text-muted-foreground">Resuming…</span>}
+        {opening && <span className="shrink-0 text-caption text-muted-foreground">Resuming…</span>}
       </div>
-      <div className="flex min-w-0 items-center gap-1 pl-4.5 text-[12px] text-muted-foreground">
+      <div className="flex min-w-0 items-center gap-1 pl-4.5 text-meta text-muted-foreground">
         <HarnessIcon harness={item.harness} className="size-3" />
         <span className="shrink-0" data-field="harness">
           {HARNESS_NAME[item.harness]}
@@ -358,15 +358,15 @@ function Result({ index, item, live, active, opening, now, onClick }: ResultProp
             </span>
           </>
         )}
-        {item.headless && <span className="shrink-0 rounded bg-muted px-1 text-[10.5px]">headless</span>}
+        {item.headless && <span className="shrink-0 rounded bg-muted px-1 text-caption">headless</span>}
       </div>
-      {item.blocked === 'folder-gone' && <p className="pl-4.5 text-[11.5px] text-muted-foreground">folder gone</p>}
-      {item.blocked === 'transcript-missing' && <p className="pl-4.5 text-[11.5px] text-muted-foreground">Transcript deleted</p>}
+      {item.blocked === 'folder-gone' && <p className="pl-4.5 text-meta text-muted-foreground">folder gone</p>}
+      {item.blocked === 'transcript-missing' && <p className="pl-4.5 text-meta text-muted-foreground">Transcript deleted</p>}
       {item.snippet && (
-        <p className="line-clamp-2 pl-4.5 text-[12px] text-muted-foreground" data-field="snippet">
+        <p className="line-clamp-2 pl-4.5 text-meta text-muted-foreground" data-field="snippet">
           {snippetParts(item.snippet).map((p, i) =>
             p.hit ? (
-              <mark key={i} className="rounded-sm bg-needs-you-soft px-0.5 text-foreground">
+              <mark key={i} className="rounded-sm bg-highlight px-0.5 text-foreground">
                 {p.text}
               </mark>
             ) : (
@@ -382,8 +382,8 @@ function Result({ index, item, live, active, opening, now, onClick }: ResultProp
 function Message({ title, hint }: { title: string; hint?: string }) {
   return (
     <div className="px-4 py-8 text-center" role="status">
-      <p className="text-[13px] font-medium">{title}</p>
-      {hint && <p className="mt-1 text-[12px] leading-5 text-muted-foreground">{hint}</p>}
+      <p className="text-body font-medium">{title}</p>
+      {hint && <p className="mt-1 text-meta leading-5 text-muted-foreground">{hint}</p>}
     </div>
   );
 }
@@ -392,8 +392,8 @@ function Message({ title, hint }: { title: string; hint?: string }) {
 function LoadMore({ onClick, hint }: { onClick(): void; hint?: string }) {
   return (
     <div className={cn('flex flex-col items-center gap-1.5 px-2', hint ? 'py-8 text-center' : 'py-2')}>
-      {hint && <p className="text-[12px] leading-5 text-muted-foreground">{hint}</p>}
-      <Button variant="ghost" size="sm" onClick={onClick} className="text-[12px]">
+      {hint && <p className="text-meta leading-5 text-muted-foreground">{hint}</p>}
+      <Button variant="ghost" size="sm" onClick={onClick} className="text-meta">
         Load more
       </Button>
     </div>
@@ -404,15 +404,15 @@ function LoadMore({ onClick, hint }: { onClick(): void; hint?: string }) {
 function NotInstalled({ command }: { command: string }) {
   return (
     <div className="px-3 py-6" role="alert">
-      <p className="text-[13px] font-medium">tb-session isn&apos;t installed</p>
-      <p className="mt-1 text-[12px] leading-5 text-muted-foreground">
+      <p className="text-body font-medium">tb-session isn&apos;t installed</p>
+      <p className="mt-1 text-meta leading-5 text-muted-foreground">
         History searches past Sessions through tb-session. Install it, then reopen History:
       </p>
-      <pre className="mt-2 rounded-md border border-border bg-background p-2 font-mono text-[11px] leading-4 break-all whitespace-pre-wrap select-all">
+      <pre className="mt-2 rounded-md border border-border bg-background p-2 font-mono text-caption leading-4 break-all whitespace-pre-wrap select-all">
         {command}
       </pre>
-      <p className="mt-2 text-[12px] leading-5 text-muted-foreground">
-        Needs an authenticated <code className="rounded bg-muted px-1 font-mono text-[11px]">gh</code>; it installs into ~/.local/bin.
+      <p className="mt-2 text-meta leading-5 text-muted-foreground">
+        Needs an authenticated <code className="rounded bg-muted px-1 font-mono text-caption">gh</code>; it installs into ~/.local/bin.
       </p>
     </div>
   );

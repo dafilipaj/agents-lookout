@@ -420,3 +420,30 @@ describe('clicking a past Session (HIST-3)', () => {
     await act(async () => {});
   });
 });
+
+describe('History colours (design system)', () => {
+  it("DS-3.1: History's filter and results draw the Harness logos monochrome", async () => {
+    const app = renderApp('/', { history: async () => ok([LIVE, CODEX]) });
+    app.snapshot([]);
+    await openHistory(app);
+    await waitFor(() => expect(options()).toHaveLength(2));
+    const group = screen.getByRole('group', { name: 'Harnesses' });
+    const logos = [...group.querySelectorAll('svg[data-harness]'), ...panel().querySelectorAll('[role="option"] svg[data-harness]')];
+    expect(logos.map((l) => l.getAttribute('data-harness'))).toEqual(['claude', 'codex', 'claude', 'codex']);
+    for (const logo of logos) {
+      expect(logo).toHaveAttribute('data-tone', 'mono');
+      expect(logo).toHaveAttribute('fill', 'currentColor');
+    }
+  });
+
+  it("DS-3.4: a search hit is marked with the highlight token, not Needs you's amber", async () => {
+    const app = renderApp('/', { history: async () => ok([{ ...CODEX, snippet: '…but «the hook fires» twice…' }]) });
+    app.snapshot([]);
+    await openHistory(app);
+    await waitFor(() => expect(options()).toHaveLength(1));
+    const hit = options()[0]!.querySelector('mark')!;
+    expect(hit).toHaveTextContent('the hook fires');
+    expect(hit).toHaveClass('bg-highlight', 'text-foreground');
+    expect([...hit.classList].filter((c) => c.includes('needs-you'))).toEqual([]);
+  });
+});

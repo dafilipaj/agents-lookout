@@ -291,7 +291,7 @@ describe('status at a glance', () => {
     // A class without its variants (`dark:text-x` → `text-x`); brackets keep theirs (`text-[color:red]`).
     const base = (c: string) => c.replace(/^(?:[\w-]+:)*/, '');
     // Text colours, arbitrary ones (`text-[#abc]`, `text-(--x)`) included; sizes and alignment aren't.
-    const NOT_COLOUR = /^text-(?:xs|sm|base|lg|\d?xl|left|center|right|justify|start|end|wrap|nowrap|balance|pretty|ellipsis|clip|\[[\d.]+(?:px|rem|em)\])$/;
+    const NOT_COLOUR = /^text-(?:xs|sm|base|lg|\d?xl|caption|meta|body|prose|title|left|center|right|justify|start|end|wrap|nowrap|balance|pretty|ellipsis|clip|\[[\d.]+(?:px|rem|em)\])$/;
     const colours = (el: Element) => [...el.classList].filter((c) => base(c).startsWith('text-') && !NOT_COLOUR.test(base(c)));
     const opacities = (el: Element) => [...el.classList].filter((c) => base(c).startsWith('opacity-'));
     const sidebar = screen.getByRole('complementary', { name: 'Session sidebar' });
@@ -463,5 +463,60 @@ describe('when Fleet fails', () => {
     app.connection(false);
     expect(screen.getByRole('status')).toHaveTextContent('Reconnecting');
     expect(screen.getByRole('listbox', { name: 'Sessions' })).toHaveAttribute('data-stale', 'true');
+  });
+});
+
+describe('design system colours in the sidebar', () => {
+  it("DS-3.1: a row's Harness logo is monochrome, in the row's quiet colour", () => {
+    const app = renderApp();
+    app.snapshot([row({ id: 'c', harness: 'claude', status: 'busy' }), row({ id: 'n', harness: 'codex', status: 'needs-you' })]);
+    for (const [id, tone] of [['c', ROW_TONE.plain], ['n', ROW_TONE.needsYou]] as const) {
+      const logo = within(field(id, 'harness')!).getByRole('img');
+      expect(logo).toHaveAttribute('data-tone', 'mono');
+      expect(logo).toHaveAttribute('fill', 'currentColor');
+      expect(field(id, 'harness')).toHaveClass(tone.quiet);
+    }
+  });
+
+  it('DS-3.3: the banners for a stale Fleet list and a lost server are in the info tone, not amber', () => {
+    const app = renderApp();
+    app.snapshot([row({ id: 'a' })]);
+    app.emit({ type: 'fleet', fleet: { state: 'failing', lastOkAt: NOW - 2000, error: 'fleet list timed out after 4 s' } });
+    const info = ['border-info-border', 'bg-info-soft', 'text-info-text'];
+    const amber = (el: HTMLElement) => [...el.classList].filter((c) => c.includes('needs-you'));
+    expect(screen.getByRole('status')).toHaveClass(...info);
+    expect(amber(screen.getByRole('status'))).toEqual([]);
+    app.emit({ type: 'fleet', fleet: { state: 'ok' } });
+    app.connection(false);
+    expect(screen.getByRole('status')).toHaveTextContent('Reconnecting');
+    expect(screen.getByRole('status')).toHaveClass(...info);
+    expect(amber(screen.getByRole('status'))).toEqual([]);
+  });
+
+  it("DS-3.5: a row's context number and ring take the status line's colours: quiet up to 40%, warning above 40%, destructive above 60%", () => {
+    const app = renderApp();
+    app.snapshot([
+      row({ id: 'p40', contextPct: 40 }),
+      row({ id: 'p41', contextPct: 41 }),
+      row({ id: 'p60', contextPct: 60 }),
+      row({ id: 'p61', contextPct: 61 }),
+      row({ id: 'n61', status: 'needs-you', contextPct: 61 }),
+    ]);
+    const levels = ['text-warning-text', 'text-destructive-text'];
+    const cases = [
+      ['p40', null],
+      ['p41', 'text-warning-text'],
+      ['p60', 'text-warning-text'],
+      ['p61', 'text-destructive-text'],
+      ['n61', 'text-destructive-text'],
+    ] as const;
+    for (const [id, cls] of cases) {
+      const ctx = field(id, 'context')!;
+      for (const c of levels) expect(ctx.classList.contains(c), `${id} ${c}`).toBe(c === cls);
+      // The ring is drawn in the number's colour (currentColor), so it takes the same level.
+      expect(ctx.querySelectorAll('circle[stroke="currentColor"]'), id).toHaveLength(2);
+    }
+    // Up to 40% the number paints nothing of its own: it is the line's quiet colour.
+    expect([...field('p40', 'context')!.classList].filter((c) => c.startsWith('text-'))).toEqual([]);
   });
 });

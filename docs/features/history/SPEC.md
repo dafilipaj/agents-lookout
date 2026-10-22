@@ -78,8 +78,9 @@ Finding last week's Session means remembering its directory and running `claude 
 - Closed, the right sidebar is a narrow rail with a button per tab: History in its header cell, so the top line runs across it too, and Work under it.
 - A past Session opened read-only (HIST-3.3) is laid out like an ended one: a one-line header, its chat, and in the dock row the note on why it can't be resumed with its start directory and branch under it, where a live Session's composer and status line go.
 
-- [✳][◎]: the Claude Code and Codex filter buttons (HIST-2.8), drawn with the same Harness logos as the Session sidebar. A switched-off one is greyed out; the last one on can't be switched off.
-- Markers (lucide icons, [0008](../../decisions/0008-lucide-icons-only.md)): a circle with a dot (`CircleDot`) for live (click selects it), an empty circle for resumable (click resumes it), a slashed circle for can't be resumed (click opens it read-only). The mock-up above uses ● ○ ⊘ as shorthand.
+- [✳][◎]: the Claude Code and Codex filter buttons (HIST-2.8), drawn with the same Harness logos as the Session sidebar, monochrome like every list's (DS-3.1). A switched-off one is greyed out; the last one on can't be switched off.
+- Search hits in a snippet are marked with the design system's `highlight` token (DS-3.4), a neutral tint, not Needs you's amber: a match isn't something to act on.
+- Markers (lucide icons, [0008](../../decisions/0008-lucide-icons-only.md)): a circle with a dot (`CircleDot`) for live, in `muted-foreground` until DS-5.2 draws the Session's Status marker (click selects it), an empty circle for resumable (click resumes it), a slashed circle for can't be resumed (click opens it read-only). The mock-up above uses ● ○ ⊘ as shorthand.
 - Empty states: "No past Sessions", and "Nothing matches" with the query.
 - Errors: tb-session missing shows how to install it, like SIDE-6.1.
 
@@ -177,3 +178,5 @@ None.
 - 2026-10-19: HIST-1.1 and the UX reworded to what the right sidebar does now: History is one of its tabs; `H` opens it on History, switches to History from Work, and closes it when History is showing; the tab strip stands in for the "History" heading, and the sidebar is named "Right sidebar". The mock-up shows the tab strip, with the search field below it. With focus on the tab strip, j/k and ↑/↓ move through History's results, never the Session sidebar's, and ←/→ move between the tabs (WORK-1.7).
 - 2026-10-19: HIST-1.1 retagged `(test)`: switching from Work, the sidebar's name and the missing "History" heading are tested under its ID, next to the button, `H` and the search box's focus.
 - 2026-10-20: tb-session 0.3.0 is released and installed. It also indexes Pi Sessions; their rows are left out, as before (pi is a non-goal). Behaviour tests use the release (TEST spec).
+- 2026-10-22: Design system, colour by meaning (DS-3): the Harness logos in the filter and the results are monochrome (DS-3.1), and a search hit is marked with the `highlight` token instead of Needs you's amber (DS-3.4).
+- 2026-10-22: Design system (DS-3.6): a live result's marker is `muted-foreground` instead of Busy's blue, until DS-5.2 draws the Session's real Status there.

@@ -2,7 +2,7 @@ import type { Status } from '@shared/types.ts';
 import { describe, expect, it } from 'vitest';
 import css from '@/index.css?raw';
 import { type Mode, colourOf, contrast, paint, parseOklch, solid, themeTokens } from '@/test/contrast';
-import { ROW_TONE, STATUS_STRIP_CLASS, STATUS_TAG_CLASS } from './sessions';
+import { CONTEXT_LEVEL_CLASS, ROW_TONE, STATUS_STRIP_CLASS, STATUS_TAG_CLASS } from './sessions';
 
 const STATUSES: Status[] = ['needs-you', 'busy', 'idle', 'unknown'];
 
@@ -137,5 +137,74 @@ describe('Status colours', () => {
     // And a background class it can't read, or two of them, instead of counting as no background.
     expect(() => colourOf('hover:bg-needs-you/[60%]', 'hover:bg')).toThrow(/can't read the colour/);
     expect(() => colourOf('bg-needs-you/12 bg-busy', 'bg')).toThrow(/more than one bg colour/);
+  });
+
+  /** DS-2.1: the design system's new colour tokens. */
+  const DS_TOKENS = ['info-soft', 'info-border', 'info-text', 'highlight', 'warning', 'warning-text', 'destructive-soft'];
+
+  it('DS-2.1: the new colour tokens have a light and a dark oklch() value and a Tailwind colour', () => {
+    for (const t of DS_TOKENS) {
+      expect(themed(t)).toEqual({ token: t, light: true, dark: true, theme: true });
+      expect(light).toMatch(new RegExp(`--${t}:\\s*oklch\\(`));
+      expect(dark).toMatch(new RegExp(`--${t}:\\s*oklch\\(`));
+      // Read as colours in both modes (themeTokens refuses a colour token that isn't oklch()), and dark mode has its own.
+      expect(THEMES.light[t], t).toBeDefined();
+      expect(THEMES.dark[t], t).not.toEqual(THEMES.light[t]);
+    }
+    // Warning is amber like Needs you, but its own family, so the guard can keep them apart (DS spec, Key decisions).
+    for (const mode of MODES) for (const s of ['', '-text']) expect(THEMES[mode][`warning${s}`]).toEqual(THEMES[mode][`needs-you${s}`]);
+  });
+
+  /** DS-2.2: each new text colour on what it sits on, in both modes. */
+  function dsContrasts(themes: Themes): Measure[] {
+    const out: Measure[] = [];
+    for (const mode of MODES) {
+      const t = themes[mode];
+      for (const ground of ['background', 'sidebar']) {
+        const under = solid(t, ground);
+        const infoBox = paint(t, 'info-soft', under);
+        const hit = paint(t, 'highlight', under);
+        out.push(
+          { what: `${mode} info-text on info-soft over ${ground}`, ratio: contrast(paint(t, 'info-text', infoBox), infoBox) },
+          { what: `${mode} info-text on ${ground}`, ratio: contrast(paint(t, 'info-text', under), under) },
+          { what: `${mode} warning-text on ${ground}`, ratio: contrast(paint(t, 'warning-text', under), under) },
+          { what: `${mode} foreground on highlight over ${ground}`, ratio: contrast(paint(t, 'foreground', hit), hit) },
+        );
+      }
+    }
+    return out;
+  }
+
+  it('DS-2.2: info-text, warning-text and the foreground on a highlight keep 4.5:1 or more on what they sit on, in both modes', () => {
+    const measures = dsContrasts(THEMES);
+    expect(measures).toHaveLength(2 * 2 * 4);
+    expect(below(measures)).toEqual([]);
+    // The check can fail: an info text as pale as its box reads 1:1.
+    const pale = themeTokens(css.replace(/(:root \{[^}]*--info-text:\s*)oklch\([^)]+\)/, '$1oklch(0.965 0 0)'));
+    expect(below(dsContrasts(pale)).some((m) => m.startsWith('light info-text on info-soft'))).toBe(true);
+  });
+
+  /** DS-3.5: a sidebar row's context number above 40% and 60%, on every row state, in both modes. */
+  function contextContrasts(themes: Themes): Measure[] {
+    const out: Measure[] = [];
+    for (const mode of MODES) {
+      const t = themes[mode];
+      for (const [kind, tone] of Object.entries(ROW_TONE)) {
+        for (const [state, under] of Object.entries(rowBackgrounds(themes, mode, tone))) {
+          for (const level of ['warning', 'danger'] as const) {
+            const text = colourOf(CONTEXT_LEVEL_CLASS[level]!, 'text')!;
+            out.push({ what: `${mode} ${kind} ${state} ${level} ${text.token}`, ratio: contrast(paint(t, text.token, under, text.alpha), under) });
+          }
+        }
+      }
+    }
+    return out;
+  }
+
+  it("DS-3.5: a sidebar row's context colours are the status line's, warning-text above 40% and destructive-text above 60%, and keep 4.5:1 on every row state", () => {
+    expect(CONTEXT_LEVEL_CLASS).toEqual({ normal: null, warning: 'text-warning-text', danger: 'text-destructive-text' });
+    const measures = contextContrasts(THEMES);
+    expect(measures).toHaveLength(2 * 2 * 3 * 2);
+    expect(below(measures)).toEqual([]);
   });
 });

@@ -49,7 +49,7 @@ export function PastSessionView({ harness, sessionId, now, load }: Props) {
   if (!current) {
     return (
       <PlainView>
-        <div className="p-8 text-sm text-muted-foreground">Loading…</div>
+        <div className="p-8 text-body text-muted-foreground">Loading…</div>
       </PlainView>
     );
   }
@@ -58,8 +58,8 @@ export function PastSessionView({ harness, sessionId, now, load }: Props) {
       <PlainView>
         <div className="mx-auto w-full max-w-3xl px-8 py-7">
           <div role="alert" className="rounded-lg border border-border bg-muted/60 px-3.5 py-3">
-            <p className="text-sm font-medium">Couldn&apos;t open this past Session</p>
-            <p className="text-[13px] text-muted-foreground">{current.error}</p>
+            <p className="text-body font-medium">Couldn&apos;t open this past Session</p>
+            <p className="text-body text-muted-foreground">{current.error}</p>
           </div>
         </div>
       </PlainView>
@@ -74,14 +74,14 @@ export function PastSessionView({ harness, sessionId, now, load }: Props) {
   return (
     <ShellView data-testid="past-session">
       <PaneHeader aria-label="Past Session">
-        <h1 className="min-w-0 truncate text-[15px] font-semibold tracking-tight text-muted-foreground" title={item.title}>
+        <h1 className="min-w-0 truncate text-title font-semibold tracking-tight text-muted-foreground" title={item.title}>
           {item.title}
         </h1>
-        <span className="flex shrink-0 items-center gap-1.5 text-[12.5px] text-muted-foreground">
-          <HarnessIcon harness={item.harness} className="size-4" />
+        <span className="flex shrink-0 items-center gap-1.5 text-meta text-muted-foreground">
+          <HarnessIcon harness={item.harness} tone="brand" className="size-4" />
           {HARNESS_NAME[item.harness]}
         </span>
-        <span className="ml-auto shrink-0 rounded-full bg-muted px-2 py-0.5 text-[12px] font-medium text-muted-foreground">
+        <span className="ml-auto shrink-0 rounded-full bg-muted px-2 py-0.5 text-meta font-medium text-muted-foreground">
           Read-only{item.lastActiveAt !== null && <span className="font-normal opacity-70"> · {formatAge(now - item.lastActiveAt)}</span>}
         </span>
       </PaneHeader>

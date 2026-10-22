@@ -73,7 +73,7 @@ export function freshnessLabel(f: Freshness, now: number): string {
  */
 export const LEVEL_ICON: Record<UsageLevel, { icon: LucideIcon; className: string; label: string } | null> = {
   normal: null,
-  warning: { icon: TriangleAlert, className: 'text-needs-you-text', label: 'Warning: 80% or more used' },
+  warning: { icon: TriangleAlert, className: 'text-warning-text', label: 'Warning: 80% or more used' },
   critical: { icon: OctagonAlert, className: 'text-destructive', label: 'Critical: 95% or more used' },
 };
 
@@ -91,3 +91,20 @@ export function criticalHint(provider: ProviderUsage | undefined, now: number): 
   const age = !isFlagged(f) ? '' : f.kind === 'old' ? ` · as of ${formatAgeAgo(f.at, now)}` : ` · ${freshnessLabel(f, now)}`;
   return `${shortWindowLabel(w)} ${Math.round(w.percent)}%${reset ? ` · resets ${reset}` : ''}${age}`;
 }
+
+/**
+ * A usage bar's fill by level. On the strip (DS-3.2) the fill is `foreground/55` at every level, so
+ * it stays 3:1 against the track in both modes, and the level shows as a 3 px edge at the fill's end
+ * (`warning` at 80% to 94%, `destructive` at 95% or more), set off from the fill by a 1 px gap in the
+ * sidebar's colour so it reads as its own mark whatever the hue, with the triangle or octagon beside it.
+ * The details popover (`solid`) keeps solid fills.
+ */
+export const BAR_TRACK = 'bg-foreground/10';
+export const BAR_FILL: Record<'strip' | 'solid', Record<UsageLevel, string>> = {
+  strip: { normal: 'bg-foreground/55', warning: 'bg-foreground/55', critical: 'bg-foreground/55' },
+  solid: { normal: 'bg-foreground/55', warning: 'bg-warning', critical: 'bg-destructive' },
+};
+export const BAR_EDGE: Record<UsageLevel, string | null> = { normal: null, warning: 'bg-warning', critical: 'bg-destructive' };
+
+/** The 1 px gap between the fill and its edge: the strip's ground (the sidebar), so the edge is a separate mark. */
+export const BAR_EDGE_GAP = 'border-l border-sidebar';

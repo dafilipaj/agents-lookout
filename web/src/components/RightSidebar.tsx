@@ -136,7 +136,7 @@ export function RightSidebar({ width, onResize, tab, onTab, onClose, refresh, on
                 title={`${TAB_LABEL[t]} (${TAB_KEY[t]})`}
                 onClick={() => onTab(t, true)}
                 className={cn(
-                  'flex h-7 min-w-0 items-center gap-1.5 rounded-md px-2 text-[13px] transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
+                  'flex h-7 min-w-0 items-center gap-1.5 rounded-md px-2 text-body transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
                   active ? 'bg-sidebar-accent font-medium text-foreground' : 'text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground',
                 )}
               >
@@ -178,7 +178,7 @@ export function RightSidebar({ width, onResize, tab, onTab, onClose, refresh, on
             className={cn('min-h-0 flex-1 flex-col', t === tab ? 'flex' : 'hidden')}
           >
             {t === 'work' && refreshProblem && (
-              <p role="alert" className="mx-2.5 mt-2 rounded-md border border-destructive/30 px-2 py-1.5 text-[12px] text-destructive" data-field="refresh-problem">
+              <p role="alert" className="mx-2.5 mt-2 rounded-md border border-destructive/30 px-2 py-1.5 text-meta text-destructive" data-field="refresh-problem">
                 {refreshProblem}
               </p>
             )}

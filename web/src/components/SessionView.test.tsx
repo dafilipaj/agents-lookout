@@ -154,9 +154,9 @@ describe('Session view header', () => {
     expect([0, 40, 41, 60, 61, 100].map(contextLevel)).toEqual(['normal', 'normal', 'warning', 'warning', 'danger', 'danger']);
     const cases = [
       [40, 'normal', null],
-      [41, 'warning', 'text-needs-you-text'],
-      [60, 'warning', 'text-needs-you-text'],
-      [61, 'danger', 'text-destructive'],
+      [41, 'warning', 'text-warning-text'],
+      [60, 'warning', 'text-warning-text'],
+      [61, 'danger', 'text-destructive-text'],
     ] as const;
     for (const [pct, level, cls] of cases) {
       const app = renderApp('/s/a');
@@ -164,7 +164,7 @@ describe('Session view header', () => {
       const ctx = statusLine().querySelector('[data-field="context"]')!;
       expect(ctx).toHaveTextContent(`${pct}% context`);
       expect(ctx).toHaveAttribute('data-level', level);
-      for (const c of ['text-needs-you-text', 'text-destructive']) expect(ctx.classList.contains(c)).toBe(c === cls);
+      for (const c of ['text-warning-text', 'text-destructive-text']) expect(ctx.classList.contains(c)).toBe(c === cls);
       app.unmount();
     }
   });
@@ -775,5 +775,27 @@ describe('composer', () => {
       app.emit({ type: 'snapshot', sessions: [row({ id: 'a' })], fleet: { state: 'ok' }, settings: settings(), launches: [], started: [], clientId: 'tab-9', usage: null }),
     );
     await waitFor(() => expect(app.client.watch).toHaveBeenLastCalledWith('tab-9', 'a', false));
+  });
+});
+
+describe('Session view colours (design system)', () => {
+  it("DS-3.1: the main pane's header keeps the Harness logo's brand colour", () => {
+    const app = renderApp('/s/a');
+    app.snapshot([row({ id: 'a', harness: 'claude', status: 'busy' })]);
+    const logo = within(header()).getByRole('img', { name: 'Claude Code' });
+    expect(logo).toHaveAttribute('data-tone', 'brand');
+    expect(logo.getAttribute('fill')).toMatch(/^#[0-9A-Fa-f]{6}$/);
+  });
+
+  it('DS-3.3: the terminal preview\'s "… · retrying" is in the info tone, not amber', async () => {
+    const user = userEvent.setup();
+    const app = renderApp('/s/a');
+    app.snapshot([row({ id: 'a', status: 'busy' })]);
+    await user.click(drawerToggle());
+    await waitFor(() => expect(app.client.watch).toHaveBeenLastCalledWith('tab-1', 'a', true));
+    app.emit({ type: 'preview', sessionId: 'a', text: 'x', error: 'Preview failed: no such pane' });
+    const retrying = within(drawerToggle()).getByText('Preview failed: no such pane · retrying');
+    expect(retrying).toHaveClass('text-info-text');
+    expect([...retrying.classList].filter((c) => c.includes('needs-you'))).toEqual([]);
   });
 });

@@ -128,11 +128,11 @@ export const ChatRail = memo(function ChatRail({
         <div
           role="tooltip"
           aria-hidden
-          className="pointer-events-none absolute right-full z-20 mr-1.5 max-w-72 -translate-y-1/2 rounded-md border border-border bg-popover px-2 py-1 text-[11.5px] text-popover-foreground shadow-md"
+          className="pointer-events-none absolute right-full z-20 mr-1.5 max-w-72 -translate-y-1/2 rounded-md border border-border bg-popover px-2 py-1 text-meta text-popover-foreground shadow-md"
           style={{ top: `calc(${canLoadEarlier ? '1.5rem' : '0.5rem'} + (100% - ${canLoadEarlier ? '2rem' : '1rem'}) * ${fractions.get(tip.cursor)!})` }}
         >
           <span className="block truncate">{tip.text || MARK_KIND_LABEL[tip.kind]}</span>
-          <span className="block text-[10.5px] text-muted-foreground">
+          <span className="block text-caption text-muted-foreground">
             {MARK_KIND_LABEL[tip.kind]}
             {clockTime(tip.ts) && ` · ${clockTime(tip.ts)}`}
           </span>
@@ -150,7 +150,7 @@ export function MarkShape({ kind, className }: { kind: MarkKind; className?: str
       className={cn(
         'block group-hover:scale-125 group-focus-visible:scale-125 motion-safe:transition-transform',
         kind === 'prompt' && 'size-2 rounded-full bg-muted-foreground',
-        kind === 'subagent' && 'size-[7px] rotate-45 rounded-[1px] bg-busy',
+        kind === 'subagent' && 'size-[7px] rotate-45 rounded-[1px] bg-muted-foreground',
         kind === 'question' && 'h-2 w-[9px] bg-needs-you [clip-path:polygon(50%_0,100%_100%,0_100%)]',
         className,
       )}

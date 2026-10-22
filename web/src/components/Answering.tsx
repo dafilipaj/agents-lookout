@@ -38,12 +38,12 @@ export function TerminalNote({
   return (
     <div
       role={info ? 'status' : 'alert'}
-      className={cn('mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12.5px]', info ? 'text-muted-foreground' : 'text-needs-you-text', className)}
+      className={cn('mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-meta', info ? 'text-muted-foreground' : 'text-needs-you-text', className)}
       {...rest}
     >
       <span className="min-w-0">{message}</span>
       {terminal && !terminal.open && (
-        <Button variant="outline" size="xs" className="h-6 gap-1 text-[11.5px]" onClick={terminal.show}>
+        <Button variant="outline" size="xs" className="h-6 gap-1 text-meta" onClick={terminal.show}>
           <TerminalSquare className="size-3" />
           Show terminal
         </Button>
@@ -104,9 +104,9 @@ export function QuestionForm({
           const name = q.header || q.question;
           return (
             <section key={qi} aria-label={name}>
-              {q.header && <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">{linkify(q.header)}</p>}
-              <p className="text-[13.5px] font-medium">{linkify(q.question)}</p>
-              {q.multiSelect && <p className="text-[11.5px] text-muted-foreground">Several can be picked</p>}
+              {q.header && <p className="text-caption font-medium tracking-wide text-muted-foreground uppercase">{linkify(q.header)}</p>}
+              <p className="text-prose font-medium">{linkify(q.question)}</p>
+              {q.multiSelect && <p className="text-meta text-muted-foreground">Several can be picked</p>}
               <ul className="mt-1.5 space-y-1">
                 {q.options.map((o, oi) => {
                   const chosen = d.picked.includes(oi);
@@ -127,7 +127,7 @@ export function QuestionForm({
                           } else update(qi, pick(q, d, oi));
                         }}
                         className={cn(
-                          'flex w-full gap-2 rounded-md border bg-background px-2.5 py-1.5 text-left text-[13px] transition-colors outline-none',
+                          'flex w-full gap-2 rounded-md border bg-background px-2.5 py-1.5 text-left text-body transition-colors outline-none',
                           'hover:border-foreground/40 hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-60 aria-disabled:pointer-events-none aria-disabled:opacity-60',
                           chosen ? 'border-foreground/40 bg-accent font-medium' : 'border-border',
                         )}
@@ -138,7 +138,7 @@ export function QuestionForm({
                         {/* VIEW-1.12: plain text, never a link inside a button. */}
                         <span className="min-w-0">
                           {o.label}
-                          {o.description && <span className="block text-[12px] font-normal text-muted-foreground">{o.description}</span>}
+                          {o.description && <span className="block text-meta font-normal text-muted-foreground">{o.description}</span>}
                         </span>
                       </button>
                     </li>
@@ -156,7 +156,7 @@ export function QuestionForm({
                 value={d.text}
                 onChange={(e) => update(qi, typeText(q, d, e.target.value))}
                 onKeyDown={onKeyDown}
-                className="mt-1 h-8 w-full rounded-md border border-input bg-background px-2.5 text-[13px] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/25 disabled:opacity-60 aria-disabled:opacity-60 dark:bg-input/20"
+                className="mt-1 h-8 w-full rounded-md border border-input bg-background px-2.5 text-body outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/25 disabled:opacity-60 aria-disabled:opacity-60 dark:bg-input/20"
               />
             </section>
           );
@@ -164,7 +164,7 @@ export function QuestionForm({
       </div>
       {/* VIEW-4.1: why the server couldn't take the last answer as written; the text stays to fix. */}
       {panel.phase === 'ready' && panel.message && (
-        <p role="alert" className="mt-2 text-[12.5px] text-destructive">
+        <p role="alert" className="mt-2 text-meta text-destructive">
           {panel.message}
         </p>
       )}
@@ -182,7 +182,7 @@ export function QuestionForm({
             {panel.phase === 'sending' ? 'Sending…' : 'Submit'}
           </Button>
         )}
-        <p role="status" className="text-[12px] text-muted-foreground">
+        <p role="status" className="text-meta text-muted-foreground">
           {progress}
         </p>
       </div>
@@ -200,22 +200,22 @@ export function PromptCard({ panel, label, onChoose, terminal }: { panel: Permis
   return (
     <div className="mx-auto w-full max-w-3xl px-6 pb-3">
       <section aria-label="Permission prompt" data-kind="permission" className="rounded-lg border border-needs-you/60 bg-needs-you-soft px-4 py-3">
-        <p className="mb-2 flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
+        <p className="mb-2 flex items-center gap-1.5 text-meta text-muted-foreground">
           <ShieldQuestion className="size-3.5" />
           <span className="font-medium text-foreground/80">{label} asks</span>
           <span className="ml-auto font-medium text-needs-you-text">Waiting for your answer</span>
         </p>
         {p ? (
           <>
-            {p.title && <p className="text-[13.5px] font-medium">{p.title}</p>}
+            {p.title && <p className="text-prose font-medium">{p.title}</p>}
             {p.detail.some((l) => l.trim() !== '') && (
-              <pre className="mt-1.5 max-h-40 overflow-auto rounded-md bg-background/70 px-2.5 py-1.5 font-mono text-[11.5px] leading-[1.45] whitespace-pre-wrap break-words dark:bg-black/25">
+              <pre className="mt-1.5 max-h-40 overflow-auto rounded-md bg-background/70 px-2.5 py-1.5 font-mono text-meta leading-[1.45] whitespace-pre-wrap break-words dark:bg-black/25">
                 {p.detail.join('\n')}
               </pre>
             )}
           </>
         ) : (
-          <p className="text-[13.5px] font-medium">A permission prompt is waiting in the terminal</p>
+          <p className="text-prose font-medium">A permission prompt is waiting in the terminal</p>
         )}
         {panel.kind === 'buttons' ? (
           <div className="mt-2.5 flex flex-col items-start gap-1.5" role="group" aria-label="Choices">
@@ -226,16 +226,16 @@ export function PromptCard({ panel, label, onChoose, terminal }: { panel: Permis
                 size="sm"
                 disabled={panel.sending}
                 onClick={() => onChoose(c.n)}
-                className="h-auto min-h-8 max-w-full justify-start py-1.5 text-left text-[13px] font-normal whitespace-normal"
+                className="h-auto min-h-8 max-w-full justify-start py-1.5 text-left text-body font-normal whitespace-normal"
               >
-                <span aria-hidden className="font-mono text-[11.5px] text-muted-foreground">
+                <span aria-hidden className="font-mono text-meta text-muted-foreground">
                   {c.n}
                 </span>
                 {c.label}
               </Button>
             ))}
             {panel.sending && (
-              <p role="status" className="text-[12px] text-muted-foreground">
+              <p role="status" className="text-meta text-muted-foreground">
                 Answering…
               </p>
             )}

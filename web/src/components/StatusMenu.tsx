@@ -64,7 +64,7 @@ export function StatusMenu({ field, name, value, note, tipNote = note, why, swit
             aria-disabled={blocked || undefined}
             title={error ? `${tip}\n${error}` : tip}
             className={cn(
-              'flex min-w-0 items-center gap-0.5 rounded-sm px-1 -mx-1 font-mono text-[11.5px] outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              'flex min-w-0 items-center gap-0.5 rounded-sm px-1 -mx-1 font-mono text-meta outline-none focus-visible:ring-2 focus-visible:ring-ring',
               blocked ? 'cursor-default opacity-70' : 'hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground',
             )}
           >
@@ -87,7 +87,7 @@ export function StatusMenu({ field, name, value, note, tipNote = note, why, swit
               {options.items.map((item) => (
                 <DropdownMenuRadioItem key={item.value} value={item.value}>
                   <span>{item.label}</span>
-                  {item.detail && <span className="ml-auto pl-3 font-mono text-[11px] text-muted-foreground">{item.detail}</span>}
+                  {item.detail && <span className="ml-auto pl-3 font-mono text-caption text-muted-foreground">{item.detail}</span>}
                 </DropdownMenuRadioItem>
               ))}
             </DropdownMenuRadioGroup>
@@ -95,7 +95,7 @@ export function StatusMenu({ field, name, value, note, tipNote = note, why, swit
           {footnote && (
             <>
               <DropdownMenuSeparator />
-              <p data-slot={`${field}-footnote`} className="px-2 py-1 text-xs text-muted-foreground">
+              <p data-slot={`${field}-footnote`} className="px-2 py-1 text-meta text-muted-foreground">
                 {footnote}
               </p>
             </>
@@ -109,7 +109,7 @@ export function StatusMenu({ field, name, value, note, tipNote = note, why, swit
         </span>
       )}
       {error && (
-        <span role="alert" data-slot={`${field}-error`} title={error} className="min-w-0 truncate text-destructive">
+        <span role="alert" data-slot={`${field}-error`} title={error} className="min-w-0 truncate text-destructive-text">
           {error}
         </span>
       )}

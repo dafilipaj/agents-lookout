@@ -2,6 +2,9 @@ import type { ProviderUsage, UsageSnapshot, UsageWindow } from '@shared/usage.ts
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { BAR_EDGE, BAR_EDGE_GAP, BAR_FILL, BAR_TRACK } from '@/lib/usage';
+import css from '@/index.css?raw';
+import { type Mode, colourOf, contrast, paint, solid, themeTokens } from '@/test/contrast';
 import { NOW, renderApp, settings } from '@/test/helpers';
 
 const H = 3_600_000;
@@ -156,7 +159,7 @@ describe('usage strip', () => {
     expect(field('codex', 'age')).toHaveAttribute('title', 'as of last turn · just now');
     // An old reading's tooltip also says why.
     expect(field('claude', 'age')).toHaveAttribute('title', 'old · 12m ago; fleet usage timed out');
-    expect(field('claude', 'age')).toHaveClass('text-needs-you-text');
+    expect(field('claude', 'age')).toHaveClass('text-info-text');
   });
 
   it('USAGE-1.2: a warning triangle at 80% or more and a critical octagon at 95% or more, named for screen readers; nothing below 80%', () => {
@@ -168,7 +171,7 @@ describe('usage strip', () => {
     expect(critical.querySelector('svg.lucide-octagon-alert')).not.toBeNull();
     // Coloured with the text tokens, which hold 3:1 against the sidebar in both themes.
     expect(warning).toHaveAttribute('data-level', 'warning');
-    expect(warning).toHaveClass('text-needs-you-text');
+    expect(warning).toHaveClass('text-warning-text');
     expect(critical).toHaveAttribute('data-level', 'critical');
     expect(critical).toHaveClass('text-destructive');
     expect(warning).toHaveTextContent('');
@@ -238,7 +241,7 @@ describe('usage strip', () => {
     // Codex: neutral, however long ago its last turn was.
     expect(age('codex')).toHaveTextContent('as of last turn · 17m');
     expect(age('codex')).toHaveAttribute('data-flagged', 'false');
-    expect(age('codex')).not.toHaveClass('text-needs-you-text');
+    expect(age('codex')).not.toHaveClass('text-info-text');
     // The Jev line carries only Jev's state.
     expect(strip().querySelector('[data-field="jev"]')!.parentElement).not.toHaveTextContent('ago');
     app.unmount();
@@ -442,5 +445,120 @@ describe('launcher hint', () => {
     );
     expect(hint(/Claude Code/)).toHaveTextContent('5h limit 97%');
     expect(hint(/Codex/)).toHaveTextContent('5h limit 100%');
+  });
+});
+
+describe('usage strip colours (design system)', () => {
+  const fill = (root: Element) => root.querySelector<HTMLElement>('[data-field="fill"]')!;
+
+  it('DS-3.1: the usage strip and its details draw the Harness logos monochrome', async () => {
+    pinDate();
+    const user = userEvent.setup();
+    show(usage([provider({ id: 'claude', windows: [win({ percent: 12 })] }), provider({ id: 'codex', windows: [win({ percent: 20 })] })]));
+    const logos = () => [...document.querySelectorAll<SVGElement>('svg[data-harness]')];
+    expect(logos().length).toBeGreaterThanOrEqual(2);
+    for (const logo of logos()) expect(logo).toHaveAttribute('fill', 'currentColor');
+    await user.click(screen.getByRole('button', { name: 'Usage details' }));
+    const details = await screen.findByTestId('usage-details');
+    const inDetails = [...details.querySelectorAll('svg[data-harness]')];
+    expect(inDetails.length).toBeGreaterThanOrEqual(2);
+    for (const logo of inDetails) expect(logo).toHaveAttribute('data-tone', 'mono');
+  });
+
+  it("DS-3.2: the strip's bar keeps the foreground fill at every level, with a 3 px edge in the level's colour at 80% and 95%; the details keep solid bars", async () => {
+    pinDate();
+    const user = userEvent.setup();
+    show(
+      usage([
+        provider({ id: 'claude', windows: [win({ percent: 85 })] }),
+        provider({ id: 'codex', windows: [win({ percent: 97 })] }),
+      ]),
+    );
+    const cases = [
+      ['claude', 'warning', 'bg-warning'],
+      ['codex', 'critical', 'bg-destructive'],
+    ] as const;
+    for (const [id, level, edge] of cases) {
+      const f = fill(line(id));
+      expect(f).toHaveAttribute('data-level', level);
+      expect(f).toHaveClass('bg-foreground/55', 'overflow-hidden', 'rounded-full'); // the edge follows the rounded end
+      expect(f).not.toHaveClass(edge); // never the solid block again
+      const e = f.querySelector('[data-field="edge"]')!;
+      expect(e).toHaveClass(edge, 'w-1', 'border-l', 'border-sidebar', 'right-0', 'absolute', 'inset-y-0'); // 4 px: a 1 px gap in the ground's colour, then 3 px of the level
+    }
+    // The critical octagon stays beside the bar (USAGE-1.2).
+    expect(within(line('codex')).getByRole('img', { name: 'Critical: 95% or more used' })).toBeInTheDocument();
+    // In the details popover, the same windows keep their solid fills, with no edge.
+    await user.click(screen.getByRole('button', { name: 'Usage details' }));
+    const details = await screen.findByTestId('usage-details');
+    const solid = (name: string) => fill(within(details).getByRole('region', { name }));
+    expect(solid('Claude Code usage')).toHaveClass('bg-warning');
+    expect(solid('Codex usage')).toHaveClass('bg-destructive');
+    expect(details.querySelector('[data-field="edge"]')).toBeNull();
+  });
+
+  it("DS-3.2: each level's fill keeps 3:1 or more against the track, on the sidebar and the background, in both modes", () => {
+    const themes = themeTokens(css);
+    const measure = (fills: Record<string, string>) =>
+      (['light', 'dark'] as Mode[]).flatMap((mode) =>
+        ['sidebar', 'background'].flatMap((ground) =>
+          Object.entries(fills).map(([level, classes]) => {
+            const t = themes[mode];
+            const trackColour = colourOf(BAR_TRACK, 'bg')!;
+            const track = paint(t, trackColour.token, solid(t, ground), trackColour.alpha);
+            const fillColour = colourOf(classes, 'bg')!;
+            return { what: `${mode} ${level} on ${ground}`, ratio: contrast(paint(t, fillColour.token, track, fillColour.alpha), track) };
+          }),
+        ),
+      );
+    const measures = measure(BAR_FILL.strip);
+    expect(measures).toHaveLength(2 * 2 * 3);
+    expect(measures.filter((m) => !(m.ratio >= 3)).map((m) => m.what)).toEqual([]);
+    // The check can fail: a fill as pale as the old soft ones (about 1.2:1) is caught.
+    expect(measure({ warning: 'bg-foreground/20' }).some((m) => m.ratio < 3)).toBe(true);
+  });
+
+  it("DS-3.2: the 1 px gap between the fill and its edge is the ground's colour and keeps 3:1 or more against the fill, in both modes", () => {
+    expect(BAR_EDGE_GAP).toBe('border-l border-sidebar');
+    const themes = themeTokens(css);
+    const trackColour = colourOf(BAR_TRACK, 'bg')!;
+    const fillColour = colourOf(BAR_FILL.strip.critical, 'bg')!;
+    const measure = (gap: string) =>
+      (['light', 'dark'] as Mode[]).map((mode) => {
+        const t = themes[mode];
+        const track = paint(t, trackColour.token, solid(t, 'sidebar'), trackColour.alpha);
+        const fill = paint(t, fillColour.token, track, fillColour.alpha);
+        return { what: `${mode} gap vs fill`, ratio: contrast(solid(t, gap), fill) };
+      });
+    // Edge against fill is 1.0 to 1.9 whatever the hue, so the gap is what makes it a separate mark.
+    expect(measure('sidebar').filter((m) => !(m.ratio >= 3)).map((m) => m.what)).toEqual([]);
+    // The check can fail: a gap in the fill's own colour (the old no-gap edge) is caught.
+    expect(measure('foreground').some((m) => m.ratio < 3)).toBe(true);
+  });
+
+  it('DS-3.2: the edge is warning at 80% to 94% and destructive at 95% or more, and none below', () => {
+    expect(BAR_EDGE).toEqual({ normal: null, warning: 'bg-warning', critical: 'bg-destructive' });
+    for (const [percent, edge] of [[79, null], [80, 'bg-warning'], [94, 'bg-warning'], [95, 'bg-destructive'], [100, 'bg-destructive']] as const) {
+      const app = show(usage([provider({ id: 'claude', windows: [win({ percent })] })]));
+      const e = line('claude').querySelector('[data-field="edge"]');
+      if (edge) expect(e, `${percent}%`).toHaveClass(edge);
+      else expect(e, `${percent}%`).toBeNull();
+      app.unmount();
+    }
+  });
+
+  it('DS-3.2: below 80% the bar stays the foreground at 55%, with no edge', () => {
+    show(usage([provider({ id: 'claude', windows: [win({ percent: 79 })] })]));
+    expect(fill(line('claude'))).toHaveClass('bg-foreground/55');
+    expect(fill(line('claude'))).toHaveAttribute('data-level', 'normal');
+    expect(line('claude').querySelector('[data-field="edge"]')).toBeNull();
+  });
+
+  it('DS-3.3: a reading marked old says "old · …" in the info tone, not amber', () => {
+    show(usage([provider({ id: 'claude', stale: true, reason: 'fleet usage timed out', observedAt: NOW - 12 * 60_000, windows: [win({ percent: 12 })] })]));
+    const age = line('claude').querySelector<HTMLElement>('[data-field="age"]')!;
+    expect(age).toHaveTextContent(/^old · 12m ago/);
+    expect(age).toHaveClass('text-info-text');
+    expect([...age.classList].filter((c) => c.includes('needs-you') || c.includes('warning'))).toEqual([]);
   });
 });

@@ -837,7 +837,7 @@ describe('Tasks (WORK-2)', () => {
     expect(linkedPrLine.querySelector('[data-field="ci"]')).toHaveAttribute('data-ci', 'passing');
     expect(linkedPrLine).toHaveAttribute('title', 'branch');
     const taskMarker = taskOption(LIGHT.id).querySelector('[data-session-marker]')!;
-    expect(taskMarker.querySelector('svg')).toHaveClass('text-ok-text');
+    expect(taskMarker.querySelector('svg')).toHaveClass('text-foreground');
     expect(taskMarker).toHaveAttribute('title', 'through PR #2101\nstarted on this Task\nLinks may be incomplete');
     expect(taskOption(LIGHT.id)).toHaveAttribute('title', 'Links may be incomplete');
 
@@ -901,7 +901,7 @@ describe('Tasks (WORK-2)', () => {
     const user = userEvent.setup();
     await user.keyboard('w');
     const marker = () => option('anvil#2101').querySelector('[data-session-marker] svg');
-    expect(marker()).toHaveClass('text-ok-text');
+    expect(marker()).toHaveClass('text-foreground');
     app.emit({ type: 'work', work: snap({ mine: [pr({ ...DRAFT, links: { ...links, sessions: links.sessions.map((session) => ({ ...session, live: false })) } })] }) });
     await waitFor(() => expect(marker()).toHaveClass('text-muted-foreground'));
     await user.click(option('anvil#2101'));
@@ -1166,16 +1166,16 @@ describe('PRs (WORK-3)', () => {
       }),
     );
     await userEvent.setup().keyboard('w');
-    const colours = ['text-ok-text', 'text-needs-you-text', 'text-destructive-text', 'text-muted-foreground'];
+    const colours = ['text-ok-text', 'text-warning-text', 'text-destructive-text', 'text-muted-foreground'];
     const age = (number: number) => option(`anvil#${number}`).querySelector('[data-field="age"]')!;
     const cases = [
       [3101, '2d', 'recent', 'text-ok-text'],
-      [3102, '3d', 'aging', 'text-needs-you-text'],
-      [3103, '9d', 'aging', 'text-needs-you-text'],
+      [3102, '3d', 'aging', 'text-warning-text'],
+      [3103, '9d', 'aging', 'text-warning-text'],
       [3104, '10d', 'old', 'text-destructive-text'],
       [3111, '2d', 'recent', 'text-ok-text'],
-      [3112, '3d', 'aging', 'text-needs-you-text'],
-      [3113, '9d', 'aging', 'text-needs-you-text'],
+      [3112, '3d', 'aging', 'text-warning-text'],
+      [3113, '9d', 'aging', 'text-warning-text'],
       [3114, '10d', 'old', 'text-destructive-text'],
     ] as const;
     for (const [number, text, level, cls] of cases) {
@@ -1593,5 +1593,56 @@ describe('Refresh (WORK-8)', () => {
     expect(refresh).toHaveAttribute('title', 'GitHub is rate limited: Refresh is back in 5m');
     await user.click(refresh);
     expect(app.client.refreshWork).not.toHaveBeenCalled();
+  });
+});
+
+describe('Work colours (design system)', () => {
+  const amber = (el: Element) => [...el.classList].filter((c) => /needs-you|busy/.test(c));
+
+  it('DS-3.3: Work\'s staleness is in the info tone, never amber: "old", "Possibly out of date" and "Session links are unavailable"', async () => {
+    const app = openApp('/', snap({ marks: { mine: [{ columns: ['draft_mine'], reason: "GitHub's search came back empty", confirmedAt: Date.now() - 60_000 }], reviewRequests: [] } }));
+    await userEvent.setup().keyboard('w');
+    const marks = group('Mine').querySelector('[data-field="marks"]')!.parentElement!;
+    expect(marks).toHaveTextContent(/^Possibly out of date\./);
+    expect(marks).toHaveClass('bg-info-soft', 'border-info-border', 'text-info-text');
+    expect(amber(marks)).toEqual([]);
+
+    app.emit({ type: 'work', work: snap({ state: 'error', reason: 'tb-pr took too long to answer. Try Refresh later.', stale: true }) });
+    const old = within(workPanel()).getByRole('region', { name: 'PRs' }).querySelector('[data-field="old"]')!;
+    expect(old).toHaveTextContent('old');
+    expect(old).toHaveClass('bg-info-soft', 'text-info-text');
+    expect(amber(old)).toEqual([]);
+
+    const failed = snap();
+    failed.sessionLinks = { state: 'error', reason: "tb-session couldn't search Sessions. Try Refresh later.", fix: null };
+    app.emit({ type: 'work', work: failed });
+    const links = workPanel().querySelector('[data-field="session-link-problem"]')!;
+    expect(links).toHaveTextContent('Session links are unavailable.');
+    expect(links).toHaveClass('bg-info-soft', 'border-info-border', 'text-info-text');
+    expect(amber(links)).toEqual([]);
+  });
+
+  it('DS-3.6: the milestone and "ready" chips are neutral, not Busy\'s blue; "approved" keeps ok green', async () => {
+    openApp('/', withTasks({ tasks: [BELLS] }));
+    await userEvent.setup().keyboard('w');
+    const milestone = taskOption(BELLS.id).querySelector('[data-field="milestone"]')!;
+    expect(milestone).toHaveClass('bg-muted', 'text-foreground', 'border-border');
+    expect(amber(milestone)).toEqual([]);
+    const chip = (id: string) => option(id).querySelector('[data-field="chip"]')!;
+    expect(chip('willow#2102')).toHaveTextContent('ready');
+    expect(chip('willow#2102')).toHaveClass('bg-muted', 'text-foreground', 'border-border');
+    expect(amber(chip('willow#2102'))).toEqual([]);
+    expect(chip('kettle#2103')).toHaveClass('text-ok');
+  });
+
+  it("DS-3.6: a live Linked Session's marker is no longer ok green", async () => {
+    const linked = task({
+      ...LIGHT,
+      links: { prs: [], sessions: [{ sessionId: 'linked-live', harness: 'claude', title: 'Linked session', createdAt: 100, modifiedAt: 200, live: true, reason: 'started on this Task' }], incomplete: false },
+    });
+    openApp('/s/alpha', withTasks({ tasks: [linked] }));
+    await userEvent.setup().keyboard('w');
+    const marker = taskOption(LIGHT.id).querySelector('[data-session-marker] svg')!;
+    expect([...marker.classList].filter((c) => /^(?:text|fill|stroke)-ok/.test(c))).toEqual([]);
   });
 });

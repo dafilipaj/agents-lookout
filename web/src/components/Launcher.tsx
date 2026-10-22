@@ -90,11 +90,11 @@ export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, h
       >
         <form onSubmit={submit} onKeyDown={onKeyDown} aria-label="New Session">
           <div className="border-b border-border px-5 pt-4 pb-3">
-            <DialogTitle className="text-[15px]">New Session</DialogTitle>
-            <DialogDescription className="text-[12.5px]">Runs in its own Session host, so Lookout can control it.</DialogDescription>
+            <DialogTitle className="text-title">New Session</DialogTitle>
+            <DialogDescription className="text-meta">Runs in its own Session host, so Lookout can control it.</DialogDescription>
           </div>
 
-          <div className="grid grid-cols-[5.5rem_1fr] items-center gap-x-3 gap-y-3 px-5 py-4 text-[13px]">
+          <div className="grid grid-cols-[5.5rem_1fr] items-center gap-x-3 gap-y-3 px-5 py-4 text-body">
             <label htmlFor="launch-directory" className="text-muted-foreground">
               Directory
             </label>
@@ -102,7 +102,7 @@ export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, h
               id="launch-directory"
               value={directory}
               onChange={(e) => set({ directory: e.target.value })}
-              className="h-8 w-full rounded-md border border-input bg-transparent px-2 font-mono text-[12.5px] outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 dark:bg-input/30"
+              className="h-8 w-full rounded-md border border-input bg-transparent px-2 font-mono text-body outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 dark:bg-input/30"
             >
               {settings.startDirectories.map((d) => (
                 <option key={d} value={d}>
@@ -138,17 +138,17 @@ export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, h
                       onChange={() => set({ harness: id, model: '' })}
                       className="accent-foreground"
                     />
-                    <HarnessIcon harness={id} className="size-4" />
+                    <HarnessIcon harness={id} tone="brand" className="size-4" />
                     <span className="flex min-w-0 flex-col leading-tight">
                       <span className="whitespace-nowrap">{label}</span>
                       {limit && (
-                        <span className="text-[11px] font-medium text-destructive" data-field="limit-hint">
+                        <span className="text-caption font-medium text-destructive" data-field="limit-hint">
                           <UsageLevelIcon level="critical" className="align-[-2px] [&_svg]:size-3" />{' '}
                           {limit}
                         </span>
                       )}
                     </span>
-                    {disabled && <span className="text-[11px] text-muted-foreground">not installed</span>}
+                    {disabled && <span className="text-caption text-muted-foreground">not installed</span>}
                   </label>
                 );
               })}
@@ -162,7 +162,7 @@ export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, h
               value={model}
               onChange={(e) => set({ model: e.target.value })}
               disabled={!list}
-              className="h-8 w-full rounded-md border border-input bg-transparent px-2 text-[13px] outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:opacity-60 dark:bg-input/30"
+              className="h-8 w-full rounded-md border border-input bg-transparent px-2 text-body outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:opacity-60 dark:bg-input/30"
             >
               {models.map((m) => (
                 <option key={m.id} value={m.id}>
@@ -182,7 +182,7 @@ export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, h
               autoComplete="off"
               aria-invalid={error?.field === 'name' || undefined}
               onChange={(e) => set({ name: e.target.value })}
-              className="h-8 text-[13px]"
+              className="h-8 text-body"
             />
 
             <label htmlFor="launch-prompt" className="self-start pt-1.5 text-muted-foreground">
@@ -195,30 +195,30 @@ export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, h
               value={draft.prompt}
               aria-invalid={error?.field === 'prompt' || undefined}
               onChange={(e) => set({ prompt: e.target.value })}
-              className="min-h-28 resize-y text-[13px] leading-5"
+              className="min-h-28 resize-y text-body leading-5"
               rows={5}
             />
           </div>
 
           {harnesses.state === 'error' && (
-            <p role="alert" className="mx-5 mb-3 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12.5px] text-destructive">
+            <p role="alert" className="mx-5 mb-3 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-meta text-destructive">
               {harnesses.error}
             </p>
           )}
           {error && (
-            <p role="alert" className="mx-5 mb-3 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12.5px] text-destructive">
+            <p role="alert" className="mx-5 mb-3 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-meta text-destructive">
               {error.message}
             </p>
           )}
 
           <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
-            <kbd className="mr-auto font-mono text-[11px] text-muted-foreground">Esc to close · your input is kept</kbd>
+            <kbd className="mr-auto font-mono text-caption text-muted-foreground">Esc to close · your input is kept</kbd>
             <Button type="button" variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
             <Button type="submit" size="sm" disabled={!canStart}>
               {submitting ? 'Starting…' : 'Start'}
-              <kbd className="font-mono text-[11px] opacity-60">⌘↵</kbd>
+              <kbd className="font-mono text-caption opacity-60">⌘↵</kbd>
             </Button>
           </div>
         </form>

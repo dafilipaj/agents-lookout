@@ -44,6 +44,17 @@
   /* Small text in ok and destructive colours, 4.5:1 or more on the sidebar's accent (WORK-3.5) */
   --ok-text: oklch(0.48 0.12 150);
   --destructive-text: oklch(0.5 0.21 27.325);
+  /* DS-2: a level heading toward a limit (amber, like Needs you, but its own family) */
+  --warning: oklch(0.7 0.17 60);
+  --warning-text: oklch(0.5 0.13 55);
+  /* DS-2: an error's box, a critical level's fill */
+  --destructive-soft: oklch(0.577 0.245 27.325 / 14%);
+  /* DS-2: staleness, or something to know that needs nothing from you (grey: blue is Busy) */
+  --info-soft: oklch(0.965 0 0);
+  --info-border: oklch(0.88 0 0);
+  --info-text: oklch(0.42 0 0);
+  /* DS-2: a search hit */
+  --highlight: oklch(0.145 0 0 / 10%);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -81,7 +92,14 @@
     --idle-text: oklch(0.76 0 0);
     --ok: oklch(0.74 0.14 150);
     --ok-text: oklch(0.74 0.14 150);
-    --destructive-text: oklch(0.704 0.191 22.216);
+    --destructive-text: oklch(0.78 0.15 22.216);
+    --warning: oklch(0.8 0.15 75);
+    --warning-text: oklch(0.85 0.12 80);
+    --destructive-soft: oklch(0.704 0.191 22.216 / 20%);
+    --info-soft: oklch(1 0 0 / 7%);
+    --info-border: oklch(1 0 0 / 14%);
+    --info-text: oklch(0.82 0 0);
+    --highlight: oklch(1 0 0 / 16%);
   }
 }
 
@@ -124,6 +142,25 @@
   --color-ok: var(--ok);
   --color-ok-text: var(--ok-text);
   --color-destructive-text: var(--destructive-text);
+  --color-destructive-soft: var(--destructive-soft);
+  --color-warning: var(--warning);
+  --color-warning-text: var(--warning-text);
+  --color-info-soft: var(--info-soft);
+  --color-info-border: var(--info-border);
+  --color-info-text: var(--info-text);
+  --color-highlight: var(--highlight);
+  /* DS-1: the type scale, five steps named by role (text-caption … text-title), each with its line height; Tailwind's own sizes (text-sm …) are cleared so they generate nothing */
+  --text-*: initial;
+  --text-caption: 11px;
+  --text-caption--line-height: 16px;
+  --text-meta: 12px;
+  --text-meta--line-height: 16px;
+  --text-body: 13px;
+  --text-body--line-height: 20px;
+  --text-prose: 14px;
+  --text-prose--line-height: 22px;
+  --text-title: 15px;
+  --text-title--line-height: 20px;
   --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
 }
@@ -138,7 +175,7 @@
     height: 100%;
   }
   body {
-    @apply bg-background text-foreground antialiased;
+    @apply bg-background text-body text-foreground antialiased;
     font-feature-settings: 'cv11', 'ss01';
   }
 }

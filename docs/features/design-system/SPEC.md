@@ -1,7 +1,7 @@
 ---
 title: "Design system"
 code: "DS"
-status: "Draft"
+status: "In Progress"
 created: "2026-10-22"
 updated: "2026-10-22"
 ---
@@ -34,28 +34,28 @@ Each was fixed once, by hand, in one place. Nothing stops the next component fro
 
 Five sizes, by role. Nothing that carries information is smaller than 11 px, and there are no half-pixel sizes.
 
-- [ ] DS-1.1 Every font size in `web/src` comes from the scale's five named steps (UX, "Type scale"): `caption` 11 px, `meta` 12 px, `body` 13 px, `prose` 14 px and `title` 15 px. A guard test fails on an arbitrary size (`text-[11.5px]`), on Tailwind's own size utilities (`text-xs`, `text-sm`, `text-base`, `text-lg` and up), and on a `font-size` or `fontSize` in CSS or a `style`, outside the exceptions listed in the Technical approach. (test)
-- [ ] DS-1.2 The shadcn components in `components/ui/` use the scale too: a button, input, menu item, label and popover are `body`, a dialog's title is `title`, its description `meta`. (test)
+- [x] DS-1.1 Every font size in `web/src` comes from the scale's five named steps (UX, "Type scale"): `caption` 11 px, `meta` 12 px, `body` 13 px, `prose` 14 px and `title` 15 px. A guard test fails on an arbitrary size (`text-[11.5px]`), on Tailwind's own size utilities (`text-xs`, `text-sm`, `text-base`, `text-lg` and up), and on a `font-size` or `fontSize` in CSS or a `style`, outside the exceptions listed in the Technical approach. (test)
+- [x] DS-1.2 The shadcn components in `components/ui/` use the scale too: a button, input, menu item, label and popover are `body`, a dialog's title is `title`, its description `meta`. (test)
 - [ ] DS-1.3 Seen in both modes at 1440 px: the sidebar, the main pane, History and Work read in four UI levels plus the chat's prose, with no two neighbouring texts a half step apart. (manual)
 
 ### DS-2 Colour tokens
 
 New tokens, each with a light and a dark value, and one meaning per family.
 
-- [ ] DS-2.1 `index.css` defines `info-soft`, `info-border` and `info-text` (neutral, for staleness and notices), `highlight` (search hits), `warning`, `warning-soft` and `warning-text` (a level heading toward a limit), and `destructive-soft`, in light and dark mode, as `oklch()` values the Tailwind theme maps to `--color-*`. (test)
-- [ ] DS-2.2 `info-text` on `info-soft`, on the background and on the sidebar; `warning-text` on the background and the sidebar; and the foreground on `highlight` over the background and the sidebar keep 4.5:1 or more, in light and dark mode. (test)
-- [ ] DS-2.3 Each colour family is used only for its meaning (UX, "Colour by meaning"). A guard test fails when a family's token is used in a file its row doesn't list. (test)
+- [x] DS-2.1 `index.css` defines `info-soft`, `info-border` and `info-text` (neutral, for staleness and notices), `highlight` (search hits), `warning` and `warning-text` (a level heading toward a limit), and `destructive-soft` (the error Alert's box, DS-4), in light and dark mode, as `oklch()` values the Tailwind theme maps to `--color-*`. (test)
+- [x] DS-2.2 `info-text` on `info-soft`, on the background and on the sidebar; `warning-text` on the background and the sidebar; and the foreground on `highlight` over the background and the sidebar keep 4.5:1 or more, in light and dark mode. (test)
+- [x] DS-2.3 Each colour family is used only for its meaning (UX, "Colour by meaning"). A guard test fails when a family's token is used in a file its row doesn't list, or in a listed file in a class the row doesn't name, and on a raw colour: a Tailwind palette class (`text-amber-600`), an arbitrary colour (`bg-[#f59e0b]`, `text-[oklch(…)]`) or a hex, `rgb(` or `oklch(` in a TS string or style. The one exception is `HarnessIcon.tsx`'s brand hex. (test)
 
 ### DS-3 Colour means Status
 
 The design review's suggestion 3, as decided with Dario.
 
-- [ ] DS-3.1 Harness logos are drawn in the text colour around them (monochrome), in the sidebar's rows, the usage strip and History's filter and results. They keep the brand colour in two places: the main pane's header (a live, a starting and a past Session's) and the new Session modal (the launcher). (test)
-- [ ] DS-3.2 A usage bar at 95% or more is filled with `destructive-soft` and ends in a 2 px `destructive` edge at the fill's end, instead of a solid red block. At 80% to 94% it is filled with `warning-soft` and ends in a 2 px `warning` edge. Below 80% it stays `foreground/55`. The critical octagon (USAGE-1.2) stays. The usage details popover keeps its solid bars. (test)
-- [ ] DS-3.3 Staleness uses the info tone, never amber: Work's "Possibly out of date" (WORK-7.5), Work's "old" chip (WORK-7.3), the sidebar's banners for a stale Fleet list and a lost server (SIDE-6.2), Work's "Session links are unavailable", and the terminal preview's "… · retrying", and the usage strip's "old · …" on a reading marked old. (test)
-- [ ] DS-3.4 History's search hits are marked with the `highlight` token, not Needs you's amber. (test)
-- [ ] DS-3.5 A sidebar row's context usage, its number and its ring, takes the status line's colours (VIEW-5.5): the row's quiet colour up to 40%, `warning-text` above 40%, `destructive` above 60%, from the same `contextLevel`. Its text keeps 4.5:1 on every row state (SIDE-3.11). (test)
-- [ ] DS-3.6 Status colours show only a Status, or something its Status spec ties to one (UX, "Colour by meaning"): Work's "milestone" chip and its PR "ready" chip move to the neutral chip, and a live Linked Session's marker is no longer green (DS-5.3). (test)
+- [x] DS-3.1 Harness logos are drawn in the text colour around them (monochrome), in the sidebar's rows, the usage strip and History's filter and results. They keep the brand colour in two places: the main pane's header (a live, a starting and a past Session's) and the new Session modal (the launcher). (test)
+- [x] DS-3.2 A usage bar on the strip keeps its fill `foreground/55` at every level, which stays 3:1 or more against the track in both modes. The level shows as a 3 px edge at the fill's end: `warning` at 80% to 94%, `destructive` at 95% or more, none below 80%, set off from the fill by a 1 px gap in the sidebar's colour (3:1 or more against the fill in both modes), since the edge's own lightness is within 2:1 of the fill's and only the gap makes it a separate mark. The fill is `overflow-hidden`, so the edge follows its rounded end. The warning triangle and critical octagon (USAGE-1.2) stay. The usage details popover keeps its solid bars. (test)
+- [x] DS-3.3 Staleness uses the info tone, never amber: Work's "Possibly out of date" (WORK-7.5), Work's "old" chip (WORK-7.3), the sidebar's banners for a stale Fleet list and a lost server (SIDE-6.2), Work's "Session links are unavailable", and the terminal preview's "… · retrying", and the usage strip's "old · …" on a reading marked old. (test)
+- [x] DS-3.4 History's search hits are marked with the `highlight` token, not Needs you's amber. (test)
+- [x] DS-3.5 A sidebar row's context usage, its number and its ring, takes the status line's colours (VIEW-5.5): the row's quiet colour up to 40%, `warning-text` above 40%, `destructive-text` above 60%, from the same `contextLevel`. Its text keeps 4.5:1 on every row state (SIDE-3.11). (test)
+- [ ] DS-3.6 Status colours show only a Status, or something its Status spec ties to one (UX, "Colour by meaning"). Done: Work's "milestone" chip and PR "ready" chip are neutral; chat and Markdown links are underlined in the surrounding text colour; Work's CI-running spinner and the chat rail's finished-Subagent Mark are `muted-foreground`. Open until DS-5.2 and DS-5.3: History's live marker is `muted-foreground` for now and takes the Session's real Status in DS-5.2, and a live Linked Session's marker in Work is no longer green and takes its Status in DS-5.3. (test)
 - [ ] DS-3.7 Seen in both modes at 1440 px with several Sessions and a limit at 95% or more: the brightest things on screen are the Status markers, strips and the Needs you tint, and nothing is amber that neither needs you nor warns of a limit. (manual)
 
 ### DS-4 One Alert
@@ -162,9 +162,9 @@ The design review's suggestion 10.
 | Family | Tokens | Means | Used in |
 |---|---|---|---|
 | Needs you | `needs-you`, `-soft`, `-text` | the Status Needs you, nothing else | Status marker, strip, tint and tag; a question or permission card; the Needs you row and Mark in the chat; a row's "waiting for" line |
-| Busy, Idle | `busy…`, `idle…` | a Status | Status marker, strip and tag; VIEW-8's running Subagents (Busy); SIDE-2.6's background shell (Idle) |
-| Warning | `warning`, `-soft`, `-text` | a level heading toward a limit | context above 40% (status line and sidebar), usage at 80% or more, a PR aged 3 to 10 days (WORK-3.5) |
-| Destructive | `destructive`, `-soft`, `-text` | an error, a critical level, a destructive action | error Alerts, the critical octagon and bar, context above 60%, a PR over 10 days, End Session, a failed start |
+| Busy, Idle | `busy…`, `idle…` | a Status, nothing else: no link, spinner, chip or Mark | Status marker, strip and tag; the chat's "Working…" dot; VIEW-8's running Subagents (Busy); SIDE-2.6's and VIEW-5.16's background shell (Idle) |
+| Warning | `warning`, `-text` | a level heading toward a limit | context above 40% (status line and sidebar), usage at 80% or more, a PR aged 3 to 10 days (WORK-3.5) |
+| Destructive | `destructive`, `-soft`, `-text` | an error, a critical level, a destructive action | error Alerts, the critical octagon and the bar's edge, context above 60% (`-text`), a PR over 10 days, End Session, a failed start |
 | OK | `ok`, `-text` | something passed | CI passing, an approved PR, a PR under 3 days |
 | Info | `info-soft`, `-border`, `-text` | staleness, or something to know that needs nothing from you | info Alerts, the "old" chip, a usage reading marked old, "retrying" |
 | Highlight | `highlight` | a search hit | History's snippets |
@@ -173,9 +173,11 @@ The design review's suggestion 10.
 - **Amber means "act on it"**: now (Needs you) or soon (a warning level). Never "this is old" or "this matched".
 - **Info is grey, not blue**, since blue is Busy. The icon and the box tell it from plain text.
 - **Harness logos**: monochrome, `currentColor`, everywhere but two places: the main pane's header and the new Session modal (the launcher), where the logo is the choice being made. History's filter and a sidebar row are monochrome; in a row the logo takes the row's quiet colour.
-- **Usage bar**: normal (under 80%) `foreground/55`; warning (80 to 94%) `warning-soft` with a 2 px `warning` edge; critical (95% or more) `destructive-soft` with a 2 px `destructive` edge. The details popover keeps solid fills.
+- **Usage bar**: the strip's fill is `foreground/55` at every level, 3:1 against its track in both modes, `overflow-hidden`. The level is a 3 px edge at the fill's end: `warning` at 80 to 94%, `destructive` at 95% or more, none under 80%, a 1 px sidebar-coloured gap between it and the fill; the triangle or octagon sits beside it. The details popover keeps solid fills.
+- **Links** (chat and Markdown): underlined in the surrounding text colour, with the underline kept on hover and a focus ring for keyboard focus. Blue is Busy's, so no link takes it.
+- **Raw colours**: none. Colour comes from a token; the one exception is `HarnessIcon.tsx`'s brand hex.
 
-Proposed values, to be checked by DS-2.2's test:
+Proposed values, checked by DS-2.2's test (`destructive-text`: by DS-3.5's):
 
 | Token | Light | Dark |
 |---|---|---|
@@ -183,8 +185,9 @@ Proposed values, to be checked by DS-2.2's test:
 | `info-border` | `oklch(0.88 0 0)` | `oklch(1 0 0 / 14%)` |
 | `info-text` | `oklch(0.42 0 0)` | `oklch(0.82 0 0)` |
 | `highlight` | `oklch(0.145 0 0 / 10%)` | `oklch(1 0 0 / 16%)` |
-| `warning`, `-soft`, `-text` | Needs you's values today | Needs you's values today |
+| `warning`, `-text` | Needs you's values today | Needs you's values today |
 | `destructive-soft` | `oklch(0.577 0.245 27.325 / 14%)` | `oklch(0.704 0.191 22.216 / 20%)` |
+| `destructive-text` (changed, dark only) | `oklch(0.5 0.21 27.325)`, as before | `oklch(0.78 0.15 22.216)`, was `oklch(0.704 0.191 22.216)` |
 
 ### Components
 
@@ -235,18 +238,20 @@ DS changes only `web/src`. Nothing on the server changes, so every check is a un
 
 1. **Font sizes only from the scale (DS-1.1, 1.2).** In any string: `text-[<n>px|rem|em]`, `text-(xs|sm|base|lg|xl|[2-9]xl)`, `text-[length:…]`. In CSS or a `style`: `font-size` and `fontSize`. Exceptions: the `?` glyph inside `StatusMarker`'s Unknown shape (an SVG `fontSize`), and the `--text-*` definitions in `index.css`.
 2. **No hand-rolled alert boxes (DS-4.2).** `role="alert"` only in `components/ui/alert.tsx`, and in `Answering.tsx`'s `TerminalNote`, which tells you to answer in the terminal: part of a Needs you card, so amber, not an Alert. The classes `border-destructive…`, `bg-destructive/<n>`, `bg-destructive-soft`, `border-info-border` and `bg-info-soft` only in `alert.tsx` and `chip.tsx`, and in an allowlist with a reason each: the destructive Button variant, a failed Starting row's tint (`LaunchItem`), a failed start's status pill (`StartingView`).
-3. **Colour tokens only in their meaning (DS-2.3, 3.6).** For each family in UX, "Colour by meaning", the files that may use it: a `bg-`, `text-`, `border-`, `ring-`, `fill-`, `stroke-`, `outline-`, `from-`, `to-` or `decoration-` class, or a `var(--…)`, of a family's token outside its files fails. The lists live in the test with a reason per file; adding a file is a reviewed change. `needs-you`'s list, for example, is `StatusMarker`, `lib/sessions.ts` (strip, tint, tag), `ChatActivity`, `ChatRail`, `Chat` and `Answering` (question and permission cards, and `TerminalNote`) and `SessionItem` (its "waiting for" line).
-4. **Harness colour only in headers (DS-3.1).** `HarnessIcon` takes `tone: 'brand' | 'mono'`, `mono` by default. `tone="brand"` only in `SessionView`, `StartingView` and `PastSessionView` (the main pane's header) and `Launcher` (the new Session modal).
-5. **The marker everywhere (DS-5.1, 5.4).** `Circle` and `CircleDot` imported only in `Answering.tsx`. Component tests render a sidebar row, a History result in each state and a Work row with live and past Links, and check that each marker is a `SessionMarker` (`data-session-marker` with `data-state` and, when live, `data-status`).
-6. **Icon buttons (DS-7.2).** `size="icon…"` on a `Button` only inside `components/ui/`; no `size-`, `h-` or `w-` class on an `IconButton`.
+3. **Colour tokens only in their meaning (DS-2.3, 3.6).** For each family in UX, "Colour by meaning", the files that may use it: a `bg-`, `text-`, `border-`, `ring-`, `fill-`, `stroke-`, `outline-`, `from-`, `to-` or `decoration-` class, or a `var(--…)`, of a family's token outside its files fails. The lists live in the test with a reason per file, and each listed file pins the exact classes it may use per family, so a new use in a listed file is a reviewed change too. `needs-you`'s list, for example, is `StatusMarker`, `lib/sessions.ts` (strip, tint, tag), `ChatActivity`, `ChatRail`, `Chat` and `Answering` (question and permission cards, and `TerminalNote`) and `SessionItem` (its "waiting for" line).
+4. **No raw colours (DS-2.3).** A Tailwind palette class (`text-amber-600`, `bg-red-500/10`), an arbitrary colour (`text-[#f59e0b]`, `bg-[oklch(…)]`, `bg-[color:…]`) or a hex, `rgb(`, `hsl(` or `oklch(` in a TS string or style fails, except `HarnessIcon.tsx`'s brand hex. The family checks above also read Tailwind v4's other spellings: the `!` suffix, `text-(--color-busy)` and `bg-(color:--busy)`, a fractional or `(--x)` opacity, `var(--busy, red)`, `text-shadow-`, `drop-shadow-` and `inset-shadow-` colours, `theme(--color-busy)`, `@apply …;` and sizes written as `calc()`, `clamp()`, `min()` or `max()`, and a DOM `style.fontSize` or `setProperty('font-size')`.
+5. **Harness colour only in headers (DS-3.1).** `HarnessIcon` takes `tone: 'brand' | 'mono'`, `mono` by default. `tone="brand"` only in `SessionView`, `StartingView` and `PastSessionView` (the main pane's header) and `Launcher` (the new Session modal).
+6. **The marker everywhere (DS-5.1, 5.4).** `Circle` and `CircleDot` imported only in `Answering.tsx`. Component tests render a sidebar row, a History result in each state and a Work row with live and past Links, and check that each marker is a `SessionMarker` (`data-session-marker` with `data-state` and, when live, `data-status`).
+7. **Icon buttons (DS-7.2).** `size="icon…"` on a `Button` only inside `components/ui/`; no `size-`, `h-` or `w-` class on an `IconButton`.
 
 The icons guard is unchanged: `SessionMarker` draws with lucide and `StatusMarker`, so no new file draws an `<svg>`.
 
 ### Tokens
 
-- **Type:** `@theme` in `index.css` gains `--text-caption: 11px` with `--text-caption--line-height: 16px`, and so on for each step (UX table). Tailwind v4 makes each a `text-<step>` class.
+- **Type:** `@theme` in `index.css` gains `--text-caption: 11px` with `--text-caption--line-height: 16px`, and so on for each step (UX table). Tailwind v4 makes each a `text-<step>` class. Tailwind's own sizes are cleared (`--text-*: initial`), so `text-sm` generates nothing. The page's `body` takes `text-body`, so text without a class of its own is on the scale too, and `cn()` (`lib/utils.ts`) tells tailwind-merge the steps are font sizes, or it would take `text-meta` for a colour and drop it beside `text-muted-foreground`.
 - **Colour:** the new tokens in `:root` and the dark media query, mapped to `--color-*` in `@theme inline`, so `test/contrast.ts`'s `themeTokens` reads them. DS-2.2 is a contrast test over those, as SIDE-3.11's and VIEW-5.9's are.
-- **Warning:** `CONTEXT_LEVEL_CLASS.warning` (`lib/sessions.ts`), the usage `warning` level (`lib/usage.ts`) and `AGE_LEVEL_CLASS.aging` (`lib/work.ts`) move from `needs-you-text` to `warning-text`. The usage bar's warning fill moves from `bg-needs-you` to `bg-warning-soft` with a 2 px `bg-warning` edge, as the critical level does with `destructive`.
+- **Context danger:** `CONTEXT_LEVEL_CLASS.danger` moves from `destructive` to `destructive-text`, in the status line and the sidebar alike: `destructive` is under 4.5:1 on a Needs you row's tint (3.55:1 selected, light) and on a plain row under the pointer or selected (light). Dark `destructive-text` is raised to `oklch(0.78 0.15 22.216)`, the nearest that keeps 4.5:1 on a selected Needs you row (4.64:1); everything that already used it only gains contrast.
+- **Warning:** `CONTEXT_LEVEL_CLASS.warning` (`lib/sessions.ts`), the usage `warning` level (`lib/usage.ts`) and `AGE_LEVEL_CLASS.aging` (`lib/work.ts`) move from `needs-you-text` to `warning-text`. The usage bar's warning level is a 3 px `bg-warning` edge at the fill's end (the fill stays `foreground/55`), as the critical level is with `destructive`.
 
 ### Components
 
@@ -275,12 +280,12 @@ Every place to change. Lines are from `main` on 2026-10-22; the guard finds any 
 
 - Tokens: `index.css:7-45` (light), `:48-85` (dark), `:87-132` (`@theme inline`).
 - Harness logos: `SessionItem.tsx:73`, `HistoryPanel.tsx:270,333`, `UsageStrip.tsx:88,104,155`, `LaunchItem.tsx:66` go `mono`; `SessionView.tsx:385`, `StartingView.tsx:59`, `PastSessionView.tsx:81` and `Launcher.tsx:141` stay `brand`. `HarnessIcon.tsx:23` (its `fill`) takes the tone. `Launcher.tsx:141` is `brand` too, so the choice in the modal keeps its colour.
-- Usage bar: `UsageStrip.tsx:269-282` (`Bar`, its fill at `:276`), now with the warning fill and edge at 80 to 94%.
+- Usage bar: `UsageStrip.tsx:269-282` (`Bar`, its fill at `:276`), now a `foreground/55` fill at every level with a 3 px edge at 80 to 94% and 95% or more.
 - Staleness to info: `WorkPanel.tsx:329` ("old"), `:659` ("Possibly out of date"), `:281` ("Session links are unavailable", `border-needs-you/30` today), `Sidebar.tsx:317-328` (`Banner`), `SessionView.tsx:809` ("retrying"), `UsageStrip.tsx:134,164` (a reading marked old, "old · …").
 - Search hits: `HistoryPanel.tsx:369`.
 - Sidebar context: `SessionItem.tsx:114-119` and `ContextRing` (`:136-146`).
 - Warning levels: `lib/sessions.ts:69`, `lib/usage.ts:76`, `lib/work.ts:86-89`, `UsageStrip.tsx:276`.
-- Status colours elsewhere: `WorkPanel.tsx:542` (milestone chip, Busy's blue), `:688` (PR "ready" chip, Busy's blue), `:569` (live Linked Session, `ok` green).
+- Status colours elsewhere: `WorkPanel.tsx:542` (milestone chip, Busy's blue), `:688` (PR "ready" chip, Busy's blue), `:569` (live Linked Session, `ok` green), `:826` (CI running, Busy's spinner: now `muted-foreground`), `lib/links.tsx` `LINK_CLASS` and `Markdown.tsx:259` (links, Busy's blue: now underlined in the text colour), `ChatRail.tsx:153` (a finished Subagent's Mark: now `muted-foreground`), `HistoryPanel.tsx:319` (the live marker: now `muted-foreground` until DS-5.2).
 
 **Alert (DS-4).** Boxes: `WorkPanel.tsx:243` (couldn't open a Session), `:281` (Session links), `:353-370` (`Problem`), `Launcher.tsx:204,209`, `HistoryPanel.tsx:277`, `RightSidebar.tsx:181` (refresh problem), `SessionView.tsx:609` (End Session dialog), `StartingView.tsx:29` (no longer listed), `:87` (failed start), `MainPane.tsx:61,74`, `PastSessionView.tsx:60`, `Chat.tsx:328`, `Sidebar.tsx:317-328` (`Banner`), `:339-354` and `HistoryPanel.tsx:404-419` (`NotInstalled`). Inline: `SessionView.tsx:930` (composer), `SettingsPage.tsx:88,176,260`, `Answering.tsx:167`, `Chat.tsx:296` (Show earlier), `StatusMenu.tsx:110`, `LaunchItem.tsx:77`.
 
@@ -303,10 +308,10 @@ Every place to change. Lines are from `main` on 2026-10-22; the guard finds any 
 Each lands with the code it covers, with a Changelog line in that spec:
 
 - **SIDE**: UX "Markers" (the pulse, DS-10), the row's Harness mark (mono) and context colours (DS-3.5), the banner's tone (SIDE-6.2's wording stays), the listbox's focus (DS-9).
-- **VIEW**: UX "Loading" (DS-6.2), VIEW-5.4's empty state (DS-6.4), the status line's size and menus (DS-7.3), the preview's height (DS-11).
-- **HIST**: UX "Markers" (DS-5.2) and the search hit's colour (DS-3.4).
-- **WORK**: UX "Markers and buttons" (DS-5.3), the milestone and "ready" chips (DS-3.6), "Possibly out of date" and "old" (DS-3.3).
-- **USAGE**: the bar at 95% or more (DS-3.2), the bar at 80% to 94% (DS-3.2), the Harness marks (DS-3.1), and "old · …" moving from amber to info (DS-3.3).
+- **VIEW**: links in the text colour (DS-3.6, VIEW-1.12), the finished Subagent's Mark (VIEW-1.11), UX "Loading" (DS-6.2), VIEW-5.4's empty state (DS-6.4), the status line's size and menus (DS-7.3), the preview's height (DS-11).
+- **HIST**: UX "Markers" (DS-5.2, and the live marker's colour until then, DS-3.6) and the search hit's colour (DS-3.4).
+- **WORK**: UX "Markers and buttons" (DS-5.3), the milestone and "ready" chips (DS-3.6), "Possibly out of date" and "old" (DS-3.3), the CI-running spinner (DS-3.6).
+- **USAGE**: the bar's edge at 80% to 94% and at 95% or more (DS-3.2), the Harness marks (DS-3.1), and "old · …" moving from amber to info (DS-3.3).
 
 ### Key decisions
 
@@ -321,9 +326,10 @@ Each lands with the code it covers, with a Changelog line in that spec:
 - **The pulse goes by the Status's age**: a reload, a second tab or a re-render doesn't restart it.
 - **Terminal height is per Session**: Dario's choice, since Sessions differ in how much terminal they need. It's kept in this browser by the Session's stable id, like the right sidebar's width, with no server field. A Session with none uses the default, and entries for Sessions gone from the list are pruned.
 - **Harness logos: monochrome except in the header and the launcher**: colour marks which Harness you're looking at or choosing. In lists and filters the Status carries the colour.
-- **A usage bar's warning level gets the soft fill and edge too**: one bar with one look per level, not a saturated fill at 80% and a soft one at 95%.
+- **A usage bar's level is an edge, not a fill**: a tinted fill measured 1.2:1 against the track (lighter than it, in light mode), so on the strip the fill stays `foreground/55` and a 3 px edge in `warning` or `destructive`, with the triangle or octagon, carries the level. One look per level; `warning-soft` was dropped, and `destructive-soft` stays for the error Alert.
 - **A past Session is lucide's `History`, in `muted-foreground`**: it can't be mistaken for Idle's ring, and `CircleSlash` stays for one that can't be resumed.
 - **Milestone and "ready" chips are neutral**: Busy's blue means Busy. "Approved" keeps `ok` green, which isn't a Status.
+- **Busy's blue is a Status's, with no exception** (Dario, 2026-10-22): links are underlined in the text colour, Work's CI-running spinner and the chat rail's finished-Subagent Mark are `muted-foreground`, and History's live marker is `muted-foreground` until DS-5.2 gives it the Session's real Status. The guard lists no Busy file for any of them.
 - **The usage strip's "old · …" is info**: it's staleness, like Work's "old" chip.
 - **The chat's text is `prose`, 14 px**: a fifth step, so what you read most isn't a row title's size or the page title's.
 - **Warning levels are amber, through their own tokens**: "act on it, now or soon", kept apart from Needs you by the guard.
@@ -336,3 +342,9 @@ None.
 
 - 2026-10-22: Created, from the design review of 2026-10-22 and Dario's answers to its 12 suggestions: 3, 4, 5, 7, 9, 10, 11 and 12 here; 1 and 8 in the Plan; 2 and 6 in the Backlog.
 - 2026-10-22: Dario answered the 8 open questions. 1, 2, 3, 5, 6 and 7 as recommended: separate amber `warning` tokens, the 14 px `prose` step, the usage strip's "old · …" as info, the 80 to 94% bar with `warning-soft` and a 2 px edge, `History` for a past Session, neutral milestone and "ready" chips. 4 differently: Harness logos are monochrome in History's filter and the sidebar, but keep brand colour in the new Session modal and the Session header (DS-3.1). 8 differently: the terminal preview's height is per Session, kept in this browser by the Session's stable id and pruned for gone Sessions (DS-11).
+- 2026-10-22: Dario's 8 answers above were the grill: the spec went from Draft to Ready (nothing left in Open questions), then to In Progress when slice 1 started.
+- 2026-10-22: In Progress: DS-1 to DS-3 built (tokens, the type scale everywhere in `web/src`, colour by meaning and their guard). Changed in building: a sidebar row's and the status line's context above 60% is `destructive-text`, not `destructive`, which fell to 3.55:1 on a selected Needs you row; dark `destructive-text` rises to `oklch(0.78 0.15 22.216)` so it keeps 4.5:1 there (DS-3.5). DS-3.6 stays open: only its two chips are neutral so far (see the next line for what else it covers).
+- 2026-10-22: Review fixes, round 1. DS-3.2 amended: a tinted fill measured 1.2:1 against the track (the warning fill lighter than it, in light mode), so on the strip the fill stays `foreground/55` at every level and the level is a 3 px edge, `warning` at 80 to 94% and `destructive` at 95% or more, on an `overflow-hidden` fill; the details popover keeps solid bars. `warning-soft` is removed from DS-2.1 and `index.css`; `destructive-soft` stays for the error Alert (DS-4). USAGE amended.
+- 2026-10-22: DS-3.6 widened, deciding with Dario what Busy's blue may mark. The slice-1 line first said the colour part was done; besides the two chips, Busy's blue was still on every chat and Markdown link, Work's CI-running spinner, the chat rail's finished-Subagent Mark and History's live marker. Now: links are underlined in the text colour, the spinner and the Mark are `muted-foreground`, and History's live marker is `muted-foreground` until DS-5.2. DS-3.6 stays open until DS-5.2 and DS-5.3. VIEW, WORK and HIST amended; the guard's Busy list has no exception left.
+- 2026-10-22: DS-2.3's guard grew: raw colours (palette classes, arbitrary colours, hex, `rgb(`, `oklch(` in TS) fail except `HarnessIcon.tsx`'s brand hex; Tailwind v4's other spellings are read; each listed file's classes are pinned per family. The status line's menu error is `destructive-text`, as the context level beside it. PLAN item 12 and 0009 (now Accepted) brought up to date.
+- 2026-10-22: Review fixes, round 2. DS-3.2: the usage bar's edge is set off from the fill by a 1 px gap in the sidebar's colour, since the edge measured 1.0 to 1.9:1 against the fill and read as a hue cue only at 95% or more; the test measures the gap against the fill. DS-2.3's guard exempts CSS-wide keywords, `none`, `transparent`, `currentColor` and `url(`, counts a hex only in a class, a CSS value or a style property, checks a template for a trailing `#` only in style, `fill` and `stroke` values, catches CSS named colours, and pins `index.css`'s `--color-*` mappings to the known set. USAGE amended.

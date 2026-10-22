@@ -260,7 +260,7 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
       <Notice icon={<FileX className="size-5 opacity-60" />} title="No Transcript found">
         Lookout can&apos;t find this Session&apos;s Transcript, so there&apos;s no chat to show.{' '}
         {!ended && 'The terminal preview and composer still work.'}
-        <span className="mt-1 block text-[11.5px] opacity-80">{problem.message}</span>
+        <span className="mt-1 block text-meta opacity-80">{problem.message}</span>
       </Notice>
     );
   } else if (!chat?.loaded && problem) {
@@ -289,11 +289,11 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
       <ol ref={list} className="mx-auto flex w-full max-w-3xl flex-col gap-3.5 px-6 py-5" aria-label="Messages">
         {before && !ended && (
           <li className="flex flex-col items-center gap-1">
-            <Button variant="ghost" size="sm" className="h-7 text-[12px] text-muted-foreground" disabled={loadingEarlier} onClick={() => void showEarlier()}>
+            <Button variant="ghost" size="sm" className="h-7 text-meta text-muted-foreground" disabled={loadingEarlier} onClick={() => void showEarlier()}>
               {loadingEarlier ? 'Loading…' : 'Show earlier'}
             </Button>
             {earlierError && (
-              <p role="alert" className="text-[12px] text-destructive">
+              <p role="alert" className="text-meta text-destructive">
                 {earlierError}
               </p>
             )}
@@ -325,7 +325,7 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
           </li>
         ))}
         {problem && (
-          <li role="status" className="rounded-md border border-border bg-muted/50 px-3 py-2 text-[12px] text-muted-foreground">
+          <li role="status" className="rounded-md border border-border bg-muted/50 px-3 py-2 text-meta text-muted-foreground">
             {problem.kind === 'missing' ? "The Transcript can't be found right now" : "Couldn't read new messages"}: {problem.message} · retrying
           </li>
         )}
@@ -372,7 +372,7 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
             size="sm"
             variant="secondary"
             onClick={jumpToLatest}
-            className="absolute right-5 bottom-3 h-7 gap-1.5 rounded-full border border-border text-[12px] shadow-sm"
+            className="absolute right-5 bottom-3 h-7 gap-1.5 rounded-full border border-border text-meta shadow-sm"
           >
             {unseen > 0 ? `${unseen} new · Jump to latest` : 'Jump to latest'}
             <ArrowDown className="size-3.5" />
@@ -418,7 +418,7 @@ function Item({ item, label, startsTurn }: RowProps) {
       return (
         <div className="flex flex-col items-end" data-kind="command">
           <Meta who="You" ts={e.ts} />
-          <code className="max-w-[85%] rounded-md border border-border px-2.5 py-1 font-mono text-[12.5px] break-all">
+          <code className="max-w-[85%] rounded-md border border-border px-2.5 py-1 font-mono text-body break-all">
             <LinkedText text={e.text} />
           </code>
         </div>
@@ -427,7 +427,7 @@ function Item({ item, label, startsTurn }: RowProps) {
       return (
         <div data-kind="assistant">
           {startsTurn && <Meta who={label} ts={e.ts} />}
-          <div className="text-[13.5px] leading-[1.65] break-words">
+          <div className="text-prose leading-[1.65] break-words">
             <Markdown text={e.text} />
           </div>
         </div>
@@ -446,7 +446,7 @@ function SubagentResult({ text, ts }: { text: string; ts: string | null }) {
   return (
     <div
       data-kind="system"
-      className="flex min-w-0 items-center gap-2 rounded-md border border-dashed border-border px-2 py-0.5 text-[11.5px] leading-5 text-muted-foreground"
+      className="flex min-w-0 items-center gap-2 rounded-md border border-dashed border-border px-2 py-0.5 text-meta leading-5 text-muted-foreground"
     >
       <MarkShape kind="subagent" className="shrink-0 group-hover:scale-100" />
       <span className={TRUNCATED} title={text}>
@@ -506,7 +506,7 @@ function Prompt({ text, ts, state }: { text: string; ts: string | null; state: '
       <Meta who="You" ts={ts} extra={queued ? 'queued' : null} srLabel={state === 'sending' ? 'sending' : null} />
       <div
         className={cn(
-          'max-w-[85%] rounded-lg bg-muted px-3.5 py-2 text-[13.5px] leading-[1.6] break-words whitespace-pre-wrap',
+          'max-w-[85%] rounded-lg bg-muted px-3.5 py-2 text-prose leading-[1.6] break-words whitespace-pre-wrap',
           queued && 'border border-dashed border-border bg-transparent text-muted-foreground',
         )}
       >
@@ -519,11 +519,11 @@ function Prompt({ text, ts, state }: { text: string; ts: string | null; state: '
 function Meta({ who, ts, extra = null, srLabel = null }: { who: string; ts: string | null; extra?: string | null; srLabel?: string | null }) {
   const time = clockTime(ts);
   return (
-    <p className="mb-1 flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
+    <p className="mb-1 flex items-center gap-1.5 text-meta text-muted-foreground">
       <span className="font-medium text-foreground/80">{who}</span>
       {srLabel && <span className="sr-only">{srLabel}</span>}
       {time && <time dateTime={ts!}>{time}</time>}
-      {extra && <span className="rounded bg-muted px-1 text-[10.5px] uppercase tracking-wide">{extra}</span>}
+      {extra && <span className="rounded bg-muted px-1 text-caption uppercase tracking-wide">{extra}</span>}
     </p>
   );
 }
@@ -534,10 +534,10 @@ function ToolCalls({ calls }: { calls: ToolCall[] }) {
   if (calls.length === 1) {
     const c = calls[0]!;
     return (
-      <div className="flex min-w-0 items-center gap-2 py-0.5 text-[12.5px] text-muted-foreground" data-kind="tool_call">
+      <div className="flex min-w-0 items-center gap-2 py-0.5 text-body text-muted-foreground" data-kind="tool_call">
         <Wrench className="size-3.5 shrink-0 opacity-70" />
         <span className="shrink-0 font-medium text-foreground/75">{c.tool}</span>
-        <span className={cn(TRUNCATED, 'font-mono text-[11.5px]')} title={c.summary}>
+        <span className={cn(TRUNCATED, 'font-mono text-meta')} title={c.summary}>
           <LinkedText text={c.summary} />
         </span>
       </div>
@@ -549,7 +549,7 @@ function ToolCalls({ calls }: { calls: ToolCall[] }) {
         type="button"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
-        className="-mx-1.5 flex items-center gap-2 rounded px-1.5 py-0.5 text-[12.5px] text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+        className="-mx-1.5 flex items-center gap-2 rounded px-1.5 py-0.5 text-body text-muted-foreground hover:bg-accent/60 hover:text-foreground"
       >
         <ChevronRight className={cn('size-3.5 transition-transform', open && 'rotate-90')} />
         {toolsLabel(calls)}
@@ -557,9 +557,9 @@ function ToolCalls({ calls }: { calls: ToolCall[] }) {
       {open && (
         <ul className="mt-1 ml-[7px] space-y-0.5 border-l border-border pl-4">
           {calls.map((c) => (
-            <li key={c.cursor} className="flex min-w-0 items-center gap-2 text-[12.5px] text-muted-foreground">
+            <li key={c.cursor} className="flex min-w-0 items-center gap-2 text-body text-muted-foreground">
               <span className="shrink-0 font-medium text-foreground/75">{c.tool}</span>
-              <span className={cn(TRUNCATED, 'font-mono text-[11.5px]')} title={c.summary}>
+              <span className={cn(TRUNCATED, 'font-mono text-meta')} title={c.summary}>
                 <LinkedText text={c.summary} />
               </span>
             </li>
@@ -586,7 +586,7 @@ function Question({ entry, label }: { entry: QuestionEntry; label: string }) {
       data-status={entry.status}
       className={cn('rounded-lg border px-4 py-3', entry.status === 'pending' ? 'border-needs-you/60 bg-needs-you-soft' : 'border-border')}
     >
-      <p className="mb-2 flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
+      <p className="mb-2 flex items-center gap-1.5 text-meta text-muted-foreground">
         <CircleHelp className="size-3.5" />
         <span className="font-medium text-foreground/80">{label} asks</span>
         <span className="ml-auto">
@@ -607,9 +607,9 @@ function Question({ entry, label }: { entry: QuestionEntry; label: string }) {
             const { picked, other } = answerFor(q, entry.status === 'answered' ? entry.answer : null, qi);
             return (
               <section key={qi} aria-label={q.header || q.question}>
-                {q.header && <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">{linkify(q.header)}</p>}
-                <p className="text-[13.5px] font-medium">{linkify(q.question)}</p>
-                {q.multiSelect && <p className="text-[11.5px] text-muted-foreground">Several can be picked</p>}
+                {q.header && <p className="text-caption font-medium tracking-wide text-muted-foreground uppercase">{linkify(q.header)}</p>}
+                <p className="text-prose font-medium">{linkify(q.question)}</p>
+                {q.multiSelect && <p className="text-meta text-muted-foreground">Several can be picked</p>}
                 <ul className="mt-1.5 space-y-1">
                   {q.options.map((o, oi) => {
                     const chosen = picked.has(oi);
@@ -618,7 +618,7 @@ function Question({ entry, label }: { entry: QuestionEntry; label: string }) {
                         key={oi}
                         data-picked={chosen || undefined}
                         className={cn(
-                          'flex gap-2 rounded-md border px-2.5 py-1.5 text-[13px]',
+                          'flex gap-2 rounded-md border px-2.5 py-1.5 text-body',
                           chosen ? 'border-foreground/40 bg-accent font-medium' : 'border-border',
                           entry.status !== 'pending' && !chosen && 'opacity-60',
                         )}
@@ -628,14 +628,14 @@ function Question({ entry, label }: { entry: QuestionEntry; label: string }) {
                         </span>
                         <span className="min-w-0">
                           {linkify(o.label)}
-                          {o.description && <span className="block text-[12px] font-normal text-muted-foreground">{linkify(o.description)}</span>}
+                          {o.description && <span className="block text-meta font-normal text-muted-foreground">{linkify(o.description)}</span>}
                         </span>
                       </li>
                     );
                   })}
                 </ul>
                 {other && (
-                  <p className="mt-1.5 text-[13px]">
+                  <p className="mt-1.5 text-body">
                     <span className="text-muted-foreground">Answered: </span>
                     {linkify(other)}
                   </p>
@@ -646,9 +646,9 @@ function Question({ entry, label }: { entry: QuestionEntry; label: string }) {
         </div>
       )}
       {live && panel?.phase === 'blocked' && panel.message && <AnswerInTerminal message={panel.message} terminal={live.terminal} />}
-      {entry.status === 'pending' && !live && <p className="mt-2.5 text-[12px] text-muted-foreground">Answer it in the terminal.</p>}
+      {entry.status === 'pending' && !live && <p className="mt-2.5 text-meta text-muted-foreground">Answer it in the terminal.</p>}
       {declined && (
-        <p className="mt-2.5 text-[12px] text-muted-foreground">
+        <p className="mt-2.5 text-meta text-muted-foreground">
           {entry.status === 'abandoned' ? 'The conversation moved on without an answer.' : 'Dismissed without an answer.'}
         </p>
       )}
@@ -660,8 +660,8 @@ function Notice({ icon, title, children }: { icon: ReactNode; title: string; chi
   return (
     <div role="status" className="flex flex-1 flex-col items-center justify-center gap-2 px-8 text-center text-muted-foreground">
       {icon}
-      <p className="text-[13px] font-medium text-foreground/85">{title}</p>
-      <p className="max-w-md text-[12.5px] leading-5">{children}</p>
+      <p className="text-body font-medium text-foreground/85">{title}</p>
+      <p className="max-w-md text-body leading-5">{children}</p>
     </div>
   );
 }

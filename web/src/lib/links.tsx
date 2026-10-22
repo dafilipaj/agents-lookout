@@ -3,9 +3,10 @@ import { Fragment, type ReactNode } from 'react';
 /**
  * How the chat's web links look and open (VIEW-1.12): in a new tab, sending no referrer, in their
  * own case even under an uppercase header. Markdown's links too. Each link is a bidi isolate
- * (`dir`), so a right-to-left override before it can't reverse it into another address.
+ * (`dir`), so a right-to-left override before it can't reverse it into another address. A link is
+ * underlined in the text colour around it, never a Status colour (DS-3.6); the underline stays on hover.
  */
-export const LINK_CLASS = 'text-busy normal-case underline underline-offset-2 hover:opacity-80';
+export const LINK_CLASS = 'normal-case underline underline-offset-2 hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring';
 export const LINK_REL = 'noopener noreferrer nofollow';
 
 /**

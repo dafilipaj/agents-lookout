@@ -139,7 +139,7 @@ scenario(
     await page.keyboard.press('w');
     await expect(page.getByRole('tab', { name: 'Work' })).toHaveAttribute('aria-selected', 'true');
     const row = taskRows(page).filter({ hasText: 'Trim the lamp wicks' });
-    await expect(row.locator('[data-session-marker] svg')).toHaveClass(/text-ok-text/);
+    await expect(row.locator('[data-session-marker] svg')).toHaveClass(/lucide-circle-dot/);
     await row.locator('[data-session-marker]').click();
     await expect(page).toHaveURL(/\/s\/00000000-0000-4000-8000-0000000000a3$/);
     expect(world.calls().filter((call) => /\bspawn\b/.test(call))).toEqual([]);
@@ -178,7 +178,7 @@ scenario(
     await expect(page.getByRole('tab', { name: 'Work' })).toHaveAttribute('aria-selected', 'true');
     const row = prRows(page).filter({ hasText: 'Sharpen the anvil corners' });
     await expect(row.locator('[data-field="linked-task"]')).toContainText('Trim the lamp wicks');
-    await expect(row.locator('[data-session-marker] svg')).toHaveClass(/text-ok-text/);
+    await expect(row.locator('[data-session-marker] svg')).toHaveClass(/lucide-circle-dot/);
     await row.click();
     await expect(page).toHaveURL(/\/s\/00000000-0000-4000-8000-0000000000c2$/);
     expect(world.calls().filter((call) => /\bspawn\b/.test(call))).toEqual([]);
@@ -247,7 +247,7 @@ scenario(
     });
 
     await world.step('the Task Link to appear within 10 s of Fleet listing its Session', async () => {
-      await expect(taskRow.locator('[data-session-marker] svg')).toHaveClass(/text-ok-text/, { timeout: Math.max(1, 10_000 - (Date.now() - fleetObservedAt)) });
+      await expect(taskRow.locator('[data-session-marker] svg')).toHaveClass(/lucide-circle-dot/, { timeout: Math.max(1, 10_000 - (Date.now() - fleetObservedAt)) });
     });
     expect(Date.now() - fleetObservedAt).toBeLessThanOrEqual(10_000);
     await expect(taskRow.locator('[data-session-marker]')).toHaveAttribute('title', 'started on this Task');

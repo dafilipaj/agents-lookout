@@ -63,11 +63,11 @@ export function contextLevel(pct: number): ContextLevel {
   return 'normal';
 }
 
-/** The text colour for each level: the app's warning and danger tokens, which have light and dark values. */
+/** The text colour for each level: the warning and destructive families (DS-2), which have light and dark values. */
 export const CONTEXT_LEVEL_CLASS: Record<ContextLevel, string | null> = {
   normal: null,
-  warning: 'text-needs-you-text',
-  danger: 'text-destructive',
+  warning: 'text-warning-text',
+  danger: 'text-destructive-text',
 };
 
 /** SIDE-3.5: Idle for longer than the threshold. */

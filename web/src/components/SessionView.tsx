@@ -382,13 +382,13 @@ function Header({
         <div data-slot="header-info" className="flex min-w-0 flex-1 items-center gap-2.5 overflow-x-clip pr-1">
           {!ended && <StatusMarker status={row.status} />}
           {renamed.title}
-          <span className="flex shrink-0 items-center gap-1.5 text-[12.5px] text-muted-foreground" data-field="harness">
-            <HarnessIcon harness={row.harness} className="size-4" />
+          <span className="flex shrink-0 items-center gap-1.5 text-meta text-muted-foreground" data-field="harness">
+            <HarnessIcon harness={row.harness} tone="brand" className="size-4" />
             <span className="@max-[32rem]:sr-only">{HARNESS_NAME[row.harness]}</span>
           </span>
           <span
             className={cn(
-              'ml-auto shrink-0 rounded-full px-2 py-0.5 text-[12px] font-medium',
+              'ml-auto shrink-0 rounded-full px-2 py-0.5 text-meta font-medium',
               // VIEW-5.9: in its Status's colour; the age in the same colour (dimmed, it fell below 4.5:1).
               ended ? 'bg-muted text-muted-foreground' : STATUS_TAG_CLASS[row.status],
             )}
@@ -426,7 +426,7 @@ function CopySessionId({ sessionId }: { sessionId: string }) {
       <Button
         variant="outline"
         size="xs"
-        className={cn('h-7 shrink-0 gap-1.5 px-2 text-[12px]', state === 'failed' && 'text-destructive hover:text-destructive')}
+        className={cn('h-7 shrink-0 gap-1.5 px-2 text-meta', state === 'failed' && 'text-destructive hover:text-destructive')}
         aria-label="Copy session ID"
         title={`Copy session ID: ${sessionId}`}
         data-copy={state}
@@ -473,7 +473,7 @@ function EscKey({ label, pressingLabel, hint, icon, pressing, error, errorId, on
     <Button
       variant="outline"
       size="xs"
-      className={cn('h-7 shrink-0 gap-1.5 px-2 text-[12px]', error && '@max-[20rem]:text-destructive')}
+      className={cn('h-7 shrink-0 gap-1.5 px-2 text-meta', error && '@max-[20rem]:text-destructive')}
       title={error ? `${tip}\n${error}` : tip}
       aria-describedby={error ? errorId : undefined}
       disabled={pressing}
@@ -506,7 +506,7 @@ function HeaderNote({ slot, id, message, tone = 'error' }: { slot: 'stop-error' 
           id={id}
           tabIndex={0}
           className={cn(
-            'min-w-0 truncate rounded-sm text-[12px] outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            'min-w-0 truncate rounded-sm text-meta outline-none focus-visible:ring-2 focus-visible:ring-ring',
             tone === 'error' ? 'text-destructive' : 'text-muted-foreground',
           )}
         >
@@ -516,7 +516,7 @@ function HeaderNote({ slot, id, message, tone = 'error' }: { slot: 'stop-error' 
         <span
           aria-hidden
           data-slot={`${slot}-full`}
-          className="pointer-events-none absolute top-full right-5 z-30 mt-1 hidden w-max max-w-[min(28rem,calc(100%-2.5rem))] rounded-md border border-border bg-popover px-2.5 py-1.5 text-[12px] whitespace-normal text-popover-foreground shadow-md group-focus-within:block group-hover:block"
+          className="pointer-events-none absolute top-full right-5 z-30 mt-1 hidden w-max max-w-[min(28rem,calc(100%-2.5rem))] rounded-md border border-border bg-popover px-2.5 py-1.5 text-meta whitespace-normal text-popover-foreground shadow-md group-focus-within:block group-hover:block"
         >
           {message}
         </span>
@@ -578,7 +578,7 @@ function EndSession({
           ref={trigger}
           variant="outline"
           size="xs"
-          className="h-7 shrink-0 gap-1.5 px-2 text-[12px]"
+          className="h-7 shrink-0 gap-1.5 px-2 text-meta"
           title="End Session"
           onClick={() => {
             setError(null);
@@ -601,13 +601,13 @@ function EndSession({
             back?.focus();
           }}
         >
-          <DialogTitle className="text-[15px]">End “{row.title}”?</DialogTitle>
-          <DialogDescription className="text-[13px] leading-5">
+          <DialogTitle className="text-title">End “{row.title}”?</DialogTitle>
+          <DialogDescription className="text-body leading-5">
             {HARNESS_NAME[row.harness]} is asked to exit, then its Session host is closed. Work it hasn&apos;t finished stops. Its chat stays
             readable here, and you can resume it from History.
           </DialogDescription>
           {(unconfirmed || error) && (
-            <p role="alert" className="rounded-md border border-destructive/30 px-2.5 py-2 text-[12.5px] text-destructive">
+            <p role="alert" className="rounded-md border border-destructive/30 px-2.5 py-2 text-meta text-destructive">
               {unconfirmed ? 'Lookout can’t confirm it’s the same Session, so it won’t end it. Close it in the terminal.' : error}
             </p>
           )}
@@ -844,7 +844,7 @@ export function StatusBar({ className, ...rest }: ComponentPropsWithoutRef<'div'
   return (
     <div
       className={cn(
-        'flex h-7 min-w-0 shrink-0 items-center gap-1.5 overflow-hidden border-t border-border/70 bg-muted/30 px-5 font-mono text-[11.5px] whitespace-nowrap text-muted-foreground',
+        'flex h-7 min-w-0 shrink-0 items-center gap-1.5 overflow-hidden border-t border-border/70 bg-muted/30 px-5 font-mono text-meta whitespace-nowrap text-muted-foreground',
         className,
       )}
       {...rest}
@@ -866,18 +866,18 @@ function Drawer({ open, onToggle, preview }: { open: boolean; onToggle(): void; 
         type="button"
         aria-expanded={open}
         onClick={onToggle}
-        className="flex w-full shrink-0 items-center gap-2 px-5 py-1.5 text-[12px] font-medium text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+        className="flex w-full shrink-0 items-center gap-2 px-5 py-1.5 text-meta font-medium text-muted-foreground hover:bg-accent/50 hover:text-foreground"
       >
         <TerminalSquare className="size-3.5" />
         Terminal
-        {open && preview?.error && <span className="truncate font-normal text-needs-you-text">{preview.error} · retrying</span>}
+        {open && preview?.error && <span className="truncate font-normal text-info-text">{preview.error} · retrying</span>}
         <ChevronDown className={cn('ml-auto size-3.5 transition-transform', !open && '-rotate-90')} />
       </button>
       {open && (
         <pre
           ref={preRef}
           data-testid="terminal-preview"
-          className="h-64 min-h-0 overflow-auto bg-muted/40 px-5 py-2 font-mono text-[11.5px] leading-[1.45] whitespace-pre text-foreground/90 dark:bg-black/25"
+          className="h-64 min-h-0 overflow-auto bg-muted/40 px-5 py-2 font-mono text-meta leading-[1.45] whitespace-pre text-foreground/90 dark:bg-black/25"
         >
           {preview?.text ?? (preview?.error ? '' : 'Loading…')}
         </pre>
@@ -991,7 +991,7 @@ function ComposerFrame({ error, field, send, hint, hintTitle, className, ...form
   return (
     <form className={cn('flex-1 px-4 py-3', className)} {...form}>
       {error && (
-        <p role="alert" className="mb-2 text-[12.5px] text-destructive">
+        <p role="alert" className="mb-2 text-meta text-destructive">
           {error}
         </p>
       )}
@@ -1000,13 +1000,13 @@ function ComposerFrame({ error, field, send, hint, hintTitle, className, ...form
           rows={1}
           {...field}
           className={cn(
-            'max-h-[min(12rem,20dvh)] min-h-6 flex-1 resize-none bg-transparent text-[13.5px] leading-6 outline-none placeholder:text-muted-foreground',
+            'max-h-[min(12rem,20dvh)] min-h-6 flex-1 resize-none bg-transparent text-prose leading-6 outline-none placeholder:text-muted-foreground',
             field?.value ? 'field-sizing-content' : 'field-sizing-fixed truncate placeholder:truncate',
           )}
         />
         <Button type="submit" size="sm" className="h-7 shrink-0 gap-1.5" {...send} />
       </div>
-      <p className="mt-1.5 h-4 truncate text-[11px] leading-4 text-muted-foreground" title={hintTitle}>
+      <p className="mt-1.5 h-4 truncate text-caption leading-4 text-muted-foreground" title={hintTitle}>
         {hint}
       </p>
     </form>
@@ -1113,8 +1113,8 @@ export function DockNote({ role, icon, title, detail }: { role: 'status' | 'note
         }}
         className="min-w-0 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
       >
-        <p className="truncate text-[13px] font-medium">{title}</p>
-        <p className="line-clamp-2 text-[12.5px] leading-5 text-muted-foreground">{detail}</p>
+        <p className="truncate text-body font-medium">{title}</p>
+        <p className="line-clamp-2 text-meta leading-5 text-muted-foreground">{detail}</p>
       </div>
       {open && (
         // -mt-5 lifts it by the note's top padding (py-3.5) and 6 px more, clear of the dock line.
@@ -1129,8 +1129,8 @@ export function DockNote({ role, icon, title, detail }: { role: 'status' | 'note
           onClick={() => setDismissed(true)}
           className="absolute left-5 z-30 -mt-5 w-max max-w-[min(40rem,calc(100%-2.5rem))] min-w-[min(16rem,calc(100%-2.5rem))] -translate-y-full cursor-default overflow-y-auto rounded-md border border-border bg-popover px-3 py-2 break-words text-popover-foreground shadow-md"
         >
-          <p className="text-[13px] font-medium">{title}</p>
-          <p className="text-[12.5px] leading-5 text-muted-foreground">{detail}</p>
+          <p className="text-body font-medium">{title}</p>
+          <p className="text-meta leading-5 text-muted-foreground">{detail}</p>
         </div>
       )}
     </div>

@@ -55,7 +55,7 @@ function Code({ children, className, node }: ComponentProps<'code'> & ExtraProps
   const inBlock = useContext(InBlock);
   const lead = Number(node?.properties[ADDRESS_LEAD] ?? 0);
   return (
-    <code className={`rounded bg-muted px-1 py-px font-mono text-[12.5px] ${className ?? ''}`}>
+    <code className={`rounded bg-muted px-1 py-px font-mono text-body ${className ?? ''}`}>
       {typeof children !== 'string' || inLink ? (
         children
       ) : inBlock ? (
@@ -95,7 +95,7 @@ function CodeBlock({ children, node }: ComponentProps<'pre'> & ExtraProps) {
     <div className="group/code relative my-2 first:mt-0 last:mb-0">
       <pre
         className={cn(
-          'rounded-md border border-border bg-muted/60 px-3 py-2.5 font-mono text-[12px] leading-[1.55] dark:bg-black/25 [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-[12px]',
+          'rounded-md border border-border bg-muted/60 px-3 py-2.5 font-mono text-meta leading-[1.55] dark:bg-black/25 [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-meta',
           plain ? 'break-words whitespace-pre-wrap' : 'overflow-x-auto',
         )}
         data-wrap={plain || undefined}
@@ -121,7 +121,7 @@ function CopyButton({ text }: { text: string }) {
         title="Copy code"
         onClick={() => void copy()}
         className={cn(
-          'absolute top-1.5 right-1.5 flex h-6 items-center gap-1 rounded-md border border-border bg-background px-1.5 text-[11.5px] text-muted-foreground shadow-xs select-none hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none group-hover/code:opacity-100 motion-safe:transition-opacity',
+          'absolute top-1.5 right-1.5 flex h-6 items-center gap-1 rounded-md border border-border bg-background px-1.5 text-meta text-muted-foreground shadow-xs select-none hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none group-hover/code:opacity-100 motion-safe:transition-opacity',
           state === 'idle' ? 'opacity-0' : 'opacity-100',
           state === 'failed' && 'text-destructive hover:text-destructive',
         )}
@@ -256,7 +256,7 @@ const components: Components = {
     !href || hidesAddress(href, node) ? (
       <span>{children}</span>
     ) : href.startsWith('#') ? (
-      <a href={href} className="text-busy no-underline">
+      <a href={href} className={LINK_CLASS}>
         <InLink value>{children}</InLink>
       </a>
     ) : (
@@ -264,9 +264,9 @@ const components: Components = {
         <InLink value>{children}</InLink>
       </a>
     ),
-  img: ({ alt }) => <span className="rounded bg-muted px-1.5 py-0.5 text-[12px] text-muted-foreground">[image{alt ? `: ${alt}` : ''}]</span>,
+  img: ({ alt }) => <span className="rounded bg-muted px-1.5 py-0.5 text-meta text-muted-foreground">[image{alt ? `: ${alt}` : ''}]</span>,
   p: ({ children }) => <p className="my-2 first:mt-0 last:mb-0">{children}</p>,
-  h1: ({ children }) => <h3 className="mt-4 mb-2 text-[15px] font-semibold first:mt-0">{children}</h3>,
+  h1: ({ children }) => <h3 className="mt-4 mb-2 text-title font-semibold first:mt-0">{children}</h3>,
   // remark-gfm's footnotes heading is screen-reader only: keep it so.
   h2: ({ children, className, id }) =>
     className?.includes('sr-only') ? (
@@ -274,9 +274,9 @@ const components: Components = {
         {children}
       </h2>
     ) : (
-      <h3 className="mt-4 mb-2 text-[14.5px] font-semibold first:mt-0">{children}</h3>
+      <h3 className="mt-4 mb-2 text-prose font-semibold first:mt-0">{children}</h3>
     ),
-  h3: ({ children }) => <h4 className="mt-3 mb-1.5 text-[14px] font-semibold first:mt-0">{children}</h4>,
+  h3: ({ children }) => <h4 className="mt-3 mb-1.5 text-prose font-semibold first:mt-0">{children}</h4>,
   h4: ({ children }) => <h5 className="mt-3 mb-1 font-semibold first:mt-0">{children}</h5>,
   ul: ({ children }) => <ul className="my-2 list-disc space-y-0.5 pl-5 first:mt-0 last:mb-0">{children}</ul>,
   ol: ({ children }) => <ol className="my-2 list-decimal space-y-0.5 pl-5 first:mt-0 last:mb-0">{children}</ol>,
@@ -288,7 +288,7 @@ const components: Components = {
   span: ({ children, node }) => (node && FILE_PATH in node.properties ? <FilePath text={textOf(node)} /> : <span>{children}</span>),
   table: ({ children }) => (
     <div className="my-2 overflow-x-auto first:mt-0 last:mb-0">
-      <table className="w-max min-w-[50%] border-collapse text-[12.5px]">{children}</table>
+      <table className="w-max min-w-[50%] border-collapse text-body">{children}</table>
     </div>
   ),
   th: ({ children, style }) => (

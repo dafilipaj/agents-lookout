@@ -46,7 +46,7 @@ export function LaunchItem({ launch, now, selected, onSelect, onDismiss }: Props
         ) : (
           <LoaderCircle aria-label="Starting" className="mx-px size-4 shrink-0 animate-spin text-muted-foreground" />
         )}
-        <span className="min-w-0 flex-1 truncate text-[13px] leading-5 font-medium" title={launch.title}>
+        <span className="min-w-0 flex-1 truncate text-body leading-5 font-medium" title={launch.title}>
           {launch.title}
         </span>
         {failed ? (
@@ -66,7 +66,7 @@ export function LaunchItem({ launch, now, selected, onSelect, onDismiss }: Props
           <HarnessIcon harness={launch.harness} />
         )}
       </div>
-      <div className="flex items-center gap-1 pl-6.5 text-[11.5px] leading-4 text-muted-foreground">
+      <div className="flex items-center gap-1 pl-6.5 text-meta leading-4 text-muted-foreground">
         <span className="min-w-0 flex-1 truncate" title={launch.directory}>
           {failed ? "Didn't start" : 'Starting…'} · {dir}
         </span>
@@ -74,12 +74,12 @@ export function LaunchItem({ launch, now, selected, onSelect, onDismiss }: Props
       </div>
       {failed && !selected && (
         <div className="mt-1 pl-6.5">
-          {launch.error && <p className="text-[11.5px] leading-4 text-destructive">{launch.error}</p>}
+          {launch.error && <p className="text-meta leading-4 text-destructive">{launch.error}</p>}
           {launch.terminal && launch.terminal.length > 0 && (
             <pre
               aria-label="Last lines of its terminal"
               title={launch.terminal.join('\n')}
-              className="mt-1 overflow-hidden rounded border border-border bg-background px-1.5 py-1 font-mono text-[10px] leading-[14px] whitespace-pre text-muted-foreground"
+              className="mt-1 overflow-hidden rounded border border-border bg-background px-1.5 py-1 font-mono text-caption leading-[14px] whitespace-pre text-muted-foreground"
             >
               {launch.terminal.join('\n')}
             </pre>

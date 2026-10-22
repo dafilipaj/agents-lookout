@@ -125,7 +125,7 @@ describe('chat rendering', () => {
     expect(row).toHaveTextContent('Agent "Build" finished');
     expect(row).not.toHaveTextContent('summary details');
     expect(row).not.toHaveTextContent(/You|Claude/);
-    expect(row.className).toMatch(/text-\[11\.5px\]/); // smaller than messages (13.5px)
+    expect(row.className).toMatch(/\btext-meta\b/); // smaller than messages (prose)
     expect(row.querySelector('[title]')).toHaveAttribute('title', text);
     expect(items[3]).toHaveTextContent('Claude'); // the reply to it is headed again
   });

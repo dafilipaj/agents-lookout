@@ -230,7 +230,7 @@ export function WorkPanel({ work, filter, onFilter, now, focusKey, onStart, onRe
               aria-pressed={filter === f}
               onClick={() => onFilter(f)}
               className={cn(
-                'min-w-0 flex-auto truncate rounded px-1.5 py-0.5 text-[12px] whitespace-nowrap transition-colors',
+                'min-w-0 flex-auto truncate rounded px-1.5 py-0.5 text-meta whitespace-nowrap transition-colors',
                 filter === f ? 'bg-sidebar-accent font-medium text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground',
               )}
             >
@@ -240,7 +240,7 @@ export function WorkPanel({ work, filter, onFilter, now, focusKey, onStart, onRe
         </div>
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto pb-2">
-        {sessionOpenError && <p role="alert" className="mx-2 rounded-md border border-destructive/30 px-2 py-1.5 text-[12px] text-destructive">{sessionOpenError}</p>}
+        {sessionOpenError && <p role="alert" className="mx-2 rounded-md border border-destructive/30 px-2 py-1.5 text-meta text-destructive">{sessionOpenError}</p>}
         {showsTasks(filter) && tasks && (
           <TasksSection
             tasks={tasks}
@@ -278,8 +278,8 @@ export function WorkPanel({ work, filter, onFilter, now, focusKey, onStart, onRe
           />
         )}
         {work && work.sessionLinks.state !== 'ok' && work.sessionLinks.state !== 'loading' && (
-          <p role="status" className="mx-2 mb-1 rounded-md border border-needs-you/30 px-2 py-1.5 text-[12px] text-muted-foreground" data-field="session-link-problem">
-            <span className="font-medium text-foreground">Session links are unavailable.</span>{' '}
+          <p role="status" className="mx-2 mb-1 rounded-md border border-info-border bg-info-soft px-2 py-1.5 text-meta text-info-text" data-field="session-link-problem">
+            <span className="font-medium">Session links are unavailable.</span>{' '}
             {work.sessionLinks.reason}{work.sessionLinks.fix ? ` ${work.sessionLinks.fix}` : ''}
           </p>
         )}
@@ -303,7 +303,7 @@ interface SectionHeaderProps {
 function SectionHeader({ id, title, count, fetchedAt, now, loading, stale }: SectionHeaderProps) {
   const updated = fetchedAt === null ? null : `updated ${formatAge(now - fetchedAt)} ago`;
   return (
-    <header className="flex min-w-0 items-center gap-1 px-3 pt-1 pb-1 text-[12px] text-muted-foreground">
+    <header className="flex min-w-0 items-center gap-1 px-3 pt-1 pb-1 text-meta text-muted-foreground">
       <h3 id={id} className="font-semibold text-foreground">
         {title}
       </h3>
@@ -326,7 +326,7 @@ function SectionHeader({ id, title, count, fetchedAt, now, loading, stale }: Sec
       )}
       {loading && <span className="truncate">· Loading…</span>}
       {stale && (
-        <span data-field="old" className="ml-auto shrink-0 rounded-full bg-needs-you-soft px-1.5 text-[11px] font-medium text-needs-you-text" title="From an earlier read: the last one failed">
+        <span data-field="old" className="ml-auto shrink-0 rounded-full bg-info-soft px-1.5 text-caption font-medium text-info-text" title="From an earlier read: the last one failed">
           old
         </span>
       )}
@@ -352,7 +352,7 @@ interface ProblemProps {
  */
 function Problem({ title, reason, how, fix, stale, fetchedAt, now }: ProblemProps) {
   return (
-    <div role="alert" className="mx-2 mb-1.5 rounded-md border border-destructive/30 px-2 py-1.5 text-[12px]" data-field="problem">
+    <div role="alert" className="mx-2 mb-1.5 rounded-md border border-destructive/30 px-2 py-1.5 text-meta" data-field="problem">
       <p className="font-medium text-destructive">{title}</p>
       {reason && (
         <p className="mt-0.5 text-muted-foreground" data-field="reason">
@@ -360,7 +360,7 @@ function Problem({ title, reason, how, fix, stale, fetchedAt, now }: ProblemProp
         </p>
       )}
       {how && <p className="mt-1 text-muted-foreground">{how}</p>}
-      {fix && <pre className="mt-1 rounded-md border border-border bg-background p-1.5 font-mono text-[11px] leading-4 whitespace-pre-wrap select-all [overflow-wrap:anywhere]">{fix}</pre>}
+      {fix && <pre className="mt-1 rounded-md border border-border bg-background p-1.5 font-mono text-caption leading-4 whitespace-pre-wrap select-all [overflow-wrap:anywhere]">{fix}</pre>}
       {stale && (
         <p className="mt-1 text-muted-foreground">
           Showing the last list{fetchedAt === null ? '' : `, from ${formatAge(now - fetchedAt)} ago`}.
@@ -396,7 +396,7 @@ function TasksSection({ tasks, sessionsAvailable, now: clock, selected, listRef,
       <SectionHeader id="work-tasks-heading" title="Tasks" count={list ? tasks.tasks.length : null} fetchedAt={tasks.fetchedAt} now={now} loading={tasks.state === 'loading'} stale={tasks.stale} />
       {/* WORK-2.6: no email, no read; Settings opens in the main pane, Work staying open. */}
       {tasks.state === 'no-email' && (
-        <p className="px-3 py-2 text-[12px] text-muted-foreground" data-field="no-email">
+        <p className="px-3 py-2 text-meta text-muted-foreground" data-field="no-email">
           Set your Productive email in{' '}
           <a
             href="/settings"
@@ -428,7 +428,7 @@ function TasksSection({ tasks, sessionsAvailable, now: clock, selected, listRef,
           now={now}
         />
       )}
-      {list && tasks.tasks.length === 0 && <p className="px-3 py-3 text-[12px] text-muted-foreground">No open tasks</p>}
+      {list && tasks.tasks.length === 0 && <p className="px-3 py-3 text-meta text-muted-foreground">No open tasks</p>}
       {list && tasks.tasks.length > 0 && (
         <div
           ref={listRef}
@@ -482,7 +482,7 @@ function TaskRow({ task, rowKey, now, active, sessionsAvailable, onClick, onOpen
       data-task={task.id}
       title={task.links?.incomplete ? 'Links may be incomplete' : undefined}
       onClick={onClick}
-      className={cn('flex min-w-0 cursor-default flex-col gap-0.5 rounded-md px-2 py-1.5 text-[13px] hover:bg-sidebar-accent/60', active && 'bg-sidebar-accent')}
+      className={cn('flex min-w-0 cursor-default flex-col gap-0.5 rounded-md px-2 py-1.5 text-body hover:bg-sidebar-accent/60', active && 'bg-sidebar-accent')}
     >
       {/* The row's description only: its name is its content (WORK-2.2). */}
       <span id={keysId} className="sr-only" aria-hidden>
@@ -506,7 +506,7 @@ function TaskRow({ task, rowKey, now, active, sessionsAvailable, onClick, onOpen
         </span>
       </div>
       {(task.project !== null || task.status !== null) && (
-        <div className="flex min-w-0 items-center gap-1 text-[12px] text-muted-foreground">
+        <div className="flex min-w-0 items-center gap-1 text-meta text-muted-foreground">
           {task.project !== null && (
             <span className="min-w-0 truncate" data-field="project" title={task.project}>
               {task.project}
@@ -525,21 +525,21 @@ function TaskRow({ task, rowKey, now, active, sessionsAvailable, onClick, onOpen
         </div>
       )}
       {task.links && task.links.prs.length > 0 && (
-        <div className="flex min-w-0 flex-wrap items-center gap-1 text-[12px] text-muted-foreground" data-field="linked-prs">
+        <div className="flex min-w-0 flex-wrap items-center gap-1 text-meta text-muted-foreground" data-field="linked-prs">
           {task.links.prs.map((linked) => (
             <span key={linked.url} className="inline-flex items-center gap-1" title={linked.sources.map((source) => (source === 'body' ? 'PR body' : 'branch')).join(', ')} data-field="linked-pr">
               <span className="font-medium text-foreground">#{linked.number}</span>
-              {linked.chip ? <span className={cn('rounded-full border px-1.5 text-[10.5px] leading-4 font-medium', CHIP_CLASS[linked.chip])}>{linked.chip}</span> : <span>Review request</span>}
+              {linked.chip ? <span className={cn('rounded-full border px-1.5 text-caption leading-4 font-medium', CHIP_CLASS[linked.chip])}>{linked.chip}</span> : <span>Review request</span>}
               <Ci ci={linked.ci} />
             </span>
           ))}
         </div>
       )}
       {(task.milestone || due) && (
-        <div className="flex min-w-0 items-center gap-1.5 text-[12px] text-muted-foreground">
+        <div className="flex min-w-0 items-center gap-1.5 text-meta text-muted-foreground">
           {task.milestone && (
             <>
-              <span className="flex shrink-0 items-center gap-0.5 rounded-full border border-busy/40 px-1.5 text-[10.5px] leading-4 font-medium text-busy-text" data-field="milestone">
+              <span className="flex shrink-0 items-center gap-0.5 rounded-full border border-border bg-muted px-1.5 text-caption leading-4 font-medium text-foreground" data-field="milestone">
                 <Milestone aria-hidden className="size-3" />
                 milestone
               </span>{' '}
@@ -566,7 +566,8 @@ function SessionMarker({ sessions, incomplete }: { sessions: readonly WorkSessio
   const Marker = live ? CircleDot : Circle;
   return (
     <span data-session-marker title={title} aria-hidden="true" className="flex size-4 shrink-0 items-center justify-center">
-      <Marker className={cn('size-3.5', live ? 'text-ok-text' : 'text-muted-foreground')} />
+      {/* DS-3.6: a live Link isn't green (`ok` means something passed); its Status marker is DS-5.3. */}
+      <Marker className={cn('size-3.5', live ? 'text-foreground' : 'text-muted-foreground')} />
     </span>
   );
 }
@@ -599,7 +600,7 @@ function PrsSection({ prs, sessionsAvailable, blockedUntil, now: clock, selected
   return (
     <section aria-labelledby="work-prs-heading" data-section="prs" className="flex flex-col">
       <SectionHeader id="work-prs-heading" title="PRs" count={lists ? count : null} fetchedAt={prs.fetchedAt} now={now} loading={prs.state === 'loading'} stale={prs.stale} />
-      {prs.taskIds === false && <p className="px-3 pb-1 text-[12px] text-muted-foreground" data-field="task-link-version">Task links need a newer tb-pr.</p>}
+      {prs.taskIds === false && <p className="px-3 pb-1 text-meta text-muted-foreground" data-field="task-link-version">Task links need a newer tb-pr.</p>}
       {prs.state !== 'ok' && prs.state !== 'loading' && (
         <Problem
           title={prs.state === 'not-installed' ? "tb-pr isn't installed" : prs.state === 'signed-out' ? "tb-pr isn't signed in to GitHub" : prs.stale ? "Couldn't update PRs" : "Couldn't read PRs"}
@@ -611,7 +612,7 @@ function PrsSection({ prs, sessionsAvailable, blockedUntil, now: clock, selected
           now={now}
         />
       )}
-      {lists && groups.length === 0 && <p className="px-3 py-3 text-[12px] text-muted-foreground">No open PRs or review requests</p>}
+      {lists && groups.length === 0 && <p className="px-3 py-3 text-meta text-muted-foreground">No open PRs or review requests</p>}
       {lists && groups.length > 0 && (
         <div
           ref={listRef}
@@ -651,12 +652,12 @@ function PrGroupView({ group, prs, marks, sessionsAvailable, now, selected, onRo
   const markId = `work-marks-${group}`;
   return (
     <div role="group" aria-labelledby={label} aria-describedby={marks.length > 0 ? markId : undefined} data-group={group} className="flex flex-col">
-      <div role="presentation" className="px-3 pt-1.5 pb-0.5 text-[11.5px] font-medium text-muted-foreground">
+      <div role="presentation" className="px-3 pt-1.5 pb-0.5 text-meta font-medium text-muted-foreground">
         <span id={label}>{PR_GROUP_LABEL[group]}</span>
       </div>
       {/* WORK-7.5: a column with an issue is possibly out of date, even when tb-pr succeeded. */}
       {marks.length > 0 && (
-        <div role="presentation" className="mx-2 mb-1 flex gap-1.5 rounded-md bg-needs-you-soft px-2 py-1.5 text-[11.5px] text-needs-you-text">
+        <div role="presentation" className="mx-2 mb-1 flex gap-1.5 rounded-md border border-info-border bg-info-soft px-2 py-1.5 text-meta text-info-text">
           <TriangleAlert aria-hidden className="mt-0.5 size-3.5 shrink-0" />
           {/* The spaces keep the group's description (aria-describedby) from running the lines together. */}
           <span id={markId} className="min-w-0" data-field="marks">
@@ -683,9 +684,10 @@ function PrGroupView({ group, prs, marks, sessionsAvailable, now, selected, onRo
   );
 }
 
+/** DS-3.6: "ready" is the neutral chip, not Busy's blue; "approved" keeps `ok` green, which isn't a Status. */
 const CHIP_CLASS: Record<NonNullable<WorkPr['chip']>, string> = {
   draft: 'border-border text-muted-foreground',
-  ready: 'border-busy/40 text-busy',
+  ready: 'border-border bg-muted text-foreground',
   approved: 'border-ok/40 text-ok',
 };
 
@@ -725,7 +727,7 @@ function PrRow({ rowKey, group, pr, now, active, sessionsAvailable, onClick, onO
       data-pr={`${pr.repo}#${pr.number}`}
       title={pr.links?.incomplete ? 'Links may be incomplete' : undefined}
       onClick={onClick}
-      className={cn('flex min-w-0 cursor-default flex-col gap-0.5 rounded-md px-2 py-1.5 text-[13px] hover:bg-sidebar-accent/60', active && 'bg-sidebar-accent')}
+      className={cn('flex min-w-0 cursor-default flex-col gap-0.5 rounded-md px-2 py-1.5 text-body hover:bg-sidebar-accent/60', active && 'bg-sidebar-accent')}
     >
       {/* The row's description only: its name is its content, as History's rows' (WORK-3.2). */}
       <span id={keysId} className="sr-only" aria-hidden>
@@ -742,7 +744,7 @@ function PrRow({ rowKey, group, pr, now, active, sessionsAvailable, onClick, onO
         <SessionMarker sessions={sessionsAvailable ? pr.links?.sessions ?? [] : []} incomplete={pr.links?.incomplete ?? false} />
         {pr.chip && (
           <>
-            <span className={cn('shrink-0 rounded-full border px-1.5 text-[10.5px] leading-4 font-medium', CHIP_CLASS[pr.chip])} data-field="chip">
+            <span className={cn('shrink-0 rounded-full border px-1.5 text-caption leading-4 font-medium', CHIP_CLASS[pr.chip])} data-field="chip">
               {pr.chip}
             </span>{' '}
           </>
@@ -751,7 +753,7 @@ function PrRow({ rowKey, group, pr, now, active, sessionsAvailable, onClick, onO
         {age && (
           <>
             <span
-              className={cn('shrink-0 text-[12px]', level ? AGE_LEVEL_CLASS[level] : 'text-muted-foreground')}
+              className={cn('shrink-0 text-meta', level ? AGE_LEVEL_CLASS[level] : 'text-muted-foreground')}
               data-field="age"
               data-level={level ?? undefined}
               title={pr.createdAt !== null ? `Opened ${new Date(pr.createdAt).toLocaleString()}` : undefined}
@@ -776,7 +778,7 @@ function PrRow({ rowKey, group, pr, now, active, sessionsAvailable, onClick, onO
         {pr.title}
       </p>
       {pr.links && pr.links.tasks.length > 0 && (
-        <div className="flex min-w-0 flex-wrap items-center gap-1 text-[12px] text-muted-foreground" data-field="linked-tasks">
+        <div className="flex min-w-0 flex-wrap items-center gap-1 text-meta text-muted-foreground" data-field="linked-tasks">
           {pr.links.tasks.map((linked) => (
             <span key={linked.id} className="truncate" title={linked.sources.map((source) => (source === 'body' ? 'PR body' : 'branch')).join(', ')} data-field="linked-task">
               {linked.title}
@@ -821,7 +823,7 @@ function Ci({ ci }: { ci: WorkPr['ci'] }) {
     ) : ci === 'failing' ? (
       <CircleX aria-hidden className="size-3.5 text-destructive" />
     ) : ci === 'running' ? (
-      <LoaderCircle aria-hidden className="size-3.5 text-busy motion-safe:animate-spin" />
+      <LoaderCircle aria-hidden className="size-3.5 text-muted-foreground motion-safe:animate-spin" />
     ) : ci === 'unknown' ? (
       <CircleQuestionMark aria-hidden className="size-3.5" />
     ) : (
@@ -834,7 +836,7 @@ function Ci({ ci }: { ci: WorkPr['ci'] }) {
       title={CI_TITLE[ci]}
       data-field="ci"
       data-ci={ci}
-      className={cn('flex shrink-0 items-center gap-0.5', spelled && 'text-[11.5px] text-muted-foreground')}
+      className={cn('flex shrink-0 items-center gap-0.5', spelled && 'text-meta text-muted-foreground')}
     >
       {icon}
       {spelled && <span aria-hidden>{CI_LABEL[ci]}</span>}

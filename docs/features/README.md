@@ -13,4 +13,4 @@ One row per feature. Update the status here and in the spec's frontmatter togeth
 | Usage at a glance: Claude, Codex and Jev limits | USAGE | Done | [SPEC](usage/SPEC.md) |
 | Tasks and PRs: your Productive Tasks, PRs and Review requests, Linked to their Sessions | WORK | In Progress | [SPEC](tasks-and-prs/SPEC.md) |
 | Behaviour tests: every requirement checked end to end ([0007](../decisions/0007-behaviour-tests-from-spec-requirements.md)) | TEST | In Progress | [SPEC](behaviour-tests/SPEC.md) |
-| Design system: one type scale, colour by meaning and shared components, guarded by tests ([0009](../decisions/0009-one-design-system-guarded-by-tests.md)) | DS | Draft | [SPEC](design-system/SPEC.md) |
+| Design system: one type scale, colour by meaning and shared components, guarded by tests ([0009](../decisions/0009-one-design-system-guarded-by-tests.md)) | DS | In Progress | [SPEC](design-system/SPEC.md) |

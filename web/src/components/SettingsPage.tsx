@@ -46,18 +46,18 @@ export function SettingsPage({ settings, save, onBack }: Props) {
           <Button variant="ghost" size="sm" className="-ml-2.5 h-7 text-muted-foreground" onClick={onBack}>
             <ArrowLeft /> Back
           </Button>
-          <h1 className="text-[15px] font-semibold tracking-tight">Settings</h1>
+          <h1 className="text-title font-semibold tracking-tight">Settings</h1>
         </>
       }
     >
       <div className="mx-auto w-full max-w-2xl px-8 py-7">
-        <p className="text-[13px] text-muted-foreground">Saved on this Mac, shared by every Lookout tab.</p>
+        <p className="text-body text-muted-foreground">Saved on this Mac, shared by every Lookout tab.</p>
 
         <form onSubmit={submit} className="mt-6 rounded-lg border border-border bg-card p-4">
-          <Label htmlFor="idle-threshold" className="text-[13px]">
+          <Label htmlFor="idle-threshold" className="text-body">
             Idle threshold
           </Label>
-          <p id="idle-threshold-help" className="mt-1 text-[12.5px] text-muted-foreground">
+          <p id="idle-threshold-help" className="mt-1 text-meta text-muted-foreground">
             Sessions that have been Idle longer than this are dimmed in the sidebar.
           </p>
           <div className="mt-3 flex items-center gap-2">
@@ -76,16 +76,16 @@ export function SettingsPage({ settings, save, onBack }: Props) {
                 setState({ kind: 'idle' });
               }}
             />
-            <span className="text-[13px] text-muted-foreground">hours</span>
+            <span className="text-body text-muted-foreground">hours</span>
             <Button type="submit" size="sm" className="ml-2 h-8" disabled={state.kind === 'saving' || draft === null}>
               Save
             </Button>
-            <span role="status" className="ml-1 text-[12.5px] text-muted-foreground">
+            <span role="status" className="ml-1 text-meta text-muted-foreground">
               {state.kind === 'saved' && 'Saved'}
             </span>
           </div>
           {state.kind === 'error' && (
-            <p role="alert" className="mt-2 text-[12.5px] text-destructive">
+            <p role="alert" className="mt-2 text-meta text-destructive">
               {state.message}
             </p>
           )}
@@ -137,10 +137,10 @@ function ProductiveEmail({ settings, save }: Pick<Props, 'settings' | 'save'>) {
 
   return (
     <form onSubmit={submit} noValidate className="mt-4 rounded-lg border border-border bg-card p-4">
-      <Label htmlFor="productive-email" className="text-[13px]">
+      <Label htmlFor="productive-email" className="text-body">
         Productive email
       </Label>
-      <p id="productive-email-help" className="mt-1 text-[12.5px] text-muted-foreground">
+      <p id="productive-email-help" className="mt-1 text-meta text-muted-foreground">
         Work lists the open Tasks assigned to this email in Productive. Leave it empty to read none.
       </p>
       <div className="mt-3 flex items-center gap-2">
@@ -163,17 +163,17 @@ function ProductiveEmail({ settings, save }: Pick<Props, 'settings' | 'save'>) {
         <Button type="submit" size="sm" className="h-8" disabled={state.kind === 'saving' || (draft === null && !showsSuggestion)}>
           Save
         </Button>
-        <span role="status" className="ml-1 text-[12.5px] text-muted-foreground">
+        <span role="status" className="ml-1 text-meta text-muted-foreground">
           {done}
         </span>
       </div>
       {showsSuggestion && (
-        <p id="productive-email-suggestion" className="mt-2 text-[12.5px] text-muted-foreground" data-field="suggestion">
+        <p id="productive-email-suggestion" className="mt-2 text-meta text-muted-foreground" data-field="suggestion">
           From your git config. Not saved yet: press Save to use it.
         </p>
       )}
       {state.kind === 'error' && (
-        <p role="alert" className="mt-2 text-[12.5px] text-destructive">
+        <p role="alert" className="mt-2 text-meta text-destructive">
           {state.message}
         </p>
       )}
@@ -215,15 +215,15 @@ function StartDirectories({ settings, save }: Pick<Props, 'settings' | 'save'>) 
 
   return (
     <section aria-labelledby="start-dirs-title" className="mt-4 rounded-lg border border-border bg-card p-4">
-      <h2 id="start-dirs-title" className="text-[13px] font-medium">
+      <h2 id="start-dirs-title" className="text-body font-medium">
         Start directories
       </h2>
-      <p className="mt-1 text-[12.5px] text-muted-foreground">Where new Sessions can start. The launcher offers these.</p>
+      <p className="mt-1 text-meta text-muted-foreground">Where new Sessions can start. The launcher offers these.</p>
       <ul aria-label="Start directories" className="mt-3 flex flex-col divide-y divide-border rounded-md border border-border">
         {dirs.map((d) => (
           <li key={d} className="flex items-center gap-2 px-2.5 py-1.5">
             <Folder className="size-3.5 shrink-0 text-muted-foreground" />
-            <span className="min-w-0 flex-1 truncate font-mono text-[12.5px]" title={d}>
+            <span className="min-w-0 flex-1 truncate font-mono text-body" title={d}>
               {d}
             </span>
             <Button
@@ -250,14 +250,14 @@ function StartDirectories({ settings, save }: Pick<Props, 'settings' | 'save'>) 
             setAdding(e.target.value);
             setError(null);
           }}
-          className="h-8 flex-1 font-mono text-[12.5px]"
+          className="h-8 flex-1 font-mono text-body"
         />
         <Button type="submit" size="sm" variant="outline" className="h-8" disabled={busy || !adding.trim()}>
           Add
         </Button>
       </form>
       {error && (
-        <p role="alert" className="mt-2 text-[12.5px] text-destructive">
+        <p role="alert" className="mt-2 text-meta text-destructive">
           {error}
         </p>
       )}

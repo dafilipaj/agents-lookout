@@ -1,7 +1,7 @@
 import type { SessionRow } from '@shared/types.ts';
 import { FolderGit2, GitBranch, SquareTerminal } from 'lucide-react';
 import { memo, useEffect, useRef } from 'react';
-import { BACKGROUND_SHELL_TIP, ROW_TONE, STATUS_LABEL, STATUS_STRIP_CLASS, location } from '@/lib/sessions';
+import { BACKGROUND_SHELL_TIP, CONTEXT_LEVEL_CLASS, ROW_TONE, STATUS_LABEL, STATUS_STRIP_CLASS, contextLevel, location } from '@/lib/sessions';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { HarnessIcon } from './HarnessIcon';
@@ -61,7 +61,7 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
         <StatusMarker status={row.status} className={cn('size-4.5', !row.controllable && 'opacity-60 grayscale')} />
         <span
           className={cn(
-            'min-w-0 flex-1 truncate text-[13px] leading-5',
+            'min-w-0 flex-1 truncate text-body leading-5',
             row.controllable ? 'font-medium' : tone.quiet,
           )}
           title={row.title}
@@ -69,11 +69,12 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
         >
           {row.title}
         </span>
-        <span className="flex shrink-0 items-center" data-field="harness">
+        {/* DS-3.1: the Harness mark in the row's quiet colour; Status carries the colour in a list. */}
+        <span className={cn('flex shrink-0 items-center', tone.quiet)} data-field="harness">
           <HarnessIcon harness={row.harness} className={cn(!row.controllable && 'opacity-70')} />
         </span>
       </div>
-      <div className={cn('flex items-center gap-1 pl-6.5 text-[11.5px] leading-4', tone.quiet)}>
+      <div className={cn('flex items-center gap-1 pl-6.5 text-meta leading-4', tone.quiet)}>
         <span className="flex min-w-0 flex-1 items-center gap-1">
           {row.git && (
             <span className="max-w-[45%] shrink-0 truncate" title={row.git.repo} data-field="repo">
@@ -112,7 +113,12 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
             </span>
           )}
           {row.contextPct !== null && (
-            <span title={`Context used: ${row.contextPct}%`} className="flex items-center gap-0.5" data-field="context">
+            // DS-3.5: the status line's levels (VIEW-5.5), from the same contextLevel; quiet up to 40%.
+            <span
+              title={`Context used: ${row.contextPct}%`}
+              className={cn('flex items-center gap-0.5', CONTEXT_LEVEL_CLASS[contextLevel(row.contextPct)])}
+              data-field="context"
+            >
               <ContextRing pct={row.contextPct} />
               {row.contextPct}%
             </span>
@@ -121,7 +127,7 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
       </div>
       {needsYou && row.waitingFor && (
         <div
-          className="truncate pl-6.5 text-[11.5px] leading-4 font-medium text-needs-you-text"
+          className="truncate pl-6.5 text-meta leading-4 font-medium text-needs-you-text"
           title={row.waitingFor}
           data-field="waiting-for"
         >
