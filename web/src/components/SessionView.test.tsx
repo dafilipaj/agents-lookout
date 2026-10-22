@@ -110,6 +110,36 @@ describe('Session view header', () => {
     expect(line.getAttribute('title')).toContain('gpt-6-luna · xhigh');
   });
 
+  it('VIEW-5.16: an Idle Session with a background shell running is Idle in the pane, and the status line ends with `shell running` in Idle\'s grey', () => {
+    const app = renderApp('/s/a');
+    const git = { repo: 'work', worktree: 'crm-rates', branch: 'x' };
+    app.snapshot([row({ id: 'a', title: 'fix-rates', model: 'claude-opus-5-5', effort: 'high', contextPct: 41, git, backgroundShell: true })]);
+    const line = statusLine();
+    const shell = () => line.querySelector('[data-field="background-shell"]');
+    expect(shell()).toHaveTextContent(/^shell running$/);
+    expect(shell()).toHaveClass('text-idle-text', 'truncate', 'min-w-0');
+    expect(shell()).toHaveAttribute('title', 'A background shell command is still running');
+    expect(line.lastElementChild).toBe(shell());
+    expect(line).toHaveAttribute('title', 'work · crm-rates · claude-opus-5-5 · high · 41% context · shell running');
+    // Idle in every way: the header's tag, the composer, renaming and the model menu.
+    expect(header().querySelector('[data-field="status"]')).toHaveTextContent('Idle');
+    expect(screen.getByRole('textbox', { name: 'Message' })).toBeEnabled();
+    expect(within(header()).getByRole('button', { name: /^fix-rates/ })).toBeEnabled();
+    expect(within(line).getByRole('button', { name: /^Model: / })).toBeEnabled();
+
+    // The shell ends: the part goes, with its separator.
+    app.emit({ type: 'sessions', upsert: [row({ id: 'a', title: 'fix-rates', model: 'claude-opus-5-5', effort: 'high', contextPct: 41, git })], remove: [] });
+    expect(shell()).toBeNull();
+    expect(line).toHaveAttribute('title', 'work · crm-rates · claude-opus-5-5 · high · 41% context');
+
+    // An ended Session shows none, whatever it showed last.
+    app.emit({ type: 'sessions', upsert: [row({ id: 'a', title: 'fix-rates', model: 'claude-opus-5-5', contextPct: 41, git, backgroundShell: true })], remove: [] });
+    expect(shell()).not.toBeNull();
+    app.emit({ type: 'sessions', upsert: [], remove: ['a'] });
+    expect(screen.getByText('This Session ended')).toBeInTheDocument();
+    expect(statusLine().querySelector('[data-field="background-shell"]')).toBeNull();
+  });
+
   it('VIEW-5.5: without a composer (a view-only or ended Session) the status line sits at the bottom of the pane', () => {
     const app = renderApp('/s/orca');
     app.snapshot([row({ id: 'orca', backend: 'unknown', controllable: false, contextPct: 12 })]);

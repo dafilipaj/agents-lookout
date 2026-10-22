@@ -3,7 +3,10 @@ import type { FleetListResult, FleetRow } from './fleet.ts';
 
 const HARNESSES: readonly string[] = ['claude', 'codex'] satisfies Harness[];
 
-/** Fleet status → Glossary Status. */
+/**
+ * Fleet status → Glossary Status. SIDE-2.6: `shell` (Claude Code 2.1.308's Idle with a background
+ * shell command still running) is Idle; the row keeps the shell as `backgroundShell`.
+ */
 export function toStatus(fleetStatus: string): Status {
   switch (fleetStatus) {
     case 'waiting':
@@ -11,6 +14,7 @@ export function toStatus(fleetStatus: string): Status {
     case 'busy':
       return 'busy';
     case 'idle':
+    case 'shell':
       return 'idle';
     default:
       return 'unknown';
@@ -95,6 +99,7 @@ export function normalizeRows(rows: readonly FleetRow[], deps: NormalizeDeps): S
       ownHost: perHost.get(tmuxHost(r) ?? '') === 1,
       model: r.model ?? null,
       effort: effort(r.effort),
+      backgroundShell: r.status === 'shell',
       procStart: procStart(r.proc_start),
       pendingModel: null,
       modelAt: typeof r.model_at === 'string' ? r.model_at : null,

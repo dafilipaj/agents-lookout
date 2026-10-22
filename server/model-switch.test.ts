@@ -195,6 +195,17 @@ describe('switching the model (VIEW-6)', { timeout: 30_000 }, () => {
     expect(switches()).toEqual([]);
   });
 
+  it('VIEW-5.16: Idle with a background shell running is Idle to Lookout, so Fleet is asked; the pinned Fleet’s `not_idle` says why', async () => {
+    const t = await setup();
+    editRow(CLAUDE, { status: 'shell' });
+    expect(await refusal(t.switchTo('claude-sonnet-5-5'))).toEqual({
+      status: 409,
+      message: 'A background shell command is still running, so this Fleet won’t switch the model. Try again once it ends, or use /model in the terminal.',
+      uncertain: false,
+    });
+    expect(switches()).toHaveLength(1);
+  });
+
   it('VIEW-6.3: one switch per Session at a time, whichever tab asks; the next can start once it’s over', async () => {
     let release: (() => void) | null = null;
     const slow: Runner = async (f, a, o) => {
@@ -259,6 +270,8 @@ describe('switching the model (VIEW-6)', { timeout: 30_000 }, () => {
       [{ fake_model: 'model_not_found' }, 'Claude Code doesn’t know this model, so the Session wasn’t switched.', false],
       [{ fake_model: 'not_idle', fake_model_reason: 'busy' }, 'The Session is working, so the model wasn’t switched. Try again once it’s Idle.', false],
       [{ fake_model: 'not_idle', fake_model_reason: 'waiting' }, 'The Session isn’t Idle now, so the model wasn’t switched. Try again once it is.', false],
+      // VIEW-5.16's Known gap: the pinned `fleet model` refuses Idle with a background shell running.
+      [{ fake_model: 'not_idle', fake_model_reason: 'shell' }, 'A background shell command is still running, so this Fleet won’t switch the model. Try again once it ends, or use /model in the terminal.', false],
       [{ fake_model: 'busy', fake_model_reason: 'editor_open' }, 'An editor is open in this Session, so the model wasn’t switched. Close it in the terminal, then try again.', false],
       [{ fake_model: 'busy', fake_model_reason: 'locked' }, 'Fleet is typing into it; try again.', false],
       [{ fake_model: 'host_shared', fake_model_reason: 'suspended' }, 'This Session is paused in its terminal, so the model wasn’t switched. Bring it back there, then try again.', false],

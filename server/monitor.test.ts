@@ -96,6 +96,25 @@ describe('SessionMonitor', () => {
     expect(t.monitor.snapshot().sessions[0]!.statusSince).toBe(t.now());
   });
 
+  it('SIDE-2.6: a background shell starting or ending pushes the row but keeps its Idle age', async () => {
+    const codex = recorded.find((r) => r.harness === 'codex')!;
+    const t = setup(ok([codex]));
+    await t.monitor.tick();
+    const since = t.monitor.snapshot().sessions[0]!.statusSince;
+
+    t.events.length = 0;
+    t.advance(2000);
+    t.set(ok([{ ...codex, status: 'shell', updated_at: t.now() - 100 }]));
+    await t.monitor.tick();
+    const e = t.events[0] as Extract<MonitorEvent, { type: 'sessions' }>;
+    expect(e.upsert.map((r) => [r.status, r.backgroundShell, r.statusSince])).toEqual([['idle', true, since]]);
+
+    t.advance(2000);
+    t.set(ok([{ ...codex, status: 'idle', updated_at: t.now() - 100 }]));
+    await t.monitor.tick();
+    expect(t.monitor.snapshot().sessions.map((r) => [r.status, r.backgroundShell, r.statusSince])).toEqual([['idle', false, since]]);
+  });
+
   it('SIDE-6.2: when a poll fails, the last list stays and the health says since when; it recovers on its own', async () => {
     const t = setup(ok(recorded));
     await t.monitor.tick();

@@ -139,6 +139,8 @@ const ITERM = 'This Session runs in an iTerm tab, where Lookout can’t switch i
 const NOT_CLAUDE = 'Lookout switches the model only in a Claude Code Session.';
 const NOT_IDLE = 'The Session isn’t Idle now, so the model wasn’t switched. Try again once it is.';
 const WORKING = 'The Session is working, so the model wasn’t switched. Try again once it’s Idle.';
+/** VIEW-5.16 (Known gap): the pinned `fleet model` takes only `idle`, not Idle with a background shell running. */
+const SHELL = 'A background shell command is still running, so this Fleet won’t switch the model. Try again once it ends, or use /model in the terminal.';
 const CHANGED = 'This Session was restarted since you picked the model, so it wasn’t switched.';
 /**
  * VIEW-6.8: Fleet found the Session changed (`target_changed`) or gone (`target_not_found`, or no
@@ -173,7 +175,7 @@ export const MODEL_HELD_OTHER = 'Fleet held the switch, so the model wasn’t sw
  */
 const KINDS: Readonly<Record<string, { status: number; message: string; uncertain?: boolean; reasons?: Readonly<Record<string, string>> }>> = {
   send_held: { status: 409, message: MODEL_HELD_OTHER, reasons: MODEL_HELD },
-  not_idle: { status: 409, message: NOT_IDLE, reasons: { busy: WORKING } },
+  not_idle: { status: 409, message: NOT_IDLE, reasons: { busy: WORKING, shell: SHELL } },
   busy: {
     status: 409,
     message: FLEET_TYPING,

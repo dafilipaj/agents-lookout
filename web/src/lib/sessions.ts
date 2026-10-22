@@ -43,6 +43,9 @@ export const ROW_TONE = {
   },
 } as const;
 
+/** SIDE-2.6, VIEW-5.16: the tooltip of an Idle Session's background shell mark. */
+export const BACKGROUND_SHELL_TIP = 'A background shell command is still running';
+
 /** VIEW-5.9: the header's Status tag, tinted in its Status's colour with text in its readable shade. */
 export const STATUS_TAG_CLASS: Record<Status, string> = {
   'needs-you': 'bg-needs-you-soft text-needs-you-text',

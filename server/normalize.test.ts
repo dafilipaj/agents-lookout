@@ -38,6 +38,7 @@ describe('fleet list → sidebar rows', () => {
         ownHost: true,
         model: 'claude-opus-5-5',
         effort: null,
+        backgroundShell: false,
         procStart: null,
         pendingModel: null,
         modelAt: null,
@@ -58,6 +59,7 @@ describe('fleet list → sidebar rows', () => {
         ownHost: true,
         model: 'gpt-6-astra',
         effort: null,
+        backgroundShell: false,
         procStart: null,
         pendingModel: null,
         modelAt: null,
@@ -78,6 +80,7 @@ describe('fleet list → sidebar rows', () => {
         ownHost: false,
         model: 'claude-opus-5-5',
         effort: null,
+        backgroundShell: false,
         procStart: null,
         pendingModel: null,
         modelAt: null,
@@ -98,6 +101,7 @@ describe('fleet list → sidebar rows', () => {
         ownHost: false,
         model: 'claude-opus-5-5',
         effort: null,
+        backgroundShell: false,
         procStart: null,
         pendingModel: null,
         modelAt: null,
@@ -212,12 +216,29 @@ describe('fleet list → sidebar rows', () => {
   });
 
   it('maps Fleet statuses onto Glossary Statuses', () => {
-    expect(['waiting', 'busy', 'idle', 'unknown', 'dormant'].map(toStatus)).toEqual([
+    expect(['waiting', 'busy', 'idle', 'shell', 'unknown', 'dormant'].map(toStatus)).toEqual([
       'needs-you',
       'busy',
       'idle',
+      'idle',
       'unknown',
       'unknown',
+    ]);
+  });
+
+  it('SIDE-2.6: a `shell` row (Idle, a background shell command still running) is Idle with `backgroundShell`; no other row has it', () => {
+    const base = { session_id: null, cwd: null, waiting_for: 'input needed', updated_at: null, display_title: 'x', context: null, model: null, harness: 'claude', backend: 'tmux' };
+    const rows = normalizeRows(
+      ['shell', 'idle', 'busy', 'waiting', 'unknown', 'Shell'].map((status, i) => ({ ...base, pid: i + 1, status })),
+      deps,
+    );
+    expect(rows.map((r) => [r.pid, r.status, r.backgroundShell, r.waitingFor])).toEqual([
+      [1, 'idle', true, null],
+      [2, 'idle', false, null],
+      [3, 'busy', false, null],
+      [4, 'needs-you', false, 'input needed'],
+      [5, 'unknown', false, null],
+      [6, 'unknown', false, null],
     ]);
   });
 

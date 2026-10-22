@@ -42,7 +42,7 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Start directory**: A directory listed in Settings where Lookout can start new Sessions. `~/Projects/work` by default.
 
-**Status**: What a Session is doing: *Busy* (working), *Needs you*, *Idle* (done replying, though its Turn lasts until your next prompt), or *Dormant* (was running before a reboot and can be resumed). Comes from Fleet.
+**Status**: What a Session is doing: *Busy* (working), *Needs you*, *Idle* (done replying, though its Turn lasts until your next prompt; a background shell command it started may still run, SIDE-2.6), or *Dormant* (was running before a reboot and can be resumed). Comes from Fleet.
 
 **Subagent**: A helper agent a Session starts and that reports back to it: Claude Code's Agent tool, in the foreground or the background, a fork included, and one a Subagent starts in turn (nested); or Codex's `spawn_agent`. A background shell command isn't one. Its own messages (the sidechain) aren't shown; its result shows in the chat as one line (VIEW-1.3), how many are running shows on its Session's row (SIDE-9) and status line (VIEW-8), and how many finished in the current Turn on the status line.
 

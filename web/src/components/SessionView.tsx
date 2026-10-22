@@ -28,7 +28,7 @@ import type { HarnessState } from '@/lib/launch';
 import { FROM_NEXT_REPLY, MODEL_DEFAULT_NOTE, MODEL_WHY, type ModelTarget, canSwitchModel, checkedModel, modelOptions, plainModelWhy, shownModel } from '@/lib/model-switch';
 import type { SwitchState } from '@/lib/status-switch';
 import type { Chat as ChatState, Preview } from '@/lib/store';
-import { CONTEXT_LEVEL_CLASS, HARNESS_NAME, STATUS_LABEL, STATUS_TAG_CLASS, contextLevel, location } from '@/lib/sessions';
+import { BACKGROUND_SHELL_TIP, CONTEXT_LEVEL_CLASS, HARNESS_NAME, STATUS_LABEL, STATUS_TAG_CLASS, contextLevel, location } from '@/lib/sessions';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { PromptCard } from './Answering';
@@ -624,11 +624,15 @@ function EndSession({
   );
 }
 
+/** VIEW-5.16: the status line's part for an Idle Session's background shell command. */
+const SHELL_RUNNING = 'shell running';
+
 /**
  * VIEW-5.5: where the Session works, its model and context use, on one line under the composer
  * (at the bottom of the pane when there's none), like a terminal's status line. At narrow widths
  * each part truncates; the whole line is in its tooltip. VIEW-5.11: the Effort follows the model.
  * VIEW-6: for a Controllable Claude Code Session, the model's name is a menu that switches it.
+ * VIEW-5.16: an Idle Session's background shell comes last, in Idle's grey.
  */
 function StatusLine({
   row,
@@ -654,7 +658,8 @@ function StatusLine({
   const model = shownModel(row);
   const modelPart = model ? (model.pending ? `${model.id} (${FROM_NEXT_REPLY})` : model.id) : null;
   const plainWhy = plainModelWhy(row, ended);
-  const parts = [where, loc?.name, modelPart, effort, context].filter((p): p is string => !!p);
+  const shell = row.backgroundShell && !ended ? SHELL_RUNNING : null;
+  const parts = [where, loc?.name, modelPart, effort, context, shell].filter((p): p is string => !!p);
   if (!parts.length) return null;
   const dot = (
     <span aria-hidden className="shrink-0 opacity-60">
@@ -710,6 +715,14 @@ function StatusLine({
             data-level={ctxLevel ?? undefined}
           >
             {context}
+          </span>
+        </>
+      )}
+      {shell && (
+        <>
+          {(where || loc || model || effort || context) && dot}
+          <span className="min-w-0 truncate text-idle-text" data-field="background-shell" title={BACKGROUND_SHELL_TIP}>
+            {shell}
           </span>
         </>
       )}

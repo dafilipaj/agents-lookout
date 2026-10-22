@@ -94,6 +94,13 @@ describe('renaming a Session (VIEW-5.12)', () => {
     expect(t.refresh).toHaveBeenCalledOnce();
   });
 
+  it('VIEW-5.16: a Session Idle with a background shell running (`shell`) is renamed as any Idle one', async () => {
+    editRow(CLAUDE, { status: 'shell' });
+    const t = await setup();
+    expect(await t.rename(CLAUDE, 'Invoice rounding')).toEqual({ result: 'renamed' });
+    expect(renames()).toEqual([['--local', 'rename', '--json', '--require-empty', '--', `id:${CLAUDE}`, 'Invoice rounding']]);
+  });
+
   it('VIEW-5.12: a Codex Session is renamed the same way', async () => {
     const t = await setup();
     expect(await t.rename(CODEX, 'PDF export')).toEqual({ result: 'renamed' });

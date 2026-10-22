@@ -74,6 +74,29 @@ describe('sidebar rows', () => {
     expect(rowEl('none').textContent).not.toContain('%');
   });
 
+  it('SIDE-2.6: an Idle row with a background shell running is an Idle row with a terminal mark before the age', () => {
+    const app = renderApp();
+    app.snapshot([
+      row({ id: 'busy', status: 'busy', statusSince: NOW - 5000 }),
+      row({ id: 'shell', status: 'idle', backgroundShell: true, contextPct: 12, statusSince: NOW - 120_000 }),
+      row({ id: 'plain', status: 'idle', statusSince: NOW - 1000 }),
+      row({ id: 'unknown', status: 'unknown', statusSince: NOW }),
+    ]);
+    expect(visibleTitles()).toEqual(['busy', 'plain', 'shell', 'unknown']);
+    const r = rowEl('shell');
+    expect(r).toHaveAttribute('data-status', 'idle');
+    expect(within(r).getByRole('img', { name: 'Idle' })).toBeInTheDocument();
+    expect(field('shell', 'strip')).toHaveClass('bg-idle');
+    const mark = field('shell', 'background-shell')!;
+    expect(mark).toHaveAttribute('title', 'A background shell command is still running');
+    expect(mark).toHaveClass('text-idle-text');
+    expect(within(mark).getByRole('img', { name: 'background shell running' })).toBeInTheDocument();
+    expect(mark.nextElementSibling).toBe(field('shell', 'age'));
+    expect(r).toHaveAccessibleName('IdleshellClaude Code workBranchmainbackground shell running2m12%');
+    expect(field('plain', 'background-shell')).toBeNull();
+    expect(rowEl('plain')).toHaveAccessibleName('IdleplainClaude Code workBranchmain1s');
+  });
+
   it('SIDE-1.5: Sessions that are not Controllable are shown in their own "View only" section', () => {
     const app = renderApp();
     app.snapshot([row({ id: 'orca', backend: 'unknown', controllable: false, status: 'needs-you' }), row({ id: 'tmux', status: 'idle' })]);

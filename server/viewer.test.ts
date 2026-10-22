@@ -36,6 +36,7 @@ const row = (over: Partial<SessionRow> & { id: string }): SessionRow => ({
   ownHost: true,
   model: null,
   effort: null,
+  backgroundShell: false,
   procStart: null,
   pendingModel: null,
   modelAt: null,

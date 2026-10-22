@@ -49,6 +49,11 @@ export interface SessionRow {
   /** VIEW-5.11: the Session's Effort as Fleet read it (`high`, `xhigh` …); null when unknown. */
   effort: string | null;
   /**
+   * SIDE-2.6, VIEW-5.16: Idle with a background shell command still running (Fleet's `shell`
+   * status, from Claude Code 2.1.308). Always false for any other Status.
+   */
+  backgroundShell: boolean;
+  /**
    * VIEW-5.6: the agent process's start time (RFC 3339, UTC) as Fleet read it; null when it
    * couldn't. With `pid` it names this process generation, so End Session never closes a
    * replacement (a resume under a new process, or a reused pid).

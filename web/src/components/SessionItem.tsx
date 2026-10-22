@@ -1,7 +1,7 @@
 import type { SessionRow } from '@shared/types.ts';
-import { FolderGit2, GitBranch } from 'lucide-react';
+import { FolderGit2, GitBranch, SquareTerminal } from 'lucide-react';
 import { memo, useEffect, useRef } from 'react';
-import { ROW_TONE, STATUS_LABEL, STATUS_STRIP_CLASS, location } from '@/lib/sessions';
+import { BACKGROUND_SHELL_TIP, ROW_TONE, STATUS_LABEL, STATUS_STRIP_CLASS, location } from '@/lib/sessions';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { HarnessIcon } from './HarnessIcon';
@@ -100,6 +100,12 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
           )}
         </span>
         <span className="flex shrink-0 items-center gap-1.5 tabular-nums">
+          {/* SIDE-2.6: Idle, with a background shell command still running; a mark, not a Status. */}
+          {row.backgroundShell && (
+            <span title={BACKGROUND_SHELL_TIP} className="flex items-center text-idle-text" data-field="background-shell">
+              <SquareTerminal role="img" aria-label="background shell running" className="size-3" />
+            </span>
+          )}
           {age && (
             <span title={`${STATUS_LABEL[row.status]} for ${age}`} data-field="age">
               {age}
