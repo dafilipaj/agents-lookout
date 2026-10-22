@@ -594,7 +594,7 @@ function StatusLine({ row }: { row: SessionRow }) {
   const where = row.git ? row.git.repo : row.cwd;
   const context = row.contextPct !== null ? `${row.contextPct}% context` : null;
   const ctxLevel = row.contextPct !== null ? contextLevel(row.contextPct) : null;
-  const effort = row.effort ? `${row.effort} effort` : null;
+  const effort = row.effort;
   const parts = [where, loc?.name, row.model, effort, context].filter((p): p is string => !!p);
   if (!parts.length) return null;
   const dot = (
