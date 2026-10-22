@@ -1,12 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { basename } from 'node:path';
 import type { LaunchHarness, Settings } from '../shared/settings.ts';
-import type { HarnessOption, LaunchView } from '../shared/types.ts';
+import type { HarnessModel, HarnessOption, LaunchView } from '../shared/types.ts';
 import type { RunError, Runner } from './exec.ts';
 import type { FleetRow } from './fleet.ts';
 import { sessionId } from './normalize.ts';
 import { sanitizeLine } from './sanitize.ts';
-import { MODEL_ID } from '../shared/model.ts';
+import { EFFORT_LEVEL, MODEL_ID } from '../shared/model.ts';
 import { expandHome } from './settings.ts';
 
 /** LAUNCH-4.5: a start that Fleet hasn't reported after this long becomes an error. */
@@ -23,6 +23,16 @@ const HARNESS_LABEL: Record<LaunchHarness, string> = { claude: 'Claude Code', co
 const TERMINAL_LINES = 8;
 /** A launch id the tab chose (LAUNCH-4.2): a UUID, like the server's own. */
 export const LAUNCH_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/**
+ * VIEW-7.1: a model's Effort levels from `harness list` (Fleet's `efforts`, lowest first, and
+ * `default_effort`), each a short word; none from a Fleet that predates them.
+ */
+function efforts(m: { efforts?: unknown; default_effort?: unknown }): Pick<HarnessModel, 'efforts' | 'defaultEffort'> {
+  const list = Array.isArray(m.efforts) ? m.efforts.filter((e): e is string => typeof e === 'string' && EFFORT_LEVEL.test(e)) : [];
+  const def = typeof m.default_effort === 'string' && EFFORT_LEVEL.test(m.default_effort) ? m.default_effort : null;
+  return { efforts: [...new Set(list)], defaultEffort: def };
+}
 
 export class LaunchError extends Error {
   readonly status: number;
@@ -207,9 +217,9 @@ export class Launcher {
       .filter((h) => h.id === 'claude' || h.id === 'codex')
       .map((h): HarnessOption => {
         const models = (Array.isArray(h.models) ? h.models : [])
-          .filter((m): m is { id: string; label: string } => typeof m?.id === 'string' && typeof m?.label === 'string')
-          .map((m) => ({ id: m.id, label: m.label }));
-        if (!models.some((m) => m.id === '')) models.unshift({ id: '', label: 'Default' });
+          .filter((m): m is { id: string; label: string; efforts?: unknown; default_effort?: unknown } => typeof m?.id === 'string' && typeof m?.label === 'string')
+          .map((m): HarnessModel => ({ id: m.id, label: m.label, ...efforts(m) }));
+        if (!models.some((m) => m.id === '')) models.unshift({ id: '', label: 'Default', efforts: [], defaultEffort: null });
         return {
           id: h.id as LaunchHarness,
           label: typeof h.label === 'string' ? h.label : HARNESS_LABEL[h.id as LaunchHarness],

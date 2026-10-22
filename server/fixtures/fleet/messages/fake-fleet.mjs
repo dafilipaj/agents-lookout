@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /* global process */
-// A stand-in `fleet` for tests and manual runs. Implements `list`, `peek`, `send`, `rename`, `model`, `harness list`, `spawn --json`
+// A stand-in `fleet` for tests and manual runs. Implements `list`, `peek`, `send`, `rename`, `model`, `effort`, `harness list`, `spawn --json`
 // (with `--resume`, the HIST contract; it never starts anything), `close --json` (the End
 // Session contract, VIEW-5.6; it never closes anything, it only drops the row from list.json) and
 // `messages --json` per the VIEW-1 contract (docs/features/session-view/SPEC.md), from
@@ -67,6 +67,13 @@
 //   leaves it out, as a Fleet before e187158 does. Otherwise `{ ok: true, host,
 //   session_id, pid, harness, model, confirmed, switched_at, dry_run }`: `confirmed` is the row's
 //   `fake_model_confirm` (default false), `switched_at` its `fake_switched_at`, else now.
+//   `effort <id:…|pid:…> <level> --json [--require-empty] [--expect-pid <n> --expect-start <t>]` (VIEW-7,
+//   the Fleet fork's `effort`, `model`'s sibling): the same checks, holds and failures, from the
+//   row's `fake_effort`, `fake_effort_held`, `fake_effort_reason`, `fake_effort_error` and
+//   `fake_effort_typed`; the level is checked for shape only (lowercase letters, at most 16:
+//   `usage`). Otherwise `{ ok: true, host, session_id, pid, harness, effort, confirmed, saved,
+//   switched_at, dry_run }`: `confirmed` the row's `fake_effort_confirm` (default false), `saved`
+//   its `fake_effort_saved` (default: true but for `max`, as Claude Code 2.1.308 writes it).
 //   `harness list --json` prints `harnesses.json` from the fixture dir, or `[]` without one.
 //   FAKE_FLEET_REGISTER  `later`: a spawned Session doesn't show in `list` until
 //                    `fake register`, as one stuck at a trust prompt; meanwhile a second
@@ -512,39 +519,49 @@ function rename(args) {
 /** Fleet's `clean_model`: letters, digits and `._[]-/:`, at most 100. */
 const MODEL_ID = /^[A-Za-z0-9._[\]/:-]{1,100}$/;
 
-/** `model` (VIEW-6): the Fleet fork's checks, holds and result, as docs/cli.md "Switching the model" gives them. Types nothing. */
-function model(args) {
+/** Fleet's `effort` level: lowercase letters, at most 16. */
+const EFFORT_LEVEL = /^[a-z]{1,16}$/;
+
+/**
+ * `model` (VIEW-6) and `effort` (VIEW-7): the Fleet fork's checks, holds and result, as docs/cli.md
+ * "Switching the model" and "Switching the effort" give them. Types nothing.
+ */
+function model(args, cmd = 'model') {
   const { opts, pos } = parse(args);
   if (!opts.json) fail('usage', 'this fake only speaks --json');
   const [target = '', id = ''] = pos;
-  if (!/^(?:id:.+|pid:[1-9][0-9]*)$/.test(target)) fail('usage', `"${target}": model takes an exact target, id:<session_id> or pid:<n> — never a fragment`);
-  if (!MODEL_ID.test(id)) fail('usage', id ? `model id "${id}" has characters outside the allowed set` : 'no model id given');
+  if (!/^(?:id:.+|pid:[1-9][0-9]*)$/.test(target)) fail('usage', `"${target}": ${cmd} takes an exact target, id:<session_id> or pid:<n> — never a fragment`);
+  if (cmd === 'effort' && !EFFORT_LEVEL.test(id)) fail('usage', id ? `effort level "${id}" is not a lowercase word of at most 16 letters` : 'no effort level given');
+  if (cmd === 'model' && !MODEL_ID.test(id)) fail('usage', id ? `model id "${id}" has characters outside the allowed set` : 'no model id given');
   const expectPid = opts['expect-pid'];
   const expectStart = opts['expect-start'];
   if ((expectPid === undefined) !== (expectStart === undefined)) fail('usage', '--expect-pid and --expect-start go together');
   const row = resolveExact(target);
   if (!row) fail('target_not_found', `no session matches '${target}'`);
-  if (row.harness !== 'claude') fail('harness_unsupported', `session runs ${row.harness}: model switches Claude Code sessions only; nothing typed`);
+  if (row.harness !== 'claude') fail('harness_unsupported', `session runs ${row.harness}: ${cmd} switches Claude Code sessions only; nothing typed`);
   if (expectPid !== undefined && (String(row.pid) !== expectPid || row.proc_start == null || row.proc_start !== expectStart)) {
     fail('target_changed', `the session's process is now pid ${row.pid} started ${row.proc_start ?? 'unknown'}; nothing typed`);
   }
   if (row.backend !== 'tmux') fail('backend_unsupported', `session runs in ${row.backend}, not a tmux pane; nothing typed`);
-  if (row.fake_model) {
-    const extra = row.fake_model_reason === undefined ? {} : row.fake_model === 'not_idle' ? { status: row.fake_model_reason } : { reason: row.fake_model_reason };
-    if (row.fake_model === 'io' && row.fake_model_typed !== null) extra.typed = row.fake_model_typed ?? true;
-    fail(row.fake_model, row.fake_model_error ?? `fake ${row.fake_model}`, { host: 'fake', ...extra });
+  const fake = (field) => row[`fake_${cmd}${field}`];
+  if (fake('')) {
+    const kind = fake('');
+    const extra = fake('_reason') === undefined ? {} : kind === 'not_idle' ? { status: fake('_reason') } : { reason: fake('_reason') };
+    if (kind === 'io' && fake('_typed') !== null) extra.typed = fake('_typed') ?? true;
+    fail(kind, fake('_error') ?? `fake ${kind}`, { host: 'fake', ...extra });
   }
   if (row.status !== 'idle') fail('not_idle', `session is ${row.status}, not idle; nothing typed (try again once it is idle)`, { host: 'fake', status: row.status });
-  const held = row.fake_model_held;
+  const held = fake('_held');
   if (held) {
     const input = held === 'text' || held === 'unreadable' ? { input: row.fake_input ?? 'draft in the box' } : {};
     process.stdout.write(`${JSON.stringify({ ok: false, host: 'fake', kind: 'send_held', reason: held, error: `held (${held}); nothing typed`, ...input })}\n`);
     process.stderr.write(`error: held (${held}); nothing typed\n`);
     process.exit(3);
   }
+  const value = cmd === 'effort' ? { effort: id, saved: dryRun ? null : (row.fake_effort_saved ?? id !== 'max') } : { model: id };
   out({
-    ok: true, host: 'fake', session_id: row.session_id, pid: row.pid, harness: row.harness, model: id,
-    confirmed: !dryRun && row.fake_model_confirm === true, switched_at: dryRun ? null : (row.fake_switched_at ?? new Date().toISOString()), dry_run: dryRun,
+    ok: true, host: 'fake', session_id: row.session_id, pid: row.pid, harness: row.harness, ...value,
+    confirmed: !dryRun && fake('_confirm') === true, switched_at: dryRun ? null : (row.fake_switched_at ?? new Date().toISOString()), dry_run: dryRun,
   });
 }
 
@@ -678,6 +695,9 @@ switch (cmd) {
     break;
   case 'model':
     model(argv);
+    break;
+  case 'effort':
+    model(argv, 'effort');
     break;
   case 'harness':
     process.stdout.write(existsSync(join(dir, 'harnesses.json')) ? readFileSync(join(dir, 'harnesses.json'), 'utf8') : '[]\n');

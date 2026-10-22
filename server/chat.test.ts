@@ -22,7 +22,7 @@ const row = (over: Partial<SessionRow> & { id: string }): SessionRow => ({
   effort: null,
   backgroundShell: false,
   procStart: null,
-  pendingModel: null,
+  pendingModel: null, pendingEffort: null,
   modelAt: null,
   ...over,
 });

@@ -25,7 +25,7 @@ export function row(over: Partial<SessionRow> & { id: string }): SessionRow {
     controllable: true,
     ownHost: false,
     procStart: '2026-10-14T08:12:03Z',
-    pendingModel: null,
+    pendingModel: null, pendingEffort: null,
     modelAt: null,
     model: null,
     effort: null,
@@ -34,18 +34,29 @@ export function row(over: Partial<SessionRow> & { id: string }): SessionRow {
   };
 }
 
+/** VIEW-7.1: the levels Fleet lists for every Claude model today, lowest first. */
+export const CLAUDE_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
+
 export const HARNESSES: HarnessOption[] = [
   {
     id: 'claude',
     label: 'Claude Code',
     installed: true,
     models: [
-      { id: '', label: 'Default' },
-      { id: 'claude-opus-5-5', label: 'Opus 5.5' },
-      { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5' },
+      { id: '', label: 'Default', efforts: CLAUDE_EFFORTS, defaultEffort: 'medium' },
+      { id: 'claude-opus-5-5', label: 'Opus 5.5', efforts: CLAUDE_EFFORTS, defaultEffort: 'medium' },
+      { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5', efforts: CLAUDE_EFFORTS, defaultEffort: 'medium' },
     ],
   },
-  { id: 'codex', label: 'Codex', installed: true, models: [{ id: '', label: 'Default (gpt-6-astra)' }, { id: 'gpt-6-astra', label: 'GPT-6 Astra' }] },
+  {
+    id: 'codex',
+    label: 'Codex',
+    installed: true,
+    models: [
+      { id: '', label: 'Default (gpt-6-astra)', efforts: ['low', 'medium', 'high'], defaultEffort: 'medium' },
+      { id: 'gpt-6-astra', label: 'GPT-6 Astra', efforts: ['low', 'medium', 'high'], defaultEffort: 'medium' },
+    ],
+  },
 ];
 
 export function launchView(over: Partial<LaunchView> & { id: string }): LaunchView {
@@ -68,6 +79,7 @@ interface RenderOptions {
   endSession?: LookoutClient['endSession'];
   renameSession?: LookoutClient['renameSession'];
   switchModel?: LookoutClient['switchModel'];
+  switchEffort?: LookoutClient['switchEffort'];
   answer?: LookoutClient['answer'];
   stopSession?: LookoutClient['stopSession'];
   escSession?: LookoutClient['escSession'];
@@ -110,6 +122,7 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
     endSession: vi.fn(options.endSession ?? (async () => ({ how: 'exit' as const }))),
     renameSession: vi.fn(options.renameSession ?? (async () => ({ result: 'renamed' as const }))),
     switchModel: vi.fn(options.switchModel ?? (async (_id: string, req: { model: string }) => ({ model: req.model, confirmed: false }))),
+    switchEffort: vi.fn(options.switchEffort ?? (async (_id: string, req: { effort: string }) => ({ effort: req.effort, confirmed: false, saved: req.effort !== 'max' }))),
     answer: vi.fn(options.answer ?? (async () => ({ epoch: 1 }))),
     stopSession: vi.fn(options.stopSession ?? (async () => {})),
     escSession: vi.fn(options.escSession ?? (async () => {})),

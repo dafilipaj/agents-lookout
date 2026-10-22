@@ -22,7 +22,7 @@ const view = (id: string) => {
 const WITH_HAIKU: HarnessOption[] = [
   {
     ...HARNESSES[0]!,
-    models: [...HARNESSES[0]!.models, { id: 'claude-haiku-4-5', label: 'Haiku 4.5' }],
+    models: [...HARNESSES[0]!.models, { id: 'claude-haiku-4-5', label: 'Haiku 4.5', efforts: [], defaultEffort: null }],
   },
   HARNESSES[1]!,
 ];

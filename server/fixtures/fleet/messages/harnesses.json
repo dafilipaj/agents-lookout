@@ -5,10 +5,10 @@
     "command": "claude",
     "installed": true,
     "models": [
-      { "id": "", "label": "Default (claude-opus-5-5)" },
-      { "id": "claude-opus-5-5", "label": "Opus 5.5" },
-      { "id": "claude-sonnet-5-5", "label": "Sonnet 5.5" },
-      { "id": "claude-haiku-5-5", "label": "Haiku 5.5" }
+      { "id": "", "label": "Default (claude-opus-5-5)", "efforts": ["low", "medium", "high", "xhigh", "max"], "default_effort": "medium" },
+      { "id": "claude-opus-5-5", "label": "Opus 5.5", "efforts": ["low", "medium", "high", "xhigh", "max"], "default_effort": "medium" },
+      { "id": "claude-sonnet-5-5", "label": "Sonnet 5.5", "efforts": ["low", "medium", "high", "xhigh", "max"], "default_effort": "medium" },
+      { "id": "claude-haiku-5-5", "label": "Haiku 5.5", "efforts": ["low", "medium", "high", "xhigh", "max"], "default_effort": "medium" }
     ]
   },
   {
@@ -17,8 +17,8 @@
     "command": "codex",
     "installed": true,
     "models": [
-      { "id": "", "label": "Default (gpt-6-astra)" },
-      { "id": "gpt-6-astra", "label": "GPT-6 Astra" }
+      { "id": "", "label": "Default (gpt-6-astra)", "efforts": ["low", "medium", "high", "xhigh"], "default_effort": "medium" },
+      { "id": "gpt-6-astra", "label": "GPT-6 Astra", "efforts": ["low", "medium", "high", "xhigh"], "default_effort": "medium" }
     ]
   }
 ]

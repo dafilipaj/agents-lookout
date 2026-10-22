@@ -5,7 +5,7 @@ import { DEFAULT_PORT } from '../shared/defaults.ts';
 import { AnswerLedger } from './answerer.ts';
 import { createApp } from './app.ts';
 import { endSession } from './closer.ts';
-import { ModelSwitches, switchModel } from './model-switch.ts';
+import { type ModelSwitcherOptions, StatusSwitches, switchEffort, switchModel } from './model-switch.ts';
 import { renameSession } from './renamer.ts';
 import { run } from './exec.ts';
 import { checkSessionPaths } from './files.ts';
@@ -58,8 +58,8 @@ const work = new WorkMonitor({
   onChange: (w) => app.broadcast({ type: 'work', work: w }),
 });
 
-// VIEW-6.7: model switches waiting for the Session's next reply, carried with its row.
-const modelSwitches = new ModelSwitches();
+// VIEW-6.7, VIEW-7.7: model and Effort switches waiting for the Session's next reply, carried with its row.
+const modelSwitches = new StatusSwitches();
 
 const monitor = new SessionMonitor({
   fetchList: () => fetchFleetList(run, resolveFleetBin(env)),
@@ -71,6 +71,19 @@ const monitor = new SessionMonitor({
     work.setLiveSessions(rows.flatMap((row) => (row.session_id ? [row.session_id] : [])));
   },
 });
+
+// VIEW-6, VIEW-7: the status line's switches share one gate, one switch per Session process at a time.
+const switcher: ModelSwitcherOptions = {
+  runner: run,
+  fleetBin: () => resolveFleetBin(env),
+  lookup: (sid) => monitor.get(sid),
+  freshList: () => fetchFleetList(run, resolveFleetBin(env)),
+  harnesses: () => launcher.harnesses(),
+  dropHarnesses: () => launcher.dropHarnesses(),
+  switches: modelSwitches,
+  changed: () => monitor.refreshDerived(),
+  refresh: () => monitor.pollNow(),
+};
 
 const viewer = new Viewer({
   runner: run,
@@ -125,22 +138,8 @@ const app = createApp({
         id,
         name,
       ),
-    switchModel: (id, req) =>
-      switchModel(
-        {
-          runner: run,
-          fleetBin: () => resolveFleetBin(env),
-          lookup: (sid) => monitor.get(sid),
-          freshList: () => fetchFleetList(run, resolveFleetBin(env)),
-          harnesses: () => launcher.harnesses(),
-          dropHarnesses: () => launcher.dropHarnesses(),
-          switches: modelSwitches,
-          changed: () => monitor.refreshDerived(),
-          refresh: () => monitor.pollNow(),
-        },
-        id,
-        req,
-      ),
+    switchModel: (id, req) => switchModel(switcher, id, req),
+    switchEffort: (id, req) => switchEffort(switcher, id, req),
     end: (id, target) =>
       endSession(
         {

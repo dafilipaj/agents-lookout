@@ -1,5 +1,5 @@
 import { FLEET_INSTALL_COMMAND } from '../shared/defaults.ts';
-import type { FleetHealth, PendingModel, SessionRow, Status } from '../shared/types.ts';
+import type { FleetHealth, PendingEffort, PendingModel, SessionRow, Status } from '../shared/types.ts';
 import type { FleetListResult, FleetRow } from './fleet.ts';
 import type { GitCache } from './git.ts';
 import { normalizeRows } from './normalize.ts';
@@ -14,10 +14,11 @@ export interface MonitorOptions {
   onEvent(event: MonitorEvent): void;
   /** After each successful poll, once its changes are out (LAUNCH follows its starts here). */
   onList?(rows: readonly FleetRow[]): void;
-  /** VIEW-6.7: model switches still waiting for the Session's next reply, carried as `pendingModel`. */
+  /** VIEW-6.7, VIEW-7.7: switches still waiting for the Session's next reply, carried as `pendingModel` and `pendingEffort`. */
   models?: {
     observe(rows: readonly SessionRow[], raw: readonly FleetRow[]): void;
     pendingFor(row: SessionRow): PendingModel | null;
+    pendingEffortFor(row: SessionRow): PendingEffort | null;
   };
   intervalMs?: number;
   now?: () => number;
@@ -148,7 +149,10 @@ export class SessionMonitor {
     const models = this.opts.models;
     if (models) {
       models.observe(next, raw);
-      for (const row of next) row.pendingModel = models.pendingFor(row);
+      for (const row of next) {
+        row.pendingModel = models.pendingFor(row);
+        row.pendingEffort = models.pendingEffortFor(row);
+      }
     }
 
     const upsert: SessionRow[] = [];

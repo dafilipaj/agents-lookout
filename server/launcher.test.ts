@@ -166,11 +166,32 @@ describe('starting Sessions', () => {
   it('LAUNCH-3.2: models come from Fleet; the default is the Harness’s own; others are refused', async () => {
     const t = setup();
     const claude = (await t.launcher.harnesses())[0]!;
-    expect(claude.models[0]).toEqual({ id: '', label: 'Default' });
+    expect(claude.models[0]).toEqual({ id: '', label: 'Default', efforts: [], defaultEffort: null });
     await t.launcher.start(req({ model: '' }));
     expect(spawnCall(t.calls).args).not.toContain('--model');
     await expect(t.launcher.start(req({ model: 'gpt-9' }))).rejects.toMatchObject({ field: 'model' });
     await expect(t.launcher.start(req({ model: "x'; rm" }))).rejects.toMatchObject({ field: 'model' });
+  });
+
+  it('VIEW-7.1: each model carries Fleet’s `efforts` (lowest first) and `default_effort`; a Fleet without them gives none, and a word that isn’t a level is dropped', async () => {
+    const json = JSON.stringify([
+      {
+        id: 'claude',
+        label: 'Claude Code',
+        installed: true,
+        models: [
+          { id: '', label: 'Default (claude-opus-5-5)', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], default_effort: 'medium' },
+          { id: 'claude-opus-5-5', label: 'Opus 5.5', efforts: ['low', 'medium', 'High', '--json', 'max', 'max', 7], default_effort: '--x' },
+          { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5' },
+        ],
+      },
+    ]);
+    const launcher = new Launcher({ runner: vi.fn(async () => json), fleetBin: () => 'fleet', settings: { get: defaultSettings, update: async () => defaultSettings() }, onChange: () => {} });
+    expect((await launcher.harnesses())[0]!.models).toEqual([
+      { id: '', label: 'Default (claude-opus-5-5)', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], defaultEffort: 'medium' },
+      { id: 'claude-opus-5-5', label: 'Opus 5.5', efforts: ['low', 'medium', 'max'], defaultEffort: null },
+      { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5', efforts: [], defaultEffort: null },
+    ]);
   });
 
   it('caches harnesses for 10 minutes', async () => {

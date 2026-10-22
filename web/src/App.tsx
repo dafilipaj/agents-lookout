@@ -31,8 +31,9 @@ import { FileLinks } from '@/lib/files';
 import { type PanelNav, type RightLayout, type RightTab, loadLayout, saveLayout, toggleTab } from '@/lib/right-sidebar';
 import { useAnyModalOpen } from '@/lib/modal';
 import { type HarnessState, type LaunchDraft, initialDraft } from '@/lib/launch';
-import { MODEL_RESTARTED, MODEL_RUNNING, type ModelTarget, modelSwitchKey, shownModel } from '@/lib/model-switch';
-import { type SwitchState, switchFailure } from '@/lib/status-switch';
+import { shownEffort } from '@/lib/effort-switch';
+import { type ModelTarget, shownModel } from '@/lib/model-switch';
+import { SWITCH_RUNNING, type SwitchState, type SwitchWhat, restartedWhy, switchFailure, switchKey } from '@/lib/status-switch';
 import { parseRoute, routePath, useRoute } from '@/lib/router';
 import { HARNESS_NAME } from '@/lib/sessions';
 import { cn } from '@/lib/utils';
@@ -40,10 +41,14 @@ import { listKnown, shownLaunches, useLookout } from '@/lib/store';
 import { useNow } from '@/lib/time';
 import { reviewPrompt } from '@/lib/work';
 
-/** VIEW-6.8: the model a Session's status line shows, and whether it's a switch's, as one value. */
-function modelShown(row: SessionRow): string {
+/**
+ * VIEW-6.8, VIEW-7.8: the model and the Effort a Session's status line shows, and whether each is
+ * a switch's, as one value.
+ */
+function switchedShown(row: SessionRow): string {
   const m = shownModel(row);
-  return m ? `${m.pending ? 'pending' : 'replied'}:${m.id}` : '';
+  const e = shownEffort(row);
+  return `${m ? `${m.pending ? 'pending' : 'replied'}:${m.id}` : ''} ${e ? `${e.pending ? 'pending' : 'replied'}:${e.level}` : ''}`;
 }
 
 /** A manual drawer toggle, valid while the Session keeps the Status it had then. */
@@ -102,40 +107,40 @@ export function App({ client }: { client: LookoutClient }) {
   const [stops, setStops] = useState<ReadonlyMap<string, StopRequest>>(new Map());
   const answersInFlight = useRef(new Set<string>());
   const stopsInFlight = useRef(new Set<string>());
-  // VIEW-6: each Session process's model switch, kept here as answers and stops are, so "Switching…"
-  // and its error outlive viewing another Session.
-  const [modelSwitches, setModelSwitches] = useState<ReadonlyMap<string, SwitchState>>(new Map());
-  const modelSwitchesInFlight = useRef(new Set<string>());
-  const modelSwitchOps = useRef(0);
+  // VIEW-6, VIEW-7: each Session process's switch of its model or Effort (one at a time, VIEW-7.3),
+  // kept here as answers and stops are, so "Switching…" and its error outlive viewing another Session.
+  const [switches, setSwitches] = useState<ReadonlyMap<string, SwitchState>>(new Map());
+  const switchesInFlight = useRef(new Set<string>());
+  const switchOps = useRef(0);
   // The rows as last listed, for what a switch does once its answer comes (the Status may have moved on).
   const liveSessions = useRef(state.sessions);
   useLayoutEffect(() => {
     liveSessions.current = state.sessions;
   });
-  // VIEW-6.8: a switch's error goes once a reply reaches the Transcript after it (Fleet's `modelAt`
-  // moves, whatever the reply's model: it settles a "can't tell", and ends a "not Idle"), with the
-  // Session's next change of model in the status line (Fleet's, or a switch's `pendingModel`), or
-  // with the next pick. A switch whose process is no longer listed goes altogether, unless it's
-  // under way or the list isn't known.
+  // VIEW-6.8, VIEW-7.8: a switch's error goes once a reply reaches the Transcript after it (Fleet's
+  // `modelAt` moves, whatever the reply's model and Effort: it settles a "can't tell", and ends a
+  // "not Idle"), with the Session's next change of model or Effort in the status line (Fleet's, or
+  // a switch's `pendingModel` or `pendingEffort`), or with the next pick from either menu. A switch
+  // whose process is no longer listed goes altogether, unless it's under way or the list isn't known.
   // Adjusted while rendering, from the list before (as React's "storing information from previous
   // renders"), so a stale error never shows.
   const [modelsListed, setModelsListed] = useState(state.sessions);
   if (modelsListed !== state.sessions) {
     setModelsListed(state.sessions);
-    const seen = (rows: ReadonlyMap<string, SessionRow>) => new Map([...rows.values()].map((r) => [modelSwitchKey(r), `${modelShown(r)} ${r.modelAt ?? ''}`]));
+    const seen = (rows: ReadonlyMap<string, SessionRow>) => new Map([...rows.values()].map((r) => [switchKey(r), `${switchedShown(r)} ${r.modelAt ?? ''}`]));
     const before = seen(modelsListed);
     const now = seen(state.sessions);
     const listed = listKnown(state);
     let out: Map<string, SwitchState> | null = null;
-    for (const [key, sw] of modelSwitches) {
+    for (const [key, sw] of switches) {
       const gone = listed && !now.has(key) && !sw.switching;
       const moved = sw.error !== null && before.has(key) && now.has(key) && before.get(key) !== now.get(key);
       if (!gone && !moved) continue;
-      out ??= new Map(modelSwitches);
+      out ??= new Map(switches);
       if (gone) out.delete(key);
       else out.set(key, { ...sw, error: null });
     }
-    if (out) setModelSwitches(out);
+    if (out) setSwitches(out);
   }
 
   // A Codex Session's id changes once it gets a session id: keep it selected, and move its
@@ -204,8 +209,8 @@ export function App({ client }: { client: LookoutClient }) {
   const [workDraft, setWorkDraft] = useState<LaunchDraft | null>(null);
   const [harnesses, setHarnesses] = useState<HarnessState>({ state: 'loading' });
   const harnessRequest = useRef(false);
-  // LAUNCH-3, VIEW-6.1: the Harnesses and their models, read each time the launcher or a model menu
-  // opens (a model switch can change Claude Code's default, VIEW-6.4); the list already here stays
+  // LAUNCH-3, VIEW-6.1, VIEW-7.1: the Harnesses, their models and levels, read each time the launcher
+  // or a status-line menu opens (a switch can change Claude Code's default, VIEW-6.4, VIEW-7.4); the list already here stays
   // until the new one comes, and stays too if that read fails. One read at a time.
   const loadHarnesses = useCallback(() => {
     if (harnessRequest.current) return;
@@ -591,40 +596,43 @@ export function App({ client }: { client: LookoutClient }) {
   // VIEW-5.12: Fleet types the Harness's `/rename`; the new title comes back through the list (VIEW-5.14).
   const renameSession = useCallback((row: SessionRow, name: string) => client.renameSession(row.id, name), [client]);
 
-  // VIEW-6: Fleet types `/model <id>` into the process the menu was opened on (`opened`; a pick
-  // after it changed asks nothing); the new model comes back with the row (`pendingModel`, VIEW-6.7).
-  // One switch per Session process at a time; nothing is retried. An outcome Lookout can't be sure
-  // of opens the Terminal preview (VIEW-6.8) on the row as it is by then.
-  const switchModel = useCallback(
-    async (row: SessionRow, model: string, opened: ModelTarget) => {
-      const key = modelSwitchKey(row);
-      const op = ++modelSwitchOps.current;
-      // A pick that asks nothing says why beside the name, leaving a switch under way to land as it does.
+  // VIEW-6, VIEW-7: Fleet types `/model <id>` or `/effort <level>` into the process the menu was
+  // opened on (`opened`; a pick after it changed asks nothing); the new value comes back with the
+  // row (`pendingModel`, `pendingEffort`: VIEW-6.7, VIEW-7.7). One switch per Session process at a
+  // time, whichever menu (VIEW-7.3); nothing is retried. An outcome Lookout can't be sure of opens
+  // the Terminal preview (VIEW-6.8, VIEW-7.8) on the row as it is by then.
+  const switchSetting = useCallback(
+    async (what: SwitchWhat, row: SessionRow, value: string, opened: ModelTarget) => {
+      const key = switchKey(row);
+      const op = ++switchOps.current;
+      // A pick that asks nothing says why beside its menu, leaving a switch under way to land as it does.
       const refuse = (error: string) =>
-        setModelSwitches((m) => {
+        setSwitches((m) => {
           const now = m.get(key);
-          return new Map(m).set(key, now?.switching ? { ...now, error } : { op, switching: false, error });
+          return new Map(m).set(key, now?.switching ? { ...now, error } : { op, what, switching: false, error });
         });
       if (opened.pid !== row.pid || opened.procStart !== row.procStart) {
-        refuse(MODEL_RESTARTED);
+        refuse(restartedWhy(what));
         return;
       }
-      if (modelSwitchesInFlight.current.has(key)) {
-        refuse(MODEL_RUNNING);
+      if (switchesInFlight.current.has(key)) {
+        refuse(SWITCH_RUNNING);
         return;
       }
-      modelSwitchesInFlight.current.add(key);
-      setModelSwitches((m) => new Map(m).set(key, { op, switching: true, error: null }));
-      const settle = (next: SwitchState) => setModelSwitches((m) => (m.get(key)?.op === op ? new Map(m).set(key, next) : m));
+      switchesInFlight.current.add(key);
+      setSwitches((m) => new Map(m).set(key, { op, what, switching: true, error: null }));
+      const settle = (next: SwitchState) => setSwitches((m) => (m.get(key)?.op === op ? new Map(m).set(key, next) : m));
       try {
-        await client.switchModel(row.id, { model, pid: opened.pid, procStart: opened.procStart });
-        settle({ op, switching: false, error: null });
+        const target = { pid: opened.pid, procStart: opened.procStart };
+        if (what === 'effort') await client.switchEffort(row.id, { effort: value, ...target });
+        else await client.switchModel(row.id, { model: value, ...target });
+        settle({ op, what, switching: false, error: null });
       } catch (err) {
         const { error, uncertain } = switchFailure(err);
-        settle({ op, switching: false, error });
-        if (uncertain) toggleDrawer([...liveSessions.current.values()].find((r) => modelSwitchKey(r) === key) ?? row, true);
+        settle({ op, what, switching: false, error });
+        if (uncertain) toggleDrawer([...liveSessions.current.values()].find((r) => switchKey(r) === key) ?? row, true);
       } finally {
-        modelSwitchesInFlight.current.delete(key);
+        switchesInFlight.current.delete(key);
       }
     },
     [client, toggleDrawer],
@@ -754,8 +762,8 @@ export function App({ client }: { client: LookoutClient }) {
             onRename={renameSession}
             models={harnesses}
             onLoadModels={loadHarnesses}
-            onSwitchModel={(row, model, opened) => void switchModel(row, model, opened)}
-            modelSwitches={modelSwitches}
+            onSwitch={(what, row, value, opened) => void switchSetting(what, row, value, opened)}
+            switches={switches}
             prompts={state.prompts}
             attempts={attempts}
             onAnswer={(row, req) => void answerPrompt(row, req)}

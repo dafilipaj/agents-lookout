@@ -4,14 +4,14 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { AnswerRequest, EndTarget, EscStatus, ModelSwitchRequest, ServerEvent } from '../shared/types.ts';
+import type { AnswerRequest, EffortSwitchRequest, EndTarget, EscStatus, ModelSwitchRequest, ServerEvent } from '../shared/types.ts';
 import { AnswerError } from './answerer.ts';
 import { type LookoutApp, createApp } from './app.ts';
 import { EndError } from './closer.ts';
 import type { FleetRow } from './fleet.ts';
 import { checkSessionPaths } from './files.ts';
 import { HistoryError } from './history.ts';
-import { MODEL_UNCERTAIN, ModelSwitchError } from './model-switch.ts';
+import { EFFORT_UNCERTAIN, MODEL_UNCERTAIN, ModelSwitchError } from './model-switch.ts';
 import { RenameError } from './renamer.ts';
 import { SettingsStore } from './settings.ts';
 import { chatViewer } from './test/helpers.ts';
@@ -41,7 +41,7 @@ let ended: { sessionId: string; target: EndTarget }[] = [];
 let answers: { sessionId: string; req: AnswerRequest }[] = [];
 let stops: string[] = [];
 let renamed: { sessionId: string; name: string }[] = [];
-let switched: ({ sessionId: string } & ModelSwitchRequest)[] = [];
+let switched: ({ sessionId: string } & (ModelSwitchRequest | EffortSwitchRequest))[] = [];
 
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'lookout-app-'));
@@ -117,6 +117,12 @@ beforeEach(async () => {
         if (sessionId === 'unsure') throw new ModelSwitchError(502, MODEL_UNCERTAIN, true);
         switched.push({ sessionId, ...req });
         return { model: req.model, confirmed: true };
+      },
+      switchEffort: async (sessionId: string, req: EffortSwitchRequest) => {
+        if (sessionId === 'busy') throw new ModelSwitchError(409, 'The Session isn’t Idle now, so the Effort wasn’t switched. Try again once it is.');
+        if (sessionId === 'unsure') throw new ModelSwitchError(502, EFFORT_UNCERTAIN, true);
+        switched.push({ sessionId, ...req });
+        return { effort: req.effort, confirmed: true, saved: req.effort !== 'max' };
       },
     },
     // VIEW-1.18: the real check, against this test's folder as the Session's cwd.
@@ -531,6 +537,50 @@ describe('VIEW-6 route', () => {
     expect(await bad({ model: 'claude-sonnet-5-5', procStart: '2026-10-14T09:30:00Z' })).toEqual({ error: 'Invalid process id.' });
     expect(await bad({ model: 'claude-sonnet-5-5', pid: 1, procStart: '--json' })).toEqual({ error: 'Invalid process start time.' });
     expect((await switchModel('abc', headers, JSON.stringify({ model: 'x'.repeat(2000), pid: 1, procStart: null }))).status).toBe(413);
+    expect(switched).toEqual([]);
+  });
+});
+
+describe('VIEW-7 route', () => {
+  const json = { 'content-type': 'application/json' };
+  const body = JSON.stringify({ effort: 'xhigh', pid: 61004, procStart: '2026-10-14T09:30:00Z' });
+  const switchEffort = (id: string, headers: Record<string, string>, b = body) => call('POST', `/api/sessions/${encodeURIComponent(id)}/effort`, { ...json, ...headers }, b);
+
+  it('VIEW-7.5: switching the Effort types into the Session, so it’s a mutation: our Origin and the token, as the model’s; the body names the level and the process', async () => {
+    expect((await switchEffort('abc', { 'x-lookout-token': TOKEN })).status).toBe(403); // no Origin
+    expect((await switchEffort('abc', { origin })).status).toBe(403); // no token
+    expect((await switchEffort('abc', { origin: 'https://evil.example', 'x-lookout-token': TOKEN })).status).toBe(403);
+    expect((await call('GET', '/api/sessions/abc/effort', { origin })).status).toBe(404);
+    expect(switched).toEqual([]);
+
+    const res = await switchEffort('abc', { origin, 'x-lookout-token': TOKEN });
+    expect(res.status).toBe(200);
+    expect(JSON.parse(res.body)).toEqual({ effort: 'xhigh', confirmed: true, saved: true });
+    expect(switched).toEqual([{ sessionId: 'abc', effort: 'xhigh', pid: 61004, procStart: '2026-10-14T09:30:00Z' }]);
+  });
+
+  it('VIEW-7.8: a refusal says why in plain words; one Lookout can’t be sure of says so (`kind: uncertain`), so the tab opens the Terminal preview', async () => {
+    const headers = { origin, 'x-lookout-token': TOKEN };
+    const refused = await switchEffort('busy', headers);
+    expect(refused.status).toBe(409);
+    expect(JSON.parse(refused.body)).toEqual({ error: 'The Session isn’t Idle now, so the Effort wasn’t switched. Try again once it is.' });
+    const unsure = await switchEffort('unsure', headers);
+    expect(unsure.status).toBe(502);
+    expect(JSON.parse(unsure.body)).toEqual({ error: EFFORT_UNCERTAIN, kind: 'uncertain' });
+  });
+
+  it('VIEW-7.1: the level’s shape and the process are checked before anything runs', async () => {
+    const headers = { origin, 'x-lookout-token': TOKEN };
+    const bad = async (b: unknown) => JSON.parse((await switchEffort('abc', headers, JSON.stringify(b))).body) as unknown;
+    expect((await switchEffort('abc', headers, 'not json')).status).toBe(400);
+    for (const effort of ['', 'High', 'x high', '--json', 'a'.repeat(17), 3]) {
+      expect(await bad({ effort, pid: 1, procStart: '2026-10-14T09:30:00Z' })).toEqual({ error: 'Invalid Effort level.' });
+    }
+    // A model id is not a level: the route decides which is read.
+    expect(await bad({ model: 'claude-sonnet-5-5', pid: 1, procStart: '2026-10-14T09:30:00Z' })).toEqual({ error: 'Invalid Effort level.' });
+    expect(await bad({ effort: 'high', procStart: '2026-10-14T09:30:00Z' })).toEqual({ error: 'Invalid process id.' });
+    expect(await bad({ effort: 'high', pid: 1, procStart: '--json' })).toEqual({ error: 'Invalid process start time.' });
+    expect((await switchEffort('abc', headers, JSON.stringify({ effort: 'x'.repeat(2000), pid: 1, procStart: null }))).status).toBe(413);
     expect(switched).toEqual([]);
   });
 });

@@ -1,7 +1,7 @@
 import type { PathAnswer } from '@shared/files.ts';
 import type { Settings, SettingsView } from '@shared/settings.ts';
 import type { WorkRefreshResult } from '@shared/work.ts';
-import { HELD_REASONS, type AnswerRequest, type AnswerResult, type ChatPage, type EndResult, type EndTarget, type Harness, type HarnessOption, type HeldReason, type HistoryDetail, type HistoryPage, type LaunchRequest, type LaunchView, type ModelSwitchRequest, type ModelSwitchResult, type RenameResult, type ResumeResult, type ServerEvent } from '@shared/types.ts';
+import { HELD_REASONS, type AnswerRequest, type AnswerResult, type ChatPage, type EffortSwitchRequest, type EffortSwitchResult, type EndResult, type EndTarget, type Harness, type HarnessOption, type HeldReason, type HistoryDetail, type HistoryPage, type LaunchRequest, type LaunchView, type ModelSwitchRequest, type ModelSwitchResult, type RenameResult, type ResumeResult, type ServerEvent } from '@shared/types.ts';
 
 export interface ClientListener {
   onEvent(event: ServerEvent): void;
@@ -34,6 +34,8 @@ export interface LookoutClient {
    * whether it switched (VIEW-6.8).
    */
   switchModel(sessionId: string, req: ModelSwitchRequest): Promise<ModelSwitchResult>;
+  /** VIEW-7: switches a Claude Code Session's Effort through Fleet, as `switchModel` does its model (VIEW-7.8). */
+  switchEffort(sessionId: string, req: EffortSwitchRequest): Promise<EffortSwitchResult>;
   /** VIEW-4.1–4.3: answers the prompt the Session waits on, only while its terminal still shows it untouched. */
   answer(sessionId: string, req: AnswerRequest): Promise<AnswerResult>;
   /** VIEW-4.4: interrupts a Busy Session, as Esc does in its terminal. */
@@ -330,6 +332,8 @@ export function createHttpClient(): LookoutClient {
       call<RenameResult>(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/rename`, { title }), 'Renaming'),
     switchModel: (sessionId, req) =>
       call<ModelSwitchResult>(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/model`, req), 'Switching the model'),
+    switchEffort: (sessionId, req) =>
+      call<EffortSwitchResult>(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/effort`, req), 'Switching the Effort'),
     answer: (sessionId, req) => call<AnswerResult>(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/answer`, req), 'Answering'),
     stopSession: async (sessionId) => {
       await call(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/stop`), 'Stopping');

@@ -2,12 +2,12 @@ import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ModelSwitchRequest, SessionRow } from '../shared/types.ts';
-import { sameModel } from '../shared/model.ts';
+import type { EffortSwitchRequest, ModelSwitchRequest, SessionRow } from '../shared/types.ts';
+import { effortLevels, sameModel } from '../shared/model.ts';
 import { type RunOptions, type Runner, run } from './exec.ts';
 import { type FleetRow, fetchFleetList } from './fleet.ts';
 import { Launcher } from './launcher.ts';
-import { MODEL_HELD, MODEL_HELD_OTHER, MODEL_IO, MODEL_TIMEOUT_MS, MODEL_UNCERTAIN, ModelSwitchError, ModelSwitches, switchModel } from './model-switch.ts';
+import { EFFORT_HELD, EFFORT_IO, EFFORT_UNCERTAIN, MODEL_HELD, MODEL_HELD_OTHER, MODEL_IO, MODEL_TIMEOUT_MS, MODEL_UNCERTAIN, ModelSwitchError, StatusSwitches, switchEffort, switchModel } from './model-switch.ts';
 import { SessionMonitor } from './monitor.ts';
 
 /**
@@ -51,6 +51,7 @@ const calls = (): string[][] => {
   }
 };
 const switches = () => calls().filter((c) => c.includes('model'));
+const effortRuns = () => calls().filter((c) => c.includes('effort'));
 /** Changes the fake `fleet`'s rows (by session id). */
 const editRow = (sessionId: string, patch: Partial<FleetRow> & Record<string, unknown>) => {
   const file = join(dir, 'fleet', 'list.json');
@@ -63,7 +64,7 @@ const editRow = (sessionId: string, patch: Partial<FleetRow> & Record<string, un
  * LAUNCH's launcher holds the cached `harness list`.
  */
 async function setup(over: { runner?: Runner; harnessRunner?: Runner } = {}) {
-  const models = new ModelSwitches();
+  const models = new StatusSwitches();
   const upserts: SessionRow[] = [];
   const monitor = new SessionMonitor({
     fetchList: list,
@@ -93,6 +94,7 @@ async function setup(over: { runner?: Runner; harnessRunner?: Runner } = {}) {
     env,
   };
   const req = (model: string, proc = PROC): ModelSwitchRequest => ({ model, ...proc });
+  const effortReq = (effort: string, proc = PROC): EffortSwitchRequest => ({ effort, ...proc });
   return {
     monitor,
     models,
@@ -102,6 +104,7 @@ async function setup(over: { runner?: Runner; harnessRunner?: Runner } = {}) {
     atRefresh,
     launcher,
     switchTo: (model: string, id = CLAUDE, proc = PROC) => switchModel(opts, id, req(model, proc)),
+    effortTo: (effort: string, id = CLAUDE, proc = PROC) => switchEffort(opts, id, effortReq(effort, proc)),
   };
 }
 
@@ -121,6 +124,8 @@ const IO_TYPING = 'tmux send-keys failed; `/model claude-sonnet-5-5` may be part
 
 /** A runner that answers `model` with a failure of Fleet's, and the rest as the fake does. */
 const failingModel = (fail: Record<string, unknown>): Runner => (f, a, o) => (a.includes('model') ? Promise.reject(Object.assign(new Error('fleet failed'), fail)) : runner(f, a, o));
+/** The same for `effort`. */
+const failingEffort = (fail: Record<string, unknown>): Runner => (f, a, o) => (a.includes('effort') ? Promise.reject(Object.assign(new Error('fleet failed'), fail)) : runner(f, a, o));
 
 // Real `fleet` processes, several per test: room for a busy machine.
 describe('switching the model (VIEW-6)', { timeout: 30_000 }, () => {
@@ -404,7 +409,7 @@ describe('switching the model (VIEW-6)', { timeout: 30_000 }, () => {
   });
 
   it('VIEW-6.7: a late answer brings nothing back: not once a reply after the switch is listed, not for a process that changed', () => {
-    const models = new ModelSwitches();
+    const models = new StatusSwitches();
     const listed = (modelAt: string | null, proc = PROC): [SessionRow[], FleetRow[]] => [
       [{ id: CLAUDE, harness: 'claude', ...proc } as SessionRow],
       [{ session_id: CLAUDE, harness: 'claude', pid: proc.pid, proc_start: proc.procStart, model_at: modelAt } as FleetRow],
@@ -422,5 +427,252 @@ describe('switching the model (VIEW-6)', { timeout: 30_000 }, () => {
     models.observe(...listed('2026-10-14T09:31:00Z'));
     expect(models.settle(PROC, 'claude-haiku-5-5', '2026-10-14T10:00:00Z')).toBe(true);
     expect(models.pendingFor(row)).toEqual({ model: 'claude-haiku-5-5', since: '2026-10-14T10:00:00Z' });
+  });
+});
+
+/** Fleet's `io` words for `effort` (docs/cli.md: as `model`'s). */
+const EFFORT_IO_TYPING = 'tmux send-keys failed; `/effort xhigh` may be partly typed, nothing pressed after it';
+
+describe('switching the Effort (VIEW-7)', { timeout: 30_000 }, () => {
+  it('VIEW-7.5: an Idle Claude Code Session switches through `fleet --local effort --json --require-empty --expect-pid … --expect-start … -- id:<session_id> <level>`, and nothing else is typed or answered', async () => {
+    const t = await setup();
+    expect(await t.effortTo('xhigh')).toEqual({ effort: 'xhigh', confirmed: false, saved: true });
+    expect(effortRuns()).toEqual([
+      ['--local', 'effort', '--json', '--require-empty', '--expect-pid', '61004', '--expect-start', '2026-10-14T09:30:00Z', '--', `id:${CLAUDE}`, 'xhigh'],
+    ]);
+    // Only the levels (`harness list`) and the switch: no `answer`, `keys` or `send` of Lookout's own.
+    expect(calls().map((c) => c.find((a) => !a.startsWith('-')))).toEqual(['harness', 'effort']);
+  });
+
+  it('VIEW-7.5: when Claude Code asked to confirm the change, the pick was the confirmation: Fleet answered it, and Lookout answers nothing more', async () => {
+    editRow(CLAUDE, { fake_effort_confirm: true });
+    const t = await setup();
+    expect(await t.effortTo('high')).toEqual({ effort: 'high', confirmed: true, saved: true });
+    // `max` is for this Session only: Fleet's `saved` is false (Claude Code 2.1.308's "(this session only)").
+    expect(await t.effortTo('max')).toEqual({ effort: 'max', confirmed: true, saved: false });
+    expect(calls().filter((c) => c.includes('answer') || c.includes('keys') || c.includes('send'))).toEqual([]);
+  });
+
+  it('VIEW-7.1: only a level Fleet lists for the Session’s model; nothing runs otherwise, and a Fleet that lists none takes none', async () => {
+    const t = await setup();
+    // `auto` clears the saved level rather than setting one, and isn't offered (Non-goals).
+    for (const effort of ['auto', 'ultra', 'minimal']) {
+      expect(await refusal(t.effortTo(effort))).toEqual({ status: 400, message: 'Fleet doesn’t list this level for the Session’s model, so the Effort wasn’t switched.', uncertain: false });
+    }
+    expect(effortRuns()).toEqual([]);
+    // A Fleet before `efforts` in `harness list`: no level is known, so none is typed.
+    const old: Runner = (f, a, o) =>
+      a.includes('harness') ? Promise.resolve(JSON.stringify([{ id: 'claude', label: 'Claude Code', installed: true, models: [{ id: 'claude-opus-5-5', label: 'Opus 5.5' }] }])) : runner(f, a, o);
+    const u = await setup({ runner: old, harnessRunner: old });
+    expect(await refusal(u.effortTo('high'))).toMatchObject({ status: 400 });
+    expect(effortRuns()).toEqual([]);
+    const broken: Runner = (f, a, o) => (a.includes('harness') ? Promise.reject(Object.assign(new Error('x'), { code: 1, stderr: 'boom' })) : runner(f, a, o));
+    const v = await setup({ runner: broken, harnessRunner: broken });
+    expect(await refusal(v.effortTo('high'))).toEqual({ status: 503, message: 'Couldn’t read the levels Fleet lists, so the Effort wasn’t switched. Try again.', uncertain: false });
+  });
+
+  it('VIEW-7.1: the levels are the Session’s model’s, matched as VIEW-6.1 matches it; a model Fleet doesn’t list gets every level Fleet lists for Claude Code, lowest first', () => {
+    const models = [
+      { id: '', efforts: ['low', 'medium', 'high', 'xhigh', 'max'] },
+      { id: 'claude-opus-5-5', efforts: ['low', 'medium', 'high', 'xhigh', 'max'] },
+      { id: 'claude-opus-4-6', efforts: ['low', 'medium', 'high', 'max'] },
+      { id: 'claude-mythos-1', efforts: ['max', 'ultra', 'minimal'] },
+    ];
+    expect(effortLevels(models, 'claude-opus-4-6')).toEqual(['low', 'medium', 'high', 'max']);
+    expect(effortLevels(models, 'claude-opus-4-6[1m]')).toEqual(['low', 'medium', 'high', 'max']);
+    expect(effortLevels(models, 'Claude-Opus-5-5-20261001')).toEqual(['low', 'medium', 'high', 'xhigh', 'max']);
+    expect(effortLevels(models, 'claude-unlisted-9')).toEqual(['minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra']);
+    expect(effortLevels(models, null)).toEqual(['minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra']);
+    expect(effortLevels([], 'claude-opus-5-5')).toEqual([]);
+  });
+
+  it('VIEW-7.1: the Session’s model is the one the status line shows: a pending switch’s first', async () => {
+    const odd: Runner = (f, a, o) =>
+      a.includes('harness')
+        ? Promise.resolve(
+            JSON.stringify([
+              {
+                id: 'claude',
+                label: 'Claude Code',
+                installed: true,
+                models: [
+                  { id: 'claude-opus-5-5', label: 'Opus 5.5', efforts: ['low', 'high'] },
+                  { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5', efforts: ['low', 'xhigh'] },
+                ],
+              },
+            ]),
+          )
+        : runner(f, a, o);
+    const t = await setup({ runner: odd, harnessRunner: odd });
+    expect(await refusal(t.effortTo('xhigh'))).toMatchObject({ status: 400 });
+    editRow(CLAUDE, { fake_switched_at: '2026-10-14T10:00:00Z' });
+    await t.switchTo('claude-sonnet-5-5');
+    expect(await t.effortTo('xhigh')).toMatchObject({ effort: 'xhigh' });
+  });
+
+  it('VIEW-7.2: a Codex Session’s Effort, one that isn’t Controllable, and one in an iTerm tab isn’t switched; nothing runs', async () => {
+    const t = await setup();
+    expect(await refusal(t.effortTo('high', CODEX, { pid: 61002, procStart: '2026-10-14T07:55:41Z' }))).toMatchObject({ status: 409, message: 'Lookout switches the Effort only in a Claude Code Session.' });
+    expect(await refusal(t.effortTo('high', VIEW_ONLY, { pid: 61003, procStart: '2026-10-14T08:01:17.250Z' }))).toMatchObject({ status: 409, message: 'This Session runs in another app, so Lookout can’t switch its Effort.' });
+    editRow(CLAUDE, { backend: 'iterm' });
+    const u = await setup();
+    expect(await refusal(u.effortTo('high'))).toEqual({ status: 409, message: 'This Session runs in an iTerm tab, where Lookout can’t switch its Effort. Use /effort in its terminal.', uncertain: false });
+    expect(effortRuns()).toEqual([]);
+  });
+
+  it('VIEW-7.3: a fresh `fleet list` right before typing must still show it Idle, the same process; otherwise nothing runs', async () => {
+    const t = await setup();
+    editRow(CLAUDE, { status: 'busy' });
+    expect(await refusal(t.effortTo('high'))).toEqual({ status: 409, message: 'The Session isn’t Idle now, so the Effort wasn’t switched. Try again once it is.', uncertain: false });
+    editRow(CLAUDE, { status: 'idle' });
+    expect(await refusal(t.effortTo('high', CLAUDE, { pid: 61004, procStart: '2026-10-14T09:29:00Z' }))).toMatchObject({ status: 409, message: 'This Session was restarted since you picked the Effort, so it wasn’t switched.' });
+    expect(effortRuns()).toEqual([]);
+  });
+
+  it('VIEW-7.3: one switch per Session at a time, model or Effort, whichever tab asks', async () => {
+    let release: (() => void) | null = null;
+    const slow: Runner = async (f, a, o) => {
+      if (a.includes('model') || a.includes('effort')) await new Promise<void>((r) => (release = r));
+      return runner(f, a, o);
+    };
+    const t = await setup({ runner: slow });
+    const model = t.switchTo('claude-sonnet-5-5');
+    await vi.waitFor(() => expect(release).not.toBeNull());
+    expect(await refusal(t.effortTo('high'))).toEqual({ status: 409, message: 'A switch for this Session is already under way.', uncertain: false });
+    release!();
+    await model;
+    release = null;
+    const effort = t.effortTo('high');
+    await vi.waitFor(() => expect(release).not.toBeNull());
+    expect(await refusal(t.switchTo('claude-haiku-5-5'))).toEqual({ status: 409, message: 'A switch for this Session is already under way.', uncertain: false });
+    release!();
+    expect(await effort).toMatchObject({ effort: 'high' });
+    expect(calls().filter((c) => c.includes('model') || c.includes('effort')).map((c) => c.at(-1))).toEqual(['claude-sonnet-5-5', 'high']);
+  });
+
+  it('VIEW-7.6: a held switch says why by Fleet’s reason, in VIEW-6.6’s words naming /effort; what the box holds is never read or shown', async () => {
+    for (const reason of ['text', 'prompt', 'no_input_box', 'unreadable'] as const) {
+      editRow(CLAUDE, { fake_effort_held: reason, fake_input: 'SECRET-DRAFT' });
+      const t = await setup();
+      const r = await refusal(t.effortTo('high'));
+      expect(r).toEqual({ status: 409, message: EFFORT_HELD[reason], uncertain: false });
+      expect(JSON.stringify(r)).not.toContain('SECRET');
+      expect(EFFORT_HELD[reason]).toBe(MODEL_HELD[reason].replaceAll('the model', 'the Effort').replaceAll('/model', '/effort'));
+    }
+    expect(EFFORT_HELD.unreadable).toMatch(/Switch with \/effort in the terminal instead/);
+  });
+
+  it('VIEW-7.8: each failure says what happened in plain words by its kind, never naming tmux, and is never retried', async () => {
+    const cases: [Record<string, unknown>, string, boolean][] = [
+      [{ fake_effort: 'not_idle', fake_effort_reason: 'busy' }, 'The Session is working, so the Effort wasn’t switched. Try again once it’s Idle.', false],
+      [{ fake_effort: 'busy', fake_effort_reason: 'editor_open' }, 'An editor is open in this Session, so the Effort wasn’t switched. Close it in the terminal, then try again.', false],
+      [{ fake_effort: 'busy', fake_effort_reason: 'locked' }, 'Fleet is typing into it; try again.', false],
+      [{ fake_effort: 'host_shared', fake_effort_reason: 'suspended' }, 'This Session is paused in its terminal, so the Effort wasn’t switched. Bring it back there, then try again.', false],
+      [{ fake_effort: 'target_not_found' }, 'This Session ended or was cleared since you picked the Effort, so it wasn’t switched.', false],
+      [{ fake_effort: 'target_changed' }, 'This Session changed since you picked the Effort (restarted or cleared), so it wasn’t switched. Try again.', false],
+      [
+        { fake_effort: 'confirm_unrecognized' },
+        'Claude Code asked something Fleet didn’t recognise after /effort, so nothing was pressed. Check the terminal.',
+        true,
+      ],
+      // A declined confirmation ("Kept effort level as …"), another level, or no answer within the wait.
+      [{ fake_effort: 'outcome_uncertain' }, EFFORT_UNCERTAIN, true],
+      // `model`'s own kinds aren't `effort`'s: a kind this Lookout doesn't expect can't be told.
+      [{ fake_effort: 'switch_refused' }, EFFORT_UNCERTAIN, true],
+      [{ fake_effort: 'something_new' }, EFFORT_UNCERTAIN, true],
+      [{ fake_effort: 'io', fake_effort_error: EFFORT_IO_TYPING, fake_effort_typed: true }, 'Fleet couldn’t finish typing /effort, so Lookout can’t tell whether the Effort was switched. Check the terminal.', true],
+      [{ fake_effort: 'io', fake_effort_typed: false }, EFFORT_IO, false],
+    ];
+    for (const [patch, message, uncertain] of cases) {
+      editRow(CLAUDE, { fake_effort: undefined, fake_effort_reason: undefined, fake_effort_error: undefined, fake_effort_typed: undefined, ...patch });
+      const t = await setup();
+      const before = effortRuns().length;
+      const r = await refusal(t.effortTo('high'));
+      expect(r.message).toBe(message);
+      expect(r.uncertain).toBe(uncertain);
+      expect(r.message).not.toMatch(/tmux/i);
+      expect(effortRuns().length - before).toBe(1); // nothing retried
+    }
+    expect(EFFORT_UNCERTAIN).toBe('Lookout can’t tell whether the Effort was switched. Check the terminal.');
+  });
+
+  it('VIEW-7.8: no answer in 20 s, Fleet missing, a Fleet without `effort`, or an answer that doesn’t say it switched', async () => {
+    const t = await setup({ runner: failingEffort({ timedOut: true }) });
+    expect(await refusal(t.effortTo('high'))).toEqual({ status: 504, message: 'Fleet took too long, so Lookout can’t tell whether the Effort was switched. Check the terminal.', uncertain: true });
+    const missing = await setup({ runner: failingEffort({ code: 'ENOENT' }) });
+    expect(await refusal(missing.effortTo('high'))).toEqual({ status: 503, message: 'Fleet isn’t installed, so the Effort wasn’t switched.', uncertain: false });
+    const old = await setup({ runner: failingEffort({ code: 2, stderr: "error: unrecognized subcommand 'effort'\n" }) });
+    expect(await refusal(old.effortTo('high'))).toEqual({ status: 501, message: 'This Fleet can’t switch the Effort yet. Update the Fleet fork.', uncertain: false });
+    const odd: Runner = (f, a, o) => (a.includes('effort') ? Promise.resolve('{"ok":true}\n') : runner(f, a, o));
+    const u = await setup({ runner: odd });
+    expect(await refusal(u.effortTo('high'))).toEqual({ status: 502, message: EFFORT_UNCERTAIN, uncertain: true });
+  });
+
+  it('VIEW-7.4: LAUNCH’s cached list goes when Fleet says Claude Code’s default changed (`saved`), or may have; `max` (this Session only) and a plain refusal keep it', async () => {
+    const saved = await setup();
+    await saved.effortTo('xhigh');
+    expect(saved.drop).toHaveBeenCalledOnce();
+    const max = await setup();
+    await max.effortTo('max');
+    expect(max.drop).not.toHaveBeenCalled();
+    for (const patch of [{ fake_effort: 'outcome_uncertain' }, { fake_effort: 'io', fake_effort_typed: true }]) {
+      editRow(CLAUDE, Object.assign({ fake_effort: undefined, fake_effort_typed: undefined }, patch));
+      const t = await setup();
+      await refusal(t.effortTo('high'));
+      expect(t.drop).toHaveBeenCalledOnce();
+    }
+    for (const patch of [{ fake_effort: 'not_idle' }, { fake_effort: 'io', fake_effort_typed: false }, { fake_effort_held: 'text' }]) {
+      editRow(CLAUDE, { fake_effort: undefined, fake_effort_typed: undefined, fake_effort_held: undefined, ...patch });
+      const t = await setup();
+      await refusal(t.effortTo('high'));
+      expect(t.drop).not.toHaveBeenCalled();
+    }
+  });
+
+  it('VIEW-7.4: a success report without `saved` (an older Fleet) drops LAUNCH’s cached list and says `saved: false`', async () => {
+    const bare: Runner = (f, a, o) => (a.includes('effort') ? Promise.resolve('{"ok":true,"effort":"high","switched_at":"2026-10-14T10:00:00Z"}\n') : runner(f, a, o));
+    const t = await setup({ runner: bare });
+    expect(await t.effortTo('high')).toMatchObject({ effort: 'high', saved: false });
+    expect(t.drop).toHaveBeenCalledOnce();
+  });
+
+  it('VIEW-7.7: once switched, the row carries the level as `pendingEffort` at once, beside any pending model, until a reply after the switch reaches the Transcript', async () => {
+    editRow(CLAUDE, { fake_switched_at: '2026-10-14T10:00:00.120Z' });
+    const t = await setup();
+    await t.switchTo('claude-sonnet-5-5');
+    editRow(CLAUDE, { fake_switched_at: '2026-10-14T10:00:02Z' });
+    await t.effortTo('xhigh');
+    // Out before the list made after the switch: the row went out again at once.
+    expect(t.atRefresh[1]!.findLast((r) => r.id === CLAUDE)?.pendingEffort).toEqual({ effort: 'xhigh', since: '2026-10-14T10:00:02Z' });
+    expect(t.monitor.get(CLAUDE)).toMatchObject({
+      effort: 'medium',
+      pendingEffort: { effort: 'xhigh', since: '2026-10-14T10:00:02Z' },
+      pendingModel: { model: 'claude-sonnet-5-5', since: '2026-10-14T10:00:00.120Z' },
+    });
+    await t.monitor.tick();
+    expect(t.monitor.get(CLAUDE)?.pendingEffort?.effort).toBe('xhigh');
+    // The next reply reaches the Transcript: Fleet's own Effort shows, whichever it is (a level the model lacks runs clamped).
+    editRow(CLAUDE, { model: 'claude-sonnet-5-5', effort: 'high', model_at: '2026-10-14T10:00:05Z' });
+    await t.monitor.tick();
+    expect(t.monitor.get(CLAUDE)).toMatchObject({ effort: 'high', pendingEffort: null, pendingModel: null });
+  });
+
+  it('VIEW-7.7: a newer Effort switch replaces the pending one, the process ending takes it, and a late answer brings nothing back', () => {
+    const switches = new StatusSwitches();
+    const listed = (modelAt: string | null, proc = PROC): [SessionRow[], FleetRow[]] => [
+      [{ id: CLAUDE, harness: 'claude', ...proc } as SessionRow],
+      [{ session_id: CLAUDE, harness: 'claude', pid: proc.pid, proc_start: proc.procStart, model_at: modelAt } as FleetRow],
+    ];
+    const row = { id: CLAUDE, ...PROC } as SessionRow;
+    switches.observe(...listed('2026-10-14T10:00:05Z'));
+    expect(switches.settleEffort(PROC, 'xhigh', '2026-10-14T10:00:00Z')).toBe(false);
+    expect(switches.pendingEffortFor(row)).toBeNull();
+    switches.observe(...listed('2026-10-14T09:31:00Z'));
+    expect(switches.settleEffort(PROC, 'xhigh', '2026-10-14T10:00:00Z')).toBe(true);
+    expect(switches.settleEffort(PROC, 'max', '2026-10-14T10:01:00Z')).toBe(true);
+    expect(switches.pendingEffortFor(row)).toEqual({ effort: 'max', since: '2026-10-14T10:01:00Z' });
+    expect(switches.pendingFor(row)).toBeNull();
+    switches.observe(...listed(null, { pid: 61099, procStart: '2026-10-14T10:02:00Z' }));
+    expect(switches.pendingEffortFor(row)).toBeNull();
   });
 });

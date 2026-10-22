@@ -5,14 +5,16 @@ import type { MenuOptions } from '@/lib/status-switch';
 import { cn } from '@/lib/utils';
 
 export interface StatusMenuProps {
-  /** The status-line part it is (`model`): its `data-field`. */
+  /** The status-line part it is (`model`, `effort`): its `data-field`. */
   field: string;
-  /** What it switches, for its name and tooltip (`Model`). */
+  /** What it switches, for its name and tooltip (`Model`, `Effort`). */
   name: string;
   /** The value shown in the line. */
   value: string;
   /** Muted, after the value (VIEW-6.7's "from the next reply"); null for none. */
   note: string | null;
+  /** In the tooltip, after the value, when it differs from `note` (VIEW-7.7: the line's one note sits on another part). */
+  tipNote?: string | null;
   /** Why it can't be switched now (its tooltip); null when it can. */
   why: string | null;
   switching: boolean;
@@ -29,20 +31,20 @@ export interface StatusMenuProps {
 }
 
 /**
- * VIEW-6: a part of the status line that is also a menu: a ghost button the size of the line's
+ * VIEW-6, VIEW-7: a part of the status line that is also a menu: a ghost button the size of the line's
  * text, with a chevron, opening upward over the line. One radio item per choice (its label, the
  * detail dimmed), the current one checked. It works from the keyboard as Radix's menu does (VIEW-6.9):
  * Enter or Space opens it, the arrows move, Enter picks, Esc closes it and gives focus back.
  * While it can't be switched it stays focusable (`aria-disabled`) so its tooltip says why; an open
  * menu closes once that happens. While a switch runs it reads "Switching…".
  */
-export function StatusMenu({ field, name, value, note, why, switching, options, checked, footnote, error, onOpen, onPick }: StatusMenuProps) {
+export function StatusMenu({ field, name, value, note, tipNote = note, why, switching, options, checked, footnote, error, onOpen, onPick }: StatusMenuProps) {
   const [open, setOpen] = useState(false);
   const blocked = switching || why !== null;
   // The Session stopped qualifying (or a switch began): the menu goes.
   if (open && blocked) setOpen(false);
   const shown = switching ? 'Switching…' : value;
-  const tip = why ?? `${name}: ${value}${note ? ` (${note})` : ''}`;
+  const tip = why ?? `${name}: ${value}${tipNote ? ` (${tipNote})` : ''}`;
   return (
     <>
       <DropdownMenu

@@ -20,7 +20,7 @@ const row = (id: string, status: Status, statusSince: number | null): SessionRow
   effort: null,
   backgroundShell: false,
   procStart: null,
-  pendingModel: null,
+  pendingModel: null, pendingEffort: null,
   modelAt: null,
 });
 

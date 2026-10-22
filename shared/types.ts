@@ -65,6 +65,12 @@ export interface SessionRow {
    */
   pendingModel: PendingModel | null;
   /**
+   * VIEW-7.7: the Effort a switch from Lookout moved this Session's process to, until a reply after
+   * it reaches the Transcript (Fleet's `effort` follows only then, dated by `model_at` as the model
+   * is); null otherwise.
+   */
+  pendingEffort: PendingEffort | null;
+  /**
    * VIEW-6.8: when the reply Fleet's `model` came from reached the Transcript (Fleet's `model_at`,
    * RFC 3339); null without one. It moves with every reply, whatever its model.
    */
@@ -74,6 +80,12 @@ export interface SessionRow {
 /** VIEW-6.7: a switch Fleet confirmed: `model` from the Session's next reply on, `since` the switch's Transcript time. */
 export interface PendingModel {
   model: string;
+  since: string;
+}
+
+/** VIEW-7.7: a switch Fleet confirmed: `effort` from the Session's next reply on, `since` the switch's Transcript time. */
+export interface PendingEffort {
+  effort: string;
   since: string;
 }
 
@@ -91,7 +103,17 @@ export interface HarnessOption {
   label: string;
   installed: boolean;
   /** The first, with id '', is the Harness's own default. */
-  models: { id: string; label: string }[];
+  models: HarnessModel[];
+}
+
+/** A model a Harness offers (LAUNCH-3.2), with its Effort levels (VIEW-7.1). */
+export interface HarnessModel {
+  id: string;
+  label: string;
+  /** VIEW-7.1: Fleet's `efforts`, lowest first; [] where Fleet lists none (an older Fleet). */
+  efforts: string[];
+  /** Fleet's `default_effort`: the level a new Session on it starts at; null when unknown. */
+  defaultEffort: string | null;
 }
 
 /** What the launcher sends to `POST /api/launch`. */
@@ -388,6 +410,25 @@ export interface ModelSwitchRequest extends EndTarget {
 export interface ModelSwitchResult {
   model: string;
   confirmed: boolean;
+}
+
+/**
+ * VIEW-7: `POST /api/sessions/:id/effort`: the level to switch to, and the process the menu was
+ * opened on, so a replacement is never the one switched.
+ */
+export interface EffortSwitchRequest extends EndTarget {
+  effort: string;
+}
+
+/**
+ * VIEW-7.5: the switch is done; `confirmed` when Claude Code asked to confirm it and the pick
+ * answered; `saved` when Claude Code says it also became its default for new Sessions (Fleet's
+ * `saved`: false for `max`, this Session only).
+ */
+export interface EffortSwitchResult {
+  effort: string;
+  confirmed: boolean;
+  saved: boolean;
 }
 
 /** VIEW-5.6: `POST /api/sessions/:id/end`: how the Session ended. */

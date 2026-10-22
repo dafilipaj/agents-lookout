@@ -102,6 +102,7 @@ export function normalizeRows(rows: readonly FleetRow[], deps: NormalizeDeps): S
       backgroundShell: r.status === 'shell',
       procStart: procStart(r.proc_start),
       pendingModel: null,
+      pendingEffort: null,
       modelAt: typeof r.model_at === 'string' ? r.model_at : null,
     });
   }

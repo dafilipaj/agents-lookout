@@ -40,7 +40,7 @@ describe('fleet list → sidebar rows', () => {
         effort: null,
         backgroundShell: false,
         procStart: null,
-        pendingModel: null,
+        pendingModel: null, pendingEffort: null,
         modelAt: null,
       },
       {
@@ -61,7 +61,7 @@ describe('fleet list → sidebar rows', () => {
         effort: null,
         backgroundShell: false,
         procStart: null,
-        pendingModel: null,
+        pendingModel: null, pendingEffort: null,
         modelAt: null,
       },
       {
@@ -82,7 +82,7 @@ describe('fleet list → sidebar rows', () => {
         effort: null,
         backgroundShell: false,
         procStart: null,
-        pendingModel: null,
+        pendingModel: null, pendingEffort: null,
         modelAt: null,
       },
       {
@@ -103,7 +103,7 @@ describe('fleet list → sidebar rows', () => {
         effort: null,
         backgroundShell: false,
         procStart: null,
-        pendingModel: null,
+        pendingModel: null, pendingEffort: null,
         modelAt: null,
       },
     ]);

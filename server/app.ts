@@ -1,14 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { type IncomingMessage, type Server, type ServerResponse, createServer } from 'node:http';
 import { type Settings, SettingsError, type SettingsView } from '../shared/settings.ts';
-import type { AnswerRequest, AnswerResult, ChatPage, EndResult, EndTarget, EscStatus, Harness, HarnessOption, HistoryDetail, HistoryPage, LaunchView, ModelSwitchRequest, ModelSwitchResult, RenameResult, ResumeResult, ServerEvent } from '../shared/types.ts';
+import type { AnswerRequest, AnswerResult, ChatPage, EffortSwitchRequest, EffortSwitchResult, EndResult, EndTarget, EscStatus, Harness, HarnessOption, HistoryDetail, HistoryPage, LaunchView, ModelSwitchRequest, ModelSwitchResult, RenameResult, ResumeResult, ServerEvent } from '../shared/types.ts';
 import type { PathAnswer } from '../shared/files.ts';
 import type { UsageSnapshot } from '../shared/usage.ts';
 import type { WorkSnapshot } from '../shared/work.ts';
 import { AnswerError, parseAnswerRequest, parseEscStatus } from './answerer.ts';
 import { EndError, parseEndTarget } from './closer.ts';
 import { PathsError } from './files.ts';
-import { ModelSwitchError, parseModelRequest } from './model-switch.ts';
+import { ModelSwitchError, parseEffortRequest, parseModelRequest } from './model-switch.ts';
 import { RenameError, parseRenameRequest } from './renamer.ts';
 import { type FindQuery, HistoryError, parseFindQuery } from './history.ts';
 import { LaunchError } from './launcher.ts';
@@ -55,6 +55,8 @@ export interface AppOptions {
     rename(sessionId: string, name: string): Promise<RenameResult>;
     /** VIEW-6: `fleet model`, only while the Session is still that process, Idle; `req` is already checked. */
     switchModel(sessionId: string, req: ModelSwitchRequest): Promise<ModelSwitchResult>;
+    /** VIEW-7: `fleet effort`, through the model switch's gate; `req` is already checked. */
+    switchEffort(sessionId: string, req: EffortSwitchRequest): Promise<EffortSwitchResult>;
   };
   /** VIEW-1.18: which of a batch of paths are files, for one Session's file links (VIEW-1.17). */
   files: {
@@ -100,7 +102,7 @@ const MAX_ANSWER_BODY = 160 * 1024;
 const MAX_STOP_BODY = 1024;
 /** VIEW-5.12: `{ title }`, a name of at most 64 characters, JSON-escaped, with room for a longer one to get the 400 that says why. */
 const MAX_RENAME_BODY = 4 * 1024;
-/** VIEW-6: `{ model, pid, procStart }`. */
+/** VIEW-6, VIEW-7: `{ model, pid, procStart }` or `{ effort, pid, procStart }`. */
 const MAX_MODEL_BODY = 1024;
 /** VIEW-1.18: up to 100 paths of up to 1,024 characters, JSON-escaped. */
 const MAX_PATHS_BODY = 64 * 1024;
@@ -326,9 +328,10 @@ export function createApp(opts: AppOptions): LookoutApp {
         throw err;
       }
     }
-    // VIEW-6: switching the model types `/model` into the Session: a mutation, so the token and
-    // Origin, as renaming does. The body names the process the menu was opened on.
-    const modelMatch = /^\/api\/sessions\/([^/]{1,200})\/model$/.exec(url.pathname);
+    // VIEW-6, VIEW-7: switching the model or the Effort types `/model` or `/effort` into the
+    // Session: a mutation, so the token and Origin, as renaming does. The body names the process the
+    // menu was opened on.
+    const modelMatch = /^\/api\/sessions\/([^/]{1,200})\/(model|effort)$/.exec(url.pathname);
     if (modelMatch && req.method === 'POST') {
       let sessionId: string;
       try {
@@ -339,9 +342,10 @@ export function createApp(opts: AppOptions): LookoutApp {
       const body = await readJson(req, res, MAX_MODEL_BODY, null);
       if (body === NO_BODY) return;
       try {
+        if (modelMatch[2] === 'effort') return json(res, 200, await opts.sessions.switchEffort(sessionId, parseEffortRequest(body)));
         return json(res, 200, await opts.sessions.switchModel(sessionId, parseModelRequest(body)));
       } catch (err) {
-        // VIEW-6.8: an outcome Lookout can't be sure of says so, so the tab opens the Terminal preview.
+        // VIEW-6.8, VIEW-7.8: an outcome Lookout can't be sure of says so, so the tab opens the Terminal preview.
         if (err instanceof ModelSwitchError) return json(res, err.status, err.uncertain ? { error: err.message, kind: 'uncertain' } : { error: err.message });
         throw err;
       }
