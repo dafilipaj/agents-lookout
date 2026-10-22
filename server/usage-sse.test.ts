@@ -55,7 +55,7 @@ beforeAll(async () => {
       },
       dismiss: () => false,
     },
-    sessions: { end: async () => ({ how: 'exit' as const }), answer: async () => ({ epoch: 1 }), stop: async () => {} },
+    sessions: { end: async () => ({ how: 'exit' as const }), answer: async () => ({ epoch: 1 }), stop: async () => {}, rename: async () => ({ result: 'renamed' as const }) },
     files: { check: async () => [] },
     history: {
       find: async () => ({ state: 'ok', items: [], page: 1, hasMore: false }),

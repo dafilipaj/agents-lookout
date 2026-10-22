@@ -5,6 +5,7 @@ import { DEFAULT_PORT } from '../shared/defaults.ts';
 import { AnswerLedger } from './answerer.ts';
 import { createApp } from './app.ts';
 import { endSession } from './closer.ts';
+import { renameSession } from './renamer.ts';
 import { run } from './exec.ts';
 import { checkSessionPaths } from './files.ts';
 import { fetchFleetList, resolveFleetBin } from './fleet.ts';
@@ -107,6 +108,18 @@ const app = createApp({
   sessions: {
     answer: (id, req) => viewer.answer(id, req),
     stop: (id, status) => viewer.stopSession(id, status),
+    rename: (id, name) =>
+      renameSession(
+        {
+          runner: run,
+          fleetBin: () => resolveFleetBin(env),
+          lookup: (sid) => monitor.get(sid),
+          freshList: () => fetchFleetList(run, resolveFleetBin(env)),
+          refresh: () => monitor.pollNow(),
+        },
+        id,
+        name,
+      ),
     end: (id, target) =>
       endSession(
         {

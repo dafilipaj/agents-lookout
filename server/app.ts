@@ -1,13 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { type IncomingMessage, type Server, type ServerResponse, createServer } from 'node:http';
 import { type Settings, SettingsError, type SettingsView } from '../shared/settings.ts';
-import type { AnswerRequest, AnswerResult, ChatPage, EndResult, EndTarget, EscStatus, Harness, HarnessOption, HistoryDetail, HistoryPage, LaunchView, ResumeResult, ServerEvent } from '../shared/types.ts';
+import type { AnswerRequest, AnswerResult, ChatPage, EndResult, EndTarget, EscStatus, Harness, HarnessOption, HistoryDetail, HistoryPage, LaunchView, RenameResult, ResumeResult, ServerEvent } from '../shared/types.ts';
 import type { PathAnswer } from '../shared/files.ts';
 import type { UsageSnapshot } from '../shared/usage.ts';
 import type { WorkSnapshot } from '../shared/work.ts';
 import { AnswerError, parseAnswerRequest, parseEscStatus } from './answerer.ts';
 import { EndError, parseEndTarget } from './closer.ts';
 import { PathsError } from './files.ts';
+import { RenameError, parseRenameRequest } from './renamer.ts';
 import { type FindQuery, HistoryError, parseFindQuery } from './history.ts';
 import { LaunchError } from './launcher.ts';
 import type { SessionMonitor } from './monitor.ts';
@@ -49,6 +50,8 @@ export interface AppOptions {
     answer(sessionId: string, req: AnswerRequest): Promise<AnswerResult>;
     /** VIEW-4.4/4.5: Esc, through `fleet keys`, only while the Session is still in `status` (Stop: Busy; the Esc button: Needs you). */
     stop(sessionId: string, status: EscStatus): Promise<void>;
+    /** VIEW-5.12–5.14: `fleet rename`, only while the Session is still Idle; `name` is already checked. */
+    rename(sessionId: string, name: string): Promise<RenameResult>;
   };
   /** VIEW-1.18: which of a batch of paths are files, for one Session's file links (VIEW-1.17). */
   files: {
@@ -92,6 +95,8 @@ const MAX_END_BODY = 1024;
 const MAX_ANSWER_BODY = 160 * 1024;
 /** VIEW-4.5: `{ status }`, the Status the Esc button was shown in. */
 const MAX_STOP_BODY = 1024;
+/** VIEW-5.12: `{ title }`, a name of at most 64 characters, JSON-escaped, with room for a longer one to get the 400 that says why. */
+const MAX_RENAME_BODY = 4 * 1024;
 /** VIEW-1.18: up to 100 paths of up to 1,024 characters, JSON-escaped. */
 const MAX_PATHS_BODY = 64 * 1024;
 
@@ -294,6 +299,25 @@ export function createApp(opts: AppOptions): LookoutApp {
         return json(res, 200, await opts.sessions.end(sessionId, parseEndTarget(body)));
       } catch (err) {
         if (err instanceof EndError) return json(res, err.status, { error: err.message });
+        throw err;
+      }
+    }
+    // VIEW-5.12: renaming types `/rename` into the Session: a mutation, so the token and Origin, as
+    // sending does (the guard checks every non-GET). The name is checked before anything runs.
+    const renameMatch = /^\/api\/sessions\/([^/]{1,200})\/rename$/.exec(url.pathname);
+    if (renameMatch && req.method === 'POST') {
+      let sessionId: string;
+      try {
+        sessionId = decodeURIComponent(renameMatch[1]!);
+      } catch {
+        return json(res, 400, { error: 'invalid session id' });
+      }
+      const body = await readJson(req, res, MAX_RENAME_BODY, null);
+      if (body === NO_BODY) return;
+      try {
+        return json(res, 200, await opts.sessions.rename(sessionId, parseRenameRequest(body)));
+      } catch (err) {
+        if (err instanceof RenameError) return json(res, err.status, err.field ? { error: err.message, field: err.field } : { error: err.message });
         throw err;
       }
     }

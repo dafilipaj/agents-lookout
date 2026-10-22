@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /* global process */
-// A stand-in `fleet` for tests and manual runs. Implements `list`, `peek`, `send`, `spawn --json`
+// A stand-in `fleet` for tests and manual runs. Implements `list`, `peek`, `send`, `rename`, `spawn --json`
 // (with `--resume`, the HIST contract; it never starts anything), `close --json` (the End
 // Session contract, VIEW-5.6; it never closes anything, it only drops the row from list.json) and
 // `messages --json` per the VIEW-1 contract (docs/features/session-view/SPEC.md), from
@@ -41,6 +41,16 @@
 //   `keys <id:…|pid:…> <key>… --json` (VIEW-4.4) presses nothing: it checks the key names
 //   (`invalid_key`) and answers as Fleet does; a row's `fake_keys` (`busy`, `backend_failed`, …)
 //   makes it fail with that kind. It doesn't change Status: edit list.json for that.
+//   `rename <target> <name> [--json] [--require-empty] [--force] [--no-tmux-sync]` (VIEW-5.12, the
+//   Fleet fork's `rename` with `--require-empty`, branch `lookout-rename-guard`): types nothing. It
+//   cleans the name as Fleet does (trimmed, one line, cut to 64 characters; empty or multi-line is a
+//   plain error, exit 1, no JSON). Held, unless `--force`: a `waiting` row (`held: "waiting"`), a busy
+//   Codex row (`busy`), and the row's `fake_rename_held`: `input` and `waiting` always, `no_input_box`
+//   and `unreadable` only with `--require-empty` (else it's typed anyway), `busy` too. Held: exit 3,
+//   the report `{ ok: false, result: "held", held, … }` on stdout with `--json`, the message on stderr.
+//   A row's `fake_rename` (`busy`, `backend_unsupported`, `io`, …) fails before the report with that
+//   kind. Otherwise `renamed`, and with FAKE_FLEET_DIR the row's `display_title` becomes the name, as
+//   the registry would; `fake_rename_confirm: false` answers `sent` and leaves the title alone.
 //   FAKE_FLEET_REGISTER  `later`: a spawned Session doesn't show in `list` until
 //                    `fake register`, as one stuck at a trust prompt; meanwhile a second
 //                    `spawn --resume` of it within 30 s is `session_starting` (the HIST contract)
@@ -103,7 +113,7 @@ function fail(kind, error, extra = {}) {
 }
 
 /** Options that take no value. */
-const FLAGS = new Set(['json', 'list', 'allow-attached', 'force', 'require-empty']);
+const FLAGS = new Set(['json', 'list', 'allow-attached', 'force', 'require-empty', 'no-tmux-sync']);
 
 /** Positional args after `--`, and `--opt value` / `--opt=value` options. */
 function parse(args) {
@@ -434,6 +444,54 @@ function keys(args) {
   out({ ok: true, host: 'fake', target: { session_id: row.session_id, pid: row.pid }, keys: names });
 }
 
+/** What `rename` says for each reason it holds (the Fleet fork's codes; never the box's text). */
+const RENAME_HELD = {
+  waiting: ' is waiting on you — nothing sent (--force overrides)',
+  busy: ' is busy — nothing sent, rename it once the turn is over (--force overrides)',
+  input: "'s input box holds text — nothing sent (--force overrides)",
+  no_input_box: "'s input box is not on screen, so fleet cannot tell it is empty — nothing sent (--force overrides)",
+  unreadable: "'s input box cannot be read — nothing sent (--force overrides)",
+};
+
+/** `rename` (VIEW-5.12): Fleet's report, holds and failures, as the fork gives them. Types nothing. */
+function rename(args) {
+  const { opts, pos } = parse(args);
+  const [target = '', raw = ''] = pos;
+  const row = resolveExact(target);
+  if (!row) fail('target_not_found', `no session matches '${target}'`);
+  const trimmed = raw.trim();
+  if (!trimmed || /[\r\n]/.test(trimmed)) {
+    process.stderr.write(`error: ${trimmed ? 'name must be a single line' : 'empty name'}\n`);
+    process.exit(1);
+  }
+  const name = [...trimmed].slice(0, 64).join('');
+  if (row.fake_rename) fail(row.fake_rename, `fake ${row.fake_rename}; nothing sent`);
+  const report = { ok: false, result: 'held', session_id: row.session_id, pid: row.pid, host: 'fake', from: row.display_title, title: name, held: null, tmux: null, message: '' };
+  let held = null;
+  if (!opts.force) {
+    const shows = row.fake_rename_held ?? null;
+    if (row.status === 'waiting') held = 'waiting';
+    else if (row.harness !== 'claude' && row.status === 'busy') held = 'busy';
+    else if (shows === 'no_input_box' || shows === 'unreadable') held = opts['require-empty'] ? shows : null;
+    else if (shows) held = shows;
+  }
+  if (held) {
+    report.held = held;
+    report.message = `${row.display_title}${RENAME_HELD[held] ?? ' — held, nothing sent'}`;
+    if (opts.json) out(report);
+    process.stderr.write(`Error: ${report.message}\n`);
+    process.exit(3);
+  }
+  const confirmed = row.fake_rename_confirm !== false;
+  if (confirmed) updateRow(row, { display_title: name });
+  report.ok = true;
+  report.result = confirmed ? 'renamed' : 'sent';
+  report.tmux = opts['no-tmux-sync'] ? null : { renamed: false, from: null, to: null, note: `tmux session '${row.tmux_session}' left alone (fake)` };
+  report.message = confirmed ? `${row.display_title} → ${name}` : `sent \`/rename ${name}\` to ${row.display_title} — not reflected yet, check \`fleet list\``;
+  if (opts.json) out(report);
+  else process.stdout.write(`${report.message}\n`);
+}
+
 /** `spawn --json`'s failure: exit 1, one object on stdout, the message on stderr. */
 function spawnFail(kind, error, extra = {}) {
   process.stdout.write(`${JSON.stringify({ ok: false, host: 'fake', kind, error, partial: null, ...extra })}\n`);
@@ -558,6 +616,9 @@ switch (cmd) {
     break;
   case 'keys':
     keys(argv);
+    break;
+  case 'rename':
+    rename(argv);
     break;
   case 'harness':
     process.stdout.write('[]\n');

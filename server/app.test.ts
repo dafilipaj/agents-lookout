@@ -11,6 +11,7 @@ import { EndError } from './closer.ts';
 import type { FleetRow } from './fleet.ts';
 import { checkSessionPaths } from './files.ts';
 import { HistoryError } from './history.ts';
+import { RenameError } from './renamer.ts';
 import { SettingsStore } from './settings.ts';
 import { chatViewer } from './test/helpers.ts';
 import { HELD_MESSAGE, ViewError, type Viewer } from './viewer.ts';
@@ -38,6 +39,7 @@ let resumes: unknown[] = [];
 let ended: { sessionId: string; target: EndTarget }[] = [];
 let answers: { sessionId: string; req: AnswerRequest }[] = [];
 let stops: string[] = [];
+let renamed: { sessionId: string; name: string }[] = [];
 
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'lookout-app-'));
@@ -51,6 +53,7 @@ beforeEach(async () => {
   ended = [];
   answers = [];
   stops = [];
+  renamed = [];
   const settings = new SettingsStore(join(dir, 'settings.json'));
   await settings.load();
   app = createApp({
@@ -100,6 +103,11 @@ beforeEach(async () => {
         if (real) return real.viewer.stopSession(sessionId, status);
         if (sessionId === 'idle') throw new AnswerError(409, 'This Session isn’t working on anything now, so Esc wasn’t pressed.');
         stops.push(status === 'busy' ? sessionId : `${sessionId} (${status})`);
+      },
+      rename: async (sessionId: string, name: string) => {
+        if (sessionId === 'busy') throw new RenameError(409, 'The Session isn’t Idle now, so it wasn’t renamed. Try again once it is.');
+        renamed.push({ sessionId, name });
+        return { result: 'renamed' as const };
       },
     },
     // VIEW-1.18: the real check, against this test's folder as the Session's cwd.
@@ -474,6 +482,44 @@ describe('VIEW-5.6 route', () => {
     expect(JSON.parse((await end('{"pid":61001,"procStart":"--json"}')).body)).toEqual({ error: 'Invalid process start time.' });
     expect((await end(JSON.stringify({ pid: 1, procStart: 'x'.repeat(2000) }))).status).toBe(413);
     expect(ended).toEqual([]);
+  });
+});
+
+describe('VIEW-5.12 route', () => {
+  const json = { 'content-type': 'application/json' };
+  const rename = (id: string, headers: Record<string, string>, body = '{"title":"Invoice rounding"}') =>
+    call('POST', `/api/sessions/${encodeURIComponent(id)}/rename`, { ...json, ...headers }, body);
+
+  it('VIEW-5.12: renaming types into the Session, so it’s a mutation: it needs our Origin and the token, as sending does', async () => {
+    expect((await rename('abc', { 'x-lookout-token': TOKEN })).status).toBe(403); // no Origin
+    expect((await rename('abc', { origin })).status).toBe(403); // no token
+    expect((await rename('abc', { origin: 'https://evil.example', 'x-lookout-token': TOKEN })).status).toBe(403);
+    expect((await rename('abc', { origin, 'x-lookout-token': TOKEN, 'sec-fetch-site': 'cross-site' })).status).toBe(403);
+    expect((await call('GET', '/api/sessions/abc/rename', { origin })).status).toBe(404);
+    expect(renamed).toEqual([]);
+
+    const res = await rename('abc', { origin, 'x-lookout-token': TOKEN });
+    expect(res.status).toBe(200);
+    expect(JSON.parse(res.body)).toEqual({ result: 'renamed' });
+    expect(renamed).toEqual([{ sessionId: 'abc', name: 'Invoice rounding' }]);
+
+    const refused = await rename('busy', { origin, 'x-lookout-token': TOKEN });
+    expect(refused.status).toBe(409);
+    expect(JSON.parse(refused.body)).toEqual({ error: 'The Session isn’t Idle now, so it wasn’t renamed. Try again once it is.' });
+    expect((await call('POST', '/api/sessions/%E0%A4%A/rename', { ...json, origin, 'x-lookout-token': TOKEN }, '{"title":"x"}')).status).toBe(400);
+  });
+
+  it('VIEW-5.12: the name is checked before anything runs: trimmed, one line, at most 64 characters', async () => {
+    const headers = { origin, 'x-lookout-token': TOKEN };
+    expect((await call('POST', '/api/sessions/abc/rename', headers, '{"title":"x"}')).status).toBe(415);
+    expect((await rename('abc', headers, 'not json')).status).toBe(400);
+    expect(JSON.parse((await rename('abc', headers, '{"title":"   "}')).body)).toEqual({ error: 'Type a name first.', field: 'title' });
+    expect(JSON.parse((await rename('abc', headers, JSON.stringify({ title: 'two\nlines' }))).body)).toMatchObject({ field: 'title' });
+    expect(JSON.parse((await rename('abc', headers, JSON.stringify({ title: 'x'.repeat(65) }))).body)).toEqual({ error: 'A name is at most 64 characters; this one has 65.', field: 'title' });
+    expect((await rename('abc', headers, JSON.stringify({ title: 'x'.repeat(5000) }))).status).toBe(413);
+    expect(renamed).toEqual([]);
+    expect((await rename('abc', headers, JSON.stringify({ title: '  Invoice rounding \t' }))).status).toBe(200);
+    expect(renamed).toEqual([{ sessionId: 'abc', name: 'Invoice rounding' }]);
   });
 });
 

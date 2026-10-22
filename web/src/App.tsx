@@ -536,6 +536,9 @@ export function App({ client }: { client: LookoutClient }) {
     [client],
   );
 
+  // VIEW-5.12: Fleet types the Harness's `/rename`; the new title comes back through the list (VIEW-5.14).
+  const renameSession = useCallback((row: SessionRow, name: string) => client.renameSession(row.id, name), [client]);
+
   // USAGE-2.2: once a window's reset time passes, its numbers no longer hold: ask for new ones
   // (once per window and reset).
   const passedResets = (state.usage?.providers ?? [])
@@ -657,6 +660,7 @@ export function App({ client }: { client: LookoutClient }) {
             sentAt={sentAt}
             onSentAt={updateSentAt}
             onEnd={endSession}
+            onRename={renameSession}
             prompts={state.prompts}
             attempts={attempts}
             onAnswer={(row, req) => void answerPrompt(row, req)}

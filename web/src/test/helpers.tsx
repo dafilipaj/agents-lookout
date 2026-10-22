@@ -63,6 +63,7 @@ interface RenderOptions {
   launch?: LookoutClient['launch'];
   sendMessage?: (sessionId: string, text: string) => Promise<void>;
   endSession?: LookoutClient['endSession'];
+  renameSession?: LookoutClient['renameSession'];
   answer?: LookoutClient['answer'];
   stopSession?: LookoutClient['stopSession'];
   escSession?: LookoutClient['escSession'];
@@ -103,6 +104,7 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
     // VIEW-1.18: no path is a file unless the test says so.
     checkPaths: vi.fn(options.checkPaths ?? (async (_id: string, paths: string[]): Promise<PathAnswer[]> => paths.map((path) => ({ path, exists: false, absolute: null })))),
     endSession: vi.fn(options.endSession ?? (async () => ({ how: 'exit' as const }))),
+    renameSession: vi.fn(options.renameSession ?? (async () => ({ result: 'renamed' as const }))),
     answer: vi.fn(options.answer ?? (async () => ({ epoch: 1 }))),
     stopSession: vi.fn(options.stopSession ?? (async () => {})),
     escSession: vi.fn(options.escSession ?? (async () => {})),

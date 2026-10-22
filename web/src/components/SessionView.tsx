@@ -1,4 +1,4 @@
-import type { AnswerRequest, ChatPage, EndTarget, SessionRow } from '@shared/types.ts';
+import type { AnswerRequest, ChatPage, EndTarget, RenameResult, SessionRow } from '@shared/types.ts';
 import { Check, ChevronDown, CircleSlash, CircleStop, Copy, FolderGit2, GitBranch, Info, OctagonX, Power, SendHorizontal, TerminalSquare } from 'lucide-react';
 import { type ComponentPropsWithRef, type ComponentPropsWithoutRef, type KeyboardEvent, type ReactNode, type RefObject, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -32,6 +32,7 @@ import { PromptCard } from './Answering';
 import { Chat } from './Chat';
 import { ChatActivity } from './ChatActivity';
 import { HarnessIcon } from './HarnessIcon';
+import { useSessionTitle } from './SessionTitle';
 import { PaneHeader, ShellCell, ShellView } from './Shell';
 import { StatusMarker } from './StatusMarker';
 
@@ -69,6 +70,8 @@ export interface SessionViewProps {
   onSentAt(sessionId: string, update: (current: number | undefined) => number | undefined): void;
   /** VIEW-5.6: ends the confirmed process of the Session; rejects with a message for people. */
   onEnd(sessionId: string, target: EndTarget): Promise<void>;
+  /** VIEW-5.12: renames the Session through Fleet; rejects with a message for people (VIEW-5.14). */
+  onRename(row: SessionRow, name: string): Promise<RenameResult>;
   /** VIEW-4.2: the prompt on the Session's terminal, as the server last read it. */
   screen: ScreenState | undefined;
   /** VIEW-4: the latest answer sent to this Session, and what came of it. */
@@ -103,6 +106,7 @@ export function SessionView({
   sentAt: sentAtBySession,
   onSentAt,
   onEnd,
+  onRename,
   screen,
   attempt,
   onAnswer,
@@ -231,6 +235,7 @@ export function SessionView({
         ended={ended}
         now={now}
         onEnd={onEnd}
+        onRename={onRename}
         stop={stopButton(row, ended, stopRequest, now)}
         onStop={() => onStop(row)}
         esc={esc}
@@ -308,6 +313,7 @@ function Header({
   ended,
   now,
   onEnd,
+  onRename,
   stop,
   onStop,
   esc,
@@ -317,6 +323,7 @@ function Header({
   ended: boolean;
   now: number;
   onEnd: SessionViewProps['onEnd'];
+  onRename: SessionViewProps['onRename'];
   stop: ReturnType<typeof stopButton>;
   onStop(): void;
   esc: ReturnType<typeof escButton>;
@@ -324,6 +331,8 @@ function Header({
 }) {
   const age = row.statusSince !== null ? formatAge(now - row.statusSince) : null;
   const title = useRef<HTMLHeadingElement>(null);
+  // VIEW-5.12–5.14: the title renames the Session in place; why a rename failed sits beside it.
+  const renamed = useSessionTitle({ row, ended, now, onRename, headingRef: title });
   const stopErrorId = useId();
   // VIEW-4.4 Stop while Busy, or VIEW-4.5 Esc while it Needs you: never both (one Status at a time).
   const key: EscKeyProps | null = stop
@@ -344,14 +353,7 @@ function Header({
       <div className="flex min-w-0 flex-1 items-center gap-1.5 whitespace-nowrap" data-slot="header-row">
         <div data-slot="header-info" className="flex min-w-0 flex-1 items-center gap-2.5 overflow-x-clip pr-1">
           {!ended && <StatusMarker status={row.status} />}
-          <h1
-            ref={title}
-            tabIndex={-1}
-            className={cn('min-w-5 truncate text-[15px] font-semibold tracking-tight outline-none', ended && 'text-muted-foreground')}
-            title={row.title}
-          >
-            {row.title}
-          </h1>
+          {renamed.title}
           <span className="flex shrink-0 items-center gap-1.5 text-[12.5px] text-muted-foreground" data-field="harness">
             <HarnessIcon harness={row.harness} className="size-4" />
             <span className="@max-[32rem]:sr-only">{HARNESS_NAME[row.harness]}</span>
@@ -367,7 +369,8 @@ function Header({
             {ended ? 'Ended' : STATUS_LABEL[row.status]}
             {!ended && age && <span className="font-normal @max-[32rem]:hidden"> · {age}</span>}
           </span>
-          {key?.error && <StopError id={stopErrorId} message={key.error} />}
+          {renamed.note && <HeaderNote slot="rename-note" id={renamed.note.id} message={renamed.note.message} tone={renamed.note.tone} />}
+          {key?.error && <HeaderNote slot="stop-error" id={stopErrorId} message={key.error} />}
         </div>
         {/* ITERM's "Open in iTerm2" goes here too. */}
         <div data-slot="header-actions" className="flex shrink-0 items-center gap-1.5 empty:hidden">
@@ -455,26 +458,36 @@ function EscKey({ label, pressingLabel, hint, icon, pressing, error, errorId, on
 }
 
 /**
- * VIEW-4.4: why Stop failed, beside it. It gets only the room the header has left over (flex basis
- * 0, at least 3rem) and is cut to fit, so the header stays one line and the buttons stay whole; the
- * whole text shows on hover or focus, in a bubble under the header that moves nothing and stays
- * inside the pane. Below 20rem of header it isn't shown (it and its gap go): Stop's tooltip and
- * description carry it, and a hidden alert says it to assistive tech.
+ * VIEW-4.4: why Stop failed, beside it; VIEW-5.14: why a rename failed, or that it was sent but
+ * doesn't show yet (`info`, muted rather than the error colour). It gets only the room the header has
+ * left over (flex basis 0, at least 3rem) and is cut to fit, so the header stays one line and the
+ * buttons stay whole; the whole text shows on hover or focus, in a bubble under the header that
+ * moves nothing and stays inside the pane. Below 20rem of header it isn't shown (it and its gap go):
+ * Stop's tooltip and description carry it, as the title's tooltip does a rename's, and a hidden
+ * alert (or status, for `info`) says it to assistive tech.
  */
-function StopError({ id, message }: { id: string; message: string }) {
+function HeaderNote({ slot, id, message, tone = 'error' }: { slot: 'stop-error' | 'rename-note'; id: string; message: string; tone?: 'error' | 'info' }) {
+  const role = tone === 'error' ? 'alert' : 'status';
   return (
     <>
-      <span role="alert" data-slot="stop-error-narrow" className="sr-only hidden @max-[20rem]:block">
+      <span role={role} data-slot={`${slot}-narrow`} className="sr-only hidden @max-[20rem]:block">
         {message}
       </span>
-      <div role="alert" data-slot="stop-error" className="group flex min-w-12 flex-[1_1_0] justify-end @max-[20rem]:hidden">
-        <span id={id} tabIndex={0} className="min-w-0 truncate rounded-sm text-[12px] text-destructive outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <div role={role} data-slot={slot} data-tone={tone} className="group flex min-w-12 flex-[1_1_0] justify-end @max-[20rem]:hidden">
+        <span
+          id={id}
+          tabIndex={0}
+          className={cn(
+            'min-w-0 truncate rounded-sm text-[12px] outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            tone === 'error' ? 'text-destructive' : 'text-muted-foreground',
+          )}
+        >
           {message}
         </span>
         {/* Placed against the header (positioned): right-5 and the width cap (the pane less 1.25rem on each side) keep it inside the pane. */}
         <span
           aria-hidden
-          data-slot="stop-error-full"
+          data-slot={`${slot}-full`}
           className="pointer-events-none absolute top-full right-5 z-30 mt-1 hidden w-max max-w-[min(28rem,calc(100%-2.5rem))] rounded-md border border-border bg-popover px-2.5 py-1.5 text-[12px] whitespace-normal text-popover-foreground shadow-md group-focus-within:block group-hover:block"
         >
           {message}

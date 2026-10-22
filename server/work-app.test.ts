@@ -67,7 +67,7 @@ beforeEach(async () => {
     usage: { snapshot: () => null, watch: () => () => {}, refreshJev: async () => {}, refresh: async () => {} },
     work,
     viewer: { watch: () => {}, drop: () => {}, send: async () => {}, earlier: unused },
-    sessions: { end: unused, answer: unused, stop: unused },
+    sessions: { end: unused, answer: unused, stop: unused, rename: unused },
     files: { check: unused },
     history: { find: unused, detail: unused, resume: unused },
     staticDir: null,

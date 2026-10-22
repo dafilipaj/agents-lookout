@@ -1,7 +1,7 @@
 import type { PathAnswer } from '@shared/files.ts';
 import type { Settings, SettingsView } from '@shared/settings.ts';
 import type { WorkRefreshResult } from '@shared/work.ts';
-import { HELD_REASONS, type AnswerRequest, type AnswerResult, type ChatPage, type EndResult, type EndTarget, type Harness, type HarnessOption, type HeldReason, type HistoryDetail, type HistoryPage, type LaunchRequest, type LaunchView, type ResumeResult, type ServerEvent } from '@shared/types.ts';
+import { HELD_REASONS, type AnswerRequest, type AnswerResult, type ChatPage, type EndResult, type EndTarget, type Harness, type HarnessOption, type HeldReason, type HistoryDetail, type HistoryPage, type LaunchRequest, type LaunchView, type RenameResult, type ResumeResult, type ServerEvent } from '@shared/types.ts';
 
 export interface ClientListener {
   onEvent(event: ServerEvent): void;
@@ -26,6 +26,8 @@ export interface LookoutClient {
   checkPaths(sessionId: string, paths: string[]): Promise<PathAnswer[]>;
   /** VIEW-5.6: ends the Session through Fleet (its Harness exits, its Session host closes). */
   endSession(sessionId: string, target: EndTarget): Promise<EndResult>;
+  /** VIEW-5.12: renames the Session through Fleet: the Harness's own `/rename`, only while it's Idle. */
+  renameSession(sessionId: string, title: string): Promise<RenameResult>;
   /** VIEW-4.1–4.3: answers the prompt the Session waits on, only while its terminal still shows it untouched. */
   answer(sessionId: string, req: AnswerRequest): Promise<AnswerResult>;
   /** VIEW-4.4: interrupts a Busy Session, as Esc does in its terminal. */
@@ -318,6 +320,8 @@ export function createHttpClient(): LookoutClient {
       call<ResumeResult>(() => send('POST', '/api/history/resume', { sessionId, harness, launchId }), 'Resuming'),
     endSession: (sessionId, target) =>
       call<EndResult>(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/end`, target), 'Ending the Session'),
+    renameSession: (sessionId, title) =>
+      call<RenameResult>(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/rename`, { title }), 'Renaming'),
     answer: (sessionId, req) => call<AnswerResult>(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/answer`, req), 'Answering'),
     stopSession: async (sessionId) => {
       await call(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/stop`), 'Stopping');

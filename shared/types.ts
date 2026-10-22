@@ -346,6 +346,15 @@ export interface EndTarget {
   procStart: string | null;
 }
 
+/**
+ * VIEW-5.14: `POST /api/sessions/:id/rename`: Fleet typed the Harness's `/rename`. `renamed`: the
+ * Session's registry shows the name; `sent`: it doesn't yet. Either way the new title comes back
+ * through `fleet list`.
+ */
+export interface RenameResult {
+  result: 'renamed' | 'sent';
+}
+
 /** VIEW-5.6: `POST /api/sessions/:id/end`: how the Session ended. */
 export interface EndResult {
   /** `exit`: on its Harness's own exit command; `killed`: its Session host was closed with it. */
