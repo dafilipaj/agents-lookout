@@ -1,6 +1,6 @@
 # Backlog
 
-Ideas worth building later that aren't specced yet. When one is picked up, it becomes a requirement in a feature spec (or a new spec), and its entry here is removed.
+Ideas worth building later that aren't specced yet. When one is picked up, it becomes a requirement in a feature spec (or a new spec), and its entry here is removed. Ideas discussed and decided against are under [Dropped](#dropped), with the reason.
 
 ## Live activity text from the terminal (VIEW)
 
@@ -111,3 +111,26 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
   - WORK's Tasks and PRs;
   - the Fake Harnesses (TEST-1.4), to test runs without real agents.
 - **Added:** 2026-10-19, from Dario.
+
+## The Effort changes in the status line at once (VIEW)
+
+- **What:** after an `/effort` sent from the composer is applied (VIEW-4.9's "Yes", or no confirmation asked), the status line shows the new Effort right away, not only once the next reply reaches the Transcript (VIEW-5.11).
+- **Why:** low importance. The line is right after the next message, but until then it shows the old level just after you changed it, which reads as if the change didn't take.
+- **How (proposal):** either the status line shows the picked level marked "from the next reply", as VIEW-6.7 does for the model, or Fleet reads the command's output text, which Claude Code writes to the Transcript at once. Settle it with item 9 of the Plan (switching the Effort from the status line), which needs the same thing.
+- **Added:** 2026-10-22, from Dario's testing of VIEW-4.9.
+
+## Dropped
+
+Discussed and decided against. Each keeps why, so it isn't proposed again without something new.
+
+### A count of waiting Review requests on the Work button (WORK)
+
+- **What:** a red badge on the Work button with the number of Review requests waiting, so they're seen without opening Work.
+- **Why dropped:** tricky to build right. WORK-8.1 reads PRs only while a tab has Work open, so a badge with Work closed needs reads of its own, and a count kept from the last read can be wrong.
+- **Dropped:** 2026-10-22, by Dario.
+
+### Progress of a long-running command (VIEW)
+
+- **What:** while a Session waits on a test suite or a script, show how far it is, e.g. tests passed and left.
+- **Why dropped:** researched, and it can't be done properly. A Bash call's output reaches the Transcript only when it ends, and the terminal screen shows no progress that could be read reliably across tools. The Backlog's "Live activity text" covers what can be read: the Harness's own spinner line.
+- **Dropped:** 2026-10-22, by Dario.

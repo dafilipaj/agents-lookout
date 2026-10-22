@@ -8,7 +8,7 @@ How features get designed in Lookout. Written for people and agents alike.
 docs/
   README.md              this file: the process
   GLOSSARY.md            concepts, each defined once
-  BACKLOG.md             ideas for later that aren't specced yet
+  BACKLOG.md             ideas for later that aren't specced yet, and the dropped ones
   PLAN.md                what's next, in order: spec changes, bugs and fixes
   features/
     README.md            index of features and their status
