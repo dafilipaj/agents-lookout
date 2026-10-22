@@ -1,6 +1,13 @@
+import type { SessionRow, Status } from '@shared/types.ts';
 import type { ColumnMark, PrSection, TaskSection, WorkPr, WorkSessionLink, WorkSnapshot, WorkTask } from '@shared/work.ts';
-import { Circle, CircleCheck, CircleDashed, CircleDot, CircleQuestionMark, CircleX, ExternalLink, LoaderCircle, Milestone, Play, TriangleAlert } from 'lucide-react';
-import { type FocusEvent, type KeyboardEvent, type MouseEvent, type ReactNode, type Ref, type RefObject, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { CircleCheck, CircleDashed, CircleQuestionMark, CircleX, ExternalLink, LoaderCircle, Milestone, Play, TriangleAlert } from 'lucide-react';
+import { type FocusEvent, type KeyboardEvent, type MouseEvent, type ReactNode, type Ref, type RefObject, createContext, useCallback, useContext, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { Alert } from '@/components/ui/alert';
+import { Chip, type ChipTone } from '@/components/ui/chip';
+import { CommandBlock } from '@/components/ui/command-block';
+import { iconButtonLook } from '@/components/ui/icon-button';
+import { Loading } from '@/components/ui/loading';
+import { SessionMarker } from '@/components/ui/session-marker';
 import { type PanelNav, WORK_FILTERS, WORK_FILTER_LABEL, type WorkFilter } from '@/lib/right-sidebar';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
@@ -28,6 +35,8 @@ import {
 
 export interface WorkPanelProps {
   work: WorkSnapshot | null;
+  /** The Session sidebar's list, by session ID: a live Linked Session's Status (DS-5.3). */
+  sessions: ReadonlyMap<string, SessionRow>;
   /** WORK-1.5: which sections show; remembered by the caller. */
   filter: WorkFilter;
   onFilter(filter: WorkFilter): void;
@@ -56,6 +65,9 @@ function isTextField(t: EventTarget | null): boolean {
 }
 
 const rowId = (key: string) => `work-${key.replace(/[^A-Za-z0-9_-]/g, '_')}`;
+
+/** The Session sidebar's list, for the Linked Sessions' markers, without passing it through every row (DS-5.3). */
+const LiveSessions = createContext<ReadonlyMap<string, SessionRow>>(new Map());
 
 type ListRef = RefObject<HTMLDivElement | null>;
 
@@ -95,7 +107,7 @@ function openInBrowser(url: string) {
  * through both sections' rows, and focus follows the selection into the list that holds it, the only
  * list in the Tab order (UX, Focus).
  */
-export function WorkPanel({ work, filter, onFilter, now, focusKey, onStart, onReview, onOpenSession, onOpenSettings, keyboardEnabled, navRef }: WorkPanelProps) {
+export function WorkPanel({ work, sessions, filter, onFilter, now, focusKey, onStart, onReview, onOpenSession, onOpenSettings, keyboardEnabled, navRef }: WorkPanelProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const tasksList = useRef<HTMLDivElement | null>(null);
   const prsList = useRef<HTMLDivElement | null>(null);
@@ -218,73 +230,79 @@ export function WorkPanel({ work, filter, onFilter, now, focusKey, onStart, onRe
   const tasks = work?.tasks ?? null;
   const prs = work?.prs ?? null;
   return (
-    // Named, as it holds focus while there's no list to focus (WORK-1.7).
-    <div ref={rootRef} role="group" aria-label="Work" tabIndex={-1} className="flex min-h-0 flex-1 flex-col outline-none" onKeyDown={onKeyDown} data-testid="work-panel">
-      {/* WORK-1.5: what Work shows, below the tab strip where History has its search field (WORK-1.8). */}
-      <div className="px-2.5 pt-2 pb-2">
-        <div role="group" aria-label="Show" className="flex rounded-md border border-input bg-background/60 p-0.5 dark:bg-input/20">
-          {WORK_FILTERS.map((f) => (
-            <button
-              key={f}
-              type="button"
-              aria-pressed={filter === f}
-              onClick={() => onFilter(f)}
-              className={cn(
-                'min-w-0 flex-auto truncate rounded px-1.5 py-0.5 text-meta whitespace-nowrap transition-colors',
-                filter === f ? 'bg-sidebar-accent font-medium text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground',
-              )}
-            >
-              {WORK_FILTER_LABEL[f]}
-            </button>
-          ))}
+    <LiveSessions.Provider value={sessions}>
+      {/* Named, as it holds focus while there's no list to focus (WORK-1.7). */}
+      <div ref={rootRef} role="group" aria-label="Work" tabIndex={-1} className="flex min-h-0 flex-1 flex-col outline-none" onKeyDown={onKeyDown} data-testid="work-panel">
+        {/* WORK-1.5: what Work shows, below the tab strip where History has its search field (WORK-1.8). */}
+        <div className="px-2.5 pt-2 pb-2">
+          <div role="group" aria-label="Show" className="flex rounded-md border border-input bg-background/60 p-0.5 dark:bg-input/20">
+            {WORK_FILTERS.map((f) => (
+              <button
+                key={f}
+                type="button"
+                aria-pressed={filter === f}
+                onClick={() => onFilter(f)}
+                className={cn(
+                  'min-w-0 flex-auto truncate rounded px-1.5 py-0.5 text-meta whitespace-nowrap transition-colors',
+                  filter === f ? 'bg-sidebar-accent font-medium text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {WORK_FILTER_LABEL[f]}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto pb-2">
+          {sessionOpenError && <Alert title={sessionOpenError} className="mx-2" />}
+          {showsTasks(filter) && tasks && (
+            <TasksSection
+              tasks={tasks}
+              sessionsAvailable={work?.sessionLinks.state === 'ok'}
+              now={now}
+              selected={current}
+              listRef={attachTasks}
+              onListFocus={onListFocus('task')}
+              onListPress={onListPress}
+              onRow={onRow}
+              onOpen={open}
+              onStart={(row) => {
+                select(row.key);
+                start(row);
+              }}
+              onOpenSettings={onOpenSettings}
+            />
+          )}
+          {showsPrs(filter) && prs && (
+            <PrsSection
+              prs={prs}
+              sessionsAvailable={work?.sessionLinks.state === 'ok'}
+              blockedUntil={work?.refresh.githubBlockedUntil ?? null}
+              now={now}
+              selected={current}
+              listRef={attachPrs}
+              onListFocus={onListFocus('pr')}
+              onListPress={onListPress}
+              onRow={onRow}
+              onOpen={open}
+              onReview={(row) => {
+                select(row.key);
+                review(row);
+              }}
+            />
+          )}
+          {work && work.sessionLinks.state !== 'ok' && work.sessionLinks.state !== 'loading' && (
+            // The space keeps the title and the reason apart in the text a screen reader reads.
+            <Alert
+              tone="info"
+              title={<>Session links are unavailable.{' '}</>}
+              detail={`${work.sessionLinks.reason ?? ''}${work.sessionLinks.fix ? ` ${work.sessionLinks.fix}` : ''}`}
+              className="mx-2 mb-1"
+              data-field="session-link-problem"
+            />
+          )}
         </div>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto pb-2">
-        {sessionOpenError && <p role="alert" className="mx-2 rounded-md border border-destructive/30 px-2 py-1.5 text-meta text-destructive">{sessionOpenError}</p>}
-        {showsTasks(filter) && tasks && (
-          <TasksSection
-            tasks={tasks}
-            sessionsAvailable={work?.sessionLinks.state === 'ok'}
-            now={now}
-            selected={current}
-            listRef={attachTasks}
-            onListFocus={onListFocus('task')}
-            onListPress={onListPress}
-            onRow={onRow}
-            onOpen={open}
-            onStart={(row) => {
-              select(row.key);
-              start(row);
-            }}
-            onOpenSettings={onOpenSettings}
-          />
-        )}
-        {showsPrs(filter) && prs && (
-          <PrsSection
-            prs={prs}
-            sessionsAvailable={work?.sessionLinks.state === 'ok'}
-            blockedUntil={work?.refresh.githubBlockedUntil ?? null}
-            now={now}
-            selected={current}
-            listRef={attachPrs}
-            onListFocus={onListFocus('pr')}
-            onListPress={onListPress}
-            onRow={onRow}
-            onOpen={open}
-            onReview={(row) => {
-              select(row.key);
-              review(row);
-            }}
-          />
-        )}
-        {work && work.sessionLinks.state !== 'ok' && work.sessionLinks.state !== 'loading' && (
-          <p role="status" className="mx-2 mb-1 rounded-md border border-info-border bg-info-soft px-2 py-1.5 text-meta text-info-text" data-field="session-link-problem">
-            <span className="font-medium">Session links are unavailable.</span>{' '}
-            {work.sessionLinks.reason}{work.sessionLinks.fix ? ` ${work.sessionLinks.fix}` : ''}
-          </p>
-        )}
-      </div>
-    </div>
+    </LiveSessions.Provider>
   );
 }
 
@@ -324,11 +342,16 @@ function SectionHeader({ id, title, count, fetchedAt, now, loading, stale }: Sec
           </span>
         </>
       )}
-      {loading && <span className="truncate">· Loading…</span>}
+      {loading && (
+        <>
+          <span aria-hidden>·</span>{' '}
+          <Loading label="Loading…" />
+        </>
+      )}
       {stale && (
-        <span data-field="old" className="ml-auto shrink-0 rounded-full bg-info-soft px-1.5 text-caption font-medium text-info-text" title="From an earlier read: the last one failed">
+        <Chip tone="info" data-field="old" className="ml-auto" title="From an earlier read: the last one failed">
           old
-        </span>
+        </Chip>
       )}
     </header>
   );
@@ -352,21 +375,11 @@ interface ProblemProps {
  */
 function Problem({ title, reason, how, fix, stale, fetchedAt, now }: ProblemProps) {
   return (
-    <div role="alert" className="mx-2 mb-1.5 rounded-md border border-destructive/30 px-2 py-1.5 text-meta" data-field="problem">
-      <p className="font-medium text-destructive">{title}</p>
-      {reason && (
-        <p className="mt-0.5 text-muted-foreground" data-field="reason">
-          {reason}
-        </p>
-      )}
-      {how && <p className="mt-1 text-muted-foreground">{how}</p>}
-      {fix && <pre className="mt-1 rounded-md border border-border bg-background p-1.5 font-mono text-caption leading-4 whitespace-pre-wrap select-all [overflow-wrap:anywhere]">{fix}</pre>}
-      {stale && (
-        <p className="mt-1 text-muted-foreground">
-          Showing the last list{fetchedAt === null ? '' : `, from ${formatAge(now - fetchedAt)} ago`}.
-        </p>
-      )}
-    </div>
+    <Alert title={title} detail={reason && <p data-field="reason">{reason}</p>} className="mx-2 mb-1.5" data-field="problem">
+      {how && <p>{how}</p>}
+      {fix && <CommandBlock>{fix}</CommandBlock>}
+      {stale && <p>Showing the last list{fetchedAt === null ? '' : `, from ${formatAge(now - fetchedAt)} ago`}.</p>}
+    </Alert>
   );
 }
 
@@ -493,15 +506,15 @@ function TaskRow({ task, rowKey, now, active, sessionsAvailable, onClick, onOpen
         <span className="min-w-0 truncate" data-field="title" title={task.title}>
           {task.title}
         </span>{' '}
-        <SessionMarker sessions={sessionsAvailable ? task.links?.sessions ?? [] : []} incomplete={task.links?.incomplete ?? false} />
+        <LinkedMarker links={sessionsAvailable ? task.links?.sessions ?? [] : []} incomplete={task.links?.incomplete ?? false} />
         <span className="ml-auto flex shrink-0 items-center gap-0.5" aria-hidden>
           {/* WORK-5.1: the launcher, its prompt the Task's URL; you press Start. */}
           <RowButton title="Start Session (S)" action="start" onClick={act(onStart)}>
-            <Play className="size-3" />
+            <Play />
           </RowButton>
           {/* WORK-6.2: the Task in Fantastic, in a new tab; `O` does the same (WORK-6.4). */}
           <RowButton title="Open in Fantastic (O)" action="open" onClick={act(onOpen)}>
-            <ExternalLink className="size-3" />
+            <ExternalLink />
           </RowButton>
         </span>
       </div>
@@ -529,7 +542,7 @@ function TaskRow({ task, rowKey, now, active, sessionsAvailable, onClick, onOpen
           {task.links.prs.map((linked) => (
             <span key={linked.url} className="inline-flex items-center gap-1" title={linked.sources.map((source) => (source === 'body' ? 'PR body' : 'branch')).join(', ')} data-field="linked-pr">
               <span className="font-medium text-foreground">#{linked.number}</span>
-              {linked.chip ? <span className={cn('rounded-full border px-1.5 text-caption leading-4 font-medium', CHIP_CLASS[linked.chip])}>{linked.chip}</span> : <span>Review request</span>}
+              {linked.chip ? <Chip tone={CHIP_TONE[linked.chip]}>{linked.chip}</Chip> : <span>Review request</span>}
               <Ci ci={linked.ci} />
             </span>
           ))}
@@ -539,10 +552,10 @@ function TaskRow({ task, rowKey, now, active, sessionsAvailable, onClick, onOpen
         <div className="flex min-w-0 items-center gap-1.5 text-meta text-muted-foreground">
           {task.milestone && (
             <>
-              <span className="flex shrink-0 items-center gap-0.5 rounded-full border border-border bg-muted px-1.5 text-caption leading-4 font-medium text-foreground" data-field="milestone">
+              <Chip data-field="milestone">
                 <Milestone aria-hidden className="size-3" />
                 milestone
-              </span>{' '}
+              </Chip>{' '}
             </>
           )}
           {due && (
@@ -556,20 +569,23 @@ function TaskRow({ task, rowKey, now, active, sessionsAvailable, onClick, onOpen
   );
 }
 
-/** WORK-2.4, WORK-3.4, WORK-4.5: one status marker; its hover lists the reason for each Linked Session. */
-function SessionMarker({ sessions, incomplete }: { sessions: readonly WorkSessionLink[]; incomplete: boolean }) {
-  if (sessions.length === 0) return null;
-  const live = sessions.some((session) => session.live);
-  const reasons: string[] = [...new Set(sessions.map((session) => session.reason))];
+/** DS-5.3: which live Status needs action most, first. */
+const URGENCY: readonly Status[] = ['needs-you', 'busy', 'idle', 'unknown'];
+
+/**
+ * WORK-2.4, WORK-3.4, WORK-4.5, DS-5.3: one Session marker for a row's Linked Sessions: the Status
+ * marker of the live one that needs action most (its Status from the Session sidebar's list; Unknown
+ * while the list doesn't have it), or the past marker when none is live. Its hover lists the reason
+ * for each Link. The row's words say it, so it's hidden from screen readers (DS-5.5).
+ */
+function LinkedMarker({ links, incomplete }: { links: readonly WorkSessionLink[]; incomplete: boolean }) {
+  const sessions = useContext(LiveSessions);
+  if (links.length === 0) return null;
+  const reasons: string[] = [...new Set(links.map((link) => link.reason))];
   if (incomplete) reasons.push('Links may be incomplete');
-  const title = reasons.join('\n');
-  const Marker = live ? CircleDot : Circle;
-  return (
-    <span data-session-marker title={title} aria-hidden="true" className="flex size-4 shrink-0 items-center justify-center">
-      {/* DS-3.6: a live Link isn't green (`ok` means something passed); its Status marker is DS-5.3. */}
-      <Marker className={cn('size-3.5', live ? 'text-foreground' : 'text-muted-foreground')} />
-    </span>
-  );
+  const live = links.filter((link) => link.live).map((link) => sessions.get(link.sessionId)?.status ?? 'unknown');
+  const status = URGENCY.find((s) => live.includes(s));
+  return <SessionMarker aria-hidden="true" title={reasons.join('\n')} state={status ? 'live' : 'past'} status={status} />;
 }
 
 interface PrsSectionProps {
@@ -657,20 +673,24 @@ function PrGroupView({ group, prs, marks, sessionsAvailable, now, selected, onRo
       </div>
       {/* WORK-7.5: a column with an issue is possibly out of date, even when tb-pr succeeded. */}
       {marks.length > 0 && (
-        <div role="presentation" className="mx-2 mb-1 flex gap-1.5 rounded-md border border-info-border bg-info-soft px-2 py-1.5 text-meta text-info-text">
-          <TriangleAlert aria-hidden className="mt-0.5 size-3.5 shrink-0" />
-          {/* The spaces keep the group's description (aria-describedby) from running the lines together. */}
-          <span id={markId} className="min-w-0" data-field="marks">
-            <span className="block font-medium">Possibly out of date.</span>{' '}
-            {marks.map((m) => (
-              <span key={`${m.reason}:${m.confirmedAt}`}>
-                <span className="block" data-field="mark">
-                  {describeMark(m, group, now)}.
-                </span>{' '}
-              </span>
-            ))}
-          </span>
-        </div>
+        // Inside the listbox, so no live region: the group's description (aria-describedby) reads it.
+        // The spaces keep that description from running the lines together.
+        <Alert
+          tone="info"
+          role="presentation"
+          icon={TriangleAlert}
+          id={markId}
+          data-field="marks"
+          className="mx-2 mb-1"
+          title={<>Possibly out of date.{' '}</>}
+          detail={marks.map((m) => (
+            <span key={`${m.reason}:${m.confirmedAt}`}>
+              <span className="block" data-field="mark">
+                {describeMark(m, group, now)}.
+              </span>{' '}
+            </span>
+          ))}
+        />
       )}
       {prs.length > 0 && (
         <div role="presentation" className="flex flex-col gap-px px-1.5">
@@ -684,12 +704,8 @@ function PrGroupView({ group, prs, marks, sessionsAvailable, now, selected, onRo
   );
 }
 
-/** DS-3.6: "ready" is the neutral chip, not Busy's blue; "approved" keeps `ok` green, which isn't a Status. */
-const CHIP_CLASS: Record<NonNullable<WorkPr['chip']>, string> = {
-  draft: 'border-border text-muted-foreground',
-  ready: 'border-border bg-muted text-foreground',
-  approved: 'border-ok/40 text-ok',
-};
+/** DS-3.6: "ready" is the neutral chip, not Busy's blue; "draft" stays muted; "approved" keeps `ok` green, which isn't a Status. */
+const CHIP_TONE: Record<NonNullable<WorkPr['chip']>, ChipTone> = { draft: 'muted', ready: 'neutral', approved: 'ok' };
 
 interface PrRowProps {
   rowKey: string;
@@ -741,12 +757,12 @@ function PrRow({ rowKey, group, pr, now, active, sessionsAvailable, onClick, onO
         <span className="shrink-0 font-medium tabular-nums" data-field="number">
           #{pr.number}
         </span>{' '}
-        <SessionMarker sessions={sessionsAvailable ? pr.links?.sessions ?? [] : []} incomplete={pr.links?.incomplete ?? false} />
+        <LinkedMarker links={sessionsAvailable ? pr.links?.sessions ?? [] : []} incomplete={pr.links?.incomplete ?? false} />
         {pr.chip && (
           <>
-            <span className={cn('shrink-0 rounded-full border px-1.5 text-caption leading-4 font-medium', CHIP_CLASS[pr.chip])} data-field="chip">
+            <Chip tone={CHIP_TONE[pr.chip]} data-field="chip">
               {pr.chip}
-            </span>{' '}
+            </Chip>{' '}
           </>
         )}
         <Ci ci={pr.ci} />{' '}
@@ -765,12 +781,12 @@ function PrRow({ rowKey, group, pr, now, active, sessionsAvailable, onClick, onO
         <span className="ml-auto flex shrink-0 items-center gap-0.5" aria-hidden>
           {isReview && (
             <RowButton title="Review (R)" action="review" onClick={act(onReview)}>
-              <Play className="size-3" />
+              <Play />
             </RowButton>
           )}
           {/* WORK-6.3: tb-pr's URL, in a new tab; `O` does the same (WORK-6.4). */}
           <RowButton title="Open on GitHub (O)" action="open" onClick={act(onOpen)}>
-            <ExternalLink className="size-3" />
+            <ExternalLink />
           </RowButton>
         </span>
       </div>
@@ -790,15 +806,10 @@ function PrRow({ rowKey, group, pr, now, active, sessionsAvailable, onClick, onO
   );
 }
 
-/** A row's button, for the mouse only: inside an option nothing is focusable (UX, "Markers and buttons"). */
+/** A row's button, for the mouse only: inside an option nothing is focusable (UX, "Markers and buttons"); an `sm` icon button's look (DS-7.2). */
 function RowButton({ title, action, onClick, children }: { title: string; action: string; onClick(e: MouseEvent): void; children: ReactNode }) {
   return (
-    <span
-      title={title}
-      data-action={action}
-      onClick={onClick}
-      className="flex size-6 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50"
-    >
+    <span title={title} data-action={action} onClick={onClick} className={cn(iconButtonLook('sm'), 'cursor-pointer')}>
       {children}
     </span>
   );

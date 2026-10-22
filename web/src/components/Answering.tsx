@@ -1,6 +1,7 @@
 import type { QuestionAnswer } from '@shared/types.ts';
 import { Circle, CircleDot, ShieldQuestion, Square, SquareCheck, TerminalSquare } from 'lucide-react';
 import { type ComponentPropsWithoutRef, type KeyboardEvent, useEffect, useState } from 'react';
+import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { type Draft, type DraftKeeper, type PermissionPanel, type QuestionPanel, type TerminalLink, answersOnClick, draftAnswers, emptyDraft, pick, typeText } from '@/lib/answers';
 import type { QuestionEntry } from '@/lib/chat';
@@ -164,9 +165,7 @@ export function QuestionForm({
       </div>
       {/* VIEW-4.1: why the server couldn't take the last answer as written; the text stays to fix. */}
       {panel.phase === 'ready' && panel.message && (
-        <p role="alert" className="mt-2 text-meta text-destructive">
-          {panel.message}
-        </p>
+        <Alert layout="inline" title={panel.message} className="mt-2" />
       )}
       {/* No row at all while a one-click question waits: only Submit or the progress needs one. The
           live region stays mounted, empty, so its first change is announced. */}

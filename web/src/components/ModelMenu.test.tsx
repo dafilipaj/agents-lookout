@@ -217,7 +217,9 @@ describe('switching the model from the status line (VIEW-6)', () => {
     const error = await within(statusLine()).findByRole('alert');
     expect(error).toHaveTextContent(held);
     expect(error).toHaveAttribute('title', held);
-    expect(error).toHaveClass('truncate', 'min-w-0');
+    // An inline Alert (DS-4.1): its one line is cut to fit.
+    expect(error).toHaveClass('min-w-0');
+    expect(error.querySelector('.truncate')).toHaveTextContent(held);
     expect(modelButton()).toHaveTextContent('claude-opus-5-5');
     expect(modelButton().getAttribute('title')).toContain(held);
     expect(switchModel).toHaveBeenCalledTimes(1);

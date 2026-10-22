@@ -77,11 +77,14 @@ const PICTOGRAPH =
 /** `×` is fine in counts ("Read ×3", `×${n}`); as a whole string or JSX text it's a close icon. */
 const LONE_TIMES = /^\s*×\s*$/;
 
-/** Whether a string sits in a `<kbd>` or a shortcut attribute such as `keys={['↑', '↓']}`. */
+/** The elements that show a key: `<kbd>`, and the design system's `Kbd` that draws one (DS-8.4). */
+const KEY_ELEMENTS = new Set(['kbd', 'Kbd']);
+
+/** Whether a string sits in a `<kbd>` (or `<Kbd>`) or a shortcut attribute such as `keys={['↑', '↓']}`. */
 function inShortcutHint(node: ts.Node): boolean {
   for (let n: ts.Node | undefined = node.parent; n; n = n.parent) {
     if (ts.isJsxAttribute(n)) return SHORTCUT_ATTRIBUTES.has(n.name.getText());
-    if (ts.isJsxElement(n)) return n.openingElement.tagName.getText() === 'kbd';
+    if (ts.isJsxElement(n)) return KEY_ELEMENTS.has(n.openingElement.tagName.getText());
   }
   return false;
 }
@@ -158,7 +161,7 @@ describe('icons', () => {
   it('0008: the guard lets comments, typography, modifier keys and shortcut hints through', () => {
     expect(
       iconSymbols(
-        `// ● in a comment\n/* ⛔ */ const url = 'http://x';\n<kbd>⌘↵</kbd>; <Hint keys={['↑', '↓']} text="New Session (⌘N in the installed app)" />;\n<b title="Next (↓)">'Read ×3 · 2m…' © 2026 ™</b>`,
+        `// ● in a comment\n/* ⛔ */ const url = 'http://x';\n<kbd>⌘↵</kbd>; <Kbd>⌘↵</Kbd>; <Hint keys={['↑', '↓']} text="New Session (⌘N in the installed app)" />;\n<b title="Next (↓)">'Read ×3 · 2m…' © 2026 ™</b>`,
       ),
     ).toEqual([]);
   });

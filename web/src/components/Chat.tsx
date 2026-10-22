@@ -1,9 +1,13 @@
 import type { ChatEntry, ChatPage, Harness } from '@shared/types.ts';
-import { ArrowDown, ChevronRight, CircleHelp, FileX, MessagesSquare, Wrench } from 'lucide-react';
+import { ArrowDown, ChevronRight, CircleHelp, type LucideIcon, MessagesSquare, TerminalSquare, Wrench } from 'lucide-react';
 import { type PointerEvent as ReactPointerEvent, type ReactNode, memo, useCallback, useContext, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
+import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { AnswerContext } from '@/lib/answers';
+import { Chip } from '@/components/ui/chip';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Loading } from '@/components/ui/loading';
+import { AnswerContext, type TerminalLink } from '@/lib/answers';
 import { type ChatItem, type QuestionEntry, type ToolCall, answerFor, chatItems, clockTime, toolsLabel } from '@/lib/chat';
 import { type Echo, IN_TERMINAL, NOT_TAKEN, NO_ECHOES, isCommand } from '@/lib/echoes';
 import { FileLinksContext, SessionFilesContext } from '@/lib/files';
@@ -47,10 +51,12 @@ export interface ChatProps {
   echoes?: readonly ChatEcho[];
   /** VIEW-1.10: what the Session is doing, under the last message. */
   activity?: ReactNode;
+  /** A Controllable Session's terminal preview: the way to it while the Transcript is slow to read (DS-6.2). */
+  terminal?: TerminalLink | null;
 }
 
 /** VIEW-1: the conversation from the Transcript. Mounted per Session. */
-export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFollowing, echoes = NO_ECHOES, activity }: ChatProps) {
+export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFollowing, echoes = NO_ECHOES, activity, terminal = null }: ChatProps) {
   const [loadingEarlier, setLoadingEarlier] = useState(false);
   const [earlierError, setEarlierError] = useState<string | null>(null);
   const entries = chat?.entries ?? NONE;
@@ -257,30 +263,30 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
   let body;
   if (!chat?.loaded && problem?.kind === 'missing') {
     body = (
-      <Notice icon={<FileX className="size-5 opacity-60" />} title="No Transcript found">
+      <ChatProblem title="No Transcript found">
         Lookout can&apos;t find this Session&apos;s Transcript, so there&apos;s no chat to show.{' '}
         {!ended && 'The terminal preview and composer still work.'}
-        <span className="mt-1 block text-meta opacity-80">{problem.message}</span>
-      </Notice>
+        <span className="mt-1 block opacity-80">{problem.message}</span>
+      </ChatProblem>
     );
   } else if (!chat?.loaded && problem) {
     body = (
-      <Notice icon={<MessagesSquare className="size-5 opacity-60" />} title="Couldn't read the Transcript">
+      <ChatProblem title="Couldn't read the Transcript">
         {problem.message} · retrying
-      </Notice>
+      </ChatProblem>
     );
   } else if (!chat?.loaded) {
     body = ended ? (
-      <Notice icon={<MessagesSquare className="size-5 opacity-60" />} title="No chat">
+      <Notice icon={MessagesSquare} title="No chat">
         The Session ended before its chat loaded.
       </Notice>
     ) : (
-      <Skeleton />
+      <Skeleton terminal={terminal} />
     );
   } else if (items.length === 0 && queue.length === 0 && echoes.length === 0 && !before) {
     // A Session before its first prompt: an empty conversation, not an error.
     body = (
-      <Notice icon={<MessagesSquare className="size-5 opacity-60" />} title="No messages yet">
+      <Notice icon={MessagesSquare} title="No messages yet">
         The conversation shows here once it starts.
       </Notice>
     );
@@ -290,13 +296,9 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
         {before && !ended && (
           <li className="flex flex-col items-center gap-1">
             <Button variant="ghost" size="sm" className="h-7 text-meta text-muted-foreground" disabled={loadingEarlier} onClick={() => void showEarlier()}>
-              {loadingEarlier ? 'Loading…' : 'Show earlier'}
+              {loadingEarlier ? <Loading label="Loading…" /> : 'Show earlier'}
             </Button>
-            {earlierError && (
-              <p role="alert" className="text-meta text-destructive">
-                {earlierError}
-              </p>
-            )}
+            {earlierError && <Alert layout="inline" title={earlierError} />}
           </li>
         )}
         {items.map((item, i) => {
@@ -325,8 +327,8 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
           </li>
         ))}
         {problem && (
-          <li role="status" className="rounded-md border border-border bg-muted/50 px-3 py-2 text-meta text-muted-foreground">
-            {problem.kind === 'missing' ? "The Transcript can't be found right now" : "Couldn't read new messages"}: {problem.message} · retrying
+          <li>
+            <Alert tone="info" title={`${problem.kind === 'missing' ? "The Transcript can't be found right now" : "Couldn't read new messages"}: ${problem.message} · retrying`} />
           </li>
         )}
       </ol>
@@ -523,7 +525,7 @@ function Meta({ who, ts, extra = null, srLabel = null }: { who: string; ts: stri
       <span className="font-medium text-foreground/80">{who}</span>
       {srLabel && <span className="sr-only">{srLabel}</span>}
       {time && <time dateTime={ts!}>{time}</time>}
-      {extra && <span className="rounded bg-muted px-1 text-caption uppercase tracking-wide">{extra}</span>}
+      {extra && <Chip className="uppercase tracking-wide">{extra}</Chip>}
     </p>
   );
 }
@@ -656,24 +658,48 @@ function Question({ entry, label }: { entry: QuestionEntry; label: string }) {
   );
 }
 
-function Notice({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
+/** DS-8.1: the chat's empty states, as an EmptyState in the middle of the pane. */
+function Notice({ icon, title, children }: { icon: LucideIcon; title: string; children: ReactNode }) {
+  return <EmptyState role="status" icon={icon} title={title} hint={children} className="flex-1 justify-center px-8" />;
+}
+
+/** DS-4.2: a Transcript that can't be found or read is an error Alert (a box) at the top of the pane, not an empty state. */
+function ChatProblem({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div role="status" className="flex flex-1 flex-col items-center justify-center gap-2 px-8 text-center text-muted-foreground">
-      {icon}
-      <p className="text-body font-medium text-foreground/85">{title}</p>
-      <p className="max-w-md text-body leading-5">{children}</p>
+    <div className="mx-auto w-full max-w-3xl px-6 py-5">
+      <Alert title={title} detail={children} />
     </div>
   );
 }
 
-function Skeleton() {
+/**
+ * DS-6.2: the skeleton, and under it what's being done and for how long; from 15 s, that the
+ * terminal preview still works, with a way to it for a Controllable Session.
+ */
+function Skeleton({ terminal }: { terminal: TerminalLink | null }) {
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-4 px-6 py-5" aria-busy="true" aria-label="Loading the chat">
-      {[70, 45, 85, 35].map((w, i) => (
-        <div key={i} className={cn('flex', i % 2 === 0 && 'justify-end')}>
-          <div className="h-8 animate-pulse rounded-lg bg-muted" style={{ width: `${w}%` }} />
-        </div>
-      ))}
+    <div className="mx-auto w-full max-w-3xl space-y-4 px-6 py-5">
+      <div className="space-y-4" aria-busy="true" aria-label="Loading the chat">
+        {[70, 45, 85, 35].map((w, i) => (
+          <div key={i} className={cn('flex', i % 2 === 0 && 'justify-end')}>
+            <div className="h-8 animate-pulse rounded-lg bg-muted" style={{ width: `${w}%` }} />
+          </div>
+        ))}
+      </div>
+      <Loading
+        label="Reading the Transcript…"
+        className="items-center text-center"
+        hint={terminal && 'This is taking a while. The terminal preview still works.'}
+        action={
+          terminal &&
+          !terminal.open && (
+            <Button variant="outline" size="xs" className="h-6 gap-1" onClick={terminal.show}>
+              <TerminalSquare className="size-3.5" />
+              Show terminal
+            </Button>
+          )
+        }
+      />
     </div>
   );
 }

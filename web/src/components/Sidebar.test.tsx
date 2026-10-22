@@ -11,6 +11,9 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 
+/** The sidebar's banner (SIDE-6.2): an info Alert (DS-4) above the list. The usage strip has a status region of its own. */
+const banner = () => document.querySelector<HTMLElement>('aside[aria-label="Session sidebar"] [data-slot="alert"]');
+
 /** Real timers for userEvent, but the clock pinned at NOW, which the rows' times are built from. */
 function pinDate() {
   vi.useRealTimers();
@@ -443,11 +446,12 @@ describe('when Fleet fails', () => {
 
     expect(visibleTitles()).toEqual(expect.arrayContaining(['a', 'b']));
     expect(screen.getByRole('listbox', { name: 'Sessions' })).toHaveAttribute('data-stale', 'true');
-    expect(screen.getByRole('status')).toHaveTextContent("Fleet isn't answering. List is 12s old.");
-    expect(screen.getByRole('status')).toHaveAttribute('title', 'fleet list timed out after 4 s');
+    expect(banner()!).toHaveTextContent("Fleet isn't answering. List is 12s old.");
+    expect(banner()!).toHaveAttribute('role', 'status');
+    expect(banner()!).toHaveAttribute('title', 'fleet list timed out after 4 s');
 
     app.emit({ type: 'fleet', fleet: { state: 'ok' } });
-    expect(screen.queryByRole('status')).toBeNull();
+    expect(banner()).toBeNull();
     expect(screen.getByRole('listbox', { name: 'Sessions' })).toHaveAttribute('data-stale', 'false');
   });
 
@@ -461,7 +465,8 @@ describe('when Fleet fails', () => {
     const app = renderApp();
     app.snapshot([row({ id: 'a' })]);
     app.connection(false);
-    expect(screen.getByRole('status')).toHaveTextContent('Reconnecting');
+    expect(banner()!).toHaveTextContent('Reconnecting');
+    expect(banner()!).toHaveAttribute('role', 'status');
     expect(screen.getByRole('listbox', { name: 'Sessions' })).toHaveAttribute('data-stale', 'true');
   });
 });
@@ -484,13 +489,13 @@ describe('design system colours in the sidebar', () => {
     app.emit({ type: 'fleet', fleet: { state: 'failing', lastOkAt: NOW - 2000, error: 'fleet list timed out after 4 s' } });
     const info = ['border-info-border', 'bg-info-soft', 'text-info-text'];
     const amber = (el: HTMLElement) => [...el.classList].filter((c) => c.includes('needs-you'));
-    expect(screen.getByRole('status')).toHaveClass(...info);
-    expect(amber(screen.getByRole('status'))).toEqual([]);
+    expect(banner()!).toHaveClass(...info);
+    expect(amber(banner()!)).toEqual([]);
     app.emit({ type: 'fleet', fleet: { state: 'ok' } });
     app.connection(false);
-    expect(screen.getByRole('status')).toHaveTextContent('Reconnecting');
-    expect(screen.getByRole('status')).toHaveClass(...info);
-    expect(amber(screen.getByRole('status'))).toEqual([]);
+    expect(banner()!).toHaveTextContent('Reconnecting');
+    expect(banner()!).toHaveClass(...info);
+    expect(amber(banner()!)).toEqual([]);
   });
 
   it("DS-3.5: a row's context number and ring take the status line's colours: quiet up to 40%, warning above 40%, destructive above 60%", () => {

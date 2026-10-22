@@ -2,6 +2,7 @@ import type { JevStatus, ProviderUsage, UsageSnapshot, UsageWindow } from '@shar
 import { freshness, hasReset, isFiveHour, isFlagged, stripWindows, usageLevel } from '@shared/usage.ts';
 import { Check } from 'lucide-react';
 import { useId } from 'react';
+import { Loading } from '@/components/ui/loading';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { HARNESS_NAME } from '@/lib/sessions';
 import { BAR_EDGE, BAR_EDGE_GAP, BAR_FILL, BAR_TRACK, formatClock, formatUntil, freshnessLabel } from '@/lib/usage';
@@ -57,14 +58,14 @@ export function UsageStrip({ usage, now, onOpen }: { usage: UsageSnapshot | null
             </div>
           </>
         ) : (
-          <p className="text-caption text-muted-foreground">Reading usage…</p>
+          <Loading label="Reading usage…" />
         )}
       </PopoverTrigger>
       <PopoverContent side="right" align="end" sideOffset={8} className="w-[22rem] p-0" aria-labelledby="usage-details-title">
         <h2 id="usage-details-title" className="sr-only">
           Usage details
         </h2>
-        {usage ? <Details usage={usage} now={now} /> : <p className="p-3 text-meta text-muted-foreground">Reading usage…</p>}
+        {usage ? <Details usage={usage} now={now} /> : <Loading label="Reading usage…" className="p-3" />}
       </PopoverContent>
     </Popover>
   );

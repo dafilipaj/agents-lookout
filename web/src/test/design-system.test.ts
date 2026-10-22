@@ -12,7 +12,14 @@ import { TYPE_SCALE } from '@/lib/utils';
  * - a colour family's token in a file its row in "Colour by meaning" doesn't list, or in a listed file in
  *   a class the row doesn't pin (DS-2.3, 3.6);
  * - a raw colour: a Tailwind palette class, an arbitrary colour, or a hex, rgb(), hsl() or oklch() (DS-2.3);
- * - a Harness logo in brand colour outside the main pane's header and the launcher (DS-3.1).
+ * - a Harness logo in brand colour outside the main pane's header and the launcher (DS-3.1);
+ * - `role="alert"` outside the Alert and the listed functions, a quiet Alert (`role`, `quiet`) outside the listed ones, or a box
+ *   drawn in error or info colours outside the Alert and the chip (DS-4.2);
+ * - lucide's `Circle` or `CircleDot` outside `Answering.tsx`, or `StatusMarker` outside the Session marker and
+ *   the header (DS-5.1, 5.4);
+ * - a `Button` with an `icon…` size outside `components/ui/`, an `IconButton` whose `className` sets a size, or a
+ *   `<button>`/`<Button>` holding only an icon that isn't an `IconButton` (DS-7.2);
+ * - a `<kbd>` outside `Kbd`, or a `select-all` command outside `CommandBlock` (DS-8.2, 8.4).
  * Every exception is in this file, with its reason, so adding one is a reviewed change.
  */
 
@@ -271,32 +278,28 @@ const FAMILIES: Record<string, Family> = {
       'web/src/lib/sessions.ts': { why: 'context above 60% (CONTEXT_LEVEL_CLASS)', uses: ['text-destructive-text'] },
       'web/src/lib/usage.ts': { why: "the usage critical level's octagon, and its bar's edge (and the details' solid bar)", uses: ['bg-destructive', 'text-destructive'] },
       'web/src/lib/work.ts': { why: 'a PR over 10 days', uses: ['text-destructive-text'] },
-      'web/src/components/Launcher.tsx': { why: 'a failed start, and a Harness at a critical limit', uses: ['bg-destructive/5', 'border-destructive/30', 'text-destructive'] },
+      'web/src/components/ui/alert.tsx': { why: "the error Alert (DS-4): its box, title and icon; every error's look", uses: ['bg-destructive-soft', 'border-destructive/30', 'text-destructive', 'text-destructive-text'] },
+      'web/src/components/Launcher.tsx': { why: 'a Harness at a critical limit', uses: ['text-destructive'] },
       'web/src/components/LaunchItem.tsx': { why: 'a failed Starting row', uses: ['bg-destructive/8', 'ring-destructive/40', 'text-destructive'] },
-      'web/src/components/StartingView.tsx': { why: 'a failed start', uses: ['bg-destructive/10', 'bg-destructive/8', 'border-destructive/30', 'ring-destructive/30', 'text-destructive'] },
-      'web/src/components/WorkPanel.tsx': { why: "errors, Work's problems and CI failing", uses: ['border-destructive/30', 'text-destructive'] },
-      'web/src/components/HistoryPanel.tsx': { why: "History's errors", uses: ['border-destructive/30', 'text-destructive'] },
-      'web/src/components/RightSidebar.tsx': { why: 'a refresh problem', uses: ['border-destructive/30', 'text-destructive'] },
-      'web/src/components/SettingsPage.tsx': { why: "a setting that couldn't be saved", uses: ['text-destructive'] },
-      'web/src/components/StatusMenu.tsx': { why: "a status-line menu's error", uses: ['text-destructive-text'] },
-      'web/src/components/SessionView.tsx': { why: "End Session, the composer's error and a failed copy", uses: ['border-destructive/30', 'text-destructive'] },
-      'web/src/components/Answering.tsx': { why: "an answer that couldn't be sent", uses: ['text-destructive'] },
-      'web/src/components/Chat.tsx': { why: "Show earlier's error", uses: ['text-destructive'] },
+      'web/src/components/StartingView.tsx': { why: "a failed start's icon and status pill", uses: ['bg-destructive/10', 'ring-destructive/30', 'text-destructive'] },
+      'web/src/components/WorkPanel.tsx': { why: 'CI failing', uses: ['text-destructive'] },
+      'web/src/components/SessionView.tsx': { why: 'a Stop that failed, and a failed copy', uses: ['text-destructive'] },
       'web/src/components/Markdown.tsx': { why: 'a failed copy', uses: ['text-destructive'] },
     },
   },
   ok: {
     tokens: ['ok', 'ok-text'],
     files: {
-      'web/src/components/WorkPanel.tsx': { why: 'CI passing and an approved PR', uses: ['border-ok/40', 'text-ok'] },
+      'web/src/components/ui/chip.tsx': { why: "an approved PR's chip (WORK-3.2)", uses: ['border-ok/40', 'text-ok'] },
+      'web/src/components/WorkPanel.tsx': { why: 'CI passing', uses: ['text-ok'] },
       'web/src/lib/work.ts': { why: 'a PR under 3 days', uses: ['text-ok-text'] },
     },
   },
   info: {
     tokens: ['info-soft', 'info-border', 'info-text'],
     files: {
-      'web/src/components/WorkPanel.tsx': { why: '"old", "Possibly out of date" and "Session links are unavailable" (DS-3.3)', uses: ['bg-info-soft', 'border-info-border', 'text-info-text'] },
-      'web/src/components/Sidebar.tsx': { why: "the banners for a stale Fleet list and a lost server (DS-3.3)", uses: ['bg-info-soft', 'border-info-border', 'text-info-text'] },
+      'web/src/components/ui/alert.tsx': { why: 'the info Alert (DS-4): staleness and notices, its box, text and icon', uses: ['bg-info-soft', 'border-info-border', 'text-info-text'] },
+      'web/src/components/ui/chip.tsx': { why: 'the info chip: "old" (DS-3.3)', uses: ['bg-info-soft', 'text-info-text'] },
       'web/src/components/SessionView.tsx': { why: 'the terminal preview\'s "… · retrying" (DS-3.3)', uses: ['text-info-text'] },
       'web/src/components/UsageStrip.tsx': { why: 'a usage reading marked old (DS-3.3)', uses: ['text-info-text'] },
     },
@@ -665,5 +668,401 @@ describe('Harness logos', () => {
     for (const path of ['web/src/components/SessionItem.tsx', 'web/src/components/UsageStrip.tsx', 'web/src/components/HistoryPanel.tsx', 'web/src/components/LaunchItem.tsx']) {
       expect(SOURCES[path], path).toMatch(/<HarnessIcon\b/);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// DS-4.2: no hand-rolled alert boxes
+
+/** The name of the function a node sits in: `function F`, `const F = () =>`, a method; the innermost named one, or `-`. */
+function enclosingFn(node: ts.Node): string {
+  for (let n: ts.Node | undefined = node.parent; n; n = n.parent) {
+    if ((ts.isFunctionDeclaration(n) || ts.isFunctionExpression(n) || ts.isMethodDeclaration(n)) && n.name) return n.name.getText();
+    if (ts.isVariableDeclaration(n) && n.initializer && (ts.isArrowFunction(n.initializer) || ts.isFunctionExpression(n.initializer))) return n.name.getText();
+  }
+  return '-';
+}
+
+/** An exception to a guard: a function in a file, how many times it does the thing, and why. */
+interface Exception {
+  path: string;
+  fn: string;
+  count: number;
+  reason: string;
+}
+
+/** Found `path:line:col what fn` entries, split into those no exception covers, and each exception's real count. */
+function againstExceptions(found: string[], exceptions: readonly Exception[]) {
+  const inside = (f: string, e: Exception) => f.startsWith(`${e.path}:`) && f.endsWith(` ${e.fn}`);
+  return {
+    unlisted: found.filter((f) => !exceptions.some((e) => inside(f, e))),
+    counts: exceptions.map((e) => ({ path: e.path, fn: e.fn, count: found.filter((f) => inside(f, e)).length })),
+  };
+}
+
+/**
+ * Where the word `alert` may be written as a string (a `role`): each function and how many times it
+ * writes it, with why. The Alert writes it for every error; a new one in a listed file is a reviewed
+ * change, as the colour guard's per-file classes are.
+ */
+const ROLE_ALERT_EXCEPTIONS: Exception[] = [
+  { path: 'web/src/components/ui/alert.tsx', fn: 'Alert', count: 3, reason: 'the Alert: an error is `role="alert"`, and `data-slot="alert"` is written twice (inline, box)' },
+  { path: 'web/src/components/Answering.tsx', fn: 'TerminalNote', count: 1, reason: 'tells you to answer in the terminal: part of a Needs you card, so amber, not an Alert' },
+  {
+    path: 'web/src/components/SessionView.tsx',
+    fn: 'HeaderNote',
+    count: 1,
+    reason:
+      "why Stop failed (VIEW-4.4), or a failed or pending rename (VIEW-5.14), beside the title: one line in the header with its whole text in a bubble on hover or focus and a twin for narrow headers, so an inline Alert's tooltip and icon don't fit it",
+  },
+];
+
+/** `alert` written as a whole string: `role="alert"`, `role={x ? 'status' : 'alert'}`, `const role = 'alert'`, as `line:col alert fn`. */
+function roleAlerts(source: string, path = 'x.tsx'): string[] {
+  const file = parse(source, path);
+  const found: string[] = [];
+  const visit = (node: ts.Node) => {
+    if ((ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) && node.text.trim() === 'alert') found.push(`${where(file, node.getStart())} alert ${enclosingFn(node)}`);
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return found;
+}
+
+/**
+ * Where an Alert may go quiet: `role="presentation"` (no live region can sit in a listbox) or
+ * `quiet` (the same error is announced where it is selected). Any `role`, `quiet` or spread on an
+ * `<Alert>` is found, as `line:col what fn`.
+ */
+const QUIET_ALERT_EXCEPTIONS: Exception[] = [
+  { path: 'web/src/components/WorkPanel.tsx', fn: 'PrGroupView', count: 1, reason: "Possibly out of date (WORK-7.5), inside the listbox: the group's `aria-describedby` reads it" },
+  { path: 'web/src/components/LaunchItem.tsx', fn: 'LaunchItem', count: 1, reason: "a failed Starting row's error, which StartingView announces when the row is selected (LAUNCH-4.5)" },
+];
+
+function quietAlerts(source: string, path = 'x.tsx'): string[] {
+  const file = parse(source, path);
+  const found: string[] = [];
+  const visit = (node: ts.Node) => {
+    if ((ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)) && node.tagName.getText() === 'Alert') {
+      for (const p of node.attributes.properties) {
+        const name = ts.isJsxAttribute(p) ? p.name.getText() : '{...}';
+        if (name === 'role' || name === 'quiet' || name === '{...}') found.push(`${where(file, p.getStart())} ${name} ${enclosingFn(node)}`);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return found;
+}
+
+/** A box in error or info colours: `border-destructive…`, `bg-destructive/<n>`, `bg-destructive-soft`, `border-info-border`, `bg-info-soft`. */
+const ALERT_BOX = new RegExp(`${CLASS_HEAD}(?:border-destructive(?:-[\\w-]+)?|bg-destructive\\/(?:[\\d.]+|\\[[^\\]]+\\])|bg-destructive-soft|border-info-border|bg-info-soft)(?:\\/[\\d.]+)?!?(?=$|[\\s"'\`)\\],;])`, 'g');
+
+/** Where such a box's classes may be, by file: the classes (sorted, each once) and why. */
+const ALERT_BOX_FILES: Record<string, { allow: string[]; reason: string }> = {
+  'web/src/components/ui/alert.tsx': { allow: ['bg-destructive-soft', 'bg-info-soft', 'border-destructive/30', 'border-info-border'], reason: 'the Alert itself' },
+  'web/src/components/ui/chip.tsx': { allow: ['bg-info-soft'], reason: 'the info chip ("old")' },
+  'web/src/components/ui/button.tsx': { allow: ['bg-destructive/60', 'bg-destructive/90', 'border-destructive'], reason: 'the destructive Button variant, and an invalid field' },
+  'web/src/components/ui/input.tsx': { allow: ['border-destructive'], reason: 'an invalid field' },
+  'web/src/components/ui/textarea.tsx': { allow: ['border-destructive'], reason: 'an invalid field' },
+  'web/src/components/LaunchItem.tsx': { allow: ['bg-destructive/8'], reason: "a failed Starting row's tint" },
+  'web/src/components/StartingView.tsx': { allow: ['bg-destructive/10'], reason: "a failed start's status pill" },
+};
+
+const boxClasses = (source: string, path = 'x.tsx') => scan(source, path, ALERT_BOX, false);
+
+describe('Alert', () => {
+  const words = (list: string[]) => list.map((s) => s.split(' ')[1]);
+
+  it('DS-4.2: the guard catches role="alert" however it is written, and lets other roles and words through', () => {
+    expect(words(roleAlerts(`<p role="alert" />; <div role={info ? 'status' : 'alert'} />; const role = 'alert'; const r = { role: \`alert\` };`))).toEqual(['alert', 'alert', 'alert', 'alert']);
+    expect(roleAlerts(`<p role="status" />; <i role="alertdialog" />; 'an alert'; // role="alert" in a comment\nconst alerts = 1;`)).toEqual([]);
+  });
+
+  it('DS-4.2: the guard catches a box in error or info colours, and lets text colours and other tokens through', () => {
+    expect(words(boxClasses(`cn('border border-destructive/30 bg-destructive/5', 'aria-invalid:border-destructive', 'bg-destructive-soft', 'border-info-border bg-info-soft/50', 'border-destructive-text', 'bg-destructive/[0.1]')`))).toEqual([
+      'border-destructive/30', 'bg-destructive/5', 'border-destructive', 'bg-destructive-soft', 'border-info-border', 'bg-info-soft/50', 'border-destructive-text', 'bg-destructive/[0.1]',
+    ]);
+    expect(boxClasses(`cn('text-destructive text-destructive-text bg-destructive ring-destructive/40 text-info-text border-border bg-muted')`)).toEqual([]);
+  });
+
+  it('DS-4.2: the guard pins each exception to its function and count, so a second alert in a listed file is found', () => {
+    const path = 'web/src/components/SessionView.tsx';
+    const src = `function HeaderNote() { return <p role="alert" />; }\nfunction Composer() { return <p role="alert" className="text-destructive" />; }`;
+    const found = roleAlerts(src, path).map((f) => `${path}:${f}`);
+    expect(found.map((f) => f.split(' ').slice(1).join(' '))).toEqual(['alert HeaderNote', 'alert Composer']);
+    const exceptions = [{ path, fn: 'HeaderNote', count: 1, reason: 'x' }];
+    expect(againstExceptions(found, exceptions).unlisted).toEqual([expect.stringMatching(/ alert Composer$/)]);
+    const twice = [`${path}:1:1 alert HeaderNote`, `${path}:9:1 alert HeaderNote`];
+    expect(againstExceptions(twice, exceptions).counts).toEqual([{ path, fn: 'HeaderNote', count: 2 }]);
+  });
+
+  it('DS-4.2: role="alert" is written only by the Alert and, once each, by the listed functions', () => {
+    const found = Object.entries(SOURCES)
+      .filter(([path]) => !path.endsWith('.css'))
+      .flatMap(([path, text]) => roleAlerts(text, path).map((s) => `${path}:${s}`));
+    const { unlisted, counts } = againstExceptions(found, ROLE_ALERT_EXCEPTIONS);
+    expect(unlisted).toEqual([]);
+    expect(counts).toEqual(ROLE_ALERT_EXCEPTIONS.map(({ path, fn, count }) => ({ path, fn, count })));
+  });
+
+  it('DS-4.2: the guard finds a `role` or `quiet` on an Alert, or a spread that could carry one, and lets other props through', () => {
+    const what = (src: string) => quietAlerts(src).map((f) => f.split(' ').slice(1).join(' '));
+    expect(what(`function A() { return <><Alert role="presentation" title="x" /><Alert quiet title="x" /><Alert {...p} title="x" /></>; }`)).toEqual(['role A', 'quiet A', '{...} A']);
+    expect(what(`function A() { return <><Alert tone="info" title="x" data-field="y" /><Other role="presentation" quiet /></>; }`)).toEqual([]);
+  });
+
+  it('DS-4.2: an Alert goes quiet (`role="presentation"`, `quiet`) only in the listed functions, once each', () => {
+    const found = Object.entries(SOURCES)
+      .filter(([path]) => /\.tsx$/.test(path))
+      .flatMap(([path, text]) => quietAlerts(text, path).map((s) => `${path}:${s}`));
+    const { unlisted, counts } = againstExceptions(found, QUIET_ALERT_EXCEPTIONS);
+    expect(unlisted).toEqual([]);
+    expect(counts).toEqual(QUIET_ALERT_EXCEPTIONS.map(({ path, fn, count }) => ({ path, fn, count })));
+  });
+
+  it('DS-4.2: no element outside the Alert and the chip draws a box in error or info colours, outside the listed exceptions', () => {
+    const found = Object.entries(SOURCES).flatMap(([path, text]) => {
+      const allow = ALERT_BOX_FILES[path]?.allow ?? [];
+      return boxClasses(text, path)
+        .filter((c) => !allow.includes(c.split(' ')[1]!))
+        .map((c) => `${path}:${c}`);
+    });
+    expect(found).toEqual([]);
+    // Each exception is exactly what its file uses, so a stale one can't stay.
+    for (const [path, { allow }] of Object.entries(ALERT_BOX_FILES)) {
+      expect([...new Set(boxClasses(SOURCES[path] ?? '', path).map((c) => c.split(' ')[1]!))].sort(), path).toEqual(allow);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// DS-5.1, DS-5.4: one Session marker
+
+/** lucide's names for its empty and dotted circles, which once drew a Session's state. */
+const CIRCLES = new Set(['Circle', 'CircleIcon', 'LucideCircle', 'CircleDot', 'CircleDotIcon', 'LucideCircleDot']);
+/** Where they may be imported: Answering.tsx draws a question's options with them, not a Session. */
+const CIRCLE_FILES: Record<string, string> = { 'web/src/components/Answering.tsx': "a question's options (a single-choice option's radio)" };
+/** Where `StatusMarker` may be imported: the Session marker, and the main pane's header, where a Session's own Status tag sits (VIEW-5.9), not a list. */
+const STATUS_MARKER_FILES: Record<string, string> = {
+  'web/src/components/ui/session-marker.tsx': 'the Session marker draws a live Session with it',
+  'web/src/components/SessionView.tsx': "the header's Status tag (VIEW-5.9): one Session's Status, not a list's marker",
+};
+
+/** The named imports of `names` from a module whose specifier passes `from`, and namespace imports of it, as `line:col name`. */
+function importsOf(source: string, path: string, from: (specifier: string) => boolean, names: (name: string) => boolean): string[] {
+  const file = parse(source, path);
+  const found: string[] = [];
+  for (const statement of file.statements) {
+    if (!ts.isImportDeclaration(statement) && !ts.isExportDeclaration(statement)) continue;
+    const spec = statement.moduleSpecifier;
+    if (!spec || !ts.isStringLiteral(spec) || !from(spec.text)) continue;
+    const clause = ts.isImportDeclaration(statement) ? statement.importClause?.namedBindings : statement.exportClause;
+    if (clause && (ts.isNamespaceImport(clause) || ts.isNamespaceExport(clause))) found.push(`${where(file, clause.getStart())} *`);
+    if (clause && (ts.isNamedImports(clause) || ts.isNamedExports(clause))) {
+      for (const el of clause.elements) {
+        const name = (el.propertyName ?? el.name).text;
+        if (names(name)) found.push(`${where(file, el.getStart())} ${name}`);
+      }
+    }
+  }
+  return found;
+}
+
+const circleImports = (source: string, path = 'x.tsx') => importsOf(source, path, (s) => s === 'lucide-react' || s.startsWith('lucide-react/'), (n) => CIRCLES.has(n));
+const statusMarkerImports = (source: string, path = 'x.tsx') => importsOf(source, path, (s) => /(?:^|\/)StatusMarker(?:\.tsx?)?$/.test(s), (n) => n === 'StatusMarker');
+
+describe('Session marker', () => {
+  it("DS-5.4: the guard catches Circle and CircleDot however they're imported, and lets other circles through", () => {
+    const names = (source: string) => circleImports(source).map((s) => s.split(' ')[1]);
+    expect(names(`import { Circle, CircleDot as Live } from 'lucide-react';\nimport { CircleIcon } from 'lucide-react';\nimport * as L from 'lucide-react';\nexport { LucideCircleDot } from 'lucide-react';`)).toEqual(['Circle', 'CircleDot', 'CircleIcon', '*', 'LucideCircleDot']);
+    expect(circleImports(`import { CircleSlash, CircleX, CircleCheck, History } from 'lucide-react';\nimport { Circle } from './Circle';`)).toEqual([]);
+  });
+
+  it('DS-5.4: Circle and CircleDot are imported only in Answering.tsx, where they draw a question\'s options', () => {
+    const found = Object.entries(SOURCES)
+      .filter(([path]) => !path.endsWith('.css') && !(path in CIRCLE_FILES))
+      .flatMap(([path, text]) => circleImports(text, path).map((s) => `${path}:${s}`));
+    expect(found).toEqual([]);
+    for (const path of Object.keys(CIRCLE_FILES)) expect(circleImports(SOURCES[path] ?? '', path), path).not.toEqual([]);
+  });
+
+  it('DS-5.1: the lists draw a Session\'s marker only through SessionMarker: StatusMarker is imported by it and the header alone', () => {
+    expect(statusMarkerImports(`import { StatusMarker } from './StatusMarker';\nimport { StatusMarker as M } from '@/components/StatusMarker';`).map((s) => s.split(' ')[1])).toEqual(['StatusMarker', 'StatusMarker']);
+    const found = Object.entries(SOURCES)
+      .filter(([path]) => !path.endsWith('.css') && !(path in STATUS_MARKER_FILES))
+      .flatMap(([path, text]) => statusMarkerImports(text, path).map((s) => `${path}:${s}`));
+    expect(found).toEqual([]);
+    for (const path of Object.keys(STATUS_MARKER_FILES)) expect(statusMarkerImports(SOURCES[path] ?? '', path), path).not.toEqual([]);
+    for (const path of ['web/src/components/SessionItem.tsx', 'web/src/components/HistoryPanel.tsx', 'web/src/components/WorkPanel.tsx']) {
+      expect(SOURCES[path], path).toMatch(/<SessionMarker\b/);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// DS-7.2: icon buttons keep their sizes
+
+/** The JSX attribute `name` on an element, if it's there. */
+const attr = (node: ts.JsxOpeningLikeElement, name: string) => node.attributes.properties.find((p): p is ts.JsxAttribute => ts.isJsxAttribute(p) && p.name.getText() === name);
+
+/** Every string inside an attribute's value (a literal, `cn(…)`, a conditional, a template). */
+function stringsIn(node: ts.Node): string[] {
+  const out: string[] = [];
+  const visit = (n: ts.Node) => {
+    if (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n) || ts.isTemplateHead(n) || ts.isTemplateMiddle(n) || ts.isTemplateTail(n)) out.push(n.text);
+    ts.forEachChild(n, visit);
+  };
+  visit(node);
+  return out;
+}
+
+/** A class that sets a box's size: `size-7`, `h-6`, `w-[30px]`, `min-h-8`, `max-w-4`, with any variant. */
+const SIZE_UTILITY = /^(?:[\w-]+:|\[[^\]]+\]:)*!?(?:size|h|w|min-h|min-w|max-h|max-w)-\S+$/;
+
+/** `<Button size="icon…">` and `<IconButton className="…size…">`, as `line:col what`. */
+function iconButtonSizes(source: string, path = 'x.tsx'): string[] {
+  const file = parse(source, path);
+  const found: string[] = [];
+  const visit = (node: ts.Node) => {
+    if (ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)) {
+      const tag = node.tagName.getText();
+      if (tag === 'Button') {
+        const size = attr(node, 'size')?.initializer;
+        if (size && stringsIn(size).some((v) => v.startsWith('icon'))) found.push(`${where(file, node.getStart())} Button size=${stringsIn(size).find((v) => v.startsWith('icon'))}`);
+      }
+      if (tag === 'IconButton') {
+        const className = attr(node, 'className')?.initializer;
+        for (const value of className ? stringsIn(className) : []) {
+          for (const c of value.split(/\s+/).filter((c) => SIZE_UTILITY.test(c))) found.push(`${where(file, node.getStart())} IconButton ${c}`);
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return found;
+}
+
+/** Tags that draw one icon besides lucide's own (imported from `lucide-react`). */
+const ICON_TAGS = new Set(['HarnessIcon', 'MarkShape']);
+
+/**
+ * A `<button>` or `<Button>` with an icon and no words of its own: its children are icons (lucide's,
+ * `HarnessIcon`, `MarkShape`), also in a conditional, and at most `aria-hidden` elements. As
+ * `line:col <tag> fn`. These are `IconButton`s, whatever their classes (DS-7.2).
+ */
+function iconOnlyButtons(source: string, path = 'x.tsx'): string[] {
+  const file = parse(source, path);
+  const lucide = new Set<string>();
+  for (const st of file.statements) {
+    if (ts.isImportDeclaration(st) && ts.isStringLiteral(st.moduleSpecifier) && st.moduleSpecifier.text === 'lucide-react') {
+      const named = st.importClause?.namedBindings;
+      if (named && ts.isNamedImports(named)) for (const el of named.elements) lucide.add(el.name.text);
+    }
+  }
+  const isIcon = (n: ts.JsxChild | ts.Expression): boolean => (ts.isJsxSelfClosingElement(n) || ts.isJsxElement(n)) && (lucide.has(tagOf(n)) || ICON_TAGS.has(tagOf(n)));
+  const tagOf = (n: ts.JsxSelfClosingElement | ts.JsxElement) => (ts.isJsxElement(n) ? n.openingElement.tagName.getText() : n.tagName.getText());
+  /** The icons and the things that make words in a child; `aria-hidden` elements make none. */
+  const leaves = (n: ts.Node, out: { icons: number; words: number }) => {
+    if (ts.isJsxText(n)) {
+      if (n.text.trim()) out.words++;
+    } else if (ts.isJsxExpression(n)) {
+      if (n.expression) leaves(n.expression, out);
+    } else if (ts.isParenthesizedExpression(n)) leaves(n.expression, out);
+    else if (ts.isConditionalExpression(n)) {
+      leaves(n.whenTrue, out);
+      leaves(n.whenFalse, out);
+    } else if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) leaves(n.right, out);
+    else if (ts.isJsxSelfClosingElement(n) || ts.isJsxElement(n)) {
+      const opening = ts.isJsxElement(n) ? n.openingElement : n;
+      if (isIcon(n)) out.icons++;
+      else if (!attr(opening, 'aria-hidden')) out.words++;
+    } else if (ts.isJsxFragment(n)) n.children.forEach((c) => leaves(c, out));
+    else if (n.kind === ts.SyntaxKind.NullKeyword || n.kind === ts.SyntaxKind.FalseKeyword) return;
+    else out.words++;
+  };
+  const found: string[] = [];
+  const visit = (node: ts.Node) => {
+    if (ts.isJsxElement(node) && ['button', 'Button'].includes(node.openingElement.tagName.getText())) {
+      const out = { icons: 0, words: 0 };
+      node.children.forEach((c) => leaves(c, out));
+      if (out.icons > 0 && out.words === 0) found.push(`${where(file, node.getStart())} <${node.openingElement.tagName.getText()}> ${enclosingFn(node)}`);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return found;
+}
+
+/** Icon-only buttons that aren't `IconButton`s, outside `components/ui/`: where, and why. */
+const ICON_ONLY_BUTTON_EXCEPTIONS: Exception[] = [
+  { path: 'web/src/components/SessionView.tsx', fn: 'CopySessionId', count: 1, reason: 'Copy session ID shows "Copied" beside its icon for 2 s (VIEW-5.10), which a fixed square can\'t hold; 28 px tall' },
+  { path: 'web/src/components/Markdown.tsx', fn: 'CopyButton', count: 1, reason: 'a code block\'s copy button: 24 px tall, shows "Copied" beside its icon for 2 s (VIEW-1.14), which a fixed square can\'t hold' },
+  { path: 'web/src/components/ChatRail.tsx', fn: 'ChatRail', count: 1, reason: "a Mark on the chat's rail: a 12 px-tall target on the 16 px rail by design (VIEW-1.11), a toolbar's roving stop; not a button in a row" },
+];
+
+describe('icon buttons', () => {
+  const what = (source: string) => iconButtonSizes(source).map((s) => s.split(' ').slice(1).join(' '));
+
+  it('DS-7.2: the guard catches an icon-sized Button and an IconButton that sets its own size, and lets the rest through', () => {
+    expect(what(`<Button size="icon-sm" />; <Button size={'icon'} />; <IconButton label="x" className="size-7" />; <IconButton label="x" className={cn('h-6', on && 'md:w-[30px]')} />; <IconButton label="x" className="min-h-8" />`)).toEqual([
+      'Button size=icon-sm', 'Button size=icon', 'IconButton size-7', 'IconButton h-6', 'IconButton md:w-[30px]', 'IconButton min-h-8',
+    ]);
+    expect(what(`<Button size="sm" />; <IconButton label="x" size="md" className={cn('-my-0.5 text-foreground', on && 'bg-sidebar-accent')} />; <Other size="icon" className="size-7" />`)).toEqual([]);
+  });
+
+  it('DS-7.2: the guard finds a button with only an icon, however it is sized, and lets words, other children and IconButton through', () => {
+    const what = (src: string) => iconOnlyButtons(`import { X, Copy, Check } from 'lucide-react';\n${src}`).map((s) => s.split(' ').slice(1).join(' '));
+    expect(
+      what(`function A() { return <><button aria-label="a"><X className="size-3" /></button><Button size="xs" className="size-6"><X /></Button><button>{on ? <Check /> : <Copy />}{said && <span aria-hidden>{said}</span>}</button><button><HarnessIcon harness="x" /></button></>; }`),
+    ).toEqual(['<button> A', '<Button> A', '<button> A', '<button> A']);
+    expect(what(`function A() { return <><button><X /> Close</button><Button><X />{label}</Button><button><span>Copied</span></button><IconButton label="x"><X /></IconButton><button>text</button><Other><X /></Other></>; }`)).toEqual([]);
+  });
+
+  it('DS-7.2: a button with only an icon is an IconButton, outside components/ui and the listed exceptions', () => {
+    const found = Object.entries(SOURCES)
+      .filter(([path]) => /\.tsx$/.test(path) && !path.startsWith('web/src/components/ui/'))
+      .flatMap(([path, text]) => iconOnlyButtons(text, path).map((s) => `${path}:${s}`));
+    const { unlisted, counts } = againstExceptions(found, ICON_ONLY_BUTTON_EXCEPTIONS);
+    expect(unlisted).toEqual([]);
+    expect(counts).toEqual(ICON_ONLY_BUTTON_EXCEPTIONS.map(({ path, fn, count }) => ({ path, fn, count })));
+  });
+
+  it('DS-7.2: no Button outside components/ui takes an icon size, and no IconButton sets its own', () => {
+    const found = Object.entries(SOURCES)
+      .filter(([path]) => /\.tsx$/.test(path) && !path.startsWith('web/src/components/ui/'))
+      .flatMap(([path, text]) => iconButtonSizes(text, path).map((s) => `${path}:${s}`));
+    expect(found).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// DS-8.2, DS-8.4: one key, one command block
+
+/** `<kbd` written as JSX, and `select-all` in a class, as `line:col what`. */
+function keysAndCommands(source: string, path = 'x.tsx'): string[] {
+  const file = parse(source, path);
+  const found: string[] = [];
+  const visit = (node: ts.Node) => {
+    if ((ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)) && node.tagName.getText() === 'kbd') found.push(`${where(file, node.getStart())} <kbd>`);
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return [...found, ...scan(source, path, new RegExp(`${CLASS_HEAD}select-all(?=$|[\\s"'\`)\\],;])`, 'g'))];
+}
+
+describe('keys and commands', () => {
+  it('DS-8.2, DS-8.4: the guard catches a hand-drawn key and a hand-drawn command, and lets Kbd and CommandBlock through', () => {
+    expect(keysAndCommands(`<kbd>/</kbd>; <pre className="select-all" />; cn('p-2', 'md:select-all')`).map((s) => s.split(' ')[1])).toEqual(['<kbd>', 'select-all', 'select-all']);
+    expect(keysAndCommands(`<Kbd>/</Kbd>; <CommandBlock>{c}</CommandBlock>; 'select-none select-text'`)).toEqual([]);
+  });
+
+  it('DS-8.2, DS-8.4: keys are drawn only by Kbd, and commands to copy only by CommandBlock', () => {
+    const own: Record<string, string> = { 'web/src/components/ui/kbd.tsx': '<kbd>', 'web/src/components/ui/command-block.tsx': 'select-all' };
+    const found = Object.entries(SOURCES)
+      .filter(([path]) => /\.tsx?$/.test(path))
+      .flatMap(([path, text]) => keysAndCommands(text, path).filter((s) => s.split(' ')[1] !== own[path]).map((s) => `${path}:${s}`));
+    expect(found).toEqual([]);
   });
 });

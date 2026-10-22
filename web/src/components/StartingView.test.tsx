@@ -343,6 +343,20 @@ describe('selecting a start (LAUNCH-4.2, 4.6, 4.7)', () => {
     expect(startingRow().querySelector('pre')).toHaveTextContent('Trust this folder?');
   });
 
+  it("LAUNCH-4.5: an unselected failed row's error wraps instead of being cut, and is not announced again (the view says it when selected)", async () => {
+    const error = "Claude is waiting on 'Quick safety check: is this a project you created or one you trust?' in the terminal.";
+    const app = renderApp('/l/l-2');
+    app.snapshot([row({ id: 'a' })]);
+    app.emit({ type: 'launches', launches: [launchView({ id: 'l-2', title: 'stuck', state: 'failed', error })], started: [] });
+    // Selected: the view announces the failure, the row shows none.
+    expect(within(view()).getByRole('alert')).toHaveTextContent(error);
+    await userEvent.setup().click(screen.getByText('a', { selector: '[data-field="title"]' }));
+    const shown = within(startingRow()).getByText(error);
+    expect(shown.closest('[data-slot="alert"]')).not.toHaveAttribute('role');
+    expect(shown).not.toHaveClass('truncate');
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
   it.each([
     ['Claude Code', 'claude', 'new-claude'],
     ['Codex', 'codex', 'codex:5150'],

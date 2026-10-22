@@ -1,7 +1,9 @@
 import { PRODUCTIVE_EMAIL_ERROR, type Settings, type SettingsView, parseProductiveEmail } from '@shared/settings.ts';
 import { ArrowLeft, Folder, X } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
+import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { PlainView } from './Shell';
@@ -84,11 +86,7 @@ export function SettingsPage({ settings, save, onBack }: Props) {
               {state.kind === 'saved' && 'Saved'}
             </span>
           </div>
-          {state.kind === 'error' && (
-            <p role="alert" className="mt-2 text-meta text-destructive">
-              {state.message}
-            </p>
-          )}
+          {state.kind === 'error' && <Alert layout="inline" title={state.message} className="mt-2" />}
         </form>
 
         <ProductiveEmail settings={settings} save={save} />
@@ -172,11 +170,7 @@ function ProductiveEmail({ settings, save }: Pick<Props, 'settings' | 'save'>) {
           From your git config. Not saved yet: press Save to use it.
         </p>
       )}
-      {state.kind === 'error' && (
-        <p role="alert" className="mt-2 text-meta text-destructive">
-          {state.message}
-        </p>
-      )}
+      {state.kind === 'error' && <Alert layout="inline" title={state.message} className="mt-2" />}
     </form>
   );
 }
@@ -226,18 +220,15 @@ function StartDirectories({ settings, save }: Pick<Props, 'settings' | 'save'>) 
             <span className="min-w-0 flex-1 truncate font-mono text-body" title={d}>
               {d}
             </span>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xs"
-              aria-label={`Remove ${d}`}
-              title={dirs.length === 1 ? 'Keep at least one start directory' : 'Remove'}
+            <IconButton
+              label={`Remove ${d}`}
+              tip={dirs.length === 1 ? 'Keep at least one start directory' : 'Remove'}
               disabled={busy || dirs.length === 1}
               onClick={() => void write(dirs.filter((x) => x !== d))}
-              className="text-muted-foreground"
+              className="-my-0.5"
             >
               <X />
-            </Button>
+            </IconButton>
           </li>
         ))}
       </ul>
@@ -256,11 +247,7 @@ function StartDirectories({ settings, save }: Pick<Props, 'settings' | 'save'>) 
           Add
         </Button>
       </form>
-      {error && (
-        <p role="alert" className="mt-2 text-meta text-destructive">
-          {error}
-        </p>
-      )}
+      {error && <Alert layout="inline" title={error} className="mt-2" />}
     </section>
   );
 }

@@ -41,6 +41,24 @@ beforeEach(() => {
   vi.useRealTimers();
 });
 
+describe('a failed search (DS-4.2)', () => {
+  it('DS-4.2: a search that fails is an error Alert (a box, with its reason), not a neutral empty state', async () => {
+    const app = renderApp('/', {
+      history: async () => {
+        throw new Error('tb-session timed out after 20 s.');
+      },
+    });
+    app.snapshot([]);
+    await openHistory(app);
+    const alert = await within(panel()).findByRole('alert');
+    expect(alert).toHaveAttribute('data-layout', 'box');
+    expect(alert).toHaveTextContent("Couldn't search History");
+    expect(alert).toHaveTextContent('tb-session timed out after 20 s.');
+    expect(within(panel()).queryByText('No past Sessions')).toBeNull();
+    expect(panel().querySelector('[data-slot="empty-state"]')).toBeNull();
+  });
+});
+
 describe('the right sidebar (HIST-1)', () => {
   it('HIST-1.1: a button at the top right or H opens it, focused on the search box; H outside a text field closes it', async () => {
     const app = renderApp('/', { history: async () => ok([]) });
@@ -126,9 +144,11 @@ describe('finding past Sessions (HIST-2)', () => {
     const [live, codex, gone] = options();
     expect(live).toHaveAttribute('data-state', 'live');
     expect(within(live!).getByText('live')).toBeInTheDocument();
-    expect(live!.querySelector('[data-field="marker"] svg')).toHaveClass('lucide-circle-dot');
+    // DS-5.2: a live result shows its Session's Status marker; a resumable one the past marker.
+    expect(live!.querySelector('[data-field="marker"]')).toHaveAttribute('data-state', 'live');
+    expect(live!.querySelector('[data-field="marker"]')).toHaveAttribute('data-status', 'idle');
     expect(codex).toHaveAttribute('data-state', 'resumable');
-    expect(codex!.querySelector('[data-field="marker"] svg')).toHaveClass('lucide-circle');
+    expect(codex!.querySelector('[data-field="marker"] svg')).toHaveClass('lucide-history');
     expect(codex!.querySelector('[data-field="harness"]')).toHaveTextContent('Codex');
     expect(codex!.querySelector('[data-field="repo"]')).toHaveTextContent('work');
     expect(codex!.querySelector('[data-field="branch"]')).toHaveTextContent('feature/kg-hook');
@@ -445,5 +465,73 @@ describe('History colours (design system)', () => {
     expect(hit).toHaveTextContent('the hook fires');
     expect(hit).toHaveClass('bg-highlight', 'text-foreground');
     expect([...hit.classList].filter((c) => c.includes('needs-you'))).toEqual([]);
+  });
+});
+
+describe('History on the design system', () => {
+  it("DS-5.2: a live result shows its Session's Status marker from the Session list and follows its Status; a resumable one the past marker, a blocked one the slashed circle; the live chip stays", async () => {
+    const app = renderApp('/', { history: async () => ok([LIVE, CODEX, GONE]) });
+    app.snapshot([row({ id: 'live-1', harness: 'claude', status: 'busy' })]);
+    await openHistory(app);
+    await waitFor(() => expect(options()).toHaveLength(3));
+    const marker = (i: number) => options()[i]!.querySelector<HTMLElement>('[data-session-marker]')!;
+    expect(marker(0)).toHaveAttribute('data-state', 'live');
+    expect(marker(0)).toHaveAttribute('data-status', 'busy');
+    expect(within(options()[0]!).getByText('live')).toHaveAttribute('data-slot', 'chip');
+    app.emit({ type: 'sessions', upsert: [row({ id: 'live-1', harness: 'claude', status: 'needs-you' })], remove: [] });
+    expect(marker(0)).toHaveAttribute('data-status', 'needs-you');
+    expect(marker(1)).toHaveAttribute('data-state', 'past');
+    expect(marker(1).querySelector('svg')).toHaveClass('lucide-history', 'text-muted-foreground');
+    expect(marker(2)).toHaveAttribute('data-state', 'blocked');
+    expect(marker(2).querySelector('svg')).toHaveClass('lucide-circle-slash');
+  });
+
+  it("DS-3.6: a live result's marker is its Session's Status colour, no longer a stand-in grey", async () => {
+    const app = renderApp('/', { history: async () => ok([LIVE]) });
+    app.snapshot([row({ id: 'live-1', harness: 'claude', status: 'busy' })]);
+    await openHistory(app);
+    await waitFor(() => expect(options()).toHaveLength(1));
+    const svg = options()[0]!.querySelector('[data-session-marker] svg')!;
+    expect(svg).toHaveClass('text-busy');
+    expect(svg).not.toHaveClass('text-muted-foreground');
+  });
+
+  it("DS-5.5: a result's accessible name doesn't change: the marker is hidden from screen readers, the row's words say it", async () => {
+    const app = renderApp('/', { history: async () => ok([LIVE, CODEX]) });
+    app.snapshot([row({ id: 'live-1', harness: 'claude', status: 'needs-you' })]);
+    await openHistory(app);
+    await waitFor(() => expect(options()).toHaveLength(2));
+    for (const option of options()) {
+      expect(option.querySelector('[data-session-marker]')).toHaveAttribute('aria-hidden', 'true');
+      expect(option).not.toHaveAccessibleName(/Needs you|Past Session/);
+    }
+    expect(options()[0]).toHaveAccessibleName(/^fix-deal-rates\s*live/);
+  });
+
+  it('DS-6.3: results and "Loading more…" are a Loading', async () => {
+    const app = renderApp('/', { history: () => new Promise<HistoryPage>(() => {}) });
+    app.snapshot([]);
+    await openHistory(app);
+    const loading = panel().querySelector<HTMLElement>('[data-slot="loading"]')!;
+    expect(within(loading).getByRole('status')).toHaveTextContent('Loading…');
+  });
+
+  it("DS-8.1, DS-8.2, DS-4.3: History's empty states are an EmptyState; tb-session missing is an error Alert with its words and a CommandBlock", async () => {
+    const empty = renderApp('/', { history: async () => ok([]) });
+    empty.snapshot([]);
+    await openHistory(empty);
+    expect((await screen.findByText('No past Sessions')).closest('[data-slot="empty-state"]')).not.toBeNull();
+    empty.unmount();
+    window.localStorage.clear(); // History opens from the rail again
+
+    const app = renderApp('/', { history: async () => ({ state: 'not-installed', installCommand: 'install tb-session' }) });
+    app.snapshot([]);
+    await openHistory(app);
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveAttribute('data-slot', 'alert');
+    expect(alert).toHaveTextContent(
+      "tb-session isn't installedHistory searches past Sessions through tb-session. Install it, then reopen History:install tb-sessionNeeds an authenticated gh; it installs into ~/.local/bin.",
+    );
+    expect(within(alert).getByText('install tb-session')).toHaveAttribute('data-slot', 'command-block');
   });
 });

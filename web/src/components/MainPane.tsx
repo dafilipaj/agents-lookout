@@ -1,4 +1,9 @@
 import type { SessionRow } from '@shared/types.ts';
+import { Alert } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Kbd } from '@/components/ui/kbd';
+import { Loading } from '@/components/ui/loading';
 import { type AnswerAttempt, type ScreenState, type StopRequest, processKey } from '@/lib/answers';
 import { type SwitchState, switchKey } from '@/lib/status-switch';
 import { type FileLinks, FileLinksContext } from '@/lib/files';
@@ -32,6 +37,10 @@ interface Props extends Omit<SessionViewProps, 'row' | 'ended' | 'now' | 'previe
   switches: ReadonlyMap<string, SwitchState>;
   /** VIEW-1.17: the live Sessions' file links, for the chat; a past Session's view has none. */
   fileLinks: FileLinks;
+  /** DS-6.4: a live Session or a Starting row exists, so the hint, not "No Sessions running", shows when nothing is selected. */
+  running: boolean;
+  /** DS-6.4: "Start a Session", as `N` does. */
+  onNewSession(): void;
 }
 
 /**
@@ -43,13 +52,17 @@ function viewKey(row: SessionRow, aliases: ReadonlyMap<string, string>): string 
   return aliases.get(pidId) === row.id ? pidId : row.id;
 }
 
-/** The main pane: the selected Session (VIEW), or the hint when nothing is selected (VIEW-5.4). */
-export function MainPane({ selectedId, live, lastKnown, list, now, preview, drawerOpen, aliases, prompts, attempts, stops, switches, fileLinks, ...view }: Props) {
-  if (!selectedId) return <Empty />;
+/**
+ * The main pane: the selected Session (VIEW), or the hint when nothing is selected (VIEW-5.4), or,
+ * with no Session at all, "No Sessions running" and a way to start one (DS-6.4).
+ */
+export function MainPane({ selectedId, live, lastKnown, list, now, preview, drawerOpen, aliases, prompts, attempts, stops, switches, fileLinks, running, onNewSession, ...view }: Props) {
+  // Before the first snapshot nothing is known: not the hint, which would give way to "No Sessions running" a moment later.
+  if (!selectedId && list !== 'loading') return list === 'known' && !running ? <NoSessions onNewSession={onNewSession} /> : <Empty />;
   if (!live && list === 'loading') {
     return (
       <PlainView>
-        <div className="p-8 text-body text-muted-foreground">Loading…</div>
+        <Loading label="Loading…" className="p-8" />
       </PlainView>
     );
   }
@@ -57,10 +70,7 @@ export function MainPane({ selectedId, live, lastKnown, list, now, preview, draw
     return (
       <PlainView>
         <div className="mx-auto w-full max-w-3xl px-8 py-7">
-          <div role="status" className="rounded-lg border border-border bg-muted/60 px-3.5 py-3">
-            <p className="text-body font-medium">Can&apos;t tell whether this Session is running</p>
-            <p className="text-body text-muted-foreground">Fleet isn&apos;t answering, so the Session list is unknown.</p>
-          </div>
+          <Alert tone="info" title="Can't tell whether this Session is running" detail="Fleet isn't answering, so the Session list is unknown." />
         </div>
       </PlainView>
     );
@@ -70,10 +80,7 @@ export function MainPane({ selectedId, live, lastKnown, list, now, preview, draw
     return (
       <PlainView>
         <div className="mx-auto w-full max-w-3xl px-8 py-7">
-          <div role="status" className="rounded-lg border border-border bg-muted/60 px-3.5 py-3">
-            <p className="text-body font-medium">This Session ended</p>
-            <p className="text-body text-muted-foreground">Session {selectedId} isn&apos;t running.</p>
-          </div>
+          <Alert tone="info" title="This Session ended" detail={`Session ${selectedId} isn't running.`} />
         </div>
       </PlainView>
     );
@@ -97,29 +104,51 @@ export function MainPane({ selectedId, live, lastKnown, list, now, preview, draw
   );
 }
 
+/** VIEW-5.4: nothing selected among the Sessions there are: the keys that move through them. */
 function Empty() {
   return (
     <PlainView>
-      <div className="flex h-full flex-col items-center justify-center gap-4 p-8 text-center">
-        <p className="text-body font-medium">Select a Session</p>
-        <ul className="grid grid-cols-[auto_auto] gap-x-3 gap-y-1.5 text-left text-meta text-muted-foreground">
-          <Hint keys={['↑', '↓']} alt={['j', 'k']} text="Move" />
-          <Hint keys={['⌘', '1–9']} text="Jump to a row" />
-          <Hint keys={['⌘', 'J']} text="Next that needs you" />
-          <Hint keys={['/']} text="Filter" />
-          <Hint keys={['N']} text="New Session (⌘N in the installed app)" />
-        </ul>
-      </div>
+      <EmptyState
+        className="h-full justify-center p-8"
+        title="Select a Session"
+        hint={
+          <ul className="mt-3 grid grid-cols-[auto_auto] gap-x-3 gap-y-1.5 text-left">
+            <Hint keys={['↑', '↓']} alt={['j', 'k']} text="Move" />
+            <Hint keys={['⌘', '1–9']} text="Jump to a row" />
+            <Hint keys={['⌘', 'J']} text="Next that needs you" />
+            <Hint keys={['/']} text="Filter" />
+            <Hint keys={['N']} text="New Session (⌘N in the installed app)" />
+          </ul>
+        }
+      />
+    </PlainView>
+  );
+}
+
+/** DS-6.4: no live Session and no Starting row: say so, with the launcher a click away and `N` under it. */
+function NoSessions({ onNewSession }: { onNewSession(): void }) {
+  return (
+    <PlainView>
+      <EmptyState
+        className="h-full justify-center p-8"
+        title="No Sessions running"
+        action={
+          <div className="flex flex-col items-center gap-3">
+            <Button size="sm" onClick={onNewSession}>
+              Start a Session
+            </Button>
+            <ul className="grid grid-cols-[auto_auto] gap-x-3 text-left text-meta text-muted-foreground">
+              <Hint keys={['N']} text="New Session (⌘N in the installed app)" />
+            </ul>
+          </div>
+        }
+      />
     </PlainView>
   );
 }
 
 function Hint({ keys, alt, text }: { keys: string[]; alt?: string[]; text: string }) {
-  const kbd = (k: string) => (
-    <kbd key={k} className="min-w-5 rounded border border-border bg-muted/50 px-1 text-center font-mono text-caption leading-5">
-      {k}
-    </kbd>
-  );
+  const kbd = (k: string) => <Kbd key={k}>{k}</Kbd>;
   return (
     <li className="contents">
       <span className="flex items-center justify-end gap-1">

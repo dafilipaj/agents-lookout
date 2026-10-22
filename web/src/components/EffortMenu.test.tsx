@@ -217,7 +217,9 @@ describe('switching the Effort from the status line (VIEW-7)', () => {
     expect(error).toHaveTextContent(held);
     expect(error).toHaveAttribute('data-slot', 'effort-error');
     expect(error).toHaveAttribute('title', held);
-    expect(error).toHaveClass('truncate', 'min-w-0');
+    // An inline Alert (DS-4.1): its one line is cut to fit.
+    expect(error).toHaveClass('min-w-0');
+    expect(error.querySelector('.truncate')).toHaveTextContent(held);
     expect(effortButton()).toHaveTextContent('medium');
     expect(effortButton().getAttribute('title')).toContain(held);
     // The model's name shows no error: the two never show at once.

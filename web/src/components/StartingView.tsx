@@ -1,5 +1,7 @@
 import type { LaunchView } from '@shared/types.ts';
 import { CircleX, LoaderCircle } from 'lucide-react';
+import { Alert } from '@/components/ui/alert';
+import { Loading } from '@/components/ui/loading';
 import { HARNESS_NAME } from '@/lib/sessions';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
@@ -26,16 +28,14 @@ export function StartingView({ launch, loaded, now }: Props) {
       <PlainView>
         {loaded ? (
           <div className="mx-auto w-full max-w-3xl px-8 py-7">
-            <div role="status" className="rounded-lg border border-border bg-muted/60 px-3.5 py-3">
-              <p className="text-body font-medium">This start is no longer listed</p>
-              <p className="text-body text-muted-foreground">
-                It was dismissed in another tab, became a Session while this tab wasn&apos;t watching, or Lookout restarted.
-                Select a Session in the sidebar.
-              </p>
-            </div>
+            <Alert
+              tone="info"
+              title="This start is no longer listed"
+              detail="It was dismissed in another tab, became a Session while this tab wasn't watching, or Lookout restarted. Select a Session in the sidebar."
+            />
           </div>
         ) : (
-          <div className="p-8 text-body text-muted-foreground">Loading…</div>
+          <Loading label="Loading…" className="p-8" />
         )}
       </PlainView>
     );
@@ -83,11 +83,7 @@ export function StartingView({ launch, loaded, now }: Props) {
           </dl>
           {failed ? (
             <>
-              {launch.error && (
-                <p role="alert" className="mt-5 rounded-lg border border-destructive/30 bg-destructive/8 px-3.5 py-3 text-body">
-                  {launch.error}
-                </p>
-              )}
+              {launch.error && <Alert title={launch.error} className="mt-5" />}
               {launch.terminal && launch.terminal.length > 0 ? (
                 <section className="mt-5" aria-labelledby="starting-terminal">
                   <h2 id="starting-terminal" className="mb-1.5 text-meta font-medium text-muted-foreground">

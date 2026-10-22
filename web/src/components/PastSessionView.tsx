@@ -2,6 +2,8 @@ import { BLOCK_REASON } from '@shared/history.ts';
 import type { ChatPage, Harness, HistoryDetail } from '@shared/types.ts';
 import { CircleSlash, GitBranch } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { Alert } from '@/components/ui/alert';
+import { Loading } from '@/components/ui/loading';
 import type { Chat as ChatState } from '@/lib/store';
 import { HARNESS_NAME } from '@/lib/sessions';
 import { formatAge } from '@/lib/time';
@@ -49,7 +51,7 @@ export function PastSessionView({ harness, sessionId, now, load }: Props) {
   if (!current) {
     return (
       <PlainView>
-        <div className="p-8 text-body text-muted-foreground">Loading…</div>
+        <Loading label="Loading…" className="p-8" />
       </PlainView>
     );
   }
@@ -57,10 +59,7 @@ export function PastSessionView({ harness, sessionId, now, load }: Props) {
     return (
       <PlainView>
         <div className="mx-auto w-full max-w-3xl px-8 py-7">
-          <div role="alert" className="rounded-lg border border-border bg-muted/60 px-3.5 py-3">
-            <p className="text-body font-medium">Couldn&apos;t open this past Session</p>
-            <p className="text-body text-muted-foreground">{current.error}</p>
-          </div>
+          <Alert title="Couldn't open this past Session" detail={current.error} />
         </div>
       </PlainView>
     );

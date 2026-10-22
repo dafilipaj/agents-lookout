@@ -3,7 +3,7 @@ title: History
 code: HIST
 status: Done
 created: 2026-10-16
-updated: 2026-10-17
+updated: 2026-10-22
 ---
 
 # History
@@ -80,7 +80,8 @@ Finding last week's Session means remembering its directory and running `claude 
 
 - [✳][◎]: the Claude Code and Codex filter buttons (HIST-2.8), drawn with the same Harness logos as the Session sidebar, monochrome like every list's (DS-3.1). A switched-off one is greyed out; the last one on can't be switched off.
 - Search hits in a snippet are marked with the design system's `highlight` token (DS-3.4), a neutral tint, not Needs you's amber: a match isn't something to act on.
-- Markers (lucide icons, [0008](../../decisions/0008-lucide-icons-only.md)): a circle with a dot (`CircleDot`) for live, in `muted-foreground` until DS-5.2 draws the Session's Status marker (click selects it), an empty circle for resumable (click resumes it), a slashed circle for can't be resumed (click opens it read-only). The mock-up above uses ● ○ ⊘ as shorthand.
+- Markers, the design system's Session marker (DS-5.1, DS-5.2; lucide icons and the Status shapes, [0008](../../decisions/0008-lucide-icons-only.md)): a live result shows its Session's Status marker (SIDE-3.2), from the Session sidebar's list and following its Status, with the "live" chip beside the title (click selects it); a resumable one lucide's `History` in `muted-foreground` (click resumes it); one that can't be resumed a slashed circle, `CircleSlash` (click opens it read-only). The marker is hidden from screen readers: the row's words say it (DS-5.5). The mock-up above uses ● ○ ⊘ as shorthand.
+- Loading, empty and errors are the design system's: "Loading…" and "Loading more…" a `Loading` (DS-6.3), "No past Sessions" and "Nothing matches" an `EmptyState` (DS-8.1), a result that couldn't be opened, a search that failed ("Couldn't search History", with its reason) and tb-session missing error Alerts, the last with its command in a `CommandBlock` (DS-4, DS-8.2). The Harness toggles are `sm` icon buttons (DS-7).
 - Empty states: "No past Sessions", and "Nothing matches" with the query.
 - Errors: tb-session missing shows how to install it, like SIDE-6.1.
 
@@ -180,3 +181,5 @@ None.
 - 2026-10-20: tb-session 0.3.0 is released and installed. It also indexes Pi Sessions; their rows are left out, as before (pi is a non-goal). Behaviour tests use the release (TEST spec).
 - 2026-10-22: Design system, colour by meaning (DS-3): the Harness logos in the filter and the results are monochrome (DS-3.1), and a search hit is marked with the `highlight` token instead of Needs you's amber (DS-3.4).
 - 2026-10-22: Design system (DS-3.6): a live result's marker is `muted-foreground` instead of Busy's blue, until DS-5.2 draws the Session's real Status there.
+- 2026-10-22: Design system (DS-5.2): a live result's marker is its Session's Status marker, from the Session sidebar's list and following its Status, a resumable one lucide's `History` and a blocked one `CircleSlash`, all through the Session marker; this replaces the 2026-10-22 `muted-foreground` stand-in (DS-3.6) and the 2026-10-17 circles. Loading, empty states and errors are the design system's Loading, EmptyState, Alert and CommandBlock (DS-4, DS-6.3, DS-8).
+- 2026-10-22: Design system review fixes, round 1 (DS-4.2): a failed search is an error box, as the open error is, not a neutral empty state; the Harness toggles are icon buttons (DS-7.2). The words stay.

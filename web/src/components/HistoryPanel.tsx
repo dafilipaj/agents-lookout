@@ -1,8 +1,15 @@
 import { BLOCK_REASON } from '@shared/history.ts';
-import type { Harness, HistoryItem, HistoryPage, SessionRow } from '@shared/types.ts';
-import { Circle, CircleDot, CircleSlash, Search } from 'lucide-react';
+import type { Harness, HistoryItem, HistoryPage, SessionRow, Status } from '@shared/types.ts';
+import { Search } from 'lucide-react';
 import { type KeyboardEvent, type Ref, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { Chip } from '@/components/ui/chip';
+import { CommandBlock } from '@/components/ui/command-block';
+import { EmptyState } from '@/components/ui/empty-state';
+import { IconButton } from '@/components/ui/icon-button';
+import { Loading } from '@/components/ui/loading';
+import { SessionMarker } from '@/components/ui/session-marker';
 import type { HistoryQuery } from '@/lib/client';
 import { type HarnessFilter, filterHarness, isLive, itemKey, loadHarnessFilter, saveHarnessFilter, snippetParts } from '@/lib/history';
 import type { PanelNav } from '@/lib/right-sidebar';
@@ -189,12 +196,12 @@ export function HistoryPanel({ focusKey, sessions, now, search, onOpen, navRef }
 
   const activeId = items[active] ? `history-${itemKey(items[active])}` : undefined;
   let body;
-  if (results.state === 'loading') body = <Message title="Loading…" />;
-  else if (results.state === 'error') body = <Message title="Couldn't search History" hint={results.message} />;
+  if (results.state === 'loading') body = <Loading label="Loading…" className="items-center px-4 py-8 text-center" />;
+  else if (results.state === 'error') body = <Alert title="Couldn't search History" detail={results.message} className="mx-2.5 my-3" />;
   else if (results.state === 'not-installed') body = <NotInstalled command={results.command} />;
-  else if (items.length === 0 && (results.loadingMore || (results.hasMore && results.auto < AUTO_FILL_PAGES))) body = <Message title="Loading…" />;
+  else if (items.length === 0 && (results.loadingMore || (results.hasMore && results.auto < AUTO_FILL_PAGES))) body = <Loading label="Loading…" className="items-center px-4 py-8 text-center" />;
   else if (items.length === 0 && results.hasMore) body = <LoadMore onClick={() => loadMore()} hint="None of the newest past Sessions can be shown here; older ones may." />;
-  else if (items.length === 0) body = q ? <Message title={`Nothing matches “${q}”`} /> : <Message title="No past Sessions" />;
+  else if (items.length === 0) body = <EmptyState role="status" title={q ? `Nothing matches “${q}”` : 'No past Sessions'} />;
   else {
     body = (
       <div
@@ -210,7 +217,7 @@ export function HistoryPanel({ focusKey, sessions, now, search, onOpen, navRef }
             key={itemKey(item)}
             index={i}
             item={item}
-            live={isLive(item, sessions)}
+            status={isLive(item, sessions) ? (sessions.get(item.sessionId)?.status ?? 'unknown') : null}
             active={i === active}
             opening={opening === itemKey(item)}
             now={now}
@@ -220,7 +227,7 @@ export function HistoryPanel({ focusKey, sessions, now, search, onOpen, navRef }
             }}
           />
         ))}
-        {results.loadingMore && <p className="px-2 py-2 text-meta text-muted-foreground">Loading more…</p>}
+        {results.loadingMore && <Loading label="Loading more…" className="px-2 py-2" />}
         {!results.loadingMore && results.hasMore && results.auto >= AUTO_FILL_PAGES && <LoadMore onClick={() => loadMore()} />}
       </div>
     );
@@ -253,31 +260,26 @@ export function HistoryPanel({ focusKey, sessions, now, search, onOpen, navRef }
               const on = harnesses[h];
               const last = on && !harnesses[h === 'claude' ? 'codex' : 'claude'];
               return (
-                <button
+                <IconButton
                   key={h}
-                  type="button"
+                  label={HARNESS_NAME[h]}
+                  tip={last ? `${HARNESS_NAME[h]}: at least one Harness stays on` : `${on ? 'Hide' : 'Show'} ${HARNESS_NAME[h]} Sessions`}
                   aria-pressed={on}
-                  aria-label={HARNESS_NAME[h]}
                   aria-disabled={last || undefined}
-                  title={last ? `${HARNESS_NAME[h]}: at least one Harness stays on` : `${on ? 'Hide' : 'Show'} ${HARNESS_NAME[h]} Sessions`}
                   onClick={() => toggleHarness(h)}
                   className={cn(
-                    'flex size-6 items-center justify-center rounded-md border transition-colors',
-                    on ? 'border-border bg-background text-foreground dark:bg-input/30' : 'border-transparent text-muted-foreground opacity-45 grayscale hover:opacity-80',
+                    'border transition-colors',
+                    on ? 'border-border bg-background text-foreground dark:bg-input/30' : 'border-transparent opacity-45 grayscale hover:opacity-80',
                     last && 'cursor-default',
                   )}
                 >
                   <HarnessIcon harness={h} className="size-3.5" />
-                </button>
+                </IconButton>
               );
             })}
           </div>
         </div>
-        {openError && (
-          <p role="alert" className="rounded-md border border-destructive/30 px-2 py-1.5 text-meta text-destructive">
-            {openError}
-          </p>
-        )}
+        {openError && <Alert title={openError} />}
       </div>
       <div id="history-results" ref={listRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
         {body}
@@ -289,15 +291,21 @@ export function HistoryPanel({ focusKey, sessions, now, search, onOpen, navRef }
 interface ResultProps {
   index: number;
   item: HistoryItem;
-  live: boolean;
+  /** A live Session's Status, from the Session sidebar's list (DS-5.2); null for a past one. */
+  status: Status | null;
   active: boolean;
   opening: boolean;
   now: number;
   onClick(): void;
 }
 
-/** HIST-2.3: one past Session. Markers: a circle with a dot live, an empty circle resumable, a slashed circle can't be resumed. */
-function Result({ index, item, live, active, opening, now, onClick }: ResultProps) {
+/**
+ * HIST-2.3: one past Session. Its marker (DS-5.2) is a live Session's Status marker, following its
+ * Status; the past marker when it can be resumed; the slashed circle when it can't. The row's words
+ * say which, so the marker is hidden from screen readers (DS-5.5).
+ */
+function Result({ index, item, status, active, opening, now, onClick }: ResultProps) {
+  const live = status !== null;
   const state = live ? 'live' : item.blocked ? 'blocked' : 'resumable';
   const what = live ? 'Live: select it' : item.blocked ? `Can't be resumed: ${BLOCK_REASON[item.blocked]} Opens read-only.` : 'Resume it';
   return (
@@ -316,20 +324,14 @@ function Result({ index, item, live, active, opening, now, onClick }: ResultProp
       )}
     >
       <div className="flex min-w-0 items-center gap-1.5">
-        <span aria-hidden className="flex w-3 shrink-0 justify-center text-muted-foreground" data-field="marker">
-          {live ? <CircleDot className="size-3" /> : item.blocked ? <CircleSlash className="size-3" /> : <Circle className="size-3" />}
-        </span>
+        <SessionMarker aria-hidden state={status !== null ? 'live' : item.blocked ? 'blocked' : 'past'} status={status ?? undefined} data-field="marker" />
         <span className={cn('min-w-0 flex-1 truncate font-medium', item.blocked && 'text-muted-foreground')} data-field="title">
           {item.title}
         </span>
-        {live && (
-          <span className="shrink-0 rounded-full bg-muted px-1.5 text-caption font-medium" data-field="live">
-            live
-          </span>
-        )}
+        {live && <Chip data-field="live">live</Chip>}
         {opening && <span className="shrink-0 text-caption text-muted-foreground">Resuming…</span>}
       </div>
-      <div className="flex min-w-0 items-center gap-1 pl-4.5 text-meta text-muted-foreground">
+      <div className="flex min-w-0 items-center gap-1 pl-5 text-meta text-muted-foreground">
         <HarnessIcon harness={item.harness} className="size-3" />
         <span className="shrink-0" data-field="harness">
           {HARNESS_NAME[item.harness]}
@@ -358,12 +360,12 @@ function Result({ index, item, live, active, opening, now, onClick }: ResultProp
             </span>
           </>
         )}
-        {item.headless && <span className="shrink-0 rounded bg-muted px-1 text-caption">headless</span>}
+        {item.headless && <Chip>headless</Chip>}
       </div>
-      {item.blocked === 'folder-gone' && <p className="pl-4.5 text-meta text-muted-foreground">folder gone</p>}
-      {item.blocked === 'transcript-missing' && <p className="pl-4.5 text-meta text-muted-foreground">Transcript deleted</p>}
+      {item.blocked === 'folder-gone' && <p className="pl-5 text-meta text-muted-foreground">folder gone</p>}
+      {item.blocked === 'transcript-missing' && <p className="pl-5 text-meta text-muted-foreground">Transcript deleted</p>}
       {item.snippet && (
-        <p className="line-clamp-2 pl-4.5 text-meta text-muted-foreground" data-field="snippet">
+        <p className="line-clamp-2 pl-5 text-meta text-muted-foreground" data-field="snippet">
           {snippetParts(item.snippet).map((p, i) =>
             p.hit ? (
               <mark key={i} className="rounded-sm bg-highlight px-0.5 text-foreground">
@@ -375,15 +377,6 @@ function Result({ index, item, live, active, opening, now, onClick }: ResultProp
           )}
         </p>
       )}
-    </div>
-  );
-}
-
-function Message({ title, hint }: { title: string; hint?: string }) {
-  return (
-    <div className="px-4 py-8 text-center" role="status">
-      <p className="text-body font-medium">{title}</p>
-      {hint && <p className="mt-1 text-meta leading-5 text-muted-foreground">{hint}</p>}
     </div>
   );
 }
@@ -403,17 +396,11 @@ function LoadMore({ onClick, hint }: { onClick(): void; hint?: string }) {
 /** Like SIDE-6.1: how to install tb-session instead of an empty list. */
 function NotInstalled({ command }: { command: string }) {
   return (
-    <div className="px-3 py-6" role="alert">
-      <p className="text-body font-medium">tb-session isn&apos;t installed</p>
-      <p className="mt-1 text-meta leading-5 text-muted-foreground">
-        History searches past Sessions through tb-session. Install it, then reopen History:
-      </p>
-      <pre className="mt-2 rounded-md border border-border bg-background p-2 font-mono text-caption leading-4 break-all whitespace-pre-wrap select-all">
-        {command}
-      </pre>
-      <p className="mt-2 text-meta leading-5 text-muted-foreground">
+    <Alert title="tb-session isn't installed" detail="History searches past Sessions through tb-session. Install it, then reopen History:" className="mx-2.5 my-3">
+      <CommandBlock>{command}</CommandBlock>
+      <p>
         Needs an authenticated <code className="rounded bg-muted px-1 font-mono text-caption">gh</code>; it installs into ~/.local/bin.
       </p>
-    </div>
+    </Alert>
   );
 }

@@ -1,7 +1,8 @@
 import type { WorkSnapshot } from '@shared/work.ts';
 import { BriefcaseBusiness, History as HistoryIcon, RefreshCw, X } from 'lucide-react';
 import { type ComponentType, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject, useEffect, useRef, useState } from 'react';
-import { Button } from '@/components/ui/button';
+import { Alert } from '@/components/ui/alert';
+import { IconButton } from '@/components/ui/icon-button';
 import { type PanelNav, RIGHT_TABS, type RightTab, TAB_KEY, TAB_LABEL, clampWidth } from '@/lib/right-sidebar';
 import { cn } from '@/lib/utils';
 import { refreshState } from '@/lib/work';
@@ -146,24 +147,24 @@ export function RightSidebar({ width, onResize, tab, onTab, onClose, refresh, on
             );
           })}
         </div>
-        <div className="ml-auto flex shrink-0 items-center gap-0.5">
+        {/* DS-7.4: Close keeps 8 px from Refresh, so the two are hard to mix up. */}
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           {tab === 'work' && (
             // WORK-8.2, WORK-8.4: disabled while the server would refuse it, saying why and when it's back.
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Refresh"
-              title={refreshing ? 'Refreshing…' : r.title}
+            <IconButton
+              size="md"
+              label="Refresh"
+              tip={refreshing ? 'Refreshing…' : r.title}
               aria-disabled={r.disabled || refreshing || undefined}
               onClick={refreshNow}
-              className={cn('size-7 text-muted-foreground', (r.disabled || refreshing) && 'cursor-default opacity-50 hover:bg-transparent')}
+              className={cn((r.disabled || refreshing) && 'cursor-default opacity-50 hover:bg-transparent')}
             >
-              <RefreshCw className={cn('size-4', refreshing && 'motion-safe:animate-spin')} />
-            </Button>
+              <RefreshCw className={cn(refreshing && 'motion-safe:animate-spin')} />
+            </IconButton>
           )}
-          <Button variant="ghost" size="icon-sm" aria-label={`Close ${TAB_LABEL[tab]}`} title={`Close ${TAB_LABEL[tab]} (${TAB_KEY[tab]})`} onClick={onClose} className="size-7 text-muted-foreground">
-            <X className="size-4" />
-          </Button>
+          <IconButton size="md" label={`Close ${TAB_LABEL[tab]}`} shortcut={TAB_KEY[tab]} onClick={onClose}>
+            <X />
+          </IconButton>
         </div>
       </ShellCell>
       {/* The panels run on past the dock line, to the bottom. */}
@@ -177,11 +178,7 @@ export function RightSidebar({ width, onResize, tab, onTab, onClose, refresh, on
             hidden={t !== tab}
             className={cn('min-h-0 flex-1 flex-col', t === tab ? 'flex' : 'hidden')}
           >
-            {t === 'work' && refreshProblem && (
-              <p role="alert" className="mx-2.5 mt-2 rounded-md border border-destructive/30 px-2 py-1.5 text-meta text-destructive" data-field="refresh-problem">
-                {refreshProblem}
-              </p>
-            )}
+            {t === 'work' && refreshProblem && <Alert title={refreshProblem} className="mx-2.5 mt-2" data-field="refresh-problem" />}
             {panels[t]}
           </div>
         ))}
@@ -195,9 +192,9 @@ export function RightRail({ onOpen }: { onOpen(tab: RightTab): void }) {
   const button = (t: RightTab) => {
     const Icon = TAB_ICON[t];
     return (
-      <Button variant="ghost" size="icon-sm" aria-label={TAB_LABEL[t]} title={`${TAB_LABEL[t]} (${TAB_KEY[t]})`} onClick={() => onOpen(t)} className="size-7 text-muted-foreground">
-        <Icon className="size-4" />
-      </Button>
+      <IconButton size="md" label={TAB_LABEL[t]} shortcut={TAB_KEY[t]} onClick={() => onOpen(t)}>
+        <Icon />
+      </IconButton>
     );
   };
   return (

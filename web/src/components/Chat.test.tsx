@@ -853,6 +853,21 @@ describe('loading, paging and problems', () => {
     expect(app.client.sendMessage).toHaveBeenCalledWith('a', 'hi');
   });
 
+  it('DS-4.2: a Transcript that is missing or can not be read is an error Alert (a box) at the top of the pane, not an empty state', () => {
+    const { app } = open('a');
+    app.emit({ type: 'chat', sessionId: 'a', op: 'problem', problem: { kind: 'missing', message: 'no transcript found for session a' } });
+    let alert = screen.getByRole('alert');
+    expect(alert).toHaveAttribute('data-layout', 'box');
+    expect(alert).toHaveTextContent('No Transcript found');
+    expect(alert).toHaveTextContent('no transcript found for session a');
+    app.emit({ type: 'chat', sessionId: 'a', op: 'problem', problem: { kind: 'failed', message: 'Fleet took too long to read the Transcript.' } });
+    alert = screen.getByRole('alert');
+    expect(alert).toHaveAttribute('data-layout', 'box');
+    expect(alert).toHaveTextContent("Couldn't read the Transcript");
+    expect(alert).toHaveTextContent('Fleet took too long to read the Transcript. · retrying');
+    expect(screen.getByTestId('chat').querySelector('[data-slot="empty-state"]')).toBeNull();
+  });
+
   it('a read that fails later keeps the chat and says it is retrying; it clears once reads work again', () => {
     const { app, reset } = open();
     reset([agent('still here')]);

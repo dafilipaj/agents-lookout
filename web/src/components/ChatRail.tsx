@@ -1,5 +1,6 @@
 import { ChevronUp } from 'lucide-react';
 import { type KeyboardEvent, type RefObject, memo, useRef, useState } from 'react';
+import { IconButton } from '@/components/ui/icon-button';
 import { clockTime } from '@/lib/chat';
 import { type Mark, type MarkKind, MARK_KIND_LABEL, markName } from '@/lib/marks';
 import { useMarkFractions } from '@/lib/rail';
@@ -79,16 +80,15 @@ export const ChatRail = memo(function ChatRail({
   return (
     <nav aria-label="Bookmarks" className="relative hidden w-4 shrink-0 @md:block" data-testid="chat-rail">
       {canLoadEarlier && (
-        <button
-          type="button"
-          aria-label="Load earlier messages"
-          title="Load earlier messages"
+        <IconButton
+          label="Load earlier messages"
           disabled={loadingEarlier}
           onClick={onEarlier}
-          className="absolute inset-x-0 top-1 flex h-4 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:opacity-50"
+          // A 24 px target in a 16 px rail: it overlaps the chat's gutter, centred on the rail (DS-7).
+          className="absolute top-0 left-1/2 -translate-x-1/2 disabled:opacity-50"
         >
-          <ChevronUp className="size-3" aria-hidden />
-        </button>
+          <ChevronUp aria-hidden />
+        </IconButton>
       )}
       <div
         ref={toolbar}

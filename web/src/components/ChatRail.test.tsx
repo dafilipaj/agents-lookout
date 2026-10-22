@@ -244,7 +244,12 @@ describe('VIEW-1.11 Marks', () => {
     reset([latest, agent('reply')], 'c-latest');
     await waitFor(() => expect(tops()).toEqual(['30%']));
     fakeLayout({ [older.cursor]: 50, [latest.cursor]: 600 });
-    await user.click(within(rail()).getByRole('button', { name: 'Load earlier messages' }));
+    // DS-7: a 24 px target (an IconButton `sm`), not the rail's 16 px width.
+    const earlier = within(rail()).getByRole('button', { name: 'Load earlier messages' });
+    expect(earlier).toHaveAttribute('data-slot', 'icon-button');
+    expect(earlier).toHaveAttribute('data-size', 'sm');
+    expect(earlier).toHaveClass('size-6');
+    await user.click(earlier);
     await waitFor(() => expect(tops()).toEqual(['5%', '60%']));
 
     // Past the cap, while following, the oldest entries go: so does their Mark.

@@ -2,7 +2,9 @@ import type { LaunchHarness, Settings } from '@shared/settings.ts';
 import type { LaunchRequest } from '@shared/types.ts';
 import type { UsageSnapshot } from '@shared/usage.ts';
 import { type FormEvent, type KeyboardEvent, useRef, useState } from 'react';
+import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { Kbd } from '@/components/ui/kbd';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -200,25 +202,20 @@ export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, h
             />
           </div>
 
-          {harnesses.state === 'error' && (
-            <p role="alert" className="mx-5 mb-3 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-meta text-destructive">
-              {harnesses.error}
-            </p>
-          )}
-          {error && (
-            <p role="alert" className="mx-5 mb-3 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-meta text-destructive">
-              {error.message}
-            </p>
-          )}
+          {harnesses.state === 'error' && <Alert title={harnesses.error} className="mx-5 mb-3" />}
+          {error && <Alert title={error.message} className="mx-5 mb-3" />}
 
           <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
-            <kbd className="mr-auto font-mono text-caption text-muted-foreground">Esc to close · your input is kept</kbd>
+            {/* DS-8.4: a sentence is never a key; only Esc is. */}
+            <span className="mr-auto text-meta text-muted-foreground">
+              <Kbd>Esc</Kbd> to close · your input is kept
+            </span>
             <Button type="button" variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
             <Button type="submit" size="sm" disabled={!canStart}>
               {submitting ? 'Starting…' : 'Start'}
-              <kbd className="font-mono text-caption opacity-60">⌘↵</kbd>
+              <Kbd className="border-primary-foreground/30 opacity-70">⌘↵</Kbd>
             </Button>
           </div>
         </form>

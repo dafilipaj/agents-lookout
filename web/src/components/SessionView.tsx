@@ -1,7 +1,10 @@
 import type { AnswerRequest, ChatPage, EndTarget, RenameResult, SessionRow } from '@shared/types.ts';
 import { Check, ChevronDown, CircleSlash, CircleStop, Copy, FolderGit2, GitBranch, Info, OctagonX, Power, SendHorizontal, TerminalSquare } from 'lucide-react';
 import { type ComponentPropsWithRef, type ComponentPropsWithoutRef, type KeyboardEvent, type ReactNode, type RefObject, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { Kbd } from '@/components/ui/kbd';
+import { Loading } from '@/components/ui/loading';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '@/components/ui/dialog';
 import { turnRunning } from '@/lib/activity';
 import { useCopy } from '@/lib/copy';
@@ -273,6 +276,7 @@ export function SessionView({
             onPage={onPage}
             onFollowing={onFollowing}
             echoes={visible}
+            terminal={controls ? answering.terminal : null}
             activity={
               <>
                 {permission && (
@@ -423,6 +427,7 @@ function CopySessionId({ sessionId }: { sessionId: string }) {
   const { state, said, copy } = useCopy(sessionId);
   return (
     <>
+      {/* Not an IconButton (DS-7): "Copied" shows beside its icon for 2 s, which a fixed square can't hold. It's 28 px tall, as its neighbours. */}
       <Button
         variant="outline"
         size="xs"
@@ -607,9 +612,7 @@ function EndSession({
             readable here, and you can resume it from History.
           </DialogDescription>
           {(unconfirmed || error) && (
-            <p role="alert" className="rounded-md border border-destructive/30 px-2.5 py-2 text-meta text-destructive">
-              {unconfirmed ? 'Lookout can’t confirm it’s the same Session, so it won’t end it. Close it in the terminal.' : error}
-            </p>
+            <Alert title={unconfirmed ? 'Lookout can’t confirm it’s the same Session, so it won’t end it. Close it in the terminal.' : error} />
           )}
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={close} disabled={ending}>
@@ -879,7 +882,7 @@ function Drawer({ open, onToggle, preview }: { open: boolean; onToggle(): void; 
           data-testid="terminal-preview"
           className="h-64 min-h-0 overflow-auto bg-muted/40 px-5 py-2 font-mono text-meta leading-[1.45] whitespace-pre text-foreground/90 dark:bg-black/25"
         >
-          {preview?.text ?? (preview?.error ? '' : 'Loading…')}
+          {preview?.text ?? (preview?.error ? '' : <Loading label="Loading…" />)}
         </pre>
       )}
     </section>
@@ -961,7 +964,7 @@ function Composer({ sessionId, title, drafts, sending, error, onEdit, onSend, in
       }}
       hint={
         <>
-          Enter sends · Shift+Enter for a new line · <kbd className="font-mono">i</kbd> to type here · Esc to leave
+          Enter sends · Shift+Enter for a new line · <Kbd>i</Kbd> to type here · Esc to leave
         </>
       }
       hintTitle="Enter sends · Shift+Enter for a new line · i to type here · Esc to leave"
@@ -990,11 +993,7 @@ interface ComposerFrameProps extends Omit<ComponentPropsWithoutRef<'form'>, 'chi
 function ComposerFrame({ error, field, send, hint, hintTitle, className, ...form }: ComposerFrameProps) {
   return (
     <form className={cn('flex-1 px-4 py-3', className)} {...form}>
-      {error && (
-        <p role="alert" className="mb-2 text-meta text-destructive">
-          {error}
-        </p>
-      )}
+      {error && <Alert layout="inline" title={error} className="mb-2" />}
       <div className="flex items-end gap-2 rounded-lg border border-input bg-background px-3 py-2 focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/25 dark:bg-input/20">
         <textarea
           rows={1}

@@ -3,7 +3,11 @@ import type { FleetHealth, LaunchView, SessionRow } from '@shared/types.ts';
 import type { UsageSnapshot } from '@shared/usage.ts';
 import { Plus, Search, Settings as SettingsIcon, TriangleAlert, WifiOff } from 'lucide-react';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
-import { Button } from '@/components/ui/button';
+import { Alert } from '@/components/ui/alert';
+import { CommandBlock } from '@/components/ui/command-block';
+import { EmptyState } from '@/components/ui/empty-state';
+import { IconButton } from '@/components/ui/icon-button';
+import { Kbd } from '@/components/ui/kbd';
 import { isLongIdle, matchesFilter } from '@/lib/sessions';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
@@ -169,11 +173,11 @@ export function Sidebar(props: SidebarProps) {
 
   const stale = fleet.state === 'failing' || (loaded && !connected);
   const body = (() => {
-    if (!loaded) return <Message title="Connecting…" />;
+    if (!loaded) return <EmptyState title="Connecting…" />;
     if (fleet.state === 'not-installed') return <NotInstalled command={fleet.installCommand} />;
-    if (fleet.state === 'starting' && sessions.length === 0) return <Message title="Looking for Sessions…" />;
+    if (fleet.state === 'starting' && sessions.length === 0) return <EmptyState title="Looking for Sessions…" />;
     if (fleet.state === 'failing' && fleet.lastOkAt === null && sessions.length === 0) {
-      return <Message title="Fleet isn't answering" hint={fleet.error} />;
+      return <EmptyState title="Fleet isn't answering" hint={fleet.error} />;
     }
     const startHint = (
       <>
@@ -182,9 +186,9 @@ export function Sidebar(props: SidebarProps) {
     );
     if (sessions.length === 0) {
       if (props.launches.length) return null;
-      return <Message title="No live Sessions" hint={startHint} />;
+      return <EmptyState title="No live Sessions" hint={startHint} />;
     }
-    if (visible.length === 0) return <Message title="No matching Sessions" hint="Esc clears the filter." />;
+    if (visible.length === 0) return <EmptyState title="No matching Sessions" hint="Esc clears the filter." />;
     const item = (row: SessionRow) => (
       <SessionItem
         key={row.id}
@@ -202,7 +206,7 @@ export function Sidebar(props: SidebarProps) {
             {controllable.map(item)}
           </ul>
         ) : (
-          !filter && props.launches.length === 0 && <Message title="No Sessions Lookout can control" hint={startHint} />
+          !filter && props.launches.length === 0 && <EmptyState title="No Sessions Lookout can control" hint={startHint} />
         )}
         {viewOnly.length > 0 && (
           <ul role="group" aria-labelledby="view-only-heading" className="mt-2 flex flex-col gap-px px-1.5">
@@ -249,41 +253,31 @@ export function Sidebar(props: SidebarProps) {
             className="h-7 w-full min-w-0 rounded-md border border-input bg-background/60 pr-6 pl-7 text-body outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 dark:bg-input/20 [&::-webkit-search-cancel-button]:hidden"
           />
           {!filter && (
-            <kbd className="pointer-events-none absolute right-1.5 rounded border border-border px-1 font-mono text-caption leading-4 text-muted-foreground">
-              /
-            </kbd>
+            <Kbd className="pointer-events-none absolute right-1.5 text-muted-foreground">/</Kbd>
           )}
         </label>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="New Session"
-          title="New Session (N, or ⌘N in the installed app)"
-          onClick={props.onNewSession}
-          className="size-7 text-muted-foreground"
-        >
-          <Plus className="size-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Settings"
-          aria-pressed={props.settingsOpen}
-          onClick={props.onOpenSettings}
-          className={cn('size-7 text-muted-foreground', props.settingsOpen && 'bg-sidebar-accent text-foreground')}
-        >
-          <SettingsIcon className="size-4" />
-        </Button>
+        {/* DS-7.4: icon buttons side by side are 4 px apart. */}
+        <div className="flex shrink-0 items-center gap-1">
+          <IconButton size="md" label="New Session" shortcut="N, or ⌘N in the installed app" onClick={props.onNewSession}>
+            <Plus />
+          </IconButton>
+          <IconButton
+            size="md"
+            label="Settings"
+            aria-pressed={props.settingsOpen}
+            onClick={props.onOpenSettings}
+            className={cn(props.settingsOpen && 'bg-sidebar-accent text-foreground')}
+          >
+            <SettingsIcon />
+          </IconButton>
+        </div>
       </ShellCell>
       <ShellCell row="body" className="flex flex-col">
         {loaded && !connected ? (
-          <Banner icon={<WifiOff className="size-3.5" />} text="Lost the Lookout server. Reconnecting…" />
+          <Alert tone="info" icon={WifiOff} title="Lost the Lookout server. Reconnecting…" className="mx-2.5 my-2" />
         ) : fleet.state === 'failing' && fleet.lastOkAt !== null ? (
-          <Banner
-            icon={<TriangleAlert className="size-3.5" />}
-            text={`Fleet isn't answering. List is ${formatAge(now - fleet.lastOkAt)} old.`}
-            detail={fleet.error}
-          />
+          // SIDE-6.2: Fleet's reason is the tooltip, as before.
+          <Alert tone="info" icon={TriangleAlert} title={`Fleet isn't answering. List is ${formatAge(now - fleet.lastOkAt)} old.`} tip={fleet.error} className="mx-2.5 my-2" />
         ) : null}
         <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto pt-1.5">
           {launches.length > 0 && (
@@ -314,42 +308,15 @@ export function Sidebar(props: SidebarProps) {
   );
 }
 
-function Banner({ icon, text, detail }: { icon: ReactNode; text: string; detail?: string }) {
-  return (
-    <div
-      role="status"
-      title={detail}
-      className="mx-2.5 my-2 flex items-center gap-1.5 rounded-md border border-info-border bg-info-soft px-2 py-1.5 text-meta leading-4 text-info-text"
-    >
-      {icon}
-      <span>{text}</span>
-    </div>
-  );
-}
-
-function Message({ title, hint }: { title: string; hint?: ReactNode }) {
-  return (
-    <div className="px-4 py-8 text-center">
-      <p className="text-body font-medium">{title}</p>
-      {hint && <p className="mt-1 text-meta leading-5 text-muted-foreground">{hint}</p>}
-    </div>
-  );
-}
-
+/** SIDE-6.1: how to install Fleet, instead of an empty list. */
 function NotInstalled({ command }: { command: string }) {
   return (
-    <div className="px-3 py-6" role="alert">
-      <p className="text-body font-medium">Fleet isn't installed</p>
-      <p className="mt-1 text-meta leading-5 text-muted-foreground">
-        Lookout finds Sessions through Fleet. Install it, and the list appears here on its own:
-      </p>
-      <pre className="mt-2 rounded-md border border-border bg-background p-2 font-mono text-caption leading-4 break-all whitespace-pre-wrap select-all">
-        {command}
-      </pre>
-      <p className="mt-2 text-meta leading-5 text-muted-foreground">
+    <Alert title="Fleet isn't installed" detail="Lookout finds Sessions through Fleet. Install it, and the list appears here on its own:" className="mx-2.5 my-3">
+      <CommandBlock>{command}</CommandBlock>
+      <p>
         Needs Rust&apos;s <Code>cargo</Code>, and <Code>tmux</Code> for Sessions Lookout can control.
       </p>
-    </div>
+    </Alert>
   );
 }
 

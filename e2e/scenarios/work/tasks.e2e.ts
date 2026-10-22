@@ -139,7 +139,7 @@ scenario(
     await page.keyboard.press('w');
     await expect(page.getByRole('tab', { name: 'Work' })).toHaveAttribute('aria-selected', 'true');
     const row = taskRows(page).filter({ hasText: 'Trim the lamp wicks' });
-    await expect(row.locator('[data-session-marker] svg')).toHaveClass(/lucide-circle-dot/);
+    await expect(row.locator('[data-session-marker]')).toHaveAttribute('data-state', 'live');
     await row.locator('[data-session-marker]').click();
     await expect(page).toHaveURL(/\/s\/00000000-0000-4000-8000-0000000000a3$/);
     expect(world.calls().filter((call) => /\bspawn\b/.test(call))).toEqual([]);
@@ -154,7 +154,7 @@ scenario(
     world.tbSession.indexSession(indexed('00000000-0000-4000-8000-0000000000b2', `Start ${WICKS}`, '2026-10-19T10:00:00Z', '2026-10-20T12:00:00Z', world.home));
     await openWork(page);
     const row = taskRows(page).filter({ hasText: 'Trim the lamp wicks' });
-    await expect(row.locator('[data-session-marker] svg')).toHaveClass(/text-muted-foreground/);
+    await expect(row.locator('[data-session-marker]')).toHaveAttribute('data-state', 'past');
     await row.click();
     await world.waitUntil('Fleet to be asked to resume the latest past Session', () => world.calls().some((call) => /\bspawn --resume 00000000-0000-4000-8000-0000000000b2\b/.test(call)));
     expect(world.calls().filter((call) => /\bspawn --resume 00000000-0000-4000-8000-0000000000b1\b/.test(call))).toEqual([]);
@@ -178,7 +178,7 @@ scenario(
     await expect(page.getByRole('tab', { name: 'Work' })).toHaveAttribute('aria-selected', 'true');
     const row = prRows(page).filter({ hasText: 'Sharpen the anvil corners' });
     await expect(row.locator('[data-field="linked-task"]')).toContainText('Trim the lamp wicks');
-    await expect(row.locator('[data-session-marker] svg')).toHaveClass(/lucide-circle-dot/);
+    await expect(row.locator('[data-session-marker]')).toHaveAttribute('data-state', 'live');
     await row.click();
     await expect(page).toHaveURL(/\/s\/00000000-0000-4000-8000-0000000000c2$/);
     expect(world.calls().filter((call) => /\bspawn\b/.test(call))).toEqual([]);
@@ -193,7 +193,7 @@ scenario(
     world.tbSession.indexSession(indexed('00000000-0000-4000-8000-0000000000d2', `Review ${ANVIL_PR}`, '2026-10-19T10:00:00Z', '2026-10-20T12:00:00Z', world.home));
     await openWork(page);
     const row = prRows(page).filter({ hasText: 'Sharpen the anvil corners' });
-    await expect(row.locator('[data-session-marker] svg')).toHaveClass(/text-muted-foreground/);
+    await expect(row.locator('[data-session-marker]')).toHaveAttribute('data-state', 'past');
     await row.click();
     await world.waitUntil('Fleet to be asked to resume the latest past Session', () => world.calls().some((call) => /\bspawn --resume 00000000-0000-4000-8000-0000000000d2\b/.test(call)));
     expect(world.calls().filter((call) => /\bspawn --resume 00000000-0000-4000-8000-0000000000d1\b/.test(call))).toEqual([]);
@@ -213,7 +213,7 @@ scenario(
     const taskRow = taskRows(page).filter({ hasText: 'Trim the lamp wicks' });
     await expect(taskRow).toHaveCount(1);
     // A past marker proves the initial searches have returned before Fleet gains a Session.
-    await expect(taskRow.locator('[data-session-marker] svg')).toHaveClass(/text-muted-foreground/);
+    await expect(taskRow.locator('[data-session-marker]')).toHaveAttribute('data-state', 'past');
     const linkSearches = () => world.calls().filter((call) => /\btb-session search\b/.test(call));
     const finished = () => world.calls().filter((call) => /\btb-session-finished 0\b/.test(call));
     await world.waitUntil('the initial Link searches to finish', () => linkSearches().length === 3 && finished().length === 3);
@@ -236,7 +236,7 @@ scenario(
     const fleetObservedAt = Date.now();
 
     await world.waitUntil('Fleet to finish fresh Link searches', () => linkSearches().length >= 6 && finished().length >= 6);
-    await expect(taskRow.locator('[data-session-marker] svg')).toHaveClass(/text-muted-foreground/);
+    await expect(taskRow.locator('[data-session-marker]')).toHaveAttribute('data-state', 'past');
     world.tbSession.indexSession({
       session_id: 'work-link-task-session',
       harness: 'claude',
@@ -247,7 +247,7 @@ scenario(
     });
 
     await world.step('the Task Link to appear within 10 s of Fleet listing its Session', async () => {
-      await expect(taskRow.locator('[data-session-marker] svg')).toHaveClass(/lucide-circle-dot/, { timeout: Math.max(1, 10_000 - (Date.now() - fleetObservedAt)) });
+      await expect(taskRow.locator('[data-session-marker]')).toHaveAttribute('data-state', 'live', { timeout: Math.max(1, 10_000 - (Date.now() - fleetObservedAt)) });
     });
     expect(Date.now() - fleetObservedAt).toBeLessThanOrEqual(10_000);
     await expect(taskRow.locator('[data-session-marker]')).toHaveAttribute('title', 'started on this Task');

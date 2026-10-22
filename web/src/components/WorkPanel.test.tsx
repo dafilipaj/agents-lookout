@@ -837,7 +837,9 @@ describe('Tasks (WORK-2)', () => {
     expect(linkedPrLine.querySelector('[data-field="ci"]')).toHaveAttribute('data-ci', 'passing');
     expect(linkedPrLine).toHaveAttribute('title', 'branch');
     const taskMarker = taskOption(LIGHT.id).querySelector('[data-session-marker]')!;
-    expect(taskMarker.querySelector('svg')).toHaveClass('text-foreground');
+    // DS-5.3: a live Link shows a Status marker; this one's Session isn't in the list yet, so Unknown.
+    expect(taskMarker).toHaveAttribute('data-state', 'live');
+    expect(taskMarker).toHaveAttribute('data-status', 'unknown');
     expect(taskMarker).toHaveAttribute('title', 'through PR #2101\nstarted on this Task\nLinks may be incomplete');
     expect(taskOption(LIGHT.id)).toHaveAttribute('title', 'Links may be incomplete');
 
@@ -900,10 +902,10 @@ describe('Tasks (WORK-2)', () => {
     const app = openApp('/s/alpha', snap({ mine: [pr({ ...DRAFT, links })] }), { resume: async () => ({ kind: 'live', sessionId: 'latest-past' }) });
     const user = userEvent.setup();
     await user.keyboard('w');
-    const marker = () => option('anvil#2101').querySelector('[data-session-marker] svg');
-    expect(marker()).toHaveClass('text-foreground');
+    const marker = () => option('anvil#2101').querySelector('[data-session-marker]');
+    expect(marker()).toHaveAttribute('data-state', 'live');
     app.emit({ type: 'work', work: snap({ mine: [pr({ ...DRAFT, links: { ...links, sessions: links.sessions.map((session) => ({ ...session, live: false })) } })] }) });
-    await waitFor(() => expect(marker()).toHaveClass('text-muted-foreground'));
+    await waitFor(() => expect(marker()).toHaveAttribute('data-state', 'past'));
     await user.click(option('anvil#2101'));
     await waitFor(() => expect(app.client.resume).toHaveBeenCalledTimes(1));
     expect(vi.mocked(app.client.resume).mock.calls[0]?.[1]).toBe('latest-past');
@@ -1602,7 +1604,7 @@ describe('Work colours (design system)', () => {
   it('DS-3.3: Work\'s staleness is in the info tone, never amber: "old", "Possibly out of date" and "Session links are unavailable"', async () => {
     const app = openApp('/', snap({ marks: { mine: [{ columns: ['draft_mine'], reason: "GitHub's search came back empty", confirmedAt: Date.now() - 60_000 }], reviewRequests: [] } }));
     await userEvent.setup().keyboard('w');
-    const marks = group('Mine').querySelector('[data-field="marks"]')!.parentElement!;
+    const marks = group('Mine').querySelector('[data-field="marks"]')!; // an info Alert (DS-4)
     expect(marks).toHaveTextContent(/^Possibly out of date\./);
     expect(marks).toHaveClass('bg-info-soft', 'border-info-border', 'text-info-text');
     expect(amber(marks)).toEqual([]);
@@ -1626,11 +1628,11 @@ describe('Work colours (design system)', () => {
     openApp('/', withTasks({ tasks: [BELLS] }));
     await userEvent.setup().keyboard('w');
     const milestone = taskOption(BELLS.id).querySelector('[data-field="milestone"]')!;
-    expect(milestone).toHaveClass('bg-muted', 'text-foreground', 'border-border');
+    expect(milestone).toHaveClass('bg-muted', 'text-foreground'); // the neutral Chip (DS-8.3)
     expect(amber(milestone)).toEqual([]);
     const chip = (id: string) => option(id).querySelector('[data-field="chip"]')!;
     expect(chip('willow#2102')).toHaveTextContent('ready');
-    expect(chip('willow#2102')).toHaveClass('bg-muted', 'text-foreground', 'border-border');
+    expect(chip('willow#2102')).toHaveClass('bg-muted', 'text-foreground');
     expect(amber(chip('willow#2102'))).toEqual([]);
     expect(chip('kettle#2103')).toHaveClass('text-ok');
   });
@@ -1644,5 +1646,94 @@ describe('Work colours (design system)', () => {
     await userEvent.setup().keyboard('w');
     const marker = taskOption(LIGHT.id).querySelector('[data-session-marker] svg')!;
     expect([...marker.classList].filter((c) => /^(?:text|fill|stroke)-ok/.test(c))).toEqual([]);
+  });
+});
+
+describe('Work on the design system', () => {
+  const link = (sessionId: string, live: boolean, reason: WorkSessionLink['reason'] = 'started on this Task'): WorkSessionLink => ({ sessionId, harness: 'claude', title: sessionId, createdAt: 100, modifiedAt: 100, live, reason });
+
+  it('DS-5.3: a row with Linked Sessions shows one marker: the Status of its live one that needs action most, else the past marker; its tooltip still lists each reason', async () => {
+    const linked = task({ ...LIGHT, links: { prs: [], sessions: [link('alpha', true), link('beta', true, 'through PR #2101'), link('old', false)], incomplete: false } });
+    const app = renderApp('/');
+    app.snapshot([row({ id: 'alpha', status: 'busy' }), row({ id: 'beta', status: 'needs-you' })], { state: 'ok' }, settings());
+    app.emit({ type: 'work', work: withTasks({ tasks: [linked] }) });
+    await userEvent.setup().keyboard('w');
+    const marker = () => taskOption(LIGHT.id).querySelectorAll<HTMLElement>('[data-session-marker]');
+    expect(marker()).toHaveLength(1);
+    expect(marker()[0]).toHaveAttribute('data-state', 'live');
+    expect(marker()[0]).toHaveAttribute('data-status', 'needs-you');
+    expect(marker()[0]).toHaveAttribute('title', 'started on this Task\nthrough PR #2101');
+    // It follows the Session list: Needs you answered, Busy needs action most.
+    app.emit({ type: 'sessions', upsert: [row({ id: 'beta', status: 'idle' })], remove: [] });
+    expect(marker()[0]).toHaveAttribute('data-status', 'busy');
+    // No live Link: the past marker.
+    app.emit({ type: 'work', work: withTasks({ tasks: [task({ ...LIGHT, links: { prs: [], sessions: [link('old', false)], incomplete: false } })] }) });
+    expect(marker()[0]).toHaveAttribute('data-state', 'past');
+    expect(marker()[0]!.querySelector('svg')).toHaveClass('lucide-history');
+  });
+
+  it("DS-3.6: a live Linked Session's marker takes its Status, not a stand-in colour", async () => {
+    const linked = task({ ...LIGHT, links: { prs: [], sessions: [link('alpha', true)], incomplete: false } });
+    const app = renderApp('/');
+    app.snapshot([row({ id: 'alpha', status: 'busy' })], { state: 'ok' }, settings());
+    app.emit({ type: 'work', work: withTasks({ tasks: [linked] }) });
+    await userEvent.setup().keyboard('w');
+    const svg = taskOption(LIGHT.id).querySelector('[data-session-marker] svg')!;
+    expect(svg).toHaveClass('text-busy');
+    expect(svg).not.toHaveClass('text-foreground');
+  });
+
+  it("DS-5.5: a row's accessible name doesn't change: the marker is hidden from screen readers", async () => {
+    const linked = task({ ...LIGHT, links: { prs: [], sessions: [link('alpha', true)], incomplete: false } });
+    const app = renderApp('/');
+    app.snapshot([row({ id: 'alpha', status: 'needs-you' })], { state: 'ok' }, settings());
+    app.emit({ type: 'work', work: withTasks({ tasks: [linked] }) });
+    await userEvent.setup().keyboard('w');
+    expect(taskOption(LIGHT.id).querySelector('[data-session-marker]')).toHaveAttribute('aria-hidden', 'true');
+    expect(taskOption(LIGHT.id)).toHaveAccessibleName(`${LIGHT.title} Lantern Works In progress`); // its fields, as before (WORK-2.2), and nothing of the marker
+  });
+
+  it("DS-4.3: Work's problem is an error Alert that keeps its title, reason, what to do and its command, in a CommandBlock", async () => {
+    const reason = "tb-prod isn't signed in to Productive. Run tb-prod config init, then press Refresh.";
+    openApp('/', snap({}, {}, tasks({ fetchedAt: null, tasks: [], state: 'signed-out', reason, fix: TB_PROD_SIGN_IN_COMMAND })));
+    await userEvent.setup().keyboard('w');
+    const alert = within(tasksRegion()).getByRole('alert');
+    expect(alert).toHaveAttribute('data-slot', 'alert');
+    expect(alert).toHaveAttribute('data-field', 'problem');
+    expect(alert.querySelector('[data-slot="alert-title"]')).toHaveTextContent("tb-prod isn't signed in to Productive");
+    expect(alert).toHaveTextContent('Run this, then press Refresh:');
+    expect(within(alert).getByText(TB_PROD_SIGN_IN_COMMAND)).toHaveAttribute('data-slot', 'command-block');
+  });
+
+  it("DS-6.3: a section's header shows a Loading while it reads", async () => {
+    openApp('/', snap({}, {}, tasks({ state: 'loading', fetchedAt: null, tasks: [] })));
+    await userEvent.setup().keyboard('w');
+    const loading = tasksRegion().querySelector<HTMLElement>('header [data-slot="loading"]')!;
+    expect(within(loading).getByRole('status')).toHaveTextContent('Loading…');
+  });
+
+  it("DS-7.2: a row's buttons, which can't be focusable inside an option, take the sm icon button's look", async () => {
+    openApp('/', withTasks({ tasks: [LIGHT] }, { mine: [DRAFT], reviewRequests: [REVIEW] }));
+    await userEvent.setup().keyboard('w');
+    for (const button of [taskButton(LIGHT.id, 'start'), taskButton(LIGHT.id, 'open'), rowButton('anvil#2101', 'open'), rowButton('willow#2106', 'review')]) {
+      expect(button!.tagName.toLowerCase()).toBe('span');
+      expect(button).toHaveClass('size-6', "[&_svg:not([class*='size-'])]:size-3.5", 'text-muted-foreground', 'hover:bg-accent');
+      expect(button!.querySelector('svg')!.getAttribute('class')).not.toMatch(/\bsize-/);
+    }
+  });
+
+  it('DS-8.3: the "old", "milestone" and PR state chips are Chips: old info, milestone and ready neutral, draft muted, approved ok', async () => {
+    const app = openApp('/', withTasks({ tasks: [BELLS] }, { mine: [DRAFT, READY, APPROVED], reviewRequests: [] }));
+    await userEvent.setup().keyboard('w');
+    const chip = (id: string) => option(id).querySelector('[data-field="chip"]')!;
+    expect(taskOption(BELLS.id).querySelector('[data-field="milestone"]')).toHaveAttribute('data-tone', 'neutral');
+    expect(chip('anvil#2101')).toHaveAttribute('data-tone', 'muted');
+    expect(chip('willow#2102')).toHaveAttribute('data-tone', 'neutral');
+    expect(chip('kettle#2103')).toHaveAttribute('data-tone', 'ok');
+    for (const id of ['anvil#2101', 'willow#2102', 'kettle#2103']) expect(chip(id)).toHaveAttribute('data-slot', 'chip');
+    app.emit({ type: 'work', work: snap({ state: 'error', reason: 'tb-pr took too long to answer. Try Refresh later.', stale: true, mine: [DRAFT] }) });
+    const old = within(workPanel()).getByRole('region', { name: 'PRs' }).querySelector('[data-field="old"]')!;
+    expect(old).toHaveAttribute('data-slot', 'chip');
+    expect(old).toHaveAttribute('data-tone', 'info');
   });
 });

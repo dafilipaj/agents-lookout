@@ -38,7 +38,7 @@ import { parseRoute, routePath, useRoute } from '@/lib/router';
 import { HARNESS_NAME } from '@/lib/sessions';
 import { cn } from '@/lib/utils';
 import { listKnown, shownLaunches, useLookout } from '@/lib/store';
-import { useNow } from '@/lib/time';
+import { ClockContext, useNow } from '@/lib/time';
 import { reviewPrompt } from '@/lib/work';
 
 /**
@@ -694,130 +694,136 @@ export function App({ client }: { client: LookoutClient }) {
   );
 
   return (
-    // SIDE-8.1: one grid, rows header / content / dock, shared by every column (see Shell).
-    <div className={SHELL_GRID} data-shell="">
-      <Sidebar
-        sessions={sessions}
-        fleet={state.fleet}
-        loaded={state.loaded}
-        connected={state.connected}
-        idleThresholdHours={state.settings.idleThresholdHours}
-        selectedId={selectedId}
-        now={now}
-        onSelect={onSelect}
-        settingsOpen={route.name === 'settings'}
-        onOpenSettings={() => navigate(route.name === 'settings' ? { name: 'home' } : { name: 'settings' })}
-        onNewSession={openOwnLauncher}
-        launches={launches}
-        selectedLaunchId={selectedLaunchId}
-        onSelectLaunch={onSelectLaunch}
-        onSelectNone={() => navigate({ name: 'home' }, { replace: true })}
-        onDismissLaunch={(id) => void client.dismissLaunch(id).catch(() => {})}
-        keyboardEnabled={!modalOpen}
-        usage={state.usage}
-        onUsageOpen={() => void client.refreshJev().catch(() => {})}
-      />
-      {/* tabIndex -1: focus lands here after the selected start is dismissed (LAUNCH UX). */}
-      <main className={cn(SHELL_COLUMN, 'outline-none')} data-shell-column="main" tabIndex={-1}>
-        {route.name === 'settings' ? (
-          <SettingsPage settings={state.settings} save={save} onBack={() => navigate({ name: 'home' })} />
-        ) : route.name === 'past' ? (
-          <PastSessionView harness={route.harness} sessionId={route.id} now={now} load={loadPast} />
-        ) : route.name === 'launch' ? (
-          // Its Session is taking over the selection (the layout effect above): show nothing meanwhile.
-          takeOver ? null : (
-            <StartingView launch={launches.find((l) => l.id === route.id) ?? null} loaded={state.loaded} now={now} />
-          )
-        ) : (
-          <MainPane
-            selectedId={selectedId}
-            aliases={state.aliases}
-            live={(selectedId && state.sessions.get(selectedId)) || null}
-            lastKnown={(selectedId && state.lastKnown.get(selectedId)) || null}
-            list={
-              listKnown(state)
-                ? 'known'
-                : !state.loaded || state.fleet.state === 'starting'
-                  ? 'loading'
-                  : 'unavailable'
-            }
-            now={now}
-            preview={(selectedId && state.previews.get(selectedId)) || null}
-            drawerOpen={drawerOpen}
-            onToggleDrawer={toggleDrawer}
-            drafts={drafts}
-            questionDrafts={questionDrafts}
-            sending={sending}
-            sendErrors={sendErrors}
-            onEdit={clearSendError}
-            onSend={sendMessage}
-            chat={(selectedId && state.chats.get(selectedId)) || null}
-            onEarlier={loadEarlier}
-            fileLinks={fileLinks}
-            onPage={addPage}
-            onFollowing={onFollowing}
-            sentAt={sentAt}
-            onSentAt={updateSentAt}
-            onEnd={endSession}
-            onRename={renameSession}
-            models={harnesses}
-            onLoadModels={loadHarnesses}
-            onSwitch={(what, row, value, opened) => void switchSetting(what, row, value, opened)}
-            switches={switches}
-            prompts={state.prompts}
-            attempts={attempts}
-            onAnswer={(row, req) => void answerPrompt(row, req)}
-            stops={stops}
-            onStop={(row) => void stopSession(row, 'busy')}
-            onEsc={(row) => void stopSession(row, 'needs-you')}
-          />
-        )}
-      </main>
-      {layout.open ? (
-        <RightSidebar
-          width={layout.width}
-          onResize={(width) => updateLayout({ width })}
-          tab={layout.tab}
-          onTab={showTab}
-          onClose={() => toggleRight(layout.tab)}
-          refresh={state.work?.refresh ?? null}
-          onRefresh={refreshWork}
+    // DS-6.1: Loading ticks on this one-second clock rather than a timer of its own.
+    <ClockContext.Provider value={now}>
+      {/* SIDE-8.1: one grid, rows header / content / dock, shared by every column (see Shell). */}
+      <div className={SHELL_GRID} data-shell="">
+        <Sidebar
+          sessions={sessions}
+          fleet={state.fleet}
+          loaded={state.loaded}
+          connected={state.connected}
+          idleThresholdHours={state.settings.idleThresholdHours}
+          selectedId={selectedId}
           now={now}
-          panels={{
-            history: <HistoryPanel focusKey={rightFocus.history} sessions={state.sessions} now={now} search={searchHistory} onOpen={openPast} navRef={historyNav} />,
-            work: (
-              <WorkPanel
-                work={state.work}
-                filter={layout.workFilter}
-                onFilter={(workFilter) => updateLayout({ workFilter })}
-                now={now}
-                focusKey={rightFocus.work}
-                onStart={startOnTask}
-                onReview={review}
-                onOpenSession={openLinkedSession}
-                onOpenSettings={() => navigate({ name: 'settings' })}
-                keyboardEnabled={!modalOpen}
-                navRef={workNav}
-              />
-            ),
-          }}
-          nav={{ history: historyNav, work: workNav }}
+          onSelect={onSelect}
+          settingsOpen={route.name === 'settings'}
+          onOpenSettings={() => navigate(route.name === 'settings' ? { name: 'home' } : { name: 'settings' })}
+          onNewSession={openOwnLauncher}
+          launches={launches}
+          selectedLaunchId={selectedLaunchId}
+          onSelectLaunch={onSelectLaunch}
+          onSelectNone={() => navigate({ name: 'home' }, { replace: true })}
+          onDismissLaunch={(id) => void client.dismissLaunch(id).catch(() => {})}
+          keyboardEnabled={!modalOpen}
+          usage={state.usage}
+          onUsageOpen={() => void client.refreshJev().catch(() => {})}
         />
-      ) : (
-        <RightRail onOpen={toggleRight} />
-      )}
-      <Launcher
-        open={launcherOpen}
-        onOpenChange={setLauncherOpen}
-        draft={workDraft ?? draft ?? initialDraft(state.settings)}
-        onDraftChange={workDraft ? setWorkDraft : setDraft}
-        settings={state.settings}
-        harnesses={harnesses}
-        usage={state.usage}
-        now={now}
-        onStart={start}
-        onCloseAutoFocus={launcherClosed}
-      />
-    </div>
+        {/* tabIndex -1: focus lands here after the selected start is dismissed (LAUNCH UX). */}
+        <main className={cn(SHELL_COLUMN, 'outline-none')} data-shell-column="main" tabIndex={-1}>
+          {route.name === 'settings' ? (
+            <SettingsPage settings={state.settings} save={save} onBack={() => navigate({ name: 'home' })} />
+          ) : route.name === 'past' ? (
+            <PastSessionView harness={route.harness} sessionId={route.id} now={now} load={loadPast} />
+          ) : route.name === 'launch' ? (
+            // Its Session is taking over the selection (the layout effect above): show nothing meanwhile.
+            takeOver ? null : (
+              <StartingView launch={launches.find((l) => l.id === route.id) ?? null} loaded={state.loaded} now={now} />
+            )
+          ) : (
+            <MainPane
+              selectedId={selectedId}
+              running={state.sessions.size > 0 || launches.length > 0}
+              onNewSession={openOwnLauncher}
+              aliases={state.aliases}
+              live={(selectedId && state.sessions.get(selectedId)) || null}
+              lastKnown={(selectedId && state.lastKnown.get(selectedId)) || null}
+              list={
+                listKnown(state)
+                  ? 'known'
+                  : !state.loaded || state.fleet.state === 'starting'
+                    ? 'loading'
+                    : 'unavailable'
+              }
+              now={now}
+              preview={(selectedId && state.previews.get(selectedId)) || null}
+              drawerOpen={drawerOpen}
+              onToggleDrawer={toggleDrawer}
+              drafts={drafts}
+              questionDrafts={questionDrafts}
+              sending={sending}
+              sendErrors={sendErrors}
+              onEdit={clearSendError}
+              onSend={sendMessage}
+              chat={(selectedId && state.chats.get(selectedId)) || null}
+              onEarlier={loadEarlier}
+              fileLinks={fileLinks}
+              onPage={addPage}
+              onFollowing={onFollowing}
+              sentAt={sentAt}
+              onSentAt={updateSentAt}
+              onEnd={endSession}
+              onRename={renameSession}
+              models={harnesses}
+              onLoadModels={loadHarnesses}
+              onSwitch={(what, row, value, opened) => void switchSetting(what, row, value, opened)}
+              switches={switches}
+              prompts={state.prompts}
+              attempts={attempts}
+              onAnswer={(row, req) => void answerPrompt(row, req)}
+              stops={stops}
+              onStop={(row) => void stopSession(row, 'busy')}
+              onEsc={(row) => void stopSession(row, 'needs-you')}
+            />
+          )}
+        </main>
+        {layout.open ? (
+          <RightSidebar
+            width={layout.width}
+            onResize={(width) => updateLayout({ width })}
+            tab={layout.tab}
+            onTab={showTab}
+            onClose={() => toggleRight(layout.tab)}
+            refresh={state.work?.refresh ?? null}
+            onRefresh={refreshWork}
+            now={now}
+            panels={{
+              history: <HistoryPanel focusKey={rightFocus.history} sessions={state.sessions} now={now} search={searchHistory} onOpen={openPast} navRef={historyNav} />,
+              work: (
+                <WorkPanel
+                  work={state.work}
+                  sessions={state.sessions}
+                  filter={layout.workFilter}
+                  onFilter={(workFilter) => updateLayout({ workFilter })}
+                  now={now}
+                  focusKey={rightFocus.work}
+                  onStart={startOnTask}
+                  onReview={review}
+                  onOpenSession={openLinkedSession}
+                  onOpenSettings={() => navigate({ name: 'settings' })}
+                  keyboardEnabled={!modalOpen}
+                  navRef={workNav}
+                />
+              ),
+            }}
+            nav={{ history: historyNav, work: workNav }}
+          />
+        ) : (
+          <RightRail onOpen={toggleRight} />
+        )}
+        <Launcher
+          open={launcherOpen}
+          onOpenChange={setLauncherOpen}
+          draft={workDraft ?? draft ?? initialDraft(state.settings)}
+          onDraftChange={workDraft ? setWorkDraft : setDraft}
+          settings={state.settings}
+          harnesses={harnesses}
+          usage={state.usage}
+          now={now}
+          onStart={start}
+          onCloseAutoFocus={launcherClosed}
+        />
+      </div>
+    </ClockContext.Provider>
   );
 }

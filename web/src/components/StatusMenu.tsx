@@ -1,6 +1,8 @@
 import { ChevronDown } from 'lucide-react';
 import { useState } from 'react';
+import { Alert } from '@/components/ui/alert';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Loading } from '@/components/ui/loading';
 import type { MenuOptions } from '@/lib/status-switch';
 import { cn } from '@/lib/utils';
 
@@ -64,7 +66,8 @@ export function StatusMenu({ field, name, value, note, tipNote = note, why, swit
             aria-disabled={blocked || undefined}
             title={error ? `${tip}\n${error}` : tip}
             className={cn(
-              'flex min-w-0 items-center gap-0.5 rounded-sm px-1 -mx-1 font-mono text-meta outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              // DS-7.3: a 24 px tall target with 4 px on each side, in the 28 px line.
+              'flex h-6 min-w-0 items-center gap-0.5 rounded-sm px-1 -mx-1 font-mono text-meta outline-none focus-visible:ring-2 focus-visible:ring-ring',
               blocked ? 'cursor-default opacity-70' : 'hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground',
             )}
           >
@@ -75,7 +78,11 @@ export function StatusMenu({ field, name, value, note, tipNote = note, why, swit
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent side="top" align="start" className="min-w-56">
-          {options.state === 'loading' && <DropdownMenuItem disabled>Loading…</DropdownMenuItem>}
+          {options.state === 'loading' && (
+            <DropdownMenuItem disabled>
+              <Loading label="Loading…" />
+            </DropdownMenuItem>
+          )}
           {options.state === 'error' && <DropdownMenuItem disabled>{options.error}</DropdownMenuItem>}
           {options.state === 'ready' && (
             <DropdownMenuRadioGroup
@@ -108,11 +115,7 @@ export function StatusMenu({ field, name, value, note, tipNote = note, why, swit
           · {note}
         </span>
       )}
-      {error && (
-        <span role="alert" data-slot={`${field}-error`} title={error} className="min-w-0 truncate text-destructive-text">
-          {error}
-        </span>
-      )}
+      {error && <Alert layout="inline" oneLine title={error} data-slot={`${field}-error`} />}
     </>
   );
 }

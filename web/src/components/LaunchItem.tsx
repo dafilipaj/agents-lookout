@@ -1,6 +1,8 @@
 import type { LaunchView } from '@shared/types.ts';
 import { CircleX, LoaderCircle, X } from 'lucide-react';
 import { useEffect, useRef } from 'react';
+import { Alert } from '@/components/ui/alert';
+import { IconButton } from '@/components/ui/icon-button';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { HarnessIcon } from './HarnessIcon';
@@ -50,18 +52,18 @@ export function LaunchItem({ launch, now, selected, onSelect, onDismiss }: Props
           {launch.title}
         </span>
         {failed ? (
-          <button
-            type="button"
-            aria-label={`Dismiss ${launch.title}`}
-            title="Dismiss (its Session host keeps running)"
+          // DS-7: a 24 px target; the negative margins keep the row as tall as a Session's.
+          <IconButton
+            label={`Dismiss ${launch.title}`}
+            tip="Dismiss (its Session host keeps running)"
             onClick={(e) => {
               e.stopPropagation(); // dismissing isn't selecting
               onDismiss(launch.id);
             }}
-            className="-mr-0.5 rounded p-0.5 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+            className="-my-0.5 -mr-1 hover:bg-sidebar-accent"
           >
-            <X className="size-3.5" />
-          </button>
+            <X />
+          </IconButton>
         ) : (
           <HarnessIcon harness={launch.harness} />
         )}
@@ -74,7 +76,7 @@ export function LaunchItem({ launch, now, selected, onSelect, onDismiss }: Props
       </div>
       {failed && !selected && (
         <div className="mt-1 pl-6.5">
-          {launch.error && <p className="text-meta leading-4 text-destructive">{launch.error}</p>}
+          {launch.error && <Alert layout="inline" quiet title={launch.error} />}
           {launch.terminal && launch.terminal.length > 0 && (
             <pre
               aria-label="Last lines of its terminal"

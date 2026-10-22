@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 
 /** Compact age: `12s`, `5m`, `3h`, `2d`. */
 export function formatAge(ms: number): string {
@@ -19,4 +19,18 @@ export function useNow(intervalMs = 1000): number {
     return () => clearInterval(t);
   }, [intervalMs]);
   return now;
+}
+
+/**
+ * The app's one-second clock (App's `useNow(1000)`), for parts that show how long something has
+ * taken without a timer of their own (DS-6's `Loading`). Null outside App, where `useClock` falls
+ * back to the time it was first read.
+ */
+export const ClockContext = createContext<number | null>(null);
+
+/** The app's clock, or, without one, the time this component first rendered. */
+export function useClock(): number {
+  const app = useContext(ClockContext);
+  const [mounted] = useState(() => Date.now());
+  return app ?? mounted;
 }
