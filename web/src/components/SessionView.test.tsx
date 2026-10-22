@@ -86,7 +86,7 @@ describe('Session view header', () => {
     const effort = () => line.querySelector('[data-field="effort"]');
     expect(effort()).toHaveTextContent(/^medium$/);
     // Right after the model, before the context usage.
-    expect(effort()!.previousElementSibling!.previousElementSibling).toBe(line.querySelector('[data-field="model"]'));
+    expect(effort()!.previousElementSibling!.previousElementSibling).toContainElement(line.querySelector<HTMLElement>('[data-field="model"]'));
     expect(line).toHaveAttribute('title', 'work · crm-rates · claude-opus-5-5 · medium · 41% context');
 
     // `/effort high`: Fleet reports it once the next reply reaches the Transcript.

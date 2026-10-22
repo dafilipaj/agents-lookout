@@ -192,6 +192,31 @@ describe('starting Sessions', () => {
     expect(runner).toHaveBeenCalledTimes(2);
   });
 
+  it('VIEW-6.4: a model switch drops the cached list, and a read in flight then isn’t cached, so the next read gets the new "Default (…)"', async () => {
+    let answer = HARNESS_JSON;
+    let release: (() => void) | null = null;
+    const runner = vi.fn(async () => {
+      const text = answer;
+      if (release === null) await new Promise<void>((r) => (release = r));
+      return text;
+    });
+    const launcher = new Launcher({ runner, fleetBin: () => 'fleet', settings: { get: defaultSettings, update: async () => defaultSettings() }, onChange: () => {} });
+    // A read starts, then the switch drops the cache before it answers: that answer isn't kept.
+    const before = launcher.harnesses();
+    launcher.dropHarnesses();
+    release!();
+    await before;
+    answer = HARNESS_JSON.replace('"Default"', '"Default (claude-sonnet-5-5)"');
+    expect((await launcher.harnesses())[0]!.models[0]!.label).toBe('Default (claude-sonnet-5-5)');
+    expect(runner).toHaveBeenCalledTimes(2);
+    // Cached again until the next drop.
+    await launcher.harnesses();
+    expect(runner).toHaveBeenCalledTimes(2);
+    launcher.dropHarnesses();
+    await launcher.harnesses();
+    expect(runner).toHaveBeenCalledTimes(3);
+  });
+
   it('LAUNCH-1.2: a start remembers its Harness, model and directory', async () => {
     const t = setup();
     await t.launcher.start(req({ model: 'claude-opus-5-5' }));

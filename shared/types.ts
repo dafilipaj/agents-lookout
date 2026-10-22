@@ -54,6 +54,22 @@ export interface SessionRow {
    * replacement (a resume under a new process, or a reused pid).
    */
   procStart: string | null;
+  /**
+   * VIEW-6.7: the model a switch from Lookout moved this Session's process to, until a reply after
+   * it reaches the Transcript (Fleet's `model` follows only then); null otherwise.
+   */
+  pendingModel: PendingModel | null;
+  /**
+   * VIEW-6.8: when the reply Fleet's `model` came from reached the Transcript (Fleet's `model_at`,
+   * RFC 3339); null without one. It moves with every reply, whatever its model.
+   */
+  modelAt: string | null;
+}
+
+/** VIEW-6.7: a switch Fleet confirmed: `model` from the Session's next reply on, `since` the switch's Transcript time. */
+export interface PendingModel {
+  model: string;
+  since: string;
 }
 
 /** The health of the `fleet list` poll. */
@@ -353,6 +369,20 @@ export interface EndTarget {
  */
 export interface RenameResult {
   result: 'renamed' | 'sent';
+}
+
+/**
+ * VIEW-6: `POST /api/sessions/:id/model`: the model to switch to, and the process the menu was
+ * opened on, so a replacement is never the one switched.
+ */
+export interface ModelSwitchRequest extends EndTarget {
+  model: string;
+}
+
+/** VIEW-6.5: the switch is done; `confirmed` when Claude Code asked to confirm it and the pick answered. */
+export interface ModelSwitchResult {
+  model: string;
+  confirmed: boolean;
 }
 
 /** VIEW-5.6: `POST /api/sessions/:id/end`: how the Session ended. */

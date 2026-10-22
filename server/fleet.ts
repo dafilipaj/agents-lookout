@@ -32,6 +32,11 @@ export interface FleetRow {
   effort?: string | null;
   /** The agent process's start time, RFC 3339 UTC; null when Fleet can't read it (VIEW-5.6). */
   proc_start?: string | null;
+  /**
+   * VIEW-6.7: the `timestamp` of the Transcript entry `model` was read from (Claude Code: its last
+   * reply), as written; null without one. Missing from a Fleet older than the fork's `fleet model`.
+   */
+  model_at?: string | null;
 }
 
 export type FleetListResult =
@@ -85,6 +90,17 @@ export async function fetchFleetList(
   }
   if (!Array.isArray(parsed)) return { kind: 'error', message: 'fleet list returned something other than a list' };
   return { kind: 'ok', rows: parsed.filter(isFleetRow) };
+}
+
+/** One JSON object a Fleet command printed (`--json`), or null for anything else. */
+export function fleetObject(text: string | undefined): Record<string, unknown> | null {
+  if (!text?.trim()) return null;
+  try {
+    const v: unknown = JSON.parse(text);
+    return typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
 }
 
 function isFleetRow(v: unknown): v is FleetRow {

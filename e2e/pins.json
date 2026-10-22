@@ -2,7 +2,7 @@
   "fleet": {
     "repo": "https://github.com/dafilipaj/fleet",
     "branch": "lookout",
-    "rev": "8472b239b4369ae7ba5419589037280dd3bc902d",
+    "rev": "e1871582c6d61dcfe27ab5869748461a88a9dfdc",
     "package": "fleet",
     "bin": "fleet"
   },

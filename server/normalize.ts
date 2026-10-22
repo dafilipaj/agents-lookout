@@ -1,5 +1,5 @@
 import type { Backend, GitLocation, Harness, SessionRow, Status } from '../shared/types.ts';
-import type { FleetRow } from './fleet.ts';
+import type { FleetListResult, FleetRow } from './fleet.ts';
 
 const HARNESSES: readonly string[] = ['claude', 'codex'] satisfies Harness[];
 
@@ -96,7 +96,19 @@ export function normalizeRows(rows: readonly FleetRow[], deps: NormalizeDeps): S
       model: r.model ?? null,
       effort: effort(r.effort),
       procStart: procStart(r.proc_start),
+      pendingModel: null,
+      modelAt: typeof r.model_at === 'string' ? r.model_at : null,
     });
   }
   return out;
+}
+
+/**
+ * A Session as a `fleet list` made just now shows it, checked again right before Fleet types into
+ * it (VIEW-5.12, VIEW-6): the first row `match` takes, null when it's gone, or `unavailable` when
+ * the list couldn't be read.
+ */
+export function freshRow(list: FleetListResult, match: (row: SessionRow) => boolean): SessionRow | null | 'unavailable' {
+  if (list.kind !== 'ok') return 'unavailable';
+  return normalizeRows(list.rows, { git: () => null, statusSince: () => null }).find(match) ?? null;
 }

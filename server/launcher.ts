@@ -6,6 +6,7 @@ import type { RunError, Runner } from './exec.ts';
 import type { FleetRow } from './fleet.ts';
 import { sessionId } from './normalize.ts';
 import { sanitizeLine } from './sanitize.ts';
+import { MODEL_ID } from '../shared/model.ts';
 import { expandHome } from './settings.ts';
 
 /** LAUNCH-4.5: a start that Fleet hasn't reported after this long becomes an error. */
@@ -18,7 +19,6 @@ export const RECENT_START_MS = 60_000;
 const SPAWN_TIMEOUT_MS = 20_000;
 const MAX_NAME = 80;
 const MAX_PROMPT = 100_000;
-const MODEL_ID = /^[A-Za-z0-9._[\]/:-]{0,100}$/;
 const HARNESS_LABEL: Record<LaunchHarness, string> = { claude: 'Claude Code', codex: 'Codex' };
 const TERMINAL_LINES = 8;
 /** A launch id the tab chose (LAUNCH-4.2): a UUID, like the server's own. */
@@ -148,6 +148,8 @@ export class Launcher {
   /** Completed starts: the Session each became, and its process, so a later id change is followed. */
   private readonly recent = new Map<string, { sessionId: string; at: number; pid: number; harness: string }>();
   private harnessCache: { at: number; value: HarnessOption[] } | null = null;
+  /** Bumped by `dropHarnesses`: a read started before it isn't cached. */
+  private harnessEpoch = 0;
   private readonly opts: LauncherOptions;
   private readonly now: () => number;
 
@@ -171,9 +173,20 @@ export class Launcher {
     return [...this.recent].map(([launchId, r]) => ({ launchId, sessionId: r.sessionId }));
   }
 
+  /**
+   * VIEW-6: Claude Code's saved default may have changed (a model switch makes the pick the default,
+   * as `/model` does): the cached list, whose "Default (…)" label may be stale, goes, and a read
+   * already in flight, which may have seen the default from before, isn't cached either.
+   */
+  dropHarnesses(): void {
+    this.harnessCache = null;
+    this.harnessEpoch++;
+  }
+
   /** LAUNCH-3: `fleet harness list --json`, cached for 10 minutes. */
   async harnesses(): Promise<HarnessOption[]> {
     if (this.harnessCache && this.now() - this.harnessCache.at < HARNESS_CACHE_MS) return this.harnessCache.value;
+    const epoch = this.harnessEpoch;
     let stdout: string;
     try {
       stdout = await this.opts.runner(this.opts.fleetBin(), ['--local', 'harness', 'list', '--json'], {
@@ -205,7 +218,7 @@ export class Launcher {
         };
       })
       .sort((a, b) => (a.id === 'claude' ? -1 : b.id === 'claude' ? 1 : 0));
-    this.harnessCache = { at: this.now(), value };
+    if (epoch === this.harnessEpoch) this.harnessCache = { at: this.now(), value };
     return value;
   }
 

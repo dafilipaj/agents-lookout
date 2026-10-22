@@ -5,6 +5,7 @@ import { DEFAULT_PORT } from '../shared/defaults.ts';
 import { AnswerLedger } from './answerer.ts';
 import { createApp } from './app.ts';
 import { endSession } from './closer.ts';
+import { ModelSwitches, switchModel } from './model-switch.ts';
 import { renameSession } from './renamer.ts';
 import { run } from './exec.ts';
 import { checkSessionPaths } from './files.ts';
@@ -57,9 +58,13 @@ const work = new WorkMonitor({
   onChange: (w) => app.broadcast({ type: 'work', work: w }),
 });
 
+// VIEW-6.7: model switches waiting for the Session's next reply, carried with its row.
+const modelSwitches = new ModelSwitches();
+
 const monitor = new SessionMonitor({
   fetchList: () => fetchFleetList(run, resolveFleetBin(env)),
   git,
+  models: modelSwitches,
   onEvent: (e) => app.broadcast(e),
   onList: (rows) => {
     launcher.observe(rows);
@@ -119,6 +124,22 @@ const app = createApp({
         },
         id,
         name,
+      ),
+    switchModel: (id, req) =>
+      switchModel(
+        {
+          runner: run,
+          fleetBin: () => resolveFleetBin(env),
+          lookup: (sid) => monitor.get(sid),
+          freshList: () => fetchFleetList(run, resolveFleetBin(env)),
+          harnesses: () => launcher.harnesses(),
+          dropHarnesses: () => launcher.dropHarnesses(),
+          switches: modelSwitches,
+          changed: () => monitor.refreshDerived(),
+          refresh: () => monitor.pollNow(),
+        },
+        id,
+        req,
       ),
     end: (id, target) =>
       endSession(

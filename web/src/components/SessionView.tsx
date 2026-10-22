@@ -24,6 +24,9 @@ import {
   sendErrorText,
   stopButton,
 } from '@/lib/answers';
+import type { HarnessState } from '@/lib/launch';
+import { FROM_NEXT_REPLY, MODEL_DEFAULT_NOTE, MODEL_WHY, type ModelTarget, canSwitchModel, checkedModel, modelOptions, plainModelWhy, shownModel } from '@/lib/model-switch';
+import type { SwitchState } from '@/lib/status-switch';
 import type { Chat as ChatState, Preview } from '@/lib/store';
 import { CONTEXT_LEVEL_CLASS, HARNESS_NAME, STATUS_LABEL, STATUS_TAG_CLASS, contextLevel, location } from '@/lib/sessions';
 import { formatAge } from '@/lib/time';
@@ -35,6 +38,7 @@ import { HarnessIcon } from './HarnessIcon';
 import { useSessionTitle } from './SessionTitle';
 import { PaneHeader, ShellCell, ShellView } from './Shell';
 import { StatusMarker } from './StatusMarker';
+import { StatusMenu } from './StatusMenu';
 
 export interface SessionViewProps {
   row: SessionRow;
@@ -72,6 +76,18 @@ export interface SessionViewProps {
   onEnd(sessionId: string, target: EndTarget): Promise<void>;
   /** VIEW-5.12: renames the Session through Fleet; rejects with a message for people (VIEW-5.14). */
   onRename(row: SessionRow, name: string): Promise<RenameResult>;
+  /** VIEW-6.1: the Harnesses and their models (LAUNCH-3.2), for the model menu. */
+  models: HarnessState;
+  /** VIEW-6.1: the model menu opened: read the models again. */
+  onLoadModels(): void;
+  /**
+   * VIEW-6: switches the Session's model through Fleet, for the process the menu was opened on
+   * (`opened`); App keeps how it went per Session process, and opens the Terminal preview when it
+   * can't tell (VIEW-6.8).
+   */
+  onSwitchModel(row: SessionRow, model: string, opened: ModelTarget): void;
+  /** VIEW-6.3/6.7/6.8: the Session process's model switch, as App keeps it. */
+  modelSwitch: SwitchState | undefined;
   /** VIEW-4.2: the prompt on the Session's terminal, as the server last read it. */
   screen: ScreenState | undefined;
   /** VIEW-4: the latest answer sent to this Session, and what came of it. */
@@ -107,6 +123,10 @@ export function SessionView({
   onSentAt,
   onEnd,
   onRename,
+  models,
+  onLoadModels,
+  onSwitchModel,
+  modelSwitch,
   screen,
   attempt,
   onAnswer,
@@ -297,7 +317,14 @@ export function SessionView({
             inputRef={composerRef}
           />
         )}
-        <StatusLine row={row} />
+        <StatusLine
+          row={row}
+          ended={ended}
+          models={models}
+          onLoadModels={onLoadModels}
+          onSwitchModel={onSwitchModel}
+          modelSwitch={modelSwitch}
+        />
       </ShellCell>
     </ShellView>
   );
@@ -601,14 +628,33 @@ function EndSession({
  * VIEW-5.5: where the Session works, its model and context use, on one line under the composer
  * (at the bottom of the pane when there's none), like a terminal's status line. At narrow widths
  * each part truncates; the whole line is in its tooltip. VIEW-5.11: the Effort follows the model.
+ * VIEW-6: for a Controllable Claude Code Session, the model's name is a menu that switches it.
  */
-function StatusLine({ row }: { row: SessionRow }) {
+function StatusLine({
+  row,
+  ended,
+  models,
+  onLoadModels,
+  onSwitchModel,
+  modelSwitch,
+}: {
+  row: SessionRow;
+  ended: boolean;
+  models: HarnessState;
+  onLoadModels(): void;
+  onSwitchModel: SessionViewProps['onSwitchModel'];
+  modelSwitch: SwitchState | undefined;
+}) {
   const loc = location(row);
   const where = row.git ? row.git.repo : row.cwd;
   const context = row.contextPct !== null ? `${row.contextPct}% context` : null;
   const ctxLevel = row.contextPct !== null ? contextLevel(row.contextPct) : null;
   const effort = row.effort;
-  const parts = [where, loc?.name, row.model, effort, context].filter((p): p is string => !!p);
+  // VIEW-6.7: a switched model shows at once, marked, until the next reply reaches the Transcript.
+  const model = shownModel(row);
+  const modelPart = model ? (model.pending ? `${model.id} (${FROM_NEXT_REPLY})` : model.id) : null;
+  const plainWhy = plainModelWhy(row, ended);
+  const parts = [where, loc?.name, modelPart, effort, context].filter((p): p is string => !!p);
   if (!parts.length) return null;
   const dot = (
     <span aria-hidden className="shrink-0 opacity-60">
@@ -635,17 +681,21 @@ function StatusLine({ row }: { row: SessionRow }) {
           </span>
         </>
       )}
-      {row.model && (
+      {model && (
         <>
           {(where || loc) && dot}
-          <span className="min-w-0 truncate" data-field="model" title={row.model}>
-            {row.model}
-          </span>
+          {canSwitchModel(row, ended) ? (
+            <ModelMenu row={row} model={model} models={models} onLoadModels={onLoadModels} onSwitchModel={onSwitchModel} modelSwitch={modelSwitch} />
+          ) : (
+            <span className="min-w-0 truncate" data-field="model" title={plainWhy ? `${model.id}\n${plainWhy}` : model.id}>
+              {model.id}
+            </span>
+          )}
         </>
       )}
       {effort && (
         <>
-          {(where || loc || row.model) && dot}
+          {(where || loc || model) && dot}
           <span className="min-w-0 truncate" data-field="effort" title={effort}>
             {effort}
           </span>
@@ -653,7 +703,7 @@ function StatusLine({ row }: { row: SessionRow }) {
       )}
       {context && (
         <>
-          {(where || loc || row.model || effort) && dot}
+          {(where || loc || model || effort) && dot}
           <span
             className={cn('shrink-0', ctxLevel && CONTEXT_LEVEL_CLASS[ctxLevel])}
             data-field="context"
@@ -664,6 +714,51 @@ function StatusLine({ row }: { row: SessionRow }) {
         </>
       )}
     </StatusBar>
+  );
+}
+
+/**
+ * VIEW-6.1–6.9: the model's name as a menu of the other Claude models Fleet lists. Disabled, its
+ * tooltip saying why, while the Session isn't Idle or a switch runs; the pick also becomes Claude
+ * Code's default, and the menu says so. A pick is for the process the menu was opened on.
+ */
+function ModelMenu({
+  row,
+  model,
+  models,
+  onLoadModels,
+  onSwitchModel,
+  modelSwitch,
+}: {
+  row: SessionRow;
+  model: { id: string; pending: boolean };
+  models: HarnessState;
+  onLoadModels(): void;
+  onSwitchModel: SessionViewProps['onSwitchModel'];
+  modelSwitch: SwitchState | undefined;
+}) {
+  const options = modelOptions(models);
+  const switching = modelSwitch?.switching ?? false;
+  const opened = useRef<ModelTarget | null>(null);
+  const why = switching ? MODEL_WHY.switching : row.status === 'idle' ? null : MODEL_WHY[row.status];
+  return (
+    <StatusMenu
+      field="model"
+      name="Model"
+      value={model.id}
+      note={model.pending ? FROM_NEXT_REPLY : null}
+      why={why}
+      switching={switching}
+      options={options}
+      checked={checkedModel(options, model.id)}
+      footnote={MODEL_DEFAULT_NOTE}
+      error={modelSwitch?.error ?? null}
+      onOpen={() => {
+        opened.current = { pid: row.pid, procStart: row.procStart };
+        onLoadModels();
+      }}
+      onPick={(value) => onSwitchModel(row, value, opened.current ?? { pid: row.pid, procStart: row.procStart })}
+    />
   );
 }
 

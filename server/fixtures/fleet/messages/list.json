@@ -81,7 +81,8 @@
     "harness": "claude",
     "model": "claude-opus-5-5",
     "effort": "medium",
-    "proc_start": "2026-10-14T09:30:00Z"
+    "proc_start": "2026-10-14T09:30:00Z",
+    "model_at": "2026-10-14T09:31:00Z"
   },
   {
     "pid": 61005,

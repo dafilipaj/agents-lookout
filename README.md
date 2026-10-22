@@ -8,7 +8,7 @@ A personal web UI for watching and controlling local agent Sessions (Claude Code
 - **Fleet**, the Session layer ([decision 0004](docs/decisions/0004-fleet-cli-as-session-layer.md)), from the fork `dafilipaj/fleet`, branch `lookout` ([decision 0006](docs/decisions/0006-run-a-fork-of-fleet.md)). Install it pinned to the revision Lookout is tested against (the Fleet `rev` in `e2e/pins.json`):
 
   ```sh
-  cargo install --git https://github.com/dafilipaj/fleet --rev ec4ed52 --locked fleet
+  cargo install --git https://github.com/dafilipaj/fleet --rev e187158 --locked fleet
   ```
 
   Lookout looks for `fleet` on `PATH`, then in `~/.cargo/bin`. Set `LOOKOUT_FLEET_BIN` to use another binary.

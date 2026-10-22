@@ -1,10 +1,10 @@
 import { checkName } from '../shared/rename.ts';
 import type { RenameResult, SessionRow } from '../shared/types.ts';
-import { EndError, closeTarget, isPidOnly } from './closer.ts';
+import { EndError, FLEET_TYPING, closeTarget, isPidOnly } from './closer.ts';
 import type { RunError, Runner } from './exec.ts';
-import type { FleetListResult } from './fleet.ts';
+import { type FleetListResult, fleetObject } from './fleet.ts';
 import { cleanEnv } from './launcher.ts';
-import { normalizeRows } from './normalize.ts';
+import { freshRow } from './normalize.ts';
 
 /**
  * Fleet's `rename` waits for the Session's typing lock, types, then reads the registry every 400 ms
@@ -78,9 +78,8 @@ export async function renameSession(opts: RenamerOptions, sessionId: string, nam
   if (isPidOnly(known)) throw new RenameError(409, NO_ID);
   if (!known.controllable) throw new RenameError(409, OTHER_APP);
   // Read again right before typing: it could have ended, started a turn, or begun waiting on you.
-  const fresh = await opts.freshList();
-  if (fresh.kind !== 'ok') throw new RenameError(503, 'Couldn’t check that the Session is still running, so it wasn’t renamed. Try again.');
-  const row = normalizeRows(fresh.rows, { git: () => null, statusSince: () => null }).find((r) => r.id === known.id && r.harness === known.harness);
+  const row = freshRow(await opts.freshList(), (r) => r.id === known.id && r.harness === known.harness);
+  if (row === 'unavailable') throw new RenameError(503, 'Couldn’t check that the Session is still running, so it wasn’t renamed. Try again.');
   if (!row) throw new RenameError(409, GONE);
   if (!row.controllable) throw new RenameError(409, OTHER_APP);
   if (row.status !== 'idle') throw new RenameError(409, NOT_IDLE);
@@ -102,7 +101,7 @@ export async function renameSession(opts: RenamerOptions, sessionId: string, nam
     throw failure(err as RunError);
   }
   // Exit 0: Fleet typed it, or may have. Only its own report says which: `renamed` or `sent`.
-  const answer = parseObject(stdout);
+  const answer = fleetObject(stdout);
   const result = answer?.ok === true && (answer.result === 'renamed' || answer.result === 'sent') ? answer.result : null;
   // Polled either way: if it was renamed, the new title reaches the tabs at once.
   await opts.refresh().catch(() => {});
@@ -117,14 +116,14 @@ export async function renameSession(opts: RenamerOptions, sessionId: string, nam
 function failure(e: RunError): RenameError {
   if (e.code === 'ENOENT') return new RenameError(503, 'Fleet isn’t installed, so the Session wasn’t renamed.');
   if (e.timedOut) return new RenameError(504, 'Fleet took too long, so Lookout can’t tell whether it was renamed. Check the Session list.');
-  const parsed = parseObject(e.stdout);
+  const parsed = fleetObject(e.stdout);
   if (parsed && (parsed.result === 'held' || e.code === 3)) {
     const held = parsed.held;
     return new RenameError(409, typeof held === 'string' && Object.hasOwn(RENAME_HELD, held) ? RENAME_HELD[held]! : RENAME_HELD_OTHER);
   }
   switch (parsed?.kind) {
     case 'busy':
-      return new RenameError(409, 'Fleet is typing into it; try again.');
+      return new RenameError(409, FLEET_TYPING);
     case 'target_not_found':
       return new RenameError(409, GONE);
     case 'target_ambiguous':
@@ -140,14 +139,4 @@ function failure(e: RunError): RenameError {
   }
   if (/unrecognized subcommand/i.test(stderr)) return new RenameError(501, 'This Fleet can’t rename Sessions yet. Update the Fleet fork.');
   return new RenameError(502, 'Couldn’t rename it. Check the terminal.');
-}
-
-function parseObject(text: string | undefined): Record<string, unknown> | null {
-  if (!text?.trim()) return null;
-  try {
-    const v: unknown = JSON.parse(text);
-    return typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
-  } catch {
-    return null;
-  }
 }

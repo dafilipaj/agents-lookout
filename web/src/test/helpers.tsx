@@ -25,6 +25,8 @@ export function row(over: Partial<SessionRow> & { id: string }): SessionRow {
     controllable: true,
     ownHost: false,
     procStart: '2026-10-14T08:12:03Z',
+    pendingModel: null,
+    modelAt: null,
     model: null,
     effort: null,
     ...over,
@@ -64,6 +66,7 @@ interface RenderOptions {
   sendMessage?: (sessionId: string, text: string) => Promise<void>;
   endSession?: LookoutClient['endSession'];
   renameSession?: LookoutClient['renameSession'];
+  switchModel?: LookoutClient['switchModel'];
   answer?: LookoutClient['answer'];
   stopSession?: LookoutClient['stopSession'];
   escSession?: LookoutClient['escSession'];
@@ -105,6 +108,7 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
     checkPaths: vi.fn(options.checkPaths ?? (async (_id: string, paths: string[]): Promise<PathAnswer[]> => paths.map((path) => ({ path, exists: false, absolute: null })))),
     endSession: vi.fn(options.endSession ?? (async () => ({ how: 'exit' as const }))),
     renameSession: vi.fn(options.renameSession ?? (async () => ({ result: 'renamed' as const }))),
+    switchModel: vi.fn(options.switchModel ?? (async (_id: string, req: { model: string }) => ({ model: req.model, confirmed: false }))),
     answer: vi.fn(options.answer ?? (async () => ({ epoch: 1 }))),
     stopSession: vi.fn(options.stopSession ?? (async () => {})),
     escSession: vi.fn(options.escSession ?? (async () => {})),

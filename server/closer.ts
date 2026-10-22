@@ -1,9 +1,9 @@
 import type { EndResult, EndTarget, Harness, SessionRow } from '../shared/types.ts';
 import type { RunError, Runner } from './exec.ts';
-import type { FleetListResult } from './fleet.ts';
+import { type FleetListResult, fleetObject } from './fleet.ts';
 import { SESSION_ID } from './history.ts';
 import { cleanEnv } from './launcher.ts';
-import { normalizeRows, procStart } from './normalize.ts';
+import { freshRow, procStart } from './normalize.ts';
 import { sanitizeLine } from './sanitize.ts';
 
 /**
@@ -50,11 +50,10 @@ export async function endSession(opts: CloserOptions, sessionId: string, expect:
   // Without a start time Lookout can't tell this process from a replacement with the same pid.
   if (expect.procStart === null) throw new EndError(409, UNCONFIRMED);
   // Read again right before closing: the Session could have ended, or another moved in with it.
-  const fresh = await opts.freshList();
-  if (fresh.kind !== 'ok') throw new EndError(503, "Couldn't check that the Session is still running. Try again.");
-  const row = normalizeRows(fresh.rows, { git: () => null, statusSince: () => null }).find((r) =>
+  const row = freshRow(await opts.freshList(), (r) =>
     isPidOnly(known) ? r.pid === known.pid && r.harness === known.harness : r.id === known.id && r.harness === known.harness,
   );
+  if (row === 'unavailable') throw new EndError(503, "Couldn't check that the Session is still running. Try again.");
   if (!row) throw new EndError(409, 'This Session is no longer running.');
   if (row.procStart === null) throw new EndError(409, UNCONFIRMED);
   if (row.pid !== expect.pid || row.procStart !== expect.procStart) throw new EndError(409, CHANGED);
@@ -72,7 +71,7 @@ export async function endSession(opts: CloserOptions, sessionId: string, expect:
   } catch (err) {
     throw failure(err as RunError);
   }
-  const answer = parseObject(stdout);
+  const answer = fleetObject(stdout);
   if (answer?.ok !== true) throw new EndError(502, "Couldn't end it: Fleet gave an unexpected answer.");
   await opts.refresh().catch(() => {});
   return { how: answer.how === 'killed' ? 'killed' : 'exit' };
@@ -118,7 +117,8 @@ function pidOnlyId(id: string): Pick<SessionRow, 'id' | 'harness' | 'pid'> | nul
 const UNCONFIRMED = 'Lookout can’t confirm it’s the same Session, so it won’t end it. Close it in the terminal.';
 const CHANGED = 'This Session was restarted since you asked; nothing was closed.';
 const SHARED = 'This Session shares its Session host with other windows, so Lookout won’t end it. Close it in the terminal.';
-const BUSY = 'Fleet is typing into it; try again.';
+/** Fleet's `busy` (`locked`): another Fleet command holds the Session's typing lock. */
+export const FLEET_TYPING = 'Fleet is typing into it; try again.';
 
 /**
  * VIEW-5.8: Fleet's `reason` on a `busy` or `host_shared` refusal, for people. `kind` still
@@ -127,7 +127,7 @@ const BUSY = 'Fleet is typing into it; try again.';
  */
 const REASONS: Readonly<Record<'busy' | 'host_shared', Readonly<Record<string, string>>>> = {
   busy: {
-    locked: BUSY,
+    locked: FLEET_TYPING,
     editor_open: 'An editor is open in this Session. Close it in the terminal, then try again.',
   },
   host_shared: {
@@ -146,10 +146,10 @@ function reasonText(kind: 'busy' | 'host_shared', reason: unknown, fallback: str
 function failure(e: RunError): EndError {
   if (e.code === 'ENOENT') return new EndError(503, "Couldn't end it: Fleet isn't installed.");
   if (e.timedOut) return new EndError(504, "Couldn't end it: Fleet took too long. Check the Session list before trying again.");
-  const parsed = parseObject(e.stdout);
+  const parsed = fleetObject(e.stdout);
   switch (parsed?.kind) {
     case 'busy':
-      return new EndError(409, reasonText('busy', parsed.reason, BUSY));
+      return new EndError(409, reasonText('busy', parsed.reason, FLEET_TYPING));
     case 'host_shared':
       return new EndError(409, reasonText('host_shared', parsed.reason, SHARED));
     case 'backend_unsupported':
@@ -165,14 +165,4 @@ function failure(e: RunError): EndError {
   const line = sanitizeLine(text, 200)?.replace(/^error:\s*/i, '');
   const reason = !line ? 'no details' : /tmux|kill-session|send-keys/i.test(line) ? 'the Session host refused' : line;
   return new EndError(502, `Couldn't end it: ${reason}.`.replace(/\.\.$/, '.'));
-}
-
-function parseObject(text: string | undefined): Record<string, unknown> | null {
-  if (!text?.trim()) return null;
-  try {
-    const v: unknown = JSON.parse(text);
-    return typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
-  } catch {
-    return null;
-  }
 }

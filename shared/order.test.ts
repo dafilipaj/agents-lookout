@@ -19,6 +19,8 @@ const row = (id: string, status: Status, statusSince: number | null): SessionRow
   model: null,
   effort: null,
   procStart: null,
+  pendingModel: null,
+  modelAt: null,
 });
 
 describe('sidebar order', () => {

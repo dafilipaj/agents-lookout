@@ -39,6 +39,8 @@ describe('fleet list → sidebar rows', () => {
         model: 'claude-opus-5-5',
         effort: null,
         procStart: null,
+        pendingModel: null,
+        modelAt: null,
       },
       {
         id: '22222222-2222-4222-8222-222222222222',
@@ -57,6 +59,8 @@ describe('fleet list → sidebar rows', () => {
         model: 'gpt-6-astra',
         effort: null,
         procStart: null,
+        pendingModel: null,
+        modelAt: null,
       },
       {
         id: '33333333-3333-4333-8333-333333333333',
@@ -75,6 +79,8 @@ describe('fleet list → sidebar rows', () => {
         model: 'claude-opus-5-5',
         effort: null,
         procStart: null,
+        pendingModel: null,
+        modelAt: null,
       },
       {
         id: '44444444-4444-4444-8444-444444444444',
@@ -93,6 +99,8 @@ describe('fleet list → sidebar rows', () => {
         model: 'claude-opus-5-5',
         effort: null,
         procStart: null,
+        pendingModel: null,
+        modelAt: null,
       },
     ]);
   });
@@ -122,6 +130,14 @@ describe('fleet list → sidebar rows', () => {
     ]);
     expect(normalizeRows(fixture('messages/list.json'), deps).map((r) => r.effort)).toEqual(['high', 'xhigh', null, 'medium', 'high']);
     expect(normalizeRows(fixture('recorded-2026-10-16.json'), deps).every((r) => r.effort === null)).toBe(true);
+  });
+
+  it('VIEW-6.8: Fleet\'s `model_at` reaches the row as `modelAt`; a Fleet without it, or one that isn\'t a string, gives null', () => {
+    const rows = normalizeRows(fixture('messages/list.json'), deps);
+    expect(rows.find((r) => r.id === 'dddddddd-0000-4000-8000-000000000104')?.modelAt).toBe('2026-10-14T09:31:00Z');
+    expect(normalizeRows(fixture('recorded-2026-10-16.json'), deps).every((r) => r.modelAt === null)).toBe(true);
+    const base = { session_id: 'eeeeeeee-0000-4000-8000-000000000005', pid: 1, harness: 'claude', backend: 'tmux', status: 'idle', display_title: 'x' };
+    expect(normalizeRows([{ ...base, model_at: 42 }] as never, deps)[0]!.modelAt).toBeNull();
   });
 
   it('VIEW-5.11: an effort is kept only as a short word; anything else is null', () => {

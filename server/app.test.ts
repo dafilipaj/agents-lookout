@@ -4,13 +4,14 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { AnswerRequest, EndTarget, EscStatus, ServerEvent } from '../shared/types.ts';
+import type { AnswerRequest, EndTarget, EscStatus, ModelSwitchRequest, ServerEvent } from '../shared/types.ts';
 import { AnswerError } from './answerer.ts';
 import { type LookoutApp, createApp } from './app.ts';
 import { EndError } from './closer.ts';
 import type { FleetRow } from './fleet.ts';
 import { checkSessionPaths } from './files.ts';
 import { HistoryError } from './history.ts';
+import { MODEL_UNCERTAIN, ModelSwitchError } from './model-switch.ts';
 import { RenameError } from './renamer.ts';
 import { SettingsStore } from './settings.ts';
 import { chatViewer } from './test/helpers.ts';
@@ -40,6 +41,7 @@ let ended: { sessionId: string; target: EndTarget }[] = [];
 let answers: { sessionId: string; req: AnswerRequest }[] = [];
 let stops: string[] = [];
 let renamed: { sessionId: string; name: string }[] = [];
+let switched: ({ sessionId: string } & ModelSwitchRequest)[] = [];
 
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'lookout-app-'));
@@ -54,6 +56,7 @@ beforeEach(async () => {
   answers = [];
   stops = [];
   renamed = [];
+  switched = [];
   const settings = new SettingsStore(join(dir, 'settings.json'));
   await settings.load();
   app = createApp({
@@ -108,6 +111,12 @@ beforeEach(async () => {
         if (sessionId === 'busy') throw new RenameError(409, 'The Session isn’t Idle now, so it wasn’t renamed. Try again once it is.');
         renamed.push({ sessionId, name });
         return { result: 'renamed' as const };
+      },
+      switchModel: async (sessionId: string, req: ModelSwitchRequest) => {
+        if (sessionId === 'busy') throw new ModelSwitchError(409, 'The Session isn’t Idle now, so the model wasn’t switched. Try again once it is.');
+        if (sessionId === 'unsure') throw new ModelSwitchError(502, MODEL_UNCERTAIN, true);
+        switched.push({ sessionId, ...req });
+        return { model: req.model, confirmed: true };
       },
     },
     // VIEW-1.18: the real check, against this test's folder as the Session's cwd.
@@ -482,6 +491,47 @@ describe('VIEW-5.6 route', () => {
     expect(JSON.parse((await end('{"pid":61001,"procStart":"--json"}')).body)).toEqual({ error: 'Invalid process start time.' });
     expect((await end(JSON.stringify({ pid: 1, procStart: 'x'.repeat(2000) }))).status).toBe(413);
     expect(ended).toEqual([]);
+  });
+});
+
+describe('VIEW-6 route', () => {
+  const json = { 'content-type': 'application/json' };
+  const body = JSON.stringify({ model: 'claude-sonnet-5-5', pid: 61004, procStart: '2026-10-14T09:30:00Z' });
+  const switchModel = (id: string, headers: Record<string, string>, b = body) => call('POST', `/api/sessions/${encodeURIComponent(id)}/model`, { ...json, ...headers }, b);
+
+  it('VIEW-6.5: switching the model types into the Session, so it’s a mutation: our Origin and the token, as renaming; the body names the model and the process', async () => {
+    expect((await switchModel('abc', { 'x-lookout-token': TOKEN })).status).toBe(403); // no Origin
+    expect((await switchModel('abc', { origin })).status).toBe(403); // no token
+    expect((await switchModel('abc', { origin: 'https://evil.example', 'x-lookout-token': TOKEN })).status).toBe(403);
+    expect((await call('GET', '/api/sessions/abc/model', { origin })).status).toBe(404);
+    expect(switched).toEqual([]);
+
+    const res = await switchModel('abc', { origin, 'x-lookout-token': TOKEN });
+    expect(res.status).toBe(200);
+    expect(JSON.parse(res.body)).toEqual({ model: 'claude-sonnet-5-5', confirmed: true });
+    expect(switched).toEqual([{ sessionId: 'abc', model: 'claude-sonnet-5-5', pid: 61004, procStart: '2026-10-14T09:30:00Z' }]);
+  });
+
+  it('VIEW-6.8: a refusal says why in plain words; one Lookout can’t be sure of says so (`kind: uncertain`), so the tab opens the Terminal preview', async () => {
+    const headers = { origin, 'x-lookout-token': TOKEN };
+    const refused = await switchModel('busy', headers);
+    expect(refused.status).toBe(409);
+    expect(JSON.parse(refused.body)).toEqual({ error: 'The Session isn’t Idle now, so the model wasn’t switched. Try again once it is.' });
+    const unsure = await switchModel('unsure', headers);
+    expect(unsure.status).toBe(502);
+    expect(JSON.parse(unsure.body)).toEqual({ error: MODEL_UNCERTAIN, kind: 'uncertain' });
+  });
+
+  it('VIEW-6.1: the model and the process are checked before anything runs', async () => {
+    const headers = { origin, 'x-lookout-token': TOKEN };
+    const bad = async (b: unknown) => JSON.parse((await switchModel('abc', headers, JSON.stringify(b))).body) as unknown;
+    expect((await switchModel('abc', headers, 'not json')).status).toBe(400);
+    expect(await bad({ model: '', pid: 1, procStart: '2026-10-14T09:30:00Z' })).toEqual({ error: 'Invalid model.' });
+    expect(await bad({ model: 'claude opus', pid: 1, procStart: '2026-10-14T09:30:00Z' })).toEqual({ error: 'Invalid model.' });
+    expect(await bad({ model: 'claude-sonnet-5-5', procStart: '2026-10-14T09:30:00Z' })).toEqual({ error: 'Invalid process id.' });
+    expect(await bad({ model: 'claude-sonnet-5-5', pid: 1, procStart: '--json' })).toEqual({ error: 'Invalid process start time.' });
+    expect((await switchModel('abc', headers, JSON.stringify({ model: 'x'.repeat(2000), pid: 1, procStart: null }))).status).toBe(413);
+    expect(switched).toEqual([]);
   });
 });
 
