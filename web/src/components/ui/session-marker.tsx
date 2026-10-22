@@ -11,6 +11,8 @@ export interface SessionMarkerProps extends Omit<ComponentPropsWithoutRef<'span'
   state: SessionMarkerState;
   /** A live Session's Status; ignored for a past one. */
   status?: Status;
+  /** When that Status began (the row's `statusSince`): a Busy marker pulses for 10 s after it (DS-10.1). */
+  since?: number | null;
 }
 
 /**
@@ -19,7 +21,7 @@ export interface SessionMarkerProps extends Omit<ComponentPropsWithoutRef<'span'
  * and blocked, `CircleSlash`. It fills the box its list gives it (`className`: 18 px in the sidebar,
  * SIDE-3.8; 14 px by default, as History and Work have), so titles line up whichever shape shows.
  */
-export function SessionMarker({ state, status = 'unknown', className, ...rest }: SessionMarkerProps) {
+export function SessionMarker({ state, status = 'unknown', since, className, ...rest }: SessionMarkerProps) {
   return (
     <span
       data-session-marker=""
@@ -29,7 +31,7 @@ export function SessionMarker({ state, status = 'unknown', className, ...rest }:
       {...rest}
     >
       {state === 'live' ? (
-        <StatusMarker status={status} className="size-full" />
+        <StatusMarker status={status} since={since} className="size-full" />
       ) : state === 'past' ? (
         <History role="img" aria-label="Past Session" className="size-full text-muted-foreground" />
       ) : (

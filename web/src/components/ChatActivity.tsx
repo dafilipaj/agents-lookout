@@ -1,5 +1,6 @@
 import type { ChatEntry, SessionRow } from '@shared/types.ts';
 import { activityOf, formatElapsed } from '@/lib/activity';
+import { usePulse } from '@/lib/pulse';
 import { useNow } from '@/lib/time';
 import { cn } from '@/lib/utils';
 
@@ -32,6 +33,8 @@ export function ChatActivity({ row, ended, entries, sentAt }: ChatActivityProps)
   });
   const label = !activity ? '' : activity.kind === 'working' ? 'Working…' : `Needs you${activity.waitingFor ? ` · ${activity.waitingFor}` : ''}`;
   const since = activity?.kind === 'working' ? activity.since : null;
+  // DS-10.1: the dot pulses for 10 s after the Turn began, then holds steady, as a Busy marker does.
+  const pulse = usePulse(since, now);
   return (
     <div
       data-testid="chat-activity"
@@ -40,7 +43,11 @@ export function ChatActivity({ row, ended, entries, sentAt }: ChatActivityProps)
     >
       {activity && (
         <span aria-hidden className="flex size-3.5 shrink-0 items-center justify-center">
-          <span className={cn('size-2 rounded-full', activity.kind === 'working' ? 'animate-busy bg-busy' : 'bg-needs-you')} />
+          <span
+            className={cn('size-2 rounded-full', activity.kind === 'working' ? cn('bg-busy', pulse && 'animate-busy') : 'bg-needs-you')}
+            style={(activity.kind === 'working' && pulse) || undefined}
+            data-pulse={activity.kind === 'working' && pulse ? '' : undefined}
+          />
         </span>
       )}
       <span

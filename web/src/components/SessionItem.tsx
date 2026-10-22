@@ -1,7 +1,7 @@
 import type { SessionRow } from '@shared/types.ts';
 import { FolderGit2, GitBranch, SquareTerminal } from 'lucide-react';
 import { memo, useEffect, useRef } from 'react';
-import { BACKGROUND_SHELL_TIP, CONTEXT_LEVEL_CLASS, ROW_TONE, STATUS_LABEL, STATUS_STRIP_CLASS, contextLevel, location } from '@/lib/sessions';
+import { BACKGROUND_SHELL_TIP, CONTEXT_LEVEL_CLASS, ROW_TONE, STATUS_LABEL, STATUS_STRIP_CLASS, contextLevel, location, sessionOptionId } from '@/lib/sessions';
 import { SessionMarker } from '@/components/ui/session-marker';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
@@ -33,6 +33,7 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
   return (
     <li
       ref={ref}
+      id={sessionOptionId(row.id)}
       role="option"
       aria-selected={selected}
       data-session-id={row.id}
@@ -59,7 +60,7 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
       />
       <div className="flex items-center gap-2">
         {/* DS-5.1: the Session marker, its Status shape at the sidebar's 18 px (SIDE-3.8). */}
-        <SessionMarker state="live" status={row.status} className={cn('size-4.5', !row.controllable && 'opacity-60 grayscale')} />
+        <SessionMarker state="live" status={row.status} since={row.statusSince} className={cn('size-4.5', !row.controllable && 'opacity-60 grayscale')} />
         <span
           className={cn(
             'min-w-0 flex-1 truncate text-body leading-5',

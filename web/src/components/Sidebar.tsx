@@ -8,7 +8,7 @@ import { CommandBlock } from '@/components/ui/command-block';
 import { EmptyState } from '@/components/ui/empty-state';
 import { IconButton } from '@/components/ui/icon-button';
 import { Kbd } from '@/components/ui/kbd';
-import { isLongIdle, matchesFilter } from '@/lib/sessions';
+import { isLongIdle, matchesFilter, sessionOptionId } from '@/lib/sessions';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { LaunchItem } from './LaunchItem';
@@ -199,8 +199,20 @@ export function Sidebar(props: SidebarProps) {
         onSelect={selectId}
       />
     );
+    // DS-9.1: the list takes focus as History's does: the selected Session is its active option, none
+    // while a Starting row (or nothing) is selected or the filter hides it. The keys are SIDE-5's,
+    // from the window's handler above. DS-9.2: a ring for keyboard focus only; a click focuses it
+    // without one, and the selected row keeps its own ring.
+    const active = selectedId !== null && visible.some((r) => r.id === selectedId) ? sessionOptionId(selectedId) : undefined;
     return (
-      <div role="listbox" aria-label="Sessions" className={cn('pb-2', stale && 'opacity-50')} data-stale={stale}>
+      <div
+        role="listbox"
+        aria-label="Sessions"
+        tabIndex={0}
+        aria-activedescendant={active}
+        className={cn('rounded-md pb-2 outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-inset', stale && 'opacity-50')}
+        data-stale={stale}
+      >
         {controllable.length > 0 ? (
           <ul role="group" aria-label="Controllable" className="flex flex-col gap-px px-1.5">
             {controllable.map(item)}

@@ -1672,6 +1672,25 @@ describe('Work on the design system', () => {
     expect(marker()[0]!.querySelector('svg')).toHaveClass('lucide-history');
   });
 
+  it("DS-10.1: a row with several Busy Linked Sessions pulses by the latest of them (the later start wins), and not at all when each has been Busy a while", async () => {
+    const linked = task({ ...LIGHT, links: { prs: [], sessions: [link('alpha', true), link('beta', true)], incomplete: false } });
+    const app = renderApp('/');
+    app.snapshot(
+      [row({ id: 'alpha', status: 'busy', statusSince: Date.now() - 8_000 }), row({ id: 'beta', pid: 2, status: 'busy', statusSince: Date.now() - 3_000 })],
+      { state: 'ok' },
+      settings(),
+    );
+    app.emit({ type: 'work', work: withTasks({ tasks: [linked] }) });
+    await userEvent.setup().keyboard('w');
+    const dot = () => taskOption(LIGHT.id).querySelector<SVGElement>('[data-session-marker] svg')!;
+    expect(dot()).toHaveClass('animate-busy');
+    expect(dot().style.animationDelay).toMatch(/^-3\d{3}ms$/); // beta's, not alpha's -8000
+    app.emit({ type: 'sessions', upsert: [row({ id: 'beta', pid: 2, status: 'busy', statusSince: Date.now() - 60_000 })], remove: [] });
+    expect(dot()).toHaveClass('animate-busy'); // alpha, 8 s old, is now the latest
+    app.emit({ type: 'sessions', upsert: [row({ id: 'alpha', status: 'busy', statusSince: Date.now() - 60_000 })], remove: [] });
+    expect(dot()).not.toHaveClass('animate-busy');
+  });
+
   it("DS-3.6: a live Linked Session's marker takes its Status, not a stand-in colour", async () => {
     const linked = task({ ...LIGHT, links: { prs: [], sessions: [link('alpha', true)], incomplete: false } });
     const app = renderApp('/');

@@ -583,9 +583,12 @@ function LinkedMarker({ links, incomplete }: { links: readonly WorkSessionLink[]
   if (links.length === 0) return null;
   const reasons: string[] = [...new Set(links.map((link) => link.reason))];
   if (incomplete) reasons.push('Links may be incomplete');
-  const live = links.filter((link) => link.live).map((link) => sessions.get(link.sessionId)?.status ?? 'unknown');
+  const rows = links.filter((link) => link.live).map((link) => sessions.get(link.sessionId));
+  const live = rows.map((r) => r?.status ?? 'unknown');
   const status = URGENCY.find((s) => live.includes(s));
-  return <SessionMarker aria-hidden="true" title={reasons.join('\n')} state={status ? 'live' : 'past'} status={status} />;
+  // DS-10.1: Busy pulses for 10 s after the latest of its Busy Sessions became Busy.
+  const busySince = rows.reduce<number | null>((at, r) => (r?.status === 'busy' && r.statusSince !== null && (at === null || r.statusSince > at) ? r.statusSince : at), null);
+  return <SessionMarker aria-hidden="true" title={reasons.join('\n')} state={status ? 'live' : 'past'} status={status} since={busySince} />;
 }
 
 interface PrsSectionProps {

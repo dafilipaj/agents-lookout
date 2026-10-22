@@ -82,6 +82,9 @@ export function matchesFilter(row: SessionRow, query: string): boolean {
   return [row.title, row.git?.repo, row.git?.worktree, row.git?.branch].some((f) => f?.toLowerCase().includes(q));
 }
 
+/** DS-9.1: a sidebar row's option id, which the Session listbox's `aria-activedescendant` names. Stable for the Session. */
+export const sessionOptionId = (id: string) => `session-${id}`;
+
 /** Where the Session works, as the row shows it (SIDE-2.2). */
 export function location(row: SessionRow): { kind: 'worktree' | 'branch'; name: string } | null {
   if (!row.git) return null;

@@ -486,6 +486,19 @@ describe('History on the design system', () => {
     expect(marker(2).querySelector('svg')).toHaveClass('lucide-circle-slash');
   });
 
+  it("DS-10.1: a live result's Busy marker pulses by its Session's Status start, from the Session list", async () => {
+    const app = renderApp('/', { history: async () => ok([LIVE]) });
+    app.snapshot([row({ id: 'live-1', harness: 'claude', status: 'busy', statusSince: Date.now() - 2_000 })]);
+    await openHistory(app);
+    await waitFor(() => expect(options()).toHaveLength(1));
+    const dot = options()[0]!.querySelector<SVGElement>('[data-session-marker] svg')!;
+    expect(dot).toHaveClass('animate-busy');
+    expect(dot.style.animationDelay).toMatch(/^-2\d{3}ms$/);
+    // Busy for a minute: no pulse.
+    app.emit({ type: 'sessions', upsert: [row({ id: 'live-1', harness: 'claude', status: 'busy', statusSince: Date.now() - 60_000 })], remove: [] });
+    expect(options()[0]!.querySelector('[data-session-marker] svg')).not.toHaveClass('animate-busy');
+  });
+
   it("DS-3.6: a live result's marker is its Session's Status colour, no longer a stand-in grey", async () => {
     const app = renderApp('/', { history: async () => ok([LIVE]) });
     app.snapshot([row({ id: 'live-1', harness: 'claude', status: 'busy' })]);

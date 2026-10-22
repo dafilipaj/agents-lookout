@@ -1,6 +1,6 @@
 import type { AnswerRequest, ChatPage, EndTarget, RenameResult, SessionRow } from '@shared/types.ts';
 import { Check, ChevronDown, CircleSlash, CircleStop, Copy, FolderGit2, GitBranch, Info, OctagonX, Power, SendHorizontal, TerminalSquare } from 'lucide-react';
-import { type ComponentPropsWithRef, type ComponentPropsWithoutRef, type KeyboardEvent, type ReactNode, type RefObject, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { type ComponentPropsWithRef, type ComponentPropsWithoutRef, type KeyboardEvent, type PointerEvent, type ReactNode, type RefObject, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Kbd } from '@/components/ui/kbd';
@@ -33,6 +33,7 @@ import { MODEL_DEFAULT_NOTE, type ModelTarget, canSwitchModel, checkedModel, mod
 import { FROM_NEXT_REPLY, type MenuOptions, type SwitchState, type SwitchWhat, plainWhy, switchWhy } from '@/lib/status-switch';
 import type { Chat as ChatState, Preview } from '@/lib/store';
 import { BACKGROUND_SHELL_TIP, CONTEXT_LEVEL_CLASS, HARNESS_NAME, STATUS_LABEL, STATUS_TAG_CLASS, contextLevel, location } from '@/lib/sessions';
+import { HEIGHT_STEP, clampHeight, drawerHeight, heightBounds, keepHeight, parseHeights, readHeightsRaw, subscribeHeights } from '@/lib/terminal-height';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { PromptCard } from './Answering';
@@ -292,7 +293,7 @@ export function SessionView({
             }
           />
         </AnswerContext.Provider>
-        {controls && <Drawer open={drawerOpen} onToggle={() => onToggleDrawer(row, !drawerOpen)} preview={preview} />}
+        {controls && <Drawer sessionId={row.id} open={drawerOpen} onToggle={() => onToggleDrawer(row, !drawerOpen)} preview={preview} />}
       </ShellCell>
       <ShellCell row="dock">
         {ended ? (
@@ -384,7 +385,7 @@ function Header({
           it's a box of its own (its 4 px of padding keep the error's focus ring). */}
       <div className="flex min-w-0 flex-1 items-center gap-1.5 whitespace-nowrap" data-slot="header-row">
         <div data-slot="header-info" className="flex min-w-0 flex-1 items-center gap-2.5 overflow-x-clip pr-1">
-          {!ended && <StatusMarker status={row.status} />}
+          {!ended && <StatusMarker status={row.status} since={row.statusSince} />}
           {renamed.title}
           <span className="flex shrink-0 items-center gap-1.5 text-meta text-muted-foreground" data-field="harness">
             <HarnessIcon harness={row.harness} tone="brand" className="size-4" />
@@ -856,15 +857,81 @@ export function StatusBar({ className, ...rest }: ComponentPropsWithoutRef<'div'
 }
 
 /** VIEW-2: the terminal's last lines, as plain text. */
-function Drawer({ open, onToggle, preview }: { open: boolean; onToggle(): void; preview: Preview | null }) {
+function Drawer({ sessionId, open, onToggle, preview }: { sessionId: string; open: boolean; onToggle(): void; preview: Preview | null }) {
+  const sectionRef = useRef<HTMLElement>(null);
   const preRef = useRef<HTMLPreElement>(null);
   useLayoutEffect(() => {
     const el = preRef.current;
     if (el) el.scrollTop = el.scrollHeight; // the bottom is what matters
   }, [preview?.text, open]);
+
+  // DS-11: this Session's kept height (or the default), clamped to the main pane; while you drag,
+  // the height you're dragging to, kept when you let go.
+  const kept = parseHeights(useSyncExternalStore(subscribeHeights, readHeightsRaw, () => null))[sessionId];
+  const { pane, room } = useDrawerSpace(sectionRef);
+  const [drag, setDrag] = useState<{ sessionId: string; startY: number; from: number; height: number } | null>(null);
+  const dragging = drag?.sessionId === sessionId ? drag : null;
+  const height = drawerHeight(pane, dragging?.height ?? kept, room);
+  const { min, max } = heightBounds(pane, room);
+  const onHandleKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+    // Not the Session sidebar's ↑/↓ (SIDE-5): its window handler skips a handled key.
+    e.preventDefault();
+    keepHeight(sessionId, clampHeight(height + (e.key === 'ArrowUp' ? HEIGHT_STEP : -HEIGHT_STEP), pane, room));
+  };
+  const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    e.currentTarget.focus();
+    setDrag({ sessionId, startY: e.clientY, from: height, height });
+  };
+  const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
+    if (!dragging) return;
+    setDrag({ ...dragging, height: clampHeight(dragging.from + dragging.startY - e.clientY, pane, room) });
+  };
+  const onPointerUp = () => {
+    if (!dragging) return;
+    if (dragging.height !== dragging.from) keepHeight(sessionId, dragging.height);
+    setDrag(null);
+  };
+  // A cancelled drag (the OS, a touch gesture) goes back to where it began.
+  const onPointerCancel = () => setDrag(null);
+
   return (
     // SIDE-8.1: on a short window the preview gives way, down to its Terminal row, before the chat does.
-    <section className="flex min-h-0 flex-col border-t border-border" aria-label="Terminal preview">
+    <section
+      ref={sectionRef}
+      className="relative flex min-h-0 flex-col border-t border-border"
+      aria-label="Terminal preview"
+      style={open ? { height } : undefined}
+      data-height={open ? height : undefined}
+    >
+      {open && (
+        // DS-11.2: the top edge is the handle: drag it, or focus it and press ↑/↓.
+        <div
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label="Terminal preview height"
+          aria-valuenow={height}
+          aria-valuemin={min}
+          aria-valuemax={max}
+          tabIndex={0}
+          title="Drag, or press ↑/↓, to resize"
+          data-dragging={dragging ? '' : undefined}
+          onKeyDown={onHandleKey}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerCancel}
+          className="group absolute inset-x-0 -top-[3.5px] z-10 h-1.5 cursor-row-resize touch-none outline-none"
+        >
+          <span
+            aria-hidden
+            className="absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2 bg-border group-focus-visible:bg-ring group-data-dragging:bg-ring"
+          />
+        </div>
+      )}
       <button
         type="button"
         aria-expanded={open}
@@ -880,13 +947,42 @@ function Drawer({ open, onToggle, preview }: { open: boolean; onToggle(): void; 
         <pre
           ref={preRef}
           data-testid="terminal-preview"
-          className="h-64 min-h-0 overflow-auto bg-muted/40 px-5 py-2 font-mono text-meta leading-[1.45] whitespace-pre text-foreground/90 dark:bg-black/25"
+          className="min-h-0 flex-1 overflow-auto bg-muted/40 px-5 py-2 font-mono text-meta leading-[1.45] whitespace-pre text-foreground/90 dark:bg-black/25"
         >
           {preview?.text ?? (preview?.error ? '' : <Loading label="Loading…" />)}
         </pre>
       )}
     </section>
   );
+}
+
+/**
+ * DS-11: the room the preview has. `pane` is the main pane's height (the view this element sits in,
+ * the window's until it's measured), for the 70% maximum; `room` is the content row's height, which
+ * the chat and the preview share (undefined until measured), so the handle's value and a drag start
+ * from the height the preview really has, not one the layout has shrunk. Both are followed as the
+ * window, the dock (a growing composer) or History resize them.
+ */
+function useDrawerSpace(ref: RefObject<HTMLElement | null>): { pane: number; room: number | undefined } {
+  const [space, setSpace] = useState<{ pane: number; room: number | undefined }>(() => ({ pane: window.innerHeight, room: undefined }));
+  useLayoutEffect(() => {
+    const pane = ref.current?.closest<HTMLElement>('[data-shell-view]') ?? null;
+    const content = ref.current?.closest<HTMLElement>('[data-shell-row="body"]') ?? null;
+    const read = () => {
+      const next = { pane: pane?.clientHeight || window.innerHeight, room: content?.clientHeight || undefined };
+      setSpace((s) => (s.pane === next.pane && s.room === next.room ? s : next));
+    };
+    read();
+    window.addEventListener('resize', read);
+    const observer = typeof ResizeObserver !== 'undefined' && (pane || content) ? new ResizeObserver(read) : null;
+    if (pane) observer?.observe(pane);
+    if (content) observer?.observe(content);
+    return () => {
+      window.removeEventListener('resize', read);
+      observer?.disconnect();
+    };
+  }, [ref]);
+  return space;
 }
 
 interface ComposerProps {

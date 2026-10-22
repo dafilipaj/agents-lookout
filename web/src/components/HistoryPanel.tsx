@@ -218,6 +218,7 @@ export function HistoryPanel({ focusKey, sessions, now, search, onOpen, navRef }
             index={i}
             item={item}
             status={isLive(item, sessions) ? (sessions.get(item.sessionId)?.status ?? 'unknown') : null}
+            since={sessions.get(item.sessionId)?.statusSince ?? null}
             active={i === active}
             opening={opening === itemKey(item)}
             now={now}
@@ -293,6 +294,8 @@ interface ResultProps {
   item: HistoryItem;
   /** A live Session's Status, from the Session sidebar's list (DS-5.2); null for a past one. */
   status: Status | null;
+  /** When that Status began, for the Busy pulse (DS-10.1). */
+  since: number | null;
   active: boolean;
   opening: boolean;
   now: number;
@@ -304,7 +307,7 @@ interface ResultProps {
  * Status; the past marker when it can be resumed; the slashed circle when it can't. The row's words
  * say which, so the marker is hidden from screen readers (DS-5.5).
  */
-function Result({ index, item, status, active, opening, now, onClick }: ResultProps) {
+function Result({ index, item, status, since, active, opening, now, onClick }: ResultProps) {
   const live = status !== null;
   const state = live ? 'live' : item.blocked ? 'blocked' : 'resumable';
   const what = live ? 'Live: select it' : item.blocked ? `Can't be resumed: ${BLOCK_REASON[item.blocked]} Opens read-only.` : 'Resume it';
@@ -324,7 +327,7 @@ function Result({ index, item, status, active, opening, now, onClick }: ResultPr
       )}
     >
       <div className="flex min-w-0 items-center gap-1.5">
-        <SessionMarker aria-hidden state={status !== null ? 'live' : item.blocked ? 'blocked' : 'past'} status={status ?? undefined} data-field="marker" />
+        <SessionMarker aria-hidden state={status !== null ? 'live' : item.blocked ? 'blocked' : 'past'} status={status ?? undefined} since={since} data-field="marker" />
         <span className={cn('min-w-0 flex-1 truncate font-medium', item.blocked && 'text-muted-foreground')} data-field="title">
           {item.title}
         </span>

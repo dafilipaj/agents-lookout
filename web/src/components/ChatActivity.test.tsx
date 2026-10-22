@@ -138,8 +138,8 @@ describe('VIEW-1.10 in the chat', () => {
     tick(1_000);
     expect(el).toHaveTextContent('Working… 13s');
     expect(status).toHaveTextContent(/^Working…$/);
-    // The pulse is `animate-busy`, which only animates without prefers-reduced-motion.
-    expect(el.querySelector('.animate-busy')).not.toBeNull();
+    // A Turn 13 s old no longer pulses: DS-10.1, in DesignSystemBehaviour.test.tsx.
+    expect(el.querySelector('.animate-busy')).toBeNull();
   });
 
   it('VIEW-1.10: appears the moment you send, and goes after 5 s if Status never catches up', async () => {

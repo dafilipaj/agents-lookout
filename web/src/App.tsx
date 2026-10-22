@@ -38,6 +38,7 @@ import { parseRoute, routePath, useRoute } from '@/lib/router';
 import { HARNESS_NAME } from '@/lib/sessions';
 import { cn } from '@/lib/utils';
 import { listKnown, shownLaunches, useLookout } from '@/lib/store';
+import { pruneHeights } from '@/lib/terminal-height';
 import { ClockContext, useNow } from '@/lib/time';
 import { reviewPrompt } from '@/lib/work';
 
@@ -167,6 +168,11 @@ export function App({ client }: { client: LookoutClient }) {
   if (tidySentAt(sentAt, tidyCtx) !== sentAt) setSentAt((m) => tidySentAt(m, tidyCtx));
   // VIEW-4.6: a question's draft goes once it's answered or dismissed, or its Session ended.
   const known = listKnown(state);
+  // DS-11.5: kept terminal heights for Sessions no longer listed go, once the list is known; a Codex
+  // Session's follows its id change. Before paint, so a preview never shows a height it's about to lose.
+  useLayoutEffect(() => {
+    if (known) pruneHeights(new Set(state.sessions.keys()), state.aliases);
+  }, [known, state.sessions, state.aliases]);
   useEffect(() => tidyQuestionDrafts(questionDrafts, { live: state.sessions, listKnown: known, chats: state.chats }), [questionDrafts, state.sessions, known, state.chats]);
   useEffect(() => {
     if (!selectedId || !successor || !state.sessions.has(successor)) return;
