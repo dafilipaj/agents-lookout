@@ -24,6 +24,8 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Host**: A machine that runs Sessions. For now only this Mac.
 
+**Kind**: What an Output is, as `tb-session outputs` says it: a file, an Artifact or a Share. Its `--kind` flag filters by it.
+
 **Library**: The right-sidebar tab, next to History and Work, that lists Outputs. See the LIB spec.
 
 **Link**: A connection between a Task, a PR and a Session, found by id: a task id in a PR's branch or body (from `tb-pr`), the Session inferred to have opened a PR, or a Session started on a PR or Task (its URL in the first prompt). Each Link records why it exists. See the WORK spec.
@@ -34,7 +36,9 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Needs you**: The Status of a Session that is blocked on you: a permission prompt, a question, or input.
 
-**Output**: A document file, an Artifact on claude.ai or a Backyard Share that a Session, or one of its Subagents, produced, as `tb-session outputs` mines it from the Transcripts. A file counts only when it has a document extension and no git repo owns it. See the LIB spec.
+**Output**: A document file, an Artifact on claude.ai or a Backyard Share that a Session, or one of its Subagents, produced, as `tb-session outputs` mines it from the Transcripts. A file counts only when it has a document extension and no git repo owns it. An Artifact and the file it was published from are one Output, the Artifact's. See the LIB spec.
+
+**Page**: An Output that opens as a page in a browser tab: an HTML file or an Artifact. The Library's "Pages" chip shows both.
 
 **PR**: An open GitHub pull request in a `productiveio/*` repo that you opened, or that is a Review request to you, as `tb-pr` lists it.
 
@@ -55,6 +59,8 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 **Task**: A Productive task assigned to you that isn't closed.
 
 **Transcript**: The JSONL log a Harness writes for a Session, for example under `~/.claude/projects/` or `~/.codex/sessions/`.
+
+**Type**: What a file Output is, from its extension, as `tb-session outputs` says it: `markdown`, `html`, `pdf` or `image`. Its `--type` flag filters file rows by it. In the Library an Artifact's and a Share's Type word is its Kind.
 
 **Turn**: What a Session does for one prompt of yours: from that prompt, sent from Lookout or typed in its terminal, until your next one. Work the Session picks up on its own in between, such as a reply to a Subagent's result, belongs to the same Turn, and Idle doesn't end it. A tool's result, a task notification, another Session's message and a slash command the Harness handles itself (`/effort`) aren't prompts. Fleet finds where the current one starts (SIDE-9). Not Codex's own "turn" (`task_started` to `task_complete`), which ends whenever the agent stops.
 

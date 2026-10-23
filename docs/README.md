@@ -15,6 +15,9 @@ docs/
     <slug>/SPEC.md       one folder per feature; mockups and screenshots sit next to SPEC.md
   decisions/
     NNNN-<slug>.md       decisions that constrain more than one feature
+  contracts/
+    <tool>-<command>.md  what a Building block answers, when a spec depends on a command that
+                         doesn't exist yet; the PR in the tool's repo implements and tests it
   templates/
     feature-spec.md
     decision.md

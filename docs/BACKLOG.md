@@ -16,7 +16,7 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
 
 ## Library: everything Sessions produced, searchable (LIB)
 
-- **Specced:** [LIB](features/library/SPEC.md), Draft, 2026-10-23. Its three open points are answered there: claude.ai has no Artifact list but the Transcripts (Technical approach, Source); existence is Lookout's per-page stat (LIB-2.9); scratchpad files are in while they exist and hidden once gone (Key decisions). Slices 2 and 3 are under its Later.
+- **Specced:** [LIB](features/library/SPEC.md), Ready, grilled 2026-10-23. Its three open points are answered there: claude.ai has no Artifact list but the Transcripts (Technical approach, Source); existence is Lookout's per-page stat (LIB-2.9); scratchpad files are in while they exist and hidden once gone (Key decisions). The tb-session command it needs is a [contract](contracts/tb-session-outputs.md). Slices 2 and 3 are under its Later.
 - **Added:** 2026-10-17.
 
 ## What's loaded into a Session (CTX)
