@@ -110,6 +110,23 @@ describe('sidebar rows', () => {
     expect(field('a', 'age')).toHaveTextContent('1m');
   });
 
+  it('SIDE-2.1: the second line shows the location only away from the default, and what the Session waits for or, when Busy, does', () => {
+    const app = renderApp();
+    const hidden = { repo: false, where: false };
+    app.snapshot([
+      row({ id: 'quiet', status: 'idle', locationShown: hidden }),
+      row({ id: 'away', status: 'idle', git: { repo: 'work', worktree: null, branch: 'fix/rates', commonDir: '/Users/me/Projects/work/.git', defaultBranch: 'main' }, locationShown: { repo: false, where: true } }),
+      row({ id: 'waits', status: 'needs-you', waitingFor: 'input needed', locationShown: hidden }),
+      row({ id: 'does', status: 'busy', activity: 'Edit: web/src/lantern.ts', locationShown: hidden }),
+    ]);
+    expect(field('quiet', 'slot')).toBeEmptyDOMElement();
+    expect(field('away', 'location')).toHaveTextContent('fix/rates');
+    expect(field('away', 'repo')).toBeNull();
+    expect(field('waits', 'waiting-for')).toHaveTextContent('input needed');
+    expect(field('does', 'activity')).toHaveTextContent('Edit: web/src/lantern.ts');
+    for (const id of ['quiet', 'away', 'waits', 'does']) expect(field(id, 'age')).toHaveTextContent('1m');
+  });
+
   it('SIDE-2.2: a linked Worktree shows its name with the worktree icon; otherwise the branch with the branch icon', () => {
     const app = renderApp();
     app.snapshot([
@@ -213,13 +230,92 @@ describe('sidebar rows', () => {
       }
     });
 
-    it('SIDE-2.10: a Busy row at the default location is as an Idle one with no activity to show: an empty slot (SIDE-2.11 is not built)', () => {
+    it('SIDE-2.10 / 2.11: at the default location a Busy row\'s activity takes the slot, in the row\'s quieter colour, with no third line', () => {
       const app = renderApp();
-      app.snapshot([row({ id: 'busy', status: 'busy', locationShown: HIDDEN }), row({ id: 'idle', status: 'idle', locationShown: HIDDEN })]);
-      expect(slot('busy')).toBeEmptyDOMElement();
+      app.snapshot([row({ id: 'busy', status: 'busy', activity: 'Bash: pnpm vitest run', locationShown: HIDDEN })]);
+      const words = field('busy', 'activity')!;
+      expect(words.parentElement).toBe(slot('busy'));
+      expect(slot('busy').textContent).toBe('Bash: pnpm vitest run');
+      expect(words).toHaveClass('min-w-0', 'truncate', ROW_TONE.plain.quiet);
+      expect(words).not.toHaveClass('font-medium', 'text-needs-you-text');
+      expect(slot('busy')).not.toHaveAttribute('aria-hidden');
+      expect(rowEl('busy').lastElementChild).toBe(slot('busy').parentElement);
+    });
+
+    it('SIDE-2.10 / 2.11: a Busy row with no activity reported looks like an Idle one with the same location', () => {
+      const app = renderApp();
+      app.snapshot([
+        row({ id: 'busy', status: 'busy', locationShown: HIDDEN }),
+        row({ id: 'codex', status: 'busy', harness: 'codex', locationShown: HIDDEN }),
+        row({ id: 'idle', status: 'idle', locationShown: HIDDEN }),
+        row({ id: 'busy-wt', status: 'busy', git: repoGit('work', 'crm-rates', 'x'), locationShown: { repo: false, where: true } }),
+        row({ id: 'idle-wt', status: 'idle', git: repoGit('work', 'crm-rates', 'x'), locationShown: { repo: false, where: true } }),
+      ]);
+      for (const [busy, idle] of [['busy', 'idle'], ['codex', 'idle'], ['busy-wt', 'idle-wt']] as const) {
+        expect(field(busy, 'activity')).toBeNull();
+        expect(slot(busy).innerHTML).toBe(slot(idle).innerHTML);
+        expect(rowEl(busy).lastElementChild!.className).toBe(rowEl(idle).lastElementChild!.className);
+        expect(rowEl(busy).querySelectorAll(':scope > div')).toHaveLength(2);
+      }
       expect(slot('busy')).toHaveAttribute('aria-hidden', 'true');
-      expect(rowEl('busy').lastElementChild!.className).toBe(rowEl('idle').lastElementChild!.className);
-      expect(rowEl('busy').querySelectorAll(':scope > div')).toHaveLength(2);
+    });
+
+    it('SIDE-2.10 / 2.11: when the location shows, the activity goes on a third line under it, in the row\'s quieter colour', () => {
+      const app = renderApp();
+      app.snapshot([
+        row({ id: 'wt', status: 'busy', activity: 'Grep: needle', git: repoGit('work', 'crm-rates', 'x'), locationShown: { repo: false, where: true } }),
+        row({ id: 'repo', status: 'busy', activity: 'Grep: needle', git: repoGit('other', null, 'main'), locationShown: { repo: true, where: false } }),
+      ]);
+      for (const id of ['wt', 'repo']) {
+        const words = field(id, 'activity')!;
+        expect(words.parentElement).toBe(rowEl(id));
+        expect(words.previousElementSibling).toBe(slot(id).parentElement);
+        expect(words).toHaveClass('block', 'truncate', 'text-meta', ROW_TONE.plain.quiet);
+        expect(words).toHaveAttribute('title', 'Grep: needle');
+        expect(slot(id)).not.toHaveTextContent('Grep');
+      }
+    });
+
+    it('SIDE-2.11: the activity shows only while Busy; an Idle, Needs you or Unknown row ignores it', () => {
+      const app = renderApp();
+      const activity = 'Edit: web/src/stale.ts';
+      app.snapshot([
+        row({ id: 'idle', status: 'idle', activity, locationShown: HIDDEN }),
+        row({ id: 'unknown', status: 'unknown', activity, locationShown: HIDDEN }),
+        row({ id: 'needs', status: 'needs-you', activity, locationShown: HIDDEN }),
+        row({ id: 'needs-w', status: 'needs-you', waitingFor: 'input needed', activity, locationShown: HIDDEN }),
+      ]);
+      for (const id of ['idle', 'unknown', 'needs', 'needs-w']) {
+        expect(field(id, 'activity')).toBeNull();
+        expect(rowEl(id)).not.toHaveTextContent('stale');
+      }
+      expect(slot('idle')).toBeEmptyDOMElement();
+      expect(field('needs-w', 'waiting-for')).toHaveTextContent('input needed');
+    });
+
+    it('SIDE-2.11: an activity change changes the row\'s text only: not its Status, order, marker, strip or age, also under the pointer', () => {
+      const app = renderApp();
+      const a = row({ id: 'a', status: 'busy', activity: 'Thinking', locationShown: HIDDEN, statusSince: NOW - 30_000 });
+      const b = row({ id: 'b', status: 'busy', statusSince: NOW - 10_000 });
+      app.snapshot([a, b]);
+      const before = visibleTitles();
+      const r = rowEl('a');
+      const marker = within(r).getByRole('img', { name: 'Busy' });
+      const strip = field('a', 'strip');
+      const age = field('a', 'age')!.textContent;
+      for (const [hovered, activity] of [[false, 'Bash: pnpm lint'], [true, 'Edit: web/src/lantern.ts'], [true, null]] as const) {
+        if (hovered) fireEvent.pointerEnter(screen.getByRole('complementary', { name: 'Session sidebar' }));
+        app.emit({ type: 'sessions', upsert: [{ ...a, activity }], remove: [] });
+        expect(visibleTitles()).toEqual(before);
+        expect(rowEl('a')).toBe(r);
+        expect(r).toHaveAttribute('data-status', 'busy');
+        expect(within(r).getByRole('img', { name: 'Busy' })).toBe(marker);
+        expect(field('a', 'strip')).toBe(strip);
+        expect(strip).toHaveClass('bg-busy');
+        expect(field('a', 'age')).toHaveTextContent(age!);
+        if (activity) expect(field('a', 'activity')).toHaveTextContent(activity);
+        else expect(slot('a')).toBeEmptyDOMElement();
+      }
     });
 
     it('SIDE-2.10: the numbers group sits at the line\'s end in every case, after the slot', () => {
@@ -257,6 +353,15 @@ describe('sidebar rows', () => {
       expect(field('words', 'waiting-for')).toHaveAttribute('title', 'input needed\nwork · main');
     });
 
+    it('SIDE-2.11 / 2.12: the activity\'s tooltip is its whole text, then the location on a second line', () => {
+      const app = renderApp();
+      const activity = `Bash: ${'pnpm vitest run web/src/components '.repeat(3).trim()}`;
+      app.snapshot([row({ id: 'busy', status: 'busy', activity, locationShown: HIDDEN })]);
+      expect(field('busy', 'activity')).toHaveAttribute('title', `${activity}\nwork · main`);
+      expect(field('busy', 'activity')).toHaveTextContent(activity);
+      expect(slot('busy')).toHaveAttribute('title', 'work · main');
+    });
+
     it('SIDE-2.13: the filter matches the title, repo, Worktree and branch whether or not the row shows them', async () => {
       pinDate();
       const user = userEvent.setup();
@@ -280,12 +385,16 @@ describe('sidebar rows', () => {
     it('SIDE-2.14 (support): the numbers never shrink; the where part shrinks before the repo part, which keeps its 45% cap; the line keeps its height empty', () => {
       const app = renderApp();
       app.snapshot([row({ id: 'long', git: repoGit('a-repo-with-a-rather-long-name', null, 'fix/a-branch-name-that-is-long'), locationShown: { repo: true, where: true }, contextPct: 12 }),
-        row({ id: 'empty', locationShown: HIDDEN })]);
+        row({ id: 'empty', locationShown: HIDDEN }),
+        row({ id: 'busy', status: 'busy', activity: 'Bash: a command line long enough to need cutting at 280 px', locationShown: HIDDEN, contextPct: 12 })]);
       expect(field('long', 'repo')).toHaveClass('max-w-[45%]', 'shrink-0', 'truncate');
       expect(field('long', 'location')!.parentElement).toHaveClass('min-w-0');
       expect(field('long', 'location')).toHaveClass('truncate');
       expect(field('long', 'age')!.parentElement).toHaveClass('shrink-0');
-      for (const id of ['long', 'empty']) expect(slot(id).parentElement).toHaveClass('min-h-4', 'leading-4');
+      for (const id of ['long', 'empty', 'busy']) expect(slot(id).parentElement).toHaveClass('min-h-4', 'leading-4');
+      // The Session's words truncate in the slot, beside numbers that never shrink.
+      expect(field('busy', 'activity')).toHaveClass('min-w-0', 'truncate');
+      expect(field('busy', 'age')!.parentElement).toHaveClass('shrink-0');
     });
 
     it('SIDE-2.15: the accessible name says what the row shows: repo, Worktree or branch, what it waits for, then the numbers', () => {
@@ -303,6 +412,21 @@ describe('sidebar rows', () => {
       expect(rowEl('words')).toHaveAccessibleName('Needs youwordsClaude Code input needed1m41%');
       // A third line comes after the numbers, in the order the row shows them.
       expect(rowEl('third')).toHaveAccessibleName('Needs youthirdClaude Code Worktreelantern1m input needed');
+    });
+
+    it('SIDE-2.15: a Busy row\'s activity is read where it shows: in the slot before the numbers, or after them from a third line', () => {
+      const app = renderApp();
+      app.snapshot([
+        row({ id: 'slot', status: 'busy', activity: 'Edit: web/src/lantern.ts', locationShown: HIDDEN, contextPct: 12 }),
+        row({ id: 'third', status: 'busy', activity: 'Edit: web/src/lantern.ts', git: repoGit('work', 'lantern', 'x'), locationShown: { repo: false, where: true } }),
+        row({ id: 'none', status: 'busy', locationShown: HIDDEN }),
+        row({ id: 'idle', status: 'idle', activity: 'Edit: web/src/lantern.ts', locationShown: HIDDEN }),
+      ]);
+      expect(rowEl('slot')).toHaveAccessibleName('BusyslotClaude Code Edit: web/src/lantern.ts1m12%');
+      expect(rowEl('third')).toHaveAccessibleName('BusythirdClaude Code Worktreelantern1m Edit: web/src/lantern.ts');
+      // Nothing is read for an activity the row doesn't show, nor the hidden default location.
+      expect(rowEl('none')).toHaveAccessibleName('BusynoneClaude Code 1m');
+      expect(rowEl('idle')).toHaveAccessibleName('IdleidleClaude Code 1m');
     });
   });
 
@@ -570,8 +694,9 @@ describe('status at a glance', () => {
       row({ id: 'notes', status: 'idle', git: null, cwd: '/tmp/field-notes' }),
       row({ id: 'pane', status: 'unknown', backend: 'unknown', controllable: false }),
       row({ id: 'quiet', status: 'idle', locationShown: { repo: false, where: false } }),
+      row({ id: 'doing', status: 'busy', activity: 'Bash: pnpm lint', locationShown: { repo: false, where: false } }),
     ]);
-    for (const id of ['fix-rates', 'port-search', 'notes', 'pane', 'quiet']) expect(field(id, 'strip')).toHaveAttribute('aria-hidden', 'true');
+    for (const id of ['fix-rates', 'port-search', 'notes', 'pane', 'quiet', 'doing']) expect(field(id, 'strip')).toHaveAttribute('aria-hidden', 'true');
     // The names the rows had before the strip, pinned: the marker's Status, title, Harness, repo,
     // where it works, age, context and what it waits for.
     expect(rowEl('fix-rates')).toHaveAccessibleName('Needs youfix-ratesClaude Code harborWorktreelantern2m41% input needed');
@@ -580,6 +705,8 @@ describe('status at a glance', () => {
     expect(rowEl('pane')).toHaveAccessibleName('UnknownpaneClaude Code workBranchmain1m');
     // A hidden default location is not read (SIDE-2.15).
     expect(rowEl('quiet')).toHaveAccessibleName('IdlequietClaude Code 1m');
+    // The activity a Busy row shows is read with it (SIDE-2.15).
+    expect(rowEl('doing')).toHaveAccessibleName('BusydoingClaude Code Bash: pnpm lint1m');
     expect(screen.getByRole('option', { name: /^Busyport-search/ })).toBe(rowEl('port-search'));
   });
 

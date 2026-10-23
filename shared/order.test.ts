@@ -19,7 +19,7 @@ const row = (id: string, status: Status, statusSince: number | null): SessionRow
   ownHost: true,
   model: null,
   effort: null,
-  subagents: null, backgroundShell: false,
+  subagents: null, activity: null, backgroundShell: false,
   procStart: null,
   pendingModel: null, pendingEffort: null,
   modelAt: null,

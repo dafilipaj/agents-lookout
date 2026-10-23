@@ -69,6 +69,24 @@ export function subagents(value: unknown): SessionRow['subagents'] {
   return isCount(running) ? { running, finished: isCount(finished) ? finished : 0 } : null;
 }
 
+const MAX_ACTIVITY = 120;
+/** Bidi controls, which could show a command reversed. */
+const BIDI = /[؜‎‏‪-‮⁦-⁩]/g;
+const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+
+/**
+ * SIDE-2.11: Fleet's `activity` collapsed to one line (whitespace runs become one space) and cut to
+ * 120 characters, the last an ellipsis; null when it's missing (an older Fleet), null, not a string or empty.
+ */
+export function activity(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const text = value.replace(BIDI, '').replace(/\s+/g, ' ').trim();
+  if (!text) return null;
+  // By grapheme, so a cut never splits an emoji or a letter from its accent.
+  const chars = Array.from(graphemes.segment(text), (s) => s.segment);
+  return chars.length <= MAX_ACTIVITY ? text : `${chars.slice(0, MAX_ACTIVITY - 1).join('').trimEnd()}…`;
+}
+
 export interface NormalizeDeps {
   /** Git location for a working directory; null when not a git dir or not read yet. */
   git(cwd: string): GitLocation | null;
@@ -128,6 +146,8 @@ export function normalizeRows(rows: readonly FleetRow[], deps: NormalizeDeps): S
       model: r.model ?? null,
       effort: effort(r.effort),
       subagents: subagents(r.subagents),
+      // SIDE-2.11: only while Busy, so a stale value never shows on another Status.
+      activity: status === 'busy' ? activity(r.activity) : null,
       backgroundShell: r.status === 'shell',
       procStart: procStart(r.proc_start),
       pendingModel: null,

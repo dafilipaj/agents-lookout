@@ -64,6 +64,8 @@ export interface SessionRow {
   effort: string | null;
   /** SIDE-9, VIEW-8: running now and finished in this Turn; null when Fleet can't tell. */
   subagents: { running: number; finished: number } | null;
+  /** SIDE-2.11: what a Busy Session is doing now, one line, at most 120 characters; null otherwise. */
+  activity: string | null;
   /**
    * SIDE-2.6, VIEW-5.16: Idle with a background shell command still running (Fleet's `shell`
    * status, from Claude Code 2.1.308). Always false for any other Status.

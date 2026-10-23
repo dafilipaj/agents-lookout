@@ -68,6 +68,7 @@
     "harness": "claude",
     "model": "claude-sonnet-5-5",
     "effort": null,
+    "activity": "Bash: pnpm vitest run docs/lantern",
     "proc_start": "2026-10-14T08:01:17.250Z"
   },
   {

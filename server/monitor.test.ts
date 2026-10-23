@@ -48,6 +48,24 @@ describe('SessionMonitor', () => {
     }
   });
 
+  it('SIDE-2.11: an activity-only change pushes the row on the next poll without changing its Status or age', async () => {
+    const base = recorded.find((r) => r.status === 'busy')!;
+    const t = setup(ok([{ ...base, activity: 'Thinking' }]));
+    await t.monitor.tick();
+    const before = t.monitor.snapshot().sessions[0]!;
+    expect(before.activity).toBe('Thinking');
+    for (const activity of ['Bash: pnpm lint', 'Edit: web/src/lantern.ts', null]) {
+      t.events.length = 0;
+      t.advance(2000);
+      t.set(ok([{ ...base, activity, updated_at: t.now() }]));
+      await t.monitor.tick();
+      expect(t.events).toEqual([{ type: 'sessions', upsert: [{ ...before, activity }], remove: [] }]);
+      t.events.length = 0;
+      await t.monitor.tick();
+      expect(t.events).toEqual([]);
+    }
+  });
+
   it('SIDE-1.4: the recorded `fleet list --json` output becomes rows, pushed as one diff', async () => {
     const t = setup(ok(recorded));
     await t.monitor.tick();

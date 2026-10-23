@@ -32,6 +32,11 @@ export interface FleetRow {
   effort?: string | null;
   /** SIDE-9, VIEW-8: running now and finished in this Turn; missing on an older Fleet. */
   subagents?: { running: number; finished: number | null } | null;
+  /**
+   * SIDE-2.11: what a Busy Claude Code Session is doing now (`Bash: …`, `Edit: …`, `Thinking`);
+   * null for any other Status and for Codex. Missing from a Fleet older than the fork's `activity`.
+   */
+  activity?: string | null;
   /** The agent process's start time, RFC 3339 UTC; null when Fleet can't read it (VIEW-5.6). */
   proc_start?: string | null;
   /**

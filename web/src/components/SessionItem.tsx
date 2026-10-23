@@ -29,17 +29,22 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
   const loc = shown.where ? location(row) : null;
   const showRepo = shown.repo && (row.git !== null || row.cwd !== null);
   const tip = locationTip(row);
-  const hasWaiting = row.status === 'needs-you' && !!row.waitingFor;
-  // SIDE-2.10: with no location to show, what a Needs you row waits for takes the slot; otherwise it goes under it.
-  const waitingInSlot = hasWaiting && !showRepo && !loc;
-  const slotEmpty = !showRepo && !loc && !waitingInSlot;
   const needsYou = row.status === 'needs-you';
   const tone = needsYou ? ROW_TONE.needsYou : ROW_TONE.plain;
+  // The Session's words: what a Needs you row waits for (SIDE-2.3), or a Busy row's activity (SIDE-2.11).
+  const words = needsYou && row.waitingFor
+    ? { text: row.waitingFor, field: 'waiting-for', className: 'font-medium text-needs-you-text' }
+    : row.status === 'busy' && row.activity
+      ? { text: row.activity, field: 'activity', className: tone.quiet }
+      : null;
+  // SIDE-2.10: with no location to show, the words take the slot; otherwise they go on a line under it.
+  const wordsInSlot = !!words && !showRepo && !loc;
+  const slotEmpty = !showRepo && !loc && !wordsInSlot;
   const age = row.statusSince !== null ? formatAge(now - row.statusSince) : null;
   const running = row.subagents?.running ?? 0;
-  const waitingLine = (className: string, title: string) => (
-    <span className={cn(className, 'font-medium text-needs-you-text')} title={title} data-field="waiting-for">
-      {row.waitingFor}
+  const wordsLine = (className: string, title: string) => words && (
+    <span className={cn(className, words.className)} title={title} data-field={words.field}>
+      {words.text}
     </span>
   );
   const subagentLabel = `${running} Subagent${running === 1 ? '' : 's'} running`;
@@ -90,8 +95,8 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
           <HarnessIcon harness={row.harness} className={cn(!row.controllable && 'opacity-70')} />
         </span>
       </div>
-      {/* SIDE-2.7–2.14: the left slot takes what varies (where the Session works, and what a Needs
-          you row waits for when nothing else is there); the numbers group sits at the end. Empty at
+      {/* SIDE-2.7–2.14: the left slot takes what varies (where the Session works, and the Session's
+          words when nothing else is there); the numbers group sits at the end. Empty at
           the default location, it is aria-hidden so its tooltip (the full location) isn't read. */}
       <div className={cn('flex min-h-4 items-center gap-1 pl-6.5 text-meta leading-4', tone.quiet)}>
         <span
@@ -118,7 +123,7 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
               </span>
             </span>
           )}
-          {waitingInSlot && waitingLine('min-w-0 truncate', tip ? `${row.waitingFor}\n${tip}` : row.waitingFor!)}
+          {wordsInSlot && wordsLine('min-w-0 truncate', tip ? `${words.text}\n${tip}` : words.text)}
         </span>
         <span className="flex shrink-0 items-center gap-1.5 tabular-nums">
           {running > 0 && (
@@ -151,7 +156,7 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
           )}
         </span>
       </div>
-      {hasWaiting && !waitingInSlot && waitingLine('block truncate pl-6.5 text-meta leading-4', row.waitingFor!)}
+      {words && !wordsInSlot && wordsLine('block truncate pl-6.5 text-meta leading-4', words.text)}
     </li>
   );
 });

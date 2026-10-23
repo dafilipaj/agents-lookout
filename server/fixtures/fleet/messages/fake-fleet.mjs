@@ -10,6 +10,8 @@
 //                    fixtures next to this file are read, and nothing is ever written.
 //   `list` reports each row's `subagents: { running, finished }` or null (SIDE-9, VIEW-8).
 //   Edit list.json to change the counts on the next poll; no real Subagent is started.
+//   `list` reports each row's `activity` as list.json has it (SIDE-2.11); real Fleet sends a string
+//   only for a Busy Claude Code row. Edit list.json to change it on the next poll.
 //   FAKE_FLEET_LOG   when set, each call's argv is appended to it as one JSON line
 //   `send [--json] [--force] [--require-empty] -- <target> <text>` (VIEW-3, VIEW-3.7; the Fleet
 //   fork's "Sending"): a row's `fake_send` says what its input box shows: `text` (`fake_input`, or

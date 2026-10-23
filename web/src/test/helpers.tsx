@@ -31,7 +31,7 @@ export function row(over: Partial<SessionRow> & { id: string }): SessionRow {
     modelAt: null,
     model: null,
     effort: null,
-    subagents: null, backgroundShell: false,
+    subagents: null, activity: null, backgroundShell: false,
     ...over,
   };
 }

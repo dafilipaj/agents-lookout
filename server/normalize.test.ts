@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { GitLocation } from '../shared/types.ts';
 import type { FleetRow } from './fleet.ts';
-import { effort, locationShown, normalizeRows, procStart, sessionId, subagents, toStatus } from './normalize.ts';
+import { activity, effort, locationShown, normalizeRows, procStart, sessionId, subagents, toStatus } from './normalize.ts';
 
 const fixture = (name: string): FleetRow[] =>
   JSON.parse(readFileSync(new URL(`./fixtures/fleet/${name}`, import.meta.url), 'utf8')).filter(
@@ -35,6 +35,36 @@ describe('fleet list → sidebar rows', () => {
     expect(rows.map((r) => r.subagents)).toEqual([{ running: 2, finished: 3 }, null, null]);
   });
 
+  it('SIDE-2.11: the activity is collapsed to one line and cut to 120 characters; anything else is none', () => {
+    for (const none of [undefined, null, false, 3, {}, [], '', '   ', '\n\t ']) expect(activity(none)).toBeNull();
+    expect(activity('Bash: pnpm vitest run')).toBe('Bash: pnpm vitest run');
+    expect(activity('  Bash: git log\n  --oneline\t\t-3 \u2028 ')).toBe('Bash: git log --oneline -3');
+    const long = `Bash: ${'x'.repeat(200)}`;
+    expect(activity(long)).toBe(`${long.slice(0, 119)}…`);
+    expect(activity(long)).toHaveLength(120);
+    // Exactly 120 is whole, with no ellipsis.
+    expect(activity(long.slice(0, 120))).toBe(long.slice(0, 120));
+    // Cut by grapheme, never inside an emoji sequence or between a letter and its accent.
+    const family = '\u{1F468}‍\u{1F469}‍\u{1F467}';
+    expect(activity(`Grep: ${'a'.repeat(112)}${family}tail`)).toBe(`Grep: ${'a'.repeat(112)}${family}…`);
+    expect(activity(`Grep: ${'a'.repeat(112)}étail`)).toBe(`Grep: ${'a'.repeat(112)}é…`);
+    // Bidi controls are dropped, so a command never shows reversed.
+    expect(activity('Bash: echo ‮abc‬ ⁦x⁩')).toBe('Bash: echo abc x');
+  });
+
+  it('SIDE-2.11: only a Busy row carries the activity; other Statuses drop a stale one', () => {
+    const base = rows0();
+    const rows = normalizeRows(['busy', 'idle', 'shell', 'waiting', 'unknown', 'gone'].map((status) =>
+      ({ ...base, status, activity: 'Edit: web/src/stale.ts' })), deps);
+    expect(rows.map((r) => [r.status, r.activity])).toEqual([
+      ['busy', 'Edit: web/src/stale.ts'], ['idle', null], ['idle', null], ['needs-you', null], ['unknown', null], ['unknown', null],
+    ]);
+    // A Fleet without the field, or a Codex Session it has no activity for: none, as for null.
+    const { activity: _, ...older } = { ...base, activity: null };
+    expect(normalizeRows([{ ...older, status: 'busy' }, { ...base, status: 'busy', harness: 'codex', activity: null }], deps)
+      .map((r) => r.activity)).toEqual([null, null]);
+  });
+
   it('SIDE-1.4: the recorded `fleet list --json` output produces the expected rows', () => {
     const rows = normalizeRows(fixture('recorded-2026-10-16.json'), deps);
     expect(rows).toEqual([
@@ -56,6 +86,7 @@ describe('fleet list → sidebar rows', () => {
         model: 'claude-opus-5-5',
         effort: null,
         subagents: { running: 2, finished: 1 },
+        activity: null,
         backgroundShell: false,
         procStart: null,
         pendingModel: null, pendingEffort: null,
@@ -79,6 +110,7 @@ describe('fleet list → sidebar rows', () => {
         model: 'gpt-6-astra',
         effort: null,
         subagents: null,
+        activity: null,
         backgroundShell: false,
         procStart: null,
         pendingModel: null, pendingEffort: null,
@@ -102,6 +134,7 @@ describe('fleet list → sidebar rows', () => {
         model: 'claude-opus-5-5',
         effort: null,
         subagents: null,
+        activity: null,
         backgroundShell: false,
         procStart: null,
         pendingModel: null, pendingEffort: null,
@@ -125,6 +158,7 @@ describe('fleet list → sidebar rows', () => {
         model: 'claude-opus-5-5',
         effort: null,
         subagents: null,
+        activity: 'Edit: web/src/components/LanternPanel.tsx',
         backgroundShell: false,
         procStart: null,
         pendingModel: null, pendingEffort: null,
