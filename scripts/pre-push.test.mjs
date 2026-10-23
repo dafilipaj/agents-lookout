@@ -67,11 +67,11 @@ function hook() {
 }
 
 describe('pre-push', () => {
-  it('TEST-4.3: a pin installed where pnpm e2e:setup puts it passes, and the hook runs req-check, test and e2e', () => {
+  it('TEST-4.3: a pin installed where pnpm e2e:setup puts it passes, and the hook runs req-check, test and e2e, at half the usual parallelism', () => {
     const r = hook();
     expect(r.stderr).toBe('');
     expect(r.code).toBe(0);
-    expect(r.ran).toEqual(['req-check', 'test', 'e2e']);
+    expect(r.ran).toEqual(['req-check', 'test --maxWorkers=50%', 'e2e --workers=25%']);
   });
 
   it('TEST-4.3: a missing pin fails the hook before anything runs, naming it and the command that fixes it', () => {

@@ -41,10 +41,12 @@ $pins" "pnpm e2e:setup"
   [ "$chromium" -eq 0 ] || fail "Playwright's Chromium is not installed." "pnpm e2e:setup"
 fi
 
+# Half the usual parallelism, so the machine stays usable during a push: the same tests, fewer at
+# once, and fewer timing tests lost to a CPU that other work is also using.
 pnpm req-check
-pnpm test
+pnpm test --maxWorkers=50%
 if [ "$e2e" -eq 1 ]; then
-  pnpm e2e
+  pnpm e2e --workers=25%
 else
   echo "pre-push: no \`e2e\` script in package.json yet, so no Behaviour tests ran."
 fi
