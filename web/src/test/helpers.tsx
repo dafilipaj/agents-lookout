@@ -1,9 +1,9 @@
 import type { PathAnswer } from '@shared/files.ts';
 import { type Settings, type SettingsView, defaultSettings } from '@shared/settings.ts';
 import type { ChatPage, FleetHealth, HarnessOption, HistoryDetail, HistoryPage, HistoryPeek, LaunchRequest, LaunchView, ResumeResult, ServerEvent, SessionRow } from '@shared/types.ts';
-import { act, render, screen, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import type { UserEvent } from '@testing-library/user-event';
-import { vi } from 'vitest';
+import { expect, vi } from 'vitest';
 import { App } from '@/App';
 import type { ClientListener, HistoryQuery, LookoutClient } from '@/lib/client';
 
@@ -168,7 +168,16 @@ export async function pressResult(user: UserEvent, title: string) {
   const titleEl = await within(panel).findByText(title, { selector: '[data-field="title"]' });
   const option = titleEl.closest<HTMLElement>('[role="option"]')!;
   if (option.getAttribute('aria-expanded') !== 'true') await user.click(titleEl);
-  await user.click(option.querySelector<HTMLElement>('[data-field="actions"] [data-action]')!);
+  await pressRowAction(user, option.querySelector<HTMLElement>('[data-field="actions"] [data-action]')!);
+}
+
+/**
+ * A row's labelled button, pressed once the row a click expanded has settled (ROW_SETTLE_MS, WORK-1.12,
+ * HIST-3.5): until then it ignores presses and says it's disabled.
+ */
+export async function pressRowAction(user: UserEvent, button: HTMLElement) {
+  await waitFor(() => expect(button).not.toHaveAttribute('aria-disabled'));
+  await user.click(button);
 }
 
 export function rowEl(id: string): HTMLElement {

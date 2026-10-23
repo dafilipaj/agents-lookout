@@ -1,5 +1,5 @@
 import { cva } from 'class-variance-authority';
-import type { ComponentProps, ComponentPropsWithoutRef, ReactNode } from 'react';
+import { type ComponentProps, type ComponentPropsWithoutRef, type ReactNode, createContext, useContext, useEffect, useState } from 'react';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -45,21 +45,52 @@ export interface RowActionProps extends Omit<ComponentPropsWithoutRef<'span'>, '
 }
 
 /**
+ * WORK-1.12, HIST-3.5: how long a row's buttons wait after a click expanded it. Expanding one row
+ * collapses another and scrolls, so the second click of a double click can land on a button that
+ * wasn't under the pointer for the first; it is ignored, not run.
+ */
+export const ROW_SETTLE_MS = 400;
+
+/** True while the row a click just expanded settles (ROW_SETTLE_MS): its RowActions ignore presses. */
+export const RowSettling = createContext(false);
+
+/**
+ * The panel's side of ROW_SETTLE_MS: `settle(e)` on the click that expands a row, and `settling` for
+ * RowSettling. A click with no count (`detail` 0: a test's or assistive technology's, not a pointer's)
+ * can't be half of a double click, so it doesn't settle.
+ */
+export function useRowSettle() {
+  const [clicks, setClicks] = useState(0);
+  useEffect(() => {
+    if (clicks === 0) return;
+    const timer = setTimeout(() => setClicks(0), ROW_SETTLE_MS);
+    return () => clearTimeout(timer);
+  }, [clicks]);
+  const settle = (e: { detail: number }) => {
+    if (e.detail > 0) setClicks((n) => n + 1);
+  };
+  return { settling: clicks > 0, settle };
+}
+
+/**
  * DS-7.1: a labelled button inside a listbox option, where nothing is focusable (WORK UX, "Markers
  * and buttons"; HIST UX): the keyboard reaches its action through the row's own keys, so this is a
  * mouse target with the labelled look and a button's role. Its press never reaches the row, whose
- * click only selects and expands it (WORK-1.12, HIST-3.5).
+ * click only selects and expands it (WORK-1.12, HIST-3.5). It ignores the second click of a double
+ * click (`detail` over 1) and any press while its row settles (RowSettling), saying it's disabled
+ * meanwhile without looking it, so a double click on a row never resumes or opens anything.
  */
 export function RowAction({ label, icon, trailing, tip, enabled = true, onPress, className, ...rest }: RowActionProps) {
+  const settling = useContext(RowSettling);
   return (
     <span
       role="button"
       title={tip}
-      aria-disabled={enabled ? undefined : true}
+      aria-disabled={enabled && !settling ? undefined : true}
       data-slot="row-action"
       onClick={(e) => {
         e.stopPropagation();
-        if (enabled) onPress();
+        if (enabled && !settling && e.detail <= 1) onPress();
       }}
       className={cn(labelledButtonLook(), enabled ? 'cursor-pointer' : 'cursor-default opacity-50', className)}
       {...rest}

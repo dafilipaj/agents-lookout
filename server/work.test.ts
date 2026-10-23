@@ -916,6 +916,15 @@ describe('reading `tb-prod query tasks` (WORK-2)', () => {
     expect(descriptionText('<p>Unclosed <b')).toBe('Unclosed');
   });
 
+  it('WORK-2.11: a `>` inside a quoted attribute doesn’t end its tag, and every named entity HTML has is decoded, as are numeric ones; an unknown name stays as written', () => {
+    expect(descriptionText('<p><a title="x>y" href=\'a>b\'>Link</a> and <img alt = "1 > 0">done</p>')).toBe('Link and done');
+    expect(descriptionText('<ul><li data-note="a>b">One</li></ul><p>Two<br class="x>y">Three</p>')).toBe('- One\nTwo\nThree');
+    expect(descriptionText("<p class=a'b>Kept</p>")).toBe('Kept');
+    expect(descriptionText('<p title="never closed>Gone</p>')).toBeNull();
+    expect(descriptionText('<p>&eacute;t&eacute; &Eacute;T&Eacute; &frac12; &sup2; &euro;5 &check; &rarr; &CounterClockwiseContourIntegral; &copy;</p>')).toBe('été ÉTÉ ½ ² €5 ✓ → ∳ ©');
+    expect(descriptionText('<p>&#233; &#xE9; &#X1F600; &nosuchentity; &constructor; &amp;lt;</p>')).toBe('é é 😀 &nosuchentity; &constructor; &lt;');
+  });
+
   it('WORK-2.11: a missing, empty or unreadable description is left out, never a read failure', () => {
     for (const value of [undefined, null, '', '   ', '<p></p><br>', 42, { html: '<p>x</p>' }, ['x']]) {
       const page = JSON.parse(TASKS) as Loose;

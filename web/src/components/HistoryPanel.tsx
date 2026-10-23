@@ -1,13 +1,13 @@
 import { BLOCK_REASON } from '@shared/history.ts';
 import type { Harness, HistoryItem, HistoryPage, HistoryPeek, SessionRow, Status } from '@shared/types.ts';
 import { Eye, History, Play, Search } from 'lucide-react';
-import { type KeyboardEvent, type ReactNode, type Ref, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { type KeyboardEvent, type MouseEvent, type ReactNode, type Ref, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Chip } from '@/components/ui/chip';
 import { CommandBlock } from '@/components/ui/command-block';
 import { EmptyState } from '@/components/ui/empty-state';
-import { IconButton, RowAction } from '@/components/ui/icon-button';
+import { IconButton, RowAction, RowSettling, useRowSettle } from '@/components/ui/icon-button';
 import { Loading } from '@/components/ui/loading';
 import { SessionMarker } from '@/components/ui/session-marker';
 import type { HistoryQuery } from '@/lib/client';
@@ -70,6 +70,7 @@ export function HistoryPanel({ focusKey, sessions, now, search, peek, onOpen, na
   const toggleHarness = (h: Harness) => {
     const next = { ...harnesses, [h]: !harnesses[h] };
     if (!next.claude && !next.codex) return;
+    setExpanded(null);
     setHarnesses(next);
     saveHarnessFilter(next);
   };
@@ -80,6 +81,8 @@ export function HistoryPanel({ focusKey, sessions, now, search, peek, onOpen, na
   const [openError, setOpenError] = useState<{ key: string; message: string } | null>(null);
   // HIST-2.11: the one expanded result, by its key.
   const [expanded, setExpanded] = useState<string | null>(null);
+  // HIST-3.5: a click that expands a result holds its button back a moment, so a double click resumes nothing.
+  const { settling, settle } = useRowSettle();
   // HIST-2.10: what each expanded result read, kept per Session while the list shows it; a new search clears them.
   const [peeks, setPeeks] = useState<ReadonlyMap<string, Peek>>(new Map());
   const peekRef = useRef(peek);
@@ -101,6 +104,11 @@ export function HistoryPanel({ focusKey, sessions, now, search, peek, onOpen, na
 
   // HIST-2.1/2.2: the first page, again on every change of query or toggle.
   const q = query.trim();
+  /** HIST-2.11: a new query or toggle collapses the expanded result, which may not be in its answer. */
+  const changeQuery = (next: string) => {
+    setQuery(next);
+    setExpanded(null);
+  };
   useEffect(() => {
     const mine = ++seq.current;
     const timer = setTimeout(
@@ -224,7 +232,9 @@ export function HistoryPanel({ focusKey, sessions, now, search, peek, onOpen, na
 
   // HIST-2.7: ↑/↓ (and j/k outside the search box) move. Enter, only from the search box or the
   // result list (on a button or the toggle it's theirs), expands the selected result, or on the
-  // expanded one runs its button (HIST-3.5). Esc there collapses it (HIST-2.11), else clears the query.
+  // expanded one runs its button (HIST-3.5); while a new query's or toggle's search hasn't answered,
+  // Enter waits for it, so it never acts on a result of the old one. Esc there collapses the
+  // expanded result (HIST-2.11), else clears the query.
   const onKeyDown = (e: KeyboardEvent<HTMLElement>) => {
     if (e.nativeEvent.isComposing || e.metaKey || e.ctrlKey || e.altKey) return;
     const inSearch = e.target === inputRef.current;
@@ -237,6 +247,7 @@ export function HistoryPanel({ focusKey, sessions, now, search, peek, onOpen, na
     else if (e.key === 'ArrowUp' || (!inSearch && e.key === 'k')) move(-1);
     else if (e.key === 'Enter' && inResults && items[active]) {
       e.preventDefault();
+      if (results.state === 'ok' && results.gen !== seq.current) return;
       if (expanded !== itemKey(items[active])) expand(active);
       else if (!e.repeat) open(items[active]);
     } else if (e.key === 'Escape' && inResults && expanded !== null) {
@@ -244,7 +255,7 @@ export function HistoryPanel({ focusKey, sessions, now, search, peek, onOpen, na
       setExpanded(null);
     } else if (e.key === 'Escape' && inSearch && query) {
       e.preventDefault();
-      setQuery('');
+      changeQuery('');
     }
   };
 
@@ -280,7 +291,10 @@ export function HistoryPanel({ focusKey, sessions, now, search, peek, onOpen, na
             busy={opening !== null}
             openError={openError?.key === itemKey(item) ? openError.message : null}
             now={now}
-            onClick={() => expand(i)}
+            onClick={(e) => {
+              if (expanded !== itemKey(item)) settle(e);
+              expand(i);
+            }}
             onOpen={() => open(item)}
           />
         ))}
@@ -303,13 +317,21 @@ export function HistoryPanel({ focusKey, sessions, now, search, peek, onOpen, na
             aria-controls="history-results"
             placeholder="Search past Sessions"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => changeQuery(e.target.value)}
             className="h-7 w-full min-w-0 rounded-md border border-input bg-background/60 pr-2 pl-7 text-body outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 dark:bg-input/20 [&::-webkit-search-cancel-button]:hidden"
           />
         </label>
         <div className="flex min-w-0 items-center gap-2">
           <label className="flex min-w-0 items-center gap-1.5 text-meta text-muted-foreground">
-            <input type="checkbox" checked={headless} onChange={(e) => setHeadless(e.target.checked)} className="size-3.5" />
+            <input
+              type="checkbox"
+              checked={headless}
+              onChange={(e) => {
+                setHeadless(e.target.checked);
+                setExpanded(null);
+              }}
+              className="size-3.5"
+            />
             <span className="truncate">Show Headless Sessions</span>
           </label>
           <div role="group" aria-label="Harnesses" className="ml-auto flex shrink-0 items-center gap-0.5">
@@ -338,7 +360,7 @@ export function HistoryPanel({ focusKey, sessions, now, search, peek, onOpen, na
         </div>
       </div>
       <div id="history-results" ref={listRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-        {body}
+        <RowSettling.Provider value={settling}>{body}</RowSettling.Provider>
       </div>
     </div>
   );
@@ -362,7 +384,8 @@ interface ResultProps {
   /** HIST-3.6: why its resume failed. */
   openError: string | null;
   now: number;
-  onClick(): void;
+  /** A click on it (HIST-3.5). */
+  onClick(e: MouseEvent): void;
   onOpen(): void;
 }
 
@@ -381,7 +404,7 @@ const lastActive = (at: number) => new Date(at).toLocaleString(undefined, { mont
  * Status; the past marker when it can be resumed; the slashed circle when it can't. The row's words
  * say which, so the marker is hidden from screen readers (DS-5.5). A click only selects and expands
  * it (HIST-3.5); expanded (HIST-2.9), it adds its start directory, when it was last active, whether
- * it can be resumed, its first prompt and last message, and its button, as its description.
+ * it can be resumed (not the Harness or branch again: its second line has them), its first prompt and last message, and its button, as its description.
  */
 function Result({ index, item, status, since, active, expanded, peek, opening, busy, openError, now, onClick, onOpen }: ResultProps) {
   const live = status !== null;
@@ -462,13 +485,13 @@ function Result({ index, item, status, since, active, expanded, peek, opening, b
       {expanded && (
         <>
           <div id={`${id}-details`} aria-hidden className="mt-1 flex min-w-0 flex-col gap-1.5 pl-5 text-meta text-muted-foreground" data-field="details">
-            {(item.projectDisplay || item.branch) && (
+            {item.projectDisplay && (
               <p className="truncate" data-field="start-dir" title={item.projectPath ?? undefined}>
-                {[item.projectDisplay, item.branch].filter(Boolean).join(' · ')}
+                {item.projectDisplay}
               </p>
             )}
             <p data-field="state">
-              {[item.lastActiveAt !== null ? lastActive(item.lastActiveAt) : null, HARNESS_NAME[item.harness], live ? 'live' : item.blocked ? "can't be resumed" : 'can resume'].filter(Boolean).join(' · ')}
+              {[item.lastActiveAt !== null ? lastActive(item.lastActiveAt) : null, live ? 'live' : item.blocked ? "can't be resumed" : 'can resume'].filter(Boolean).join(' · ')}
             </p>
             {!live && item.blocked && <p data-field="blocked">{BLOCK_REASON[item.blocked]}</p>}
             <Said item={item} peek={peek} />

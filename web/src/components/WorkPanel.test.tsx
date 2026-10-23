@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { REFRESH_FAILED, REFRESH_NOT_WATCHED, SaveError } from '@/lib/client';
 import { initialState, reducer } from '@/lib/store';
 import { ageLevel } from '@/lib/work';
-import { launchView, renderApp, row, rowEl, settings } from '@/test/helpers';
+import { launchView, pressRowAction, renderApp, row, rowEl, settings } from '@/test/helpers';
 
 /** Synthetic PRs only: invented repos, numbers and titles. */
 const pr = (over: Partial<WorkPr> & { repo: string; number: number }): WorkPr => ({
@@ -865,7 +865,7 @@ describe('Tasks (WORK-2)', () => {
     expect(taskOption(LIGHT.id)).toHaveAttribute('aria-expanded', 'true');
     expect(window.location.pathname).toBe('/s/alpha');
     // Its first button opens its newest live Linked Session.
-    await user.click(taskButton(LIGHT.id, 'open-session')!);
+    await pressRowAction(user, taskButton(LIGHT.id, 'open-session')!);
     expect(window.location.pathname).toBe('/s/task-start');
   });
 
@@ -928,7 +928,7 @@ describe('Tasks (WORK-2)', () => {
     await user.click(option('anvil#2101'));
     expect(app.client.resume).not.toHaveBeenCalled();
     expect(rowButton('anvil#2101', 'resume')).toHaveTextContent('Resume');
-    await user.click(rowButton('anvil#2101', 'resume')!);
+    await pressRowAction(user, rowButton('anvil#2101', 'resume')!);
     await waitFor(() => expect(app.client.resume).toHaveBeenCalledTimes(1));
     expect(vi.mocked(app.client.resume).mock.calls[0]?.[1]).toBe('latest-past');
   });
@@ -952,6 +952,29 @@ describe('Tasks (WORK-2)', () => {
     expect(app.client.launch).not.toHaveBeenCalled();
     expect(opened).toEqual([]);
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('WORK-1.12: a double click on a row only expands it, though the expanding moves a button under the second click; its buttons wait 400 ms after a click expands it, then act', async () => {
+    const past: WorkSessionLink = { sessionId: 'old', harness: 'codex', title: 'old', createdAt: 1, modifiedAt: 2, live: false, reason: 'started on this Task' };
+    const app = openApp('/s/alpha', withTasks({ tasks: [task({ ...LIGHT, links: { prs: [], sessions: [past], incomplete: false } }), BELLS] }));
+    const user = userEvent.setup();
+    await user.keyboard('w');
+    // The first click expands the row; the second lands on the Resume that moved under the pointer.
+    fireEvent.click(taskOption(LIGHT.id), { detail: 1 });
+    const resume = taskOption(LIGHT.id).querySelector<HTMLElement>('[data-field="actions"] [data-action="resume"]')!;
+    const chip = taskOption(LIGHT.id).querySelector<HTMLElement>('[data-field="session-chips"] [data-action="session"]')!;
+    fireEvent.click(resume, { detail: 2 });
+    // A quick single press right after is held back too, and the button says it can't act yet.
+    fireEvent.click(resume, { detail: 1 });
+    fireEvent.click(chip, { detail: 1 });
+    expect(resume).toHaveAttribute('aria-disabled', 'true');
+    expect(app.client.resume).not.toHaveBeenCalled();
+    await waitFor(() => expect(resume).not.toHaveAttribute('aria-disabled'));
+    fireEvent.click(resume, { detail: 1 });
+    await waitFor(() => expect(app.client.resume).toHaveBeenCalledTimes(1));
+    // Expanding another row by click holds its buttons back again.
+    fireEvent.click(taskOption(BELLS.id), { detail: 1 });
+    expect(taskOption(BELLS.id).querySelector('[data-field="actions"] [data-action="start"]')).toHaveAttribute('aria-disabled', 'true');
   });
 
   it('WORK-1.12: Enter on a selected row expands it; Esc with focus in Work, or on the tab strip, collapses it and leaves it selected; ↑/↓ and j/k collapse the row they leave and expand nothing', async () => {

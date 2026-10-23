@@ -6,7 +6,7 @@ import { Alert } from './alert';
 import { Chip } from './chip';
 import { CommandBlock } from './command-block';
 import { EmptyState } from './empty-state';
-import { IconButton, RowAction } from './icon-button';
+import { IconButton, RowAction, RowSettling } from './icon-button';
 import { Kbd } from './kbd';
 import { Loading } from './loading';
 import { SessionMarker } from './session-marker';
@@ -218,6 +218,30 @@ describe('IconButton', () => {
     expect(waiting).toHaveAttribute('aria-disabled', 'true');
     fireEvent.click(waiting);
     expect(pressed).toEqual(['open']);
+  });
+
+  it('WORK-1.12, HIST-3.5: a labelled button ignores the second click of a double click, and every press while its row settles, saying it’s disabled without looking it', () => {
+    const pressed: string[] = [];
+    const { rerender } = render(
+      <RowSettling.Provider value={false}>
+        <RowAction label="Resume" icon={<Plus />} tip="Resume" onPress={() => pressed.push('resume')} />
+      </RowSettling.Provider>,
+    );
+    const button = screen.getByRole('button', { name: 'Resume' });
+    fireEvent.click(button, { detail: 2 });
+    fireEvent.click(button, { detail: 3 });
+    expect(pressed).toEqual([]);
+    fireEvent.click(button, { detail: 1 });
+    expect(pressed).toEqual(['resume']);
+    rerender(
+      <RowSettling.Provider value>
+        <RowAction label="Resume" icon={<Plus />} tip="Resume" onPress={() => pressed.push('resume')} />
+      </RowSettling.Provider>,
+    );
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+    expect(button).not.toHaveClass('opacity-50');
+    fireEvent.click(button, { detail: 1 });
+    expect(pressed).toEqual(['resume']);
   });
 });
 

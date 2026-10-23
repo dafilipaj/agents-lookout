@@ -6,7 +6,7 @@ import { type FocusEvent, type KeyboardEvent, type MouseEvent, type ReactNode, t
 import { Alert } from '@/components/ui/alert';
 import { Chip, type ChipTone } from '@/components/ui/chip';
 import { CommandBlock } from '@/components/ui/command-block';
-import { RowAction } from '@/components/ui/icon-button';
+import { RowAction, RowSettling, useRowSettle } from '@/components/ui/icon-button';
 import { Loading } from '@/components/ui/loading';
 import { SessionMarker } from '@/components/ui/session-marker';
 import { type PanelNav, WORK_FILTERS, WORK_FILTER_LABEL, type WorkFilter } from '@/lib/right-sidebar';
@@ -128,6 +128,8 @@ export function WorkPanel({ work, sessions, filter, onFilter, now, focusKey, onS
   // WORK-1.12, WORK-1.14: one row expanded at a time, kept across reads while it's listed; once it
   // leaves (a read, or a filter that hides it), nothing is expanded. Never stored: a reload expands nothing.
   const [expanded, setExpanded] = useState<string | null>(null);
+  // WORK-1.12: a click that expands a row holds its buttons back a moment, so a double click acts on nothing.
+  const { settling, settle } = useRowSettle();
   const open = expanded !== null && rows.some((r) => r.key === expanded) ? expanded : null;
   if (open !== expanded) setExpanded(null);
   const sessionsAvailable = work?.sessionLinks.state === 'ok';
@@ -279,10 +281,14 @@ export function WorkPanel({ work, sessions, filter, onFilter, now, focusKey, onS
   // Everything an expanded row needs from here.
   const rowState: RowState = {
     open,
+    settling,
     sessionsAvailable,
     resuming: resuming?.key ?? null,
     failure,
-    onRow: (row) => expand(row.key),
+    onRow: (row, e) => {
+      if (open !== row.key) settle(e);
+      expand(row.key);
+    },
     onAct: act,
     onSession: openSession,
   };
@@ -357,12 +363,15 @@ export function WorkPanel({ work, sessions, filter, onFilter, now, focusKey, onS
 interface RowState {
   /** The expanded row's key, or null. */
   open: string | null;
+  /** WORK-1.12: a click has just expanded it, and its buttons wait (ROW_SETTLE_MS). */
+  settling: boolean;
   /** WORK-7.4: false while Session Links are unavailable: no marker, chip or Session button. */
   sessionsAvailable: boolean;
   /** The row whose Resume runs. */
   resuming: string | null;
   failure: { key: string; message: string } | null;
-  onRow(row: WorkRow): void;
+  /** A click on the row (WORK-1.12). */
+  onRow(row: WorkRow, e: MouseEvent): void;
   onAct(row: WorkRow, action: RowActionKind): void;
   onSession(row: WorkRow, session: WorkSessionLink): void;
 }
@@ -551,7 +560,7 @@ function TaskRow({ row, task, now, active, state }: TaskRowProps) {
       aria-describedby={expanded ? `${id}-keys ${id}-details` : `${id}-keys`}
       data-task={task.id}
       title={task.links?.incomplete ? 'Links may be incomplete' : undefined}
-      onClick={() => state.onRow(row)}
+      onClick={(e) => state.onRow(row, e)}
       className={cn('flex min-w-0 cursor-default flex-col gap-0.5 rounded-md px-2 py-1.5 text-body hover:bg-sidebar-accent/60', active && 'bg-sidebar-accent')}
     >
       {/* The row's description only: its name is its content (WORK-2.2). */}
@@ -666,7 +675,7 @@ function Details({ id, row, actions, sessions, state, children }: DetailsProps) 
   const resuming = state.resuming === row.key;
   const failure = state.failure?.key === row.key ? state.failure.message : null;
   return (
-    <>
+    <RowSettling.Provider value={state.settling}>
       <div id={id} aria-hidden className="mt-1 flex min-w-0 flex-col gap-1.5" data-field="details">
         {children}
         {sessions.length > 0 && (
@@ -693,7 +702,7 @@ function Details({ id, row, actions, sessions, state, children }: DetailsProps) 
         </div>
       </div>
       {failure && <Alert title={failure} className="mt-1" />}
-    </>
+    </RowSettling.Provider>
   );
 }
 
@@ -914,7 +923,7 @@ function PrRow({ row, group, pr, now, active, state }: PrRowProps) {
       aria-describedby={expanded ? `${id}-keys ${id}-details` : `${id}-keys`}
       data-pr={`${pr.repo}#${pr.number}`}
       title={pr.links?.incomplete ? 'Links may be incomplete' : undefined}
-      onClick={() => state.onRow(row)}
+      onClick={(e) => state.onRow(row, e)}
       className={cn('flex min-w-0 cursor-default flex-col gap-0.5 rounded-md px-2 py-1.5 text-body hover:bg-sidebar-accent/60', active && 'bg-sidebar-accent')}
     >
       {/* The row's description only: its name is its content, as History's rows' (WORK-3.2). */}

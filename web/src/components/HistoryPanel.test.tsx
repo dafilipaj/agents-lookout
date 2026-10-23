@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { HistoryQuery } from '@/lib/client';
 import { AUTO_FILL_PAGES } from '@/components/HistoryPanel';
-import { NOW, launchView, pressResult, renderApp, row } from '@/test/helpers';
+import { NOW, launchView, pressResult, pressRowAction, renderApp, row } from '@/test/helpers';
 
 /** Synthetic past Sessions only. */
 const item = (over: Partial<HistoryItem> & { sessionId: string }): HistoryItem => ({
@@ -381,16 +381,33 @@ describe('an expanded result (HIST-2.9 to HIST-2.11, HIST-3.5)', () => {
     expect(screen.queryByRole('list', { name: 'Starting Sessions' })).toBeNull();
   });
 
-  it('HIST-2.9: it shows its start directory with ~, branch, when it was last active, its Harness and that it can be resumed; its first prompt and last message, three lines each, with who said the last', async () => {
+  it('HIST-3.5: a double click on a result only expands it, though the expanding moves its button under the second click; the button waits 400 ms after a click expands it, then acts', async () => {
+    const resume = vi.fn(async () => ({ kind: 'started' as const, launch: launchView({ id: 'l-9' }) }));
+    const app = renderApp('/s/alpha', { history: async () => ok([CODEX, GONE]), resume });
+    app.snapshot([row({ id: 'alpha' })]);
+    await openHistory(app);
+    await waitFor(() => expect(options()).toHaveLength(2));
+    fireEvent.click(options()[0]!, { detail: 1 });
+    const button = options()[0]!.querySelector<HTMLElement>('[data-field="actions"] [data-action]')!;
+    fireEvent.click(button, { detail: 2 });
+    fireEvent.click(button, { detail: 1 });
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+    expect(resume).not.toHaveBeenCalled();
+    await waitFor(() => expect(button).not.toHaveAttribute('aria-disabled'));
+    fireEvent.click(button, { detail: 1 });
+    expect(resume).toHaveBeenCalledWith('codex', 'codex-1', expect.any(String));
+  });
+
+  it('HIST-2.9: it shows its start directory with ~, when it was last active and that it can be resumed, not the Harness or branch its row already shows; its first prompt and last message, three lines each, with who said the last', async () => {
     const pastPeek = vi.fn(async () => peekOf());
     const app = renderApp('/', { history: async () => ok([{ ...CODEX, firstPrompt: 'Why does the hook skip the merge commit?' }]), pastPeek });
     app.snapshot([]);
     const user = await openHistory(app);
     await user.click(await screen.findByText('kg-hook-review', { selector: '[data-field="title"]' }));
     const d = details(options()[0]!)!;
-    expect(d.querySelector('[data-field="start-dir"]')).toHaveTextContent('~/Projects/work · feature/kg-hook');
+    expect(d.querySelector('[data-field="start-dir"]')!.textContent).toBe('~/Projects/work');
     const when = new Date(CODEX.lastActiveAt!).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
-    expect(d.querySelector('[data-field="state"]')).toHaveTextContent(`${when} · Codex · can resume`);
+    expect(d.querySelector('[data-field="state"]')!.textContent).toBe(`${when} · can resume`);
     expect(d.querySelector('[data-field="first-prompt"]')).toHaveTextContent('Why does the hook skip the merge commit?');
     await waitFor(() => expect(d.querySelector('[data-field="last-message"]')).toHaveTextContent('Codex'));
     expect(d.querySelector('[data-field="last-message"] p')!.textContent).toBe('The hook only runs on\nthe first parent.');
@@ -410,7 +427,7 @@ describe('an expanded result (HIST-2.9 to HIST-2.11, HIST-3.5)', () => {
     const user = await openHistory(app);
     await user.click(await screen.findByText('fix-deal-rates', { selector: '[data-field="title"]' }));
     const live = details(options()[0]!)!;
-    expect(live.querySelector('[data-field="state"]')).toHaveTextContent(/· Claude Code · live$/);
+    expect(live.querySelector('[data-field="state"]')).toHaveTextContent(/\d · live$/);
     await waitFor(() => expect(live.querySelector('[data-field="last-message"]')).toHaveTextContent('YouKeep going.'));
     expect(live.querySelector('[data-field="actions"]')).toHaveTextContent('Open');
     await user.click(screen.getByText('pr641-review', { selector: '[data-field="title"]' }));
@@ -463,13 +480,56 @@ describe('an expanded result (HIST-2.9 to HIST-2.11, HIST-3.5)', () => {
     const user = await openHistory(app);
     await user.click(await screen.findByText('kg-hook-review', { selector: '[data-field="title"]' }));
     await waitFor(() => expect(details(options()[0]!)!.querySelector('[data-field="peek-error"]')).toHaveTextContent('tb-session took too long to answer.'));
-    await user.click(options()[0]!.querySelector<HTMLElement>('[data-field="actions"] [data-action]')!);
+    await pressRowAction(user, options()[0]!.querySelector<HTMLElement>('[data-field="actions"] [data-action]')!);
     expect(resume).toHaveBeenCalledWith('codex', 'codex-1', expect.any(String));
     await user.click(screen.getByText('old-one', { selector: '[data-field="title"]' }));
     const old = details(options()[1]!)!;
     await waitFor(() => expect(old.querySelector('[data-field="first-prompt"]')).toHaveTextContent('Review PR 641.'));
     expect(old.querySelector('[data-field="last-message"]')).toBeNull();
     expect(old).not.toHaveTextContent('Loading…');
+  });
+
+  it('HIST-2.11: a new query, the headless toggle or a Harness toggle collapses the expanded result, and Enter before the new search answers resumes nothing', async () => {
+    const answers: ((p: HistoryPage) => void)[] = [];
+    const history = vi.fn((q: HistoryQuery) => (q.query || q.headless || q.harness ? new Promise<HistoryPage>((r) => answers.push(r)) : Promise.resolve(ok([CODEX, GONE]))));
+    const resume = vi.fn(async () => ({ kind: 'started' as const, launch: launchView({ id: 'l-8' }) }));
+    const app = renderApp('/s/alpha', { history, resume });
+    app.snapshot([row({ id: 'alpha' })]);
+    const user = await openHistory(app);
+    await waitFor(() => expect(options()).toHaveLength(2));
+    const search = screen.getByRole('searchbox', { name: 'Search past Sessions' });
+    const expandFirst = async () => {
+      await user.click(search);
+      await user.keyboard('{Enter}');
+      expect(options()[0]).toHaveAttribute('aria-expanded', 'true');
+    };
+    await expandFirst();
+    // Typed, and Enter at once: the old result collapsed, and Enter waits for the new search.
+    await user.type(search, 'pr641{Enter}');
+    expect(options()[0]).toHaveAttribute('aria-expanded', 'false');
+    await user.keyboard('{Enter}{Enter}');
+    expect(resume).not.toHaveBeenCalled();
+    expect(options().every((o) => o.getAttribute('aria-expanded') === 'false')).toBe(true);
+    await waitFor(() => expect(answers).toHaveLength(1));
+    await act(async () => answers.at(-1)!(ok([GONE])));
+    await waitFor(() => expect(titles()).toEqual(['pr641-review']));
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(titles()).toEqual(['kg-hook-review', 'pr641-review']));
+    for (const [n, toggle] of [() => screen.getByRole('checkbox', { name: 'Show Headless Sessions' }), () => within(screen.getByRole('group', { name: 'Harnesses' })).getByRole('button', { name: 'Codex' })].entries()) {
+      await expandFirst();
+      await user.click(toggle());
+      expect(options()[0]).toHaveAttribute('aria-expanded', 'false');
+      await user.click(search);
+      await user.keyboard('{Enter}');
+      expect(resume).not.toHaveBeenCalled();
+      expect(options()[0]).toHaveAttribute('aria-expanded', 'false');
+      await waitFor(() => expect(answers).toHaveLength(n + 2));
+      await act(async () => answers.at(-1)!(ok([CODEX, GONE])));
+      // Back as it was, for the next toggle.
+      await user.click(toggle());
+      await waitFor(() => expect(history.mock.calls.at(-1)![0]).toMatchObject({ headless: false, harness: null }));
+    }
+    expect(resume).not.toHaveBeenCalled();
   });
 
   it('HIST-2.11: one result is expanded at a time; Esc in the list or the search box collapses it and leaves it selected; the list scrolls to keep it in view, and the main pane stays', async () => {
@@ -520,7 +580,7 @@ describe('resuming a past Session from its result (HIST-3)', () => {
     const button = options()[0]!.querySelector('[data-field="actions"] [data-action]')!;
     expect(button).toHaveAttribute('data-action', 'resume');
     expect(button).toHaveTextContent('Resume');
-    await user.click(button);
+    await pressRowAction(user, button as HTMLElement);
     expect(resume).toHaveBeenCalledWith('codex', 'codex-1', expect.any(String));
     const starting: LaunchView = launchView({ id: 'l-7', title: 'kg-hook-review', harness: 'codex' });
     app.emit({ type: 'launches', launches: [starting], started: [] });

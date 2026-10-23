@@ -308,6 +308,42 @@ scenario(
 );
 
 scenario(
+  'WORK-6.5: every button of an expanded Task, PR and Review request, chips and Open in browser included, is a word beside a 20 px icon in a 28 px tall target, named by its word',
+  world().tbProd({ tasks: { [ME]: MINE.slice(0, 1) } }).tbPr({ board: BOARD }).settings({ productiveEmail: ME }),
+  async ({ page, world }) => {
+    world.tbSession.indexSession({ ...indexed('00000000-0000-4000-8000-0000000000c7', `Start ${WICKS}`, '2026-10-18T10:00:00Z', '2026-10-18T11:00:00Z', world.home), summary: 'wick notes' });
+    world.fleet.gainSession(fleetRow('00000000-0000-4000-8000-0000000000c8', 'wick trim', world.home));
+    world.tbSession.indexSession({ ...indexed('00000000-0000-4000-8000-0000000000c8', `Start ${WICKS}`, '2026-10-19T10:00:00Z', '2026-10-19T11:00:00Z', world.home), summary: 'wick trim' });
+    await expect(sessionSidebar(page).getByText('wick trim')).toBeVisible();
+    await page.keyboard.press('w');
+    const task = taskRows(page).filter({ hasText: 'Trim the lamp wicks' });
+    await expect(task.locator('[data-session-marker]')).toHaveAttribute('data-state', 'live');
+    const measured: { word: string; name: string; height: number; icon: [number, number] }[] = [];
+    for (const row of [task, prRows(page).filter({ hasText: 'Sharpen the anvil corners' }), prRows(page).filter({ hasText: 'Count the willow leaves' })]) {
+      await expand(row);
+      await expect(row.locator('[data-field="actions"] [data-slot="row-action"]').first()).toBeVisible();
+      measured.push(
+        ...(await row.locator('[data-slot="row-action"]').evaluateAll((els) =>
+          els.map((el) => {
+            const box = el.getBoundingClientRect();
+            const icon = el.querySelector(':scope > svg')!.getBoundingClientRect();
+            const word = el.querySelector(':scope > span')!.textContent!.trim();
+            return { word, name: el.getAttribute('aria-label') ?? word, height: box.height, icon: [icon.width, icon.height] as [number, number] };
+          }),
+        )),
+      );
+    }
+    expect(measured.map((m) => m.word)).toEqual(['wick trim', 'wick notes', 'Open Session', 'Start Session', 'Open in Fantastic', 'Open on GitHub', 'Review', 'Open on GitHub']);
+    for (const m of measured) {
+      expect(m.height, m.word).toBe(28);
+      expect(m.icon, m.word).toEqual([20, 20]);
+      // Its word is its name; a chip's adds what it does and its Status (WORK-4.10).
+      expect(m.name, m.word).toContain(m.word);
+    }
+  },
+);
+
+scenario(
   'WORK-1.15: an expanded row grows in the panel, the list scrolls to keep all of it in view, and the main pane keeps showing the current Session',
   world().tbProd({ tasks: { [ME]: TASKS.map((t, i) => (i === 4 ? { ...t, description: DESCRIBED.description! } : t)) } }).tbPr({ board: { columns: {} } }).settings({ productiveEmail: ME }),
   async ({ page, world }) => {

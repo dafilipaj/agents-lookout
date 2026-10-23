@@ -2,6 +2,7 @@ import { accessSync, constants } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { TB_PROD_INSTALL_COMMAND, TB_PROD_SIGN_IN_COMMAND, TB_PR_INSTALL_COMMAND, TB_SESSION_INSTALL_COMMAND } from '../shared/defaults.ts';
+import { HTML_ENTITIES } from './html-entities.ts';
 import {
   CHIP_OF,
   type CiState,
@@ -464,8 +465,16 @@ const DUE_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** WORK-2.11: a Task's description as sent, at most this many characters. */
 export const MAX_DESCRIPTION = 600;
-const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', ndash: '–', mdash: '—', hellip: '…', laquo: '«', raquo: '»', lsquo: '‘', rsquo: '’', ldquo: '“', rdquo: '”', bull: '•', middot: '·' };
-const BLOCK_END = /<\/(?:p|div|li|ul|ol|h[1-6]|tr|table|blockquote|pre|section|article|header|footer)\s*>|<br\s*\/?>|<hr\s*\/?>/gi;
+/**
+ * A tag's attributes up to its `>`, as a browser reads them: a `>` inside a quoted value (`="…"` or
+ * `='…'`) doesn't end the tag, an unclosed one runs to the end, and a quote anywhere else is a character.
+ */
+const ATTRS = String.raw`(?:=\s*"[^"]*(?:"|$)|=\s*'[^']*(?:'|$)|[^>])*`;
+const BLOCK_END = new RegExp(String.raw`<\/(?:p|div|li|ul|ol|h[1-6]|tr|table|blockquote|pre|section|article|header|footer)\s*>|<(?:br|hr)\b${ATTRS}>?`, 'gi');
+const LIST_ITEM = new RegExp(String.raw`<li\b${ATTRS}>?`, 'gi');
+const TAG = new RegExp(String.raw`<\/?[A-Za-z]${ATTRS}>?`, 'g');
+/** A named reference (HTML_ENTITIES, case-sensitive as HTML's are), or a decimal or hex one. */
+const ENTITY = /&(#[xX][0-9a-fA-F]{1,6}|#[0-9]{1,7}|[A-Za-z][A-Za-z0-9]{1,31});/g;
 
 /**
  * WORK-2.11: a Task's description from tb-prod, which Productive gives as HTML, as plain text: a
@@ -478,11 +487,11 @@ export function descriptionText(v: unknown): string | null {
   const text = stripAnsi(v.normalize('NFKC'))
     .replace(/<!--[\s\S]*?(?:-->|$)/g, '')
     .replace(/<(script|style|template|iframe|object)\b[\s\S]*?(?:<\/\1\s*>|$)/gi, '')
-    .replace(/<li\b[^>]*>/gi, '\n- ')
+    .replace(LIST_ITEM, '\n- ')
     .replace(BLOCK_END, '\n')
-    .replace(/<\/?[A-Za-z][^>]*>?/g, '')
-    .replace(/&(#x[0-9a-f]{1,6}|#[0-9]{1,7}|[a-z]{2,8});/gi, (all, name: string) => {
-      if (name[0] !== '#') return ENTITIES[name.toLowerCase()] ?? all;
+    .replace(TAG, '')
+    .replace(ENTITY, (all, name: string) => {
+      if (name[0] !== '#') return Object.hasOwn(HTML_ENTITIES, name) ? HTML_ENTITIES[name]! : all;
       const code = name[1] === 'x' || name[1] === 'X' ? parseInt(name.slice(2), 16) : parseInt(name.slice(1), 10);
       return code > 0 && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff) ? String.fromCodePoint(code) : '';
     });
