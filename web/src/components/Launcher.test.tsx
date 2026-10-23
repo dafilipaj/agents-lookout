@@ -115,6 +115,65 @@ describe('the launcher', () => {
     expect(model).toHaveValue('');
   });
 
+  it('LAUNCH-3.4 LAUNCH-3.5: first starts use high and Harness-specific permissions; edits survive model changes and reopening', async () => {
+    const user = userEvent.setup();
+    const app = renderApp();
+    app.snapshot([]);
+    await openLauncher(user);
+    const effort = await screen.findByLabelText('Effort');
+    expect(effort).toHaveValue('high');
+    expect(within(effort).getAllByRole('option').map((o) => o.textContent)).toEqual(['low', 'medium', 'high', 'xhigh', 'max']);
+    const skip = screen.getByRole('checkbox', { name: 'Skip permissions' });
+    expect(skip).toBeChecked();
+    expect(skip.closest('label')).toHaveAttribute('title', 'Starts Claude Code with --dangerously-skip-permissions: no permission prompts.');
+    await user.selectOptions(effort, 'max');
+    await user.selectOptions(screen.getByLabelText('Model'), 'claude-sonnet-5-5');
+    expect(effort).toHaveValue('max');
+    await user.click(skip);
+    await user.click(harnessRadio(/Codex/));
+    expect(effort).toHaveValue('high');
+    expect(skip).not.toBeChecked();
+    expect(skip).toHaveAccessibleDescription("Also turns off Codex's sandbox");
+    expect(skip.closest('label')?.title).toContain('--dangerously-bypass-approvals-and-sandbox');
+    await user.click(harnessRadio(/Claude Code/));
+    expect(effort).toHaveValue('max');
+    expect(skip).not.toBeChecked();
+    await user.keyboard('{Escape}');
+    await openLauncher(user);
+    expect(screen.getByLabelText('Effort')).toHaveValue('max');
+    expect(screen.getByRole('checkbox', { name: 'Skip permissions' })).not.toBeChecked();
+  });
+
+  it('LAUNCH-3.4: remembered levels fall back to high then the model default, and models without levels omit Effort', async () => {
+    const user = userEvent.setup();
+    const harnesses = structuredClone(HARNESSES);
+    harnesses[0]!.models.push(
+      { id: 'small', label: 'Small', efforts: ['low', 'medium'], defaultEffort: 'medium' },
+      { id: 'plain', label: 'Plain', efforts: [], defaultEffort: null },
+    );
+    const launch = vi.fn(async (_req: LaunchRequest) => launchView({ id: 'l-1' }));
+    const app = renderApp('/', { harnesses: async () => harnesses, launch });
+    app.snapshot([], { state: 'ok' }, settings({ lastLaunch: {
+      harness: 'claude', model: '', directory: '~/Projects/work',
+      byHarness: { claude: { effort: 'ultra', skipPermissions: false }, codex: { effort: 'low', skipPermissions: true } },
+    } }));
+    await openLauncher(user);
+    expect(await screen.findByLabelText('Effort')).toHaveValue('high');
+    await user.selectOptions(screen.getByLabelText('Model'), 'small');
+    expect(screen.getByLabelText('Effort')).toHaveValue('medium');
+    await user.selectOptions(screen.getByLabelText('Model'), '');
+    expect(screen.getByLabelText('Effort')).toHaveValue('medium');
+    await user.click(harnessRadio(/Codex/));
+    expect(screen.getByLabelText('Effort')).toHaveValue('low');
+    expect(screen.getByRole('checkbox', { name: 'Skip permissions' })).toBeChecked();
+    await user.click(harnessRadio(/Claude Code/));
+    await user.selectOptions(screen.getByLabelText('Model'), 'plain');
+    expect(screen.queryByLabelText('Effort')).toBeNull();
+    await user.click(screen.getByRole('button', { name: /Start/ }));
+    expect(launch).toHaveBeenCalledWith(expect.objectContaining({ model: 'plain', skipPermissions: false }), expect.any(String));
+    expect(launch.mock.calls[0]![0]).not.toHaveProperty('effort');
+  });
+
   it('LAUNCH-3.3: name and prompt are optional, and the prompt takes several lines', async () => {
     const user = userEvent.setup();
     const launch = vi.fn(async (req: LaunchRequest) => launchView({ id: 'l-1', title: req.name || 'x' }));
@@ -130,6 +189,8 @@ describe('the launcher', () => {
       directory: '~/Projects/work',
       harness: 'claude',
       model: '',
+      effort: 'high',
+      skipPermissions: true,
       name: '',
       prompt: 'Line one: say OK.\nLine two: say DONE.',
     }, expect.any(String));

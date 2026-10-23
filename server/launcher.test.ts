@@ -22,7 +22,7 @@ const spawned = (tmux: string, over: Record<string, unknown> = {}) =>
 const spawnFailed = (kind: string, error: string, extra: Record<string, unknown> = {}) =>
   Object.assign(new Error('exit 1'), { code: 1, stdout: JSON.stringify({ ok: false, host: 'mac', kind, error, partial: null, ...extra }), stderr: `error: ${error}\n` });
 
-function setup(over: { spawn?: (call: Call) => Promise<string>; env?: NodeJS.ProcessEnv; settings?: Partial<Settings> } = {}) {
+function setup(over: { spawn?: (call: Call) => Promise<string>; env?: NodeJS.ProcessEnv; settings?: Partial<Settings>; harnesses?: string } = {}) {
   const calls: Call[] = [];
   let settings: Settings = { ...defaultSettings(), ...over.settings };
   const changes: { launches: LaunchView[]; started: { launchId: string; sessionId: string }[] }[] = [];
@@ -30,7 +30,7 @@ function setup(over: { spawn?: (call: Call) => Promise<string>; env?: NodeJS.Pro
   const runner = vi.fn(async (file: string, args: readonly string[], opts: RunOptions) => {
     const call = { file, args, opts };
     calls.push(call);
-    if (args.includes('harness')) return HARNESS_JSON;
+    if (args.includes('harness')) return over.harnesses ?? HARNESS_JSON;
     if (args.includes('spawn')) return over.spawn ? over.spawn(call) : spawned('fix-rates');
     if (file === 'tmux') return 'Welcome\n\n Quick safety check: Is this a project you trust?\n ❯ No, exit\n   Yes, I trust this folder\n\n\n';
     throw new Error(`unexpected ${file} ${args.join(' ')}`);
@@ -194,6 +194,73 @@ describe('starting Sessions', () => {
     ]);
   });
 
+  it('LAUNCH-3.4: validates Effort against the cached chosen model, including the default entry, before spawning', async () => {
+    const harnesses = JSON.stringify([{ id: 'claude', installed: true, models: [
+      { id: '', label: 'Default', efforts: ['medium', 'high'], default_effort: 'medium' },
+      { id: 'small', label: 'Small', efforts: ['low', 'medium'], default_effort: 'medium' },
+      { id: 'plain', label: 'Plain' },
+    ] }]);
+    const t = setup({ harnesses });
+    await t.launcher.harnesses();
+    for (const bad of [null, 7, '', 'HIGH', '--json', 'x'.repeat(17), 'max']) {
+      await expect(t.launcher.start(req({ effort: bad }))).rejects.toMatchObject({ status: 400, field: 'effort' });
+    }
+    await expect(t.launcher.start(req({ model: 'small', effort: 'high' }))).rejects.toMatchObject({ status: 400, field: 'effort' });
+    await expect(t.launcher.start(req({ model: 'plain', effort: 'high' }))).rejects.toMatchObject({ status: 400, field: 'effort' });
+    expect(spawnCall(t.calls)).toBeUndefined();
+    await t.launcher.start(req({ effort: 'high', prompt: '-a\nsecond line' }));
+    expect(spawnCall(t.calls).args.slice(-4)).toEqual(['--effort', 'high', '--', '-a\nsecond line']);
+    expect(t.calls.filter((c) => c.args.includes('harness'))).toHaveLength(1);
+    const plain = setup({ harnesses });
+    await plain.launcher.start(req({ model: 'plain' }));
+    expect(spawnCall(plain.calls).args).not.toContain('--effort');
+    expect(plain.update).toHaveBeenCalledWith(expect.objectContaining({ lastLaunch: expect.objectContaining({
+      byHarness: { claude: { effort: null, skipPermissions: false } },
+    }) }), 'server');
+  });
+
+  it('LAUNCH-3.4 LAUNCH-3.5: passes both flags as argv before the prompt for either Harness, and remembers them', async () => {
+    for (const harness of ['claude', 'codex']) {
+      const harnesses = JSON.stringify([{ id: harness, installed: true, models: [{ id: '', label: 'Default', efforts: ['low', 'high'], default_effort: 'low' }] }]);
+      const t = setup({ harnesses });
+      await t.launcher.start(req({ harness, effort: 'high', skipPermissions: true, name: 'lantern', prompt: '-plan\nnext' }));
+      expect(spawnCall(t.calls).args.slice(-7)).toEqual(['--effort', 'high', '--skip-permissions', '--name', 'lantern', '--', '-plan\nnext']);
+      expect(t.update).toHaveBeenCalledWith(expect.objectContaining({ lastLaunch: expect.objectContaining({
+        byHarness: { [harness]: { effort: 'high', skipPermissions: true } },
+      }) }), 'server');
+    }
+  });
+
+  it('LAUNCH-3.5: passes Skip permissions only for true, and rejects non-booleans before spawning', async () => {
+    for (const harness of ['claude', 'codex']) {
+      const harnesses = HARNESS_JSON.replace('"installed":false', '"installed":true');
+      for (const skipPermissions of [undefined, false, true]) {
+        const t = setup({ harnesses });
+        await t.launcher.start(req({ harness, skipPermissions, prompt: '--skip-permissions' }));
+        const args = spawnCall(t.calls).args;
+        expect(args.slice(0, args.indexOf('--')).includes('--skip-permissions')).toBe(skipPermissions === true);
+      }
+      const t = setup({ harnesses });
+      for (const skipPermissions of ['true', 1, null]) {
+        await expect(t.launcher.start(req({ harness, skipPermissions }))).rejects.toMatchObject({ status: 400, field: 'skipPermissions' });
+      }
+      expect(spawnCall(t.calls)).toBeUndefined();
+    }
+  });
+
+  it('LAUNCH-3.4 LAUNCH-3.5: only a successful start writes choices for its own Harness', async () => {
+    const previous = { effort: 'max', skipPermissions: true };
+    const t = setup({ settings: { lastLaunch: { harness: 'codex', model: '', directory: '~/Projects/work', byHarness: { codex: previous } } } });
+    await t.launcher.start(req({ skipPermissions: true }));
+    expect(t.update).toHaveBeenCalledWith({ lastLaunch: {
+      harness: 'claude', model: '', directory: '~/Projects/work',
+      byHarness: { claude: { effort: null, skipPermissions: true } },
+    } }, 'server');
+    const failed = setup({ spawn: async () => { throw spawnFailed('usage', 'refused'); } });
+    await expect(failed.launcher.start(req({ skipPermissions: true }))).rejects.toThrow();
+    expect(failed.update).not.toHaveBeenCalled();
+  });
+
   it('caches harnesses for 10 minutes', async () => {
     let now = 0;
     const runner = vi.fn(async () => HARNESS_JSON);
@@ -241,7 +308,7 @@ describe('starting Sessions', () => {
   it('LAUNCH-1.2: a start remembers its Harness, model and directory', async () => {
     const t = setup();
     await t.launcher.start(req({ model: 'claude-opus-5-5' }));
-    expect(t.update).toHaveBeenCalledWith({ lastLaunch: { harness: 'claude', model: 'claude-opus-5-5', directory: '~/Projects/work' } }, 'server');
+    expect(t.update).toHaveBeenCalledWith({ lastLaunch: { harness: 'claude', model: 'claude-opus-5-5', directory: '~/Projects/work', byHarness: { claude: { effort: null, skipPermissions: false } } } }, 'server');
   });
 
   it('LAUNCH-4.4: when `fleet spawn` fails, the start fails with the reason, and its row goes away', async () => {
@@ -400,7 +467,7 @@ describe('resuming past Sessions (HIST-3), through the same path as a start', ()
   const resumeReq = { sessionId: 'aaaaaaaa-0000-4000-8000-000000000201', harness: 'codex' as const, directory: '/Users/me/Projects/work', title: 'kg-hook-review' };
 
   it('HIST-3.1: `fleet spawn --resume` in its own Session host, in the directory it started in; "Starting…", then the Session', async () => {
-    const t = setup({ spawn: async () => spawned('work-2', { harness: 'codex', resumed: resumeReq.sessionId }) });
+    const t = setup({ spawn: async () => spawned('work-2', { harness: 'codex', resumed: resumeReq.sessionId }), settings: { lastLaunch: { harness: 'codex', model: '', directory: '~/Projects/work', byHarness: { codex: { effort: 'high', skipPermissions: true } } } } });
     const launch = await t.launcher.resume(resumeReq);
     expect(spawnCall(t.calls).args).toEqual([
       '--local', 'spawn', '--resume', resumeReq.sessionId, '--harness', 'codex', '--dir', '/Users/me/Projects/work', '--backend', 'tmux', '--json',

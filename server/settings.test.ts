@@ -95,6 +95,34 @@ describe('SettingsStore', () => {
     expect((await new SettingsStore(file).load()).lastLaunch).toEqual(last);
   });
 
+  it('LAUNCH-3.4 LAUNCH-3.5: old settings load as first time and per-Harness choices survive a restart', async () => {
+    const store = new SettingsStore(file);
+    const last = { harness: 'claude', model: '', directory: '~/Projects/work' };
+    await store.load();
+    await store.update({ lastLaunch: last }, 'server');
+    expect((await new SettingsStore(file).load()).lastLaunch).toMatchObject(last);
+    const byHarness = { claude: { effort: 'high', skipPermissions: true }, codex: { effort: null, skipPermissions: false } };
+    await store.update({ lastLaunch: { ...last, byHarness } }, 'server');
+    expect((await new SettingsStore(file).load()).lastLaunch).toEqual({ ...last, byHarness });
+    for (const choice of [{ effort: '--bad', skipPermissions: true }, { effort: 'high', skipPermissions: 'true' }]) {
+      expect(() => store.update({ lastLaunch: { ...last, byHarness: { claude: choice } } }, 'server')).toThrow(SettingsError);
+    }
+    expect(() => store.update({ lastLaunch: { ...last, byHarness } })).toThrow(/can't be changed/);
+  });
+
+  it('LAUNCH-3.4 LAUNCH-3.5: queued saves only replace the starting Harness choices', async () => {
+    const store = new SettingsStore(file);
+    await store.load();
+    const last = { model: '', directory: '~/Projects/work' };
+    const claude = { effort: 'high', skipPermissions: true };
+    const codex = { effort: 'low', skipPermissions: false };
+    await Promise.all([
+      store.update({ lastLaunch: { ...last, harness: 'claude', byHarness: { claude } } }, 'server'),
+      store.update({ lastLaunch: { ...last, harness: 'codex', byHarness: { codex } } }, 'server'),
+    ]);
+    expect((await new SettingsStore(file).load()).lastLaunch).toEqual({ ...last, harness: 'codex', byHarness: { claude, codex } });
+  });
+
   it('WORK-2.7: the Productive email is saved trimmed, otherwise as typed; empty clears it', async () => {
     const store = new SettingsStore(file);
     expect((await store.load()).productiveEmail).toBeNull();

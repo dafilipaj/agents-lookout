@@ -1,9 +1,10 @@
-import type { LaunchHarness, Settings } from '@shared/settings.ts';
+import type { LaunchChoices, LaunchHarness, Settings } from '@shared/settings.ts';
 import type { LaunchRequest } from '@shared/types.ts';
 import type { UsageSnapshot } from '@shared/usage.ts';
 import { type FormEvent, type KeyboardEvent, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Kbd } from '@/components/ui/kbd';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -45,14 +46,35 @@ export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, h
   const harness: LaunchHarness = installed(draft.harness)
     ? draft.harness
     : (list?.find((h) => h.installed)?.id ?? draft.harness);
-  const models = list?.find((h) => h.id === harness)?.models ?? [{ id: '', label: 'Default' }];
+  const models = list?.find((h) => h.id === harness)?.models ?? [{ id: '', label: 'Default', efforts: [], defaultEffort: null }];
   const model = models.some((m) => m.id === draft.model) ? draft.model : '';
+  const chosen = models.find((m) => m.id === model);
+  const levels = chosen?.efforts ?? [];
+  const remembered = (id: LaunchHarness) => draft.byHarness?.[id] ?? settings.lastLaunch?.byHarness?.[id];
+  const level = remembered(harness)?.effort;
+  const effort = level && levels.includes(level) ? level : levels.includes('high') ? 'high' : (chosen?.defaultEffort ?? null);
+  const skipPermissions = remembered(harness)?.skipPermissions ?? harness === 'claude';
   const directory = settings.startDirectories.includes(draft.directory) ? draft.directory : (settings.startDirectories[0] ?? '');
   const canStart = !submitting && harnesses.state === 'ready' && installed(harness) && directory !== '';
 
   const set = (patch: Partial<LaunchDraft>) => {
-    onDraftChange({ ...draft, directory, harness, model, ...patch });
+    onDraftChange({
+      ...draft, directory, harness, model,
+      byHarness: { ...draft.byHarness, [harness]: { effort, skipPermissions } },
+      ...patch,
+    });
     setError(null);
+  };
+
+  const setChoices = (patch: Partial<LaunchChoices>) => set({
+    byHarness: { ...draft.byHarness, [harness]: { effort, skipPermissions, ...patch } },
+  });
+
+  const changeModel = (id: string) => {
+    const next = models.find((m) => m.id === id);
+    const nextEffort = effort && next?.efforts.includes(effort) ? effort
+      : next?.efforts.includes('high') ? 'high' : (next?.defaultEffort ?? null);
+    set({ model: id, byHarness: { ...draft.byHarness, [harness]: { effort: nextEffort, skipPermissions } } });
   };
 
   const submit = async (e?: FormEvent) => {
@@ -61,7 +83,7 @@ export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, h
     setSubmitting(true);
     setError(null);
     try {
-      await onStart({ ...draft, directory, harness, model });
+      await onStart({ directory, harness, model, name: draft.name, prompt: draft.prompt, ...(levels.length && effort ? { effort } : {}), skipPermissions });
     } catch (err) {
       // LAUNCH-4.4: stay open, show why, keep everything.
       setError({
@@ -159,19 +181,52 @@ export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, h
             <label htmlFor="launch-model" className="text-muted-foreground">
               Model
             </label>
-            <select
-              id="launch-model"
-              value={model}
-              onChange={(e) => set({ model: e.target.value })}
-              disabled={!list}
-              className="h-8 w-full rounded-md border border-input bg-transparent px-2 text-body outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:opacity-60 dark:bg-input/30"
-            >
-              {models.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <select
+                id="launch-model"
+                value={model}
+                onChange={(e) => changeModel(e.target.value)}
+                disabled={!list}
+                className="h-8 min-w-0 flex-1 rounded-md border border-input bg-transparent px-2 text-body outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:opacity-60 dark:bg-input/30"
+              >
+                {models.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+              {levels.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <label htmlFor="launch-effort" className="text-muted-foreground">Effort</label>
+                  <select
+                    id="launch-effort"
+                    value={effort ?? ''}
+                    onChange={(e) => setChoices({ effort: e.target.value })}
+                    aria-invalid={error?.field === 'effort' || undefined}
+                    className="h-8 rounded-md border border-input bg-transparent px-2 text-body outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 dark:bg-input/30"
+                  >
+                    {levels.map((level) => <option key={level} value={level}>{level}</option>)}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            <div className="col-start-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+              <label
+                className="flex min-h-6 cursor-pointer items-center gap-2"
+                title={harness === 'claude'
+                  ? 'Starts Claude Code with --dangerously-skip-permissions: no permission prompts.'
+                  : 'Starts Codex with --dangerously-bypass-approvals-and-sandbox: no approval prompts or sandbox.'}
+              >
+                <Checkbox
+                  checked={skipPermissions}
+                  aria-describedby={harness === 'codex' ? 'launch-skip-note' : undefined}
+                  onChange={(e) => setChoices({ skipPermissions: e.target.checked })}
+                />
+                Skip permissions
+              </label>
+              {harness === 'codex' && <span id="launch-skip-note" className="text-meta text-muted-foreground">Also turns off Codex's sandbox</span>}
+            </div>
 
             <label htmlFor="launch-name" className="text-muted-foreground">
               Name

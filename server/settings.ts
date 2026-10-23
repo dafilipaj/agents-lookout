@@ -65,7 +65,13 @@ export class SettingsStore {
           if (!info?.isDirectory()) throw new SettingsError('startDirectories', `Not a directory: ${dir}`);
         }
       }
-      const raw = { ...this.raw, ...patch, version: 1 };
+      // LAUNCH-3.4, 3.5: merge inside the write queue, so two tabs starting different
+      // Harnesses together cannot overwrite each other's remembered choices.
+      const lastLaunch = patch.lastLaunch && {
+        ...patch.lastLaunch,
+        byHarness: { ...this.current.lastLaunch?.byHarness, ...patch.lastLaunch.byHarness },
+      };
+      const raw = { ...this.raw, ...patch, ...(lastLaunch?.byHarness && Object.keys(lastLaunch.byHarness).length ? { lastLaunch } : {}), version: 1 };
       await mkdir(dirname(this.path), { recursive: true });
       const tmp = `${this.path}.${process.pid}.tmp`;
       await writeFile(tmp, JSON.stringify(raw, null, 2) + '\n', { mode: 0o600 });

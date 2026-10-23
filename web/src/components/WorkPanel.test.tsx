@@ -1231,6 +1231,18 @@ describe('actions (WORK-5, WORK-6)', () => {
     expect(screen.getByLabelText('Model')).toHaveValue('');
   });
 
+  it('LAUNCH-3.4 LAUNCH-3.5: Review uses Claude Code choices even when the last start was Codex', async () => {
+    const user = userEvent.setup();
+    openApp('/', snap(), {}, settings({ lastLaunch: {
+      harness: 'codex', model: 'gpt-6-astra', directory: '~/Projects/work',
+      byHarness: { claude: { effort: 'max', skipPermissions: false }, codex: { effort: 'low', skipPermissions: true } },
+    } }));
+    await user.keyboard('w');
+    await user.click(rowButton('willow#2106', 'review')!);
+    await waitFor(() => expect(screen.getByLabelText('Effort')).toHaveValue('max'));
+    expect(screen.getByRole('checkbox', { name: 'Skip permissions' })).not.toBeChecked();
+  });
+
   it('WORK-5.2: after a Claude Code start, Review keeps its model', async () => {
     const user = userEvent.setup();
     openApp('/', snap(), {}, settings({ lastLaunch: { harness: 'claude', model: 'claude-opus-5-5', directory: '~/Projects/work' } }));
@@ -1329,13 +1341,29 @@ describe('actions (WORK-5, WORK-6)', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: /Start/ })).toBeEnabled());
     await user.click(screen.getByRole('button', { name: /Start/ }));
     expect(app.client.launch).toHaveBeenCalledWith(
-      { directory: '~/Projects/work', harness: 'codex', model: 'gpt-6-astra', name: '', prompt: `${BELLS.url} then plan it` },
+      { directory: '~/Projects/work', harness: 'codex', model: 'gpt-6-astra', effort: 'high', skipPermissions: false, name: '', prompt: `${BELLS.url} then plan it` },
       expect.any(String),
     );
     // A start selects the new Session's row: focus isn't taken back to Work.
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     await new Promise((r) => setTimeout(r, 10));
     expect(taskList()).not.toHaveFocus();
+  });
+
+  it('LAUNCH-3.4 LAUNCH-3.5: Start Session on a Task uses its Harness choices and submits edits to both', async () => {
+    const user = userEvent.setup();
+    const app = openApp('/', withTasks(), {}, settings({ lastLaunch: {
+      harness: 'codex', model: 'gpt-6-astra', directory: '~/Projects/work',
+      byHarness: { codex: { effort: 'low', skipPermissions: true } },
+    } }));
+    await user.keyboard('w');
+    await user.click(taskButton('41000102', 'start')!);
+    await waitFor(() => expect(screen.getByLabelText('Effort')).toHaveValue('low'));
+    expect(screen.getByRole('checkbox', { name: 'Skip permissions' })).toBeChecked();
+    await user.selectOptions(screen.getByLabelText('Effort'), 'medium');
+    await user.click(screen.getByRole('checkbox', { name: 'Skip permissions' }));
+    await user.click(screen.getByRole('button', { name: /Start/ }));
+    expect(app.client.launch).toHaveBeenCalledWith(expect.objectContaining({ harness: 'codex', effort: 'medium', skipPermissions: false }), expect.any(String));
   });
 
   it('WORK-5.1: S starts a Session on the selected Task as Start Session does, with Caps Lock too; on a PR, with Shift or a modifier, or as a held key’s repeat it does nothing', async () => {

@@ -1,3 +1,5 @@
+import { EFFORT_LEVEL } from './model.ts';
+
 /**
  * Lookout's settings, stored by the server (SIDE-7, LAUNCH-2). Each field has a default and a
  * parser; a feature adds its fields here.
@@ -23,11 +25,18 @@ export interface SettingsView extends Settings {
 
 export type LaunchHarness = 'claude' | 'codex';
 
+export interface LaunchChoices {
+  effort: string | null;
+  skipPermissions: boolean;
+}
+
 export interface LastLaunch {
   harness: LaunchHarness;
   /** Model id; '' is the Harness's own default. */
   model: string;
   directory: string;
+  /** LAUNCH-3.4, 3.5: absent entries mean the Harness has not been started yet. */
+  byHarness?: Partial<Record<LaunchHarness, LaunchChoices>>;
 }
 
 export class SettingsError extends Error {
@@ -117,7 +126,19 @@ const fields: { [K in keyof Settings]: Field<Settings[K]> } = {
       ) {
         throw new SettingsError(field, 'Invalid last launch.');
       }
-      return { harness: v.harness, model: v.model, directory: parseStartDirectory(v.directory, field) };
+      const byHarness: LastLaunch['byHarness'] = {};
+      if (v.byHarness !== undefined) {
+        if (!isRecord(v.byHarness)) throw new SettingsError(field, 'Invalid last launch choices.');
+        for (const harness of ['claude', 'codex'] as const) {
+          const choice = v.byHarness[harness];
+          if (choice === undefined) continue;
+          if (!isRecord(choice) || (choice.effort !== null && (typeof choice.effort !== 'string' || !EFFORT_LEVEL.test(choice.effort))) || typeof choice.skipPermissions !== 'boolean') {
+            throw new SettingsError(field, 'Invalid last launch choices.');
+          }
+          byHarness[harness] = { effort: choice.effort as string | null, skipPermissions: choice.skipPermissions };
+        }
+      }
+      return { harness: v.harness, model: v.model, directory: parseStartDirectory(v.directory, field), ...(v.byHarness === undefined ? {} : { byHarness }) };
     },
   },
   productiveEmail: {

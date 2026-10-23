@@ -1,7 +1,7 @@
 ---
 title: Start Sessions
 code: LAUNCH
-status: In Progress
+status: Done
 created: 2026-10-16
 updated: 2026-10-23
 ---
@@ -34,8 +34,8 @@ Sessions started in Orca can't be controlled from Lookout (SIDE shows them greye
 - [x] LAUNCH-3.1 Harness: Claude Code (default) or Codex; a Harness that isn't installed is shown disabled. (test)
 - [x] LAUNCH-3.2 Model: the models Fleet lists for the chosen Harness, defaulting to the Harness's own default. (test)
 - [x] LAUNCH-3.3 Name and first prompt are optional. The prompt field accepts multiple lines. (test)
-- [ ] LAUNCH-3.4 Effort, next to the model: the levels Fleet lists for the chosen model, lowest first. It starts on `high` the first time you start a Harness, then on the level you last started that Harness with. A remembered level the chosen model doesn't list falls back to `high`; a model with no `high` falls back to its own default. A model with no levels shows no picker. (test)
-- [ ] LAUNCH-3.5 Skip permissions, a checkbox: checked the first time for Claude Code, unchecked for Codex, then what you last started that Harness with. For Codex its note says it also turns off Codex's sandbox. (test)
+- [x] LAUNCH-3.4 Effort, next to the model: the levels Fleet lists for the chosen model, lowest first. It starts on `high` the first time you start a Harness, then on the level you last started that Harness with. A remembered level the chosen model doesn't list falls back to `high`; a model with no `high` falls back to its own default. A model with no levels shows no picker. (test)
+- [x] LAUNCH-3.5 Skip permissions, a checkbox: checked the first time for Claude Code, unchecked for Codex, then what you last started that Harness with. For Codex its note says it also turns off Codex's sandbox. (test)
 
 ### LAUNCH-4 Start
 
@@ -46,7 +46,7 @@ Sessions started in Orca can't be controlled from Lookout (SIDE shows them greye
 - [x] LAUNCH-4.5 If the Session hasn't appeared after 15 s, the "Starting…" row turns into an error, and the Session host is left running so you can look. The error and the last lines of its terminal show in the row while it isn't selected; selected, the row stays compact and the starting view shows them (LAUNCH-4.6). (manual)
 - [x] LAUNCH-4.6 While a "Starting…" row is selected, the main pane shows the start: its name, Harness, start directory and the time since Start; then, once it failed (LAUNCH-4.5), the error and its terminal's last lines in place of the waiting note. (test)
 - [x] LAUNCH-4.7 "Starting…" rows count as rows for ↑/↓, j/k and ⌘1–9 (SIDE-5.1, SIDE-5.2), in the order shown, above the Sessions. A failed one takes no ⌘ number (it stays until dismissed); ↑/↓ and j/k still reach it. ⌘J skips them all. (test)
-- [ ] LAUNCH-4.8 A Session starts with the Effort and the Skip permissions choice you picked, for this Session only: it doesn't change the Harness's saved defaults. After its first reply the status line shows that Effort (VIEW-5.5), and a Claude Code Session started with Skip permissions shows Claude Code's bypass mode in its terminal. (manual)
+- [x] LAUNCH-4.8 A Session starts with the Effort and the Skip permissions choice you picked, for this Session only: it doesn't change the Harness's saved defaults. After its first reply the status line shows that Effort (VIEW-5.5), and a Claude Code Session started with Skip permissions shows Claude Code's bypass mode in its terminal. (manual)
 
 ### LAUNCH-5 Telemetry
 
@@ -112,7 +112,7 @@ Sessions started in Orca can't be controlled from Lookout (SIDE shows them greye
   - **Fleet, a commit in the fork ([0006](../../decisions/0006-run-a-fork-of-fleet.md)):** `spawn` gains `--effort <level>` and `--skip-permissions`, and puts them in the command it types, before `--` and the prompt:
     - Claude Code: `--effort <level>` and `--dangerously-skip-permissions` (claude 2.1.309's `--help`: "Effort level for the current session", so the saved default stays as it was);
     - Codex: `-c model_reasoning_effort=<level>` and `--dangerously-bypass-approvals-and-sandbox` (codex 0.163; `-c` overrides `~/.codex/config.toml` for this run only).
-    - The level follows `fleet effort`'s rule: lowercase letters, at most 16; anything else, or either flag with pi, with `--resume`, `--from` or on `handoff`/`stack`/`jobs`, is a `usage` failure (`{ok: false, kind: "usage"}`, exit 1), before anything starts. Fleet doesn't check the level against its `harness list`; Lookout does.
+    - The level follows `fleet effort`'s rule: lowercase letters, at most 16; anything else, or either flag with pi, `--resume` or `--from`, is a `usage` failure (`{ok: false, kind: "usage"}`, exit 1), before anything starts, also for a spawn on another host. `handoff`, `stack spawn`, `prs` and `jobs` don't have the flags, so their argument parser rejects them as unknown (exit 2, no JSON), as for any flag they lack. Fleet doesn't check the level against its `harness list`; Lookout does.
   - **Lookout's server:** `POST /api/launch` takes `effort` (a string, or absent) and `skipPermissions` (a boolean, default false). `effort` must be one of the `efforts` the cached `harness list` gives for the chosen model (an entry matched by id, `''` the default one), else 400 before argv is built; a model with no levels takes none. `--skip-permissions` goes in only when `skipPermissions` is true.
   - **Remembered per Harness (LAUNCH-3.4, 3.5):** `lastLaunch` gains `byHarness: {claude?: {effort, skipPermissions}, codex?: {…}}`, written after a successful start for that start's Harness only, so a Codex start leaves Claude Code's choice alone. `effort` is a level or null (the model had none). Missing entries mean first time: `high`, and checked for Claude Code only. Old settings files without `byHarness` parse as first time.
   - **Status line (LAUNCH-4.8):** Fleet reads a Claude Code Session's Effort from its Transcript's turns (`core/context.rs`), so it shows after the first reply, as for any Session; a Codex Session's from its rollout's `turn_context`.
@@ -166,3 +166,4 @@ Resolved while building (2026-10-16): `fleet spawn` (the CLI) never answers a tr
 - 2026-10-21: Changed from Dario's testing: LAUNCH-1.3's draft belongs to the launcher opened with N, ⌘N or "+". A launcher opened from Work no longer shares it, so a Task's URL or a Review prompt left behind by Esc no longer shows up in the next launcher you open. A start from Work that is answered after Esc closed its launcher leaves the N-opened draft alone too. LAUNCH-1.3 is retagged `(e2e)` (a World can check it) and ticked again on a Behaviour test that passes.
 - 2026-10-22: Design system (DS-4, DS-7): a failed row's error is an inline error Alert, wrapping in full, and `quiet`, so a screen reader isn't told twice (the starting view announces it while selected); Dismiss is a 24 px icon button. LAUNCH-4.5's wording stays.
 - 2026-10-23: In Progress again for Plan item 5: Effort (LAUNCH-3.4) and Skip permissions (LAUNCH-3.5) in the launcher, passed through the fork's `spawn` (LAUNCH-4.8). Dario's answers: both together; Effort starts at `high`; both remembered per Harness; Codex too; Skip permissions checked at first for Claude Code only. The Non-goal on Harness flags narrows to the rest of them.
+- 2026-10-23: Built against the Fleet fork's `spawn --effort` / `--skip-permissions` (`lookout` `914f769`, now Lookout's pin and the README's). LAUNCH-4.8 seen live through a preview on that Fleet, claude 2.1.309 and codex 0.163, in a private tmux server: Claude Code on Haiku 5.5 at `low` with Skip permissions ran `claude --model claude-haiku-5-5 -n … --effort low --dangerously-skip-permissions -- …`, its terminal showed `low` and "bypass permissions on", and the status line read `low` after the reply; the next launcher opened on `low` for Claude Code, and on `high`, unchecked, with the sandbox note, for Codex; Codex at `low` ran `codex -c model_reasoning_effort=low -- …` and its status line read `low`. `~/.claude/settings.json` was byte-identical before and after, and `~/.codex/config.toml` kept `high`. Review fix: Codex's note is the checkbox's accessible description. Done: every criterion is ticked.

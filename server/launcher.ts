@@ -241,13 +241,18 @@ export class Launcher {
     const id = this.newId((input as Record<string, unknown> | null)?.launchId);
     const args = ['--local', 'spawn', '--json', '--backend', 'tmux', '--harness', req.harness, '--dir', expandHome(req.directory)];
     if (req.model) args.push('--model', req.model);
+    if (req.effort) args.push('--effort', req.effort);
+    if (req.skipPermissions) args.push('--skip-permissions');
     if (req.name) args.push('--name', req.name);
     if (req.prompt) args.push('--', req.prompt);
     const title = req.name || `${HARNESS_LABEL[req.harness]} in ${basename(expandHome(req.directory))}`;
     const launch = await this.spawn({ id, title, harness: req.harness, directory: req.directory, resumes: null, name: req.name }, args);
     // LAUNCH-1.2: remember the choices. A failed write doesn't fail the start.
     this.opts.settings
-      .update({ lastLaunch: { harness: req.harness, model: req.model, directory: req.directory } }, 'server')
+      .update({ lastLaunch: {
+        harness: req.harness, model: req.model, directory: req.directory,
+        byHarness: { [req.harness]: { effort: req.effort ?? null, skipPermissions: req.skipPermissions } },
+      } }, 'server')
       .catch((err: unknown) => console.error('lookout: saving the last launch failed', err));
     return launch;
   }
@@ -421,7 +426,7 @@ export class Launcher {
     this.changed();
   }
 
-  private async validate(input: unknown): Promise<{ directory: string; harness: LaunchHarness; model: string; name: string; prompt: string }> {
+  private async validate(input: unknown): Promise<{ directory: string; harness: LaunchHarness; model: string; name: string; prompt: string; effort: string | undefined; skipPermissions: boolean }> {
     const v = typeof input === 'object' && input !== null ? (input as Record<string, unknown>) : {};
     const directory = typeof v.directory === 'string' ? v.directory : '';
     if (!this.opts.settings.get().startDirectories.includes(directory)) {
@@ -444,8 +449,15 @@ export class Launcher {
     const harnesses = await this.harnesses();
     const h = harnesses.find((x) => x.id === harness);
     if (!h?.installed) throw new LaunchError(400, `${HARNESS_LABEL[harness]} isn't installed.`, 'harness');
-    if (!h.models.some((m) => m.id === model)) throw new LaunchError(400, `Unknown model for ${h.label}: ${model}`, 'model');
-    return { directory, harness, model, name, prompt };
+    const chosen = h.models.find((m) => m.id === model);
+    if (!chosen) throw new LaunchError(400, `Unknown model for ${h.label}: ${model}`, 'model');
+    if (v.effort !== undefined && (typeof v.effort !== 'string' || !chosen.efforts.includes(v.effort))) {
+      throw new LaunchError(400, 'Pick an Effort listed for this model.', 'effort');
+    }
+    if (v.skipPermissions !== undefined && typeof v.skipPermissions !== 'boolean') {
+      throw new LaunchError(400, 'Skip permissions must be a boolean.', 'skipPermissions');
+    }
+    return { directory, harness, model, name, prompt, effort: v.effort as string | undefined, skipPermissions: v.skipPermissions === true };
   }
 
   private changed(started: { launchId: string; sessionId: string }[] = []): void {

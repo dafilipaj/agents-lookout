@@ -118,6 +118,10 @@ export interface HarnessModel {
 
 /** What the launcher sends to `POST /api/launch`. */
 export interface LaunchRequest {
+  /** LAUNCH-3.4: one of the chosen model's levels; absent when none is picked. */
+  effort?: string;
+  /** LAUNCH-3.5: false when absent. */
+  skipPermissions?: boolean;
   directory: string;
   harness: LaunchHarness;
   /** '' for the Harness's own default. */
