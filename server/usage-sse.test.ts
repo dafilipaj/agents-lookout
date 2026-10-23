@@ -62,6 +62,9 @@ beforeAll(async () => {
       detail: async () => {
         throw new Error('unused');
       },
+      peek: async () => {
+        throw new Error('unused');
+      },
       resume: async () => {
         throw new Error('unused');
       },

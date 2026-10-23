@@ -75,6 +75,8 @@ export interface TaskDecl {
   lastActivityAt?: string;
   /** `type_id` 3. */
   milestone?: boolean;
+  /** The description, as HTML, as Productive gives it (WORK-2.11); none when unset. */
+  description?: string;
 }
 
 /**

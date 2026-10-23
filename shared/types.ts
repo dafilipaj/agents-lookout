@@ -350,6 +350,8 @@ export interface HistoryItem {
   title: string;
   /** The directory it started in; null when tb-session doesn't know. */
   projectPath: string | null;
+  /** HIST-2.9: `projectPath` as shown, the home directory as `~`. */
+  projectDisplay: string | null;
   /** The start directory's name. */
   repo: string | null;
   branch: string | null;
@@ -357,6 +359,11 @@ export interface HistoryItem {
   lastActiveAt: number | null;
   /** Where the search matched, `«` and `»` around the hits; null when listing. */
   snippet: string | null;
+  /**
+   * HIST-2.9: its first prompt, its first three lines, at most 600 characters; null when the row
+   * has none (a tb-session 0.2 `list` row), which the expanded result reads with `show`.
+   */
+  firstPrompt: string | null;
   /** Why it can't be resumed (HIST-3.3); null when it can. */
   blocked: HistoryBlock | null;
 }
@@ -382,6 +389,18 @@ export interface HistoryDetail {
   preview: 'latest' | 'first' | 'all';
   /** How many messages the Session has, when tb-session says. */
   totalMessages: number | null;
+}
+
+/**
+ * HIST-2.9, HIST-2.10: `GET /api/history/:harness/:id/peek`, what an expanded result reads with one
+ * `tb-session show --tail 1`: its first prompt and its last message, each its first three lines.
+ */
+export interface HistoryPeek {
+  firstPrompt: string | null;
+  /** The last prompt or reply, and who said it; null when there is none, or with tb-session 0.2. */
+  last: { role: 'user' | 'assistant'; text: string } | null;
+  /** False with tb-session 0.2, which can't tail: the last message is left out. */
+  tailed: boolean;
 }
 
 /**

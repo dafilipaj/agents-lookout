@@ -2,7 +2,7 @@ import type { HistoryItem, LaunchRequest, LaunchView, ResumeResult } from '@shar
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { NOW, launchView, renderApp, row } from '@/test/helpers';
+import { NOW, launchView, pressResult, renderApp, row } from '@/test/helpers';
 
 type App = ReturnType<typeof renderApp>;
 
@@ -85,6 +85,8 @@ const PAST: HistoryItem = {
   branch: 'main',
   lastActiveAt: NOW - 3 * 86_400_000,
   snippet: null,
+  firstPrompt: null,
+  projectDisplay: null,
   blocked: null,
 };
 const historyOf = (items: HistoryItem[]) => async () => ({ state: 'ok' as const, page: 1, hasMore: false, items });
@@ -147,7 +149,7 @@ describe('selecting a start the moment you press it (LAUNCH-4.2, HIST-3.1)', () 
     app.snapshot([row({ id: 'other' })]);
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: 'History' }));
-    await user.click(await screen.findByText('kg-hook-review', { selector: '[data-field="title"]' }));
+    await pressResult(user, 'kg-hook-review');
     expect(window.location.pathname).toBe(`/l/${sentId}`);
     expect(within(view()).getByRole('img', { name: 'Codex' })).toBeInTheDocument();
 
@@ -170,11 +172,11 @@ describe('selecting a start the moment you press it (LAUNCH-4.2, HIST-3.1)', () 
     app.emit({ type: 'launches', launches: [launchView({ id: 'l-old', title: 'kg-hook-review', harness: 'codex' })], started: [] });
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: 'History' }));
-    await user.click(await screen.findByText('kg-hook-review', { selector: '[data-field="title"]' }));
+    await pressResult(user, 'kg-hook-review');
     await waitFor(() => expect(window.location.pathname).toBe('/l/l-old'));
     expect(within(startingList()).getAllByRole('listitem')).toHaveLength(1);
 
-    await user.click(screen.getByText('kg-hook-review', { selector: '[data-field="title"]' }));
+    await pressResult(user, 'kg-hook-review');
     await waitFor(() => expect(window.location.pathname).toBe('/s/codex-1'));
     expect(within(startingList()).getAllByRole('listitem')).toHaveLength(1); // its own row went
   });
@@ -237,7 +239,7 @@ describe('selecting a start the moment you press it (LAUNCH-4.2, HIST-3.1)', () 
     await user.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     await user.click(screen.getByRole('button', { name: 'History' }));
-    await user.click(await screen.findByText('kg-hook-review', { selector: '[data-field="title"]' }));
+    await pressResult(user, 'kg-hook-review');
     expect(window.location.pathname).toBe(`/l/${resumeId}`);
 
     await slow.answer(0);

@@ -1,10 +1,10 @@
-import type { HistoryDetail, HistoryItem, HistoryPage, LaunchView } from '@shared/types.ts';
+import type { HistoryDetail, HistoryItem, HistoryPage, HistoryPeek, LaunchView } from '@shared/types.ts';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { HistoryQuery } from '@/lib/client';
 import { AUTO_FILL_PAGES } from '@/components/HistoryPanel';
-import { NOW, launchView, renderApp, row } from '@/test/helpers';
+import { NOW, launchView, pressResult, renderApp, row } from '@/test/helpers';
 
 /** Synthetic past Sessions only. */
 const item = (over: Partial<HistoryItem> & { sessionId: string }): HistoryItem => ({
@@ -16,6 +16,8 @@ const item = (over: Partial<HistoryItem> & { sessionId: string }): HistoryItem =
   branch: 'main',
   lastActiveAt: NOW - 2 * 3_600_000,
   snippet: null,
+  firstPrompt: null,
+  projectDisplay: '~/Projects/work',
   blocked: null,
   ...over,
 });
@@ -221,13 +223,14 @@ describe('finding past Sessions (HIST-2)', () => {
     await waitFor(() => expect(history).toHaveBeenLastCalledWith({ query: '', page: 1, headless: false, harness: 'codex' }));
   });
 
-  it('HIST-2.7: ↑/↓ and j/k move through the results without resuming; Enter acts like a click', async () => {
+  it('HIST-2.7: ↑/↓ and j/k move through the results without resuming, opening or selecting any Session, and collapse the expanded result as they leave it; Enter expands, then runs its button', async () => {
     const resume = vi.fn(async () => ({ kind: 'started' as const, launch: launchView({ id: 'l-9' }) }));
     const app = renderApp('/s/alpha', { history: async () => ok([LIVE, CODEX, GONE]), resume });
     app.snapshot([row({ id: 'alpha' }), row({ id: 'beta' })]);
     const user = await openHistory(app);
     await waitFor(() => expect(options()).toHaveLength(3));
     const selected = () => options().findIndex((o) => o.getAttribute('aria-selected') === 'true');
+    const expanded = () => options().findIndex((o) => o.getAttribute('aria-expanded') === 'true');
     expect(selected()).toBe(0);
     await user.keyboard('{ArrowDown}'); // from the search box
     expect(selected()).toBe(1);
@@ -237,8 +240,20 @@ describe('finding past Sessions (HIST-2)', () => {
     await user.keyboard('kk{ArrowUp}');
     expect(selected()).toBe(0);
     await user.keyboard('j');
+    expect(expanded()).toBe(-1); // moving expands nothing
+    // Enter on a result that isn't expanded expands it, and does nothing else.
+    await user.keyboard('{Enter}');
+    expect(expanded()).toBe(1);
     expect(resume).not.toHaveBeenCalled();
     expect(window.location.pathname).toBe('/s/alpha'); // the Session sidebar didn't move either
+    // Moving away collapses it; coming back expands nothing.
+    await user.keyboard('j');
+    expect(expanded()).toBe(-1);
+    await user.keyboard('k');
+    expect(expanded()).toBe(-1);
+    // Enter, Enter: expand, then its button (Resume).
+    await user.keyboard('{Enter}');
+    expect(resume).not.toHaveBeenCalled();
     await user.keyboard('{Enter}');
     expect(resume).toHaveBeenCalledWith('codex', 'codex-1', expect.any(String));
   });
@@ -341,13 +356,171 @@ describe('finding past Sessions (HIST-2)', () => {
   });
 });
 
-describe('clicking a past Session (HIST-3)', () => {
-  it('HIST-3.1: a resumable one is resumed: "Starting…" in the Session sidebar, selected at once, then the live Session takes over', async () => {
+describe('an expanded result (HIST-2.9 to HIST-2.11, HIST-3.5)', () => {
+  const peekOf = (over: Partial<HistoryPeek> = {}): HistoryPeek => ({ firstPrompt: 'Why does the hook skip the merge commit?', last: { role: 'assistant', text: 'The hook only runs on\nthe first parent.' }, tailed: true, ...over });
+  const details = (o: HTMLElement) => o.querySelector<HTMLElement>('[data-field="details"]');
+
+  it('HIST-3.5: a click selects and expands a result and does nothing else: no resume, open or show, and no read but its own', async () => {
+    const resume = vi.fn();
+    const pastSession = vi.fn();
+    const app = renderApp('/s/alpha', { history: async () => ok([LIVE, CODEX, GONE]), resume, pastSession });
+    app.snapshot([row({ id: 'alpha' }), row({ id: 'live-1' })]);
+    const user = await openHistory(app);
+    await waitFor(() => expect(options()).toHaveLength(3));
+    for (const [i, title] of [[0, 'fix-deal-rates'], [1, 'kg-hook-review'], [2, 'pr641-review']] as const) {
+      await user.click(screen.getByText(title, { selector: '[data-field="title"]' }));
+      expect(options()[i]).toHaveAttribute('aria-selected', 'true');
+      expect(options()[i]).toHaveAttribute('aria-expanded', 'true');
+      // A second click on it keeps it as it is.
+      await user.click(screen.getByText(title, { selector: '[data-field="title"]' }));
+      expect(options()[i]).toHaveAttribute('aria-expanded', 'true');
+    }
+    expect(resume).not.toHaveBeenCalled();
+    expect(pastSession).not.toHaveBeenCalled();
+    expect(window.location.pathname).toBe('/s/alpha');
+    expect(screen.queryByRole('list', { name: 'Starting Sessions' })).toBeNull();
+  });
+
+  it('HIST-2.9: it shows its start directory with ~, branch, when it was last active, its Harness and that it can be resumed; its first prompt and last message, three lines each, with who said the last', async () => {
+    const pastPeek = vi.fn(async () => peekOf());
+    const app = renderApp('/', { history: async () => ok([{ ...CODEX, firstPrompt: 'Why does the hook skip the merge commit?' }]), pastPeek });
+    app.snapshot([]);
+    const user = await openHistory(app);
+    await user.click(await screen.findByText('kg-hook-review', { selector: '[data-field="title"]' }));
+    const d = details(options()[0]!)!;
+    expect(d.querySelector('[data-field="start-dir"]')).toHaveTextContent('~/Projects/work · feature/kg-hook');
+    const when = new Date(CODEX.lastActiveAt!).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
+    expect(d.querySelector('[data-field="state"]')).toHaveTextContent(`${when} · Codex · can resume`);
+    expect(d.querySelector('[data-field="first-prompt"]')).toHaveTextContent('Why does the hook skip the merge commit?');
+    await waitFor(() => expect(d.querySelector('[data-field="last-message"]')).toHaveTextContent('Codex'));
+    expect(d.querySelector('[data-field="last-message"] p')!.textContent).toBe('The hook only runs on\nthe first parent.');
+    expect(d.querySelector('[data-field="last-message"] p')).toHaveClass('line-clamp-3', 'whitespace-pre-line');
+    expect(d.querySelector('[data-field="first-prompt"] p')).toHaveClass('line-clamp-3');
+    // No model: tb-session gives none.
+    expect(d).not.toHaveTextContent(/gpt|sonnet|opus/i);
+    // A screen reader hears it as the result's description, not its name.
+    expect(d).toHaveAttribute('aria-hidden');
+    expect(options()[0]).toHaveAttribute('aria-describedby', d.id);
+  });
+
+  it('HIST-2.9: your own last prompt is labelled "You"; a live result says it’s live and its button is Open; one that can’t be resumed says why and its button is Show', async () => {
+    const pastPeek = vi.fn(async (_h: string, id: string) => peekOf({ last: id === 'live-1' ? { role: 'user', text: 'Keep going.' } : null }));
+    const app = renderApp('/', { history: async () => ok([LIVE, GONE]), pastPeek });
+    app.snapshot([row({ id: 'live-1' })]);
+    const user = await openHistory(app);
+    await user.click(await screen.findByText('fix-deal-rates', { selector: '[data-field="title"]' }));
+    const live = details(options()[0]!)!;
+    expect(live.querySelector('[data-field="state"]')).toHaveTextContent(/· Claude Code · live$/);
+    await waitFor(() => expect(live.querySelector('[data-field="last-message"]')).toHaveTextContent('YouKeep going.'));
+    expect(live.querySelector('[data-field="actions"]')).toHaveTextContent('Open');
+    await user.click(screen.getByText('pr641-review', { selector: '[data-field="title"]' }));
+    const gone = details(options()[1]!)!;
+    expect(gone.querySelector('[data-field="state"]')).toHaveTextContent("can't be resumed");
+    expect(gone.querySelector('[data-field="blocked"]')).toHaveTextContent('The directory it started in no longer exists.');
+    expect(gone.querySelector('[data-field="actions"]')).toHaveTextContent('Show');
+  });
+
+  it('HIST-2.10: the first prompt and last message are read when a result is expanded, once per Session, with "Loading…" meanwhile; a new search clears them', async () => {
+    let answer: (p: HistoryPeek) => void = () => {};
+    const pastPeek = vi.fn(() => new Promise<HistoryPeek>((r) => (answer = r)));
+    const history = vi.fn(async () => ok([LIVE, CODEX]));
+    const app = renderApp('/', { history, pastPeek });
+    app.snapshot([]);
+    const user = await openHistory(app);
+    await waitFor(() => expect(options()).toHaveLength(2));
+    // Listing reads nothing per result.
+    expect(pastPeek).not.toHaveBeenCalled();
+    await user.click(screen.getByText('kg-hook-review', { selector: '[data-field="title"]' }));
+    expect(pastPeek).toHaveBeenCalledTimes(1);
+    expect(pastPeek).toHaveBeenCalledWith('codex', 'codex-1');
+    expect(details(options()[1]!)).toHaveTextContent('Loading…');
+    await act(async () => answer(peekOf()));
+    expect(details(options()[1]!)).not.toHaveTextContent('Loading…');
+    expect(details(options()[1]!)!.querySelector('[data-field="last-message"]')).toHaveTextContent('The hook only runs on');
+    // Another, then back: the first one's read is kept.
+    await user.click(screen.getByText('fix-deal-rates', { selector: '[data-field="title"]' }));
+    expect(pastPeek).toHaveBeenCalledTimes(2);
+    await act(async () => answer(peekOf()));
+    await user.click(screen.getByText('kg-hook-review', { selector: '[data-field="title"]' }));
+    expect(pastPeek).toHaveBeenCalledTimes(2);
+    expect(details(options()[1]!)!.querySelector('[data-field="last-message"]')).toBeInTheDocument();
+    // A new search clears them.
+    await user.type(screen.getByRole('searchbox', { name: 'Search past Sessions' }), 'hook');
+    await waitFor(() => expect(history).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(options().every((o) => o.getAttribute('aria-expanded') === 'false')).toBe(true));
+    await user.click(screen.getByText('kg-hook-review', { selector: '[data-field="title"]' }));
+    expect(pastPeek).toHaveBeenCalledTimes(3);
+  });
+
+  it('HIST-2.10: a failed read shows an error line and the button still works; with tb-session 0.2 the last message is left out and the first prompt still shows', async () => {
+    const resume = vi.fn(async () => ({ kind: 'started' as const, launch: launchView({ id: 'l-3' }) }));
+    const pastPeek = vi.fn(async (_h: string, id: string): Promise<HistoryPeek> => {
+      if (id === 'codex-1') throw new Error('tb-session took too long to answer.');
+      return { firstPrompt: 'Review PR 641.', last: null, tailed: false };
+    });
+    const app = renderApp('/', { history: async () => ok([CODEX, { ...LIVE, sessionId: 'old-1', title: 'old-one' }]), pastPeek, resume });
+    app.snapshot([]);
+    const user = await openHistory(app);
+    await user.click(await screen.findByText('kg-hook-review', { selector: '[data-field="title"]' }));
+    await waitFor(() => expect(details(options()[0]!)!.querySelector('[data-field="peek-error"]')).toHaveTextContent('tb-session took too long to answer.'));
+    await user.click(options()[0]!.querySelector<HTMLElement>('[data-field="actions"] [data-action]')!);
+    expect(resume).toHaveBeenCalledWith('codex', 'codex-1', expect.any(String));
+    await user.click(screen.getByText('old-one', { selector: '[data-field="title"]' }));
+    const old = details(options()[1]!)!;
+    await waitFor(() => expect(old.querySelector('[data-field="first-prompt"]')).toHaveTextContent('Review PR 641.'));
+    expect(old.querySelector('[data-field="last-message"]')).toBeNull();
+    expect(old).not.toHaveTextContent('Loading…');
+  });
+
+  it('HIST-2.11: one result is expanded at a time; Esc in the list or the search box collapses it and leaves it selected; the list scrolls to keep it in view, and the main pane stays', async () => {
+    const scrolled: string[] = [];
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this.id);
+    };
+    try {
+      const app = renderApp('/s/alpha', { history: async () => ok([LIVE, CODEX, GONE]) });
+      app.snapshot([row({ id: 'alpha' })]);
+      const user = await openHistory(app);
+      await waitFor(() => expect(options()).toHaveLength(3));
+      const expanded = () => options().filter((o) => o.getAttribute('aria-expanded') === 'true').map((o) => o.getAttribute('data-session-id'));
+      await user.click(screen.getByText('kg-hook-review', { selector: '[data-field="title"]' }));
+      expect(scrolled).toContain('history-codex:codex-1');
+      await user.click(screen.getByText('pr641-review', { selector: '[data-field="title"]' }));
+      expect(expanded()).toEqual(['gone-1']);
+      // Esc in the list.
+      within(panel()).getByRole('listbox').focus();
+      await user.keyboard('{Escape}');
+      expect(expanded()).toEqual([]);
+      expect(options()[2]).toHaveAttribute('aria-selected', 'true');
+      // Esc in the search box collapses it too.
+      await user.keyboard('{Enter}');
+      expect(expanded()).toEqual(['gone-1']);
+      const box = screen.getByRole('searchbox', { name: 'Search past Sessions' });
+      box.focus();
+      await user.keyboard('{Escape}');
+      expect(expanded()).toEqual([]);
+      expect(options()[2]).toHaveAttribute('aria-selected', 'true');
+      expect(window.location.pathname).toBe('/s/alpha');
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('alpha');
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+  });
+});
+
+describe('resuming a past Session from its result (HIST-3)', () => {
+  it('HIST-3.1: "Resume" on an expanded result that can be resumed resumes it: "Starting…" in the Session sidebar, selected at once, then the live Session takes over', async () => {
     const resume = vi.fn(async () => ({ kind: 'started' as const, launch: launchView({ id: 'l-7', title: 'kg-hook-review', harness: 'codex' }) }));
     const app = renderApp('/', { history: async () => ok([CODEX]), resume });
     app.snapshot([]);
     const user = await openHistory(app);
     await user.click(await screen.findByText('kg-hook-review', { selector: '[data-field="title"]' }));
+    expect(resume).not.toHaveBeenCalled();
+    const button = options()[0]!.querySelector('[data-field="actions"] [data-action]')!;
+    expect(button).toHaveAttribute('data-action', 'resume');
+    expect(button).toHaveTextContent('Resume');
+    await user.click(button);
     expect(resume).toHaveBeenCalledWith('codex', 'codex-1', expect.any(String));
     const starting: LaunchView = launchView({ id: 'l-7', title: 'kg-hook-review', harness: 'codex' });
     app.emit({ type: 'launches', launches: [starting], started: [] });
@@ -359,19 +532,24 @@ describe('clicking a past Session (HIST-3)', () => {
     await waitFor(() => expect(window.location.pathname).toBe('/s/codex-1'));
   });
 
-  it('HIST-3.2: a live one is selected, never resumed; so is one Fleet says went live meanwhile', async () => {
+  it('HIST-3.2: "Open" on an expanded live result, or Enter on it, selects it, never resumed; so is one Fleet says went live meanwhile', async () => {
     const resume = vi.fn(async () => ({ kind: 'live' as const, sessionId: 'codex-1' }));
     const app = renderApp('/', { history: async () => ok([LIVE, CODEX]), resume });
     app.snapshot([row({ id: 'live-1' })]);
     const user = await openHistory(app);
     await user.click(await screen.findByText('fix-deal-rates', { selector: '[data-field="title"]' }));
+    expect(window.location.pathname).toBe('/');
+    expect(options()[0]!.querySelector('[data-field="actions"] [data-action]')).toHaveTextContent('Open');
+    // Enter on the expanded result runs its button.
+    within(panel()).getByRole('listbox').focus();
+    await user.keyboard('{Enter}');
     expect(window.location.pathname).toBe('/s/live-1');
     expect(resume).not.toHaveBeenCalled();
-    await user.click(screen.getByText('kg-hook-review', { selector: '[data-field="title"]' }));
+    await pressResult(user, 'kg-hook-review');
     await waitFor(() => expect(window.location.pathname).toBe('/s/codex-1'));
   });
 
-  it('HIST-3.3: one whose start directory is gone opens read-only: its latest messages and why', async () => {
+  it('HIST-3.3: "Show" on an expanded result whose start directory is gone, or Enter on it, opens it read-only: its latest messages and why', async () => {
     const detail: HistoryDetail = {
       item: GONE,
       source: 'transcript',
@@ -388,6 +566,11 @@ describe('clicking a past Session (HIST-3)', () => {
     app.snapshot([]);
     const user = await openHistory(app);
     await user.click(await screen.findByText('pr641-review', { selector: '[data-field="title"]' }));
+    expect(window.location.pathname).toBe('/');
+    expect(options()[0]!.querySelector('[data-field="actions"] [data-action]')).toHaveTextContent('Show');
+    // Enter on the expanded result runs its button, as pressing Show does.
+    within(panel()).getByRole('listbox').focus();
+    await user.keyboard('{Enter}');
     expect(window.location.pathname).toBe('/h/claude/gone-1');
     expect(resume).not.toHaveBeenCalled();
     const view = await screen.findByTestId('past-session');
@@ -412,7 +595,7 @@ describe('clicking a past Session (HIST-3)', () => {
     const app = renderApp('/', { history: async () => ok([CODEX]), resume, pastSession });
     app.snapshot([]);
     const user = await openHistory(app);
-    await user.click(await screen.findByText('kg-hook-review', { selector: '[data-field="title"]' }));
+    await pressResult(user, 'kg-hook-review');
     await waitFor(() => expect(window.location.pathname).toBe('/h/codex/codex-1'));
     const view = await screen.findByTestId('past-session');
     expect(within(view).getByRole('note')).toHaveTextContent('The directory it started in no longer exists.');
@@ -428,16 +611,34 @@ describe('clicking a past Session (HIST-3)', () => {
     expect(note).not.toHaveTextContent('Its latest messages');
   });
 
-  it('a resume that fails says why in the History sidebar', async () => {
-    const resume = vi.fn(async () => {
-      throw new Error("Couldn't start the Session: Fleet refused");
-    });
+  it('HIST-3.6 (support): while a resume runs the result stays expanded and says "Resuming…"; a failure shows under its button as an error Alert', async () => {
+    let fail: (e: Error) => void = () => {};
+    const resume = vi.fn(() => new Promise<never>((_, reject) => (fail = reject)));
     const app = renderApp('/', { history: async () => ok([CODEX]), resume });
     app.snapshot([]);
     const user = await openHistory(app);
+    await pressResult(user, 'kg-hook-review');
+    const result = options()[0]!;
+    expect(result).toHaveAttribute('aria-expanded', 'true');
+    expect(result.querySelector('[data-field="actions"] [data-action]')).toHaveTextContent('Resuming…');
+    expect(result.querySelector('[data-field="actions"] [data-action]')).toHaveAttribute('aria-disabled', 'true');
+    await act(async () => fail(new Error("Couldn't start the Session: Fleet refused")));
+    const alert = await within(result).findByRole('alert');
+    expect(alert).toHaveTextContent("Couldn't start the Session: Fleet refused");
+    expect(result.querySelector('[data-field="actions"]')!.compareDocumentPosition(alert) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(result.querySelector('[data-field="actions"] [data-action]')).toHaveTextContent('Resume');
+  });
+
+  it('HIST-3.6 (support): the button is its word beside a 20 px icon, in the labelled size (DS-7.1)', async () => {
+    const app = renderApp('/', { history: async () => ok([CODEX]) });
+    app.snapshot([]);
+    const user = await openHistory(app);
     await user.click(await screen.findByText('kg-hook-review', { selector: '[data-field="title"]' }));
-    expect(await within(panel()).findByRole('alert')).toHaveTextContent("Couldn't start the Session: Fleet refused");
-    await act(async () => {});
+    const button = options()[0]!.querySelector('[data-field="actions"] [data-action]')!;
+    expect(button).toHaveAttribute('role', 'button');
+    expect(button).toHaveAttribute('data-slot', 'row-action');
+    expect(button).toHaveClass('h-7', "[&_svg:not([class*='size-'])]:size-5");
+    expect(button.querySelector('svg.lucide-history')).not.toBeNull();
   });
 });
 

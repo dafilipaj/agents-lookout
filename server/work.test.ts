@@ -14,6 +14,7 @@ import {
   TB_PROD_TIMEOUT_MS,
   TbProdShapeError,
   TbPrShapeError,
+  MAX_DESCRIPTION,
   WORK_COOLDOWN_MS,
   WORK_INTERVAL_MS,
   WorkCommandRefused,
@@ -22,6 +23,7 @@ import {
   byUrgency,
   classifyTbProdFailure,
   classifyTbPrFailure,
+  descriptionText,
   every401,
   isAllowedWorkCommand,
   marksFor,
@@ -884,6 +886,7 @@ describe('reading `tb-prod query tasks` (WORK-2)', () => {
       dueDate: null,
       lastActivityAt: Date.parse('2026-10-19T12:12:03Z'),
       milestone: false,
+      description: 'All twelve, east wing first.',
       url: 'https://app.fantastic.productive.io/109-productive/tasks/41000001',
       links: null,
     });
@@ -893,6 +896,33 @@ describe('reading `tb-prod query tasks` (WORK-2)', () => {
       ['Lantern Works', 'Not started', 'not-started', '2026-11-01', true],
       ['Harbor Bells', 'Not started', 'not-started', null, false],
     ]);
+  });
+
+  it('WORK-2.11: a Task’s description comes from the same query, as plain text: tags stripped, blocks and <br> as line breaks, entities decoded, blank lines dropped', () => {
+    const page = JSON.parse(TASKS) as Loose;
+    page.data[0].attributes.description =
+      '<h2>Why</h2><p>Totals round <strong>half up</strong> on the preview&nbsp;but&#160;half even on the PDF.<br>Reproduce with deal&nbsp;4 &amp; a 3-line &lt;table&gt;.</p><p></p><ul><li>First</li><li>Second &#x2192; third</li></ul>';
+    const [described, none] = parseTasksPage(JSON.stringify(page)).tasks;
+    expect(described!.description).toBe('Why\nTotals round half up on the preview but half even on the PDF.\nReproduce with deal 4 & a 3-line <table>.\n- First\n- Second → third');
+    expect(none!.description).toBeNull();
+  });
+
+  it('WORK-2.11: no tag, script or style survives, controls are stripped, and the text is cut to 600 characters', () => {
+    expect(descriptionText('<script>alert(1)</script><style>p{}</style><p onclick="x()">Hi <img src=x onerror=alert(1)>there</p><!-- note --><iframe src="y"></iframe>')).toBe('Hi there');
+    expect(descriptionText('<p>Line\u0007 with \u001b[31mred\u001b[0m and\ttab</p>')).toBe('Line with red and tab');
+    const long = descriptionText(`<p>${'word '.repeat(300)}</p>`)!;
+    expect(long).toHaveLength(MAX_DESCRIPTION);
+    expect(long.endsWith('…')).toBe(true);
+    expect(descriptionText('<p>Unclosed <b')).toBe('Unclosed');
+  });
+
+  it('WORK-2.11: a missing, empty or unreadable description is left out, never a read failure', () => {
+    for (const value of [undefined, null, '', '   ', '<p></p><br>', 42, { html: '<p>x</p>' }, ['x']]) {
+      const page = JSON.parse(TASKS) as Loose;
+      if (value === undefined) delete page.data[0].attributes.description;
+      else page.data[0].attributes.description = value;
+      expect(parseTasksPage(JSON.stringify(page)).tasks[0]!.description, JSON.stringify(value)).toBeNull();
+    }
   });
 
   it('WORK-6.2: each Task’s URL is built on the server, in Fantastic, never the old app', () => {

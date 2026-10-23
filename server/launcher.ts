@@ -9,8 +9,8 @@ import { sanitizeLine } from './sanitize.ts';
 import { EFFORT_LEVEL, MODEL_ID } from '../shared/model.ts';
 import { expandHome } from './settings.ts';
 
-/** LAUNCH-4.5: a start that Fleet hasn't reported after this long becomes an error. */
-export const LAUNCH_TIMEOUT_MS = 15_000;
+export { LAUNCH_TIMEOUT_MS } from '../shared/defaults.ts';
+import { LAUNCH_TIMEOUT_MS } from '../shared/defaults.ts';
 /** Harnesses and models are cached this long. */
 export const HARNESS_CACHE_MS = 10 * 60_000;
 /** A completed start's Session stays known this long, for a tab that reconnects (LAUNCH-4.2). */

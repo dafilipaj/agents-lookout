@@ -158,6 +158,7 @@ const app = createApp({
   history: {
     find: (q) => history.find(q),
     detail: (id, harness) => history.detail(id, harness),
+    peek: (id, harness) => history.peek(id, harness),
     resume: (input) => resumePast({ history, launcher, isLive }, input),
   },
   staticDir: production ? fileURLToPath(new URL('../dist/web', import.meta.url)) : null,

@@ -72,6 +72,9 @@ export function RightSidebar({ width, onResize, tab, onTab, onClose, refresh, on
       // The open panel moves its rows; held back from the Session sidebar.
       e.preventDefault();
       nav[tab].current?.move(PANEL_KEYS[e.key]!);
+    } else if (e.key === 'Escape' && nav[tab].current?.collapse?.()) {
+      // WORK-1.12: Esc collapses Work's expanded row, from the tab strip too.
+      e.preventDefault();
     }
   };
 

@@ -1,7 +1,7 @@
 import type { PathAnswer } from '@shared/files.ts';
 import type { Settings, SettingsView } from '@shared/settings.ts';
 import type { WorkRefreshResult } from '@shared/work.ts';
-import { HELD_REASONS, type AnswerRequest, type AnswerResult, type ChatPage, type EffortSwitchRequest, type EffortSwitchResult, type EndResult, type EndTarget, type Harness, type HarnessOption, type HeldReason, type HistoryDetail, type HistoryPage, type LaunchRequest, type LaunchView, type ModelSwitchRequest, type ModelSwitchResult, type RenameResult, type ResumeResult, type ServerEvent } from '@shared/types.ts';
+import { HELD_REASONS, type AnswerRequest, type AnswerResult, type ChatPage, type EffortSwitchRequest, type EffortSwitchResult, type EndResult, type EndTarget, type Harness, type HarnessOption, type HeldReason, type HistoryDetail, type HistoryPage, type HistoryPeek, type LaunchRequest, type LaunchView, type ModelSwitchRequest, type ModelSwitchResult, type RenameResult, type ResumeResult, type ServerEvent } from '@shared/types.ts';
 
 export interface ClientListener {
   onEvent(event: ServerEvent): void;
@@ -57,6 +57,8 @@ export interface LookoutClient {
   history(q: HistoryQuery): Promise<HistoryPage>;
   /** HIST-3.3: a past Session's latest messages, read-only. */
   pastSession(harness: Harness, sessionId: string): Promise<HistoryDetail>;
+  /** HIST-2.10: an expanded result's first prompt and last message. */
+  pastPeek(harness: Harness, sessionId: string): Promise<HistoryPeek>;
   /** HIST-3.1/3.2: resume a past Session, or learn it's live. */
   resume(harness: Harness, sessionId: string, launchId: string): Promise<ResumeResult>;
 }
@@ -324,6 +326,8 @@ export function createHttpClient(): LookoutClient {
       ),
     pastSession: (harness, sessionId) =>
       call<HistoryDetail>(() => fetch(`/api/history/${harness}/${encodeURIComponent(sessionId)}`), 'Loading the Session'),
+    pastPeek: (harness, sessionId) =>
+      call<HistoryPeek>(() => fetch(`/api/history/${harness}/${encodeURIComponent(sessionId)}/peek`), 'Reading the Session'),
     resume: (harness, sessionId, launchId) =>
       call<ResumeResult>(() => send('POST', '/api/history/resume', { sessionId, harness, launchId }), 'Resuming'),
     endSession: (sessionId, target) =>

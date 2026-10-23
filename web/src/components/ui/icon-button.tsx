@@ -1,13 +1,13 @@
 import { cva } from 'class-variance-authority';
-import type { ComponentProps } from 'react';
+import type { ComponentProps, ComponentPropsWithoutRef, ReactNode } from 'react';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 /**
  * DS-7.1: an icon button's two sizes, so a target never shrinks under 24 px: `sm`, a 24 px box with a
  * 14 px icon, for a button inside a line or a row; `md`, a 28 px box with a 16 px icon, for a column's
- * header and toolbars. `muted-foreground` at rest. Work's row buttons, which can't be focusable inside
- * an option, take the `sm` look from here too, with `iconButtonLook` (DS-7.2).
+ * header and toolbars. `muted-foreground` at rest. A button with a word beside its icon has the third
+ * size, `labelledButtonVariants`.
  */
 export const iconButtonVariants = cva('shrink-0 rounded-md text-muted-foreground', {
   variants: {
@@ -19,8 +19,57 @@ export const iconButtonVariants = cva('shrink-0 rounded-md text-muted-foreground
   defaultVariants: { size: 'sm' },
 });
 
-/** The whole look of a ghost icon button of a size, for a mouse-only target that can't be a `button` (Work's rows). */
-export const iconButtonLook = (size: 'sm' | 'md') => cn(buttonVariants({ variant: 'ghost', size: null }), iconButtonVariants({ size }));
+/**
+ * DS-7.1: the labelled size, a word beside a 20 px icon in a 28 px tall target: the buttons of an
+ * expanded Work row (WORK-6.5) and History result (HIST-3.6), and Work's Linked Session chips. The
+ * 20 px goes to a lucide icon and to an icon that is the target's own child (a Harness logo); a
+ * Session marker inside keeps its own size.
+ */
+export const labelledButtonVariants = cva("h-7 shrink-0 gap-1.5 rounded-md px-2 text-body text-foreground [&_svg:not([class*='size-'])]:size-5 [&>svg]:size-5");
+
+/** The whole look of a labelled button: outline, so it reads as one beside the row's words. */
+export const labelledButtonLook = () => cn(buttonVariants({ variant: 'outline', size: null }), labelledButtonVariants());
+
+export interface RowActionProps extends Omit<ComponentPropsWithoutRef<'span'>, 'onClick' | 'title' | 'children'> {
+  /** Its word, which is also its accessible name unless `aria-label` says more (a Linked Session chip's Status). */
+  label: ReactNode;
+  /** Drawn before the word, at 20 px. */
+  icon: ReactNode;
+  /** Drawn after the word at its own size: a Linked Session chip's Session marker (WORK-4.10). */
+  trailing?: ReactNode;
+  /** Its tooltip: the label, with the key when there is one ("Open in Fantastic (O)"). */
+  tip: string;
+  /** False while it can't act (a resume under way): it says so and does nothing. */
+  enabled?: boolean;
+  onPress(): void;
+}
+
+/**
+ * DS-7.1: a labelled button inside a listbox option, where nothing is focusable (WORK UX, "Markers
+ * and buttons"; HIST UX): the keyboard reaches its action through the row's own keys, so this is a
+ * mouse target with the labelled look and a button's role. Its press never reaches the row, whose
+ * click only selects and expands it (WORK-1.12, HIST-3.5).
+ */
+export function RowAction({ label, icon, trailing, tip, enabled = true, onPress, className, ...rest }: RowActionProps) {
+  return (
+    <span
+      role="button"
+      title={tip}
+      aria-disabled={enabled ? undefined : true}
+      data-slot="row-action"
+      onClick={(e) => {
+        e.stopPropagation();
+        if (enabled) onPress();
+      }}
+      className={cn(labelledButtonLook(), enabled ? 'cursor-pointer' : 'cursor-default opacity-50', className)}
+      {...rest}
+    >
+      {icon}
+      <span className="min-w-0 truncate">{label}</span>
+      {trailing}
+    </span>
+  );
+}
 
 export interface IconButtonProps extends Omit<ComponentProps<'button'>, 'aria-label' | 'title'> {
   /** Its accessible name, required: an icon says nothing to a screen reader. */

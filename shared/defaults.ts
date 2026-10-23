@@ -24,5 +24,8 @@ export const TB_PR_INSTALL_COMMAND =
 export const TB_PROD_INSTALL_COMMAND =
   'CARGO_NET_GIT_FETCH_WITH_CLI=true cargo install --git https://github.com/productiveio/cli-toolbox --branch main --locked --root ~/.local tb-prod';
 
+/** LAUNCH-4.5: a start that Fleet hasn't reported after this long becomes an error. */
+export const LAUNCH_TIMEOUT_MS = 15_000;
+
 /** WORK-7.2: what signs tb-prod in to Productive. */
 export const TB_PROD_SIGN_IN_COMMAND = 'tb-prod config init';

@@ -34,6 +34,7 @@ function task(over: Partial<WorkTask> = {}): WorkTask {
     dueDate: null,
     lastActivityAt: PR_CREATED,
     milestone: false,
+    description: null,
     url: `https://app.fantastic.productive.io/109-productive/tasks/${id}`,
     links: null,
     ...over,

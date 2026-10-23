@@ -643,7 +643,7 @@ describe('file links (VIEW-1.17)', () => {
   it('VIEW-1.17: a past Session’s chat has no file links, and asks nothing', async () => {
     const checkPaths = knows({ 'src/rates.ts': `${ROOT}/src/rates.ts` });
     const pastSession = vi.fn(async (): Promise<HistoryDetail> => ({
-      item: { sessionId: 'gone-1', harness: 'claude', headless: false, title: 'rates', projectPath: ROOT, repo: 'acme-app', branch: null, lastActiveAt: null, snippet: null, blocked: 'folder-gone' },
+      item: { sessionId: 'gone-1', harness: 'claude', headless: false, title: 'rates', projectPath: ROOT, repo: 'acme-app', branch: null, lastActiveAt: null, snippet: null, firstPrompt: null, projectDisplay: null, blocked: 'folder-gone' },
       source: 'transcript',
       preview: 'latest',
       totalMessages: 2,

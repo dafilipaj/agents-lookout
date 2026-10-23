@@ -31,6 +31,8 @@ const PAST: HistoryItem = {
   branch: 'fix/pr641',
   lastActiveAt: NOW - 86_400_000,
   snippet: null,
+  firstPrompt: null,
+  projectDisplay: null,
   blocked: 'folder-gone',
 };
 const PAST_DETAIL: HistoryDetail = {

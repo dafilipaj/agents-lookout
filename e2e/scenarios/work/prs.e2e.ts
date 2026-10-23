@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { TB_PR_INSTALL_COMMAND } from '../../../shared/defaults.ts';
 import { PR_REASON } from '../../../server/work.ts';
 import type { TbPrBoardDecl } from '../../world/builder.ts';
@@ -35,6 +35,12 @@ async function openWork(page: Page) {
   await expect(page.getByRole('tab', { name: 'Work' })).toHaveAttribute('aria-selected', 'true');
 }
 
+/** WORK-1.12: a row's buttons show once a click has expanded it. */
+async function expand(row: Locator) {
+  await row.click();
+  await expect(row).toHaveAttribute('aria-expanded', 'true');
+}
+
 const listCalls = (calls: string[][]) => calls.filter((c) => c.join(' ') === 'list --json');
 
 scenario(
@@ -55,7 +61,7 @@ scenario(
     await expect(mine.getByRole('option').nth(0)).toHaveAccessibleName(NAME.stale);
     await expect(mine.getByRole('option').nth(1)).toHaveAccessibleName(NAME.fresh);
     await expect(review.getByRole('option')).toHaveAccessibleName(NAME.review);
-    await expect(review.getByRole('option')).toHaveAccessibleDescription('R reviews it, O opens it on GitHub.');
+    await expect(review.getByRole('option')).toHaveAccessibleDescription('Enter shows its details. R reviews it, O opens it on GitHub.');
     // One listbox holds both groups (UX, "Markers and buttons").
     await expect(work(page).getByRole('listbox')).toHaveCount(1);
     await expect(work(page).getByRole('region', { name: 'PRs' })).toContainText(/PRs\s*·\s*3 open\s*·\s*updated \d+s ago/);
@@ -83,6 +89,7 @@ scenario(
     await openWork(page);
     const row = prRow(page, NAME.review);
     await world.step('the Review request to show', () => expect(row).toBeVisible());
+    await expand(row);
     await row.getByTitle('Review (R)').click();
     const dialog = await expectReviewLauncher(page);
     // It can be edited before Start, and nothing started: no "Starting…" row, nothing asked of Fleet.
@@ -120,11 +127,40 @@ scenario(
     await openWork(page);
     const row = prRow(page, NAME.fresh);
     await world.step('the PR to show', () => expect(row).toBeVisible());
+    await expand(row);
     const tab = page.context().waitForEvent('page');
     await row.getByTitle('Open on GitHub (O)').click();
     expect(await tab).not.toBe(page);
     await world.waitUntil('the new tab to ask for the PR', () => world.browserRequests().includes(MINE_URL));
     expect(world.browserRequests()).toEqual([MINE_URL]);
+  },
+);
+
+scenario(
+  'WORK-3.6: an expanded PR shows its repo, number, age, CI and state chip, and its buttons; an expanded Review request has no chip, and Review comes before Open on GitHub',
+  world().tbPr({ board: BOARD }).settings(CODEX_LAST),
+  async ({ page, world }) => {
+    await openWork(page);
+    const mine = prRow(page, NAME.fresh);
+    await world.step('the PRs to show', () => expect(mine).toBeVisible());
+    await expand(mine);
+    await expect(mine.locator('[data-field="repo"]')).toHaveText('anvil');
+    await expect(mine.locator('[data-field="number"]')).toHaveText('#2101');
+    await expect(mine.locator('[data-field="age"]')).toHaveText('1d');
+    await expect(mine.locator('[data-field="ci"]')).toHaveAttribute('data-ci', 'passing');
+    await expect(mine.locator('[data-field="chip"]')).toHaveText('draft');
+    expect(await mine.locator('[data-field="actions"] [role="button"]').allTextContents()).toEqual(['Open on GitHub']);
+    // The name stays the row's content; the details are its description.
+    await expect(mine).toHaveAccessibleName(NAME.fresh);
+    const review = prRow(page, NAME.review);
+    await expand(review);
+    await expect(mine).toHaveAttribute('aria-expanded', 'false');
+    await expect(review.locator('[data-field="chip"]')).toHaveCount(0);
+    expect(await review.locator('[data-field="actions"] [role="button"]').allTextContents()).toEqual(['Review', 'Open on GitHub']);
+    // Enter on the expanded Review request runs its first button, Review.
+    await page.keyboard.press('Enter');
+    await expectReviewLauncher(page);
+    expect(world.calls().filter((c) => /\bfleet\b.*\bspawn\b/.test(c))).toEqual([]);
   },
 );
 

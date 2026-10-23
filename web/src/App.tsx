@@ -413,6 +413,7 @@ export function App({ client }: { client: LookoutClient }) {
   );
   const searchHistory = useCallback((q: Parameters<LookoutClient['history']>[0]) => client.history(q), [client]);
   const loadPast = useCallback((harness: HistoryItem['harness'], id: string) => client.pastSession(harness, id), [client]);
+  const peekPast = useCallback((harness: HistoryItem['harness'], id: string) => client.pastPeek(harness, id), [client]);
   // HIST-3: a live Session is selected (3.2); one that can't be resumed opens read-only (3.3);
   // any other is resumed, its "Starting…" row selected as a start's is (3.1, LAUNCH-4.2).
   const openPast = useCallback(
@@ -451,6 +452,8 @@ export function App({ client }: { client: LookoutClient }) {
         branch: null,
         lastActiveAt: session.modifiedAt,
         snippet: null,
+        firstPrompt: null,
+        projectDisplay: null,
         blocked: null,
       };
       return openPast(item, session.live);
@@ -794,7 +797,7 @@ export function App({ client }: { client: LookoutClient }) {
             onRefresh={refreshWork}
             now={now}
             panels={{
-              history: <HistoryPanel focusKey={rightFocus.history} sessions={state.sessions} now={now} search={searchHistory} onOpen={openPast} navRef={historyNav} />,
+              history: <HistoryPanel focusKey={rightFocus.history} sessions={state.sessions} now={now} search={searchHistory} peek={peekPast} onOpen={openPast} navRef={historyNav} />,
               work: (
                 <WorkPanel
                   work={state.work}

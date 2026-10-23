@@ -1,7 +1,8 @@
 import type { PathAnswer } from '@shared/files.ts';
 import { type Settings, type SettingsView, defaultSettings } from '@shared/settings.ts';
-import type { ChatPage, FleetHealth, HarnessOption, HistoryDetail, HistoryPage, LaunchRequest, LaunchView, ResumeResult, ServerEvent, SessionRow } from '@shared/types.ts';
-import { act, render } from '@testing-library/react';
+import type { ChatPage, FleetHealth, HarnessOption, HistoryDetail, HistoryPage, HistoryPeek, LaunchRequest, LaunchView, ResumeResult, ServerEvent, SessionRow } from '@shared/types.ts';
+import { act, render, screen, within } from '@testing-library/react';
+import type { UserEvent } from '@testing-library/user-event';
 import { vi } from 'vitest';
 import { App } from '@/App';
 import type { ClientListener, HistoryQuery, LookoutClient } from '@/lib/client';
@@ -86,6 +87,7 @@ interface RenderOptions {
   earlierMessages?: (sessionId: string, before: string) => Promise<ChatPage>;
   history?: (q: HistoryQuery) => Promise<HistoryPage>;
   pastSession?: LookoutClient['pastSession'];
+  pastPeek?: LookoutClient['pastPeek'];
   resume?: LookoutClient['resume'];
   refreshWork?: LookoutClient['refreshWork'];
   checkPaths?: LookoutClient['checkPaths'];
@@ -133,6 +135,7 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
           throw new Error('no past Session');
         }),
     ),
+    pastPeek: vi.fn(options.pastPeek ?? (async (): Promise<HistoryPeek> => ({ firstPrompt: null, last: null, tailed: true }))),
     resume: vi.fn(
       options.resume ??
         (async (): Promise<ResumeResult> => {
@@ -153,6 +156,18 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
       listener!.onConnection(connected);
     });
   return { ...utils, emit, snapshot, connection, saveSettings, client };
+}
+
+/**
+ * HIST-3.5: a past Session is resumed, opened or shown only by its expanded result's button: a click
+ * on the result expands it (when it isn't already), then the button is pressed.
+ */
+export async function pressResult(user: UserEvent, title: string) {
+  const panel = screen.getByTestId('history-panel');
+  const titleEl = await within(panel).findByText(title, { selector: '[data-field="title"]' });
+  const option = titleEl.closest<HTMLElement>('[role="option"]')!;
+  if (option.getAttribute('aria-expanded') !== 'true') await user.click(titleEl);
+  await user.click(option.querySelector<HTMLElement>('[data-field="actions"] [data-action]')!);
 }
 
 export function rowEl(id: string): HTMLElement {

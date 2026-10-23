@@ -17,18 +17,61 @@ export const prKey = (pr: WorkPr) => `pr:${pr.url}`;
 /** WORK-6: where a row opens in the browser: a Task in Fantastic (WORK-6.2), a PR on GitHub (WORK-6.3). */
 export const rowUrl = (row: WorkRow) => (row.kind === 'task' ? row.task.url : row.pr.url);
 
-/** WORK-2.4, WORK-3.4: the Session a Work row selects on click or Enter. */
-export function sessionToOpen(sessions: readonly WorkSessionLink[]): WorkSessionLink | null {
-  const live = sessions.filter((session) => session.live);
-  const candidates = live.length > 0 ? live : sessions;
+/**
+ * WORK-2.4, WORK-4.10: Linked Sessions in WORK-2.4's order: live ones first, then the latest activity
+ * (tb-session's `modified_at`), a tie going to the later-created.
+ */
+export function bySessionOrder(a: WorkSessionLink, b: WorkSessionLink): number {
   return (
-    [...candidates].sort(
-      (a, b) =>
-        (b.modifiedAt ?? -Infinity) - (a.modifiedAt ?? -Infinity) ||
-        (b.createdAt ?? -Infinity) - (a.createdAt ?? -Infinity) ||
-        a.sessionId.localeCompare(b.sessionId),
-    )[0] ?? null
+    Number(b.live) - Number(a.live) ||
+    (b.modifiedAt ?? -Infinity) - (a.modifiedAt ?? -Infinity) ||
+    (b.createdAt ?? -Infinity) - (a.createdAt ?? -Infinity) ||
+    a.sessionId.localeCompare(b.sessionId)
   );
+}
+
+/**
+ * WORK-2.4, WORK-3.4: the Linked Session behind a row's first button and Enter on the expanded row:
+ * the live one with the latest activity, else the past one with the latest.
+ */
+export function sessionToOpen(sessions: readonly WorkSessionLink[]): WorkSessionLink | null {
+  return [...sessions].sort(bySessionOrder)[0] ?? null;
+}
+
+/** WORK-4.10: at most this many Linked Session chips in an expanded row; the rest are "+N older". */
+export const MAX_SESSION_CHIPS = 8;
+
+/** A button of an expanded row (WORK-2.10, WORK-3.6). */
+export type RowActionKind = { kind: 'session'; session: WorkSessionLink } | { kind: 'start' } | { kind: 'review' } | { kind: 'open' };
+
+/**
+ * WORK-2.10, WORK-3.6: an expanded row's buttons, in order: "Open Session" or "Resume" for the Linked
+ * Session WORK-2.4 picks, when there is one (and Session Links are available); then "Start Session"
+ * on a Task, "Review" on a Review request; then "Open in Fantastic" or "Open on GitHub". The first is
+ * what Enter on the expanded row runs (WORK-1.13).
+ */
+export function rowActions(row: WorkRow, sessionsAvailable: boolean): RowActionKind[] {
+  const linked = sessionsAvailable ? (row.kind === 'task' ? row.task.links?.sessions : row.pr.links?.sessions) : null;
+  const session = linked?.length ? sessionToOpen(linked) : null;
+  const actions: RowActionKind[] = session ? [{ kind: 'session', session }] : [];
+  if (row.kind === 'task') actions.push({ kind: 'start' });
+  else if (row.group === 'reviewRequests') actions.push({ kind: 'review' });
+  actions.push({ kind: 'open' });
+  return actions;
+}
+
+/** WORK-2.10, WORK-3.6, WORK-6.1: a button's word, and its tooltip with its key. */
+export function actionLabel(action: RowActionKind, row: WorkRow): { label: string; tip: string } {
+  switch (action.kind) {
+    case 'session':
+      return action.session.live ? { label: 'Open Session', tip: 'Open Session' } : { label: 'Resume', tip: 'Resume' };
+    case 'start':
+      return { label: 'Start Session', tip: 'Start Session (S)' };
+    case 'review':
+      return { label: 'Review', tip: 'Review (R)' };
+    case 'open':
+      return row.kind === 'task' ? { label: 'Open in Fantastic', tip: 'Open in Fantastic (O)' } : { label: 'Open on GitHub', tip: 'Open on GitHub (O)' };
+  }
 }
 
 /** WORK-1.5: whether the filter shows the Tasks section. */

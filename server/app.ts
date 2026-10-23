@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { type IncomingMessage, type Server, type ServerResponse, createServer } from 'node:http';
 import { type Settings, SettingsError, type SettingsView } from '../shared/settings.ts';
-import type { AnswerRequest, AnswerResult, ChatPage, EffortSwitchRequest, EffortSwitchResult, EndResult, EndTarget, EscStatus, Harness, HarnessOption, HistoryDetail, HistoryPage, LaunchView, ModelSwitchRequest, ModelSwitchResult, RenameResult, ResumeResult, ServerEvent } from '../shared/types.ts';
+import type { AnswerRequest, AnswerResult, ChatPage, EffortSwitchRequest, EffortSwitchResult, EndResult, EndTarget, EscStatus, Harness, HarnessOption, HistoryDetail, HistoryPage, HistoryPeek, LaunchView, ModelSwitchRequest, ModelSwitchResult, RenameResult, ResumeResult, ServerEvent } from '../shared/types.ts';
 import type { PathAnswer } from '../shared/files.ts';
 import type { UsageSnapshot } from '../shared/usage.ts';
 import type { WorkSnapshot } from '../shared/work.ts';
@@ -66,6 +66,8 @@ export interface AppOptions {
   history: {
     find(q: FindQuery): Promise<HistoryPage>;
     detail(sessionId: string, harness: Harness): Promise<HistoryDetail>;
+    /** HIST-2.10: an expanded result's first prompt and last message. */
+    peek(sessionId: string, harness: Harness): Promise<HistoryPeek>;
     resume(input: unknown): Promise<ResumeResult>;
   };
   /** WORK: Tasks through tb-prod and PRs through tb-pr, read only while a tab has Work open. */
@@ -210,9 +212,12 @@ export function createApp(opts: AppOptions): LookoutApp {
     if (route === 'GET /api/history') {
       return historyCall(res, () => opts.history.find(parseFindQuery(url.searchParams)));
     }
-    const pastMatch = /^\/api\/history\/(claude|codex)\/([A-Za-z0-9-]{1,128})$/.exec(url.pathname);
+    const pastMatch = /^\/api\/history\/(claude|codex)\/([A-Za-z0-9-]{1,128})(\/peek)?$/.exec(url.pathname);
     if (pastMatch && req.method === 'GET') {
-      return historyCall(res, () => opts.history.detail(pastMatch[2]!, pastMatch[1] as Harness));
+      const [, harness, id, peek] = pastMatch;
+      // HIST-2.10: what an expanded result reads, apart from HIST-3.3's read-only view.
+      if (peek) return historyCall(res, () => opts.history.peek(id!, harness as Harness));
+      return historyCall(res, () => opts.history.detail(id!, harness as Harness));
     }
     // HIST-3: resuming starts a process, so it's a mutation: the token and Origin, as LAUNCH's start.
     if (route === 'POST /api/history/resume') {

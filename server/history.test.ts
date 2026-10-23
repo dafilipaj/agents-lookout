@@ -124,10 +124,12 @@ describe('finding past Sessions (HIST-2)', () => {
         headless: false,
         title: 'kg-hook-review',
         projectPath: join(dir, 'work'),
+        projectDisplay: join(dir, 'work'),
         repo: 'work',
         branch: 'feature/kg-hook',
         lastActiveAt: Date.UTC(2026, 9, 13, 11),
         snippet: expect.stringContaining('«hook fires»'),
+        firstPrompt: 'Review the knowledge graph hook before it ships.',
         blocked: null,
       },
     ]);
@@ -344,6 +346,58 @@ describe('finding past Sessions (HIST-2)', () => {
     chmodSync(join(bin, 'tb-session'), 0o755);
     expect(resolveTbSessionBin({ PATH: bin, HOME: join(dir, 'home') })).toBe(join(bin, 'tb-session'));
     expect(resolveTbSessionBin({ PATH: '', HOME: join(dir, 'nobody') })).toBe('tb-session');
+  });
+});
+
+describe('an expanded result (HIST-2.9, HIST-2.10)', () => {
+  it('HIST-2.9: a row keeps its first prompt, its first three lines (blank ones skipped) and at most 600 characters, and its start directory with the home directory as ~', async () => {
+    const LONG = 'abababab-0000-4000-8000-000000000902';
+    const prompt = 'Why does the hook skip\n\n  the merge commit?\r\nLook at the  pre-commit step.\nAnd the fourth line.';
+    const file = join(dir, 'prompt.json');
+    writeFileSync(file, JSON.stringify([
+      { session_id: LONG, harness: 'claude', headless: false, summary: 'hook', first_prompt: prompt, project_path: '@root/work', modified_at: '2026-10-20T12:00:00Z', messages: [] },
+      { session_id: CODEX, harness: 'codex', headless: false, summary: 'long', first_prompt: 'x'.repeat(900), project_path: '/elsewhere/work', modified_at: '2026-10-19T12:00:00Z', messages: [] },
+    ]));
+    const page = await ok(find(history({ FAKE_TB_SESSION_FILE: file, HOME: dir })));
+    expect(page.items[0]).toMatchObject({ firstPrompt: 'Why does the hook skip\nthe merge commit?\nLook at the pre-commit step.', projectPath: join(dir, 'work'), projectDisplay: '~/work' });
+    expect(page.items[1]!.firstPrompt).toHaveLength(600);
+    expect(page.items[1]!.firstPrompt!.endsWith('…')).toBe(true);
+    expect(page.items[1]!.projectDisplay).toBe('/elsewhere/work');
+  });
+
+  it('HIST-2.10: one `show --tail 1` for the Session: its first prompt and its last message, who said it, cut to three lines', async () => {
+    const SHOWN = 'abababab-0000-4000-8000-000000000903';
+    const file = join(dir, 'shown.json');
+    const ASKED = 'abababab-0000-4000-8000-000000000904';
+    writeFileSync(file, JSON.stringify([
+      { session_id: SHOWN, harness: 'codex', headless: false, summary: 'hook', first_prompt: 'Review the hook.', project_path: '@root/work', messages: [
+        { role: 'user', content: 'Review the hook.' },
+        { role: 'assistant', content: 'One\ntwo\nthree\nfour' },
+      ] },
+      { session_id: ASKED, harness: 'claude', headless: false, summary: 'asked', first_prompt: 'Plan the bells.', project_path: '@root/work', messages: [
+        { role: 'user', content: 'Plan the bells.' },
+        { role: 'assistant', content: 'Here is a plan.' },
+        { role: 'user', content: 'Now tune them.' },
+      ] },
+    ]));
+    const peek = await history({ FAKE_TB_SESSION_FILE: file }).peek(SHOWN, 'codex');
+    expect(calls(tbLog)).toEqual([['show', '--json', '--harness', 'codex', '--tail', '1', '--', SHOWN]]);
+    expect(peek).toEqual({ firstPrompt: 'Review the hook.', last: { role: 'assistant', text: 'One\ntwo\nthree' }, tailed: true });
+    // Your own last prompt is the last message too.
+    expect((await history({ FAKE_TB_SESSION_FILE: file }).peek(ASKED, 'claude')).last).toEqual({ role: 'user', text: 'Now tune them.' });
+  });
+
+  it('HIST-2.10: with tb-session 0.2, which can’t tail, the last message is left out and the first prompt still shows', async () => {
+    const peek = await history({ FAKE_TB_SESSION_VERSION: '0.2.0' }).peek(GONE, 'claude');
+    expect(peek).toEqual({ firstPrompt: 'Review PR 641.', last: null, tailed: false });
+    expect(calls(tbLog).at(-1)).toEqual(['show', '--json', '--', GONE]);
+  });
+
+  it('HIST-2.10: a failed read is an error; an odd id never reaches tb-session', async () => {
+    await expect(history().peek(CODEX, 'claude')).rejects.toMatchObject({ status: 404 });
+    const runner = vi.fn(async () => '{}');
+    await expect(new History({ runner, bin: () => 'tb' }).peek('--help', 'claude')).rejects.toMatchObject({ status: 400 });
+    expect(runner).not.toHaveBeenCalled();
   });
 });
 

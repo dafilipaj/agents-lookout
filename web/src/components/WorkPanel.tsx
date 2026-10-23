@@ -1,37 +1,44 @@
+import { LAUNCH_TIMEOUT_MS } from '@shared/defaults.ts';
 import type { SessionRow, Status } from '@shared/types.ts';
 import type { ColumnMark, PrSection, TaskSection, WorkPr, WorkSessionLink, WorkSnapshot, WorkTask } from '@shared/work.ts';
-import { CircleCheck, CircleDashed, CircleQuestionMark, CircleX, ExternalLink, LoaderCircle, Milestone, Play, TriangleAlert } from 'lucide-react';
+import { CircleCheck, CircleDashed, CircleQuestionMark, CircleX, ExternalLink, History, LoaderCircle, Milestone, Play, TriangleAlert } from 'lucide-react';
 import { type FocusEvent, type KeyboardEvent, type MouseEvent, type ReactNode, type Ref, type RefObject, createContext, useCallback, useContext, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Chip, type ChipTone } from '@/components/ui/chip';
 import { CommandBlock } from '@/components/ui/command-block';
-import { iconButtonLook } from '@/components/ui/icon-button';
+import { RowAction } from '@/components/ui/icon-button';
 import { Loading } from '@/components/ui/loading';
 import { SessionMarker } from '@/components/ui/session-marker';
 import { type PanelNav, WORK_FILTERS, WORK_FILTER_LABEL, type WorkFilter } from '@/lib/right-sidebar';
+import { STATUS_LABEL } from '@/lib/sessions';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import {
   AGE_LEVEL_CLASS,
+  MAX_SESSION_CHIPS,
   PR_GROUPS,
   PR_GROUP_LABEL,
   type PrGroup,
+  type RowActionKind,
   type WorkRow,
+  actionLabel,
   ageLevel,
   backIn,
+  bySessionOrder,
   describeMark,
   formatDue,
   hasPrLists,
   hasTaskList,
   keepSelection,
   prKey,
+  rowActions,
   rowUrl,
-  sessionToOpen,
   showsPrs,
   showsTasks,
   taskKey,
   visibleRows,
 } from '@/lib/work';
+import { HarnessIcon } from './HarnessIcon';
 
 export interface WorkPanelProps {
   work: WorkSnapshot | null;
@@ -47,7 +54,7 @@ export interface WorkPanelProps {
   onStart(task: WorkTask): void;
   /** WORK-5.2: "Review" on a Review request. */
   onReview(pr: WorkPr): void;
-  /** WORK-2.4, WORK-3.4: open the selected Linked Session. */
+  /** WORK-2.10, WORK-3.6, WORK-4.10: select a live Linked Session, or resume a past one. */
   onOpenSession(session: WorkSessionLink): Promise<void>;
   /** WORK-2.6: the link to Settings, while no Productive email is saved. */
   onOpenSettings(): void;
@@ -102,10 +109,11 @@ function openInBrowser(url: string) {
  * with Mine and Review requests (WORK-3).
  *
  * As in History, each section's rows are the options of one focusable listbox (a `group` per PR
- * group), and an option holds nothing focusable: its buttons are mouse targets, and the keyboard acts
- * on the selected row with Enter, `O`, `R` and `S` (WORK UX, "Markers and buttons"). ↑/↓ and j/k run
- * through both sections' rows, and focus follows the selection into the list that holds it, the only
- * list in the Tab order (UX, Focus).
+ * group), and an option holds nothing focusable. A click or Enter only selects a row and expands it
+ * in place (WORK-1.12); its labelled buttons and Linked Session chips act, as mouse targets, and the
+ * keyboard acts on the selected row with Enter on the expanded row (its first button, WORK-1.13),
+ * `O`, `R` and `S` (WORK UX, "Markers and buttons"). ↑/↓ and j/k run through both sections' rows,
+ * and focus follows the selection into the list that holds it, the only list in the Tab order (UX, Focus).
  */
 export function WorkPanel({ work, sessions, filter, onFilter, now, focusKey, onStart, onReview, onOpenSession, onOpenSettings, keyboardEnabled, navRef }: WorkPanelProps) {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -115,9 +123,25 @@ export function WorkPanel({ work, sessions, filter, onFilter, now, focusKey, onS
   // WORK-1.9: the selection follows its item while it's visible, else the first visible row.
   const rows = visibleRows(work, filter);
   const [selected, setSelected] = useState<string | null>(null);
-  const [sessionOpenError, setSessionOpenError] = useState<string | null>(null);
   const current = keepSelection(selected, rows);
   if (current !== selected) setSelected(current);
+  // WORK-1.12, WORK-1.14: one row expanded at a time, kept across reads while it's listed; once it
+  // leaves (a read, or a filter that hides it), nothing is expanded. Never stored: a reload expands nothing.
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const open = expanded !== null && rows.some((r) => r.key === expanded) ? expanded : null;
+  if (open !== expanded) setExpanded(null);
+  const sessionsAvailable = work?.sessionLinks.state === 'ok';
+  // WORK-2.10: the row whose Resume runs ("Resuming…") and its Session, and a failed open, under that
+  // row's buttons. It says so until the Session is live in the Session list; a resume that answered
+  // but isn't live LAUNCH-4.5's 15 s later has failed, and its "Starting…" row says why.
+  const [resuming, setResuming] = useState<{ key: string; sessionId: string; answered: boolean } | null>(null);
+  const [failure, setFailure] = useState<{ key: string; message: string } | null>(null);
+  if (resuming && sessions.has(resuming.sessionId)) setResuming(null);
+  useEffect(() => {
+    if (!resuming?.answered) return;
+    const timer = setTimeout(() => setResuming((r) => (r === resuming ? null : r)), LAUNCH_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [resuming]);
   // Which list holds the selected row: the only one in the Tab order (UX, Focus).
   const holding = rows.find((r) => r.key === current)?.kind ?? null;
 
@@ -168,23 +192,52 @@ export function WorkPanel({ work, sessions, filter, onFilter, now, focusKey, onS
     setSelected(key);
     document.getElementById(rowId(key))?.scrollIntoView?.({ block: 'nearest' });
   };
-  /** ↑/↓ and j/k: the next or previous visible row, without acting (WORK-1.7). */
+  /** WORK-1.12: select a row and expand it, collapsing any other; nothing else. */
+  const expand = (key: string) => {
+    select(key);
+    setExpanded(key);
+    if (failure && failure.key !== key) setFailure(null);
+  };
+  // WORK-1.15: the list scrolls to keep all of an expanded row in view, and only as far as it must.
+  useEffect(() => {
+    if (open) document.getElementById(rowId(open))?.scrollIntoView?.({ block: 'nearest' });
+  }, [open]);
+  /** ↑/↓ and j/k: the next or previous visible row, without acting; the row left collapses (WORK-1.7, WORK-1.12). */
   const move = (delta: number) => {
     if (!rows.length) return;
     const index = rows.findIndex((r) => r.key === current);
-    select(rows[Math.min(rows.length - 1, Math.max(0, index + delta))]!.key);
+    const next = rows[Math.min(rows.length - 1, Math.max(0, index + delta))]!.key;
+    if (next !== current) setExpanded(null);
+    select(next);
   };
-  // The tab strip moves the rows through this, not through a key event of its own (WORK-1.7).
-  useImperativeHandle(navRef, () => ({ move }));
-  // A row acts on its newest live Linked Session, or newest past one if none is live (WORK-2.4, WORK-3.4).
-  const activate = (row: WorkRow) => {
-    if (work?.sessionLinks.state !== 'ok') return;
-    const linked = row.kind === 'task' ? row.task.links?.sessions : row.pr.links?.sessions;
-    const session = linked?.length ? sessionToOpen(linked) : null;
-    if (session) {
-      setSessionOpenError(null);
-      void onOpenSession(session).catch((err: unknown) => setSessionOpenError(err instanceof Error ? err.message : "Couldn't open the linked Session."));
-    }
+  /** WORK-1.12: Esc collapses the expanded row, leaving it selected; false when nothing was expanded. */
+  const collapse = () => {
+    if (open === null) return false;
+    setExpanded(null);
+    return true;
+  };
+  // The tab strip moves the rows, and collapses one, through this, not a key event of its own (WORK-1.7).
+  useImperativeHandle(navRef, () => ({ move, collapse }));
+  /** WORK-2.10, WORK-4.10: "Open Session", "Resume" or a chip: select a live Session, resume a past one. */
+  const openSession = (row: WorkRow, session: WorkSessionLink) => {
+    if (resuming) return;
+    setFailure(null);
+    const mine = session.live ? null : { key: row.key, sessionId: session.sessionId, answered: false };
+    if (mine) setResuming(mine);
+    onOpenSession(session).then(
+      () => setResuming((r) => (r === mine && mine ? { ...mine, answered: true } : r)),
+      (err: unknown) => {
+        setResuming((r) => (r === mine ? null : r));
+        setFailure({ key: row.key, message: err instanceof Error ? err.message : "Couldn't open the linked Session." });
+      },
+    );
+  };
+  /** An expanded row's button (WORK-2.10, WORK-3.6), or Enter on the expanded row for its first (WORK-1.13). */
+  const act = (row: WorkRow, action: RowActionKind) => {
+    if (action.kind === 'session') openSession(row, action.session);
+    else if (action.kind === 'start') start(row);
+    else if (action.kind === 'review') review(row);
+    else openInBrowser(rowUrl(row));
   };
   const review = (row: WorkRow) => {
     if (row.kind === 'pr' && row.group === 'reviewRequests') onReview(row.pr);
@@ -192,15 +245,12 @@ export function WorkPanel({ work, sessions, filter, onFilter, now, focusKey, onS
   const start = (row: WorkRow) => {
     if (row.kind === 'task') onStart(row.task);
   };
-  const open = (row: WorkRow) => {
-    select(row.key);
-    openInBrowser(rowUrl(row));
-  };
 
-  // WORK-1.7: ↑/↓ and j/k move through the visible rows without acting; Enter acts like a click, from
-  // a list only. WORK-6.4: O opens the selected row as its button does, without moving anything;
-  // WORK-5.2: R reviews it; WORK-5.1: S starts a Session on it. O, R and S count with Caps Lock on,
-  // never with Shift, and once per press: a held key's repeats open no more tabs or launchers.
+  // WORK-1.7: ↑/↓ and j/k move through the visible rows without acting. WORK-1.12, WORK-1.13: Enter,
+  // from a list only, expands the selected row, or on the expanded row runs its first button; Esc
+  // collapses it. WORK-6.4: O opens the selected row as its button does, without moving anything;
+  // WORK-5.2: R reviews it; WORK-5.1: S starts a Session on it, expanded or not. O, R and S count with
+  // Caps Lock on, never with Shift, and once per press: a held key's repeats open no more tabs or launchers.
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (!keyboardEnabled || e.nativeEvent.isComposing || e.metaKey || e.ctrlKey || e.altKey || isTextField(e.target)) return;
     const row = rows.find((r) => r.key === current);
@@ -210,7 +260,11 @@ export function WorkPanel({ work, sessions, filter, onFilter, now, focusKey, onS
       move(e.key === 'ArrowDown' || e.key === 'j' ? 1 : -1);
     } else if (e.key === 'Enter' && isList(e.target) && row) {
       e.preventDefault();
-      activate(row);
+      if (open !== row.key) expand(row.key);
+      else if (!e.repeat) act(row, rowActions(row, sessionsAvailable)[0]!);
+    } else if (e.key === 'Escape' && open !== null) {
+      e.preventDefault();
+      collapse();
     } else if (letter === 'o' && row) {
       e.preventDefault();
       if (!e.repeat) openInBrowser(rowUrl(row));
@@ -222,9 +276,15 @@ export function WorkPanel({ work, sessions, filter, onFilter, now, focusKey, onS
       if (!e.repeat) start(row);
     }
   };
-  const onRow = (row: WorkRow) => {
-    select(row.key);
-    activate(row);
+  // Everything an expanded row needs from here.
+  const rowState: RowState = {
+    open,
+    sessionsAvailable,
+    resuming: resuming?.key ?? null,
+    failure,
+    onRow: (row) => expand(row.key),
+    onAct: act,
+    onSession: openSession,
   };
 
   const tasks = work?.tasks ?? null;
@@ -253,41 +313,28 @@ export function WorkPanel({ work, sessions, filter, onFilter, now, focusKey, onS
           </div>
         </div>
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto pb-2">
-          {sessionOpenError && <Alert title={sessionOpenError} className="mx-2" />}
           {showsTasks(filter) && tasks && (
             <TasksSection
               tasks={tasks}
-              sessionsAvailable={work?.sessionLinks.state === 'ok'}
               now={now}
               selected={current}
+              rowState={rowState}
               listRef={attachTasks}
               onListFocus={onListFocus('task')}
               onListPress={onListPress}
-              onRow={onRow}
-              onOpen={open}
-              onStart={(row) => {
-                select(row.key);
-                start(row);
-              }}
               onOpenSettings={onOpenSettings}
             />
           )}
           {showsPrs(filter) && prs && (
             <PrsSection
               prs={prs}
-              sessionsAvailable={work?.sessionLinks.state === 'ok'}
               blockedUntil={work?.refresh.githubBlockedUntil ?? null}
               now={now}
               selected={current}
+              rowState={rowState}
               listRef={attachPrs}
               onListFocus={onListFocus('pr')}
               onListPress={onListPress}
-              onRow={onRow}
-              onOpen={open}
-              onReview={(row) => {
-                select(row.key);
-                review(row);
-              }}
             />
           )}
           {work && work.sessionLinks.state !== 'ok' && work.sessionLinks.state !== 'loading' && (
@@ -304,6 +351,20 @@ export function WorkPanel({ work, sessions, filter, onFilter, now, focusKey, onS
       </div>
     </LiveSessions.Provider>
   );
+}
+
+/** What a row needs to expand and act (WORK-1.12, WORK-2.10, WORK-3.6), handed down from WorkPanel. */
+interface RowState {
+  /** The expanded row's key, or null. */
+  open: string | null;
+  /** WORK-7.4: false while Session Links are unavailable: no marker, chip or Session button. */
+  sessionsAvailable: boolean;
+  /** The row whose Resume runs. */
+  resuming: string | null;
+  failure: { key: string; message: string } | null;
+  onRow(row: WorkRow): void;
+  onAct(row: WorkRow, action: RowActionKind): void;
+  onSession(row: WorkRow, session: WorkSessionLink): void;
 }
 
 interface SectionHeaderProps {
@@ -385,20 +446,17 @@ function Problem({ title, reason, how, fix, stale, fetchedAt, now }: ProblemProp
 
 interface TasksSectionProps {
   tasks: TaskSection;
-  sessionsAvailable: boolean;
   now: number;
   selected: string | null;
+  rowState: RowState;
   listRef: Ref<HTMLDivElement>;
   onListFocus(e: FocusEvent<HTMLDivElement>): void;
   onListPress(e: MouseEvent<HTMLDivElement>): void;
-  onRow(row: WorkRow): void;
-  onOpen(row: WorkRow): void;
-  onStart(row: WorkRow): void;
   onOpenSettings(): void;
 }
 
 /** WORK-2: Tasks, with its count and age (WORK-1.3), the email it needs (WORK-2.6), its problems (WORK-7) and its rows in one listbox. */
-function TasksSection({ tasks, sessionsAvailable, now: clock, selected, listRef, onListFocus, onListPress, onRow, onOpen, onStart, onOpenSettings }: TasksSectionProps) {
+function TasksSection({ tasks, now: clock, selected, rowState, listRef, onListFocus, onListPress, onOpenSettings }: TasksSectionProps) {
   // The page's clock ticks once a second, so it can be just behind the data it shows: never show ages from before the read.
   const now = Math.max(clock, tasks.fetchedAt ?? clock);
   const list = hasTaskList(tasks);
@@ -455,7 +513,7 @@ function TasksSection({ tasks, sessionsAvailable, now: clock, selected, listRef,
         >
           {tasks.tasks.map((task) => {
             const row: WorkRow = { key: taskKey(task), kind: 'task', task };
-            return <TaskRow key={row.key} task={task} rowKey={row.key} now={now} active={row.key === active} sessionsAvailable={sessionsAvailable} onClick={() => onRow(row)} onOpen={() => onOpen(row)} onStart={() => onStart(row)} />;
+            return <TaskRow key={row.key} row={row} task={task} now={now} active={row.key === active} state={rowState} />;
           })}
         </div>
       )}
@@ -464,59 +522,49 @@ function TasksSection({ tasks, sessionsAvailable, now: clock, selected, listRef,
 }
 
 interface TaskRowProps {
+  row: WorkRow;
   task: WorkTask;
-  rowKey: string;
   now: number;
   active: boolean;
-  sessionsAvailable: boolean;
-  onClick(): void;
-  onOpen(): void;
-  onStart(): void;
+  state: RowState;
 }
 
 /**
  * WORK-2.2: the title; the project and status; a milestone's chip and the due date, when it has
- * either. A screen reader hears them all as the option's name. Start Session and Open in browser are
- * mouse targets; the keyboard reaches Open as `O` (the row's description says so).
+ * either. A screen reader hears them all as the option's name. Collapsed, it has no buttons; a click
+ * selects and expands it (WORK-1.12). Expanded (WORK-2.9), it adds the description's first three
+ * lines, its Linked PRs with their repos, its Linked Session chips and its buttons (WORK-2.10), which
+ * a screen reader hears as its description.
  */
-function TaskRow({ task, rowKey, now, active, sessionsAvailable, onClick, onOpen, onStart }: TaskRowProps) {
+function TaskRow({ row, task, now, active, state }: TaskRowProps) {
   const due = task.dueDate === null ? null : formatDue(task.dueDate, now);
-  const keysId = `${rowId(rowKey)}-keys`;
-  const act = (then: () => void) => (e: MouseEvent) => {
-    e.stopPropagation();
-    then();
-  };
+  const id = rowId(row.key);
+  const expanded = state.open === row.key;
+  const actions = rowActions(row, state.sessionsAvailable);
+  const sessions = state.sessionsAvailable ? (task.links?.sessions ?? []) : [];
   return (
     <div
-      id={rowId(rowKey)}
+      id={id}
       role="option"
       aria-selected={active}
-      aria-describedby={keysId}
+      aria-expanded={expanded}
+      aria-describedby={expanded ? `${id}-keys ${id}-details` : `${id}-keys`}
       data-task={task.id}
       title={task.links?.incomplete ? 'Links may be incomplete' : undefined}
-      onClick={onClick}
+      onClick={() => state.onRow(row)}
       className={cn('flex min-w-0 cursor-default flex-col gap-0.5 rounded-md px-2 py-1.5 text-body hover:bg-sidebar-accent/60', active && 'bg-sidebar-accent')}
     >
       {/* The row's description only: its name is its content (WORK-2.2). */}
-      <span id={keysId} className="sr-only" aria-hidden>
-        S starts a Session on it, O opens it in Fantastic.
+      <span id={`${id}-keys`} className="sr-only" aria-hidden>
+        {keysHint(row, expanded, actions)} S starts a Session on it, O opens it in Fantastic.
       </span>
       {/* The spaces keep the row's name (from its content) from running the fields together. */}
       <div className="flex min-w-0 items-center gap-1.5">
         <span className="min-w-0 truncate" data-field="title" title={task.title}>
           {task.title}
         </span>{' '}
-        <LinkedMarker links={sessionsAvailable ? task.links?.sessions ?? [] : []} incomplete={task.links?.incomplete ?? false} />
-        <span className="ml-auto flex shrink-0 items-center gap-0.5" aria-hidden>
-          {/* WORK-5.1: the launcher, its prompt the Task's URL; you press Start. */}
-          <RowButton title="Start Session (S)" action="start" onClick={act(onStart)}>
-            <Play />
-          </RowButton>
-          {/* WORK-6.2: the Task in Fantastic, in a new tab; `O` does the same (WORK-6.4). */}
-          <RowButton title="Open in Fantastic (O)" action="open" onClick={act(onOpen)}>
-            <ExternalLink />
-          </RowButton>
-        </span>
+        <LinkedMarker links={sessions} incomplete={task.links?.incomplete ?? false} />
+        {state.resuming === row.key && <span className="ml-auto shrink-0 text-caption text-muted-foreground">Resuming…</span>}
       </div>
       {(task.project !== null || task.status !== null) && (
         <div className="flex min-w-0 items-center gap-1 text-meta text-muted-foreground">
@@ -537,10 +585,10 @@ function TaskRow({ task, rowKey, now, active, sessionsAvailable, onClick, onOpen
           )}{' '}
         </div>
       )}
-      {task.links && task.links.prs.length > 0 && (
+      {!expanded && task.links && task.links.prs.length > 0 && (
         <div className="flex min-w-0 flex-wrap items-center gap-1 text-meta text-muted-foreground" data-field="linked-prs">
           {task.links.prs.map((linked) => (
-            <span key={linked.url} className="inline-flex items-center gap-1" title={linked.sources.map((source) => (source === 'body' ? 'PR body' : 'branch')).join(', ')} data-field="linked-pr">
+            <span key={linked.url} className="inline-flex items-center gap-1" title={prSources(linked.sources)} data-field="linked-pr">
               <span className="font-medium text-foreground">#{linked.number}</span>
               {linked.chip ? <Chip tone={CHIP_TONE[linked.chip]}>{linked.chip}</Chip> : <span>Review request</span>}
               <Ci ci={linked.ci} />
@@ -565,7 +613,136 @@ function TaskRow({ task, rowKey, now, active, sessionsAvailable, onClick, onOpen
           )}
         </div>
       )}
+      {expanded && (
+        <Details id={`${id}-details`} row={row} actions={actions} sessions={sessions} state={state}>
+          {task.description !== null && (
+            <p className="line-clamp-3 text-meta whitespace-pre-line text-muted-foreground" data-field="description">
+              {task.description}
+            </p>
+          )}
+          {task.links && task.links.prs.length > 0 && (
+            <DetailLine label="PRs" field="detail-prs">
+              {task.links.prs.map((linked) => (
+                <span key={linked.url} className="inline-flex min-w-0 items-center gap-1" title={prSources(linked.sources)} data-field="detail-pr">
+                  <span className="truncate">{linked.repo}</span>
+                  <span className="font-medium text-foreground tabular-nums">#{linked.number}</span>
+                  {linked.chip ? <Chip tone={CHIP_TONE[linked.chip]}>{linked.chip}</Chip> : <span>Review request</span>}
+                  <Ci ci={linked.ci} />
+                </span>
+              ))}
+            </DetailLine>
+          )}
+        </Details>
+      )}
     </div>
+  );
+}
+
+/** Where a PR ↔ Task Link came from, for its hover (WORK-2.3, WORK-3.4). */
+const prSources = (sources: readonly ('branch' | 'body')[]) => sources.map((source) => (source === 'body' ? 'PR body' : 'branch')).join(', ');
+
+/** The row's description starts with what Enter does on it (WORK-1.12, WORK-1.13). */
+function keysHint(row: WorkRow, expanded: boolean, actions: readonly RowActionKind[]): string {
+  return expanded ? `Enter: ${actionLabel(actions[0]!, row).label}.` : 'Enter shows its details.';
+}
+
+interface DetailsProps {
+  id: string;
+  row: WorkRow;
+  actions: readonly RowActionKind[];
+  /** The Linked Sessions shown as chips (none while Session Links are unavailable, WORK-7.4). */
+  sessions: readonly WorkSessionLink[];
+  state: RowState;
+  /** The row's own lines, before the chips. */
+  children?: ReactNode;
+}
+
+/**
+ * WORK-2.9, WORK-3.6: what an expanded row adds, below what it already shows: its own lines, its
+ * Linked Session chips (WORK-4.10), then its buttons (WORK-2.10, WORK-3.6), wrapping when they don't
+ * fit, and a failed open under them. A screen reader hears it as the row's description, not its name.
+ */
+function Details({ id, row, actions, sessions, state, children }: DetailsProps) {
+  const resuming = state.resuming === row.key;
+  const failure = state.failure?.key === row.key ? state.failure.message : null;
+  return (
+    <>
+      <div id={id} aria-hidden className="mt-1 flex min-w-0 flex-col gap-1.5" data-field="details">
+        {children}
+        {sessions.length > 0 && (
+          <DetailLine label="Sessions" field="session-chips">
+            <SessionChips sessions={sessions} enabled={state.resuming === null} onOpen={(session) => state.onSession(row, session)} />
+          </DetailLine>
+        )}
+        <div className="flex min-w-0 flex-wrap items-center gap-1" data-field="actions">
+          {actions.map((action) => {
+            const { label, tip } = actionLabel(action, row);
+            const icon = action.kind === 'open' ? <ExternalLink /> : action.kind === 'session' && !action.session.live ? <History /> : <Play />;
+            return (
+              <RowAction
+                key={action.kind}
+                data-action={action.kind === 'session' ? (action.session.live ? 'open-session' : 'resume') : action.kind}
+                label={resuming && action.kind === 'session' ? 'Resuming…' : label}
+                icon={icon}
+                tip={tip}
+                enabled={state.resuming === null}
+                onPress={() => state.onAct(row, action)}
+              />
+            );
+          })}
+        </div>
+      </div>
+      {failure && <Alert title={failure} className="mt-1" />}
+    </>
+  );
+}
+
+/** One labelled line of an expanded row: "PRs", "Sessions". */
+function DetailLine({ label, field, children }: { label: string; field: string; children: ReactNode }) {
+  return (
+    <div className="flex min-w-0 items-start gap-2 text-meta text-muted-foreground" data-field={field}>
+      <span className="w-14 shrink-0 pt-0.5">{label}</span>
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">{children}</div>
+    </div>
+  );
+}
+
+/**
+ * WORK-4.10: each Linked Session its own chip, in WORK-2.4's order, at most 8, then "+N older": its
+ * Harness logo, its name and its Status marker (DS-5.1), from the Session sidebar's list for a live
+ * one. A click opens a live one or resumes a past one; its hover gives the Link's reason.
+ */
+function SessionChips({ sessions, enabled, onOpen }: { sessions: readonly WorkSessionLink[]; enabled: boolean; onOpen(session: WorkSessionLink): void }) {
+  const live = useContext(LiveSessions);
+  const sorted = [...sessions].sort(bySessionOrder);
+  const shown = sorted.slice(0, MAX_SESSION_CHIPS);
+  return (
+    <>
+      {shown.map((session) => {
+        const listed = live.get(session.sessionId);
+        const status = session.live ? (listed?.status ?? 'unknown') : null;
+        return (
+          <RowAction
+            key={session.sessionId}
+            data-action="session"
+            data-session-id={session.sessionId}
+            aria-label={`${session.live ? 'Open' : 'Resume'} ${session.title}, ${status ? STATUS_LABEL[status] : 'past'}`}
+            label={session.title}
+            icon={<HarnessIcon harness={session.harness} />}
+            trailing={<SessionMarker aria-hidden="true" state={status ? 'live' : 'past'} status={status ?? undefined} since={listed?.statusSince ?? null} />}
+            tip={session.reason}
+            enabled={enabled}
+            onPress={() => onOpen(session)}
+            className="max-w-full font-normal"
+          />
+        );
+      })}
+      {sorted.length > shown.length && (
+        <span className="text-meta text-muted-foreground" data-field="older">
+          +{sorted.length - shown.length} older
+        </span>
+      )}
+    </>
   );
 }
 
@@ -593,21 +770,18 @@ function LinkedMarker({ links, incomplete }: { links: readonly WorkSessionLink[]
 
 interface PrsSectionProps {
   prs: PrSection;
-  sessionsAvailable: boolean;
   /** WORK-8.4: until when GitHub is rate limited, for how long a failed read waits. */
   blockedUntil: number | null;
   now: number;
   selected: string | null;
+  rowState: RowState;
   listRef: Ref<HTMLDivElement>;
   onListFocus(e: FocusEvent<HTMLDivElement>): void;
   onListPress(e: MouseEvent<HTMLDivElement>): void;
-  onRow(row: WorkRow): void;
-  onOpen(row: WorkRow): void;
-  onReview(row: WorkRow): void;
 }
 
 /** WORK-3: PRs, with its count and age (WORK-1.3), its problems (WORK-7) and its two groups in one listbox. */
-function PrsSection({ prs, sessionsAvailable, blockedUntil, now: clock, selected, listRef, onListFocus, onListPress, onRow, onOpen, onReview }: PrsSectionProps) {
+function PrsSection({ prs, blockedUntil, now: clock, selected, rowState, listRef, onListFocus, onListPress }: PrsSectionProps) {
   // The page's clock ticks once a second, so it can be just behind the data it shows: never show ages from before the fetch.
   const now = Math.max(clock, prs.fetchedAt ?? clock);
   const lists = hasPrLists(prs);
@@ -645,7 +819,7 @@ function PrsSection({ prs, sessionsAvailable, blockedUntil, now: clock, selected
           className="flex flex-col outline-none"
         >
           {groups.map((g) => (
-            <PrGroupView key={g} group={g} prs={prs[g]} marks={prs.marks[g]} sessionsAvailable={sessionsAvailable} now={now} selected={active} onRow={onRow} onOpen={onOpen} onReview={onReview} />
+            <PrGroupView key={g} group={g} prs={prs[g]} marks={prs.marks[g]} now={now} selected={active} rowState={rowState} />
           ))}
         </div>
       )}
@@ -657,16 +831,13 @@ interface PrGroupProps {
   group: PrGroup;
   prs: WorkPr[];
   marks: ColumnMark[];
-  sessionsAvailable: boolean;
   now: number;
   selected: string | null;
-  onRow(row: WorkRow): void;
-  onOpen(row: WorkRow): void;
-  onReview(row: WorkRow): void;
+  rowState: RowState;
 }
 
 /** WORK-3.1: one PR group, a `group` of the listbox, labelled by its name and described by its mark (WORK-7.5). */
-function PrGroupView({ group, prs, marks, sessionsAvailable, now, selected, onRow, onOpen, onReview }: PrGroupProps) {
+function PrGroupView({ group, prs, marks, now, selected, rowState }: PrGroupProps) {
   const label = `work-group-${group}`;
   const markId = `work-marks-${group}`;
   return (
@@ -699,7 +870,7 @@ function PrGroupView({ group, prs, marks, sessionsAvailable, now, selected, onRo
         <div role="presentation" className="flex flex-col gap-px px-1.5">
           {prs.map((pr) => {
             const row: WorkRow = { key: prKey(pr), kind: 'pr', group, pr };
-            return <PrRow key={row.key} rowKey={row.key} group={group} pr={pr} now={now} active={row.key === selected} sessionsAvailable={sessionsAvailable} onClick={() => onRow(row)} onOpen={() => onOpen(row)} onReview={() => onReview(row)} />;
+            return <PrRow key={row.key} row={row} group={group} pr={pr} now={now} active={row.key === selected} state={rowState} />;
           })}
         </div>
       )}
@@ -711,46 +882,44 @@ function PrGroupView({ group, prs, marks, sessionsAvailable, now, selected, onRo
 const CHIP_TONE: Record<NonNullable<WorkPr['chip']>, ChipTone> = { draft: 'muted', ready: 'neutral', approved: 'ok' };
 
 interface PrRowProps {
-  rowKey: string;
+  row: WorkRow;
   group: PrGroup;
   pr: WorkPr;
   now: number;
   active: boolean;
-  sessionsAvailable: boolean;
-  onClick(): void;
-  onOpen(): void;
-  onReview(): void;
+  state: RowState;
 }
 
 /**
  * WORK-3.2: repo, number, Mine's state chip, CI, age, and the title, all of which a screen reader
- * hears as the option's name; Review and Open in browser as mouse targets, which the keyboard
- * reaches as `R` and `O` (the row's description says so).
+ * hears as the option's name. Collapsed, it has no buttons; a click selects and expands it
+ * (WORK-1.12). Expanded (WORK-3.6), it adds its Linked Session chips and its buttons, which a screen
+ * reader hears as its description; the keyboard reaches Review and Open as `R` and `O`.
  */
-function PrRow({ rowKey, group, pr, now, active, sessionsAvailable, onClick, onOpen, onReview }: PrRowProps) {
+function PrRow({ row, group, pr, now, active, state }: PrRowProps) {
   const age = pr.createdAt !== null ? formatAge(now - pr.createdAt) : pr.ageDays !== null ? formatAge(pr.ageDays * DAY_MS) : null;
   // WORK-3.5: coloured by the time since it was opened; without an opening time, muted as before.
   const level = pr.createdAt !== null ? ageLevel(now - pr.createdAt) : null;
   const isReview = group === 'reviewRequests';
-  const keysId = `${rowId(rowKey)}-keys`;
-  const act = (then: () => void) => (e: MouseEvent) => {
-    e.stopPropagation();
-    then();
-  };
+  const id = rowId(row.key);
+  const expanded = state.open === row.key;
+  const actions = rowActions(row, state.sessionsAvailable);
+  const sessions = state.sessionsAvailable ? (pr.links?.sessions ?? []) : [];
   return (
     <div
-      id={rowId(rowKey)}
+      id={id}
       role="option"
       aria-selected={active}
-      aria-describedby={keysId}
+      aria-expanded={expanded}
+      aria-describedby={expanded ? `${id}-keys ${id}-details` : `${id}-keys`}
       data-pr={`${pr.repo}#${pr.number}`}
       title={pr.links?.incomplete ? 'Links may be incomplete' : undefined}
-      onClick={onClick}
+      onClick={() => state.onRow(row)}
       className={cn('flex min-w-0 cursor-default flex-col gap-0.5 rounded-md px-2 py-1.5 text-body hover:bg-sidebar-accent/60', active && 'bg-sidebar-accent')}
     >
       {/* The row's description only: its name is its content, as History's rows' (WORK-3.2). */}
-      <span id={keysId} className="sr-only" aria-hidden>
-        {isReview ? 'R reviews it, O opens it on GitHub.' : 'O opens it on GitHub.'}
+      <span id={`${id}-keys`} className="sr-only" aria-hidden>
+        {keysHint(row, expanded, actions)} {isReview ? 'R reviews it, O opens it on GitHub.' : 'O opens it on GitHub.'}
       </span>
       {/* The spaces keep the row's name (from its content: repo, number, chip, CI, age, title) from running the fields together. */}
       <div className="flex min-w-0 items-center gap-1.5">
@@ -760,7 +929,7 @@ function PrRow({ rowKey, group, pr, now, active, sessionsAvailable, onClick, onO
         <span className="shrink-0 font-medium tabular-nums" data-field="number">
           #{pr.number}
         </span>{' '}
-        <LinkedMarker links={sessionsAvailable ? pr.links?.sessions ?? [] : []} incomplete={pr.links?.incomplete ?? false} />
+        <LinkedMarker links={sessions} incomplete={pr.links?.incomplete ?? false} />
         {pr.chip && (
           <>
             <Chip tone={CHIP_TONE[pr.chip]} data-field="chip">
@@ -781,17 +950,7 @@ function PrRow({ rowKey, group, pr, now, active, sessionsAvailable, onClick, onO
             </span>{' '}
           </>
         )}
-        <span className="ml-auto flex shrink-0 items-center gap-0.5" aria-hidden>
-          {isReview && (
-            <RowButton title="Review (R)" action="review" onClick={act(onReview)}>
-              <Play />
-            </RowButton>
-          )}
-          {/* WORK-6.3: tb-pr's URL, in a new tab; `O` does the same (WORK-6.4). */}
-          <RowButton title="Open on GitHub (O)" action="open" onClick={act(onOpen)}>
-            <ExternalLink />
-          </RowButton>
-        </span>
+        {state.resuming === row.key && <span className="ml-auto shrink-0 text-caption text-muted-foreground">Resuming…</span>}
       </div>
       <p className="truncate" data-field="title" title={pr.title}>
         {pr.title}
@@ -799,22 +958,14 @@ function PrRow({ rowKey, group, pr, now, active, sessionsAvailable, onClick, onO
       {pr.links && pr.links.tasks.length > 0 && (
         <div className="flex min-w-0 flex-wrap items-center gap-1 text-meta text-muted-foreground" data-field="linked-tasks">
           {pr.links.tasks.map((linked) => (
-            <span key={linked.id} className="truncate" title={linked.sources.map((source) => (source === 'body' ? 'PR body' : 'branch')).join(', ')} data-field="linked-task">
+            <span key={linked.id} className="truncate" title={prSources(linked.sources)} data-field="linked-task">
               {linked.title}
             </span>
           ))}
         </div>
       )}
+      {expanded && <Details id={`${id}-details`} row={row} actions={actions} sessions={sessions} state={state} />}
     </div>
-  );
-}
-
-/** A row's button, for the mouse only: inside an option nothing is focusable (UX, "Markers and buttons"); an `sm` icon button's look (DS-7.2). */
-function RowButton({ title, action, onClick, children }: { title: string; action: string; onClick(e: MouseEvent): void; children: ReactNode }) {
-  return (
-    <span title={title} data-action={action} onClick={onClick} className={cn(iconButtonLook('sm'), 'cursor-pointer')}>
-      {children}
-    </span>
   );
 }
 

@@ -19,6 +19,7 @@ import { TYPE_SCALE } from '@/lib/utils';
  *   the header (DS-5.1, 5.4);
  * - a `Button` with an `icon…` size outside `components/ui/`, an `IconButton` whose `className` sets a size, or a
  *   `<button>`/`<Button>` holding only an icon that isn't an `IconButton` (DS-7.2);
+ * - a 20 px icon (`size-5`) outside `components/ui/`: only the labelled button size draws one (DS-7.1, 7.4);
  * - a `<kbd>` outside `Kbd`, or a `select-all` command outside `CommandBlock` (DS-8.2, 8.4).
  * Every exception is in this file, with its reason, so adding one is a reviewed change.
  */
@@ -1034,6 +1035,27 @@ describe('icon buttons', () => {
       .filter(([path]) => /\.tsx$/.test(path) && !path.startsWith('web/src/components/ui/'))
       .flatMap(([path, text]) => iconButtonSizes(text, path).map((s) => `${path}:${s}`));
     expect(found).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// DS-7.1, DS-7.4: a 20 px icon only in the labelled button size
+
+/** `size-5` (20 px) as a class, with any variant (`[&>svg]:size-5`), as `line:col what`. */
+const twentyPx = (source: string, path = 'x.tsx') => scan(source, path, new RegExp(`${CLASS_HEAD}size-5(?=$|[\\s"'\`)\\],;])`, 'g'));
+
+describe('the labelled button size', () => {
+  it('DS-7.1: the guard catches a 20 px size however it is written, and lets other sizes through', () => {
+    expect(twentyPx(`<X className="size-5" />; cn('[&>svg]:size-5', on && 'md:size-5'); <Y className="size-50 size-4 size-3.5 gap-5" />`).map((s) => s.split(' ')[1])).toEqual(['size-5', 'size-5', 'size-5']);
+  });
+
+  it('DS-7.1, DS-7.4: a 20 px icon comes only from components/ui, where the labelled size gives it to the buttons of an expanded Work row and History result', () => {
+    const found = Object.entries(SOURCES)
+      .filter(([path]) => /\.tsx?$/.test(path) && !path.startsWith('web/src/components/ui/'))
+      .flatMap(([path, text]) => twentyPx(text, path).map((s) => `${path}:${s}`));
+    expect(found).toEqual([]);
+    expect(twentyPx(SOURCES['web/src/components/ui/icon-button.tsx'] ?? '').length).toBeGreaterThan(0);
+    for (const path of ['web/src/components/WorkPanel.tsx', 'web/src/components/HistoryPanel.tsx']) expect(SOURCES[path], path).toMatch(/<RowAction\b/);
   });
 });
 

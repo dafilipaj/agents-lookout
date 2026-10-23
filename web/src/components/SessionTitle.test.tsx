@@ -237,7 +237,7 @@ describe('who can be renamed (VIEW-5.13)', () => {
 
   it('VIEW-5.13: a past Session (HIST-3.3) keeps a plain title', async () => {
     const detail: HistoryDetail = {
-      item: { sessionId: 'past-1', harness: 'claude', headless: false, title: 'old-review', projectPath: '/Users/me/Projects/work', repo: 'work', branch: 'main', lastActiveAt: NOW - 3_600_000, snippet: null, blocked: null },
+      item: { sessionId: 'past-1', harness: 'claude', headless: false, title: 'old-review', projectPath: '/Users/me/Projects/work', repo: 'work', branch: 'main', lastActiveAt: NOW - 3_600_000, snippet: null, firstPrompt: null, projectDisplay: null, blocked: null },
       source: 'transcript',
       preview: 'latest',
       totalMessages: 0,

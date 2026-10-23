@@ -3,7 +3,7 @@ import { stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, delimiter, isAbsolute, join } from 'node:path';
 import { TB_SESSION_INSTALL_COMMAND } from '../shared/defaults.ts';
-import type { ChatEntry, Harness, HistoryBlock, HistoryDetail, HistoryItem, HistoryPage, ResumeResult } from '../shared/types.ts';
+import type { ChatEntry, Harness, HistoryBlock, HistoryDetail, HistoryItem, HistoryPage, HistoryPeek, ResumeResult } from '../shared/types.ts';
 import type { RunError, Runner } from './exec.ts';
 import { DirMissingError, LAUNCH_ID, type Launcher, SessionLiveError, cleanEnv } from './launcher.ts';
 import { sanitizeLine } from './sanitize.ts';
@@ -26,6 +26,9 @@ const TB_TIMEOUT_MS = 20_000;
 const MAX_QUERY = 500;
 const MAX_PAGE = 1000;
 const MAX_TITLE = 300;
+/** HIST-2.9: a first prompt or a last message in an expanded result: its first three lines, at most 600 characters. */
+const PEEK_LINES = 3;
+const MAX_PEEK = 600;
 const MAX_SNIPPET = 400;
 const MAX_PATH = 1024;
 const MAX_BRANCH = 200;
@@ -102,6 +105,11 @@ export class History {
     return this.opts.isDirectory ?? defaultIsDirectory;
   }
 
+  /** HIST-2.9: the home directory, shown as `~`. */
+  private get home() {
+    return (this.opts.env ?? process.env).HOME || homedir();
+  }
+
   /** HIST-2.1/2.2: the newest first with an empty query, else the best matches first. */
   async find(q: FindQuery): Promise<HistoryPage> {
     const run = (legacy: boolean) => {
@@ -122,7 +130,7 @@ export class History {
     // Never more than a page, whatever tb-session printed: bounded before any row is read or
     // its directory checked.
     const raw = (parsed.results as unknown[]).slice(0, HISTORY_PAGE);
-    const rows = raw.map((r) => toRow(r)).filter((r): r is Row => r !== null);
+    const rows = raw.map((r) => toRow(r, this.home)).filter((r): r is Row => r !== null);
     // HIST-2.5: tb-session 0.2 can't filter; `null` (unknown) stays, as with `--headless exclude`.
     // HIST-2.8: filtered here too, for tb-session 0.2, whose rows (no `harness`) are Claude Code.
     const shown = rows.filter((r) => (q.headless || r.item.headless !== true) && (!q.harness || r.item.harness === q.harness));
@@ -149,6 +157,19 @@ export class History {
     return { item: await this.withBlock(row), entries, source, preview, totalMessages: total };
   }
 
+  /**
+   * HIST-2.9, HIST-2.10: what an expanded result shows besides its row: its first prompt and its
+   * last message, read with one `show --tail 1` when it's expanded, never for a whole page.
+   * tb-session 0.2 can't tail: its `show` gives the first messages, so the last is left out.
+   */
+  async peek(sessionId: string, harness: Harness): Promise<HistoryPeek> {
+    const { row, messages, legacy } = await this.show(sessionId, harness, 1);
+    const m = legacy ? null : messages.at(-1);
+    const last = typeof m === 'object' && m !== null ? (m as Record<string, unknown>) : null;
+    const said = last && (last.role === 'user' || last.role === 'assistant') ? lines(last.content) : null;
+    return { firstPrompt: row.item.firstPrompt, last: said ? { role: last!.role as 'user' | 'assistant', text: said } : null, tailed: !legacy };
+  }
+
   /** HIST-3.1: what a resume needs, read again from tb-session. */
   async lookup(sessionId: string, harness: Harness): Promise<HistoryItem> {
     const { row } = await this.show(sessionId, harness, 1);
@@ -166,7 +187,7 @@ export class History {
     if (out === null) throw new HistoryError(502, "tb-session isn't installed.");
     const parsed = parseObject(out);
     // tb-session 0.2 lists Sessions without a prompt, so its `show` can be of one (HIST-2.6).
-    const row = parsed ? toRow(parsed, !asked.legacy) : null;
+    const row = parsed ? toRow(parsed, this.home, !asked.legacy) : null;
     if (!row || row.item.sessionId !== sessionId || row.item.harness !== harness) {
       throw new HistoryError(502, 'tb-session returned an unexpected answer.');
     }
@@ -269,12 +290,20 @@ const text = (v: unknown, max: number): string | null => {
   const s = oneLine(v);
   return s ? bound(s, max) : null;
 };
+/** HIST-2.9: the first three lines that say something, each on one line, at most 600 characters in all. */
+const lines = (v: unknown): string | null => {
+  if (typeof v !== 'string') return null;
+  const kept = v.split(/\r\n|[\n\r\u2028\u2029]/).map(oneLine).filter(Boolean).slice(0, PEEK_LINES);
+  return kept.length ? bound(kept.join('\n'), MAX_PEEK) : null;
+};
+/** HIST-2.9: a start directory as shown: the home directory as `~`. */
+const display = (path: string, home: string) => (home && home !== '/' && (path === home || path.startsWith(`${home}/`)) ? `~${path.slice(home.length)}` : path);
 
 /**
  * One tb-session row, validated; null for one History never shows (HIST-2.6) or can't read.
  * `requirePrompt: false` for a 0.2 `show`, whose prompt the caller checks itself.
  */
-function toRow(v: unknown, requirePrompt = true): Row | null {
+function toRow(v: unknown, home: string, requirePrompt = true): Row | null {
   if (typeof v !== 'object' || v === null || Array.isArray(v)) return null;
   const r = v as Record<string, unknown>;
   if (typeof r.session_id !== 'string' || !SESSION_ID.test(r.session_id)) return null;
@@ -301,10 +330,12 @@ function toRow(v: unknown, requirePrompt = true): Row | null {
       headless: typeof r.headless === 'boolean' ? r.headless : null,
       title: text(r.summary, MAX_TITLE) ?? firstPrompt ?? `Untitled Session ${r.session_id.slice(0, 8)}`,
       projectPath,
+      projectDisplay: projectPath ? display(projectPath, home) : null,
       repo: projectPath ? bound(basename(projectPath), 100) : null,
       branch: text(r.git_branch, MAX_BRANCH),
       lastActiveAt: Number.isFinite(at) ? at : Number.isFinite(created) ? created : null,
       snippet: text(r.matched_snippet, MAX_SNIPPET),
+      firstPrompt: lines(r.first_prompt),
     },
     transcriptMissing: r.transcript_missing === true,
   };

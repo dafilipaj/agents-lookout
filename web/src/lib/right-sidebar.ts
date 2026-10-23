@@ -11,10 +11,12 @@ export const TAB_KEY: Record<RightTab, string> = { history: 'H', work: 'W' };
 
 /**
  * What the tab strip asks of the open panel (HIST-2.7, WORK-1.7): with focus on a tab, Refresh or
- * Close, ↑/↓ and j/k move the panel's selection by a row, never the Session sidebar's.
+ * Close, ↑/↓ and j/k move the panel's selection by a row, never the Session sidebar's; Esc collapses
+ * Work's expanded row (WORK-1.12), and says whether there was one.
  */
 export interface PanelNav {
   move(delta: 1 | -1): void;
+  collapse?(): boolean;
 }
 
 /** WORK-1.5: which of Work's sections show: both, Tasks only, or PRs only (both PR groups). */

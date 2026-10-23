@@ -152,7 +152,7 @@ scenario(
     expect(milestone).toEqual({
       id: '122',
       type: 'tasks',
-      attributes: { title: 'Task 22', due_date: '2026-11-01', last_activity_at: '2026-10-23T10:00:00Z', type_id: 3 },
+      attributes: { title: 'Task 22', description: null, due_date: '2026-11-01', last_activity_at: '2026-10-23T10:00:00Z', type_id: 3 },
       relationships: { project: { data: { type: 'projects', id: expect.any(String) } }, workflow_status: { data: { type: 'workflow_statuses', id: expect.any(String) } } },
     });
     const included = (r: Ref | undefined) => first.included.find((i) => i.type === r?.type && i.id === r?.id)?.attributes;

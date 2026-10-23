@@ -1,5 +1,5 @@
 import { request } from 'node:http';
-import type { Page, Request } from '@playwright/test';
+import type { Locator, Page, Request } from '@playwright/test';
 import type { WorkSnapshot } from '../../../shared/work.ts';
 import { TB_PROD_INSTALL_COMMAND } from '../../../shared/defaults.ts';
 import { TASK_REASON, tasksQueryArgv } from '../../../server/work.ts';
@@ -56,6 +56,15 @@ async function openWork(page: Page) {
   await page.keyboard.press('w');
   await expect(page.getByRole('tab', { name: 'Work' })).toHaveAttribute('aria-selected', 'true');
 }
+
+/** WORK-1.12: a row's buttons show once a click has expanded it. */
+async function expand(row: Locator) {
+  await row.click();
+  await expect(row).toHaveAttribute('aria-expanded', 'true');
+}
+
+/** An expanded row's buttons' words, in order (WORK-2.10, WORK-3.6). */
+const buttonWords = (row: Locator) => row.locator('[data-field="actions"] [role="button"]').allTextContents();
 
 /** Saves a Productive email on the Settings page, opened from the Session sidebar; Work stays as it is. */
 async function saveProductiveEmail(page: Page, email: string) {
@@ -126,7 +135,7 @@ const indexed = (id: string, prompt: string, createdAt: string, modifiedAt: stri
 const WICKS = taskUrl('41000301');
 
 scenario(
-  'WORK-2.4: a Task with a live Linked Session shows a live marker, and a click selects the live one with the latest activity, a tie going to the later-created',
+  'WORK-2.4: a Task with a live Linked Session shows a live marker; a click on it only expands the row, and its first button, Open Session, selects the live one with the latest activity, a tie going to the later-created',
   world().tbProd({ tasks: { [ME]: MINE.slice(0, 1) } }).tbPr({ board: { columns: {} } }).settings({ productiveEmail: ME }),
   async ({ page, world }) => {
     // A past Session is the most recent of all; a live one still wins. Two live ones tie on activity.
@@ -140,14 +149,19 @@ scenario(
     await expect(page.getByRole('tab', { name: 'Work' })).toHaveAttribute('aria-selected', 'true');
     const row = taskRows(page).filter({ hasText: 'Trim the lamp wicks' });
     await expect(row.locator('[data-session-marker]')).toHaveAttribute('data-state', 'live');
+    const path = new URL(page.url()).pathname;
+    // The marker is a sign: a click on it is a click on the row, which only expands it.
     await row.locator('[data-session-marker]').click();
+    await expect(row).toHaveAttribute('aria-expanded', 'true');
+    expect(new URL(page.url()).pathname).toBe(path);
+    await row.getByTitle('Open Session', { exact: true }).click();
     await expect(page).toHaveURL(/\/s\/00000000-0000-4000-8000-0000000000a3$/);
     expect(world.calls().filter((call) => /\bspawn\b/.test(call))).toEqual([]);
   },
 );
 
 scenario(
-  'WORK-2.4: with no live Linked Session the marker is past, and a click resumes the one with the latest activity',
+  'WORK-2.4: with no live Linked Session the marker is past; a click on the row resumes nothing, and its first button, Resume, resumes the one with the latest activity',
   world().tbProd({ tasks: { [ME]: MINE.slice(0, 1) } }).tbPr({ board: { columns: {} } }).settings({ productiveEmail: ME }),
   async ({ page, world }) => {
     world.tbSession.indexSession(indexed('00000000-0000-4000-8000-0000000000b1', `Start ${WICKS}`, '2026-10-20T10:00:00Z', '2026-10-20T11:00:00Z', world.home));
@@ -155,7 +169,9 @@ scenario(
     await openWork(page);
     const row = taskRows(page).filter({ hasText: 'Trim the lamp wicks' });
     await expect(row.locator('[data-session-marker]')).toHaveAttribute('data-state', 'past');
-    await row.click();
+    await expand(row);
+    expect(world.calls().filter((call) => /\bspawn\b/.test(call))).toEqual([]);
+    await row.getByTitle('Resume', { exact: true }).click();
     await world.waitUntil('Fleet to be asked to resume the latest past Session', () => world.calls().some((call) => /\bspawn --resume 00000000-0000-4000-8000-0000000000b2\b/.test(call)));
     expect(world.calls().filter((call) => /\bspawn --resume 00000000-0000-4000-8000-0000000000b1\b/.test(call))).toEqual([]);
   },
@@ -167,7 +183,7 @@ const ANVIL_BOARD: TbPrBoardDecl = {
 };
 
 scenario(
-  'WORK-3.4: a PR shows its Linked Task, and its marker and click act as a Task’s do: a live Linked Session is selected over a more recent past one',
+  'WORK-3.4: a PR shows its Linked Task, and its marker and click act as a Task’s do: the click only expands it, and Open Session selects a live Linked Session over a more recent past one',
   world().tbProd({ tasks: { [ME]: MINE.slice(0, 1) } }).tbPr({ board: ANVIL_BOARD }).settings({ productiveEmail: ME }),
   async ({ page, world }) => {
     world.tbSession.indexSession(indexed('00000000-0000-4000-8000-0000000000c1', `Review ${ANVIL_PR}`, '2026-10-20T10:00:00Z', '2026-10-21T09:00:00Z', world.home));
@@ -179,14 +195,17 @@ scenario(
     const row = prRows(page).filter({ hasText: 'Sharpen the anvil corners' });
     await expect(row.locator('[data-field="linked-task"]')).toContainText('Trim the lamp wicks');
     await expect(row.locator('[data-session-marker]')).toHaveAttribute('data-state', 'live');
-    await row.click();
+    const path = new URL(page.url()).pathname;
+    await expand(row);
+    expect(new URL(page.url()).pathname).toBe(path);
+    await row.getByTitle('Open Session', { exact: true }).click();
     await expect(page).toHaveURL(/\/s\/00000000-0000-4000-8000-0000000000c2$/);
     expect(world.calls().filter((call) => /\bspawn\b/.test(call))).toEqual([]);
   },
 );
 
 scenario(
-  'WORK-3.4: a PR with only past Linked Sessions shows a past marker, and a click resumes the one with the latest activity',
+  'WORK-3.4: a PR with only past Linked Sessions shows a past marker; the click resumes nothing, and Resume resumes the one with the latest activity',
   world().tbProd({ tasks: { [ME]: MINE.slice(0, 1) } }).tbPr({ board: ANVIL_BOARD }).settings({ productiveEmail: ME }),
   async ({ page, world }) => {
     world.tbSession.indexSession(indexed('00000000-0000-4000-8000-0000000000d1', `Review ${ANVIL_PR}`, '2026-10-20T10:00:00Z', '2026-10-20T11:00:00Z', world.home));
@@ -194,9 +213,128 @@ scenario(
     await openWork(page);
     const row = prRows(page).filter({ hasText: 'Sharpen the anvil corners' });
     await expect(row.locator('[data-session-marker]')).toHaveAttribute('data-state', 'past');
-    await row.click();
+    await expand(row);
+    expect(world.calls().filter((call) => /\bspawn\b/.test(call))).toEqual([]);
+    await row.getByTitle('Resume', { exact: true }).click();
     await world.waitUntil('Fleet to be asked to resume the latest past Session', () => world.calls().some((call) => /\bspawn --resume 00000000-0000-4000-8000-0000000000d2\b/.test(call)));
     expect(world.calls().filter((call) => /\bspawn --resume 00000000-0000-4000-8000-0000000000d1\b/.test(call))).toEqual([]);
+  },
+);
+
+/** A Task with a description, as Productive gives it: HTML (WORK-2.11). */
+const DESCRIBED: TaskDecl = {
+  ...MINE[0]!,
+  description: '<p>Every wick in the <strong>east wing</strong> first.</p><ul><li>Trim to 6&nbsp;mm</li><li>Check the oil</li></ul><p>Then the west wing.</p>',
+};
+
+scenario(
+  'WORK-2.10: an expanded Task’s buttons are Open Session, Start Session and Open in Fantastic, in that order; each does what it says: the live Session is selected, the launcher opens on the Task’s URL, the Task opens in a new tab',
+  world().tbProd({ tasks: { [ME]: [DESCRIBED] } }).tbPr({ board: { columns: {} } }).settings({ productiveEmail: ME }),
+  async ({ page, world }) => {
+    world.tbSession.indexSession(indexed('00000000-0000-4000-8000-0000000000e1', `Start ${WICKS}`, '2026-10-20T10:00:00Z', '2026-10-21T09:00:00Z', world.home));
+    world.fleet.gainSession(fleetRow('00000000-0000-4000-8000-0000000000e1', 'Wicks live', world.home));
+    await expect(sessionSidebar(page).getByText('Wicks live')).toBeVisible();
+    await page.keyboard.press('w');
+    const row = taskRows(page).filter({ hasText: 'Trim the lamp wicks' });
+    await expect(row.locator('[data-session-marker]')).toHaveAttribute('data-state', 'live');
+    await expand(row);
+    // WORK-2.9: its description as plain text, from the same tb-prod read.
+    await expect(row.locator('[data-field="description"]')).toHaveText('Every wick in the east wing first. - Trim to 6 mm - Check the oil Then the west wing.');
+    expect(world.tbProd.calls().every((argv) => argv[0] === 'query' && argv[1] === 'tasks')).toBe(true);
+    expect(await buttonWords(row)).toEqual(['Open Session', 'Start Session', 'Open in Fantastic']);
+    await row.getByTitle('Start Session (S)').click();
+    const dialog = page.getByRole('dialog', { name: 'New Session' });
+    await expect(dialog.getByLabel('Prompt')).toHaveValue(WICKS);
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+    const tab = page.context().waitForEvent('page');
+    await row.getByTitle('Open in Fantastic (O)').click();
+    await tab;
+    await world.waitUntil('the new tab to ask for the Task', () => world.browserRequests().includes(WICKS));
+    await row.getByTitle('Open Session', { exact: true }).click();
+    await expect(page).toHaveURL(/\/s\/00000000-0000-4000-8000-0000000000e1$/);
+    expect(world.calls().filter((call) => /\bspawn\b/.test(call))).toEqual([]);
+  },
+);
+
+scenario(
+  'WORK-2.10: with only past Linked Sessions the first button is Resume, which resumes the latest one as History does; Enter on the expanded row does the same',
+  world().tbProd({ tasks: { [ME]: MINE.slice(0, 1) } }).tbPr({ board: { columns: {} } }).settings({ productiveEmail: ME }),
+  async ({ page, world }) => {
+    world.tbSession.indexSession(indexed('00000000-0000-4000-8000-0000000000f1', `Start ${WICKS}`, '2026-10-20T10:00:00Z', '2026-10-20T11:00:00Z', world.home));
+    world.tbSession.indexSession(indexed('00000000-0000-4000-8000-0000000000f2', `Start ${WICKS}`, '2026-10-19T10:00:00Z', '2026-10-20T12:00:00Z', world.home));
+    await openWork(page);
+    const row = taskRows(page).filter({ hasText: 'Trim the lamp wicks' });
+    await expect(row.locator('[data-session-marker]')).toHaveAttribute('data-state', 'past');
+    // Enter expands the selected row; a second Enter runs its first button (WORK-1.13).
+    await row.click();
+    await expect(row).toHaveAttribute('aria-expanded', 'true');
+    expect(await buttonWords(row)).toEqual(['Resume', 'Start Session', 'Open in Fantastic']);
+    await page.keyboard.press('Escape');
+    await expect(row).toHaveAttribute('aria-expanded', 'false');
+    await page.keyboard.press('Enter');
+    await expect(row).toHaveAttribute('aria-expanded', 'true');
+    expect(world.calls().filter((call) => /\bspawn\b/.test(call))).toEqual([]);
+    await page.keyboard.press('Enter');
+    await world.waitUntil('Fleet to be asked to resume the latest past Session', () => world.calls().some((call) => /\bspawn --resume 00000000-0000-4000-8000-0000000000f2\b/.test(call)));
+    expect(world.calls().filter((call) => /\bspawn --resume 00000000-0000-4000-8000-0000000000f1\b/.test(call))).toEqual([]);
+  },
+);
+
+scenario(
+  'WORK-4.10: an expanded row shows each Linked Session as its own chip, newest first, named with what it does and its Status; a live one’s chip selects it, a past one’s resumes it',
+  world().tbProd({ tasks: { [ME]: MINE.slice(0, 1) } }).tbPr({ board: { columns: {} } }).settings({ productiveEmail: ME }),
+  async ({ page, world }) => {
+    world.tbSession.indexSession({ ...indexed('00000000-0000-4000-8000-0000000000a7', `Start ${WICKS}`, '2026-10-18T10:00:00Z', '2026-10-18T11:00:00Z', world.home), summary: 'wick notes' });
+    world.tbSession.indexSession({ ...indexed('00000000-0000-4000-8000-0000000000a8', `Start ${WICKS}`, '2026-10-19T10:00:00Z', '2026-10-19T11:00:00Z', world.home), summary: 'wick plan' });
+    world.tbSession.indexSession({ ...indexed('00000000-0000-4000-8000-0000000000a9', `Start ${WICKS}`, '2026-10-17T10:00:00Z', '2026-10-17T11:00:00Z', world.home), summary: 'wick trim' });
+    world.fleet.gainSession(fleetRow('00000000-0000-4000-8000-0000000000a9', 'wick trim', world.home));
+    await expect(sessionSidebar(page).getByText('wick trim')).toBeVisible();
+    await page.keyboard.press('w');
+    const row = taskRows(page).filter({ hasText: 'Trim the lamp wicks' });
+    await expect(row.locator('[data-session-marker]')).toHaveAttribute('data-state', 'live');
+    await expand(row);
+    const chips = row.locator('[data-field="session-chips"] [data-action="session"]');
+    await expect(chips).toHaveCount(3);
+    expect(await chips.evaluateAll((els) => els.map((el) => el.getAttribute('aria-label')))).toEqual(['Open wick trim, Idle', 'Resume wick plan, past', 'Resume wick notes, past']);
+    await expect(chips.nth(1)).toHaveAttribute('title', 'started on this Task');
+    await expect(chips.first().locator('[data-session-marker]')).toHaveAttribute('data-status', 'idle');
+    await chips.first().click();
+    await expect(page).toHaveURL(/\/s\/00000000-0000-4000-8000-0000000000a9$/);
+    expect(world.calls().filter((call) => /\bspawn\b/.test(call))).toEqual([]);
+    await chips.nth(1).click();
+    await world.waitUntil('Fleet to be asked to resume the chip’s Session', () => world.calls().some((call) => /\bspawn --resume 00000000-0000-4000-8000-0000000000a8\b/.test(call)));
+  },
+);
+
+scenario(
+  'WORK-1.15: an expanded row grows in the panel, the list scrolls to keep all of it in view, and the main pane keeps showing the current Session',
+  world().tbProd({ tasks: { [ME]: TASKS.map((t, i) => (i === 4 ? { ...t, description: DESCRIBED.description! } : t)) } }).tbPr({ board: { columns: {} } }).settings({ productiveEmail: ME }),
+  async ({ page, world }) => {
+    world.fleet.gainSession(fleetRow('00000000-0000-4000-8000-0000000000b9', 'Lamp room', world.home));
+    await sessionSidebar(page).getByText('Lamp room').click();
+    await expect(page).toHaveURL(/\/s\/00000000-0000-4000-8000-0000000000b9$/);
+    await page.getByRole('button', { name: 'Work', exact: true }).click();
+    await world.step('the Tasks to show', () => expect(taskRows(page)).toHaveCount(23));
+    // Lantern 5, with a description, below the fold: brought to the list's bottom edge, then expanded.
+    const row = taskRows(page).filter({ hasText: 'Light lantern 5' });
+    await row.evaluate((el) => el.scrollIntoView({ block: 'end' }));
+    const list = row.locator('xpath=ancestor::*[contains(@class, "overflow-y-auto")][1]');
+    const before = await list.evaluate((el) => el.scrollTop);
+    const collapsed = (await row.boundingBox())!.height;
+    await row.click();
+    await expect(row).toHaveAttribute('aria-expanded', 'true');
+    await expect(row.locator('[data-field="actions"]')).toBeVisible();
+    await expect.poll(async () => (await row.boundingBox())!.height).toBeGreaterThan(collapsed + 40);
+    // All of it in view, and the list scrolled to get it there.
+    await expect.poll(async () => {
+      const [r, l] = [(await row.boundingBox())!, (await list.boundingBox())!];
+      return r.y >= l.y - 1 && r.y + r.height <= l.y + l.height + 1;
+    }).toBe(true);
+    expect(await list.evaluate((el) => el.scrollTop)).toBeGreaterThan(before);
+    // The main pane still shows the Session.
+    await expect(page).toHaveURL(/\/s\/00000000-0000-4000-8000-0000000000b9$/);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Lamp room');
   },
 );
 
@@ -332,7 +470,7 @@ scenario(
     await openWork(page);
     await world.step('the Tasks to show', () => expect(taskRows(page)).toHaveCount(3));
     for (const [i, name] of NAMES.entries()) await expect(taskRows(page).nth(i)).toHaveAccessibleName(name);
-    await expect(taskRows(page).nth(0)).toHaveAccessibleDescription('S starts a Session on it, O opens it in Fantastic.');
+    await expect(taskRows(page).nth(0)).toHaveAccessibleDescription('Enter shows its details. S starts a Session on it, O opens it in Fantastic.');
     await expect(tasksSection(page)).toContainText(/Tasks\s*·\s*3 open\s*·\s*updated \d+s ago/);
     // Only the saved email's Tasks.
     await expect(work(page)).not.toContainText('Wind the clock tower');
@@ -510,6 +648,7 @@ scenario(
     await openWork(page);
     const row = taskRows(page).filter({ hasText: 'Paint the pier posts' });
     await world.step('the Task to show', () => expect(row).toBeVisible());
+    await expand(row);
     await row.getByTitle('Start Session (S)').click();
     const dialog = page.getByRole('dialog', { name: 'New Session' });
     await expect(dialog).toBeVisible();
@@ -570,6 +709,7 @@ scenario(
     await page.keyboard.press('Escape');
     await expect(dialog).toHaveCount(0);
     // A launcher from Work holds the Task's URL; closing it discards that.
+    await expand(row);
     await row.getByTitle('Start Session (S)').click();
     await expect(dialog.getByLabel('Prompt')).toHaveValue(taskUrl('41000303'));
     await page.keyboard.press('Escape');
@@ -589,6 +729,7 @@ scenario(
     await openWork(page);
     const row = taskRows(page).filter({ hasText: 'Ship the harbor bells' });
     await world.step('the Task to show', () => expect(row).toBeVisible());
+    await expand(row);
     const tab = page.context().waitForEvent('page');
     await row.getByTitle('Open in Fantastic (O)').click();
     expect(await tab).not.toBe(page);

@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { Plus, WifiOff } from 'lucide-react';
 import { describe, expect, it, vi } from 'vitest';
 import { ClockContext } from '@/lib/time';
@@ -6,7 +6,7 @@ import { Alert } from './alert';
 import { Chip } from './chip';
 import { CommandBlock } from './command-block';
 import { EmptyState } from './empty-state';
-import { IconButton } from './icon-button';
+import { IconButton, RowAction } from './icon-button';
 import { Kbd } from './kbd';
 import { Loading } from './loading';
 import { SessionMarker } from './session-marker';
@@ -195,6 +195,29 @@ describe('IconButton', () => {
     // Ghost: the accent under the pointer, the Button's focus ring.
     expect(md).toHaveClass('hover:bg-accent', 'focus-visible:ring-[3px]');
     expect(screen.getByRole('button', { name: 'Refresh' })).toHaveAttribute('title', 'Refreshing…');
+  });
+
+  it('DS-7.1: the labelled size is a word beside a 20 px icon in a 28 px tall target; its word is its name, its tooltip has the key, and a press never reaches the row', () => {
+    const pressed: string[] = [];
+    render(
+      <div role="listbox" aria-label="Rows" onClick={() => pressed.push('row')}>
+        <div role="option" aria-selected>
+          <RowAction label="Open in Fantastic" icon={<Plus />} tip="Open in Fantastic (O)" onPress={() => pressed.push('open')} />
+          <RowAction label="Resuming…" icon={<Plus />} tip="Resume" enabled={false} onPress={() => pressed.push('resume')} />
+        </div>
+      </div>,
+    );
+    const open = screen.getByRole('button', { name: 'Open in Fantastic' });
+    expect(open).toHaveClass('h-7', 'px-2', 'text-body', "[&_svg:not([class*='size-'])]:size-5", '[&>svg]:size-5', 'border', 'hover:bg-accent');
+    expect(open).not.toHaveClass('size-6', 'size-7');
+    expect(open).toHaveAttribute('title', 'Open in Fantastic (O)');
+    expect(open).not.toHaveAttribute('tabindex');
+    fireEvent.click(open);
+    expect(pressed).toEqual(['open']);
+    const waiting = screen.getByRole('button', { name: 'Resuming…' });
+    expect(waiting).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(waiting);
+    expect(pressed).toEqual(['open']);
   });
 });
 

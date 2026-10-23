@@ -1,6 +1,6 @@
 import { TB_PROD_INSTALL_COMMAND, TB_PROD_SIGN_IN_COMMAND } from '@shared/defaults.ts';
 import { PRODUCTIVE_EMAIL_ERROR } from '@shared/settings.ts';
-import type { HistoryItem, LaunchView } from '@shared/types.ts';
+import type { HistoryItem, LaunchView, ResumeResult } from '@shared/types.ts';
 import type { ColumnMark, PrSection, PrTaskRef, TaskSection, WorkPr, WorkSessionLink, WorkSnapshot, WorkTask } from '@shared/work.ts';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -53,6 +53,7 @@ const task = (over: Partial<WorkTask> & { id: string; title: string }): WorkTask
   dueDate: null,
   lastActivityAt: Date.now() - 3_600_000,
   milestone: false,
+  description: null,
   url: `https://app.fantastic.productive.io/109-productive/tasks/${over.id}`,
   links: null,
   ...over,
@@ -86,10 +87,15 @@ const shown = () => options().map((o) => o.getAttribute('data-pr'));
 const selectedPr = () => options().find((o) => o.getAttribute('aria-selected') === 'true')?.getAttribute('data-pr') ?? null;
 const group = (name: 'Mine' | 'Review requests') => within(workPanel()).getByRole('group', { name });
 const option = (id: string) => options().find((o) => o.getAttribute('data-pr') === id)!;
-const rowButton = (id: string, action: 'open' | 'review') => option(id).querySelector<HTMLElement>(`[data-action="${action}"]`);
+/** WORK-1.12: a collapsed row has no buttons: a click expands it, and its buttons show. */
+const expandRow = (el: HTMLElement) => {
+  if (el.getAttribute('aria-expanded') !== 'true') fireEvent.click(el);
+  return el;
+};
+const rowButton = (id: string, action: 'open' | 'review' | 'open-session' | 'resume') => expandRow(option(id)).querySelector<HTMLElement>(`[data-field="actions"] [data-action="${action}"]`);
 const taskList = () => within(workPanel()).getByRole('listbox', { name: 'Tasks', hidden: true });
 const taskOption = (id: string) => options().find((o) => o.getAttribute('data-task') === id)!;
-const taskButton = (id: string, action: 'open' | 'start') => taskOption(id).querySelector<HTMLElement>(`[data-action="${action}"]`);
+const taskButton = (id: string, action: 'open' | 'start' | 'open-session' | 'resume') => expandRow(taskOption(id)).querySelector<HTMLElement>(`[data-field="actions"] [data-action="${action}"]`);
 /** Every row, Tasks and PRs, top to bottom, by its Task id or its repo#number. */
 const shownRows = () => options().map((o) => o.getAttribute('data-task') ?? o.getAttribute('data-pr'));
 const selectedRow = () => {
@@ -297,7 +303,7 @@ describe('the Work tab (WORK-1)', () => {
     expect(vi.mocked(app.client.watchWork).mock.calls.at(-1)).toEqual(['tab-1', true]);
   });
 
-  it('WORK-1.7: with focus in Work, ↑/↓ and j/k move through the rows of both groups without acting; Enter acts like a click', async () => {
+  it('WORK-1.7: with focus in Work, ↑/↓ and j/k move through the rows of both groups without acting; Enter expands the row (WORK-1.12)', async () => {
     const user = userEvent.setup();
     openApp('/s/alpha');
     await user.keyboard('w');
@@ -314,14 +320,16 @@ describe('the Work tab (WORK-1)', () => {
     // Nothing acted: the Session sidebar kept its selection, no launcher opened.
     expect(window.location.pathname).toBe('/s/alpha');
     expect(screen.queryByRole('dialog')).toBeNull();
-    // Enter acts like a click: a PR without a Linked Session does nothing (WORK-2.4's UX).
+    // Enter expands the row and does nothing else (WORK-1.12).
     await user.keyboard('{Enter}');
+    expect(option('willow#2102')).toHaveAttribute('aria-expanded', 'true');
     expect(window.location.pathname).toBe('/s/alpha');
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(selectedPr()).toBe('willow#2102');
-    // A click selects the row, as Enter would act on it.
+    // A click selects and expands a row, as Enter does.
     await user.click(options()[0]!);
     expect(selectedPr()).toBe('anvil#2101');
+    expect(option('anvil#2101')).toHaveAttribute('aria-expanded', 'true');
     expect(window.location.pathname).toBe('/s/alpha');
   });
 
@@ -337,6 +345,8 @@ describe('the Work tab (WORK-1)', () => {
       branch: 'main',
       lastActiveAt: Date.now() - 3_600_000,
       snippet: null,
+      firstPrompt: null,
+      projectDisplay: null,
       blocked: null,
     });
     openApp('/s/alpha', snap(), { history: async () => ({ state: 'ok', items: [past('past-1'), past('past-2'), past('past-3')], page: 1, hasMore: false }) });
@@ -450,8 +460,9 @@ describe('the Work tab (WORK-1)', () => {
     await user.keyboard('k');
     expect(selectedRow()).toBe('41000102');
     expect(taskList()).toHaveFocus();
-    // Nothing acted; Enter on a Task without a Linked Session does nothing (UX, "Row clicks").
+    // Nothing acted; Enter on a Task only expands it (UX, "Row clicks").
     await user.keyboard('{Enter}');
+    expect(taskOption('41000102')).toHaveAttribute('aria-expanded', 'true');
     expect(window.location.pathname).toBe('/s/alpha');
     expect(screen.queryByRole('dialog')).toBeNull();
     // A click on a PR row selects it; the tab strip moves the rows without taking focus from it.
@@ -795,7 +806,7 @@ describe('Tasks (WORK-2)', () => {
     expect(taskOption('41000101')).toHaveAccessibleName('Light the harbor lanterns Lantern Works In progress');
     expect(taskOption('41000102')).toHaveAccessibleName('Tune the harbor bells Harbor Bells Not started milestone due Nov 4');
     expect(taskOption('41000104')).toHaveAccessibleName('Sweep the pier');
-    expect(taskOption('41000102')).toHaveAccessibleDescription('S starts a Session on it, O opens it in Fantastic.');
+    expect(taskOption('41000102')).toHaveAccessibleDescription('Enter shows its details. S starts a Session on it, O opens it in Fantastic.');
   });
 
   it('WORK-2.3, WORK-3.4, WORK-4.5: Tasks and PRs show their links, with the source and Session reasons on hover', async () => {
@@ -849,8 +860,12 @@ describe('Tasks (WORK-2)', () => {
     const prMarker = option('anvil#2101').querySelector('[data-session-marker]')!;
     expect(prMarker).toHaveAttribute('title', 'probably opened this PR (the earliest Session that mentions it)\nLinks may be incomplete');
 
-    // Clicking a marker acts on the row and opens its newest live Linked Session.
+    // Clicking a marker is clicking the row: it expands it, and opens nothing (WORK-2.4).
     await user.click(taskMarker);
+    expect(taskOption(LIGHT.id)).toHaveAttribute('aria-expanded', 'true');
+    expect(window.location.pathname).toBe('/s/alpha');
+    // Its first button opens its newest live Linked Session.
+    await user.click(taskButton(LIGHT.id, 'open-session')!);
     expect(window.location.pathname).toBe('/s/task-start');
   });
 
@@ -874,7 +889,7 @@ describe('Tasks (WORK-2)', () => {
     expect(taskOption(LIGHT.id).querySelector('[data-field="linked-pr"] [data-field="ci"]')).toHaveAttribute('data-ci', 'passing');
   });
 
-  it('WORK-1.7: Enter acts like a click when the selected Task has a Linked Session', async () => {
+  it('WORK-1.13: Enter on a selected Task with a Linked Session expands it; Enter again opens its live Linked Session, as its first button does', async () => {
     const linked = task({
       ...LIGHT,
       links: {
@@ -888,10 +903,14 @@ describe('Tasks (WORK-2)', () => {
     await user.keyboard('w');
     await waitFor(() => expect(taskList()).toHaveFocus());
     await user.keyboard('{Enter}');
+    expect(taskOption(LIGHT.id)).toHaveAttribute('aria-expanded', 'true');
+    expect(window.location.pathname).toBe('/s/alpha');
+    expect(taskButton(LIGHT.id, 'open-session')).toHaveTextContent('Open Session');
+    await user.keyboard('{Enter}');
     expect(window.location.pathname).toBe('/s/linked-live');
   });
 
-  it('WORK-3.4: after Fleet removes a live Session, the marker clears and the row resumes the latest past Session', async () => {
+  it('WORK-3.4: after Fleet removes a live Session, the marker clears and the first button resumes the latest past Session; the click on the row resumes nothing', async () => {
     const links = {
       tasks: [], incomplete: false,
       sessions: [
@@ -907,8 +926,292 @@ describe('Tasks (WORK-2)', () => {
     app.emit({ type: 'work', work: snap({ mine: [pr({ ...DRAFT, links: { ...links, sessions: links.sessions.map((session) => ({ ...session, live: false })) } })] }) });
     await waitFor(() => expect(marker()).toHaveAttribute('data-state', 'past'));
     await user.click(option('anvil#2101'));
+    expect(app.client.resume).not.toHaveBeenCalled();
+    expect(rowButton('anvil#2101', 'resume')).toHaveTextContent('Resume');
+    await user.click(rowButton('anvil#2101', 'resume')!);
     await waitFor(() => expect(app.client.resume).toHaveBeenCalledTimes(1));
     expect(vi.mocked(app.client.resume).mock.calls[0]?.[1]).toBe('latest-past');
+  });
+
+  it('WORK-1.12: a click on a Task, PR or Review request row selects and expands it and does nothing else; one row is expanded at a time', async () => {
+    const live: WorkSessionLink = { sessionId: 'beta', harness: 'claude', title: 'beta', createdAt: 1, modifiedAt: 2, live: true, reason: 'started on this Task' };
+    const past: WorkSessionLink = { sessionId: 'old', harness: 'codex', title: 'old', createdAt: 1, modifiedAt: 2, live: false, reason: 'started on this PR' };
+    const app = openApp('/s/alpha', withTasks({ tasks: [task({ ...LIGHT, links: { prs: [], sessions: [live], incomplete: false } }), BELLS] }, { mine: [pr({ ...DRAFT, links: { tasks: [], sessions: [past], incomplete: false } })] }));
+    const opened = spyOpen();
+    const user = userEvent.setup();
+    await user.keyboard('w');
+    const expanded = () => options().filter((o) => o.getAttribute('aria-expanded') === 'true').map((o) => o.getAttribute('data-task') ?? o.getAttribute('data-pr'));
+    for (const [el, id] of [[taskOption(LIGHT.id), LIGHT.id], [option('anvil#2101'), 'anvil#2101'], [option('willow#2106'), 'willow#2106'], [taskOption(BELLS.id), BELLS.id]] as const) {
+      await user.click(el);
+      expect(selectedRow()).toBe(id);
+      expect(expanded()).toEqual([id]);
+    }
+    // Nothing else happened: no Session selected, resumed or started, no tab, no launcher.
+    expect(window.location.pathname).toBe('/s/alpha');
+    expect(app.client.resume).not.toHaveBeenCalled();
+    expect(app.client.launch).not.toHaveBeenCalled();
+    expect(opened).toEqual([]);
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('WORK-1.12: Enter on a selected row expands it; Esc with focus in Work, or on the tab strip, collapses it and leaves it selected; ↑/↓ and j/k collapse the row they leave and expand nothing', async () => {
+    const user = userEvent.setup();
+    openApp('/s/alpha', withTasks());
+    await user.keyboard('w');
+    await waitFor(() => expect(taskList()).toHaveFocus());
+    const expanded = () => options().filter((o) => o.getAttribute('aria-expanded') === 'true').map((o) => o.getAttribute('data-task') ?? o.getAttribute('data-pr'));
+    await user.keyboard('{Enter}');
+    expect(expanded()).toEqual([LIGHT.id]);
+    await user.keyboard('{Escape}');
+    expect(expanded()).toEqual([]);
+    expect(selectedRow()).toBe(LIGHT.id);
+    await user.keyboard('{Enter}j');
+    expect(selectedRow()).toBe(BELLS.id);
+    expect(expanded()).toEqual([]);
+    await user.keyboard('k');
+    expect(expanded()).toEqual([]);
+    // From the tab strip too.
+    await user.keyboard('{Enter}');
+    tab('Work').focus();
+    await user.keyboard('{Escape}');
+    expect(expanded()).toEqual([]);
+    expect(selectedRow()).toBe(LIGHT.id);
+    expect(screen.getByTestId('right-sidebar')).toBeInTheDocument();
+    // The tab strip's j moves on and collapses the row it leaves.
+    await user.click(taskOption(LIGHT.id));
+    tab('Work').focus();
+    await user.keyboard('j');
+    expect(selectedRow()).toBe(BELLS.id);
+    expect(expanded()).toEqual([]);
+    expect(window.location.pathname).toBe('/s/alpha');
+  });
+
+  it('WORK-1.13: Enter on an expanded row runs its first button: Start Session on a Task with no Linked Session, Review on a Review request, Open on GitHub on a PR of yours; O, S and R act on a collapsed row too', async () => {
+    const opened = spyOpen();
+    const user = userEvent.setup();
+    openApp('/s/alpha', withTasks({ tasks: [LIGHT] }, { mine: [DRAFT], reviewRequests: [REVIEW] }));
+    await user.keyboard('w');
+    await waitFor(() => expect(taskList()).toHaveFocus());
+    // A Task without a Linked Session: Start Session is first.
+    expect(taskButton(LIGHT.id, 'start')).toBe(taskOption(LIGHT.id).querySelector('[data-field="actions"] [data-action]'));
+    await user.keyboard('{Enter}');
+    expect(await screen.findByRole('dialog', { name: 'New Session' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Prompt')).toHaveValue(LIGHT.url);
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    // A PR of yours: Open on GitHub.
+    await user.keyboard('j{Enter}');
+    expect(opened).toEqual([]);
+    await user.keyboard('{Enter}');
+    expect(opened).toEqual([[DRAFT.url, '_blank', 'noopener,noreferrer']]);
+    // A Review request: Review.
+    await user.keyboard('j{Enter}{Enter}');
+    expect(await screen.findByRole('dialog', { name: 'New Session' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Prompt')).toHaveValue(`/p-codex:dual-review ${REVIEW.url}`);
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    // Collapsed, O still opens it.
+    await user.keyboard('{Escape}o');
+    expect(option('willow#2106')).toHaveAttribute('aria-expanded', 'false');
+    expect(opened.at(-1)).toEqual([REVIEW.url, '_blank', 'noopener,noreferrer']);
+  });
+
+  it('WORK-1.14: an expanded row stays expanded across reads while it is listed; when a read removes it, nothing is expanded; a filter that hides it collapses it; a reload expands nothing', async () => {
+    const user = userEvent.setup();
+    const app = openApp('/s/alpha', withTasks());
+    await user.keyboard('w');
+    const expanded = () => options().filter((o) => o.getAttribute('aria-expanded') === 'true').map((o) => o.getAttribute('data-task') ?? o.getAttribute('data-pr'));
+    await user.click(taskOption(BELLS.id));
+    app.emit({ type: 'work', work: withTasks({ tasks: [task({ ...LIGHT, title: 'Light them all' }), BELLS] }) });
+    expect(expanded()).toEqual([BELLS.id]);
+    app.emit({ type: 'work', work: withTasks({ tasks: [LIGHT] }) });
+    expect(expanded()).toEqual([]);
+    expect(selectedRow()).toBe(LIGHT.id);
+    // It doesn't come back expanded with the row.
+    app.emit({ type: 'work', work: withTasks() });
+    expect(expanded()).toEqual([]);
+    await user.click(option('anvil#2101'));
+    await user.click(within(workPanel()).getByRole('button', { name: 'Tasks' }));
+    expect(expanded()).toEqual([]);
+    await user.click(within(workPanel()).getByRole('button', { name: 'All' }));
+    expect(expanded()).toEqual([]);
+    await user.click(taskOption(LIGHT.id));
+    app.unmount();
+    const again = openApp('/s/alpha', withTasks());
+    expect(within(screen.getByTestId('work-panel')).queryAllByRole('option', { hidden: true }).filter((o) => o.getAttribute('aria-expanded') === 'true')).toEqual([]);
+    again.unmount();
+  });
+
+  it('WORK-1.15 (support): an expanded row is scrolled into view, only as far as it must, and the main pane keeps the current Session', async () => {
+    const scrolled: { id: string; block: unknown }[] = [];
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function (this: Element, arg?: boolean | ScrollIntoViewOptions) {
+      scrolled.push({ id: this.id, block: typeof arg === 'object' ? arg.block : arg });
+    };
+    try {
+      const user = userEvent.setup();
+      openApp('/s/alpha', withTasks());
+      await user.keyboard('w');
+      scrolled.length = 0;
+      await user.click(option('willow#2106'));
+      expect(scrolled.filter((s) => s.id === option('willow#2106').id).length).toBeGreaterThan(0);
+      expect(scrolled.every((s) => s.block === 'nearest')).toBe(true);
+      expect(window.location.pathname).toBe('/s/alpha');
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('alpha');
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+  });
+
+  it('WORK-2.9: an expanded Task shows its description’s first three lines as plain text, its Linked PRs with repo, number, chip and CI, and its Linked Sessions as chips; one with neither shows its project, status and buttons only', async () => {
+    const linked = task({
+      ...BELLS,
+      description: 'Totals round half up on the preview\nbut half even on the PDF.\nReproduce with deal 4.\nA fourth line.',
+      links: {
+        prs: [{ repo: 'anvil', number: 2101, url: DRAFT.url, chip: 'draft', ci: 'passing', sources: ['body'] }, { repo: 'willow', number: 2106, url: REVIEW.url, chip: null, ci: 'none', sources: ['branch'] }],
+        sessions: [{ sessionId: 'beta', harness: 'claude', title: 'fix-rounding', createdAt: 1, modifiedAt: 5, live: true, reason: 'started on this Task' }],
+        incomplete: false,
+      },
+    });
+    openApp('/s/alpha', withTasks({ tasks: [linked, LIGHT] }));
+    const user = userEvent.setup();
+    await user.keyboard('w');
+    const row = expandRow(taskOption(BELLS.id));
+    const details = row.querySelector<HTMLElement>('[data-field="details"]')!;
+    expect(row.querySelector('[data-field="project"]')).toHaveTextContent('Harbor Bells');
+    expect(row.querySelector('[data-field="status"]')).toHaveTextContent('Not started');
+    expect(row.querySelector('[data-field="due"]')).toHaveTextContent('due Nov 4');
+    const description = details.querySelector('[data-field="description"]')!;
+    expect(description.textContent).toBe(linked.description);
+    expect(description).toHaveClass('line-clamp-3', 'whitespace-pre-line');
+    const prs = [...details.querySelectorAll('[data-field="detail-pr"]')];
+    expect(prs.map((p) => p.textContent)).toEqual(['anvil#2101draft', 'willow#2106Review requestno CI']);
+    expect(prs.map((p) => p.querySelector('[data-field="ci"]')!.getAttribute('data-ci'))).toEqual(['passing', 'none']);
+    expect(prs[0]).toHaveAttribute('title', 'PR body');
+    // Expanded, the PRs are in the details, not the collapsed line too.
+    expect(row.querySelector('[data-field="linked-prs"]')).toBeNull();
+    expect(details.querySelectorAll('[data-field="session-chips"] [data-action="session"]')).toHaveLength(1);
+    // Its details are its description, not its name.
+    expect(details).toHaveAttribute('aria-hidden');
+    expect(row).toHaveAccessibleName('Tune the harbor bells Harbor Bells Not started milestone due Nov 4');
+    expect(row.getAttribute('aria-describedby')).toContain(details.id);
+    // A Task with neither: its project and status, and its buttons.
+    const bare = expandRow(taskOption(LIGHT.id)).querySelector<HTMLElement>('[data-field="details"]')!;
+    expect(bare.querySelector('[data-field="description"]')).toBeNull();
+    expect(bare.querySelector('[data-field="detail-prs"]')).toBeNull();
+    expect(bare.querySelector('[data-field="session-chips"]')).toBeNull();
+    expect([...bare.querySelectorAll('[data-field="actions"] [data-action]')].map((b) => b.textContent)).toEqual(['Start Session', 'Open in Fantastic']);
+  });
+
+  it('WORK-2.10 (support), WORK-3.6 (support): the buttons, in order: Open Session for a live Linked Session, else Resume, then Start Session or Review, then Open in Fantastic or Open on GitHub', async () => {
+    const session = (over: Partial<WorkSessionLink>): WorkSessionLink => ({ sessionId: 's', harness: 'claude', title: 's', createdAt: 1, modifiedAt: 1, live: false, reason: 'started on this Task', ...over });
+    const liveTask = task({ ...LIGHT, links: { prs: [], sessions: [session({ sessionId: 'past-newer', modifiedAt: 9 }), session({ sessionId: 'beta', live: true, modifiedAt: 2 })], incomplete: false } });
+    const pastTask = task({ ...BELLS, links: { prs: [], sessions: [session({ sessionId: 'past-old', modifiedAt: 1 }), session({ sessionId: 'past-new', modifiedAt: 3 })], incomplete: false } });
+    const reviewed = pr({ ...REVIEW, links: { tasks: [], sessions: [session({ sessionId: 'past-review', reason: 'started on this PR' })], incomplete: false } });
+    openApp('/s/alpha', withTasks({ tasks: [liveTask, pastTask] }, { mine: [DRAFT], reviewRequests: [reviewed] }));
+    await userEvent.setup().keyboard('w');
+    const words = (el: HTMLElement) => [...expandRow(el).querySelectorAll('[data-field="actions"] [data-action]')].map((b) => `${b.getAttribute('data-action')}:${b.textContent}:${b.getAttribute('title')}`);
+    expect(words(taskOption(LIGHT.id))).toEqual(['open-session:Open Session:Open Session', 'start:Start Session:Start Session (S)', 'open:Open in Fantastic:Open in Fantastic (O)']);
+    expect(words(taskOption(BELLS.id))).toEqual(['resume:Resume:Resume', 'start:Start Session:Start Session (S)', 'open:Open in Fantastic:Open in Fantastic (O)']);
+    expect(words(option('anvil#2101'))).toEqual(['open:Open on GitHub:Open on GitHub (O)']);
+    expect(words(option('willow#2106'))).toEqual(['resume:Resume:Resume', 'review:Review:Review (R)', 'open:Open on GitHub:Open on GitHub (O)']);
+  });
+
+  it('WORK-3.6 (support): an expanded PR keeps its repo, number, chip, CI, age and Linked Task, the source its hover, and adds its Linked Sessions as chips; a Review request has no chip', async () => {
+    const sessions: WorkSessionLink[] = [
+      { sessionId: 'beta', harness: 'claude', title: 'review-anvil', createdAt: 1, modifiedAt: 1, live: true, reason: 'started on this PR' },
+      { sessionId: 'opener', harness: 'codex', title: 'anvil-opener', createdAt: 1, modifiedAt: 5, live: false, reason: 'probably opened this PR (the earliest Session that mentions it)' },
+    ];
+    const linkedPr = pr({ ...DRAFT, links: { tasks: [{ id: LIGHT.id, title: LIGHT.title, sources: ['body'] }], sessions, incomplete: false } });
+    openApp('/s/alpha', snap({ mine: [linkedPr], reviewRequests: [REVIEW] }));
+    await userEvent.setup().keyboard('w');
+    const row = expandRow(option('anvil#2101'));
+    for (const [field, text] of [['repo', 'anvil'], ['number', '#2101'], ['chip', 'draft'], ['age', '2d'], ['linked-task', LIGHT.title]] as const) expect(row.querySelector(`[data-field="${field}"]`), field).toHaveTextContent(text);
+    expect(row.querySelector('[data-field="ci"]')).toHaveAttribute('data-ci', 'passing');
+    expect(row.querySelector('[data-field="linked-task"]')).toHaveAttribute('title', 'PR body');
+    // Live first, then the latest past one (WORK-2.4's order).
+    expect([...row.querySelectorAll('[data-field="session-chips"] [data-action="session"]')].map((c) => c.getAttribute('aria-label'))).toEqual(['Open review-anvil, Idle', 'Resume anvil-opener, past']);
+    expect([...row.querySelectorAll('[data-field="actions"] [data-action]')].map((b) => b.textContent)).toEqual(['Open Session', 'Open on GitHub']);
+    expect(expandRow(option('willow#2106')).querySelector('[data-field="chip"]')).toBeNull();
+  });
+
+  it('WORK-2.10 (support): Resume resumes the past Linked Session with the latest activity; the row shows “Resuming…” meanwhile and a failure shows under the buttons as an error Alert', async () => {
+    let fail: (e: Error) => void = () => {};
+    const resume = vi.fn(() => new Promise<never>((_, reject) => (fail = reject)));
+    const sessions: WorkSessionLink[] = [
+      { sessionId: 'past-old', harness: 'codex', title: 'old', createdAt: 1, modifiedAt: 1, live: false, reason: 'started on this Task' },
+      { sessionId: 'past-new', harness: 'codex', title: 'new', createdAt: 1, modifiedAt: 3, live: false, reason: 'started on this Task' },
+    ];
+    openApp('/s/alpha', withTasks({ tasks: [task({ ...LIGHT, links: { prs: [], sessions, incomplete: false } })] }), { resume });
+    const user = userEvent.setup();
+    await user.keyboard('w');
+    await user.click(taskButton(LIGHT.id, 'resume')!);
+    expect(resume).toHaveBeenCalledWith('codex', 'past-new', expect.any(String));
+    const row = taskOption(LIGHT.id);
+    expect(row).toHaveAttribute('aria-expanded', 'true');
+    expect(row.querySelector('[data-field="actions"] [data-action="resume"]')).toHaveTextContent('Resuming…');
+    expect(row).toHaveTextContent('Resuming…');
+    await act(async () => fail(new Error("Couldn't start the Session: Fleet refused")));
+    const alert = await within(row).findByRole('alert');
+    expect(alert).toHaveTextContent("Couldn't start the Session: Fleet refused");
+    expect(row.querySelector('[data-field="actions"]')!.compareDocumentPosition(alert) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(row.querySelector('[data-field="actions"] [data-action="resume"]')).toHaveTextContent('Resume');
+  });
+
+  it('WORK-2.10 (support): “Resuming…” stays until the resumed Session is live in the Session list; a resume that isn’t live 15 s after it answered has failed (LAUNCH-4.5), and the row stops saying so', async () => {
+    let started: (r: ResumeResult) => void = () => {};
+    const resume = vi.fn(() => new Promise<ResumeResult>((r) => (started = r)));
+    const sessions: WorkSessionLink[] = [{ sessionId: 'past-new', harness: 'claude', title: 'new', createdAt: 1, modifiedAt: 3, live: false, reason: 'started on this Task' }];
+    const app = openApp('/s/alpha', withTasks({ tasks: [task({ ...LIGHT, links: { prs: [], sessions, incomplete: false } }), task({ ...BELLS, links: { prs: [], sessions: [{ ...sessions[0]!, sessionId: 'past-other' }], incomplete: false } })] }), { resume });
+    const user = userEvent.setup();
+    await user.keyboard('w');
+    const button = (id: string) => taskOption(id).querySelector('[data-field="actions"] [data-action="resume"]');
+    await user.click(taskButton(LIGHT.id, 'resume')!);
+    await act(async () => started({ kind: 'started', launch: launchView({ id: 'l-1', title: 'new' }) }));
+    expect(button(LIGHT.id)).toHaveTextContent('Resuming…');
+    app.emit({ type: 'sessions', upsert: [row({ id: 'past-new' })], remove: [] });
+    expect(taskOption(LIGHT.id)).not.toHaveTextContent('Resuming…');
+    // Another that never goes live: after LAUNCH-4.5's 15 s, the row stops saying it's resuming.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    fireEvent.click(taskButton(BELLS.id, 'resume')!);
+    await act(async () => started({ kind: 'started', launch: launchView({ id: 'l-2', title: 'other' }) }));
+    expect(button(BELLS.id)).toHaveTextContent('Resuming…');
+    act(() => vi.advanceTimersByTime(14_000));
+    expect(button(BELLS.id)).toHaveTextContent('Resuming…');
+    act(() => vi.advanceTimersByTime(1_000));
+    expect(button(BELLS.id)).toHaveTextContent('Resume');
+    expect(taskOption(BELLS.id)).not.toHaveTextContent('Resuming…');
+  });
+
+  it('WORK-4.10 (support): each Linked Session is its own chip, Harness logo, name and Status marker, newest first, at most 8 then “+N older”; a chip opens a live one, resumes a past one, and says so with its Status', async () => {
+    const resume = vi.fn(async () => ({ kind: 'live' as const, sessionId: 'past-1' }));
+    const sessions: WorkSessionLink[] = [
+      { sessionId: 'beta', harness: 'claude', title: 'fix-rounding', createdAt: 1, modifiedAt: 20, live: true, reason: 'started on this Task' },
+      ...Array.from({ length: 9 }, (_, i): WorkSessionLink => ({ sessionId: `past-${i + 1}`, harness: 'codex', title: `notes ${i + 1}`, createdAt: 1, modifiedAt: 10 - i, live: false, reason: 'through PR #2101' })),
+    ];
+    const app = openApp('/s/alpha', withTasks({ tasks: [task({ ...LIGHT, links: { prs: [], sessions, incomplete: false } })] }), { resume });
+    app.emit({ type: 'sessions', upsert: [row({ id: 'beta', status: 'busy' })], remove: [] });
+    const user = userEvent.setup();
+    await user.keyboard('w');
+    const chips = [...expandRow(taskOption(LIGHT.id)).querySelectorAll<HTMLElement>('[data-field="session-chips"] [data-action="session"]')];
+    expect(chips.map((c) => c.getAttribute('data-session-id'))).toEqual(['beta', ...Array.from({ length: 7 }, (_, i) => `past-${i + 1}`)]);
+    expect(taskOption(LIGHT.id).querySelector('[data-field="older"]')).toHaveTextContent('+2 older');
+    expect(chips[0]).toHaveAccessibleName('Open fix-rounding, Busy');
+    expect(chips[1]).toHaveAccessibleName('Resume notes 1, past');
+    expect(chips[0]).toHaveAttribute('title', 'started on this Task');
+    expect(chips[1]).toHaveAttribute('title', 'through PR #2101');
+    expect(chips[0]!.querySelector('svg[data-harness="claude"]')).not.toBeNull();
+    expect(chips[0]!.querySelector('[data-session-marker]')).toHaveAttribute('data-status', 'busy');
+    expect(chips[1]!.querySelector('[data-session-marker]')).toHaveAttribute('data-state', 'past');
+    expect(chips[0]).toHaveClass('h-7');
+    await user.click(chips[1]!);
+    expect(resume).toHaveBeenCalledWith('codex', 'past-1', expect.any(String));
+    // One resume at a time: the chips wait until it's live.
+    await waitFor(() => expect(window.location.pathname).toBe('/s/past-1'));
+    expect(chips[0]).toHaveAttribute('aria-disabled', 'true');
+    app.emit({ type: 'sessions', upsert: [row({ id: 'past-1' })], remove: [] });
+    await user.click(chips[0]!);
+    expect(window.location.pathname).toBe('/s/beta');
   });
 
   it('Tasks says “Loading” until its first read for the saved email ends, and “No open tasks” only after a read that succeeded', async () => {
@@ -1063,7 +1366,7 @@ describe('PRs (WORK-3)', () => {
     expect(within(listbox()).getAllByRole('group').map((g) => g.getAttribute('data-group'))).toEqual(['mine', 'reviewRequests']);
   });
 
-  it('WORK-3.1: one focusable listbox, as History has, with a group per PR group; an option holds nothing focusable or interactive', async () => {
+  it('WORK-3.1: one focusable listbox, as History has, with a group per PR group; an option holds nothing focusable, and a collapsed one nothing interactive', async () => {
     openApp();
     await userEvent.setup().keyboard('w');
     expect(within(workPanel()).getAllByRole('listbox')).toHaveLength(1);
@@ -1073,8 +1376,12 @@ describe('PRs (WORK-3)', () => {
       expect(o.querySelectorAll('button, a, input, select, textarea, [tabindex], [role="button"], [role="link"]'), o.getAttribute('data-pr')!).toHaveLength(0);
     }
     // Each row says which keys act on it.
-    expect(option('anvil#2101')).toHaveAccessibleDescription('O opens it on GitHub.');
-    expect(option('willow#2106')).toHaveAccessibleDescription('R reviews it, O opens it on GitHub.');
+    expect(option('anvil#2101')).toHaveAccessibleDescription('Enter shows its details. O opens it on GitHub.');
+    expect(option('willow#2106')).toHaveAccessibleDescription('Enter shows its details. R reviews it, O opens it on GitHub.');
+    // Expanded, its buttons are mouse targets: nothing in it takes focus (WORK UX, "Markers and buttons").
+    expandRow(option('willow#2106'));
+    expect(option('willow#2106').querySelectorAll('[role="button"]').length).toBeGreaterThan(0);
+    expect(option('willow#2106').querySelectorAll('button, a, input, select, textarea, [tabindex]')).toHaveLength(0);
   });
 
   it('WORK-3.2: each PR shows its repo, number, title, age and CI; Mine’s have a state chip', async () => {
@@ -1108,7 +1415,7 @@ describe('PRs (WORK-3)', () => {
     mine.forEach((o, i) => expect(o).toHaveAccessibleName(names[i]));
     // Found by what it says, as a screen reader user would.
     const review = within(group('Review requests')).getByRole('option', { name: 'willow #2106 no CI 3d Count the willow leaves' });
-    expect(review).toHaveAccessibleDescription('R reviews it, O opens it on GitHub.');
+    expect(review).toHaveAccessibleDescription('Enter shows its details. R reviews it, O opens it on GitHub.');
     // The row's own buttons and their keys aren't part of its name.
     expect(review).not.toHaveAccessibleName(/Review|Open|GitHub/);
   });
@@ -1273,13 +1580,16 @@ describe('actions (WORK-5, WORK-6)', () => {
     expect(window.location.pathname).toBe('/s/alpha');
   });
 
-  it('WORK-6.1: every Task, PR and Review request row has an Open in browser button, its tooltip naming it and O; it opens the row in a new tab', async () => {
+  it('WORK-6.1: an expanded Task, PR and Review request row has a labelled Open in browser button, its tooltip naming its key, O; it opens the row in a new tab; a collapsed row has no buttons', async () => {
     const opened = spyOpen();
     const user = userEvent.setup();
     openApp('/', withTasks());
     await user.keyboard('w');
-    const buttons = options().map((o) => o.querySelector<HTMLElement>('[data-action="open"]')!);
+    // Collapsed: no buttons at all.
+    for (const o of options()) expect(o.querySelectorAll('[data-action], [role="button"]')).toHaveLength(0);
+    const buttons = options().map((o) => expandRow(o).querySelector<HTMLElement>('[data-field="actions"] [data-action="open"]')!);
     expect(buttons).toHaveLength(6);
+    expect(buttons.map((b) => b.textContent)).toEqual(['Open in Fantastic', 'Open in Fantastic', 'Open on GitHub', 'Open on GitHub', 'Open on GitHub', 'Open on GitHub']);
     expect(buttons.map((b) => b.getAttribute('title'))).toEqual([
       'Open in Fantastic (O)',
       'Open in Fantastic (O)',
@@ -1290,7 +1600,7 @@ describe('actions (WORK-5, WORK-6)', () => {
     ]);
     await user.click(buttons[5]!);
     expect(opened).toEqual([[REVIEW.url, '_blank', 'noopener,noreferrer']]);
-    await user.click(buttons[1]!);
+    await user.click(expandRow(taskOption('41000102')).querySelector<HTMLElement>('[data-field="actions"] [data-action="open"]')!);
     expect(opened.at(-1)).toEqual([BELLS.url, '_blank', 'noopener,noreferrer']);
     expect(selectedRow()).toBe('41000102');
     expect(screen.queryByRole('dialog')).toBeNull();
@@ -1377,7 +1687,7 @@ describe('actions (WORK-5, WORK-6)', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
     await user.keyboard('k');
     expect(selectedRow()).toBe('41000102');
-    expect(taskOption('41000102')).toHaveAccessibleDescription('S starts a Session on it, O opens it in Fantastic.');
+    expect(taskOption('41000102')).toHaveAccessibleDescription('Enter shows its details. S starts a Session on it, O opens it in Fantastic.');
     await user.keyboard('{Shift>}s{/Shift}');
     fireEvent.keyDown(taskList(), { key: 's', metaKey: true });
     fireEvent.keyDown(taskList(), { key: 's', ctrlKey: true });
@@ -1759,14 +2069,18 @@ describe('Work on the design system', () => {
     expect(within(loading).getByRole('status')).toHaveTextContent('Loading…');
   });
 
-  it("DS-7.2: a row's buttons, which can't be focusable inside an option, take the sm icon button's look", async () => {
+  it("WORK-6.5 (support), DS-7.1: an expanded row's buttons, which can't be focusable inside an option, are a word beside a 20 px icon in the labelled size, its word its name", async () => {
     openApp('/', withTasks({ tasks: [LIGHT] }, { mine: [DRAFT], reviewRequests: [REVIEW] }));
     await userEvent.setup().keyboard('w');
-    for (const button of [taskButton(LIGHT.id, 'start'), taskButton(LIGHT.id, 'open'), rowButton('anvil#2101', 'open'), rowButton('willow#2106', 'review')]) {
+    const words = ['Start Session', 'Open in Fantastic', 'Open on GitHub', 'Review'];
+    [taskButton(LIGHT.id, 'start'), taskButton(LIGHT.id, 'open'), rowButton('anvil#2101', 'open'), rowButton('willow#2106', 'review')].forEach((button, i) => {
       expect(button!.tagName.toLowerCase()).toBe('span');
-      expect(button).toHaveClass('size-6', "[&_svg:not([class*='size-'])]:size-3.5", 'text-muted-foreground', 'hover:bg-accent');
+      expect(button).toHaveAttribute('role', 'button');
+      expect(button).not.toHaveAttribute('tabindex');
+      expect(button).toHaveClass('h-7', "[&_svg:not([class*='size-'])]:size-5", '[&>svg]:size-5', 'hover:bg-accent');
       expect(button!.querySelector('svg')!.getAttribute('class')).not.toMatch(/\bsize-/);
-    }
+      expect(button).toHaveAccessibleName(words[i]);
+    });
   });
 
   it('DS-8.3: the "old", "milestone" and PR state chips are Chips: old info, milestone and ready neutral, draft muted, approved ok', async () => {

@@ -462,6 +462,40 @@ export interface TasksPage {
 
 const DUE_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+/** WORK-2.11: a Task's description as sent, at most this many characters. */
+export const MAX_DESCRIPTION = 600;
+const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', ndash: '–', mdash: '—', hellip: '…', laquo: '«', raquo: '»', lsquo: '‘', rsquo: '’', ldquo: '“', rdquo: '”', bull: '•', middot: '·' };
+const BLOCK_END = /<\/(?:p|div|li|ul|ol|h[1-6]|tr|table|blockquote|pre|section|article|header|footer)\s*>|<br\s*\/?>|<hr\s*\/?>/gi;
+
+/**
+ * WORK-2.11: a Task's description from tb-prod, which Productive gives as HTML, as plain text: a
+ * block's end or a `<br>` is a line break, a list item starts with "- ", scripts and styles go
+ * whole, every other tag is dropped, entities are decoded, controls stripped, blank lines dropped,
+ * and it's cut to 600 characters. Null when nothing is left, or it isn't a string: never a read failure.
+ */
+export function descriptionText(v: unknown): string | null {
+  if (typeof v !== 'string' || !v.trim()) return null;
+  const text = stripAnsi(v.normalize('NFKC'))
+    .replace(/<!--[\s\S]*?(?:-->|$)/g, '')
+    .replace(/<(script|style|template|iframe|object)\b[\s\S]*?(?:<\/\1\s*>|$)/gi, '')
+    .replace(/<li\b[^>]*>/gi, '\n- ')
+    .replace(BLOCK_END, '\n')
+    .replace(/<\/?[A-Za-z][^>]*>?/g, '')
+    .replace(/&(#x[0-9a-f]{1,6}|#[0-9]{1,7}|[a-z]{2,8});/gi, (all, name: string) => {
+      if (name[0] !== '#') return ENTITIES[name.toLowerCase()] ?? all;
+      const code = name[1] === 'x' || name[1] === 'X' ? parseInt(name.slice(2), 16) : parseInt(name.slice(1), 10);
+      return code > 0 && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff) ? String.fromCodePoint(code) : '';
+    });
+  const lines = text
+    .split(/\r\n|[\n\r\u2028\u2029]/)
+    // eslint-disable-next-line no-control-regex -- strip controls
+    .map((line) => line.replace(/[\u0000-\u001f\u007f\u200b]+/g, ' ').replace(/\s+/g, ' ').trim())
+    .filter((line) => line && line !== '-');
+  const plain = lines.join('\n');
+  if (!plain) return null;
+  return plain.length > MAX_DESCRIPTION ? `${plain.slice(0, MAX_DESCRIPTION - 1)}…` : plain;
+}
+
 /**
  * One page of `tb-prod query tasks` (JSON:API: `data`, `included`, `meta`), validated. A Task without
  * an id, or a page without `data` or `meta.hasNextPage`, throws TbProdShapeError: a renamed field
@@ -500,6 +534,7 @@ export function parseTasksPage(stdout: string): TasksPage {
       dueDate: typeof a.due_date === 'string' && DUE_DATE.test(a.due_date) ? a.due_date : null,
       lastActivityAt: rfc3339(a.last_activity_at),
       milestone: a.type_id === 3,
+      description: descriptionText(a.description),
       url: taskUrl(raw.id),
       links: null,
     };

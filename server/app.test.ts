@@ -37,6 +37,7 @@ let sent: { sessionId: string; input: unknown }[] = [];
 let pages: { sessionId: string; cursor: unknown }[] = [];
 let finds: unknown[] = [];
 let resumes: unknown[] = [];
+let peeks: string[] = [];
 let ended: { sessionId: string; target: EndTarget }[] = [];
 let answers: { sessionId: string; req: AnswerRequest }[] = [];
 let stops: string[] = [];
@@ -51,6 +52,7 @@ beforeEach(async () => {
   sent = [];
   pages = [];
   finds = [];
+  peeks = [];
   resumes = [];
   ended = [];
   answers = [];
@@ -135,6 +137,11 @@ beforeEach(async () => {
       detail: async (sessionId) => {
         if (sessionId === 'gone') throw new HistoryError(404, 'tb-session has no such Session.');
         return { item: { sessionId } as never, entries: [], source: 'index', preview: 'latest', totalMessages: null };
+      },
+      peek: async (sessionId) => {
+        peeks.push(sessionId);
+        if (sessionId === 'gone') throw new HistoryError(404, 'tb-session has no such Session.');
+        return { firstPrompt: 'Why?', last: { role: 'assistant', text: 'Because.' }, tailed: true };
       },
       resume: async (input) => {
         resumes.push(input);
@@ -742,6 +749,14 @@ describe('HIST routes', () => {
     expect((await call('GET', '/api/history/codex/gone')).status).toBe(404);
     expect((await call('GET', '/api/history/pi/abc')).status).toBe(404);
     expect((await call('GET', '/api/history/claude/a%20b')).status).toBe(404);
+  });
+
+  it('HIST-2.10: GET /api/history/:harness/:id/peek reads an expanded result’s first prompt and last message; odd ids never reach tb-session', async () => {
+    expect(JSON.parse((await call('GET', '/api/history/codex/abc-1/peek')).body)).toEqual({ firstPrompt: 'Why?', last: { role: 'assistant', text: 'Because.' }, tailed: true });
+    expect((await call('GET', '/api/history/codex/gone/peek')).status).toBe(404);
+    expect((await call('GET', '/api/history/pi/abc/peek')).status).toBe(404);
+    expect((await call('GET', '/api/history/claude/a%20b/peek')).status).toBe(404);
+    expect(peeks).toEqual(['abc-1', 'gone']);
   });
 
   it('HIST-3.1: resuming is a mutation: it needs our Origin and the token, like LAUNCH’s start', async () => {

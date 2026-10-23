@@ -168,6 +168,8 @@ export interface WorkTask {
   lastActivityAt: number | null;
   /** `type_id` 3 (WORK-2.2). */
   milestone: boolean;
+  /** WORK-2.9, WORK-2.11: its description as plain text, at most 600 characters; null when it has none. */
+  description: string | null;
   /** WORK-6.2: built on the server, always `TASK_URL_BASE` + id. */
   url: string;
   /** WORK-2.3, WORK-2.4: the Task's Linked PRs and Sessions, null until the Link searches run. */

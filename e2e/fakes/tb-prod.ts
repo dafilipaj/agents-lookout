@@ -199,7 +199,7 @@ function answer(argv: string[], decl: TbProdDecl): Outcome | Refusal {
     data: rows.map((t) => ({
       id: t.id,
       type: 'tasks',
-      attributes: { title: t.title, due_date: t.dueDate ?? null, last_activity_at: t.lastActivityAt ?? null, type_id: t.milestone ? 3 : 1 },
+      attributes: { title: t.title, description: t.description ?? null, due_date: t.dueDate ?? null, last_activity_at: t.lastActivityAt ?? null, type_id: t.milestone ? 3 : 1 },
       relationships: {
         project: { data: { type: 'projects', id: ids.project(t) } },
         workflow_status: { data: { type: 'workflow_statuses', id: ids.status(t) } },
