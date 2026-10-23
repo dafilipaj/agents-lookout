@@ -8,7 +8,7 @@ What's being worked on next, in order. Each item points at where its truth lives
 - **When an item is done,** remove it. Git history keeps it.
 - **When an item is dropped,** move it to the Backlog's "Dropped" section with the reason, so it isn't proposed again.
 
-Updated: 2026-10-22.
+Updated: 2026-10-23.
 
 ## Now
 
@@ -22,7 +22,7 @@ Updated: 2026-10-22.
 
 ## Next: specs first
 
-13. **Sidebar rows show what varies** (SIDE-2.1 and UX, amend; the design review's suggestion 1). Almost every row reads `work · main`, while the numbers that change (age, context, the Subagent count) are the smallest text at the row's edge. Proposal: show `repo · branch` only when it isn't the Start directory's default (a Worktree, another branch), and give a Busy row's second line to what it's doing; keep the full location in the tooltip and the status line (VIEW-5.5). The Key decision "Worktree first, branch as fallback" still holds: Worktrees still show. The muted Harness logo is DS's (DS-3.1), not this item's.
+13. **Sidebar rows show what varies** (specced 2026-10-23 as SIDE-2.7–2.16, with SIDE-2.1, 2.2, 2.3 and 2.5 amended; the design review's suggestion 1). Specced and answered 2026-10-23 (all six questions as recommended). The location half (SIDE-2.1-2.10, 2.12-2.16) can be built now. `activity` (SIDE-2.11) waits for a structure-only Transcript scan and a Fleet fork commit; Claude Code first, Codex `null`. Proposal as approved: Almost every row reads `work · main`, while the numbers that change (age, context, the Subagent count) are the smallest text at the row's edge. Proposal: show `repo · branch` only when it isn't the Start directory's default (a Worktree, another branch), and give a Busy row's second line to what it's doing; keep the full location in the tooltip and the status line (VIEW-5.5). The Key decision "Worktree first, branch as fallback" still holds: Worktrees still show. The muted Harness logo is DS's (DS-3.1), not this item's.
 2. **Select, then act: Work rows and History results** (WORK-2.4 and UX, HIST-3.1 and its Key decision "Click resumes", amend; one spec for both, with the design review's suggestion 8). From Dario's testing: a click on a Work row selects or resumes its Session, which happens by accident, and there's no way to see a Task's details first. History has the same risk, worse: a stray click resumes a past Session, which starts a Session host. The open-in-browser buttons are too small. Proposal:
    - a click or Enter only selects and expands the row: project, status, due date, the start of the description, Linked PRs with CI, Linked Sessions;
    - every action is a labelled button: "Open Session", "Resume", "Start Session", "Open in Fantastic";
