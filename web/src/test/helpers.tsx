@@ -29,7 +29,7 @@ export function row(over: Partial<SessionRow> & { id: string }): SessionRow {
     modelAt: null,
     model: null,
     effort: null,
-    backgroundShell: false,
+    subagents: null, backgroundShell: false,
     ...over,
   };
 }

@@ -2,6 +2,7 @@
   {
     "pid": 61001,
     "session_id": "aaaaaaaa-0000-4000-8000-000000000101",
+    "subagents": {"running": 1, "finished": 2},
     "cwd": "/Users/me/Projects/work-worktrees/crm-rates",
     "status": "waiting",
     "waiting_for": "question: Push the branch and open a draft PR?",
@@ -34,6 +35,7 @@
   {
     "pid": 61002,
     "session_id": "bbbbbbbb-0000-4000-8000-000000000102",
+    "subagents": {"running": 3, "finished": 0},
     "cwd": "/Users/me/Projects/work-worktrees/invoice-pdf",
     "status": "idle",
     "waiting_for": null,
@@ -52,6 +54,7 @@
   {
     "pid": 61003,
     "session_id": "cccccccc-0000-4000-8000-000000000103",
+    "subagents": null,
     "cwd": "/Users/me/Projects/work",
     "status": "busy",
     "waiting_for": null,
@@ -70,6 +73,7 @@
   {
     "pid": 61004,
     "session_id": "dddddddd-0000-4000-8000-000000000104",
+    "subagents": {"running": 0, "finished": 3},
     "cwd": "/Users/me/Projects/work",
     "status": "idle",
     "waiting_for": null,
@@ -87,6 +91,7 @@
   {
     "pid": 61005,
     "session_id": null,
+    "subagents": {"running": 0, "finished": 0},
     "cwd": "/Users/me/Projects/work",
     "status": "idle",
     "waiting_for": null,

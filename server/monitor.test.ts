@@ -30,6 +30,23 @@ function setup(initial: FleetListResult) {
 const ok = (rows: FleetRow[]): FleetListResult => ({ kind: 'ok', rows });
 
 describe('SessionMonitor', () => {
+  it('SIDE-9.2: a count-only change pushes the row on the next poll without changing its Status or age', async () => {
+    const base = recorded.find((r) => r.harness === 'codex')!;
+    const t = setup(ok([{ ...base, subagents: { running: 1, finished: 0 } }]));
+    await t.monitor.tick();
+    const before = t.monitor.snapshot().sessions[0]!;
+    for (const subagents of [{ running: 3, finished: 1 }, { running: 0, finished: 4 }, { running: 0, finished: 0 }, null]) {
+      t.events.length = 0;
+      t.advance(2000);
+      t.set(ok([{ ...base, subagents, updated_at: t.now() }]));
+      await t.monitor.tick();
+      expect(t.events).toEqual([{ type: 'sessions', upsert: [{ ...before, subagents }], remove: [] }]);
+      t.events.length = 0;
+      await t.monitor.tick();
+      expect(t.events).toEqual([]);
+    }
+  });
+
   it('SIDE-1.4: the recorded `fleet list --json` output becomes rows, pushed as one diff', async () => {
     const t = setup(ok(recorded));
     await t.monitor.tick();

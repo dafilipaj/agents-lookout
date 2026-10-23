@@ -1,5 +1,5 @@
 import type { SessionRow } from '@shared/types.ts';
-import { FolderGit2, GitBranch, SquareTerminal } from 'lucide-react';
+import { Bot, FolderGit2, GitBranch, SquareTerminal } from 'lucide-react';
 import { memo, useEffect, useRef } from 'react';
 import { BACKGROUND_SHELL_TIP, CONTEXT_LEVEL_CLASS, ROW_TONE, STATUS_LABEL, STATUS_STRIP_CLASS, contextLevel, location, sessionOptionId } from '@/lib/sessions';
 import { SessionMarker } from '@/components/ui/session-marker';
@@ -29,6 +29,8 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
   const needsYou = row.status === 'needs-you';
   const tone = needsYou ? ROW_TONE.needsYou : ROW_TONE.plain;
   const age = row.statusSince !== null ? formatAge(now - row.statusSince) : null;
+  const running = row.subagents?.running ?? 0;
+  const subagentLabel = `${running} Subagent${running === 1 ? '' : 's'} running`;
 
   return (
     <li
@@ -103,6 +105,12 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
           )}
         </span>
         <span className="flex shrink-0 items-center gap-1.5 tabular-nums">
+          {running > 0 && (
+            <span data-field="subagents" role="img" aria-label={subagentLabel} title={subagentLabel} className="flex items-center gap-0.5">
+              <Bot aria-hidden className="size-2.5" />
+              {running}
+            </span>
+          )}
           {/* SIDE-2.6: Idle, with a background shell command still running; a mark, not a Status. */}
           {row.backgroundShell && (
             <span title={BACKGROUND_SHELL_TIP} className="flex items-center text-idle-text" data-field="background-shell">

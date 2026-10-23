@@ -61,6 +61,14 @@ export function effort(value: unknown): string | null {
   return typeof value === 'string' && EFFORT.test(value) ? value : null;
 }
 
+/** SIDE-9.3: unknown running makes the whole count unknown; unknown finished shows no done part. */
+export function subagents(value: unknown): SessionRow['subagents'] {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const { running, finished } = value as Record<string, unknown>;
+  const isCount = (n: unknown): n is number => typeof n === 'number' && Number.isInteger(n) && n >= 0 && n <= 1000;
+  return isCount(running) ? { running, finished: isCount(finished) ? finished : 0 } : null;
+}
+
 export interface NormalizeDeps {
   /** Git location for a working directory; null when not a git dir or not read yet. */
   git(cwd: string): GitLocation | null;
@@ -99,6 +107,7 @@ export function normalizeRows(rows: readonly FleetRow[], deps: NormalizeDeps): S
       ownHost: perHost.get(tmuxHost(r) ?? '') === 1,
       model: r.model ?? null,
       effort: effort(r.effort),
+      subagents: subagents(r.subagents),
       backgroundShell: r.status === 'shell',
       procStart: procStart(r.proc_start),
       pendingModel: null,

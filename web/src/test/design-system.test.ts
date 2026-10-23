@@ -251,6 +251,7 @@ const FAMILIES: Record<string, Family> = {
       'web/src/components/StatusMarker.tsx': { why: 'the Busy marker', uses: ['text-busy'] },
       'web/src/lib/sessions.ts': { why: "the Status's strip and header tag", uses: ['bg-busy', 'bg-busy-soft', 'text-busy-text'] },
       'web/src/components/ChatActivity.tsx': { why: 'the "Working…" dot: the Session is Busy', uses: ['bg-busy'] },
+      'web/src/components/SessionView.tsx': { why: "VIEW-8's running Subagents in the status line", uses: ['text-busy-text'] },
     },
   },
   idle: {
@@ -259,7 +260,7 @@ const FAMILIES: Record<string, Family> = {
       'web/src/components/StatusMarker.tsx': { why: 'the Idle and Unknown markers', uses: ['text-idle'] },
       'web/src/lib/sessions.ts': { why: "the Status's strip and header tag", uses: ['bg-idle', 'bg-idle-soft', 'text-idle-text', 'var(--color-idle)'] },
       'web/src/components/SessionItem.tsx': { why: "SIDE-2.6's background shell: Idle with a command still running", uses: ['text-idle-text'] },
-      'web/src/components/SessionView.tsx': { why: "VIEW-5.16's background shell in the status line", uses: ['text-idle-text'] },
+      'web/src/components/SessionView.tsx': { why: "VIEW-5.16's background shell and VIEW-8's finished Subagents in the status line", uses: ['text-idle-text'] },
     },
   },
   warning: {
@@ -593,8 +594,8 @@ describe('colour by meaning', () => {
     expect(pinDrift(families, { 'x.tsx': `cn('bg-idle')` })).toEqual([`busy: x.tsx: pinned ["text-busy"], uses []`]); // a stale pin can't stay
   });
 
-  it('DS-3.6: Busy\'s colour is only a Status\'s: its few files are the marker, the strip and tag, and the "Working…" dot', () => {
-    expect(Object.keys(FAMILIES.busy!.files).sort()).toEqual(['web/src/components/ChatActivity.tsx', 'web/src/components/StatusMarker.tsx', 'web/src/lib/sessions.ts']);
+  it('DS-3.6: Busy\'s colour is only a Status\'s: the marker, strip, tag, "Working…" dot and VIEW-8\'s running Subagents', () => {
+    expect(Object.keys(FAMILIES.busy!.files).sort()).toEqual(['web/src/components/ChatActivity.tsx', 'web/src/components/SessionView.tsx', 'web/src/components/StatusMarker.tsx', 'web/src/lib/sessions.ts']);
     // No link, spinner, chip, search hit or Mark takes Busy's blue: the places that did are neutral now.
     for (const path of ['web/src/lib/links.tsx', 'web/src/components/Markdown.tsx', 'web/src/components/WorkPanel.tsx', 'web/src/components/HistoryPanel.tsx', 'web/src/components/ChatRail.tsx']) {
       expect(classesOf('busy', path), path).toEqual([]);

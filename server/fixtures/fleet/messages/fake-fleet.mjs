@@ -8,6 +8,8 @@
 //
 //   FAKE_FLEET_DIR   fixture dir: list.json, sessions/<id>.json. Without it, the committed
 //                    fixtures next to this file are read, and nothing is ever written.
+//   `list` reports each row's `subagents: { running, finished }` or null (SIDE-9, VIEW-8).
+//   Edit list.json to change the counts on the next poll; no real Subagent is started.
 //   FAKE_FLEET_LOG   when set, each call's argv is appended to it as one JSON line
 //   `send [--json] [--force] [--require-empty] -- <target> <text>` (VIEW-3, VIEW-3.7; the Fleet
 //   fork's "Sending"): a row's `fake_send` says what its input box shows: `text` (`fake_input`, or
@@ -617,6 +619,7 @@ function spawn(args) {
       harness,
       model: null,
       effort: null,
+      subagents: null,
       proc_start: new Date().toISOString(),
     });
     if (later) writeFileSync(join(dir, 'pending.json'), `${JSON.stringify([...pending(), { at: Date.now(), row: all[0] }], null, 2)}\n`);

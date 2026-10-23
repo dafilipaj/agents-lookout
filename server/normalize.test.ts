@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { GitLocation } from '../shared/types.ts';
 import type { FleetRow } from './fleet.ts';
-import { effort, normalizeRows, procStart, sessionId, toStatus } from './normalize.ts';
+import { effort, normalizeRows, procStart, sessionId, subagents, toStatus } from './normalize.ts';
 
 const fixture = (name: string): FleetRow[] =>
   JSON.parse(readFileSync(new URL(`./fixtures/fleet/${name}`, import.meta.url), 'utf8')).filter(
@@ -19,6 +19,22 @@ const deps = {
 };
 
 describe('fleet list → sidebar rows', () => {
+  it('SIDE-9.3: only a whole running count from 0 to 1,000 is known; an uncountable finished value becomes zero', () => {
+    for (const bad of [undefined, null, false, 2, '2', [], {}, { running: undefined }, { running: null }, { running: '2' },
+      ...[-1, 0.5, 1001, NaN, Infinity].map((running) => ({ running }))]) {
+      expect(subagents(bad)).toBeNull();
+    }
+    for (const running of [0, 1, 1000]) {
+      for (const finished of [0, 3, 1000]) expect(subagents({ running, finished })).toEqual({ running, finished });
+      for (const finished of [undefined, null, -1, 0.5, 1001, NaN, Infinity, '3', true, {}, []]) {
+        expect(subagents({ running, finished })).toEqual({ running, finished: 0 });
+      }
+    }
+    const base = rows0();
+    const rows = normalizeRows([{ ...base, subagents: { running: 2, finished: 3 } }, { ...base, subagents: null }, base], deps);
+    expect(rows.map((r) => r.subagents)).toEqual([{ running: 2, finished: 3 }, null, null]);
+  });
+
   it('SIDE-1.4: the recorded `fleet list --json` output produces the expected rows', () => {
     const rows = normalizeRows(fixture('recorded-2026-10-16.json'), deps);
     expect(rows).toEqual([
@@ -38,6 +54,7 @@ describe('fleet list → sidebar rows', () => {
         ownHost: true,
         model: 'claude-opus-5-5',
         effort: null,
+        subagents: { running: 2, finished: 1 },
         backgroundShell: false,
         procStart: null,
         pendingModel: null, pendingEffort: null,
@@ -59,6 +76,7 @@ describe('fleet list → sidebar rows', () => {
         ownHost: true,
         model: 'gpt-6-astra',
         effort: null,
+        subagents: null,
         backgroundShell: false,
         procStart: null,
         pendingModel: null, pendingEffort: null,
@@ -80,6 +98,7 @@ describe('fleet list → sidebar rows', () => {
         ownHost: false,
         model: 'claude-opus-5-5',
         effort: null,
+        subagents: null,
         backgroundShell: false,
         procStart: null,
         pendingModel: null, pendingEffort: null,
@@ -101,6 +120,7 @@ describe('fleet list → sidebar rows', () => {
         ownHost: false,
         model: 'claude-opus-5-5',
         effort: null,
+        subagents: null,
         backgroundShell: false,
         procStart: null,
         pendingModel: null, pendingEffort: null,

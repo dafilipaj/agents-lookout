@@ -48,6 +48,8 @@ export interface SessionRow {
   model: string | null;
   /** VIEW-5.11: the Session's Effort as Fleet read it (`high`, `xhigh` …); null when unknown. */
   effort: string | null;
+  /** SIDE-9, VIEW-8: running now and finished in this Turn; null when Fleet can't tell. */
+  subagents: { running: number; finished: number } | null;
   /**
    * SIDE-2.6, VIEW-5.16: Idle with a background shell command still running (Fleet's `shell`
    * status, from Claude Code 2.1.308). Always false for any other Status.

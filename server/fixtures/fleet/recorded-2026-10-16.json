@@ -27,7 +27,8 @@
     "harness": "claude",
     "model": "claude-opus-5-5",
     "transcript": null,
-    "origin": null
+    "origin": null,
+    "subagents": { "running": 2, "finished": 1 }
   },
   {
     "pid": 14352,

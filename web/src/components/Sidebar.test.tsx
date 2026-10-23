@@ -1,5 +1,5 @@
 import { FLEET_INSTALL_COMMAND } from '@shared/defaults.ts';
-import { act, screen, within } from '@testing-library/react';
+import { act, fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ROW_TONE } from '@/lib/sessions';
@@ -22,6 +22,70 @@ function pinDate() {
 }
 
 describe('sidebar rows', () => {
+  it('SIDE-9.1: only running Subagents show, first in the numbers group before age and context', () => {
+    const app = renderApp();
+    app.snapshot([1, 2, 0, null].map((running, i) => row({ id: `s${i}`, contextPct: 23,
+      subagents: running === null ? null : { running, finished: 3 } })));
+    for (const [id, count] of [['s0', '1'], ['s1', '2']] as const) {
+      const chip = field(id, 'subagents')!;
+      expect(chip).toHaveTextContent(count);
+      expect(chip.parentElement).toHaveClass('shrink-0', 'tabular-nums');
+      expect(chip.parentElement!.firstElementChild).toBe(chip);
+      expect(chip.nextElementSibling).toBe(field(id, 'age'));
+      expect(chip.nextElementSibling!.nextElementSibling).toBe(field(id, 'context'));
+      expect(chip.querySelector('svg')).toHaveClass('size-2.5');
+    }
+    for (const id of ['s2', 's3']) expect(field(id, 'subagents')).toBeNull();
+  });
+
+  it('SIDE-9.2: count updates keep the row order, Status, marker, strip and age, also under the pointer', () => {
+    const app = renderApp();
+    const a = row({ id: 'a', status: 'idle', subagents: { running: 1, finished: 0 } });
+    const b = row({ id: 'b', status: 'busy' });
+    app.snapshot([a, b]);
+    const before = visibleTitles();
+    const r = rowEl('a');
+    const marker = within(r).getByRole('img', { name: 'Idle' });
+    const strip = field('a', 'strip');
+    const age = field('a', 'age')!.textContent;
+    for (const hovered of [false, true]) {
+      if (hovered) fireEvent.pointerEnter(screen.getByRole('complementary', { name: 'Session sidebar' }));
+      app.emit({ type: 'sessions', upsert: [{ ...a, subagents: { running: hovered ? 3 : 2, finished: 1 } }], remove: [] });
+      expect(visibleTitles()).toEqual(before);
+      expect(rowEl('a')).toBe(r);
+      expect(r).toHaveAttribute('data-status', 'idle');
+      expect(within(r).getByRole('img', { name: 'Idle' })).toBe(marker);
+      expect(field('a', 'strip')).toBe(strip);
+      expect(strip).toHaveClass('bg-idle');
+      expect(field('a', 'age')).toHaveTextContent(age!);
+      expect(field('a', 'subagents')).toHaveTextContent(hovered ? '3' : '2');
+    }
+  });
+
+  it('SIDE-9.3: a View only row shows the same count and loses it with its Session', () => {
+    const app = renderApp();
+    app.snapshot([row({ id: 'a', backend: 'unknown', controllable: false, subagents: { running: 2, finished: 0 } })]);
+    expect(within(screen.getByRole('group', { name: 'View only' })).getByRole('option')).toBe(rowEl('a'));
+    expect(field('a', 'subagents')).toHaveTextContent('2');
+    app.emit({ type: 'sessions', upsert: [], remove: ['a'] });
+    expect(document.querySelector('[data-field="subagents"]')).toBeNull();
+  });
+
+  it('SIDE-9.6: the count has a singular or plural name and tooltip before the age, with a hidden icon and the row\'s quiet colour', () => {
+    const app = renderApp();
+    app.snapshot([row({ id: 'a', subagents: { running: 1, finished: 0 } }),
+      row({ id: 'b', status: 'needs-you', subagents: { running: 2, finished: 0 } }), row({ id: 'c' })]);
+    for (const [id, label, tone] of [['a', '1 Subagent running', ROW_TONE.plain], ['b', '2 Subagents running', ROW_TONE.needsYou]] as const) {
+      const chip = field(id, 'subagents')!;
+      expect(chip).toHaveAttribute('title', label);
+      expect(chip).toHaveAccessibleName(label);
+      expect(chip.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+      expect(chip.closest('.text-meta')).toHaveClass(tone.quiet);
+      expect(rowEl(id)).toHaveAccessibleName(new RegExp(`${label}.*1m`));
+    }
+    expect(rowEl('c')).not.toHaveAccessibleName(/Subagent/);
+  });
+
   it('SIDE-2.1: a row shows title, Harness, Status, repo, where it works, and time since the status changed', () => {
     const app = renderApp();
     app.snapshot([

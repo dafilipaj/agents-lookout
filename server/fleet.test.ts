@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { run } from './exec.ts';
 import { fetchFleetList, resolveFleetBin } from './fleet.ts';
+import { normalizeRows } from './normalize.ts';
 
 // Made in a hook, not at import: `pnpm req-check` imports this file to collect its titles.
 let dir: string;
@@ -21,6 +22,17 @@ function fakeFleet(name: string, script: string): string {
 }
 
 describe('calling fleet list', () => {
+  it('SIDE-9.3: the fake Fleet reports known, empty and unknown Subagent counts through the same list contract', async () => {
+    const fake = new URL('./fixtures/fleet/messages/fake-fleet.mjs', import.meta.url).pathname;
+    const result = await fetchFleetList(run, fake);
+    expect(result.kind).toBe('ok');
+    if (result.kind !== 'ok') throw new Error('fake Fleet did not list');
+    const rows = normalizeRows(result.rows, { git: () => null, statusSince: () => null });
+    expect(rows.map((r) => r.subagents)).toEqual([
+      { running: 1, finished: 2 }, { running: 3, finished: 0 }, null, { running: 0, finished: 3 }, { running: 0, finished: 0 },
+    ]);
+  });
+
   it('runs `fleet --local list --json` with an argv array', async () => {
     const runner = vi.fn(async () => '[]');
     await fetchFleetList(runner, '/bin/fleet');
