@@ -15,6 +15,7 @@ const row = (over: Partial<SessionRow> & { id: string }): SessionRow => ({
   contextPct: null,
   cwd: '/x',
   git: null,
+  locationShown: { repo: true, where: false },
   backend: 'tmux',
   controllable: true,
   ownHost: true,

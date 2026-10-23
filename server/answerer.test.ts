@@ -244,7 +244,7 @@ describe('following the prompt (VIEW-4.2)', () => {
   afterEach(() => vi.useRealTimers());
 
   const baseRow = (id: string, over: Partial<SessionRow> = {}): SessionRow => ({
-    id, pid: 4242, harness: 'claude', title: id, status: 'needs-you', waitingFor: null, statusSince: 0, contextPct: null, cwd: '/x', git: null,
+    id, pid: 4242, harness: 'claude', title: id, status: 'needs-you', waitingFor: null, statusSince: 0, contextPct: null, cwd: '/x', git: null, locationShown: { repo: true, where: false },
     backend: 'tmux', controllable: true, ownHost: true, model: null, effort: null, subagents: null, backgroundShell: false, procStart: null, pendingModel: null, pendingEffort: null, modelAt: null, ...over,
   });
 
@@ -940,7 +940,7 @@ describe('following whether it can be answered (VIEW-4.6)', () => {
 
   it('VIEW-4.6: the tabs get whether Fleet could answer the prompt, why not and the pane’s size, and hear when any of them changes', async () => {
     const row: SessionRow = {
-      id: 'sess-a', pid: 4242, harness: 'claude', title: 'a', status: 'needs-you', waitingFor: null, statusSince: 0, contextPct: null, cwd: '/x', git: null,
+      id: 'sess-a', pid: 4242, harness: 'claude', title: 'a', status: 'needs-you', waitingFor: null, statusSince: 0, contextPct: null, cwd: '/x', git: null, locationShown: { repo: true, where: false },
       backend: 'tmux', controllable: true, ownHost: true, model: null, effort: null, subagents: null, backgroundShell: false, procStart: null, pendingModel: null, pendingEffort: null, modelAt: null,
     };
     const CUT_PROMPT = { kind: 'question', incomplete: true, id: null, questions: null, active: null, untouched: false };

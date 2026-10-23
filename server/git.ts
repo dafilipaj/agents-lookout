@@ -42,7 +42,30 @@ export async function readGitLocation(runner: Runner, cwd: string): Promise<GitL
     repo: repoName(commonDir, topLevel),
     worktree: linked ? basename(topLevel) : null,
     branch: await readBranch(git),
+    commonDir,
+    defaultBranch: await readDefaultBranch(git),
   };
+}
+
+/**
+ * SIDE-2.8: the branch `origin/HEAD` points at; without it a local `main`, else `master`; else null.
+ * Reads only: `git remote set-head` is never run.
+ */
+async function readDefaultBranch(git: (...args: string[]) => Promise<string>): Promise<string | null> {
+  try {
+    const ref = (await git('symbolic-ref', '--short', 'refs/remotes/origin/HEAD')).trim();
+    if (ref.startsWith('origin/') && ref.length > 'origin/'.length) return ref.slice('origin/'.length);
+  } catch {
+    // No origin/HEAD: fall through to the local names.
+  }
+  for (const name of ['main', 'master']) {
+    try {
+      if ((await git('rev-parse', '--verify', '--quiet', `refs/heads/${name}`)).trim()) return name;
+    } catch {
+      // Not a local branch.
+    }
+  }
+  return null;
 }
 
 /** The repo name is the common git dir's parent (`~/x/work/.git` → `work`). */

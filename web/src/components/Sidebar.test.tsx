@@ -36,6 +36,13 @@ describe('sidebar rows', () => {
       expect(chip.querySelector('svg')).toHaveClass('size-2.5');
     }
     for (const id of ['s2', 's3']) expect(field(id, 'subagents')).toBeNull();
+    // At the default location the count is still first among the numbers, with the slot empty before it.
+    app.snapshot([row({ id: 'h', contextPct: 23, subagents: { running: 2, finished: 0 }, locationShown: { repo: false, where: false } })]);
+    const chip = field('h', 'subagents')!;
+    expect(chip.previousElementSibling).toBeNull();
+    expect(chip.parentElement!.previousElementSibling).toBe(field('h', 'slot'));
+    expect(field('h', 'slot')).toBeEmptyDOMElement();
+    expect(chip.nextElementSibling).toBe(field('h', 'age'));
   });
 
   it('SIDE-9.2: count updates keep the row order, Status, marker, strip and age, also under the pointer', () => {
@@ -106,8 +113,8 @@ describe('sidebar rows', () => {
   it('SIDE-2.2: a linked Worktree shows its name with the worktree icon; otherwise the branch with the branch icon', () => {
     const app = renderApp();
     app.snapshot([
-      row({ id: 'wt', git: { repo: 'work', worktree: 'crm-rates', branch: 'feature/crm-rates' } }),
-      row({ id: 'br', git: { repo: 'work', worktree: null, branch: 'main' } }),
+      row({ id: 'wt', git: { repo: 'work', worktree: 'crm-rates', branch: 'feature/crm-rates', commonDir: '/Users/me/Projects/work/.git', defaultBranch: 'main' } }),
+      row({ id: 'br', git: { repo: 'work', worktree: null, branch: 'main', commonDir: '/Users/me/Projects/work/.git', defaultBranch: 'main' } }),
     ]);
     expect(field('wt', 'location')).toHaveTextContent('crm-rates');
     expect(within(rowEl('wt')).getByLabelText('Worktree')).toHaveAttribute('data-icon', 'worktree');
@@ -131,6 +138,171 @@ describe('sidebar rows', () => {
     expect(line).toHaveClass('truncate');
     expect(line).toHaveAttribute('title', waitingFor);
     expect(field('i', 'waiting-for')).toBeNull();
+  });
+
+  describe('what varies (SIDE-2.7 – 2.15)', () => {
+    const repoGit = (repo: string, worktree: string | null, branch: string | null) =>
+      ({ repo, worktree, branch, commonDir: `/p/${repo}/.git`, defaultBranch: 'main' });
+    const HIDDEN = { repo: false, where: false };
+    const slot = (id: string) => field(id, 'slot')!;
+
+    it('SIDE-2.7: a row at the default location shows no repo, Worktree or branch: its second line is the numbers alone', () => {
+      const app = renderApp();
+      app.snapshot([row({ id: 'idle', status: 'idle', locationShown: HIDDEN, contextPct: 23 }),
+        row({ id: 'unknown', status: 'unknown', locationShown: HIDDEN })]);
+      for (const id of ['idle', 'unknown']) {
+        expect(field(id, 'repo')).toBeNull();
+        expect(field(id, 'location')).toBeNull();
+        expect(rowEl(id).querySelector('svg[data-icon]')).toBeNull();
+        expect(slot(id)).toBeEmptyDOMElement();
+        expect(field(id, 'age')).toBeInTheDocument();
+      }
+      expect(rowEl('idle')).toHaveAccessibleName('IdleidleClaude Code 1m23%');
+    });
+
+    it('SIDE-2.7: the where part shows by itself when the repo part is hidden (a Worktree or another branch in the only repo)', () => {
+      const app = renderApp();
+      app.snapshot([
+        row({ id: 'wt', git: repoGit('work', 'crm-rates', 'fix/rates'), locationShown: { repo: false, where: true } }),
+        row({ id: 'br', git: repoGit('work', null, 'fix/rates'), locationShown: { repo: false, where: true } }),
+      ]);
+      expect(field('wt', 'repo')).toBeNull();
+      expect(field('wt', 'location')).toHaveTextContent('crm-rates');
+      expect(within(rowEl('wt')).getByLabelText('Worktree')).toBeInTheDocument();
+      expect(field('br', 'location')).toHaveTextContent('fix/rates');
+      expect(within(rowEl('br')).getByLabelText('Branch')).toBeInTheDocument();
+    });
+
+    it('SIDE-2.10: another repo shows its name first: `other-repo · [br] fix/x`, and on its default branch the name alone', () => {
+      const app = renderApp();
+      app.snapshot([
+        row({ id: 'branch', git: repoGit('other-repo', null, 'fix/x'), locationShown: { repo: true, where: true } }),
+        row({ id: 'default', git: repoGit('other-repo', null, 'main'), locationShown: { repo: true, where: false } }),
+      ]);
+      expect(slot('branch').textContent).toBe('other-repo·fix/x');
+      expect(slot('branch').children[0]).toBe(field('branch', 'repo'));
+      expect(field('branch', 'location')).toHaveTextContent('fix/x');
+      expect(slot('default').textContent).toBe('other-repo');
+      expect(field('default', 'location')).toBeNull();
+      expect(slot('default')).not.toHaveAttribute('aria-hidden');
+    });
+
+    it('SIDE-2.3 / 2.10: with no location to show, what a Needs you row waits for takes the slot, in the Needs you colour, with no third line', () => {
+      const app = renderApp();
+      app.snapshot([row({ id: 'n', status: 'needs-you', waitingFor: 'permission: Bash(ls)', locationShown: HIDDEN })]);
+      const words = field('n', 'waiting-for')!;
+      expect(words.parentElement).toBe(slot('n'));
+      expect(words).toHaveTextContent('permission: Bash(ls)');
+      expect(words).toHaveClass('truncate', 'font-medium', 'text-needs-you-text');
+      expect(slot('n')).not.toHaveAttribute('aria-hidden');
+      expect(rowEl('n').querySelectorAll('[data-field="waiting-for"]')).toHaveLength(1);
+      expect(rowEl('n').lastElementChild).toBe(slot('n').parentElement);
+    });
+
+    it('SIDE-2.3 / 2.10: when the location shows, the waiting-for goes on a third line under it, as before', () => {
+      const app = renderApp();
+      app.snapshot([
+        row({ id: 'wt', status: 'needs-you', waitingFor: 'input needed', git: repoGit('work', 'crm-rates', 'x'), locationShown: { repo: false, where: true } }),
+        row({ id: 'repo', status: 'needs-you', waitingFor: 'input needed', git: repoGit('other', null, 'main'), locationShown: { repo: true, where: false } }),
+      ]);
+      for (const id of ['wt', 'repo']) {
+        const words = field(id, 'waiting-for')!;
+        expect(words.parentElement).toBe(rowEl(id));
+        expect(words.previousElementSibling).toBe(slot(id).parentElement);
+        expect(words).toHaveClass('truncate', 'font-medium', 'text-needs-you-text');
+      }
+    });
+
+    it('SIDE-2.10: a Busy row at the default location is as an Idle one with no activity to show: an empty slot (SIDE-2.11 is not built)', () => {
+      const app = renderApp();
+      app.snapshot([row({ id: 'busy', status: 'busy', locationShown: HIDDEN }), row({ id: 'idle', status: 'idle', locationShown: HIDDEN })]);
+      expect(slot('busy')).toBeEmptyDOMElement();
+      expect(slot('busy')).toHaveAttribute('aria-hidden', 'true');
+      expect(rowEl('busy').lastElementChild!.className).toBe(rowEl('idle').lastElementChild!.className);
+      expect(rowEl('busy').querySelectorAll(':scope > div')).toHaveLength(2);
+    });
+
+    it('SIDE-2.10: the numbers group sits at the line\'s end in every case, after the slot', () => {
+      const app = renderApp();
+      app.snapshot([
+        row({ id: 'a', locationShown: HIDDEN, subagents: { running: 2, finished: 0 }, contextPct: 9 }),
+        row({ id: 'b', git: repoGit('other', null, 'x'), locationShown: { repo: true, where: true }, subagents: { running: 2, finished: 0 }, contextPct: 9 }),
+        row({ id: 'c', status: 'needs-you', waitingFor: 'w', locationShown: HIDDEN, subagents: { running: 2, finished: 0 }, contextPct: 9 }),
+      ]);
+      for (const id of ['a', 'b', 'c']) {
+        const numbers = field(id, 'subagents')!.parentElement!;
+        expect(numbers).toHaveClass('shrink-0');
+        expect(numbers).toBe(slot(id).parentElement!.lastElementChild);
+        expect(numbers.previousElementSibling).toBe(slot(id));
+        expect(numbers.children).toHaveLength(3); // Subagents, age, context
+      }
+    });
+
+    it('SIDE-2.12: the slot\'s tooltip has the full location, shown or not; outside git, the working directory\'s path', () => {
+      const app = renderApp();
+      app.snapshot([
+        row({ id: 'hidden', locationShown: HIDDEN }),
+        row({ id: 'wt', git: repoGit('work', 'crm-rates', 'fix/rates'), locationShown: { repo: false, where: true } }),
+        row({ id: 'detached', git: repoGit('work', null, 'a1b2c3d'), locationShown: { repo: false, where: true } }),
+        row({ id: 'nogit', git: null, cwd: '/Users/me/field-notes/deep', locationShown: { repo: true, where: false } }),
+        row({ id: 'words', status: 'needs-you', waitingFor: 'input needed', locationShown: HIDDEN }),
+      ]);
+      expect(slot('hidden')).toHaveAttribute('title', 'work · main');
+      expect(slot('wt')).toHaveAttribute('title', 'work · Worktree crm-rates (branch fix/rates)');
+      expect(slot('detached')).toHaveAttribute('title', 'work · a1b2c3d');
+      expect(slot('nogit')).toHaveAttribute('title', '/Users/me/field-notes/deep');
+      expect(field('nogit', 'cwd')).toHaveTextContent('deep');
+      // The words fill the slot, so their tooltip carries the location after them.
+      expect(field('words', 'waiting-for')).toHaveAttribute('title', 'input needed\nwork · main');
+    });
+
+    it('SIDE-2.13: the filter matches the title, repo, Worktree and branch whether or not the row shows them', async () => {
+      pinDate();
+      const user = userEvent.setup();
+      const app = renderApp();
+      app.snapshot([
+        row({ id: 'on-main', locationShown: HIDDEN }),
+        row({ id: 'in-wt', git: repoGit('work', 'crm-rates', 'fix/rates'), locationShown: { repo: false, where: true } }),
+        row({ id: 'other', git: repoGit('harbor', null, 'main'), locationShown: { repo: true, where: false } }),
+      ]);
+      const input = screen.getByRole('searchbox', { name: 'Filter Sessions' });
+      await user.type(input, 'main');
+      expect(visibleTitles().sort()).toEqual(['on-main', 'other']);
+      await user.clear(input);
+      await user.type(input, 'work');
+      expect(visibleTitles().sort()).toEqual(['in-wt', 'on-main']);
+      await user.clear(input);
+      await user.type(input, 'fix/rates');
+      expect(visibleTitles()).toEqual(['in-wt']);
+    });
+
+    it('SIDE-2.14 (support): the numbers never shrink; the where part shrinks before the repo part, which keeps its 45% cap; the line keeps its height empty', () => {
+      const app = renderApp();
+      app.snapshot([row({ id: 'long', git: repoGit('a-repo-with-a-rather-long-name', null, 'fix/a-branch-name-that-is-long'), locationShown: { repo: true, where: true }, contextPct: 12 }),
+        row({ id: 'empty', locationShown: HIDDEN })]);
+      expect(field('long', 'repo')).toHaveClass('max-w-[45%]', 'shrink-0', 'truncate');
+      expect(field('long', 'location')!.parentElement).toHaveClass('min-w-0');
+      expect(field('long', 'location')).toHaveClass('truncate');
+      expect(field('long', 'age')!.parentElement).toHaveClass('shrink-0');
+      for (const id of ['long', 'empty']) expect(slot(id).parentElement).toHaveClass('min-h-4', 'leading-4');
+    });
+
+    it('SIDE-2.15: the accessible name says what the row shows: repo, Worktree or branch, what it waits for, then the numbers', () => {
+      const app = renderApp();
+      app.snapshot([
+        row({ id: 'hidden', locationShown: HIDDEN, contextPct: 5 }),
+        row({ id: 'other', git: repoGit('harbor', null, 'fix/x'), locationShown: { repo: true, where: true } }),
+        row({ id: 'wt', git: repoGit('work', 'lantern', 'x'), locationShown: { repo: false, where: true }, subagents: { running: 2, finished: 0 } }),
+        row({ id: 'words', status: 'needs-you', waitingFor: 'input needed', locationShown: HIDDEN, contextPct: 41 }),
+        row({ id: 'third', status: 'needs-you', waitingFor: 'input needed', git: repoGit('work', 'lantern', 'x'), locationShown: { repo: false, where: true } }),
+      ]);
+      expect(rowEl('hidden')).toHaveAccessibleName('IdlehiddenClaude Code 1m5%');
+      expect(rowEl('other')).toHaveAccessibleName('IdleotherClaude Code harborBranchfix/x1m');
+      expect(rowEl('wt')).toHaveAccessibleName('IdlewtClaude Code Worktreelantern2 Subagents running1m');
+      expect(rowEl('words')).toHaveAccessibleName('Needs youwordsClaude Code input needed1m41%');
+      // A third line comes after the numbers, in the order the row shows them.
+      expect(rowEl('third')).toHaveAccessibleName('Needs youthirdClaude Code Worktreelantern1m input needed');
+    });
   });
 
   it('SIDE-2.4: context usage shows as a percentage when reported, and not at all otherwise', () => {
@@ -191,7 +363,7 @@ describe('sidebar rows', () => {
   it('SIDE-2.5 (support): long text is truncated with the full text on hover', () => {
     const app = renderApp();
     const title = 'a-very-long-session-title-that-cannot-possibly-fit-in-a-280-px-sidebar';
-    app.snapshot([row({ id: 'l', title, git: { repo: 'work', worktree: 'a-very-long-worktree-name-too', branch: 'x' } })]);
+    app.snapshot([row({ id: 'l', title, git: { repo: 'work', worktree: 'a-very-long-worktree-name-too', branch: 'x', commonDir: '/Users/me/Projects/work/.git', defaultBranch: 'main' } })]);
     expect(field('l', 'title')).toHaveClass('truncate');
     expect(field('l', 'title')).toHaveAttribute('title', title);
     expect(field('l', 'location')).toHaveClass('truncate');
@@ -392,18 +564,21 @@ describe('status at a glance', () => {
   it("SIDE-3.10: the strip is hidden from screen readers, and a row's accessible name is what it was", () => {
     const app = renderApp();
     app.snapshot([
-      row({ id: 'fix-rates', status: 'needs-you', waitingFor: 'input needed', contextPct: 41, statusSince: NOW - 120_000, git: { repo: 'harbor', worktree: 'lantern', branch: 'x' } }),
+      row({ id: 'fix-rates', status: 'needs-you', waitingFor: 'input needed', contextPct: 41, statusSince: NOW - 120_000, git: { repo: 'harbor', worktree: 'lantern', branch: 'x', commonDir: '/Users/me/Projects/harbor/.git', defaultBranch: 'main' } }),
       row({ id: 'port-search', status: 'busy', harness: 'codex' }),
       row({ id: 'notes', status: 'idle', git: null, cwd: '/tmp/field-notes' }),
       row({ id: 'pane', status: 'unknown', backend: 'unknown', controllable: false }),
+      row({ id: 'quiet', status: 'idle', locationShown: { repo: false, where: false } }),
     ]);
-    for (const id of ['fix-rates', 'port-search', 'notes', 'pane']) expect(field(id, 'strip')).toHaveAttribute('aria-hidden', 'true');
+    for (const id of ['fix-rates', 'port-search', 'notes', 'pane', 'quiet']) expect(field(id, 'strip')).toHaveAttribute('aria-hidden', 'true');
     // The names the rows had before the strip, pinned: the marker's Status, title, Harness, repo,
     // where it works, age, context and what it waits for.
     expect(rowEl('fix-rates')).toHaveAccessibleName('Needs youfix-ratesClaude Code harborWorktreelantern2m41% input needed');
     expect(rowEl('port-search')).toHaveAccessibleName('Busyport-searchCodex workBranchmain1m');
     expect(rowEl('notes')).toHaveAccessibleName('IdlenotesClaude Code field-notes1m');
     expect(rowEl('pane')).toHaveAccessibleName('UnknownpaneClaude Code workBranchmain1m');
+    // A hidden default location is not read (SIDE-2.15).
+    expect(rowEl('quiet')).toHaveAccessibleName('IdlequietClaude Code 1m');
     expect(screen.getByRole('option', { name: /^Busyport-search/ })).toBe(rowEl('port-search'));
   });
 
@@ -462,10 +637,10 @@ describe('filter', () => {
     const user = userEvent.setup();
     const app = renderApp();
     app.snapshot([
-      row({ id: 'by-title', title: 'deal rates', git: { repo: 'work', worktree: null, branch: 'main' } }),
-      row({ id: 'by-repo', title: 'one', git: { repo: 'fantastic', worktree: null, branch: 'main' } }),
-      row({ id: 'by-wt', title: 'two', git: { repo: 'work', worktree: 'invoice-pdf', branch: 'feature/x' } }),
-      row({ id: 'by-branch', title: 'three', git: { repo: 'work', worktree: null, branch: 'fix/timesheets' } }),
+      row({ id: 'by-title', title: 'deal rates', git: { repo: 'work', worktree: null, branch: 'main', commonDir: '/Users/me/Projects/work/.git', defaultBranch: 'main' } }),
+      row({ id: 'by-repo', title: 'one', git: { repo: 'fantastic', worktree: null, branch: 'main', commonDir: '/Users/me/Projects/fantastic/.git', defaultBranch: 'main' } }),
+      row({ id: 'by-wt', title: 'two', git: { repo: 'work', worktree: 'invoice-pdf', branch: 'feature/x', commonDir: '/Users/me/Projects/work/.git', defaultBranch: 'main' } }),
+      row({ id: 'by-branch', title: 'three', git: { repo: 'work', worktree: null, branch: 'fix/timesheets', commonDir: '/Users/me/Projects/work/.git', defaultBranch: 'main' } }),
     ]);
     const input = screen.getByRole('searchbox', { name: 'Filter Sessions' });
 

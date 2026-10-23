@@ -16,7 +16,7 @@ import { Launcher } from './launcher.ts';
 import { SessionMonitor } from './monitor.ts';
 import { parsePort } from './port.ts';
 import { localAllowLists } from './security.ts';
-import { SettingsStore, defaultSettingsPath } from './settings.ts';
+import { SettingsStore, defaultSettingsPath, expandHome } from './settings.ts';
 import { UsageMonitor } from './usage.ts';
 import { Viewer } from './viewer.ts';
 import { WorkMonitor, resolveWorkBin } from './work.ts';
@@ -64,6 +64,8 @@ const modelSwitches = new StatusSwitches();
 const monitor = new SessionMonitor({
   fetchList: () => fetchFleetList(run, resolveFleetBin(env)),
   git,
+  // SIDE-2.9: through the same cache, so a Start directory is read once and kept fresh with the rest.
+  startRepos: () => new Set(settings.get().startDirectories.flatMap((dir) => git.get(expandHome(dir))?.commonDir ?? [])),
   models: modelSwitches,
   onEvent: (e) => app.broadcast(e),
   onList: (rows) => {
@@ -113,6 +115,8 @@ const usage = new UsageMonitor({
 // WORK-2.8: a saved Productive email drops the Tasks kept for the previous one, and reads its own.
 // Registered before the app's own listener, so tabs hear the list dropped before the new email.
 settings.onChange((s) => work.setProductiveEmail(s.productiveEmail));
+// SIDE-2.9: a changed Start directory can change which rows show their repo.
+settings.onChange(() => monitor.refreshDerived());
 
 const app = createApp({
   guard,

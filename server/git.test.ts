@@ -26,9 +26,10 @@ afterAll(() => rmSync(root, { recursive: true, force: true }));
 
 describe('reading where a Session works', () => {
   it('SIDE-2.2: in the main checkout, the location is the branch', async () => {
-    expect(await readGitLocation(run, join(root, 'shop'))).toEqual({ repo: 'shop', worktree: null, branch: 'main' });
+    const main = { repo: 'shop', worktree: null, branch: 'main', commonDir: join(root, 'shop', '.git'), defaultBranch: 'main' };
+    expect(await readGitLocation(run, join(root, 'shop'))).toEqual(main);
     // A subdirectory belongs to the same checkout.
-    expect(await readGitLocation(run, join(root, 'shop', 'src'))).toEqual({ repo: 'shop', worktree: null, branch: 'main' });
+    expect(await readGitLocation(run, join(root, 'shop', 'src'))).toEqual(main);
   });
 
   it('SIDE-2.2: in a linked Worktree, the location is the Worktree name, and the repo is the main repo', async () => {
@@ -36,6 +37,50 @@ describe('reading where a Session works', () => {
       repo: 'shop',
       worktree: 'shop-rates',
       branch: 'feature/rates',
+      commonDir: join(root, 'shop', '.git'),
+      defaultBranch: 'main',
+    });
+  });
+
+  describe('SIDE-2.8: the default branch', () => {
+    const defaultOf = async (dir: string) => (await readGitLocation(run, dir))?.defaultBranch;
+    const init = (name: string, branch: string) => {
+      const dir = join(root, name);
+      mkdirSync(dir);
+      git(dir, 'init', '-q', '-b', branch);
+      git(dir, 'commit', '-q', '--allow-empty', '-m', 'init');
+      return dir;
+    };
+
+    it('SIDE-2.8: origin/HEAD wins, even over a local main, in a clone and in its Worktrees', async () => {
+      const upstream = init('up-develop', 'develop');
+      git(upstream, 'branch', 'main');
+      const clone = join(root, 'clone-develop');
+      execFileSync('git', ['clone', '-q', upstream, clone]);
+      git(clone, 'branch', 'main');
+      git(clone, 'worktree', 'add', '-q', '-b', 'fix/x', join(root, 'clone-develop-wt'));
+      expect(await defaultOf(clone)).toBe('develop');
+      expect(await defaultOf(join(root, 'clone-develop-wt'))).toBe('develop');
+      // The name keeps its own slashes: only the `origin/` goes.
+      git(clone, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/release/2');
+      expect(await defaultOf(clone)).toBe('release/2');
+    });
+
+    it('SIDE-2.8: without origin/HEAD, a local main, else a local master', async () => {
+      expect(await defaultOf(init('only-main', 'main'))).toBe('main');
+      expect(await defaultOf(init('only-master', 'master'))).toBe('master');
+      const both = init('both', 'master');
+      git(both, 'branch', 'main');
+      expect(await defaultOf(both)).toBe('main');
+    });
+
+    it('SIDE-2.8: with neither, it is unknown (null), and nothing is written to the repo', async () => {
+      const dir = init('trunk-only', 'trunk');
+      const before = execFileSync('git', ['-C', dir, 'config', '--list']).toString();
+      expect(await defaultOf(dir)).toBeNull();
+      expect(await defaultOf(dir)).toBeNull();
+      expect(execFileSync('git', ['-C', dir, 'config', '--list']).toString()).toBe(before);
+      expect(() => git(dir, 'symbolic-ref', '-q', 'refs/remotes/origin/HEAD')).toThrow();
     });
   });
 
@@ -96,13 +141,13 @@ describe('GitCache', () => {
   it('caches per directory and refreshes after 30 s', async () => {
     let now = 0;
     let branch = 'main';
-    const read = vi.fn(async () => ({ repo: 'r', worktree: null, branch }));
+    const read = vi.fn(async () => ({ repo: 'r', worktree: null, branch, commonDir: '/r/.git', defaultBranch: 'main' }));
     const onChange = vi.fn();
     const cache = new GitCache({ read, onChange, now: () => now });
 
     expect(cache.get('/a')).toBeNull(); // not read yet
     await vi.waitFor(() => expect(onChange).toHaveBeenCalledTimes(1));
-    expect(cache.get('/a')).toEqual({ repo: 'r', worktree: null, branch: 'main' });
+    expect(cache.get('/a')).toEqual({ repo: 'r', worktree: null, branch: 'main', commonDir: '/r/.git', defaultBranch: 'main' });
     expect(read).toHaveBeenCalledTimes(1);
 
     now = 29_000;

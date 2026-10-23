@@ -1,4 +1,4 @@
-import type { Backend, GitLocation, Harness, SessionRow, Status } from '../shared/types.ts';
+import type { Backend, GitLocation, Harness, LocationShown, SessionRow, Status } from '../shared/types.ts';
 import type { FleetListResult, FleetRow } from './fleet.ts';
 
 const HARNESSES: readonly string[] = ['claude', 'codex'] satisfies Harness[];
@@ -72,8 +72,25 @@ export function subagents(value: unknown): SessionRow['subagents'] {
 export interface NormalizeDeps {
   /** Git location for a working directory; null when not a git dir or not read yet. */
   git(cwd: string): GitLocation | null;
+  /** SIDE-2.9: the common git dirs of the repos the Start directories are in; omitted: unknown, so every row shows its repo. */
+  startRepos?(): ReadonlySet<string>;
   /** When the Session's current Status began, ms since epoch. */
   statusSince(id: string, status: Status, fleetUpdatedAt: number | null): number | null;
+}
+
+/**
+ * SIDE-2.7–2.9: what of its location a row shows. The where part (Worktree or branch) hides at the
+ * default location: in git, not a linked Worktree, on the repo's default branch (never when that is
+ * unknown). The repo part hides only when the Start directories are all in this one repo, compared
+ * by common git dir; outside git the working directory's name stands for it and always shows.
+ */
+export function locationShown(git: GitLocation | null, startRepos: ReadonlySet<string> | undefined): LocationShown {
+  if (!git) return { repo: true, where: false };
+  const atDefault = git.worktree === null && git.branch !== null && git.branch === git.defaultBranch;
+  return {
+    repo: !(startRepos?.size === 1 && startRepos.has(git.commonDir)),
+    where: (git.worktree !== null || git.branch !== null) && !atDefault,
+  };
 }
 
 /** Turns `fleet list --json` rows into sidebar rows. pi Sessions are a non-goal and dropped. */
@@ -85,12 +102,14 @@ export function normalizeRows(rows: readonly FleetRow[], deps: NormalizeDeps): S
     const host = tmuxHost(r);
     if (host) perHost.set(host, (perHost.get(host) ?? 0) + 1);
   }
+  const startRepos = deps.startRepos?.();
   for (const r of rows) {
     if (!HARNESSES.includes(r.harness)) continue;
     const id = sessionId(r);
     const status = toStatus(r.status);
     const backend = toBackend(r.backend);
     const pct = r.context?.pct;
+    const git = r.cwd ? deps.git(r.cwd) : null;
     out.push({
       id,
       pid: r.pid,
@@ -101,7 +120,8 @@ export function normalizeRows(rows: readonly FleetRow[], deps: NormalizeDeps): S
       statusSince: deps.statusSince(id, status, typeof r.updated_at === 'number' ? r.updated_at : null),
       contextPct: typeof pct === 'number' && Number.isFinite(pct) ? Math.round(pct) : null,
       cwd: r.cwd ?? null,
-      git: r.cwd ? deps.git(r.cwd) : null,
+      git,
+      locationShown: locationShown(git, startRepos),
       backend,
       controllable: backend !== 'unknown',
       ownHost: perHost.get(tmuxHost(r) ?? '') === 1,

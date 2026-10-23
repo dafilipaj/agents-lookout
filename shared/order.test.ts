@@ -13,6 +13,7 @@ const row = (id: string, status: Status, statusSince: number | null): SessionRow
   contextPct: null,
   cwd: null,
   git: null,
+  locationShown: { repo: true, where: false },
   backend: 'tmux',
   controllable: true,
   ownHost: true,

@@ -100,7 +100,7 @@ describe('Session view header', () => {
   it('VIEW-5.1: the header shows the title, Harness and Status, updating live; where it works and its model are not in it', () => {
     const app = renderApp('/s/a');
     app.snapshot([
-      row({ id: 'a', title: 'fix-deal-rates', model: 'claude-opus-5-5', status: 'busy', contextPct: 41, git: { repo: 'work', worktree: 'crm-rates', branch: 'x' } }),
+      row({ id: 'a', title: 'fix-deal-rates', model: 'claude-opus-5-5', status: 'busy', contextPct: 41, git: { repo: 'work', worktree: 'crm-rates', branch: 'x', commonDir: '/Users/me/Projects/work/.git', defaultBranch: 'main' } }),
     ]);
     const h = header();
     expect(within(h).getByRole('heading', { level: 1 })).toHaveTextContent('fix-deal-rates');
@@ -127,7 +127,7 @@ describe('Session view header', () => {
   it('VIEW-5.5: one status line directly below the composer shows repo, Worktree or branch, model and context use, updating live', () => {
     const app = renderApp('/s/a');
     app.snapshot([
-      row({ id: 'a', model: 'claude-opus-5-5', contextPct: 41, git: { repo: 'work', worktree: 'crm-rates', branch: 'x' } }),
+      row({ id: 'a', model: 'claude-opus-5-5', contextPct: 41, git: { repo: 'work', worktree: 'crm-rates', branch: 'x', commonDir: '/Users/me/Projects/work/.git', defaultBranch: 'main' } }),
     ]);
     const line = statusLine();
     // Directly below the composer.
@@ -142,7 +142,7 @@ describe('Session view header', () => {
 
     app.emit({
       type: 'sessions',
-      upsert: [row({ id: 'a', model: 'claude-sonnet-5-5', contextPct: 55, git: { repo: 'work', worktree: null, branch: 'main' } })],
+      upsert: [row({ id: 'a', model: 'claude-sonnet-5-5', contextPct: 55, git: { repo: 'work', worktree: null, branch: 'main', commonDir: '/Users/me/Projects/work/.git', defaultBranch: 'main' } })],
       remove: [],
     });
     expect(line.querySelector('[data-field="location"]')).toHaveTextContent('main');
@@ -154,7 +154,7 @@ describe('Session view header', () => {
   it('VIEW-5.5: at narrow widths it stays one line: nothing wraps, long parts truncate, and the tooltip has it all', () => {
     const long = 'a-very-long-worktree-name-that-would-never-fit-at-a-narrow-width-'.repeat(3);
     const app = renderApp('/s/a');
-    app.snapshot([row({ id: 'a', model: 'claude-opus-5-5', contextPct: 9, git: { repo: 'work', worktree: long, branch: 'x' } })]);
+    app.snapshot([row({ id: 'a', model: 'claude-opus-5-5', contextPct: 9, git: { repo: 'work', worktree: long, branch: 'x', commonDir: '/Users/me/Projects/work/.git', defaultBranch: 'main' } })]);
     const line = statusLine();
     expect(line).toHaveClass('whitespace-nowrap', 'overflow-hidden', 'h-7');
     for (const f of ['repo', 'model']) expect(line.querySelector(`[data-field="${f}"]`)).toHaveClass('truncate', 'min-w-0');
@@ -165,7 +165,7 @@ describe('Session view header', () => {
 
   it('VIEW-5.11: the Effort follows the model as its own part, updating live, and nothing takes its place without one', () => {
     const app = renderApp('/s/a');
-    const git = { repo: 'work', worktree: 'crm-rates', branch: 'x' };
+    const git = { repo: 'work', worktree: 'crm-rates', branch: 'x', commonDir: '/Users/me/Projects/work/.git', defaultBranch: 'main' };
     app.snapshot([row({ id: 'a', model: 'claude-opus-5-5', effort: 'medium', contextPct: 41, git })]);
     const line = statusLine();
     const effort = () => line.querySelector('[data-field="effort"]');
@@ -199,7 +199,7 @@ describe('Session view header', () => {
 
   it('VIEW-5.16: an Idle Session with a background shell running is Idle in the pane, and the status line ends with `shell running` in Idle\'s grey', () => {
     const app = renderApp('/s/a');
-    const git = { repo: 'work', worktree: 'crm-rates', branch: 'x' };
+    const git = { repo: 'work', worktree: 'crm-rates', branch: 'x', commonDir: '/Users/me/Projects/work/.git', defaultBranch: 'main' };
     app.snapshot([row({ id: 'a', title: 'fix-rates', model: 'claude-opus-5-5', effort: 'high', contextPct: 41, git, backgroundShell: true })]);
     const line = statusLine();
     const shell = () => line.querySelector('[data-field="background-shell"]');
