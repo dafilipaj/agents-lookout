@@ -12,14 +12,6 @@ Updated: 2026-10-23.
 
 ## Now
 
-6. **Rename a running Session** (VIEW-5.12–5.15, built 2026-10-22). Left: tick VIEW-5.15 once a rename from the header has been seen reaching the Session in the running app. Researched: Claude Code has `/rename` (since 2.0.64) and Codex 0.163 has `/rename <name>`; neither asks for a confirmation. Fleet already has `fleet rename <id> <title> --json` (`crates/fleet/src/cli/commands.rs:472`), which types the command, renames the tmux host to match when it's the Session's own and confirms from the registry. Decided with Dario:
-   - the header title is edited in place: a pencil on hover or focus, click or Enter to edit, Enter or leaving the field saves, Esc cancels, at most 64 characters;
-   - only for a live, Controllable, Idle Session with a session ID, Claude Code and Codex alike; no rename in the sidebar and no shortcut;
-   - Lookout calls `fleet rename --require-empty` and reads the new name from the next `fleet list`, not from the Transcript;
-   - a Fleet fork commit adds `--require-empty` to `rename`, since it would otherwise type into a box Fleet can't read; Lookout's pin moves once it's pushed.
-   - Follow-up in cli-toolbox: tb-session shows a renamed Claude Code Session under its first reply, not its name.
-   - Check live: how soon the name reaches `fleet list`, a Codex Session before its first prompt, whether Codex's own title overwrites the name, and names with unusual characters.
-
 ## Next: specs first
 
 3. **Gap 1: `task_ids` in tb-pr** (cli-toolbox, WORK Dependencies). No tb-pr has them yet (0.3.1 is the latest release), so no PR is Linked to a Task and Work says "Task links need a newer tb-pr". It also unblocks WORK-3.3.
