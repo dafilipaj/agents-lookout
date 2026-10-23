@@ -6,7 +6,7 @@ import { type FocusEvent, type KeyboardEvent, type MouseEvent, type ReactNode, t
 import { Alert } from '@/components/ui/alert';
 import { Chip, type ChipTone } from '@/components/ui/chip';
 import { CommandBlock } from '@/components/ui/command-block';
-import { RowAction, RowSettling, useRowSettle } from '@/components/ui/icon-button';
+import { RowAction, RowActions, RowSettling, useRowSettle } from '@/components/ui/icon-button';
 import { Loading } from '@/components/ui/loading';
 import { SessionMarker } from '@/components/ui/session-marker';
 import { type PanelNav, WORK_FILTERS, WORK_FILTER_LABEL, type WorkFilter } from '@/lib/right-sidebar';
@@ -683,7 +683,7 @@ function Details({ id, row, actions, sessions, state, children }: DetailsProps) 
             <SessionChips sessions={sessions} enabled={state.resuming === null} onOpen={(session) => state.onSession(row, session)} />
           </DetailLine>
         )}
-        <div className="flex min-w-0 flex-wrap items-center gap-1" data-field="actions">
+        <RowActions>
           {actions.map((action) => {
             const { label, tip } = actionLabel(action, row);
             const icon = action.kind === 'open' ? <ExternalLink /> : action.kind === 'session' && !action.session.live ? <History /> : <Play />;
@@ -699,7 +699,7 @@ function Details({ id, row, actions, sessions, state, children }: DetailsProps) 
               />
             );
           })}
-        </div>
+        </RowActions>
       </div>
       {failure && <Alert title={failure} className="mt-1" />}
     </RowSettling.Provider>

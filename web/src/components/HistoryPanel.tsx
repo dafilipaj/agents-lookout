@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Chip } from '@/components/ui/chip';
 import { CommandBlock } from '@/components/ui/command-block';
 import { EmptyState } from '@/components/ui/empty-state';
-import { IconButton, RowAction, RowSettling, useRowSettle } from '@/components/ui/icon-button';
+import { IconButton, RowAction, RowActions, RowSettling, useRowSettle } from '@/components/ui/icon-button';
 import { Loading } from '@/components/ui/loading';
 import { SessionMarker } from '@/components/ui/session-marker';
 import type { HistoryQuery } from '@/lib/client';
@@ -495,9 +495,9 @@ function Result({ index, item, status, since, active, expanded, peek, opening, b
             </p>
             {!live && item.blocked && <p data-field="blocked">{BLOCK_REASON[item.blocked]}</p>}
             <Said item={item} peek={peek} />
-            <div className="flex min-w-0 flex-wrap items-center gap-1" data-field="actions">
+            <RowActions>
               <RowAction data-action={state === 'live' ? 'open' : state === 'blocked' ? 'show' : 'resume'} label={opening ? 'Resuming…' : button.label} icon={button.icon} tip={button.tip} enabled={!busy} onPress={onOpen} />
-            </div>
+            </RowActions>
           </div>
           {openError && <Alert title={openError} className="mt-1" />}
         </>

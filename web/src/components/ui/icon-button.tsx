@@ -102,6 +102,15 @@ export function RowAction({ label, icon, trailing, tip, enabled = true, onPress,
   );
 }
 
+/**
+ * DS-7.4: the group of labelled buttons under an expanded row's details: 8 px between buttons, 6 px
+ * more above than the details' own 6 px gap, and 4 px below, so the buttons don't crowd the text
+ * and chips around them.
+ */
+export function RowActions({ className, ...props }: ComponentPropsWithoutRef<'div'>) {
+  return <div data-field="actions" className={cn('mt-1.5 mb-1 flex min-w-0 flex-wrap items-center gap-2', className)} {...props} />;
+}
+
 export interface IconButtonProps extends Omit<ComponentProps<'button'>, 'aria-label' | 'title'> {
   /** Its accessible name, required: an icon says nothing to a screen reader. */
   label: string;
