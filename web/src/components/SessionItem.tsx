@@ -96,7 +96,7 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
       <div className={cn('flex min-h-4 items-center gap-1 pl-6.5 text-meta leading-4', tone.quiet)}>
         <span
           className="flex min-w-0 flex-1 items-center gap-1"
-          title={waitingInSlot ? undefined : tip ?? undefined}
+          title={tip ?? undefined}
           aria-hidden={slotEmpty || undefined}
           data-field="slot"
         >

@@ -62,6 +62,7 @@ describe('reading where a Session works', () => {
       expect(await defaultOf(clone)).toBe('develop');
       expect(await defaultOf(join(root, 'clone-develop-wt'))).toBe('develop');
       // The name keeps its own slashes: only the `origin/` goes.
+      git(clone, 'update-ref', 'refs/remotes/origin/release/2', 'HEAD');
       git(clone, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/release/2');
       expect(await defaultOf(clone)).toBe('release/2');
     });
@@ -88,6 +89,36 @@ describe('reading where a Session works', () => {
     const loc = await readGitLocation(run, join(root, 'shop-detached'));
     expect(loc?.worktree).toBe('shop-detached');
     expect(loc?.branch).toMatch(/^[0-9a-f]{7,}$/);
+  });
+
+  it('SIDE-2.9: a git read that times out or can\'t run throws, so it is not mistaken for "outside git"', async () => {
+    const timedOut = vi.fn(async () => {
+      throw Object.assign(new Error('git timed out'), { timedOut: true, code: null });
+    });
+    await expect(readGitLocation(timedOut, '/x')).rejects.toThrow('timed out');
+    const missing = vi.fn(async () => {
+      throw Object.assign(new Error('spawn git ENOENT'), { code: 'ENOENT' });
+    });
+    await expect(readGitLocation(missing, '/x')).rejects.toThrow('ENOENT');
+    const notGit = vi.fn(async () => {
+      throw Object.assign(new Error('exited with 128'), { code: 128 });
+    });
+    expect(await readGitLocation(notGit, '/x')).toBeNull();
+  });
+
+  it('SIDE-2.8: the default branch is read with one git process, argv only', async () => {
+    const calls: string[][] = [];
+    const runner = vi.fn(async (_f: string, args: readonly string[]) => {
+      calls.push([...args]);
+      if (args.includes('--git-dir')) return '/r/.git\n/r/.git\n/r\n';
+      if (args.includes('for-each-ref')) return 'refs/heads/main \nrefs/remotes/origin/HEAD refs/remotes/origin/develop\n';
+      return 'main\n';
+    });
+    expect((await readGitLocation(runner, '/r'))?.defaultBranch).toBe('develop');
+    expect(calls.filter((a) => a.includes('for-each-ref'))).toEqual([
+      ['-C', '/r', 'for-each-ref', '--format=%(refname) %(symref)', 'refs/remotes/origin/HEAD', 'refs/heads/main', 'refs/heads/master'],
+    ]);
+    expect(calls.some((a) => a.includes('symbolic-ref') || a.includes('--verify'))).toBe(false);
   });
 
   it('tolerates non-git and missing directories', async () => {
@@ -159,6 +190,40 @@ describe('GitCache', () => {
     cache.get('/a');
     await vi.waitFor(() => expect(onChange).toHaveBeenCalledTimes(2));
     expect(cache.get('/a')?.branch).toBe('other');
+  });
+
+  it('SIDE-2.9: a directory is known after a read that succeeded (outside git too), not while pending or after a failure; a failure keeps the last good value', async () => {
+    let now = 0;
+    let fail = true;
+    const loc = { repo: 'r', worktree: null, branch: 'main', commonDir: '/r/.git', defaultBranch: 'main' };
+    const read = vi.fn(async () => {
+      if (fail) throw new Error('timed out');
+      return loc;
+    });
+    const onChange = vi.fn();
+    const cache = new GitCache({ read, onChange, now: () => now });
+    expect(cache.known('/a')).toBe(false);
+    cache.get('/a');
+    expect(cache.known('/a')).toBe(false); // pending
+    await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(1));
+    await Promise.resolve();
+    expect(cache.known('/a')).toBe(false); // failed
+    now = 30_000;
+    fail = false;
+    cache.get('/a');
+    await vi.waitFor(() => expect(onChange).toHaveBeenCalledTimes(1));
+    expect(cache.known('/a')).toBe(true);
+    fail = true;
+    now = 60_000;
+    expect(cache.get('/a')).toEqual(loc);
+    await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(3));
+    await Promise.resolve();
+    expect(cache.known('/a')).toBe(true);
+    expect(cache.get('/a')).toEqual(loc);
+    // Outside git is a successful read.
+    const outside = new GitCache({ read: async () => null, onChange: () => {}, now: () => now });
+    outside.get('/b');
+    await vi.waitFor(() => expect(outside.known('/b')).toBe(true));
   });
 
   it('forgets directories nobody asked about for 5 minutes', async () => {

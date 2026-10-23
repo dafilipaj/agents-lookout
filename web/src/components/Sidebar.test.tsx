@@ -252,7 +252,8 @@ describe('sidebar rows', () => {
       expect(slot('detached')).toHaveAttribute('title', 'work · a1b2c3d');
       expect(slot('nogit')).toHaveAttribute('title', '/Users/me/field-notes/deep');
       expect(field('nogit', 'cwd')).toHaveTextContent('deep');
-      // The words fill the slot, so their tooltip carries the location after them.
+      // The words fill the slot, so their own tooltip carries the location after them; the slot has it too.
+      expect(slot('words')).toHaveAttribute('title', 'work · main');
       expect(field('words', 'waiting-for')).toHaveAttribute('title', 'input needed\nwork · main');
     });
 
