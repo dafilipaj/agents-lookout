@@ -1,20 +1,22 @@
 ---
 title: History
 code: HIST
-status: Done
+status: In Progress
 created: 2026-10-16
-updated: 2026-10-22
+updated: 2026-10-23
 ---
 
 # History
 
 ## Summary
 
-Search past Sessions of both Harnesses by what was said in them, and click one to resume it. It resumes in its own Session host, so it's Controllable and sends telemetry like any Session Lookout starts. History lives in a right sidebar, so the Session sidebar on the left stays visible.
+Search past Sessions of both Harnesses by what was said in them, select one to see what it was, and resume it with a button. It resumes in its own Session host, so it's Controllable and sends telemetry like any Session Lookout starts. History lives in a right sidebar, so the Session sidebar on the left stays visible.
 
 ## Problem
 
 Finding last week's Session means remembering its directory and running `claude --resume`, or `tb-session` (Claude only). Codex history isn't searchable at all. A Session resumed in a plain terminal can't be controlled from Lookout.
+
+Once History is in Lookout, a stray click on a result resumes a past Session, which starts a Session host, and there's no way to see what a Session was without resuming it (Dario's testing, 2026-10-23).
 
 ## Requirements
 
@@ -32,15 +34,20 @@ Finding last week's Session means remembering its directory and running `claude 
 - [x] HIST-2.4 Claude Code and Codex Sessions both appear, once tb-session reads Codex (see Technical approach). (test)
 - [x] HIST-2.5 Headless Sessions are hidden by default. A toggle shows them. (test)
 - [x] HIST-2.6 Subagent Sessions and Sessions without a single prompt never appear. (test)
-- [x] HIST-2.7 ↑/↓ and j/k move through the results without resuming anything; Enter acts like a click. (manual)
+- [ ] HIST-2.7 ↑/↓ and j/k move through the results without resuming, opening or selecting any Session, and collapse the expanded result as they leave it. Enter on a selected result that isn't expanded expands it; on an expanded one it runs its button (HIST-3.5). (test)
 - [x] HIST-2.8 Claude Code and Codex filter buttons, each showing its Harness's logo, sit next to the headless toggle. Both are on by default; either can be switched off, but never both at once. The choice is remembered across reloads. (test)
+- [ ] HIST-2.9 An expanded result shows, besides its title, Harness, repo, branch and age: its start directory in full (the home directory as `~`), the date and time it was last active, its Harness (no model: tb-session doesn't give one); its first prompt and its last message, each its first three lines, with who said the last one; and whether it can be resumed and, if not, why (BLOCK_REASON's words, HIST-3.3). A live result says it's live. (test)
+- [ ] HIST-2.10 The first prompt and the last message are read when a result is expanded, not for every result: one `tb-session show` for that Session (Technical approach, Expanded result). While it's read, the result shows "Loading…"; a failed read shows an error line and the buttons still work. With tb-session 0.2, which can't tail, the last message is left out and the first prompt only is shown. (test)
+- [ ] HIST-2.11 One result is expanded at a time; expanding another collapses the first. Esc, with focus in History's list or search box, collapses the expanded result and leaves it selected. An expanded result grows in the panel and the list scrolls to keep it in view; the main pane keeps showing the current Session. (test)
 
-### HIST-3 Click to resume
+### HIST-3 Resume from a result
 
-- [x] HIST-3.1 Clicking a past Session that can be resumed starts it again in its own Session host, in the directory it originally started in. It appears in the Session sidebar as "Starting…", selected at once, then as a live Session that takes over the selection while the "Starting…" row is still selected (as in LAUNCH-4.2). (test)
-- [x] HIST-3.2 Clicking a Session that's live right now selects it; a second process is never started. (test)
-- [x] HIST-3.3 Clicking a Session that can't be resumed, because its start directory no longer exists, opens it in the main pane read-only: its latest messages, and a note on why it can't be resumed. (test)
+- [ ] HIST-3.1 The "Resume" button on an expanded result that can be resumed, or Enter on it, starts the Session again in its own Session host, in the directory it originally started in. It appears in the Session sidebar as "Starting…", selected at once, then as a live Session that takes over the selection while the "Starting…" row is still selected (as in LAUNCH-4.2). (test)
+- [ ] HIST-3.2 The "Open" button on an expanded result that's live right now, or Enter on it, selects that Session; a second process is never started. (test)
+- [ ] HIST-3.3 The "Show" button on an expanded result that can't be resumed, because its start directory no longer exists, or Enter on it, opens it in the main pane read-only: its latest messages, and a note on why it can't be resumed. (test)
 - [x] HIST-3.4 A resumed Session behaves like one LAUNCH started: the 15 s failure (LAUNCH-4.5) and telemetry (LAUNCH-5) apply. (manual)
+- [ ] HIST-3.5 A click on a result, or Enter on a selected one that isn't expanded, selects and expands it and does nothing else: it never resumes, opens or shows a Session, and starts no process. A Session is resumed, opened or shown only by the expanded result's one button ("Resume", "Open" or "Show", by what the result is) or by Enter on the expanded result. (test)
+- [ ] HIST-3.6 The button is labelled with its word and has a 20 px icon and a 28 px tall target. While a resume runs, the result stays expanded and says "Resuming…"; a failure shows under the button as an error Alert, as it does now. (manual)
 
 ## Non-goals
 
@@ -72,6 +79,22 @@ Finding last week's Session means remembering its directory and running `claude 
 └───────────────┴──────────────────────────────────┴──────────────────────┘
 ```
 
+- An expanded result (HIST-2.9, HIST-2.11) grows in place; the rest of the list moves down:
+
+```
+│ ○ kg-hook-review                       │  ← selected, expanded
+│   ◎ Codex · work · 3d                  │
+│   ~/Projects/work · main               │
+│   Oct 20, 14:12 · gpt-5 · can resume   │
+│   First   "Why does the hook skip the  │
+│            merge commit? Look at…"     │
+│   Last    Codex: "The hook only runs…" │
+│   [↺ Resume]                           │
+│ ⊘ pr641-review                         │
+```
+
+  - A live result says "live" and its button is "Open"; one that can't be resumed says why ("The directory it started in no longer exists.") and its button is "Show" (read-only). No model is shown: tb-session gives none (Key decisions). The button is a word beside a 20 px icon in a 28 px tall target; `↺` stands for lucide's `History`.
+  - Selecting is the click or Enter, and does nothing more (HIST-3.5); ↑/↓ and j/k move without expanding (HIST-2.7); Esc collapses (HIST-2.11).
 - One grid (SIDE-8): the tab strip (History, Work, each with its icon) sits in the shell's header row, mirroring the Filter bar on the left, with Close (×) after it, so its bottom line continues the Filter bar's and the main header's. History's search field is the first thing below it (WORK-1.8). The list runs on below the dock line to the bottom.
 - The sidebar is named "Right sidebar". Its tab strip is its heading: History's tab names History's panel, and there's no other "History" title or heading.
 - `H` opens the sidebar on History, switches to History when Work is showing, and closes the sidebar when History is showing; `W` does the same for Work (WORK-1.1).
@@ -80,7 +103,7 @@ Finding last week's Session means remembering its directory and running `claude 
 
 - [✳][◎]: the Claude Code and Codex filter buttons (HIST-2.8), drawn with the same Harness logos as the Session sidebar, monochrome like every list's (DS-3.1). A switched-off one is greyed out; the last one on can't be switched off.
 - Search hits in a snippet are marked with the design system's `highlight` token (DS-3.4), a neutral tint, not Needs you's amber: a match isn't something to act on.
-- Markers, the design system's Session marker (DS-5.1, DS-5.2; lucide icons and the Status shapes, [0008](../../decisions/0008-lucide-icons-only.md)): a live result shows its Session's Status marker (SIDE-3.2), from the Session sidebar's list and following its Status, with the "live" chip beside the title (click selects it); a resumable one lucide's `History` in `muted-foreground` (click resumes it); one that can't be resumed a slashed circle, `CircleSlash` (click opens it read-only). The marker is hidden from screen readers: the row's words say it (DS-5.5). The mock-up above uses ● ○ ⊘ as shorthand.
+- Markers, the design system's Session marker (DS-5.1, DS-5.2; lucide icons and the Status shapes, [0008](../../decisions/0008-lucide-icons-only.md)): a live result shows its Session's Status marker (SIDE-3.2), from the Session sidebar's list and following its Status, with the "live" chip beside the title (click selects it); a resumable one lucide's `History` in `muted-foreground`; one that can't be resumed a slashed circle, `CircleSlash`. A click on the row only expands it (HIST-3.5): "Resume", "Open" or "Show" do the rest. The marker is hidden from screen readers: the row's words say it (DS-5.5). The mock-up above uses ● ○ ⊘ as shorthand.
 - Loading, empty and errors are the design system's: "Loading…" and "Loading more…" a `Loading` (DS-6.3), "No past Sessions" and "Nothing matches" an `EmptyState` (DS-8.1), a result that couldn't be opened, a search that failed ("Couldn't search History", with its reason) and tb-session missing error Alerts, the last with its command in a `CommandBlock` (DS-4, DS-8.2). The Harness toggles are `sm` icon buttons (DS-7).
 - Empty states: "No past Sessions", and "Nothing matches" with the query.
 - Errors: tb-session missing shows how to install it, like SIDE-6.1.
@@ -132,7 +155,13 @@ Finding last week's Session means remembering its directory and running `claude 
   - The choice is kept in this browser (`localStorage`, like HIST-1.3's layout); a stored value with both off, or one that can't be read, is both.
 - **Paging:** each page belongs to the query and toggles it answers (headless and Harness). After any of them changes, the list doesn't page until the new first page has arrived, so an older request's next page can never land after it.
   - A page can come back empty, or short, once rows are filtered (the newest 50 all empty Sessions, say), with more to come. A list that shows nothing or doesn't fill the panel can't be scrolled, so it fetches the next page itself, for the same query and toggle only, at most 5 pages in a row. Then a "Load more" button takes over; a click or a scroll starts a new count.
-- **Enter:** opens the highlighted result only from the search box or the result list; on Close History or the toggle it's theirs.
+- **Enter:** acts on the highlighted result only from the search box or the result list; on Close History or the toggle it's theirs. On a result that isn't expanded it expands it; on an expanded one it runs the button (HIST-3.5).
+- **Expanded result** (HIST-2.9, HIST-2.10). What a result already has: `title`, `harness`, `projectPath`, `repo`, `branch`, `lastActiveAt`, `blocked`, `headless`, `snippet`, and whether it's live from the Session list. What it hasn't:
+  - **first prompt:** tb-session's `search` and `show` rows carry `first_prompt`, and 0.3's `list` rows do; `toRow` reads it but keeps it only inside `title`, cut to one line of 300 characters (`MAX_TITLE`). The change keeps it as `firstPrompt` on `HistoryItem`, the first three lines (not collapsed to one line), at most 600 characters. A 0.2 `list` row has none, so the expanded read fills it from `show`.
+  - **last message:** the Session's last prompt or reply, from `show --tail` (`DETAIL_TAIL`, 20; the route is `GET /api/history/<harness>/<id>`, which HIST-3.3's read-only view uses). Its last entry is cut to three lines. It's read when the result is expanded, never for the whole page of 50: 50 `show` calls on every search is the cost to avoid. Measured 2026-10-23: `show <id> --tail 1 --json` took 0.12 s on a very long Session (tb-session 0.3.0, cached), so it's read on expand, cached per id, with "Loading…" meanwhile.
+  - **model:** none. `tb-session show --json` returns `session_id`, `harness`, `headless`, `transcript_missing`, `summary`, `first_prompt`, `git_branch`, `project_path`, `message_count`, `created_at`, `modified_at`, `is_sidechain`, `messages`, `messages_source` and `total_messages` (checked 2026-10-23), so the expanded result shows the Harness alone.
+  - **can it be resumed:** `blocked` and `BLOCK_REASON` (`shared/history.ts`), no new read.
+  - Results are kept per Session id for as long as the list shows it, so collapsing and expanding again reads nothing; a new search clears them.
 - **Binary:** `LOOKOUT_TB_SESSION_BIN`, then `PATH`, then `~/.local/bin`, like Fleet's.
 - **Read-only view:** at `/h/<harness>/<session_id>`, so a reload keeps it. "repo" in a result is its start directory's name.
 - **Can it be resumed?** Its `project_path` exists and it isn't live.
@@ -144,11 +173,18 @@ Finding last week's Session means remembering its directory and running `claude 
 ### Key decisions
 
 - **A right sidebar, like Orca's**: the Session sidebar stays visible at all times, and the right side can hold more panels later (PORTS).
-- **Click resumes**: resuming is the point of History. A Session that can't be resumed opens read-only instead, so a click is never a dead end.
-- **Keyboard moves don't resume**: browsing with ↑/↓ or j/k mustn't start Sessions; only a click or Enter does.
+- **A click selects and expands; a button resumes** (replaces "Click resumes", Dario, 2026-10-23): a stray click resumed a past Session, which starts a Session host, and nothing showed what a Session was before it did. Resuming is still the point of History, so it's one labelled button, or Enter on the expanded result: two steps, never one by accident. A Session that can't be resumed gets "Show" (read-only) there, so the button is never a dead end.
+- **Keyboard moves don't resume or expand**: browsing with ↑/↓ or j/k mustn't start Sessions or open details; only a click or Enter expands, and only the button or a second Enter acts.
+- **Details are read on expand, not per result**: a first prompt and a last message need a `show` each, and a page of 50 results would make 50.
 - **Resume in the original start directory**: Claude Code files a Transcript under the directory a Session started in, and resuming from anywhere else fails.
 - **Never two processes on one Session**: a live Session is selected, not resumed again.
 - **Search lives in tb-session, not the Fleet fork**: tb-session already has the index, search and `--json`. Only Codex is missing, and that work is shared under productiveio.
+- **"Last message" is the last entry of either role, labelled "You" or the Harness (HIST-2.9)**: `show --tail` returns both and `toEntry` keeps both; "what it was about" is often your last prompt when a Session ended mid-work.
+- **The expanded result shows the Harness and no model (HIST-2.9)**: checked 2026-10-23: `tb-session show --json` returns `session_id`, `harness`, `headless`, `transcript_missing`, `summary`, `first_prompt`, `git_branch`, `project_path`, `message_count`, `created_at`, `modified_at`, `is_sidechain`, `messages`, `messages_source` and `total_messages`: no model. The model isn't read from a Transcript in Lookout (0005); a cli-toolbox change would be the fix, later.
+- **`show` is read on expand, cached per id, "Loading…" meanwhile (HIST-2.10)**: `tb-session show <id> --tail 1 --json` took 0.12 s on a very long Session (tb-session 0.3.0, cached), so no first-prompt-only fallback.
+- **A live result's "Open" also expands its details, as any other result (HIST-2.9, 3.2)**: the live marker and the "live" chip already say it.
+- **One button on a result, no chips (HIST-3.5)**: Dario's table lists "Resume", "Open" or "Show" only, and a result has no Links (WORK's Linking is Work's).
+- **The 20 px icon is WORK's one new button size, with DS-7.1 and DS-7.4 amended (HIST-3.6)**: see WORK's Key decisions.
 
 ## Open questions
 
@@ -183,3 +219,5 @@ None.
 - 2026-10-22: Design system (DS-3.6): a live result's marker is `muted-foreground` instead of Busy's blue, until DS-5.2 draws the Session's real Status there.
 - 2026-10-22: Design system (DS-5.2): a live result's marker is its Session's Status marker, from the Session sidebar's list and following its Status, a resumable one lucide's `History` and a blocked one `CircleSlash`, all through the Session marker; this replaces the 2026-10-22 `muted-foreground` stand-in (DS-3.6) and the 2026-10-17 circles. Loading, empty states and errors are the design system's Loading, EmptyState, Alert and CommandBlock (DS-4, DS-6.3, DS-8).
 - 2026-10-22: Design system review fixes, round 1 (DS-4.2): a failed search is an error box, as the open error is, not a neutral empty state; the Harness toggles are icon buttons (DS-7.2). The words stay.
+- 2026-10-23: Select, then act, from Dario's testing: a stray click on a result resumed a past Session, and nothing showed what a Session was first. A click, or Enter, now selects and expands the result; the button "Resume", "Open" or "Show", or Enter on the expanded result, acts. Added HIST-2.9 to HIST-2.11 (details, where they're read, one open at a time), HIST-3.5 (a click never acts) and HIST-3.6 (the button's look). Amended and unticked HIST-2.7, HIST-3.1, HIST-3.2 and HIST-3.3, whose meaning changed; HIST-2.7 retagged `(test)`. HIST-3 is "Resume from a result". Key decision "Click resumes" replaced by "A click selects and expands; a button resumes", with the reason. Status Done to In Progress. Technical approach: Expanded result. Open questions: 6. Not grilled. WORK's matching change: WORK-1.12 to WORK-1.15.
+- 2026-10-23: Dario answered the six open questions, all as recommended; folded in as Key decisions with their reasons. Checked live: `tb-session show --json` has no model field, so HIST-2.9 says the expanded result shows the Harness and no model; `show --tail 1 --json` took 0.12 s on a very long Session, so it's read on expand, cached per id, "Loading…" meanwhile. The 20 px icon: DS-7.1 and DS-7.4 amended (see DS). Open questions: none.

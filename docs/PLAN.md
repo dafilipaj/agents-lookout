@@ -8,7 +8,7 @@ What's being worked on next, in order. Each item points at where its truth lives
 - **When an item is done,** remove it. Git history keeps it.
 - **When an item is dropped,** move it to the Backlog's "Dropped" section with the reason, so it isn't proposed again.
 
-Updated: 2026-10-22.
+Updated: 2026-10-23.
 
 ## Now
 
@@ -23,12 +23,7 @@ Updated: 2026-10-22.
 ## Next: specs first
 
 13. **Sidebar rows show what varies** (SIDE-2.1 and UX, amend; the design review's suggestion 1). Almost every row reads `work · main`, while the numbers that change (age, context, the Subagent count) are the smallest text at the row's edge. Proposal: show `repo · branch` only when it isn't the Start directory's default (a Worktree, another branch), and give a Busy row's second line to what it's doing; keep the full location in the tooltip and the status line (VIEW-5.5). The Key decision "Worktree first, branch as fallback" still holds: Worktrees still show. The muted Harness logo is DS's (DS-3.1), not this item's.
-2. **Select, then act: Work rows and History results** (WORK-2.4 and UX, HIST-3.1 and its Key decision "Click resumes", amend; one spec for both, with the design review's suggestion 8). From Dario's testing: a click on a Work row selects or resumes its Session, which happens by accident, and there's no way to see a Task's details first. History has the same risk, worse: a stray click resumes a past Session, which starts a Session host. The open-in-browser buttons are too small. Proposal:
-   - a click or Enter only selects and expands the row: project, status, due date, the start of the description, Linked PRs with CI, Linked Sessions;
-   - every action is a labelled button: "Open Session", "Resume", "Start Session", "Open in Fantastic";
-   - in History, a click selects a result and shows a Resume button; Enter or the button resumes (HIST-2.7 already keeps keyboard moves from resuming);
-   - Linked Sessions show as a chip like a Session sidebar row: Harness icon, name, Status colour, or "2 Sessions", built on DS's Session marker (DS-5), which already replaces the `CircleDot` that didn't read as a Session;
-   - buttons grow from about 14 px to 20 px icons with a 28 px target.
+2. **Select, then act: Work rows and History results** (specced and grilled 2026-10-23: WORK-1.12 to 1.15, 2.9 to 2.11, 3.6, 4.10, 6.5 and HIST-2.9 to 2.11, 3.5, 3.6, with WORK-1.7, 2.4, 3.4, 6.1 and HIST-2.7, 3.1 to 3.3 amended and unticked; HIST is In Progress again; the design review's suggestion 8). From Dario's testing: a click on a Work row selects or resumes its Session, and on a History result resumes it, by accident, and there's no way to see a Task's details first. Approved behaviour: a click or Enter selects and expands the row in place, one at a time; every action is a labelled button, a Linked Session chip, or Enter on an expanded row. Grilled 2026-10-23: WORK's 10 and HIST's 6 questions all as recommended; checked live that `tb-prod query tasks` returns the description (no per-expand read) and that tb-session has no model (the result shows the Harness alone). Ready to build. The 20 px icon needs one new button size; DS-7.1 and DS-7.4 are amended and unticked, DS is In Progress until it's built. Built on DS's Session marker (DS-5).
 3. **Gap 1: `task_ids` in tb-pr** (cli-toolbox, WORK Dependencies). No tb-pr has them yet (0.3.1 is the latest release), so no PR is Linked to a Task and Work says "Task links need a newer tb-pr". It also unblocks WORK-3.3.
 4. **TOOLS: the CLIs Lookout runs and their updates** (Backlog TOOLS, becomes a spec). Checked 2026-10-21: claude 2.1.306, codex 0.163.0, tb-pr 0.3.1, tb-prod 1.2.0 and tb-session 0.3.0 were all the latest. The "newer tb-pr" note above is the kind of thing TOOLS should explain.
 7. **A Codex question shows neither in the chat nor as Esc** (bug, needs a repro; Dario reports the Session id when it shows again). Fleet marks a Codex `request_user_input` as waiting (`harness.rs:1030`), so the Session should Need you and VIEW-4.5's Esc should show.
@@ -49,4 +44,4 @@ Updated: 2026-10-22.
 
 Asked on 2026-10-21; answers go into the item they belong to. Item 8's nine questions were answered on 2026-10-22 and are in the SIDE spec's Key decisions.
 
-1. Item 2: does a row expand in place (recommended: the Session in the main pane stays visible), or show its details in the main pane, or in a hover card?
+1. Item 2: answered by Dario on 2026-10-23, the row expands in place. Its remaining questions are in the WORK and HIST specs' Open questions.

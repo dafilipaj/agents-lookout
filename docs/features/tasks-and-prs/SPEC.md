@@ -3,14 +3,14 @@ title: "Tasks and PRs"
 code: "WORK"
 status: "In Progress"
 created: "2026-10-19"
-updated: "2026-10-22"
+updated: "2026-10-23"
 ---
 
 # Tasks and PRs
 
 ## Summary
 
-A Work tab next to History lists your open Tasks from Productive and your open PRs and Review requests from GitHub. Each one is Linked to the others and to the Sessions that worked on it: the Session inferred to have opened a PR, and any Session started on a PR or Task. One click selects or resumes the Session behind a Task or PR, opens the item in the browser, or opens the launcher pre-filled to work on a Task or review a PR. Lookout only reads from Productive and GitHub. It never writes to them. This spec covers the Backlog entries TASKS and PRS, which share the same Links.
+A Work tab next to History lists your open Tasks from Productive and your open PRs and Review requests from GitHub. Each one is Linked to the others and to the Sessions that worked on it: the Session inferred to have opened a PR, and any Session started on a PR or Task. A click on a row only selects it and expands it in place, to its details. From there, labelled buttons open or resume a Linked Session, open the item in the browser, or open the launcher pre-filled to work on a Task or review a PR. Lookout only reads from Productive and GitHub. It never writes to them. This spec covers the Backlog entries TASKS and PRS, which share the same Links.
 
 ## Problem
 
@@ -19,6 +19,7 @@ A Work tab next to History lists your open Tasks from Productive and your open P
   - What's in flight lives in GitHub, and `tb-pr` shows it in its own terminal UI.
   - Which Session did the work lives only in Transcripts.
 - **Picking up work is slow:** going back to a task means finding its PR, then the Session that opened it (`tb-session search`), then resuming it. That happens several times a day.
+- **A click acts by accident** (Dario's testing, 2026-10-23): a click on a row selects or resumes its Session, and there is no way to read a Task's details first. The open-in-browser buttons are too small to hit.
 - **Starting is manual too:** starting a Session on a task or a review means copying a URL into the launcher by hand.
 - **Measured 2026-10-19:**
   - 9 open Tasks in 2 projects.
@@ -39,30 +40,38 @@ The right sidebar gets a second tab, Work, next to History.
 - [x] WORK-1.4 With Work open, the Session sidebar and the main pane stay fully visible beside it, neither covered nor pushed out of the grid (HIST-1.2). (manual)
 - [x] WORK-1.5 A filter at the top of Work has three options: All (the default), Tasks, and PRs. Tasks shows only the Tasks section; PRs shows only the PRs section, with both its groups, Mine and Review requests. The choice is remembered across reloads. (test)
 - [x] WORK-1.6 Switching the filter shows the chosen section's latest data at once, and the switch starts no read: a hidden section is still read on schedule (WORK-8). (e2e)
-- [x] WORK-1.7 With focus in Work, or on the right sidebar's tab strip, Refresh or Close, ↑/↓ and j/k move through the rows of the visible sections without acting, and never reach the Session sidebar; Enter acts like a click on the row (HIST-2.7). ←/→ on the tab strip move between the tabs, as a tablist does. (test)
+- [ ] WORK-1.7 With focus in Work, or on the right sidebar's tab strip, Refresh or Close, ↑/↓ and j/k move through the rows of the visible sections without acting, and never reach the Session sidebar; they collapse an expanded row as they leave it (WORK-1.12). Enter acts as WORK-1.12 says (HIST-2.7). ←/→ on the tab strip move between the tabs, as a tablist does. (test)
 - [x] WORK-1.8 The tab strip (History, Work) sits in the header row where History's search field is today, lined up with the rest of the grid (SIDE-8), with History's search field and Work's filter below it. (manual)
 - [x] WORK-1.9 The keyboard selection stays on the same item while that item is visible. When a filter change or a read removes it, the selection moves to the first visible row, or to none when Work is empty. (test)
 - [x] WORK-1.10 With Work open, clicking a Session row in the Session sidebar selects it and shows it in the main pane, and the composer takes typed text, `W`, `H`, `O`, `j` and `k` included, without moving Work's selection or switching the tab. (test)
 - [ ] WORK-1.11 With Work open, a message sent from the composer reaches the selected Session and its reply shows, as with Work closed. (e2e)
+- [ ] WORK-1.12 A click on a Task, PR or Review request row, or Enter on a selected one that isn't expanded, selects it and expands it in place; nothing else happens: no Session is selected, opened, resumed or started, no tab opens, no launcher opens. One row is expanded at a time: expanding another collapses the first. Esc, with focus in Work, collapses the expanded row and leaves it selected. ↑/↓ and j/k move the selection and collapse the row they leave, expanding nothing. (test)
+- [ ] WORK-1.13 Enter on a row that is already expanded runs its first button (WORK-2.10, WORK-3.6), as pressing it does. A Session is opened or resumed only by a labelled button, a Linked Session chip (WORK-4.10) or that Enter, never by a click on the row. `O`, `S` and `R` keep acting on the selected row, expanded or not (WORK-5.1, WORK-5.2, WORK-6.4). (test)
+- [ ] WORK-1.14 A row stays expanded across reads while it stays in the list (WORK-1.9's rule for the selection); when it leaves, nothing is expanded, and the selection moves as WORK-1.9 says. Switching the filter to hide it collapses it. Reloading the page expands nothing. (test)
+- [ ] WORK-1.15 An expanded row grows in the panel, the list scrolls to keep all of it in view, and the main pane keeps showing the current Session: expanding, collapsing or moving the selection never changes which Session the main pane shows. (e2e)
 
 ### WORK-2 Tasks
 
 - [x] WORK-2.1 Tasks lists every Task assigned to the Productive email in Settings, in all projects: any status that isn't closed, in an active project, task list and folder, milestones included. Most recently active first, up to 100. (test)
 - [x] WORK-2.2 Each Task shows its title, project, status and, when set, its due date. A milestone is marked as one. (test)
 - [x] WORK-2.3 A Task with a Linked PR shows the PR's number, state and CI state (WORK-3.2). Its PR → Task Links need tb-pr 0.4.0 or later (WORK-4.1, Gap 1). (test)
-- [x] WORK-2.4 A Task with Linked Sessions shows a Session marker: a live one if any Session is live, otherwise a past one. Clicking the marker, or the row, selects the live Linked Session with the latest activity when any is live; otherwise it resumes the past Linked Session with the latest activity, as History does (HIST-3). Activity is tb-session's `modified_at`; a tie goes to the later-created Session. Sessions Linked through a PR need tb-pr 0.4.0 or later (WORK-4.4); Sessions started on the Task don't. (e2e)
+- [ ] WORK-2.4 A Task with Linked Sessions shows a Session marker: a live one if any Session is live, otherwise a past one. The marker is a sign, not a button, and a click on it or on the row selects and expands the row (WORK-1.12). The Linked Session that the row's first button names (WORK-2.10) is the live one with the latest activity when any is live; otherwise the past one with the latest activity, which is resumed as History does (HIST-3). Activity is tb-session's `modified_at`; a tie goes to the later-created Session. Sessions Linked through a PR need tb-pr 0.4.0 or later (WORK-4.4); Sessions started on the Task don't. (e2e)
 - [x] WORK-2.5 Settings has a "Productive email" field. While it's empty, it shows the address from `git config --global user.email` as a suggestion, which is saved only when you save it. Its Behaviour test declares that address with `.gitIdentity()` (TEST-1.5). (e2e)
 - [x] WORK-2.6 Until a Productive email is saved, Tasks shows "Set your Productive email in Settings", with a link to Settings, and runs no query. PRs works as usual. (e2e)
 - [x] WORK-2.7 The Productive email is saved trimmed, otherwise as typed. A value with whitespace or a comma inside, without exactly one `@` with text on both sides, or longer than 254 characters is refused with "Enter an email such as name@example.com", and the saved value stays. Saving an empty field clears it, and Tasks goes back to WORK-2.6. (test)
 - [x] WORK-2.8 Saving a different Productive email drops the Tasks list kept for the previous one. While a tab has Work open, it reads Tasks for the new email at once, or as soon as a Tasks read still running for another email ends, whose result is then discarded (WORK-8.3). With Work closed in every tab, that read waits until Work next opens (WORK-8.1). Until the new email's read ends, Tasks shows "Loading", never the previous address's list, and if that read fails, its reason without a list (WORK-7.3). Its Behaviour test declares Tasks per email (TEST-1.5) and holds the previous email's read in flight (TEST-1.6). (e2e)
+- [ ] WORK-2.9 An expanded Task shows, besides what its row already has, its project, status and due date (each left out when tb-prod gave none); the first three lines of its description, as plain text, left out when it has none; its Linked PRs, each with its repo, number, state chip and CI state (WORK-2.3, WORK-3.2); and its Linked Sessions as chips (WORK-4.10). A Task with neither a description, a Linked PR nor a Linked Session expands to its project, status and buttons only. (test)
+- [ ] WORK-2.10 An expanded Task has these labelled buttons, in this order: "Open Session" when a live Session is Linked, else "Resume" when a past one is, then "Start Session" and "Open in Fantastic". The first is the Linked Session WORK-2.4 picks; a Task with no Linked Session has no such button, and "Start Session" is first. "Start Session" and "Open in Fantastic" do what WORK-5.1 and WORK-6.2 say. "Open Session" selects the live Session; "Resume" resumes the past one as HIST-3.1 does, and the row shows "Resuming…" until the Session is live. A failure shows under the buttons as an error Alert, as Work's other open errors do. (e2e)
+- [ ] WORK-2.11 A Task's description comes from the same `tb-prod query tasks` read that lists the Tasks, with no read of its own; the server turns it from HTML into plain text, at most 600 characters, before it's stored or sent (Technical approach, Description). A description that is missing, empty or unreadable is left out, never a read failure. (test)
 
 ### WORK-3 PRs
 
 - [x] WORK-3.1 PRs has two groups, Mine (your open PRs) and Review requests, both in `productiveio/*` repos only, and each sorted most urgent first as `tb-pr`'s own table sorts them: by rotting bucket, critical first, then oldest first, with remaining ties by repo and then number. (test)
 - [x] WORK-3.2 Each PR shows its repo, number, title and age, plus its CI state: passing, failing, running, "no CI" or "CI unknown" (WORK-3.3). A PR in Mine also has a state chip: draft, ready or approved. (test)
 - [x] WORK-3.3 Neither "no CI" nor "CI unknown" ever looks like passing: both are grey, their words spelled out. A PR shows "no CI" while `tb-pr` gives it no CI state, and "CI unknown" when its `check_state` is `unknown`, that is, `tb-pr` tried to read its CI and couldn't. A Review request shows its real CI state once `tb-pr` gives one, as tb-pr 0.4.0 does (Gap 1). (test)
-- [x] WORK-3.4 A PR shows its Linked Task (title) and its Linked Sessions, and the Session marker and row click behave as in WORK-2.4. (e2e)
+- [ ] WORK-3.4 A PR shows its Linked Task (title) and its Linked Sessions, and the Session marker and row click behave as in WORK-2.4: the marker is a sign, the click selects and expands the row (WORK-1.12), and the Session behind the first button is chosen as WORK-2.4 chooses. (e2e)
 - [x] WORK-3.5 A PR's age, in Mine and in Review requests, is coloured by how long ago the PR was opened: green under 3 days, amber from 3 days up to and including 10 days, red over 10 days. The age text stays, so colour is never the only cue, and its hover still gives the opening date. A PR without an opening time keeps the age's muted colour. (test)
+- [ ] WORK-3.6 An expanded PR or Review request shows its repo, number, age and CI state, and, in Mine, its state chip (draft, ready or approved; a Review request has none); its Linked Task's title, when it has one, with the "branch" or "PR body" source as its hover; and its Linked Sessions as chips (WORK-4.10). Its labelled buttons, in this order: "Open Session" when a live Session is Linked, else "Resume" when a past one is, then "Review" (Review requests only, WORK-5.2), then "Open on GitHub" (WORK-6.3). The first button is chosen and behaves as WORK-2.10's. (e2e)
 
 ### WORK-4 Links
 
@@ -77,6 +86,7 @@ Lookout joins ids that the Building blocks give it. It never extracts a task id 
 - [x] WORK-4.7 A URL is in a first prompt only as a whole URL: it is followed by the end of the text or by a character that is not an ASCII letter, digit, `_` or `-`, and it's compared ignoring ASCII case. So `…/pull/12` is not in `…/pull/123`, and `…/tasks/123` is not in `…/tasks/123abc`, while `…/pull/12)`, `…/pull/12.`, `…/pull/12/files` and `…/pull/12#issuecomment-1` all contain `…/pull/12`. (test)
 - [x] WORK-4.8 Each tb-session search asks for up to 200 Sessions (`--limit 200`), not tb-session's default of the 10 most relevant. When a search returns 200, that item's Links may be incomplete: it gets no opener, and its hover says so (WORK-4.5). (test)
 - [x] WORK-4.9 The Link searches run after every read of Tasks or PRs, and again within 10 s after Fleet's list gains a Session while a tab has Work open. A Session started on a Task or PR that hasn't changed, for example from "Start Session", is Linked without waiting for the item to change. (e2e)
+- [ ] WORK-4.10 In an expanded row, each Linked Session is its own chip: its Harness icon, its name (the Session's title) and its Status colour (DS-5.1: a live Session's Status marker, from the Session sidebar's list, or the past marker for a past one). Several Linked Sessions are several chips, never "2 Sessions"; the most recently active come first (WORK-2.4's order), at most 8, then "+N older" as plain text when there are more. A chip is a button: a click selects a live Session or resumes a past one, as "Open Session" and "Resume" do (WORK-2.10), and its hover gives the Link's reason (WORK-4.5). Its accessible name says what it does and the Status: "Open fix-rounding, Busy" or "Resume fix-rounding, past". (e2e)
 
 ### WORK-5 Actions
 
@@ -88,10 +98,11 @@ Lookout joins ids that the Building blocks give it. It never extracts a task id 
 
 ### WORK-6 Open in the browser
 
-- [x] WORK-6.1 Every Task, PR and Review request row has an "Open in browser" button whose tooltip names it and its shortcut, `O`. (test)
+- [ ] WORK-6.1 An expanded Task, PR or Review request row has a labelled button that opens it in the browser: "Open in Fantastic" on a Task, "Open on GitHub" on a PR or Review request. Its tooltip names its shortcut, `O`. A collapsed row has no buttons. (test)
 - [x] WORK-6.2 A Task opens in Fantastic Productive at `https://app.fantastic.productive.io/109-productive/tasks/<task id>`, in a new browser tab. Never the old app at `app.productive.io`. Its Behaviour test checks the URL the new tab asks for, without loading it: the World aborts that request (TEST-1.7). (e2e)
 - [x] WORK-6.3 A PR or Review request opens its GitHub URL, as `tb-pr` gives it, in a new browser tab, checked as in WORK-6.2. (e2e)
 - [x] WORK-6.4 `O`, with focus in Work and not in a text field, and with no modifier, opens the selected row's item exactly as its button does, checked as in WORK-6.2. It doesn't move the selection, select a Session or open the launcher. It stands down while a modal is open. (e2e)
+- [ ] WORK-6.5 Every button in an expanded Work row, the chips and the "Open in browser" ones included, is labelled with a word, has a 20 px icon and a 28 px tall target, and its label is its accessible name. (manual)
 
 ### WORK-7 When a source can't be read
 
@@ -128,6 +139,8 @@ Lookout joins ids that the Building blocks give it. It never extracts a task id 
 - **Other Productive organizations:** the Task URL uses organization `109-productive`, as `tb-pr` does.
 - **Opening Tasks in the old app** (`app.productive.io`).
 - **Time tracking, estimates and bookings.**
+- **A Task's whole description, formatting, comments, subtasks or attachments in the row:** the expanded row shows the first three lines as plain text; the rest is one button away, in Fantastic.
+- **Acting on a click or a hover:** no click on a row, marker or hover card opens, resumes or starts anything (WORK-1.12).
 - **Notifications** when CI fails or a review request arrives.
 
 ### Later
@@ -150,24 +163,41 @@ Planned, but not in v1:
 ├───────────────┼──────────────────────────────────┼─────────────────────────┤
 │ Sessions      │ main pane (VIEW)                 │ (All)(Tasks)(PRs)       │
 │               │                                  │ Tasks · 9 · updated 2m  │
-│               │                                  │ ● Fix rounding… [▶] [↗] │
+│               │                                  │ ● Fix rounding…         │
 │               │                                  │   Acme · In progress    │
 │               │                                  │   #812 draft ✓          │
-│               │                                  │ ○ Write notes   [▶] [↗] │
+│               │                                  │ ○ Write notes           │
 │               │                                  │   Acme · Not started    │
 │               │                                  │   milestone · due Oct 24│
 │               │                                  │ PRs · 13 · updated 2m   │
 │               │                                  │ Mine                    │
 │               │                                  │ ● oak #812 draft ✓ 2d   │
-│               │                                  │   → Fix rounding in …[↗]│
-│               │                                  │   fig #77 ready ✗ 6d [↗]│
+│               │                                  │   → Fix rounding in …   │
+│               │                                  │   fig #77 ready ✗ 6d    │
 │               │                                  │ Review requests         │
-│               │                                  │   fig #90 · no CI[▶] [↗]│
+│               │                                  │   fig #90 · no CI       │
 ├───────────────┼──────────────────────────────────┤                         │
 │ usage (USAGE) │ composer and status line (VIEW)  │                         │
 └───────────────┴──────────────────────────────────┴─────────────────────────┘
 ```
 
+- **An expanded Task row (WORK-1.12, WORK-2.9, WORK-2.10).** The row stays where it was and grows downward; the rest of the list moves down, and the list scrolls to keep it in view:
+
+```
+│ ● Fix rounding in deal totals          │  ← selected, expanded
+│   Acme · In progress · due Oct 24      │
+│   Totals round half up on the invoice  │
+│   preview but half even on the PDF.    │
+│   Reproduce with deal 4 and a 3-line…  │
+│   PRs   ✓ oak #812 draft · 2d          │
+│   Sessions  [✳ fix-rounding ●] [◎ notes ○]│
+│   [▶ Open Session] [＋ Start Session]  │
+│   [↗ Open in Fantastic]                │
+│ ○ Write notes                          │
+```
+
+  - Lines: project, status and due date; the first three lines of the description; Linked PRs, one line each with its CI state; Linked Sessions as chips; the buttons, wrapping to a second line when they don't fit. A line with nothing to say is left out. ✳ ◎ stand for the Harness icons, ●/○ for the Status marker and the past marker; the sketch's `＋` stands for lucide's `Play`. The chip's Status colour is the marker's (DS-5.3).
+  - **An expanded PR row** (WORK-3.6) has the same shape: repo, number, age, CI and, in Mine, the state chip; "→ <Linked Task title>"; the Session chips; then "Open Session" or "Resume", "Review" (Review requests) and "Open on GitHub".
 - **One grid (SIDE-8):** the tab strip sits in the header row, where History's search field is today. History keeps its search field below the tab strip once there are two tabs. Work's filter sits in the same place.
 - **Filter (WORK-1.5):** a three-option segmented control, "All", "Tasks", "PRs". "PRs" covers both PR groups, Review requests included. Tasks come first, then PRs, as in the mock-up.
 - **A Task row (WORK-2.2):** its title, with Start Session and Open in Fantastic beside it; below, its project and status ("Acme · In progress"); and, only when it has either, a line with a "milestone" chip (the `Milestone` icon and the word, a neutral chip: DS-3.6) and its due date ("due Oct 24", with the year when it isn't this year's, its hover the full date). A field tb-prod didn't give is left out. Nothing is coloured by the due date. The Linked PR line (WORK-2.3) and the Session marker (WORK-2.4) come with Links.
@@ -177,15 +207,20 @@ Planned, but not in v1:
   - nothing: no Linked Session.
   - Its hover still lists each Link's reason (WORK-2.4), and it's hidden from screen readers: the row's words say it (DS-5.5).
   - The mock-up uses ● ○ as shorthand, and ✓ ✗ for the CI icons (`CircleCheck`, `CircleX`; `LoaderCircle` while running; `CircleDashed` for "no CI"; `CircleQuestionMark` for "CI unknown", whose hover says tb-pr couldn't read the PR's CI).
-  - [▶] is the action button (`Play`): "Start Session" on a Task, "Review" on a Review request. A PR in Mine has none. Its tooltip names its key: "Start Session (S)", "Review (R)".
-  - [↗] is "Open in browser" (`ExternalLink`), on every row. Its tooltip: "Open in Fantastic (O)" on a Task, "Open on GitHub (O)" on a PR.
-  - A row's buttons are for the mouse, with the design system's `sm` icon button's look (24 px, a 14 px icon, DS-7.2), since they can't be buttons inside an option. As in History, each section's rows are the options of one focusable listbox ("Tasks", "PRs"), each PR group a `group` in it, and an option holds nothing focusable: the keyboard acts on the selected row with Enter, `O`, `R` and `S`, and a screen reader hears those keys in the row's description ("S starts a Session on it, O opens it in Fantastic." on a Task). A row's name is its content, as History's rows' are: a PR's repo, number, chip, CI state, age and title; a Task's title, project, status, milestone chip and due date.
+  - The buttons are in the expanded row only (WORK-6.5), each a word beside a 20 px icon in a 28 px tall button:
+    - "Open Session" (`Play`) or "Resume" (lucide's `History`, as the past marker draws it), the first button, for the Linked Session WORK-2.4 picks;
+    - "Start Session" (`Play`) on a Task, "Review" (`Play`) on a Review request, tooltips "Start Session (S)" and "Review (R)";
+    - "Open in Fantastic" or "Open on GitHub" (`ExternalLink`), tooltips "Open in Fantastic (O)" and "Open on GitHub (O)".
+    - A Linked Session chip (WORK-4.10) is a button of the same height, in the Session sidebar row's look: the Harness icon, the Session's name, the Status marker.
+  - A row's buttons and chips are for the mouse, since they can't be focusable inside an option (Key decisions). As in History, each section's rows are the options of one focusable listbox ("Tasks", "PRs"), each PR group a `group` in it, and an option holds nothing focusable: the keyboard acts on the selected row with Enter, `O`, `R` and `S`, and a screen reader hears those keys in the row's description ("S starts a Session on it, O opens it in Fantastic." on a Task). A row's name is its content, as History's rows' are: a PR's repo, number, chip, CI state, age and title; a Task's title, project, status, milestone chip and due date; an expanded row adds `aria-expanded` and its details to its description.
   - ⟳ is Refresh (`RefreshCw`). While it's cooling down or GitHub is rate limited, it's disabled, and its hover says why and when it's back (WORK-8.2, WORK-8.4).
 - **Age colour (WORK-3.5):** a PR's age reads green under 3 days, amber from 3 to 10 days and red over 10 days, in the app's tokens with their light and dark values: `ok-text` for green, the context meter's warning colour `warning-text` (VIEW-5.5, the design system's warning family) for amber, and `destructive-text` for red. The two `-text` tokens are darker in light mode than `ok` and `destructive`, so the small age text keeps 4.5:1 contrast on a selected row. Exactly 3 and exactly 10 days are amber. An age shows whole days rounded down, so in practice "2d" and younger read green, "3d" to "9d" amber, and "10d" and older red. The text and its "Opened …" hover stay; a PR without an opening time (only tb-pr's `age_days`) keeps the muted colour.
-- **Row clicks (WORK-2.4):**
-  - The row selects its live Linked Session with the latest activity, or, with none live, resumes the past one with the latest activity.
-  - A row without a Linked Session does nothing; its buttons do.
-  - ↑/↓ and j/k move through the rows without acting; Enter acts like a click (HIST-2.7); `O` opens the row in the browser (WORK-6.4); `R` reviews a Review request (WORK-5.2); `S` starts a Session on a Task (WORK-5.1).
+- **Row clicks (WORK-1.12, WORK-1.13):**
+  - A click on a row, or Enter on a selected row, selects and expands it and does nothing else. Clicking the marker is clicking the row.
+  - Enter on an expanded row runs its first button: "Open Session", "Resume", or on a Task with no Linked Session "Start Session", and on a PR with none "Review" (Review requests) or "Open on GitHub".
+  - A collapsed row has no buttons, only its words and its Session marker; its keys work as before (below).
+  - ↑/↓ and j/k move through the rows and collapse the one they leave; Esc collapses the expanded row. `O` opens the row in the browser (WORK-6.4); `R` reviews a Review request (WORK-5.2); `S` starts a Session on a Task (WORK-5.1); all three on the selected row, expanded or not.
+  - A row without a Linked Session just expands; its buttons do the rest.
 - **Tab strip (WORK-1.7):** with focus on a tab, Refresh or Close, ↑/↓ and j/k go to the open panel, History's results or Work's rows, never to the Session sidebar. ←/→ move between the tabs and open the one they land on, focus staying on the tab strip; only the open tab is in the Tab order.
 - **Focus (WORK-1.7):** opening Work focuses the list that holds the selected row, else the first list, or Work itself while there's no list yet. When a list shows up while Work itself has focus, focus goes to the list that holds the selected row, else to the new list, unless focus has moved elsewhere meanwhile; a list showing up never moves the selection. Work itself has focus while nothing is listed, and after a click on a section's heading or the "Loading" line, or, in Safari and Firefox, which don't focus a button on click, on a filter button. ↑/↓ and j/k run on from the last Task into the PRs and back, and focus follows the selection into the list that holds it, so the list in focus always shows its selected row. Only that list is in the Tab order, as only the open tab is in the tab strip's; a list with no rows, such as PRs with only "Possibly out of date" marks (WORK-7.5), is in it while no list holds the selection. A click into the other list focuses it and selects the row clicked, or the list's first row for a click elsewhere in it, such as a group's heading; focus that reaches a list without a click in it moves no selection, and goes on to the list that holds it. A read that moves the selection into the other list (WORK-1.9) takes focus there with it. When a focused list's last row goes, focus goes to the other list, or back to Work, never to the page, where j/k would move the Session sidebar. The launcher that Review, Start Session, `R` or `S` opened gives focus back to the list that holds the selected row when it closes without a start; after a start, the new Session's row is selected, as after any start (LAUNCH-4.2).
 - **Shortcuts** (none with a modifier, all ignored in a text field or while a modal is open): `W` Work, `H` History, `O` open the selected row in the browser, `R` review the selected Review request, `S` start a Session on the selected Task. They join `N` (LAUNCH-1.1), `i` (VIEW-3.6), j/k (SIDE-5.1) and `[`/`]` (VIEW-1.11), and clash with none of them. `W`, `H`, `O`, `R` and `S` work with Caps Lock on. `O`, `R` and `S` act once per press: holding one down opens one tab or one launcher, not one per key repeat.
@@ -228,6 +263,7 @@ Planned, but not in v1:
     - Every other character is safe, so it's kept. `Query::to_query_string` percent-encodes every character of a value except `A-Z a-z 0-9 - . _ ~` (`urlencoding::encode`), and the key comes from the field alone (`build_field_path`). So `&`, `=`, `?` and `#` can't start another parameter or end the query; `%` and `+` arrive as themselves, never a space or a decoded `%2C`; `[` and `]` stay in the value, never the key. The email is a string in the FilterGroup's JSON, so quotes and a leading `-` never reach clap, and tb-prod resolves no names for a dotted field such as `assignee.email`. An `eq` on a person's email is an equality in Productive (`PersonFilter`, `where(email: …)`), case-insensitive per the database's collation, so `%`, `_` and `*` aren't wildcards there.
   - Fields used:
     - `id`, `attributes.title`, `due_date`, `last_activity_at`, `type_id` (3 is a milestone);
+    - `attributes.description` for the expanded row (WORK-2.9, WORK-2.11), read from the same call; see Select, then act, Description;
     - `relationships.project` → `included` project `name`;
     - `relationships.workflow_status` → `included` status `name` and `category_id` (1 not started, 2 started).
   - Pages hold 20 rows, with `meta.hasNextPage`. Lookout follows up to 5 pages (100 Tasks), one request each, one after another, each with its own 10 s timeout. A failure on any page fails the whole read (WORK-7.3): a partial list is never shown. A Task that moved to a later page while the pages were read shows once. After each page, the read stops when its email is no longer the saved one (WORK-2.8).
@@ -339,7 +375,7 @@ All Links are found on the server by matching ids and URLs Lookout already knows
       - `state`: `no-email` while no Productive email is saved (WORK-2.6), else as `PrSection`'s: `loading` (nothing read for the saved email yet), `ok`, `not-installed`, `signed-out` or `error`;
       - `reason` and `fix` as `PrSection`'s, never tb-prod's own text; `fix` is the build command (WORK-7.1, WORK-7.8) or `tb-prod config init` (WORK-7.2);
       - `stale` as `PrSection`'s, and only ever for a list read for the saved email (WORK-2.8); `fetchedAt`: when Lookout's read of the list shown ended, since tb-prod has no cache;
-      - `tasks`: most recently active first, as tb-prod gives them (WORK-2.1), each `{ id, title, project, status, statusCategory, dueDate, lastActivityAt, milestone, url, links }`: `project` and `status` names from `included`, or `null`; `statusCategory` `not-started` or `started` (category 1 or 2), else `null`; `dueDate` `YYYY-MM-DD` or `null`; `milestone` for `type_id` 3; `url` the Task URL built on the server (WORK-6.2); `links` is `{ prs, sessions, incomplete }` once its searches have run. `prs` holds `{ repo, number, url, chip, ci, sources }` for each Linked PR, and `sessions` holds each Linked Session with the Link's `reason` (WORK-2.3, WORK-2.4, WORK-4.4, WORK-4.5). `incomplete` is true when its search or a Linked PR's search returned 200 Sessions (WORK-4.8).
+      - `tasks`: most recently active first, as tb-prod gives them (WORK-2.1), each `{ id, title, project, status, statusCategory, dueDate, lastActivityAt, milestone, description, url, links }`: `project` and `status` names from `included`, or `null`; `statusCategory` `not-started` or `started` (category 1 or 2), else `null`; `dueDate` `YYYY-MM-DD` or `null`; `milestone` for `type_id` 3; `description` the plain text WORK-2.11 describes, or `null`; `url` the Task URL built on the server (WORK-6.2); `links` is `{ prs, sessions, incomplete }` once its searches have run. `prs` holds `{ repo, number, url, chip, ci, sources }` for each Linked PR, and `sessions` holds each Linked Session with the Link's `reason` (WORK-2.3, WORK-2.4, WORK-4.4, WORK-4.5). `incomplete` is true when its search or a Linked PR's search returned 200 Sessions (WORK-4.8).
     - `PrSection` is `{ state, reason, fix, stale, fetchedAt, mine, reviewRequests, marks: { mine, reviewRequests }, taskIds }`:
       - `state`: `loading` (nothing read yet), `ok`, `not-installed`, `signed-out` or `error`, from the last read;
       - `reason`: why the last read failed, as a plain sentence that says what to do (UX, Errors), never tb-pr's own text, else `null`; `fix`: the install command or `gh auth login`, else `null`;
@@ -385,10 +421,30 @@ All Links are found on the server by matching ids and URLs Lookout already knows
 - **Right sidebar:** a generic container with an active tab, History or Work (`RightSidebar.tsx`), its layout kept in this browser under `lookout.right` (`web/src/lib/right-sidebar.ts`), read from HIST's old `lookout.history` when that key is missing or unreadable. Work's filter (`all`, `tasks` or `prs`) is stored next to the active tab. Its tab strip is the sidebar's header cell (HIST-1.1, SIDE-8.1).
 - **Work's rows** (`web/src/lib/work.ts`): `visibleRows` gives the visible sections' rows top to bottom, Tasks then PRs, each a Task or a PR with a key stable across reads (`task:<id>`, `pr:<url>`) for the selection (WORK-1.9). The Tasks section reads `TaskSection` as the PRs section reads `PrSection`: a list while the last read succeeded or one kept from before is `stale`, "Loading" while `loading`, the WORK-2.6 message for `no-email`, and the failure box otherwise.
 
+### Select, then act (WORK-1.12 to WORK-1.15, WORK-2.9 to WORK-2.11, WORK-3.6, WORK-4.10, WORK-6.5)
+
+From Dario's testing (2026-10-23). Grilled 2026-10-23; the answers are in Key decisions.
+
+- **Where each field comes from.** Everything in an expanded row but a Task's description is already in the snapshot:
+  - Task: `project`, `status`, `dueDate` and `links.prs` (`repo`, `number`, `chip`, `ci`) are on `WorkTask`; `links.sessions` has `sessionId`, `harness`, `title`, `live`, `modifiedAt` and `reason`.
+  - PR: `repo`, `number`, `ageDays`, `createdAt`, `ci`, `chip`, `links.tasks` (`title`, `sources`) and `links.sessions` are on the PR row.
+  - A chip's Status comes from the Session sidebar's list, as the marker does (DS-5.3), so it follows the Session live.
+- **Description.** `server/work.ts` doesn't read it today: `parseTasksPage` takes only `title`, `due_date`, `last_activity_at`, `type_id`, the project and the status. Confirmed live 2026-10-23 (below).
+  - The query is `tb-prod query tasks … --include project,workflow_status`, with no sparse-fields option, so each Task's `attributes` come back whole. Productive's API gives a task's `description` there as HTML. It does, so the read costs no extra request: the server takes `attributes.description`, strips the tags (block ends become line breaks, entities decoded, no tag or script survives), collapses blank lines and cuts to 600 characters; the UI shows the first three lines. Only that text goes into the snapshot, never the HTML.
+  - Cost: the pages get larger (a long description is a few KB; 100 Tasks, a few hundred KB at most, parsed once per read, every 5 minutes). The snapshot grows by at most 600 characters a Task, 60 KB for 100, sent only when something changed.
+  - Checked 2026-10-23 against a live `tb-prod query tasks` with Lookout's own filter and includes: `attributes.description` is there (7 of Dario's 8 Tasks had one), 0.39 s for the call. So there is no read per expand.
+- **Expansion state** lives in the browser, in Work's own state next to the selection: the key of the one expanded row (`task:<id>` or `pr:<url>`, WORK-1.9), or none. It isn't stored (WORK-1.14). Selecting by click, Enter or a key sets it as WORK-1.12 says; a row that leaves the list clears it.
+- **The first button** is computed from the row's Linked Sessions by one function used for the Session marker (WORK-2.4), the first button and Enter: the live one with the latest `modifiedAt`, else the past one with the latest; a tie goes to the later `createdAt`. `onOpenSession` already selects a live Session or resumes a past one (`WorkPanel`'s `open`); chips and buttons call it with their Session. Nothing calls it from a row click any more.
+- **Scroll.** After an expansion, the row's element is scrolled into view with `block: 'nearest'`, so the list moves only when the row would fall below or above the visible part. The main pane isn't touched: the selected Session in the Session sidebar doesn't change.
+- **Keys.** The list's key handler (`navRef`, WORK-1.7) gets Esc (collapse) and Enter's two meanings. Esc is taken only when focus is in Work or on its tab strip and a row is expanded, so it never reaches a modal or the composer's own Esc (VIEW-3.6).
+- **Buttons.** A labelled button with a 20 px icon and a 28 px target isn't in the design system: DS-7.1's sizes are 24 px with a 14 px icon and 28 px with a 16 px one, and DS-7.4 says every icon in a button is 14 or 16 px. The change adds one size to `components/ui/` (an icon and a word, 28 px tall, 20 px icon) and amends DS-7 in the same change (AGENTS.md; Dependencies). Chips reuse it with `SessionMarker` and `HarnessIcon` (DS-5.1).
+- **History** does the same on its side: HIST-2.9 and HIST-3.5. The two lists share the pattern (select and expand, Esc, first button on Enter) but not the component, since a Work row and a History result hold different things; a shared hook for the key handling is fair to extract when the second one is built (Pattern before building).
+
 ### Dependencies
 
 - **tb-prod 1.2.0 or later, built from cli-toolbox's `main`,** for every Tasks criterion: no release has `folder_status` (Sources, Versions), and `install.sh` no longer installs tb-prod. WORK-7.1's install line for it is `CARGO_NET_GIT_FETCH_WITH_CLI=true cargo install --git https://github.com/productiveio/cli-toolbox --branch main --locked --root ~/.local tb-prod`, which puts it in `~/.local/bin`, where Lookout looks (Binaries); the repo is private, so cargo fetches through the git CLI and its GitHub sign-in.
 - **tb-pr 0.4.0 or later** (Gap 1) for WORK-4.1, the PR → Task Links in WORK-2.3 and WORK-2.4, and Review requests' CI in WORK-3.3. An older tb-pr still reads: its PRs have no Task links, and Work says once that they need a newer `tb-pr` (WORK-4.1).
+- **Design system amendment** (DS-7.1, DS-7.4) for WORK-6.5: a button with a word and a 20 px icon in a 28 px target. DS-7.1 and DS-7.4 are amended and unticked (2026-10-23), so DS is In Progress until the size is built (PLAN item 2).
 - **World fakes** (TEST) for the `(e2e)` criteria:
   - **fake `tb-prod` and `tb-pr`**, which a World may provide next to `claude`, `codex`, `tb-jev` and `curl` (TEST-1.2 and TEST-1.5, since 2026-10-19), for every `(e2e)` criterion here but WORK-1.11 and WORK-2.5. WORK-7.1 declares them absent. Built (`e2e/fakes/`):
     - **fake `tb-prod`**: answers `query tasks` with the Tasks declared for the email in its filter, as JSON:API pages, or with a declared failure (no config, an `api_error` with status 401 or 403, a timeout). It logs each argv and fails the test on any other subcommand, and on any query but the one under Sources: that filter exactly, sorted by `last_activity_at`. Where tb-prod would refuse the call itself (clap's usage error, `invalid_filter`), it prints what tb-prod prints. So a change to the Tasks filter is a change to the fake, checked against tb-prod's schema.
@@ -407,6 +463,10 @@ All Links are found on the server by matching ids and URLs Lookout already knows
 - **Stale Session times can hide the opener:** tb-session takes a Claude Code Session's `created_at` and `modified_at` from Claude Code's `sessions-index.json` when that has them, before the Transcript's own times (`index/builder.rs`). When that index lags the Transcript, for example after the Session was resumed, the true opener's last activity can look older than the PR, and the life-span condition (WORK-4.2) drops it. The PR then gets another Session as its opener, or none. The hover's "probably" covers it, and Gap 2 fixes it with the `gh pr create` result.
 - **Cut first prompts in older Sessions:** tb-session prefers the `firstPrompt` in Claude Code's `sessions-index.json` to the Transcript's own (`index/builder.rs`), and Claude Code cut that at 200 characters plus "…" (33 of the 210 entries on this Mac). "…" ends a URL under WORK-4.7, so a URL cut inside its number reads as a shorter one, and one past the cut isn't seen: such a Session can be "started on" the wrong PR or Task, miss the one it was started on, or count as an opener candidate (WORK-4.2). Those index files haven't been written since 2026-03, so only Sessions from before then are affected.
 - **Token matching in tb-session:** a Session that has the PR's URL tokens with other punctuation between them counts as mentioning it. That's rare, and harmless for "started on", which checks the first prompt literally.
+- **Chips and buttons are mouse-only:** they can't be focusable inside a listbox option (UX). From the keyboard, Enter reaches the first button, and `O`, `S` and `R` the rest of a row's actions, but a second or third Linked Session can be reached only with the mouse. Key decisions.
+- **A Task's description may need a second read** if tb-prod doesn't return it in a list (Select, then act, Description).
+- **Linked Sessions beyond 8** show as "+N older" text, not chips (WORK-4.10).
+- **Behaviour tests that open or resume a Session** (WORK-1.15, WORK-2.10, WORK-3.6, WORK-4.10) need the Fake Harnesses (TEST-1.4), as WORK-5.1 does; until then they're covered by component and route tests and stay unticked.
 
 ### Key decisions
 
@@ -429,6 +489,27 @@ All Links are found on the server by matching ids and URLs Lookout already knows
 - **"CI unknown" apart from "no CI"**: tb-pr 0.4.0 tells a failed check-runs read from a PR without CI, and only the first is worth a Refresh; both stay grey, so neither reads as passing.
 - **One feature, WORK, built PRs → Tasks → Links, with a filter**: the panel, the poller and the Links are shared, and one code keeps the criteria in one place; the filter lets you look at one half at a time.
 - **Links by id, no fuzzy matching on titles**: a wrong Link costs more than a missing one.
+- **A click selects and expands, and never acts** (Dario, 2026-10-23): a click that selected or resumed a Session did so by accident, and a Task's details couldn't be read first. Every action is a labelled button, a chip, or Enter on a row already expanded.
+- **Expand in place, not in the main pane or a hover card**: the main pane keeps showing your Session while you read a Task, and a hover card can't hold buttons you click.
+- **One row expanded at a time**: two open rows push the list past the panel's height, and what you're looking at is the selected row.
+- **Enter on an expanded row runs its first button**: select and act stay two keys, as a click and a button press are two clicks.
+- **Linked Sessions are separate chips, not "2 Sessions"**: each is a place you may want to go, and a count hides which.
+- **Collapsed rows have no buttons**: the small ones were the ones hit by accident, and `O`, `S` and `R` still act on a collapsed row.
+- **Replaces "the row selects its Session"**: WORK-2.4's old rule made the row the button for the most-wanted action. The same Session is now behind the first button and Enter, so the common path is still two steps.
+- **The Task description comes from the `query tasks` read, with no read of its own (WORK-2.11)**: checked 2026-10-23: `tb-prod query tasks` with Lookout's own filter and includes returns `attributes.description` (7 of Dario's 8 Tasks had one; the call took 0.39 s), so there is no per-expand `get`, no new route and no argv entry.
+- **The description is plain text, tags stripped on the server, 600 characters, 3 lines in the UI (WORK-2.11)**: Productive's descriptions are HTML, and rendering it would need a sanitizer Lookout doesn't have (WORK-7.7). The cost is that a list or table reads flat.
+- **Collapsed rows keep no button (WORK-6.1)**: the small buttons are the accidental click's target, and `S`, `R` and `O` act on a collapsed selected row. The cost is that "Start Session" takes two steps with the mouse (expand, then press).
+- **Chips and buttons are mouse-only, Enter takes the first button (WORK-1.7)**: Work's and History's rows are `option`s of one `listbox` that holds nothing focusable, and a Tab stop inside would change that model for both lists. A focusable group after the option is a larger rework of the focus rules, better done once for both lists (Known gaps).
+- **"Open Session" names the Session WORK-2.4 already picks, with no second "Resume" button (WORK-2.4)**: the live one with the latest activity, else the past one with the latest; it's the rule the row click had and needs no new tie-break. The other Sessions are chips.
+- **At most 8 chips, newest first, then "+N older" as text**: a search returns up to 200 Sessions (WORK-4.8), and a Task's PRs add theirs; a wrapped line of chips is readable, a hundred isn't.
+- **An expanded row survives a refresh while it's in the list, not a reload (WORK-1.14)**: WORK-1.9 keeps the selection that way, and a Refresh every 5 minutes collapsing the row you're reading would be a bug.
+- **Esc collapses only with focus in Work or on its tab strip and a row expanded (WORK-1.12)**: VIEW-3.6 uses Esc to leave the composer, and a modal closes on Esc, so a global Esc would fight both.
+- **The 20 px icon is one new button size in `components/ui/`, with DS-7.1 and DS-7.4 amended in the same change (WORK-6.5)**: DS-7.4 says every button icon is 14 or 16 px and a guard test enforces it (DS-7.2); `md` with a word and a 16 px icon would go against what Dario asked for.
+- **The row shows "Resuming…" in place, on the button and the row, and stays expanded (WORK-2.10)**: HIST-3.1 already shows "Starting…" in the sidebar, and a failure needs a place to show.
+
+## Open questions
+
+None.
 
 ## Changelog
 
@@ -462,3 +543,5 @@ All Links are found on the server by matching ids and URLs Lookout already knows
 - 2026-10-22: Design system (DS-3.6): the CI-running spinner is `muted-foreground` instead of Busy's blue (WORK-3.2).
 - 2026-10-22: Design system (DS-4 to DS-8): the Linked Sessions' marker is the Session marker: a live one's Status, the most urgent of the live Links', from the Session sidebar's list, or the past marker (DS-5.3), which closes DS-3.6 here; it stays hidden from screen readers (DS-5.5). Errors and notes are Alerts with commands in a CommandBlock (DS-4, DS-8.2), the chips are Chips (draft muted, ready and milestone neutral, approved ok, "old" info; DS-8.3), a header's "Loading…" a Loading (DS-6.3), and a row's buttons take the `sm` icon button's look (DS-7.2). The words stay (DS-4.3).
 - 2026-10-22: Design system review fixes, round 1 (DS-5.3): a live Linked Session that the Session list doesn't have yet or no longer has shows the Unknown marker until the next Work refresh, not the past marker. "Possibly out of date" stays quiet (`role="presentation"`), now pinned by a guard (DS-4.2).
+- 2026-10-23: Select, then act, from Dario's testing: a click on a row selected or resumed its Session by accident, and a Task's details couldn't be read first. A click, or Enter, now selects and expands the row in place, and every action is a labelled button, a Linked Session chip, or Enter on an expanded row. Added WORK-1.12 to WORK-1.15 (expand, Esc, keys, scroll), WORK-2.9 to WORK-2.11 (a Task's details, buttons and where its description comes from), WORK-3.6 (a PR's), WORK-4.10 (chips) and WORK-6.5 (button size). Amended and unticked WORK-1.7, WORK-2.4, WORK-3.4 and WORK-6.1, whose meaning changed (Enter and a click no longer act; the Open in browser button is in the expanded row). UX: an expanded row's sketch and the buttons. Technical approach: Select, then act. Open questions: 10, the first blocking (does tb-prod return `description`?). Not grilled. HIST's matching change: HIST-2.7, HIST-2.9, HIST-2.10, HIST-3.1 to HIST-3.3 and HIST-3.5.
+- 2026-10-23: Dario answered the ten open questions, all as recommended; folded in as Key decisions with their reasons. Question 1 is settled by a live check: `tb-prod query tasks` with Lookout's own filter and includes returns `attributes.description` (7 of 8 Tasks had one; 0.39 s), so the description comes from the same query and the per-expand `get` fallback is gone from the criteria and the Technical approach. The 20 px icon: DS-7.1 and DS-7.4 amended and unticked, DS back to In Progress. Open questions: none.

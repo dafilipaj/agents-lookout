@@ -1,9 +1,9 @@
 ---
 title: "Design system"
 code: "DS"
-status: "Done"
+status: "In Progress"
 created: "2026-10-22"
-updated: "2026-10-22"
+updated: "2026-10-23"
 ---
 
 # Design system
@@ -90,10 +90,10 @@ The design review's suggestion 4.
 
 Fixed sizes, so a target never shrinks under 24 px.
 
-- [x] DS-7.1 `IconButton` in `components/ui/icon-button.tsx` has two sizes: `sm`, a 24 px box with a 14 px icon, for buttons inside a line or a row; `md`, a 28 px box with a 16 px icon, for a column's header and toolbars. Its accessible name is a required prop, and its tooltip says the same, with the key when there is one. (test)
+- [ ] DS-7.1 `IconButton` in `components/ui/icon-button.tsx` has two sizes: `sm`, a 24 px box with a 14 px icon, for buttons inside a line or a row; `md`, a 28 px box with a 16 px icon, for a column's header and toolbars. Its accessible name is a required prop, and its tooltip says the same, with the key when there is one. One more size is for a button with a word beside its icon (the row buttons of Work, WORK-6.5, and History, HIST-3.6): a 28 px tall target with a 20 px icon. (test)
 - [x] DS-7.2 A guard test fails on a `Button` with an `icon…` size outside `components/ui/`, on an `IconButton` whose `className` sets a size, height or width, and on a `<button>` or `<Button>` that holds only an icon (so sized by hand, as `<Button size="xs" className="size-6">`), except the listed ones (Technical approach). Work's row buttons, which can't be focusable inside an option (WORK UX, "Markers and buttons"), take the `sm` look from `iconButtonVariants`. (test)
 - [x] DS-7.3 The status line's text is `meta` (12 px). Its model and Effort menus (VIEW-6, VIEW-7) are 24 px tall buttons with 4 px of padding on each side, and the line stays 28 px tall. (test)
-- [x] DS-7.4 Seen live: icon buttons side by side are 4 px apart, and a Close button sits 8 px from its neighbour, so the right sidebar's Refresh and Close are hard to mix up. Every icon inside a button is 14 or 16 px. (manual)
+- [ ] DS-7.4 Seen live: icon buttons side by side are 4 px apart, and a Close button sits 8 px from its neighbour, so the right sidebar's Refresh and Close are hard to mix up. Every icon inside a button is 14 or 16 px, except the 20 px one in the labelled-button size (DS-7.1). (manual)
 
 ### DS-8 Shared pieces that repeat
 
@@ -357,3 +357,4 @@ None.
 - 2026-10-22: DS-9 to DS-11 built: the Session list takes keyboard focus (DS-9), a Busy marker and the "Working…" dot pulse only for 10 s after the change (DS-10), and the terminal preview's height is kept per Session (DS-11). Every `(test)` criterion is ticked; DS stays In Progress until Dario checks the `(manual)` ones (DS-1.3, 3.7, 4.4, 7.4, 9.3, 11.4). Changed in building: DS-11.1 says what the height measures, the whole preview, its Terminal row included, which makes the minimum 115 px; DS-11.3: a Codex Session's height follows it when its id changes to its session id, since `SessionRow.id` does; the handle shows only while the preview is open, and takes ↑/↓ for itself so the Session sidebar doesn't move too; a pulse ends at the app clock's first tick after 10 s; Work's marker for several Linked Sessions pulses by the latest Busy one. SIDE and VIEW amended.
 - 2026-10-22: DS slice 3 review fixes. DS-11.1: the default is 285 px, not 256, so the default terminal text area stays as tall as before the preview was resizable (the 256 px now includes the Terminal row's 29 px, which the first build had silently taken from the text). DS-11.2: the maximum also holds to the content row less the chat's 96 px, so the value and a drag match what's shown; a cancelled drag goes back. DS-11.5: with storage blocked the handle still resizes for the page's life, and junk inside a valid map is cleared by the next prune. DS-10.1: the pulse's phase comes from the real time, so a Session's markers pulse in step. DS-10.1 note: a Codex Session first seen after a server restart, or when it gets its session id, takes its Transcript's time as its Status start (`monitor.ts`), so a long-Busy one can pulse again once.
 - 2026-10-23: Dario looked at the manual criteria (DS-1.3, 3.7, 4.4, 7.4, 9.3, 11.4) in the live app and found them as written; ticked. Done: every criterion is ticked.
+- 2026-10-23: Amended from Select, then act (WORK-6.5, HIST-3.6; Dario's answers of the same day): DS-7.1 gains one button size, a word beside a 20 px icon in a 28 px tall target, and DS-7.4 allows that 20 px icon. Both unticked until the size is built, so DS is In Progress again.
