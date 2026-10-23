@@ -16,19 +16,7 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
 
 ## Library: everything Sessions produced, searchable (LIB)
 
-- **What:**
-  - One place for what Sessions created: local files (Markdown, HTML, `output/`), Artifacts published on claude.ai and Backyard Shares.
-  - Searchable, and each item links back to the Session that made it, so a click can open or resume it.
-- **How (proposal):**
-  - Don't scan the disk; mine the Transcripts.
-    - Every `Write`, Artifact publish and `tb-backyard share upload` call is in them, together with its path or URL.
-    - Indexing those gives the Session link for free and covers Codex too.
-  - It belongs in tb-session (decision 0005): an outputs table next to its search index, `tb-session outputs --json`. Lookout then only renders it.
-  - Backyard's own list (`tb-backyard share list --json`) can confirm that a share still exists.
-- **Open:**
-  - Is there an API that lists claude.ai Artifacts? If not, only the publish calls in Transcripts tell us about them.
-  - Local files move or get deleted, so each item needs an existence check.
-  - Scratchpad files under `/private/tmp` are gone after a reboot.
+- **Specced:** [LIB](features/library/SPEC.md), Draft, 2026-10-23. Its three open points are answered there: claude.ai has no Artifact list but the Transcripts (Technical approach, Source); existence is Lookout's per-page stat (LIB-2.9); scratchpad files are in while they exist and hidden once gone (Key decisions). Slices 2 and 3 are under its Later.
 - **Added:** 2026-10-17.
 
 ## What's loaded into a Session (CTX)

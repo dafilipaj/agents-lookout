@@ -24,6 +24,8 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Host**: A machine that runs Sessions. For now only this Mac.
 
+**Library**: The right-sidebar tab, next to History and Work, that lists Outputs. See the LIB spec.
+
 **Link**: A connection between a Task, a PR and a Session, found by id: a task id in a PR's branch or body (from `tb-pr`), the Session inferred to have opened a PR, or a Session started on a PR or Task (its URL in the first prompt). Each Link records why it exists. See the WORK spec.
 
 **Local server**: A process listening on a TCP port on this machine. It belongs to a Worktree, and through it to a Session, when its working directory is inside that Worktree.
@@ -31,6 +33,8 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 **Mark**: A bookmark on the rail beside the chat's scroll bar for a prompt you sent, a Subagent result or a question; clicking it scrolls the chat to that entry.
 
 **Needs you**: The Status of a Session that is blocked on you: a permission prompt, a question, or input.
+
+**Output**: A document file, an Artifact on claude.ai or a Backyard Share that a Session, or one of its Subagents, produced, as `tb-session outputs` mines it from the Transcripts. A file counts only when it has a document extension and no git repo owns it. See the LIB spec.
 
 **PR**: An open GitHub pull request in a `productiveio/*` repo that you opened, or that is a Review request to you, as `tb-pr` lists it.
 
