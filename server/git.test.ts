@@ -26,9 +26,10 @@ afterAll(() => rmSync(root, { recursive: true, force: true }));
 
 describe('reading where a Session works', () => {
   it('SIDE-2.2: in the main checkout, the location is the branch', async () => {
-    expect(await readGitLocation(run, join(root, 'shop'))).toEqual({ repo: 'shop', worktree: null, branch: 'main' });
+    const main = { repo: 'shop', worktree: null, branch: 'main', commonDir: join(root, 'shop', '.git'), defaultBranch: 'main' };
+    expect(await readGitLocation(run, join(root, 'shop'))).toEqual(main);
     // A subdirectory belongs to the same checkout.
-    expect(await readGitLocation(run, join(root, 'shop', 'src'))).toEqual({ repo: 'shop', worktree: null, branch: 'main' });
+    expect(await readGitLocation(run, join(root, 'shop', 'src'))).toEqual(main);
   });
 
   it('SIDE-2.2: in a linked Worktree, the location is the Worktree name, and the repo is the main repo', async () => {
@@ -36,6 +37,51 @@ describe('reading where a Session works', () => {
       repo: 'shop',
       worktree: 'shop-rates',
       branch: 'feature/rates',
+      commonDir: join(root, 'shop', '.git'),
+      defaultBranch: 'main',
+    });
+  });
+
+  describe('SIDE-2.8: the default branch', () => {
+    const defaultOf = async (dir: string) => (await readGitLocation(run, dir))?.defaultBranch;
+    const init = (name: string, branch: string) => {
+      const dir = join(root, name);
+      mkdirSync(dir);
+      git(dir, 'init', '-q', '-b', branch);
+      git(dir, 'commit', '-q', '--allow-empty', '-m', 'init');
+      return dir;
+    };
+
+    it('SIDE-2.8: origin/HEAD wins, even over a local main, in a clone and in its Worktrees', async () => {
+      const upstream = init('up-develop', 'develop');
+      git(upstream, 'branch', 'main');
+      const clone = join(root, 'clone-develop');
+      execFileSync('git', ['clone', '-q', upstream, clone]);
+      git(clone, 'branch', 'main');
+      git(clone, 'worktree', 'add', '-q', '-b', 'fix/x', join(root, 'clone-develop-wt'));
+      expect(await defaultOf(clone)).toBe('develop');
+      expect(await defaultOf(join(root, 'clone-develop-wt'))).toBe('develop');
+      // The name keeps its own slashes: only the `origin/` goes.
+      git(clone, 'update-ref', 'refs/remotes/origin/release/2', 'HEAD');
+      git(clone, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/release/2');
+      expect(await defaultOf(clone)).toBe('release/2');
+    });
+
+    it('SIDE-2.8: without origin/HEAD, a local main, else a local master', async () => {
+      expect(await defaultOf(init('only-main', 'main'))).toBe('main');
+      expect(await defaultOf(init('only-master', 'master'))).toBe('master');
+      const both = init('both', 'master');
+      git(both, 'branch', 'main');
+      expect(await defaultOf(both)).toBe('main');
+    });
+
+    it('SIDE-2.8: with neither, it is unknown (null), and nothing is written to the repo', async () => {
+      const dir = init('trunk-only', 'trunk');
+      const before = execFileSync('git', ['-C', dir, 'config', '--list']).toString();
+      expect(await defaultOf(dir)).toBeNull();
+      expect(await defaultOf(dir)).toBeNull();
+      expect(execFileSync('git', ['-C', dir, 'config', '--list']).toString()).toBe(before);
+      expect(() => git(dir, 'symbolic-ref', '-q', 'refs/remotes/origin/HEAD')).toThrow();
     });
   });
 
@@ -43,6 +89,36 @@ describe('reading where a Session works', () => {
     const loc = await readGitLocation(run, join(root, 'shop-detached'));
     expect(loc?.worktree).toBe('shop-detached');
     expect(loc?.branch).toMatch(/^[0-9a-f]{7,}$/);
+  });
+
+  it('SIDE-2.9: a git read that times out or can\'t run throws, so it is not mistaken for "outside git"', async () => {
+    const timedOut = vi.fn(async () => {
+      throw Object.assign(new Error('git timed out'), { timedOut: true, code: null });
+    });
+    await expect(readGitLocation(timedOut, '/x')).rejects.toThrow('timed out');
+    const missing = vi.fn(async () => {
+      throw Object.assign(new Error('spawn git ENOENT'), { code: 'ENOENT' });
+    });
+    await expect(readGitLocation(missing, '/x')).rejects.toThrow('ENOENT');
+    const notGit = vi.fn(async () => {
+      throw Object.assign(new Error('exited with 128'), { code: 128 });
+    });
+    expect(await readGitLocation(notGit, '/x')).toBeNull();
+  });
+
+  it('SIDE-2.8: the default branch is read with one git process, argv only', async () => {
+    const calls: string[][] = [];
+    const runner = vi.fn(async (_f: string, args: readonly string[]) => {
+      calls.push([...args]);
+      if (args.includes('--git-dir')) return '/r/.git\n/r/.git\n/r\n';
+      if (args.includes('for-each-ref')) return 'refs/heads/main \nrefs/remotes/origin/HEAD refs/remotes/origin/develop\n';
+      return 'main\n';
+    });
+    expect((await readGitLocation(runner, '/r'))?.defaultBranch).toBe('develop');
+    expect(calls.filter((a) => a.includes('for-each-ref'))).toEqual([
+      ['-C', '/r', 'for-each-ref', '--format=%(refname) %(symref)', 'refs/remotes/origin/HEAD', 'refs/heads/main', 'refs/heads/master'],
+    ]);
+    expect(calls.some((a) => a.includes('symbolic-ref') || a.includes('--verify'))).toBe(false);
   });
 
   it('tolerates non-git and missing directories', async () => {
@@ -96,13 +172,13 @@ describe('GitCache', () => {
   it('caches per directory and refreshes after 30 s', async () => {
     let now = 0;
     let branch = 'main';
-    const read = vi.fn(async () => ({ repo: 'r', worktree: null, branch }));
+    const read = vi.fn(async () => ({ repo: 'r', worktree: null, branch, commonDir: '/r/.git', defaultBranch: 'main' }));
     const onChange = vi.fn();
     const cache = new GitCache({ read, onChange, now: () => now });
 
     expect(cache.get('/a')).toBeNull(); // not read yet
     await vi.waitFor(() => expect(onChange).toHaveBeenCalledTimes(1));
-    expect(cache.get('/a')).toEqual({ repo: 'r', worktree: null, branch: 'main' });
+    expect(cache.get('/a')).toEqual({ repo: 'r', worktree: null, branch: 'main', commonDir: '/r/.git', defaultBranch: 'main' });
     expect(read).toHaveBeenCalledTimes(1);
 
     now = 29_000;
@@ -114,6 +190,40 @@ describe('GitCache', () => {
     cache.get('/a');
     await vi.waitFor(() => expect(onChange).toHaveBeenCalledTimes(2));
     expect(cache.get('/a')?.branch).toBe('other');
+  });
+
+  it('SIDE-2.9: a directory is known after a read that succeeded (outside git too), not while pending or after a failure; a failure keeps the last good value', async () => {
+    let now = 0;
+    let fail = true;
+    const loc = { repo: 'r', worktree: null, branch: 'main', commonDir: '/r/.git', defaultBranch: 'main' };
+    const read = vi.fn(async () => {
+      if (fail) throw new Error('timed out');
+      return loc;
+    });
+    const onChange = vi.fn();
+    const cache = new GitCache({ read, onChange, now: () => now });
+    expect(cache.known('/a')).toBe(false);
+    cache.get('/a');
+    expect(cache.known('/a')).toBe(false); // pending
+    await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(1));
+    await Promise.resolve();
+    expect(cache.known('/a')).toBe(false); // failed
+    now = 30_000;
+    fail = false;
+    cache.get('/a');
+    await vi.waitFor(() => expect(onChange).toHaveBeenCalledTimes(1));
+    expect(cache.known('/a')).toBe(true);
+    fail = true;
+    now = 60_000;
+    expect(cache.get('/a')).toEqual(loc);
+    await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(3));
+    await Promise.resolve();
+    expect(cache.known('/a')).toBe(true);
+    expect(cache.get('/a')).toEqual(loc);
+    // Outside git is a successful read.
+    const outside = new GitCache({ read: async () => null, onChange: () => {}, now: () => now });
+    outside.get('/b');
+    await vi.waitFor(() => expect(outside.known('/b')).toBe(true));
   });
 
   it('forgets directories nobody asked about for 5 minutes', async () => {

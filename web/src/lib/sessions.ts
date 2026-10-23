@@ -92,3 +92,14 @@ export function location(row: SessionRow): { kind: 'worktree' | 'branch'; name: 
   if (row.git.branch) return { kind: 'branch', name: row.git.branch };
   return null;
 }
+
+/**
+ * SIDE-2.12: the full location, whether the row shows it or not: `work · main`,
+ * `work · Worktree crm-rates (branch fix/rates)`; outside git the working directory's full path.
+ */
+export function locationTip(row: SessionRow): string | null {
+  const { git } = row;
+  if (!git) return row.cwd;
+  if (git.worktree) return `${git.repo} · Worktree ${git.worktree}${git.branch ? ` (branch ${git.branch})` : ''}`;
+  return git.branch ? `${git.repo} · ${git.branch}` : git.repo;
+}

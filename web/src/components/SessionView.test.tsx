@@ -5,6 +5,8 @@ import { ESC_POINTER } from '@/lib/answers';
 import { SaveError } from '@/lib/client';
 import { COPY_FEEDBACK_MS } from '@/lib/copy';
 import { contextLevel } from '@/lib/sessions';
+import css from '@/index.css?raw';
+import { colourOf, contrast, paint, solid, themeTokens } from '@/test/contrast';
 import { renderApp, row, rowEl, settings } from '@/test/helpers';
 
 const header = () => screen.getByRole('banner', { name: 'Session' });
@@ -12,10 +14,93 @@ const drawerToggle = () => screen.getByRole('button', { name: /Terminal/ });
 const statusLine = () => screen.getByRole('group', { name: 'Status line' });
 
 describe('Session view header', () => {
+  it('VIEW-8.3: the running and done text keep 4.5:1 on the status line in light and dark mode', () => {
+    const themes = themeTokens(css);
+    const app = renderApp('/s/a');
+    app.snapshot([row({ id: 'a' })]);
+    for (const subagents of [{ running: 2, finished: 1 }, { running: 0, finished: 3 }]) {
+      app.emit({ type: 'sessions', upsert: [row({ id: 'a', subagents })], remove: [] });
+      const line = statusLine();
+      const bg = colourOf(line.className, 'bg')!;
+      const text = colourOf(line.querySelector('[data-field="subagents"]')!.className, 'text')!;
+      expect(bg).toEqual({ token: 'muted', alpha: 0.3 });
+      for (const mode of ['light', 'dark'] as const) {
+        const t = themes[mode];
+        const under = paint(t, bg.token, solid(t, 'background'), bg.alpha);
+        const ratio = contrast(paint(t, text.token, under, text.alpha), under);
+        expect(Number.isFinite(ratio)).toBe(true);
+        expect(ratio, `${mode} ${text.token}`).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
+
+  it('VIEW-8.1: running Subagents are the last status-line part in Busy blue, whatever the main thread Status', () => {
+    const app = renderApp('/s/a');
+    const base = row({ id: 'a', contextPct: 23, model: 'claude-opus-5-5' });
+    app.snapshot([base]);
+    for (const status of ['busy', 'idle', 'needs-you', 'unknown'] as const) {
+      for (const running of [1, 2]) {
+        app.emit({ type: 'sessions', upsert: [{ ...base, status, subagents: { running, finished: 3 } }], remove: [] });
+        const part = statusLine().querySelector('[data-field="subagents"]')!;
+        expect(part).toHaveTextContent(running === 1 ? /^1 subagent$/ : /^2 subagents$/);
+        expect(part).toHaveClass('text-busy-text');
+        expect(part).toHaveAttribute('data-state', 'running');
+        expect(statusLine().lastElementChild).toBe(part);
+        expect(part.previousElementSibling!.previousElementSibling).toHaveAttribute('data-field', 'context');
+      }
+    }
+  });
+
+  it('VIEW-8.2: none running gives the Turn\'s finished count in Idle grey, and no part for none or unknown', () => {
+    const app = renderApp('/s/a');
+    const base = row({ id: 'a' });
+    app.snapshot([base]);
+    for (const finished of [1, 3]) {
+      app.emit({ type: 'sessions', upsert: [{ ...base, subagents: { running: 0, finished } }], remove: [] });
+      const part = statusLine().querySelector('[data-field="subagents"]')!;
+      expect(part).toHaveTextContent(finished === 1 ? /^1 subagent done$/ : /^3 subagents done$/);
+      expect(part).toHaveClass('text-idle-text');
+      expect(part).toHaveAttribute('data-state', 'done');
+    }
+    for (const subagents of [{ running: 0, finished: 0 }, null, undefined]) {
+      app.emit({ type: 'sessions', upsert: [{ ...base, subagents } as never], remove: [] });
+      expect(statusLine().querySelector('[data-field="subagents"]')).toBeNull();
+      expect(statusLine()).toHaveAttribute('title', 'work · main');
+    }
+  });
+
+  it('VIEW-8.3: list updates move running to done to cleared, keeping a truncated part and the whole line in its tooltip', () => {
+    const app = renderApp('/s/a');
+    const base = row({ id: 'a', contextPct: 23, effort: 'high', model: 'claude-opus-5-5' });
+    app.snapshot([{ ...base, subagents: { running: 2, finished: 0 } }]);
+    const line = statusLine();
+    expect(line).toHaveClass('whitespace-nowrap', 'overflow-hidden', 'h-7');
+    for (const subagents of [{ running: 1, finished: 2 }, { running: 0, finished: 3 }, { running: 0, finished: 0 }]) {
+      app.emit({ type: 'sessions', upsert: [{ ...base, subagents }], remove: [] });
+      const text = subagents.running ? '1 subagent' : subagents.finished ? '3 subagents done' : null;
+      expect(line).toHaveAttribute('title', `work · main · claude-opus-5-5 · high · 23% context${text ? ` · ${text}` : ''}`);
+      const part = line.querySelector('[data-field="subagents"]');
+      if (text) expect(part).toHaveClass('min-w-0', 'truncate');
+      else expect(part).toBeNull();
+    }
+  });
+
+  it('VIEW-8.4: View only Sessions show the part, ended Sessions drop it and the header never has it', () => {
+    const app = renderApp('/s/a');
+    app.snapshot([row({ id: 'a', controllable: false, backend: 'unknown', subagents: { running: 2, finished: 1 } })]);
+    expect(statusLine().querySelector('[data-field="subagents"]')).toHaveTextContent('2 subagents');
+    expect(header().querySelector('[data-field="subagents"]')).toBeNull();
+    expect(header()).not.toHaveTextContent(/subagent/i);
+    app.emit({ type: 'sessions', upsert: [], remove: ['a'] });
+    expect(statusLine().querySelector('[data-field="subagents"]')).toBeNull();
+    expect(statusLine()).toHaveAttribute('title', 'work · main');
+    expect(header()).toHaveTextContent('Ended');
+  });
+
   it('VIEW-5.1: the header shows the title, Harness and Status, updating live; where it works and its model are not in it', () => {
     const app = renderApp('/s/a');
     app.snapshot([
-      row({ id: 'a', title: 'fix-deal-rates', model: 'claude-opus-5-5', status: 'busy', contextPct: 41, git: { repo: 'work', worktree: 'crm-rates', branch: 'x' } }),
+      row({ id: 'a', title: 'fix-deal-rates', model: 'claude-opus-5-5', status: 'busy', contextPct: 41, git: { repo: 'work', worktree: 'crm-rates', branch: 'x', commonDir: '/Users/me/Projects/work/.git', defaultBranch: 'main' } }),
     ]);
     const h = header();
     expect(within(h).getByRole('heading', { level: 1 })).toHaveTextContent('fix-deal-rates');
@@ -42,7 +127,7 @@ describe('Session view header', () => {
   it('VIEW-5.5: one status line directly below the composer shows repo, Worktree or branch, model and context use, updating live', () => {
     const app = renderApp('/s/a');
     app.snapshot([
-      row({ id: 'a', model: 'claude-opus-5-5', contextPct: 41, git: { repo: 'work', worktree: 'crm-rates', branch: 'x' } }),
+      row({ id: 'a', model: 'claude-opus-5-5', contextPct: 41, git: { repo: 'work', worktree: 'crm-rates', branch: 'x', commonDir: '/Users/me/Projects/work/.git', defaultBranch: 'main' } }),
     ]);
     const line = statusLine();
     // Directly below the composer.
@@ -57,7 +142,7 @@ describe('Session view header', () => {
 
     app.emit({
       type: 'sessions',
-      upsert: [row({ id: 'a', model: 'claude-sonnet-5-5', contextPct: 55, git: { repo: 'work', worktree: null, branch: 'main' } })],
+      upsert: [row({ id: 'a', model: 'claude-sonnet-5-5', contextPct: 55, git: { repo: 'work', worktree: null, branch: 'main', commonDir: '/Users/me/Projects/work/.git', defaultBranch: 'main' } })],
       remove: [],
     });
     expect(line.querySelector('[data-field="location"]')).toHaveTextContent('main');
@@ -69,7 +154,7 @@ describe('Session view header', () => {
   it('VIEW-5.5: at narrow widths it stays one line: nothing wraps, long parts truncate, and the tooltip has it all', () => {
     const long = 'a-very-long-worktree-name-that-would-never-fit-at-a-narrow-width-'.repeat(3);
     const app = renderApp('/s/a');
-    app.snapshot([row({ id: 'a', model: 'claude-opus-5-5', contextPct: 9, git: { repo: 'work', worktree: long, branch: 'x' } })]);
+    app.snapshot([row({ id: 'a', model: 'claude-opus-5-5', contextPct: 9, git: { repo: 'work', worktree: long, branch: 'x', commonDir: '/Users/me/Projects/work/.git', defaultBranch: 'main' } })]);
     const line = statusLine();
     expect(line).toHaveClass('whitespace-nowrap', 'overflow-hidden', 'h-7');
     for (const f of ['repo', 'model']) expect(line.querySelector(`[data-field="${f}"]`)).toHaveClass('truncate', 'min-w-0');
@@ -80,7 +165,7 @@ describe('Session view header', () => {
 
   it('VIEW-5.11: the Effort follows the model as its own part, updating live, and nothing takes its place without one', () => {
     const app = renderApp('/s/a');
-    const git = { repo: 'work', worktree: 'crm-rates', branch: 'x' };
+    const git = { repo: 'work', worktree: 'crm-rates', branch: 'x', commonDir: '/Users/me/Projects/work/.git', defaultBranch: 'main' };
     app.snapshot([row({ id: 'a', model: 'claude-opus-5-5', effort: 'medium', contextPct: 41, git })]);
     const line = statusLine();
     const effort = () => line.querySelector('[data-field="effort"]');
@@ -114,7 +199,7 @@ describe('Session view header', () => {
 
   it('VIEW-5.16: an Idle Session with a background shell running is Idle in the pane, and the status line ends with `shell running` in Idle\'s grey', () => {
     const app = renderApp('/s/a');
-    const git = { repo: 'work', worktree: 'crm-rates', branch: 'x' };
+    const git = { repo: 'work', worktree: 'crm-rates', branch: 'x', commonDir: '/Users/me/Projects/work/.git', defaultBranch: 'main' };
     app.snapshot([row({ id: 'a', title: 'fix-rates', model: 'claude-opus-5-5', effort: 'high', contextPct: 41, git, backgroundShell: true })]);
     const line = statusLine();
     const shell = () => line.querySelector('[data-field="background-shell"]');

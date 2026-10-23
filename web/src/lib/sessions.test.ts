@@ -102,7 +102,7 @@ describe('Status colours', () => {
     return measures.filter((m) => m.ratio < 4.5).map((m) => `${m.what}: ${m.ratio.toFixed(2)}`);
   }
 
-  it('SIDE-3.11: every text on a row keeps 4.5:1 or more on its background, at rest, under the pointer and selected, in both modes', () => {
+  it('SIDE-3.11 / SIDE-9.6: every text on a row, including the quiet Subagent count, keeps 4.5:1 or more at rest, under the pointer and selected, in both modes', () => {
     // Only `hover:` is measured: any other variant (`dark:`, `focus:`) would paint a colour the check never sees.
     for (const tone of Object.values(ROW_TONE)) for (const c of Object.values(tone).join(' ').split(/\s+/).filter(Boolean)) expect(c).toMatch(/^(?:hover:)?[^:]+$/);
     const measures = rowContrasts(THEMES);

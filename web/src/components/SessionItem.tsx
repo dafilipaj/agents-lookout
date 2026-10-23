@@ -1,7 +1,7 @@
 import type { SessionRow } from '@shared/types.ts';
-import { FolderGit2, GitBranch, SquareTerminal } from 'lucide-react';
+import { Bot, FolderGit2, GitBranch, SquareTerminal } from 'lucide-react';
 import { memo, useEffect, useRef } from 'react';
-import { BACKGROUND_SHELL_TIP, CONTEXT_LEVEL_CLASS, ROW_TONE, STATUS_LABEL, STATUS_STRIP_CLASS, contextLevel, location, sessionOptionId } from '@/lib/sessions';
+import { BACKGROUND_SHELL_TIP, CONTEXT_LEVEL_CLASS, ROW_TONE, STATUS_LABEL, STATUS_STRIP_CLASS, contextLevel, location, locationTip, sessionOptionId } from '@/lib/sessions';
 import { SessionMarker } from '@/components/ui/session-marker';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
@@ -25,10 +25,24 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
     if (selected) ref.current?.scrollIntoView?.({ block: 'nearest' });
   }, [selected]);
 
-  const loc = location(row);
+  const shown = row.locationShown;
+  const loc = shown.where ? location(row) : null;
+  const showRepo = shown.repo && (row.git !== null || row.cwd !== null);
+  const tip = locationTip(row);
+  const hasWaiting = row.status === 'needs-you' && !!row.waitingFor;
+  // SIDE-2.10: with no location to show, what a Needs you row waits for takes the slot; otherwise it goes under it.
+  const waitingInSlot = hasWaiting && !showRepo && !loc;
+  const slotEmpty = !showRepo && !loc && !waitingInSlot;
   const needsYou = row.status === 'needs-you';
   const tone = needsYou ? ROW_TONE.needsYou : ROW_TONE.plain;
   const age = row.statusSince !== null ? formatAge(now - row.statusSince) : null;
+  const running = row.subagents?.running ?? 0;
+  const waitingLine = (className: string, title: string) => (
+    <span className={cn(className, 'font-medium text-needs-you-text')} title={title} data-field="waiting-for">
+      {row.waitingFor}
+    </span>
+  );
+  const subagentLabel = `${running} Subagent${running === 1 ? '' : 's'} running`;
 
   return (
     <li
@@ -76,16 +90,24 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
           <HarnessIcon harness={row.harness} className={cn(!row.controllable && 'opacity-70')} />
         </span>
       </div>
-      <div className={cn('flex items-center gap-1 pl-6.5 text-meta leading-4', tone.quiet)}>
-        <span className="flex min-w-0 flex-1 items-center gap-1">
-          {row.git && (
-            <span className="max-w-[45%] shrink-0 truncate" title={row.git.repo} data-field="repo">
-              {row.git.repo}
+      {/* SIDE-2.7–2.14: the left slot takes what varies (where the Session works, and what a Needs
+          you row waits for when nothing else is there); the numbers group sits at the end. Empty at
+          the default location, it is aria-hidden so its tooltip (the full location) isn't read. */}
+      <div className={cn('flex min-h-4 items-center gap-1 pl-6.5 text-meta leading-4', tone.quiet)}>
+        <span
+          className="flex min-w-0 flex-1 items-center gap-1"
+          title={tip ?? undefined}
+          aria-hidden={slotEmpty || undefined}
+          data-field="slot"
+        >
+          {showRepo && (
+            <span className="max-w-[45%] shrink-0 truncate" data-field={row.git ? 'repo' : 'cwd'}>
+              {row.git ? row.git.repo : basename(row.cwd!)}
             </span>
           )}
-          {row.git && loc && <span aria-hidden>·</span>}
+          {showRepo && loc && <span aria-hidden>·</span>}
           {loc && (
-            <span className="flex min-w-0 items-center gap-0.5" title={`${loc.kind === 'worktree' ? 'Worktree' : 'Branch'}: ${loc.name}`}>
+            <span className="flex min-w-0 items-center gap-0.5">
               {loc.kind === 'worktree' ? (
                 <FolderGit2 aria-label="Worktree" data-icon="worktree" className="size-3 shrink-0" />
               ) : (
@@ -96,13 +118,15 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
               </span>
             </span>
           )}
-          {!row.git && row.cwd && (
-            <span className="truncate" title={row.cwd} data-field="cwd">
-              {basename(row.cwd)}
-            </span>
-          )}
+          {waitingInSlot && waitingLine('min-w-0 truncate', tip ? `${row.waitingFor}\n${tip}` : row.waitingFor!)}
         </span>
         <span className="flex shrink-0 items-center gap-1.5 tabular-nums">
+          {running > 0 && (
+            <span data-field="subagents" role="img" aria-label={subagentLabel} title={subagentLabel} className="flex items-center gap-0.5">
+              <Bot aria-hidden className="size-2.5" />
+              {running}
+            </span>
+          )}
           {/* SIDE-2.6: Idle, with a background shell command still running; a mark, not a Status. */}
           {row.backgroundShell && (
             <span title={BACKGROUND_SHELL_TIP} className="flex items-center text-idle-text" data-field="background-shell">
@@ -127,15 +151,7 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
           )}
         </span>
       </div>
-      {needsYou && row.waitingFor && (
-        <div
-          className="truncate pl-6.5 text-meta leading-4 font-medium text-needs-you-text"
-          title={row.waitingFor}
-          data-field="waiting-for"
-        >
-          {row.waitingFor}
-        </div>
-      )}
+      {hasWaiting && !waitingInSlot && waitingLine('block truncate pl-6.5 text-meta leading-4', row.waitingFor!)}
     </li>
   );
 });

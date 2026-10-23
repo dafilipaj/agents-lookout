@@ -17,6 +17,7 @@ import { SessionMonitor } from './monitor.ts';
 import { parsePort } from './port.ts';
 import { localAllowLists } from './security.ts';
 import { SettingsStore, defaultSettingsPath } from './settings.ts';
+import { trackStartDirectories } from './start-repos.ts';
 import { UsageMonitor } from './usage.ts';
 import { Viewer } from './viewer.ts';
 import { WorkMonitor, resolveWorkBin } from './work.ts';
@@ -61,9 +62,12 @@ const work = new WorkMonitor({
 // VIEW-6.7, VIEW-7.7: model and Effort switches waiting for the Session's next reply, carried with its row.
 const modelSwitches = new StatusSwitches();
 
-const monitor = new SessionMonitor({
+const monitor: SessionMonitor = new SessionMonitor({
   fetchList: () => fetchFleetList(run, resolveFleetBin(env)),
   git,
+  // SIDE-2.9: through the same cache, so a Start directory is read once and kept fresh with the rest;
+  // a changed Start directory re-derives the rows.
+  startRepos: trackStartDirectories(settings, git, () => monitor),
   models: modelSwitches,
   onEvent: (e) => app.broadcast(e),
   onList: (rows) => {

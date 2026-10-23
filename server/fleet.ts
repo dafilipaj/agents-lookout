@@ -30,6 +30,8 @@ export interface FleetRow {
    * unknown. Missing from a Fleet older than the fork's `effort` field.
    */
   effort?: string | null;
+  /** SIDE-9, VIEW-8: running now and finished in this Turn; missing on an older Fleet. */
+  subagents?: { running: number; finished: number | null } | null;
   /** The agent process's start time, RFC 3339 UTC; null when Fleet can't read it (VIEW-5.6). */
   proc_start?: string | null;
   /**

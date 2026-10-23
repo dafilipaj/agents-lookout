@@ -673,7 +673,10 @@ function StatusLine({
   const modelPart = model ? marked(model.id, modelNote) : null;
   const effortPart = effort ? marked(effort.level, effortNote) : null;
   const shell = row.backgroundShell && !ended ? SHELL_RUNNING : null;
-  const parts = [where, loc?.name, modelPart, effortPart, context, shell].filter((p): p is string => !!p);
+  const running = row.subagents?.running ?? 0;
+  const count = running || row.subagents?.finished || 0;
+  const subagents = !ended && count > 0 ? `${count} subagent${count === 1 ? '' : 's'}${running ? '' : ' done'}` : null;
+  const parts = [where, loc?.name, modelPart, effortPart, context, shell, subagents].filter((p): p is string => !!p);
   if (!parts.length) return null;
   const dot = (
     <span aria-hidden className="shrink-0 opacity-60">
@@ -756,6 +759,18 @@ function StatusLine({
           {(where || loc || model || effort || context) && dot}
           <span className="min-w-0 truncate text-idle-text" data-field="background-shell" title={BACKGROUND_SHELL_TIP}>
             {shell}
+          </span>
+        </>
+      )}
+      {subagents && (
+        <>
+          {(where || loc || model || effort || context || shell) && dot}
+          <span
+            className={cn('min-w-0 truncate', running ? 'text-busy-text' : 'text-idle-text')}
+            data-field="subagents"
+            data-state={running ? 'running' : 'done'}
+          >
+            {subagents}
           </span>
         </>
       )}

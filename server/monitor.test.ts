@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import { FLEET_INSTALL_COMMAND } from '../shared/defaults.ts';
+import type { GitLocation } from '../shared/types.ts';
 import type { FleetListResult, FleetRow } from './fleet.ts';
 import { type MonitorEvent, SessionMonitor } from './monitor.ts';
 
@@ -30,6 +31,23 @@ function setup(initial: FleetListResult) {
 const ok = (rows: FleetRow[]): FleetListResult => ({ kind: 'ok', rows });
 
 describe('SessionMonitor', () => {
+  it('SIDE-9.2: a count-only change pushes the row on the next poll without changing its Status or age', async () => {
+    const base = recorded.find((r) => r.harness === 'codex')!;
+    const t = setup(ok([{ ...base, subagents: { running: 1, finished: 0 } }]));
+    await t.monitor.tick();
+    const before = t.monitor.snapshot().sessions[0]!;
+    for (const subagents of [{ running: 3, finished: 1 }, { running: 0, finished: 4 }, { running: 0, finished: 0 }, null]) {
+      t.events.length = 0;
+      t.advance(2000);
+      t.set(ok([{ ...base, subagents, updated_at: t.now() }]));
+      await t.monitor.tick();
+      expect(t.events).toEqual([{ type: 'sessions', upsert: [{ ...before, subagents }], remove: [] }]);
+      t.events.length = 0;
+      await t.monitor.tick();
+      expect(t.events).toEqual([]);
+    }
+  });
+
   it('SIDE-1.4: the recorded `fleet list --json` output becomes rows, pushed as one diff', async () => {
     const t = setup(ok(recorded));
     await t.monitor.tick();
@@ -113,6 +131,27 @@ describe('SessionMonitor', () => {
     t.set(ok([{ ...codex, status: 'idle', updated_at: t.now() - 100 }]));
     await t.monitor.tick();
     expect(t.monitor.snapshot().sessions.map((r) => [r.status, r.backgroundShell, r.statusSince])).toEqual([['idle', false, since]]);
+  });
+
+  it('SIDE-2.9: a changed Start directory re-derives which rows show their repo, as a diff of those rows', async () => {
+    const codex = recorded.find((r) => r.harness === 'codex')!;
+    const loc: GitLocation = { repo: 'work', worktree: null, branch: 'main', commonDir: '/p/work/.git', defaultBranch: 'main' };
+    let startRepos = new Set<string>();
+    const events: MonitorEvent[] = [];
+    const monitor = new SessionMonitor({
+      fetchList: async () => ok([codex]),
+      git: { get: () => loc, prune: () => {} },
+      startRepos: () => startRepos,
+      onEvent: (e) => events.push(e),
+    });
+    await monitor.tick();
+    expect(monitor.snapshot().sessions.map((r) => r.locationShown)).toEqual([{ repo: true, where: false }]);
+
+    events.length = 0;
+    startRepos = new Set(['/p/work/.git']);
+    monitor.refreshDerived();
+    expect(monitor.snapshot().sessions.map((r) => r.locationShown)).toEqual([{ repo: false, where: false }]);
+    expect(events).toEqual([{ type: 'sessions', upsert: [expect.objectContaining({ locationShown: { repo: false, where: false } })], remove: [] }]);
   });
 
   it('SIDE-6.2: when a poll fails, the last list stays and the health says since when; it recovers on its own', async () => {

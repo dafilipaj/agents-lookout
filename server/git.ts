@@ -20,7 +20,8 @@ export async function readGlobalGitEmail(runner: Runner, env: NodeJS.ProcessEnv 
 
 /**
  * Reads where a directory sits in git, with argv only (never a shell string).
- * Returns null for a directory that isn't in a git checkout, or that git can't read.
+ * Returns null for a directory that isn't in a git checkout; throws when git couldn't be run or
+ * timed out, so "outside git" is never a guess (SIDE-2.9).
  */
 export async function readGitLocation(runner: Runner, cwd: string): Promise<GitLocation | null> {
   // Optional locks off: Lookout only reads, and must never contend with the agent's own git use.
@@ -33,8 +34,11 @@ export async function readGitLocation(runner: Runner, cwd: string): Promise<GitL
     const lines = out.split('\n').map((l) => l.trim());
     if (!lines[0] || !lines[1] || !lines[2]) return null;
     [gitDir, commonDir, topLevel] = [lines[0], lines[1], lines[2]];
-  } catch {
-    return null;
+  } catch (e) {
+    // git ran and said no (exit 128: not a repository, or no such directory): not in git. A timeout,
+    // a missing `git` or a cancelled run says nothing about the directory, so it is a failure.
+    if (typeof (e as { code?: unknown }).code === 'number') return null;
+    throw e;
   }
 
   const linked = gitDir !== commonDir;
@@ -42,7 +46,33 @@ export async function readGitLocation(runner: Runner, cwd: string): Promise<GitL
     repo: repoName(commonDir, topLevel),
     worktree: linked ? basename(topLevel) : null,
     branch: await readBranch(git),
+    commonDir,
+    defaultBranch: await readDefaultBranch(git),
   };
+}
+
+/**
+ * SIDE-2.8: the branch `origin/HEAD` points at; without it a local `main`, else `master`; else null.
+ * Reads only: `git remote set-head` is never run.
+ */
+async function readDefaultBranch(git: (...args: string[]) => Promise<string>): Promise<string | null> {
+  let out: string;
+  try {
+    // One process for all three: `<refname> <symref target>` per ref that exists.
+    out = await git('for-each-ref', '--format=%(refname) %(symref)', 'refs/remotes/origin/HEAD', 'refs/heads/main', 'refs/heads/master');
+  } catch {
+    return null;
+  }
+  const refs = new Map<string, string>();
+  for (const line of out.split('\n')) {
+    const [name, target = ''] = line.trim().split(' ');
+    if (name) refs.set(name, target);
+  }
+  const target = refs.get('refs/remotes/origin/HEAD') ?? '';
+  const prefix = 'refs/remotes/origin/';
+  if (target.startsWith(prefix) && target.length > prefix.length) return target.slice(prefix.length);
+  for (const name of ['main', 'master']) if (refs.has(`refs/heads/${name}`)) return name;
+  return null;
 }
 
 /** The repo name is the common git dir's parent (`~/x/work/.git` → `work`). */
@@ -68,6 +98,8 @@ async function readBranch(git: (...args: string[]) => Promise<string>): Promise<
 
 interface Entry {
   value: GitLocation | null;
+  /** True once a read has succeeded (a directory outside git succeeds with null); a failed one keeps the last good value. */
+  known: boolean;
   readAt: number;
   lastUsed: number;
   inFlight: boolean;
@@ -99,12 +131,17 @@ export class GitCache {
     const now = this.now();
     let entry = this.entries.get(cwd);
     if (!entry) {
-      entry = { value: null, readAt: -Infinity, lastUsed: now, inFlight: false };
+      entry = { value: null, known: false, readAt: -Infinity, lastUsed: now, inFlight: false };
       this.entries.set(cwd, entry);
     }
     entry.lastUsed = now;
     if (!entry.inFlight && now - entry.readAt >= this.ttlMs) void this.refresh(cwd, entry);
     return entry.value;
+  }
+
+  /** SIDE-2.9: whether the directory's location is known: read at least once without failing. */
+  known(cwd: string): boolean {
+    return this.entries.get(cwd)?.known ?? false;
   }
 
   /** Drops directories nobody asked about for 5 minutes (ended Sessions). */
@@ -115,13 +152,15 @@ export class GitCache {
 
   private async refresh(cwd: string, entry: Entry): Promise<void> {
     entry.inFlight = true;
-    let value: GitLocation | null;
+    const wasKnown = entry.known;
+    let value = entry.value;
     try {
       value = await this.opts.read(cwd);
+      entry.known = true;
     } catch {
-      value = null;
+      // A failed read says nothing new: keep the last good value, and retry after the TTL.
     }
-    const changed = JSON.stringify(value) !== JSON.stringify(entry.value);
+    const changed = JSON.stringify(value) !== JSON.stringify(entry.value) || entry.known !== wasKnown;
     entry.value = value;
     entry.readAt = this.now();
     entry.inFlight = false;

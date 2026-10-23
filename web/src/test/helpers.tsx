@@ -21,7 +21,8 @@ export function row(over: Partial<SessionRow> & { id: string }): SessionRow {
     statusSince: NOW - 60_000,
     contextPct: null,
     cwd: '/Users/me/Projects/work',
-    git: { repo: 'work', worktree: null, branch: 'main' },
+    git: { repo: 'work', worktree: null, branch: 'main', commonDir: '/Users/me/Projects/work/.git', defaultBranch: 'main' },
+    locationShown: { repo: true, where: true },
     backend: 'tmux',
     controllable: true,
     ownHost: false,
@@ -30,7 +31,7 @@ export function row(over: Partial<SessionRow> & { id: string }): SessionRow {
     modelAt: null,
     model: null,
     effort: null,
-    backgroundShell: false,
+    subagents: null, backgroundShell: false,
     ...over,
   };
 }

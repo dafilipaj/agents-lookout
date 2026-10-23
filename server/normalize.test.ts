@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { GitLocation } from '../shared/types.ts';
 import type { FleetRow } from './fleet.ts';
-import { effort, normalizeRows, procStart, sessionId, toStatus } from './normalize.ts';
+import { effort, locationShown, normalizeRows, procStart, sessionId, subagents, toStatus } from './normalize.ts';
 
 const fixture = (name: string): FleetRow[] =>
   JSON.parse(readFileSync(new URL(`./fixtures/fleet/${name}`, import.meta.url), 'utf8')).filter(
@@ -10,8 +10,8 @@ const fixture = (name: string): FleetRow[] =>
   );
 
 const GIT: Record<string, GitLocation> = {
-  '/Users/dariofilipaj/Projects/work': { repo: 'work', worktree: null, branch: 'main' },
-  '/Users/dariofilipaj/Projects/lookout-demo/demo-repo-wt': { repo: 'demo-repo', worktree: 'demo-repo-wt', branch: 'feature/demo' },
+  '/Users/dariofilipaj/Projects/work': { repo: 'work', worktree: null, branch: 'main', commonDir: '/Users/dariofilipaj/Projects/work/.git', defaultBranch: 'main' },
+  '/Users/dariofilipaj/Projects/lookout-demo/demo-repo-wt': { repo: 'demo-repo', worktree: 'demo-repo-wt', branch: 'feature/demo', commonDir: '/Users/dariofilipaj/Projects/lookout-demo/demo-repo/.git', defaultBranch: 'main' },
 };
 const deps = {
   git: (cwd: string) => GIT[cwd] ?? null,
@@ -19,6 +19,22 @@ const deps = {
 };
 
 describe('fleet list → sidebar rows', () => {
+  it('SIDE-9.3: only a whole running count from 0 to 1,000 is known; an uncountable finished value becomes zero', () => {
+    for (const bad of [undefined, null, false, 2, '2', [], {}, { running: undefined }, { running: null }, { running: '2' },
+      ...[-1, 0.5, 1001, NaN, Infinity].map((running) => ({ running }))]) {
+      expect(subagents(bad)).toBeNull();
+    }
+    for (const running of [0, 1, 1000]) {
+      for (const finished of [0, 3, 1000]) expect(subagents({ running, finished })).toEqual({ running, finished });
+      for (const finished of [undefined, null, -1, 0.5, 1001, NaN, Infinity, '3', true, {}, []]) {
+        expect(subagents({ running, finished })).toEqual({ running, finished: 0 });
+      }
+    }
+    const base = rows0();
+    const rows = normalizeRows([{ ...base, subagents: { running: 2, finished: 3 } }, { ...base, subagents: null }, base], deps);
+    expect(rows.map((r) => r.subagents)).toEqual([{ running: 2, finished: 3 }, null, null]);
+  });
+
   it('SIDE-1.4: the recorded `fleet list --json` output produces the expected rows', () => {
     const rows = normalizeRows(fixture('recorded-2026-10-16.json'), deps);
     expect(rows).toEqual([
@@ -33,11 +49,13 @@ describe('fleet list → sidebar rows', () => {
         contextPct: 6,
         cwd: '/Users/dariofilipaj/Projects/lookout-demo/plain-dir',
         git: null,
+        locationShown: { repo: true, where: false },
         backend: 'tmux',
         controllable: true,
         ownHost: true,
         model: 'claude-opus-5-5',
         effort: null,
+        subagents: { running: 2, finished: 1 },
         backgroundShell: false,
         procStart: null,
         pendingModel: null, pendingEffort: null,
@@ -53,12 +71,14 @@ describe('fleet list → sidebar rows', () => {
         statusSince: 1792145434397,
         contextPct: 8,
         cwd: '/Users/dariofilipaj/Projects/lookout-demo/demo-repo-wt',
-        git: { repo: 'demo-repo', worktree: 'demo-repo-wt', branch: 'feature/demo' },
+        git: GIT['/Users/dariofilipaj/Projects/lookout-demo/demo-repo-wt'],
+        locationShown: { repo: true, where: true },
         backend: 'tmux',
         controllable: true,
         ownHost: true,
         model: 'gpt-6-astra',
         effort: null,
+        subagents: null,
         backgroundShell: false,
         procStart: null,
         pendingModel: null, pendingEffort: null,
@@ -74,12 +94,14 @@ describe('fleet list → sidebar rows', () => {
         statusSince: 1792145421960,
         contextPct: 17,
         cwd: '/Users/dariofilipaj/Projects/work',
-        git: { repo: 'work', worktree: null, branch: 'main' },
+        git: GIT['/Users/dariofilipaj/Projects/work'],
+        locationShown: { repo: true, where: false },
         backend: 'unknown',
         controllable: false,
         ownHost: false,
         model: 'claude-opus-5-5',
         effort: null,
+        subagents: null,
         backgroundShell: false,
         procStart: null,
         pendingModel: null, pendingEffort: null,
@@ -95,12 +117,14 @@ describe('fleet list → sidebar rows', () => {
         statusSince: 1792145011865,
         contextPct: 10,
         cwd: '/Users/dariofilipaj/Projects/work',
-        git: { repo: 'work', worktree: null, branch: 'main' },
+        git: GIT['/Users/dariofilipaj/Projects/work'],
+        locationShown: { repo: true, where: false },
         backend: 'unknown',
         controllable: false,
         ownHost: false,
         model: 'claude-opus-5-5',
         effort: null,
+        subagents: null,
         backgroundShell: false,
         procStart: null,
         pendingModel: null, pendingEffort: null,
@@ -206,6 +230,56 @@ describe('fleet list → sidebar rows', () => {
     expect(rows.filter((r) => r.status !== 'needs-you').every((r) => r.waitingFor === null)).toBe(true);
     const busyWithText = normalizeRows([{ ...rows0(), status: 'busy', waiting_for: 'stale text' }], deps);
     expect(busyWithText[0]!.waitingFor).toBeNull();
+  });
+
+  describe('SIDE-2.7, 2.9: what of its location a row shows', () => {
+    const at = (over: Partial<GitLocation>): GitLocation => ({
+      repo: 'work', worktree: null, branch: 'main', commonDir: '/p/work/.git', defaultBranch: 'main', ...over,
+    });
+    const only = new Set(['/p/work/.git']);
+
+    it('SIDE-2.7: the where part hides only on the default branch of a main checkout; a Worktree, another or a detached branch, and an unknown default show it', () => {
+      expect(locationShown(at({}), only)).toEqual({ repo: false, where: false });
+      expect(locationShown(at({ branch: 'develop', defaultBranch: 'develop' }), only).where).toBe(false);
+      expect(locationShown(at({ branch: 'fix/rates' }), only).where).toBe(true);
+      expect(locationShown(at({ branch: 'a1b2c3d' }), only).where).toBe(true); // detached HEAD: a short commit
+      expect(locationShown(at({ defaultBranch: null }), only).where).toBe(true);
+      // A Worktree always shows, even on the default branch's name.
+      expect(locationShown(at({ worktree: 'crm-rates', branch: 'main' }), only).where).toBe(true);
+      expect(locationShown(at({ worktree: 'crm-rates', branch: null }), only).where).toBe(true);
+      // Nothing to show: no branch and no Worktree.
+      expect(locationShown(at({ branch: null }), only).where).toBe(false);
+    });
+
+    it('SIDE-2.9: the repo part hides only when the Start directories are all in this repo, compared by common git dir', () => {
+      expect(locationShown(at({}), only).repo).toBe(false);
+      expect(locationShown(at({ worktree: 'crm-rates', branch: 'x' }), only).repo).toBe(false); // Worktrees included
+      expect(locationShown(at({}), new Set(['/p/work/.git', '/p/other/.git'])).repo).toBe(true);
+      expect(locationShown(at({ repo: 'other', commonDir: '/p/other/.git' }), only).repo).toBe(true);
+      // Same name, another repo: not the same.
+      expect(locationShown(at({ commonDir: '/q/work/.git' }), only).repo).toBe(true);
+      expect(locationShown(at({}), new Set()).repo).toBe(true);
+      expect(locationShown(at({}), undefined).repo).toBe(true);
+    });
+
+    it('SIDE-2.9: outside git (or not read yet) the working directory name shows as the repo part, and there is no where part', () => {
+      expect(locationShown(null, only)).toEqual({ repo: true, where: false });
+    });
+
+    it('SIDE-2.9: normalizeRows asks for the Start directories\' repos once and puts the answer on every row', () => {
+      let asked = 0;
+      const startRepos = () => {
+        asked++;
+        return new Set(['/Users/dariofilipaj/Projects/work/.git']);
+      };
+      const rows = normalizeRows(fixture('recorded-2026-10-16.json'), { ...deps, startRepos });
+      expect(asked).toBe(1);
+      const byDir = (cwd: string) => rows.find((r) => r.cwd === cwd)!.locationShown;
+      expect(byDir('/Users/dariofilipaj/Projects/work')).toEqual({ repo: false, where: false });
+      // Another repo's Worktree shows both parts.
+      expect(byDir('/Users/dariofilipaj/Projects/lookout-demo/demo-repo-wt')).toEqual({ repo: true, where: true });
+      expect(rows.filter((r) => !r.git).every((r) => r.locationShown.repo && !r.locationShown.where)).toBe(true);
+    });
   });
 
   it('SIDE-2.4: context usage is a percentage when Fleet reports it, and null when it does not', () => {

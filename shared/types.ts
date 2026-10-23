@@ -19,6 +19,18 @@ export interface GitLocation {
   worktree: string | null;
   /** Current branch; a short commit hash when HEAD is detached; null when unknown. */
   branch: string | null;
+  /** SIDE-2.9: the absolute common git dir, what tells two checkouts of one repo from two repos. */
+  commonDir: string;
+  /** SIDE-2.8: the repo's default branch (`origin/HEAD`, else a local `main`, else `master`); null when unknown. */
+  defaultBranch: string | null;
+}
+
+/** SIDE-2.7, 2.9: which parts of a row's location its second line shows, decided by the server. */
+export interface LocationShown {
+  /** The repo name (or, outside git, the working directory's name). */
+  repo: boolean;
+  /** The Worktree or branch. */
+  where: boolean;
 }
 
 /** One sidebar row, as the server sends it to the UI. */
@@ -38,6 +50,8 @@ export interface SessionRow {
   cwd: string | null;
   /** null: not a git directory (or not read yet). */
   git: GitLocation | null;
+  /** SIDE-2.7–2.9: what of the location the row shows; the rest is in its tooltip and the status line. */
+  locationShown: LocationShown;
   backend: Backend;
   controllable: boolean;
   /**
@@ -48,6 +62,8 @@ export interface SessionRow {
   model: string | null;
   /** VIEW-5.11: the Session's Effort as Fleet read it (`high`, `xhigh` …); null when unknown. */
   effort: string | null;
+  /** SIDE-9, VIEW-8: running now and finished in this Turn; null when Fleet can't tell. */
+  subagents: { running: number; finished: number } | null;
   /**
    * SIDE-2.6, VIEW-5.16: Idle with a background shell command still running (Fleet's `shell`
    * status, from Claude Code 2.1.308). Always false for any other Status.

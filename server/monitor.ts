@@ -11,6 +11,8 @@ export type MonitorEvent =
 export interface MonitorOptions {
   fetchList(): Promise<FleetListResult>;
   git: Pick<GitCache, 'get' | 'prune'>;
+  /** SIDE-2.9: the common git dirs of the repos the Start directories are in. */
+  startRepos?(): ReadonlySet<string>;
   onEvent(event: MonitorEvent): void;
   /** After each successful poll, once its changes are out (LAUNCH follows its starts here). */
   onList?(rows: readonly FleetRow[]): void;
@@ -140,6 +142,7 @@ export class SessionMonitor {
     const seen = new Set<string>();
     const next = normalizeRows(raw, {
       git: (cwd) => this.opts.git.get(cwd),
+      startRepos: () => this.opts.startRepos?.() ?? new Set(),
       statusSince: (id, status, fleetUpdatedAt) => {
         seen.add(id);
         return this.statusSince(id, status, fleetUpdatedAt, now);
