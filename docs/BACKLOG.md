@@ -130,6 +130,34 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
 - **Costs and risks:** two breakpoints in the shell's grid, an overlay that needs focus handling and Esc, and the dock row's resting height (SIDE-8.1) checked at each width. Screenshots at 520, 560 and 900 px are in the review.
 - **Added:** 2026-10-22, from the design review; Dario: agreed, postponed.
 
+## Memory overview: what the Sessions cost the Mac (new spec)
+
+- **What:** a header button with the total memory of everything Lookout watches, e.g. `▌ 2.4G`. The glyph's colour is scaled to the Mac's RAM, and a click opens a breakdown with three groups: Lookout itself (server, `fleet`/`tb-session` polls), each Session (its process tree: the Harness, MCP servers, test runners), and anything else in tmux panes. Each group shows a 30-minute trend, and a row gets a badge when it grew 30 MB or more in 10 minutes. Clicking a Session row opens it.
+- **Why:** on 2026-10-23 Chrome froze at a load average of 33 (a pre-push e2e run plus other agents), and nothing on screen showed which Session was the cause.
+- **How:** follows Matej's recipe for his Electron app ([Recipe: memory usage overview](https://claude.ai/artifact/RKopD7r3zdkgQqGjMjgudk)), with Lookout's server doing what his main process does:
+  - one `ps -axo pid=,ppid=,rss=,comm=` per sample, summed per process tree, with the Session roots taken from the tmux pane pids Fleet already knows;
+  - macOS pressure from `sysctl -n kern.memorystatus_vm_pressure_level`, where critical forces red;
+  - samples every 30 s, every 5 s while the breakdown is open; a failed `ps` skips that sample;
+  - colour stops every 1/12 of RAM (light purple → bright red, red from a third), blended in OKLab;
+  - the pure parts (parse, tree, colour) unit-tested.
+- **Open:** the browser tab's own memory isn't visible to the server. CPU or load average might be the better signal here, since the freeze was load, not memory.
+- **Added:** 2026-10-23.
+
+## Keep the Mac awake while Sessions run (new spec)
+
+- **What:** a header button with three states: Off, Awake (no idle sleep), and Lid closed (keeps running with the lid shut, only on power). It covers one Session or all of them, and turns itself off when the Sessions it covers stop working. A covered Session's row shows a small cup.
+- **Why:** long agent runs stop when the Mac sleeps.
+- **How:** follows Matej's recipe for his Electron app ([Recipe: caffeinate button](https://claude.ai/artifact/PpJ1wTcY9JBKiuZ5wHFNCA)). The state lives in the server, so it outlives the browser tab:
+  - **Awake:** the server spawns `caffeinate -i -w <server pid>`, so it also ends with the server. This replaces Electron's `powerSaveBlocker`.
+  - **Lid closed:** drives Amphetamine over AppleScript (`start new session …`, `enable closed display mode`, `end session`). The fallback is `caffeinate -s` with an external display.
+  - Lookout only ends an Amphetamine session it started, and keeps an `owned` flag so it can clean up after a crash.
+  - On battery it steps down to Awake.
+  - "Stopped" uses the Busy state Lookout already has.
+- **Open:**
+  - check by hand that `enable closed display mode` really keeps the Mac running with the lid shut;
+  - the one-time setup on each Mac: Amphetamine's Power Protect helper and the Automation permission.
+- **Added:** 2026-10-23.
+
 ## Dropped
 
 Discussed and decided against. Each keeps why, so it isn't proposed again without something new.
