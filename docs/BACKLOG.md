@@ -68,6 +68,7 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
   - tb-jev's version can't come from `tb-jev --version`, which must not be run; it needs another source.
   - Checking for releases is a network call Lookout doesn't make today.
 - **Added:** 2026-10-19, from Dario's testing.
+- **Specced:** 2026-10-23 as [TOOLS](features/tools/SPEC.md) (Draft). What changed from the proposal: no network calls of Lookout's own (the Tools' own checks are read instead: tb's `--version` line and cache file, Codex's `version.json`, Claude Code's `.last-update-result.json`); tb-jev's version comes from `status --json`, which USAGE already reads; Fleet is judged by revision against the pin, which needs a fork commit (its Open question 1).
 
 ## Workflow editor: agents and the order they run in (FLOW)
 

@@ -16,3 +16,4 @@ One row per feature. Update the status here and in the spec's frontmatter togeth
 | Design system: one type scale, colour by meaning and shared components, guarded by tests ([0009](../decisions/0009-one-design-system-guarded-by-tests.md)) | DS | Done | [SPEC](design-system/SPEC.md) |
 | Library: everything Sessions produced, searchable, each item linked to its Session | LIB | Done | [SPEC](library/SPEC.md) |
 | Memory overview: what the Sessions cost the Mac, under the usage strip, with a breakdown per Session | MEM | In Progress | [SPEC](memory-overview/SPEC.md) |
+| Tools: the CLIs Lookout runs, their versions, what's missing or behind, and the command that fixes it | TOOLS | Ready | [SPEC](tools/SPEC.md) |

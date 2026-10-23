@@ -66,6 +66,8 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Task**: A Productive task assigned to you that isn't closed.
 
+**Tool**: A CLI Lookout runs on this Mac: Fleet, `claude`, `codex`, `tb-session`, `tb-pr`, `tb-prod`, `tb-jev`, `git` and `tmux`. Every Building block is a Tool; not every Tool is a Building block. See the TOOLS spec.
+
 **Transcript**: The JSONL log a Harness writes for a Session, for example under `~/.claude/projects/` or `~/.codex/sessions/`.
 
 **Trust prompt**: The question a Harness asks before it runs in a folder it hasn't been told to trust: Claude Code's "Yes, I trust this folder" or "No, exit", listing what the folder's settings pre-approve; Codex's "Trust this folder?". Claude Code registers with Fleet only once it's answered, so a start waiting on it isn't a Session yet. Lookout answers it only when you click (LAUNCH-6), and the Harness remembers the answer per folder.
