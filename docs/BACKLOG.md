@@ -132,7 +132,7 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
 
 ## Memory overview: what the Sessions cost the Mac (MEM)
 
-- **Specced:** [MEM](features/memory-overview/SPEC.md), Draft, 2026-10-24. Its two open points are its open questions: CPU and load beside memory (Q2, recommended as MEM-5, since the freeze was load) and the browser tab's own memory (Q5, not in slice 1; the legend says the tab is in "other"). The placement moved from a header button to the dock row under the usage strip, by Dario's decision.
+- **Specced:** [MEM](features/memory-overview/SPEC.md), Ready, grilled 2026-10-24 (all recommendations agreed): CPU and load beside memory as MEM-5 (since the freeze was load); the browser tab's own memory is not in slice 1 (the legend says the tab is in "other"). The placement moved from a header button to the dock row under the usage strip, by Dario's decision.
 - **Added:** 2026-10-23.
 
 ## Keep the Mac awake while Sessions run (new spec)
