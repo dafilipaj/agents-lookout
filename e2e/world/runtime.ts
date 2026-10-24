@@ -596,7 +596,7 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
     await installFake(tbPr, spec.tbPr);
     await mkdir(fakeDir('ps'), { recursive: true });
     memory.answer(spec.memory);
-    await writeExecutable(join(bin, 'sysctl'), fillTemplate('fake', { NAME: 'sysctl', LOG: callsLog, NODE: process.execPath, SCRIPT: join(FAKES, 'sysctl.ts'), STATE: fakeDir('ps'), VIOLATIONS: violationsLog }));
+    await writeExecutable(join(bin, 'sysctl'), fillTemplate('sysctl', { REAL_SYSCTL: '/usr/sbin/sysctl', NAME: 'sysctl', LOG: callsLog, NODE: process.execPath, SCRIPT: join(FAKES, 'sysctl.ts'), STATE: fakeDir('ps'), VIOLATIONS: violationsLog }));
     // TODO(TEST-1.4, TEST-1.7): the other declared fakes from e2e/fakes/ (claude, codex, tb-jev, curl).
 
     // TEST-1.2: a login shell (a tmux pane, Fleet's `$SHELL -l`) runs /etc/profile, whose

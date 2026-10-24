@@ -1,0 +1,14 @@
+#!/bin/bash
+# A system tool as well as MEM's fake: login shells read kern.boottime at startup.
+# Keep every memory-key read in the strict fake, including malformed sampler calls.
+case "$*" in
+  *hw.memsize*|*kern.memorystatus_vm_pressure_level*) ;;
+  *) exec '@REAL_SYSCTL@' "$@" ;;
+esac
+line="$(/bin/date +%H:%M:%S) @NAME@"
+for a in "$@"; do printf -v q '%q' "$a"; line="$line $q"; done
+printf '%s\n' "$line" >> '@LOG@'
+LOOKOUT_FAKE_STATE='@STATE@'
+LOOKOUT_FAKE_VIOLATIONS='@VIOLATIONS@'
+export LOOKOUT_FAKE_STATE LOOKOUT_FAKE_VIOLATIONS
+exec '@NODE@' '@SCRIPT@' "$@"

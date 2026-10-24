@@ -226,10 +226,11 @@ scripts/req-check.mjs
    - `TMUX_TMPDIR` at `/tmp/lw-<id>`;
    - `home/Projects/work`, which is the default Start directory.
 2. **`bin/`:**
-   - **Real tools:** symlinks to git, lsof, sh, node and the plain system tools they need: `bash`, `env`, `hostname`, `sleep`, `cat`, `date`, `echo`, `sysctl`, `uname` and `id` (`REAL_TOOLS` in `e2e/world/runtime.ts`).
+   - **Real tools:** symlinks to git, lsof, sh, node and the plain system tools they need: `bash`, `env`, `hostname`, `sleep`, `cat`, `date`, `echo`, `uname` and `id` (`REAL_TOOLS` in `e2e/world/runtime.ts`).
    - **Fleet and tb-session:** a `logged` wrapper each, which appends its argv to `logs/calls.log` (TEST-2.4) and runs the pinned binary from `.cache/` under the wrapper's own path. The wrapper sets `FLEET_PATH_ONLY=1` itself, so a caller that drops it still gets a PATH-only Fleet. `LOOKOUT_FLEET_BIN` and `LOOKOUT_TB_SESSION_BIN` point at the wrappers; `.without('fleet')` leaves out both the wrapper and the variable.
    - **tmux shim:** `exec <real tmux> -L lookout-world-<rand> -f /dev/null "$@"`. Lookout and Fleet both reach the private server through it.
    - **ps shim:** passes every call through to `/bin/ps`, except that a machine-wide listing (`-ax`, `-e`) keeps only processes whose tty belongs to a pane of the World's tmux server, and their descendants. This keeps the user's own Codex TUIs out of Fleet's discovery (TEST-1.10).
+   - **sysctl shim:** memory-key reads always reach MEM’s strict fake; unrelated calls, including login-shell startup’s `sysctl -n kern.boottime`, pass through to `/usr/sbin/sysctl` with their arguments, output and exit status preserved.
    - **Fakes:** the declared ones among claude, codex, tb-jev, curl, tb-prod and tb-pr.
    - **Kept out:** `security`, `gh`, `ssh` and `osascript`.
 3. **Fleet config** (`FLEET_CONFIG`) only turns naming, grouping and stacks off, since each would run `claude -p`. Every Fleet the World runs has `FLEET_PATH_ONLY=1` (step 4, and the `logged` wrapper sets it itself), so the launchers stay Fleet's defaults (`claude`, `codex`, `pi`), as do `tmux` and `gh`: each is found on the World's PATH or not at all. A Harness is installed exactly when the World puts its fake in `bin/`; no per-binary override is needed to keep Fleet out of `/opt/homebrew/bin` or `/usr/local/bin`.
@@ -432,3 +433,4 @@ None.
 - 2026-10-23: The pre-push hook runs at half the usual parallelism, from Dario's testing: a push that ran 6 Worlds and Vitest on every core at once, while other agents were working, pushed the load average to 33 and froze Chrome, and today's pre-push failures were all timing tests that lost to the load and passed alone. `pnpm test` and `pnpm e2e` run by hand keep their full speed. Technical approach, Before each push.
 
 - 2026-10-24: MEM adds `.memory({ processes, pressure, ramBytes })` and replaceable sampler answers. The World always fakes memory sampling, including when empty; the `ps` shim retains discovery calls, and undeclared `sysctl` argv is a violation. Declared readings include the real server and sampler pids with deterministic RSS.
+- 2026-10-24: TEST-1.2 regression fix: the sysctl override is a shim, preserving unrelated system reads used by login shells. Only memory-key calls reach the strict fake, including malformed sampler calls, which remain violations. A shell-wrapper unit test uses a stand-in system command to verify pass-through without reading host memory.
