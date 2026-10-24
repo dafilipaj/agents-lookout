@@ -12,6 +12,7 @@ import { ModelSwitchError, parseEffortRequest, parseModelRequest } from './model
 import { RenameError, parseRenameRequest } from './renamer.ts';
 import { type FindQuery, HistoryError, parseFindQuery } from './history.ts';
 import { LaunchError } from './launcher.ts';
+import type { MemoryMonitor } from './memory.ts';
 import type { SessionMonitor } from './monitor.ts';
 import { type GuardConfig, guardRequest } from './security.ts';
 import type { SettingsStore } from './settings.ts';
@@ -32,6 +33,7 @@ export interface AppOptions {
     start(input: unknown): Promise<LaunchView>;
     dismiss(id: string): boolean;
   };
+  memory: Pick<MemoryMonitor, 'snapshot' | 'watch' | 'setOpen' | 'drop'>;
   usage: {
     snapshot(): UsageSnapshot | null;
     watch(): () => void;
@@ -150,16 +152,20 @@ export function createApp(opts: AppOptions): LookoutApp {
       started: opts.launcher.recentStarts(),
       clientId,
       usage: opts.usage.snapshot(),
+      memory: opts.memory.snapshot(),
       work: opts.work.snapshot(),
     });
     clients.set(clientId, res);
     const unwatch = opts.monitor.watch();
+    const unwatchMemory = opts.memory.watch();
     const unwatchUsage = opts.usage.watch(); // one usage poller for every open tab
     const keepAlive = setInterval(() => res.write(': keep-alive\n\n'), opts.keepAliveMs ?? 15_000);
     req.on('close', () => {
       clearInterval(keepAlive);
       clients.delete(clientId);
       unwatchUsage();
+      unwatchMemory();
+      opts.memory.drop(clientId);
       workOpen.get(clientId)?.();
       workOpen.delete(clientId);
       opts.viewer.drop(clientId); // a tab that's gone stops what it was following
@@ -235,8 +241,17 @@ export function createApp(opts: AppOptions): LookoutApp {
       await opts.usage.refreshJev();
       return json(res, 200, { ok: true });
     }
-    // WORK-8.1: a tab says whether it has Work open, naming its event stream as `PUT /api/watch`
-    // does; a closed stream counts as closed. A PUT, so the token and Origin, as every mutation.
+    // MEM-3.1: the tab's event stream owns its open breakdown, as Work's does.
+    if (route === 'PUT /api/memory/watch') {
+      const body = await readJson(req, res, MAX_BODY, null);
+      if (body === NO_BODY) return;
+      const w = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
+      if (typeof w.clientId !== 'string' || !clients.has(w.clientId)) return json(res, 404, { error: 'unknown event stream' });
+      if (typeof w.open !== 'boolean') return json(res, 400, { error: 'invalid open' });
+      opts.memory.setOpen(w.clientId, w.open);
+      return json(res, 200, { ok: true });
+    }
+    // WORK-8.1: a closed stream counts as closed. A PUT, so the token and Origin apply.
     if (route === 'PUT /api/work/watch') {
       const body = await readJson(req, res, MAX_BODY, null);
       if (body === NO_BODY) return;

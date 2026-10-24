@@ -22,6 +22,7 @@ export interface MonitorOptions {
     pendingFor(row: SessionRow): PendingModel | null;
     pendingEffortFor(row: SessionRow): PendingEffort | null;
   };
+  memoryGrowth?(row: SessionRow): number | null;
   intervalMs?: number;
   now?: () => number;
 }
@@ -157,6 +158,8 @@ export class SessionMonitor {
         row.pendingEffort = models.pendingEffortFor(row);
       }
     }
+
+    for (const row of next) row.memoryGrowthBytes = this.opts.memoryGrowth?.(row) ?? null;
 
     const upsert: SessionRow[] = [];
     const nextRows = new Map<string, SessionRow>();

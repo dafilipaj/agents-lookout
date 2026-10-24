@@ -361,6 +361,10 @@ export function App({ client }: { client: LookoutClient }) {
   }, [toggleRight, modalOpen]);
   // WORK-8.1: the server reads Work only while some tab has it open: this one says whether it does.
   // A new event stream (reconnect) has a new client id, so this re-runs.
+  const [memoryOpen, setMemoryOpen] = useState(false);
+  useEffect(() => {
+    if (state.clientId) void client.watchMemory(state.clientId, memoryOpen);
+  }, [client, state.clientId, memoryOpen]);
   const workOpen = layout.open && layout.tab === 'work';
   useEffect(() => {
     if (state.clientId) void client.watchWork(state.clientId, workOpen);
@@ -726,6 +730,8 @@ export function App({ client }: { client: LookoutClient }) {
           onDismissLaunch={(id) => void client.dismissLaunch(id).catch(() => {})}
           keyboardEnabled={!modalOpen}
           usage={state.usage}
+          memory={state.memory}
+          onMemoryOpenChange={setMemoryOpen}
           onUsageOpen={() => void client.refreshJev().catch(() => {})}
         />
         {/* tabIndex -1: focus lands here after the selected start is dismissed (LAUNCH UX). */}

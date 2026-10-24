@@ -11,7 +11,7 @@ import { FakeControl, readViolations } from '../fakes/control.ts';
 import type { FakeViolation } from '../fakes/index.ts';
 import { BrowserGuard } from './browser.ts';
 import type { FleetRow } from '../../server/fleet.ts';
-import { type GitIdentityDecl, type TbPrDecl, type TbProdDecl, type WorldSpec, checkTbPr, checkTbProd } from './builder.ts';
+import { type MemoryDecl, checkMemory, type GitIdentityDecl, type TbPrDecl, type TbProdDecl, type WorldSpec, checkTbPr, checkTbProd } from './builder.ts';
 import { type Budget, WaitTimedOut, type Waiting, Waits } from './budget.ts';
 import { REPO_ROOT, checkPins } from './pins.ts';
 import {
@@ -81,7 +81,6 @@ export const REAL_TOOLS: Readonly<Record<string, string>> = {
   cat: '/bin/cat',
   date: '/bin/date',
   echo: '/bin/echo',
-  sysctl: '/usr/sbin/sysctl',
   uname: '/usr/bin/uname',
   id: '/usr/bin/id',
 };
@@ -194,6 +193,7 @@ export interface RunningWorld extends Waiting {
   readonly tbProd: FakeControl<TbProdDecl>;
   /** The fake `tb-pr`'s controls (TEST-1.6), as `tbProd`'s. */
   readonly tbPr: FakeControl<TbPrDecl>;
+  readonly memory: FakeControl<MemoryDecl>;
   /** Test controls that add CLI JSON rows without bypassing Fleet or tb-session's command boundary. */
   readonly fleet: { gainSession(row: FleetRow): void };
   readonly tbSession: { indexSession(row: Record<string, unknown>): void };
@@ -352,6 +352,7 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
   const fakeDir = (name: string) => join(root, 'fakes', name);
   const waitUntil = (what: string, check: () => boolean, o?: { timeoutMs?: number }) => waits.waitUntil(what, check, o);
   const tbProd = new FakeControl<TbProdDecl>('tb-prod', spec.tbProd ? fakeDir('tb-prod') : null, checkTbProd, waitUntil);
+  const memory = new FakeControl<MemoryDecl>('ps', fakeDir('ps'), checkMemory, waitUntil);
   const tbPr = new FakeControl<TbPrDecl>('tb-pr', spec.tbPr ? fakeDir('tb-pr') : null, checkTbPr, waitUntil);
   let worldPort: number;
   let worldUrl: string;
@@ -424,7 +425,7 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
 
   /** TEST-2.4: what each fake answered, as the test changed it, not only what it was declared with. */
   const fakesReport = (): string | null => {
-    const fakes = Object.fromEntries([...(spec.tbProd ? [[tbProd.name, tbProd.history()]] : []), ...(spec.tbPr ? [[tbPr.name, tbPr.history()]] : [])]);
+    const fakes = Object.fromEntries([['memory', memory.history()], ...(spec.tbProd ? [[tbProd.name, tbProd.history()]] : []), ...(spec.tbPr ? [[tbPr.name, tbPr.history()]] : [])]);
     return Object.keys(fakes).length ? JSON.stringify(fakes, null, 2) : null;
   };
 
@@ -568,7 +569,7 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
     // bin/: real tools, shims, logged wrappers. Nothing else.
     await step(Promise.all(Object.entries(REAL_TOOLS).map(([name, target]) => symlink(target, join(bin, name)))));
     await writeExecutable(join(bin, 'tmux'), fillTemplate('tmux', { TMUX_TMPDIR: tmuxTmpdir, REAL_TMUX: tmuxBin, SOCKET: socket }));
-    await writeExecutable(join(bin, 'ps'), fillTemplate('ps', {}));
+    await writeExecutable(join(bin, 'ps'), fillTemplate('ps', { NODE: process.execPath, SCRIPT: join(FAKES, 'ps.ts'), STATE: fakeDir('ps'), VIOLATIONS: violationsLog, LOG: callsLog }));
     for (const [name, real] of [['fleet', bins.fleet], ['tb-session', bins.tbSession]] as const) {
       if (!real) continue;
       const extras = name === 'fleet' ? fleetExtrasPath : tbSessionExtrasPath;
@@ -593,6 +594,9 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
     };
     await installFake(tbProd, spec.tbProd);
     await installFake(tbPr, spec.tbPr);
+    await mkdir(fakeDir('ps'), { recursive: true });
+    memory.answer(spec.memory);
+    await writeExecutable(join(bin, 'sysctl'), fillTemplate('fake', { NAME: 'sysctl', LOG: callsLog, NODE: process.execPath, SCRIPT: join(FAKES, 'sysctl.ts'), STATE: fakeDir('ps'), VIOLATIONS: violationsLog }));
     // TODO(TEST-1.4, TEST-1.7): the other declared fakes from e2e/fakes/ (claude, codex, tb-jev, curl).
 
     // TEST-1.2: a login shell (a tmux pane, Fleet's `$SHELL -l`) runs /etc/profile, whose
@@ -733,6 +737,7 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
     calls: () => readText(callsLog).split('\n').filter(Boolean),
     tbProd,
     tbPr,
+    memory,
     fleet: {
       gainSession: (row) => writeWorldJson(fleetExtrasPath, [...readJsonArray<FleetRow>(fleetExtrasPath).filter((existing) => existing.session_id !== row.session_id), row]),
     },

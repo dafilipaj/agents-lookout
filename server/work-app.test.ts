@@ -70,6 +70,7 @@ beforeEach(async () => {
     sessions: { end: unused, answer: unused, stop: unused, rename: unused, switchModel: unused, switchEffort: unused },
     files: { check: unused },
     history: { find: unused, detail: unused, peek: unused, resume: unused },
+    memory: { snapshot: () => null, watch: () => () => {}, setOpen: () => {}, drop: () => {} },
     staticDir: null,
   });
   await new Promise<void>((r) => app.server.listen(0, '127.0.0.1', r));

@@ -89,7 +89,7 @@ describe('fleet list → sidebar rows', () => {
         activity: null,
         backgroundShell: false,
         procStart: null,
-        pendingModel: null, pendingEffort: null,
+        memoryGrowthBytes: null, pendingModel: null, pendingEffort: null,
         modelAt: null,
       },
       {
@@ -113,7 +113,7 @@ describe('fleet list → sidebar rows', () => {
         activity: null,
         backgroundShell: false,
         procStart: null,
-        pendingModel: null, pendingEffort: null,
+        memoryGrowthBytes: null, pendingModel: null, pendingEffort: null,
         modelAt: null,
       },
       {
@@ -137,7 +137,7 @@ describe('fleet list → sidebar rows', () => {
         activity: null,
         backgroundShell: false,
         procStart: null,
-        pendingModel: null, pendingEffort: null,
+        memoryGrowthBytes: null, pendingModel: null, pendingEffort: null,
         modelAt: null,
       },
       {
@@ -161,7 +161,7 @@ describe('fleet list → sidebar rows', () => {
         activity: 'Edit: web/src/components/LanternPanel.tsx',
         backgroundShell: false,
         procStart: null,
-        pendingModel: null, pendingEffort: null,
+        memoryGrowthBytes: null, pendingModel: null, pendingEffort: null,
         modelAt: null,
       },
     ]);

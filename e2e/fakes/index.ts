@@ -31,7 +31,7 @@ import type { ClaudeUsageDecl, HarnessId, SessionDecl } from '../world/builder.t
  */
 
 /** A fake command the World writes into its `bin/` when declared, run from e2e/fakes/<name>.ts. */
-export type FakeCommand = 'claude' | 'codex' | 'tb-jev' | 'curl' | 'tb-prod' | 'tb-pr';
+export type FakeCommand = 'claude' | 'codex' | 'tb-jev' | 'curl' | 'tb-prod' | 'tb-pr' | 'ps' | 'sysctl';
 
 /** What a Fake Harness reads from the World when it starts. */
 export interface FakeHarnessConfig {

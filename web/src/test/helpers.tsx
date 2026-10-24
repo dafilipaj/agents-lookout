@@ -31,6 +31,7 @@ export function row(over: Partial<SessionRow> & { id: string }): SessionRow {
     modelAt: null,
     model: null,
     effort: null,
+    memoryGrowthBytes: null,
     subagents: null, activity: null, backgroundShell: false,
     ...over,
   };
@@ -117,6 +118,7 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
     watch: vi.fn(async () => {}),
     refreshJev: vi.fn(async () => {}),
     refreshUsage: vi.fn(async () => {}),
+    watchMemory: vi.fn(async () => {}),
     watchWork: vi.fn(async () => {}),
     refreshWork: vi.fn(options.refreshWork ?? (async () => ({ ok: true as const }))),
     sendMessage: vi.fn(options.sendMessage ?? (async () => {})),
@@ -151,7 +153,7 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
       listener!.onEvent(event);
     });
   const snapshot = (sessions: SessionRow[], fleet: FleetHealth = { state: 'ok' }, current: SettingsView = settings()) =>
-    emit({ type: 'snapshot', sessions, fleet, settings: current, launches: [], started: [], clientId: 'tab-1', usage: null });
+    emit({ type: 'snapshot', sessions, fleet, settings: current, launches: [], started: [], clientId: 'tab-1', usage: null, memory: null });
   const connection = (connected: boolean) =>
     act(() => {
       listener!.onConnection(connected);

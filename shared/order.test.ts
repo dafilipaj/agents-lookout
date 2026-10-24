@@ -21,7 +21,7 @@ const row = (id: string, status: Status, statusSince: number | null): SessionRow
   effort: null,
   subagents: null, activity: null, backgroundShell: false,
   procStart: null,
-  pendingModel: null, pendingEffort: null,
+  memoryGrowthBytes: null, pendingModel: null, pendingEffort: null,
   modelAt: null,
 });
 

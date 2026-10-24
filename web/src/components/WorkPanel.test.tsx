@@ -1900,7 +1900,7 @@ describe('Refresh (WORK-8)', () => {
     expect(watched()).toEqual(['tab-1', false]);
     // A new event stream says it again under its own id.
     await user.keyboard('w');
-    app.emit({ type: 'snapshot', sessions: [], fleet: { state: 'ok' }, settings: settings(), launches: [], started: [], clientId: 'tab-2', usage: null });
+    app.emit({ type: 'snapshot', sessions: [], fleet: { state: 'ok' }, settings: settings(), launches: [], started: [], clientId: 'tab-2', usage: null, memory: null });
     expect(watched()).toEqual(['tab-2', true]);
   });
 

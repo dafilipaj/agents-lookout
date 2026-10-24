@@ -145,6 +145,7 @@ export function normalizeRows(rows: readonly FleetRow[], deps: NormalizeDeps): S
       ownHost: perHost.get(tmuxHost(r) ?? '') === 1,
       model: r.model ?? null,
       effort: effort(r.effort),
+      memoryGrowthBytes: null,
       subagents: subagents(r.subagents),
       // SIDE-2.11: only while Busy, so a stale value never shows on another Status.
       activity: status === 'busy' ? activity(r.activity) : null,

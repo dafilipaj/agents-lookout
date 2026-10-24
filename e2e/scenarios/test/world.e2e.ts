@@ -106,13 +106,13 @@ test('TEST-1.1: the World takes only a server that answers with its own token', 
 scenario('TEST-1.2: PATH holds only the tools the World declares', world(), async ({ world }) => {
   // `type -P` searches PATH only, never a shell builtin such as `echo`.
   const lookup = async (name: string) => (await world.run('bash', ['-c', `type -P ${name} || true`])).stdout.trim();
-  for (const name of [...Object.keys(REAL_TOOLS), 'tmux', 'ps', 'fleet', 'tb-session']) {
+  for (const name of [...Object.keys(REAL_TOOLS), 'tmux', 'ps', 'sysctl', 'fleet', 'tb-session']) {
     expect(await lookup(name), name).toBe(join(world.bin, name));
   }
   for (const name of [...ABSENT_TOOLS, 'claude', 'codex', 'pi', 'curl', 'tb-jev', 'tb-prod', 'tb-pr']) {
     expect(await lookup(name), name).toBe('');
   }
-  expect(readdirSync(world.bin).sort()).toEqual([...Object.keys(REAL_TOOLS), 'tmux', 'ps', 'fleet', 'tb-session'].sort());
+  expect(readdirSync(world.bin).sort()).toEqual([...Object.keys(REAL_TOOLS), 'tmux', 'ps', 'sysctl', 'fleet', 'tb-session'].sort());
 
   // Fleet looks on PATH alone, and no per-binary override sends it anywhere else.
   expect(world.env[FLEET_PATH_ONLY]).toBe('1');

@@ -27,8 +27,8 @@ What a Behaviour test runs in. A World is built fresh for each Behaviour test an
 
 - [x] TEST-1.1 When a Behaviour test starts, its World has its own temporary HOME, its own settings file, a private tmux server and a Lookout server on a free port. That port is never 4747 or 4748. Nothing from the user's HOME, tmux server, keychain or settings is visible to Lookout, Fleet, tb-session or the Fake Harnesses. (test)
 - [ ] TEST-1.2 PATH holds only what the World declares:
-  - **real:** Fleet, tb-session, tmux (through a shim to the private `-L` server), git, ps (through the shim of TEST-1.10), lsof, sh, node, and the plain system tools these need;
-  - **fake:** claude, codex, tb-jev, curl, tb-prod and tb-pr, each only when declared;
+  - **real:** Fleet, tb-session, tmux (through a shim to the private `-L` server), git, ps for discovery (through the shim of TEST-1.10; memory sampling is faked, MEM-2.1), lsof, sh, node, and the plain system tools these need;
+  - **fake:** claude, codex, tb-jev, curl, tb-prod and tb-pr, each only when declared; the memory sampler’s `ps` and `sysctl`, always injected with deterministic defaults or a `.memory()` declaration (MEM);
   - **absent:** security, gh, ssh and osascript.
 
   A command the World doesn't declare can't be found, also not through Fleet's fallback directories (`/opt/homebrew/bin`, `/usr/local/bin`). (test)
@@ -430,3 +430,5 @@ None.
 - 2026-10-19: For WORK's PRs (slice B). A Behaviour test (TEST-1.5) reads the fake `tb-pr`'s boards and declared failures with WORK's own parser (`parseTbPrList`, `classifyTbPrFailure` in `server/work.ts`), and checks that every PR has tb-pr 0.3.1's fields in their order, so the fake and WORK's reading of tb-pr can't drift apart unnoticed; a change to that parser can now fail TEST's self-tests too. `.settings()` also takes `lastLaunch`, for WORK-5.2. The fakes' tests use invented repos, people and emails.
 - 2026-10-20: tb-session 0.3.0 is released (`tb-session-v0.3.0`), so `e2e/pins.json` moves from the `feature/tb-session-sources` commit to the release commit `33a26f3`, the one Dario has installed.
 - 2026-10-23: The pre-push hook runs at half the usual parallelism, from Dario's testing: a push that ran 6 Worlds and Vitest on every core at once, while other agents were working, pushed the load average to 33 and froze Chrome, and today's pre-push failures were all timing tests that lost to the load and passed alone. `pnpm test` and `pnpm e2e` run by hand keep their full speed. Technical approach, Before each push.
+
+- 2026-10-24: MEM adds `.memory({ processes, pressure, ramBytes })` and replaceable sampler answers. The World always fakes memory sampling, including when empty; the `ps` shim retains discovery calls, and undeclared `sysctl` argv is a violation. Declared readings include the real server and sampler pids with deterministic RSS.

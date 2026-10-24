@@ -1,8 +1,10 @@
+import { GROWTH_BYTES } from '@shared/memory.ts';
 import type { SessionRow } from '@shared/types.ts';
-import { Bot, FolderGit2, GitBranch, SquareTerminal } from 'lucide-react';
+import { Bot, FolderGit2, GitBranch, SquareTerminal, TrendingUp } from 'lucide-react';
 import { memo, useEffect, useRef } from 'react';
 import { BACKGROUND_SHELL_TIP, CONTEXT_LEVEL_CLASS, ROW_TONE, STATUS_LABEL, STATUS_STRIP_CLASS, contextLevel, location, locationTip, sessionOptionId } from '@/lib/sessions';
 import { SessionMarker } from '@/components/ui/session-marker';
+import { formatBytes } from '@/lib/memory';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { HarnessIcon } from './HarnessIcon';
@@ -126,6 +128,11 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
           {wordsInSlot && wordsLine('min-w-0 truncate', tip ? `${words.text}\n${tip}` : words.text)}
         </span>
         <span className="flex shrink-0 items-center gap-1.5 tabular-nums">
+          {(row.memoryGrowthBytes ?? 0) >= GROWTH_BYTES && (
+            <span data-field="memory-growth" title={`Memory +${formatBytes(row.memoryGrowthBytes!)} in 10 min`}>
+              <TrendingUp role="img" aria-label={`memory growing, +${formatBytes(row.memoryGrowthBytes!)} in 10 min`} className="size-2.5 text-warning-text" />
+            </span>
+          )}
           {running > 0 && (
             <span data-field="subagents" role="img" aria-label={subagentLabel} title={subagentLabel} className="flex items-center gap-0.5">
               <Bot aria-hidden className="size-2.5" />

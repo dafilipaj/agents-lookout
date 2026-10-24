@@ -1,4 +1,5 @@
 import type { LaunchHarness, SettingsView } from './settings.ts';
+import type { MemorySnapshot } from './memory.ts';
 import type { UsageSnapshot } from './usage.ts';
 import type { WorkSnapshot } from './work.ts';
 
@@ -38,6 +39,7 @@ export interface SessionRow {
   /** `session_id` when present, otherwise `<harness>:<pid>`. */
   id: string;
   pid: number;
+  memoryGrowthBytes: number | null;
   harness: Harness;
   title: string;
   status: Status;
@@ -176,6 +178,7 @@ export type ServerEvent =
       clientId: string;
       /** USAGE: the latest numbers, or null before the first read. */
       usage: UsageSnapshot | null;
+      memory: MemorySnapshot | null;
       /**
        * WORK: the latest PRs and Tasks, and when Refresh is back. This server always
        * sends it; it's optional only so that UI tests can leave it out.
@@ -184,6 +187,7 @@ export type ServerEvent =
     }
   /** USAGE: new numbers (sent to every tab, only when they changed). */
   | { type: 'usage'; usage: UsageSnapshot }
+  | { type: 'memory'; memory: MemorySnapshot }
   /** WORK: the latest PRs, Tasks and Refresh state (sent to every tab, only when something changed). */
   | { type: 'work'; work: WorkSnapshot }
   /** VIEW-2: what the Session's terminal shows, as plain text; sent only to tabs previewing it. */

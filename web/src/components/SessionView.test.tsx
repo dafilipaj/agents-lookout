@@ -562,7 +562,7 @@ describe('ending the confirmed Session only', () => {
     await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }));
 
     // Pending: the request went out under the pid id; its result still reaches the dialog.
-    app.emit({ type: 'snapshot', sessions: [codex('codex:43')].map((r) => ({ ...r, pid: 43 })), fleet: { state: 'ok' }, settings: settings(), launches: [], started: [], clientId: 'tab-1', usage: null });
+    app.emit({ type: 'snapshot', sessions: [codex('codex:43')].map((r) => ({ ...r, pid: 43 })), fleet: { state: 'ok' }, settings: settings(), launches: [], started: [], clientId: 'tab-1', usage: null, memory: null });
     await act(async () => window.history.pushState({}, '', '/s/codex%3A43'));
     await act(async () => window.dispatchEvent(new PopStateEvent('popstate')));
     await user.click(endButton()!);
@@ -857,7 +857,7 @@ describe('composer', () => {
     app.snapshot([row({ id: 'a' })]);
     await waitFor(() => expect(app.client.watch).toHaveBeenLastCalledWith('tab-1', 'a', false));
     await act(async () =>
-      app.emit({ type: 'snapshot', sessions: [row({ id: 'a' })], fleet: { state: 'ok' }, settings: settings(), launches: [], started: [], clientId: 'tab-9', usage: null }),
+      app.emit({ type: 'snapshot', sessions: [row({ id: 'a' })], fleet: { state: 'ok' }, settings: settings(), launches: [], started: [], clientId: 'tab-9', usage: null, memory: null }),
     );
     await waitFor(() => expect(app.client.watch).toHaveBeenLastCalledWith('tab-9', 'a', false));
   });

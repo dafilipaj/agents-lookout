@@ -4,7 +4,7 @@ import type { ComponentPropsWithoutRef } from 'react';
 import { STATUS_TAG_CLASS } from '@/lib/sessions';
 import { cn } from '@/lib/utils';
 
-export type ChipTone = 'neutral' | 'muted' | 'info' | 'ok' | Status;
+export type ChipTone = 'neutral' | 'muted' | 'info' | 'ok' | 'warning' | Status;
 
 /**
  * DS-8.3: one pill, `rounded-full px-1.5`, `caption` medium on a 16 px line, with a tone. `neutral`:
@@ -20,6 +20,7 @@ export const chipVariants = cva('inline-flex shrink-0 items-center gap-0.5 round
       muted: 'border-border text-muted-foreground',
       info: 'bg-info-soft text-info-text',
       ok: 'border-ok/40 text-ok',
+      warning: 'border-warning/40 text-warning-text',
       'needs-you': STATUS_TAG_CLASS['needs-you'],
       busy: STATUS_TAG_CLASS.busy,
       idle: STATUS_TAG_CLASS.idle,
