@@ -130,17 +130,9 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
 - **Costs and risks:** two breakpoints in the shell's grid, an overlay that needs focus handling and Esc, and the dock row's resting height (SIDE-8.1) checked at each width. Screenshots at 520, 560 and 900 px are in the review.
 - **Added:** 2026-10-22, from the design review; Dario: agreed, postponed.
 
-## Memory overview: what the Sessions cost the Mac (new spec)
+## Memory overview: what the Sessions cost the Mac (MEM)
 
-- **What:** a header button with the total memory of everything Lookout watches, e.g. `▌ 2.4G`. The glyph's colour is scaled to the Mac's RAM, and a click opens a breakdown with three groups: Lookout itself (server, `fleet`/`tb-session` polls), each Session (its process tree: the Harness, MCP servers, test runners), and anything else in tmux panes. Each group shows a 30-minute trend, and a row gets a badge when it grew 30 MB or more in 10 minutes. Clicking a Session row opens it.
-- **Why:** on 2026-10-23 Chrome froze at a load average of 33 (a pre-push e2e run plus other agents), and nothing on screen showed which Session was the cause.
-- **How:** follows Matej's recipe for his Electron app ([Recipe: memory usage overview](https://claude.ai/artifact/RKopD7r3zdkgQqGjMjgudk)), with Lookout's server doing what his main process does:
-  - one `ps -axo pid=,ppid=,rss=,comm=` per sample, summed per process tree, with the Session roots taken from the tmux pane pids Fleet already knows;
-  - macOS pressure from `sysctl -n kern.memorystatus_vm_pressure_level`, where critical forces red;
-  - samples every 30 s, every 5 s while the breakdown is open; a failed `ps` skips that sample;
-  - colour stops every 1/12 of RAM (light purple → bright red, red from a third), blended in OKLab;
-  - the pure parts (parse, tree, colour) unit-tested.
-- **Open:** the browser tab's own memory isn't visible to the server. CPU or load average might be the better signal here, since the freeze was load, not memory.
+- **Specced:** [MEM](features/memory-overview/SPEC.md), Draft, 2026-10-24. Its two open points are its open questions: CPU and load beside memory (Q2, recommended as MEM-5, since the freeze was load) and the browser tab's own memory (Q5, not in slice 1; the legend says the tab is in "other"). The placement moved from a header button to the dock row under the usage strip, by Dario's decision.
 - **Added:** 2026-10-23.
 
 ## Keep the Mac awake while Sessions run (new spec)

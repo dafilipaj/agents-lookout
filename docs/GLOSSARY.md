@@ -34,6 +34,8 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Mark**: A bookmark on the rail beside the chat's scroll bar for a prompt you sent, a Subagent result or a question; clicking it scrolls the chat to that entry.
 
+**Memory overview**: The line under the usage strip with what Lookout's and the Sessions' Process trees cost the Mac, and the breakdown it opens. See the MEM spec.
+
 **Needs you**: The Status of a Session that is blocked on you: a permission prompt, a question, or input.
 
 **Output**: A document file, an Artifact on claude.ai or a Backyard Share that a Session, or one of its Subagents, produced, as `tb-session outputs` mines it from the Transcripts. A file counts only when it has a document extension and no git repo owns it. An Artifact and the file it was published from are one Output, the Artifact's. See the LIB spec.
@@ -41,6 +43,10 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 **Page**: An Output that opens as a page in a browser tab: an HTML file or an Artifact. The Library's "Pages" chip shows both.
 
 **PR**: An open GitHub pull request in a `productiveio/*` repo that you opened, or that is a Review request to you, as `tb-pr` lists it.
+
+**Pressure**: macOS's memory pressure level, `kern.memorystatus_vm_pressure_level`: normal (1), warn (2) or critical (4). Read by the Memory overview; critical forces its red.
+
+**Process tree**: A process and every descendant of it, by parent pid, as one `ps` listing shows them at that instant. A Session's is rooted at its Harness process (Fleet's `pid`): the Harness, its MCP servers, the shells and test runners it started. Lookout's is rooted at its server. See the MEM spec.
 
 **Requirement**: One capability a feature provides, ID'd `<CODE>-n`.
 
