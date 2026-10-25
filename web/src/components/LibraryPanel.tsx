@@ -51,6 +51,8 @@ function outputsChanged(before: ReadonlyMap<string, SessionRow>, after: Readonly
     if (!previous || previous.harness !== row.harness || previous.pid !== row.pid || previous.procStart !== row.procStart) return true;
     // Finished counts are per Turn: a reset or a new running Subagent is not a completion.
     if ((row.subagents?.finished ?? 0) > (previous.subagents?.finished ?? 0)) return true;
+    // Running counts also catch completions from earlier Turns; an unknown reading is not zero.
+    if (previous.subagents && row.subagents && row.subagents.running < previous.subagents.running) return true;
   }
   return false;
 }
@@ -97,8 +99,17 @@ export function LibraryPanel({ focusKey, visible, sessions, now, search, status,
   const request = useRef({ search, status, q, filter, headless });
   useLayoutEffect(() => { request.current = { search, status, q, filter, headless }; });
   const ask = (page: number, continuation?: string) => { const r = request.current; return r.search({ ...r.filter, query: r.q, page, ...(continuation ? { continuation } : {}), headless: r.headless }); };
-  const apply = (next: Results) => { if (frozen.current) pending.current = next; else setResults(next); };
-  useEffect(() => { if (!expanded && !hovered && pending.current) { setResults(pending.current); pending.current = null; } }, [expanded, hovered]);
+  const apply = (next: Results) => {
+    if (next.gen !== seq.current) return;
+    if (frozen.current) pending.current = next;
+    else { pending.current = null; setResults(next); }
+  };
+  useEffect(() => {
+    if (expanded || hovered) return;
+    const next = pending.current;
+    pending.current = null;
+    if (next?.gen === seq.current) setResults(next);
+  }, [expanded, hovered]);
   useEffect(() => { if (visible) input.current?.focus(); }, [focusKey, visible]);
 
   const refresh = useRef(() => { });
@@ -110,14 +121,15 @@ export function LibraryPanel({ focusKey, visible, sessions, now, search, status,
       if (seq.current !== mine) return;
       if (page.state === 'not-installed') { setInstall(page.installCommand); setResults(null); return; }
       setInstall(null);
-      const old = pending.current ?? current.current;
+      const previous = pending.current ?? current.current;
+      const old = previous?.gen === mine ? previous : null;
       const seen = new Set(page.items.map(key));
       const later = (old?.pages.slice(1) ?? []).map((p) => ({ ...p, items: p.items.filter((i) => !seen.has(key(i))) }));
       apply({ pages: [page, ...later], auto: old?.auto ?? 0, gen: mine });
     }, (err: unknown) => { if (seq.current === mine) setError(err instanceof Error ? err.message : "Couldn't read Library."); }).finally(() => {
       if (seq.current === mine) {
         reading.current = false; setBusy(false); setIndexing(false);
-        if (refreshQueued.current) { refreshQueued.current = false; setTimeout(() => refresh.current(), 0); }
+        if (refreshQueued.current) { refreshQueued.current = false; setTimeout(() => { if (seq.current === mine) refresh.current(); }, 0); }
       }
     });
   };
@@ -127,8 +139,8 @@ export function LibraryPanel({ focusKey, visible, sessions, now, search, status,
   if (previousFilter !== signature) {
     setPreviousFilter(signature); setResults(null); setExpanded(null); setHovered(null); setActive(null); setBusy(true); setMoreBusy(false); setError(null); setInstall(null);
   }
-  // New filter or open: replace all pages. Old requests can never land in a new filter's list.
-  useEffect(() => {
+  // Invalidate before the passive thaw effect: collapsing on a new filter must not restore its old buffer.
+  useLayoutEffect(() => {
     if (!visible) { seq.current++; reading.current = false; return; }
     ++seq.current; reading.current = false; refreshQueued.current = false; pending.current = null;
     const timer = setTimeout(() => refresh.current(), q ? SEARCH_DEBOUNCE_MS : 0);
@@ -159,17 +171,17 @@ export function LibraryPanel({ focusKey, visible, sessions, now, search, status,
   const last = results?.pages.at(-1), items = results?.pages.flatMap((p) => p.items) ?? [];
   const load = useRef((auto = false) => { void auto; });
   const loadMore = (auto = false) => {
-    const r = current.current, tail = r?.pages.at(-1);
+    const r = pending.current ?? current.current, tail = r?.pages.at(-1);
     if (!r || !tail?.hasMore || r.gen !== seq.current || reading.current || (auto && r.auto >= AUTO_FILL_PAGES)) return;
     const mine = r.gen; reading.current = true; setMoreBusy(true); setError(null);
     ask(tail.nextPage, tail.continuation).then((page) => {
       if (mine !== seq.current) return;
       if (page.state === 'not-installed') { setInstall(page.installCommand); return; }
       const old = pending.current ?? current.current;
-      if (!old) return;
+      if (!old || old.gen !== mine) return;
       const seen = new Set(old.pages.flatMap((p) => p.items.map(key)));
       apply({ ...old, pages: [...old.pages, { ...page, items: page.items.filter((i) => !seen.has(key(i))) }], auto: auto ? old.auto + 1 : 0 });
-    }, (err: unknown) => { if (mine === seq.current) setError(err instanceof Error ? err.message : "Couldn't load more Outputs."); }).finally(() => { if (mine === seq.current) { reading.current = false; setMoreBusy(false); setIndexing(false); if (refreshQueued.current) { refreshQueued.current = false; setTimeout(() => refresh.current(), 0); } } });
+    }, (err: unknown) => { if (mine === seq.current) setError(err instanceof Error ? err.message : "Couldn't load more Outputs."); }).finally(() => { if (mine === seq.current) { reading.current = false; setMoreBusy(false); setIndexing(false); if (refreshQueued.current) { refreshQueued.current = false; setTimeout(() => { if (seq.current === mine) refresh.current(); }, 0); } } });
   };
   useLayoutEffect(() => { load.current = loadMore; });
   useEffect(() => {

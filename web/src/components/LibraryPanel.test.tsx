@@ -1,4 +1,4 @@
-import type { LibraryPage, OutputItem, OutputSession } from '@shared/library.ts';
+import type { LibraryPage, LibraryQuery, OutputItem, OutputSession } from '@shared/library.ts';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { NOW, launchView, renderApp, row } from '@/test/helpers';
@@ -242,4 +242,104 @@ it('LIB-2.1: a refresh keeps the retained later page’s overflow continuation w
   fireEvent.click(within(panel()).getByRole('button', { name: 'Load more' }));
   await waitFor(() => expect(rows()).toHaveLength(3));
   expect(library).toHaveBeenLastCalledWith(expect.objectContaining({ page: 4, continuation: 'retained-overflow' }));
+});
+
+it.each([
+  { freeze: 'hover', stop: 'last page', fills: 2 },
+  { freeze: 'expansion', stop: 'last page', fills: 2 },
+  { freeze: 'hover', stop: 'five-page budget', fills: 5 },
+  { freeze: 'expansion', stop: 'five-page budget', fills: 5 },
+] as const)('LIB-2.1: $freeze-frozen automatic filling respects $stop', async ({ freeze, stop, fills }) => {
+  vi.useFakeTimers({ now: NOW });
+  const replies: ((page: LibraryPage) => void)[] = [];
+  const library = vi.fn<(q: LibraryQuery) => Promise<LibraryPage>>(() => new Promise((resolve) => replies.push(resolve)));
+  const app = renderApp('/', { library }); app.snapshot([]);
+  fireEvent.click(screen.getByRole('button', { name: 'Library' }));
+  await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+  // A real underfilled viewport, without relying on jsdom's zero layout measurements.
+  const scroll = within(panel()).getByRole('listbox').parentElement!;
+  Object.defineProperties(scroll, { clientHeight: { value: 500 }, scrollHeight: { value: 100 } });
+  await act(async () => { replies[0]!(ok([output()], { hasMore: true, nextPage: 2, continuation: 'overflow-2' })); await vi.advanceTimersByTimeAsync(0); });
+  expect(library).toHaveBeenCalledTimes(2); // The first automatic read is already in flight.
+  if (freeze === 'hover') fireEvent.mouseEnter(rows()[0]!);
+  else fireEvent.click(rows()[0]!);
+  for (let fill = 1; fill <= fills; fill++) {
+    await act(async () => {
+      replies[fill]!(ok([output({ key: `output-${fill}`, title: `Report ${fill}` })], {
+        hasMore: stop === 'five-page budget' || fill < fills,
+        nextPage: fill + 2, continuation: `overflow-${fill + 2}`,
+      }));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(rows()).toHaveLength(1); // Pending pages must not move a frozen row.
+    const expectedCalls = fill < fills ? fill + 2 : fill + 1;
+    expect(library).toHaveBeenCalledTimes(expectedCalls);
+    expect(library.mock.calls.map(([q]) => q.page)).toEqual(Array.from({ length: expectedCalls }, (_, n) => n + 1));
+  }
+  if (freeze === 'hover') fireEvent.mouseLeave(rows()[0]!);
+  else fireEvent.keyDown(within(panel()).getByRole('listbox'), { key: 'Escape' });
+  await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+  expect(rows()).toHaveLength(fills + 1);
+  expect(library).toHaveBeenCalledTimes(fills + 1);
+  if (stop === 'five-page budget') {
+    fireEvent.click(within(panel()).getByRole('button', { name: 'Load more' }));
+    expect(library).toHaveBeenCalledTimes(fills + 2);
+    expect(library).toHaveBeenLastCalledWith(expect.objectContaining({ page: 7, continuation: 'overflow-7' }));
+    await act(async () => { replies[fills + 1]!(ok([output({ key: 'manual', title: 'Manual report' })])); await vi.advanceTimersByTimeAsync(0); });
+    expect(rows()).toHaveLength(fills + 2);
+  }
+});
+
+it('LIB-2.3: changing Type after a two-page frozen refresh drops old-filter rows and continuations, including late replies', async () => {
+  vi.useFakeTimers({ now: NOW });
+  const replies: ((page: LibraryPage) => void)[] = [];
+  const library = vi.fn<(q: LibraryQuery) => Promise<LibraryPage>>(() => new Promise((resolve) => replies.push(resolve)));
+  const app = renderApp('/', { library }); app.snapshot([]);
+  fireEvent.click(screen.getByRole('button', { name: 'Library' }));
+  await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+  await act(async () => { replies[0]!(ok([output()], { hasMore: true, continuation: 'old-second' })); await vi.advanceTimersByTimeAsync(0); });
+  fireEvent.click(within(panel()).getByRole('button', { name: 'Load more' }));
+  await act(async () => { replies[1]!(ok([output({ key: 'old-pdf', title: 'Old PDF', type: 'pdf' })], { hasMore: true, nextPage: 3, continuation: 'old-third' })); await vi.advanceTimersByTimeAsync(0); });
+  expect(rows()).toHaveLength(2);
+  fireEvent.click(rows()[0]!);
+  app.snapshot([row({ id: 'new-writer' })]);
+  await act(async () => { replies[2]!(ok([output({ title: 'Frozen HTML' })], { hasMore: true, continuation: 'old-refreshed' })); await vi.advanceTimersByTimeAsync(0); });
+  expect(rows()[0]).toHaveTextContent('Harbor report');
+  expect(rows()[0]).toHaveAttribute('aria-expanded', 'true');
+  // Another old-filter read stays in flight across the change to Markdown only.
+  app.snapshot([]);
+  expect(library).toHaveBeenCalledTimes(4);
+  fireEvent.click(within(panel()).getByRole('button', { name: 'Markdown' }), { altKey: true });
+  await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+  expect(library).toHaveBeenLastCalledWith(expect.objectContaining({ types: ['markdown'], page: 1 }));
+  const markdown = output({ key: 'markdown', title: 'Markdown report', type: 'markdown', path: '/report.md' });
+  await act(async () => { replies[4]!(ok([markdown], { hasMore: true, continuation: 'markdown-second' })); await vi.advanceTimersByTimeAsync(0); });
+  expect(rows()).toHaveLength(1);
+  expect(rows()[0]).toHaveTextContent('Markdown report');
+  await act(async () => { replies[3]!(ok([output({ title: 'Late HTML' })], { hasMore: true, continuation: 'late-old' })); await vi.advanceTimersByTimeAsync(0); });
+  expect(rows()).toHaveLength(1);
+  expect(rows()[0]).toHaveTextContent('Markdown report');
+  fireEvent.click(within(panel()).getByRole('button', { name: 'Load more' }));
+  expect(library).toHaveBeenLastCalledWith(expect.objectContaining({ types: ['markdown'], page: 2, continuation: 'markdown-second' }));
+  await act(async () => { replies[5]!(ok([output({ ...markdown, key: 'markdown-2', title: 'Second Markdown report' })])); await vi.advanceTimersByTimeAsync(0); });
+  expect(rows()).toHaveLength(2);
+  expect(rows().every((r) => r.getAttribute('aria-label')!.includes('Markdown'))).toBe(true);
+});
+
+it('LIB-2.7: a cross-Turn Subagent finishing refreshes when running falls without a finished increase', async () => {
+  vi.useFakeTimers({ now: NOW });
+  const base = row({ id: 'writer', subagents: { running: 1, finished: 0 } });
+  const library = vi.fn(async () => ok([output()]));
+  const app = renderApp('/', { library }); app.snapshot([base]);
+  fireEvent.click(screen.getByRole('button', { name: 'Library' }));
+  await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+  expect(library).toHaveBeenCalledTimes(1);
+  app.snapshot([{ ...base, subagents: { running: 0, finished: 0 } }]);
+  await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+  expect(library).toHaveBeenCalledTimes(2);
+  // Losing the reading altogether must not be mistaken for a completion.
+  app.snapshot([{ ...base, subagents: { running: 2, finished: 0 } }]);
+  app.snapshot([{ ...base, subagents: null }]);
+  await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+  expect(library).toHaveBeenCalledTimes(2);
 });
