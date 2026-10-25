@@ -36,7 +36,7 @@ export function UsageStrip({ usage, now, onOpen, open, onOpenChange }: { usage: 
       <PopoverTrigger
         aria-label="Usage details"
         aria-describedby={usage ? summaryId : undefined}
-        className="w-full shrink-0 px-2.5 pt-2 pb-1 text-left outline-none hover:bg-sidebar-accent/50 focus-visible:bg-sidebar-accent/60"
+        className="w-full shrink-0 px-2.5 pt-1 pb-0.5 text-left outline-none hover:bg-sidebar-accent/50 focus-visible:bg-sidebar-accent/60"
       >
         {usage ? (
           <>

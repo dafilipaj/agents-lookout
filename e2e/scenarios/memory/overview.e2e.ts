@@ -31,10 +31,24 @@ async function expectRestingDock(page: Page, dock: Locator) {
   expect(bounds?.height).toBe(121); // DockRest plus the shared top border, SIDE-8.1.
   expect(bounds?.y).toBe(composerDock?.y);
   expect(bounds?.height).toBe(composerDock?.height);
+  const memoryRow = page.getByRole('button', { name: 'Memory details', exact: true });
+  const memoryBounds = (await memoryRow.boundingBox())!;
+  const status = page.getByRole('group', { name: 'Status line', exact: true });
+  const statusBounds = (await status.boundingBox())!;
+  expect(memoryBounds.height).toBe(28);
+  expect(memoryBounds.y).toBe(statusBounds.y);
+  expect(memoryBounds.y + memoryBounds.height).toBe(bounds!.y + bounds!.height);
+  expect(await memoryRow.evaluate((el) => getComputedStyle(el).borderTopWidth)).toBe('1px');
+  expect(await memoryRow.evaluate((el) => getComputedStyle(el).borderTopWidth)).toBe(await status.evaluate((el) => getComputedStyle(el).borderTopWidth));
+  const usageBounds = (await page.getByRole('button', { name: 'Usage details', exact: true }).boundingBox())!;
+  expect(usageBounds.y).toBe(bounds!.y + 1);
+  expect(usageBounds.height).toBeLessThanOrEqual(92);
+  expect(usageBounds.y + usageBounds.height).toBeLessThanOrEqual(memoryBounds.y);
   expect(await page.getByRole('textbox', { name: 'Message', exact: true }).getAttribute('rows')).toBe('1');
 }
 
 scenario('MEM-1.2: populated Claude, Codex and Jev usage plus memory fit the composer’s resting dock', world().memory(memory).usage(usage), async ({ page, world }) => {
+  await page.setViewportSize({ width: 1512, height: 703 });
   const id = '00000000-0000-4000-8000-0000000000aa';
   world.fleet.gainSession({ pid: 900002, session_id: id, cwd: world.home, status: 'idle', waiting_for: null, updated_at: Date.now(), backend: 'tmux', tmux_session: 'dock-session', display_title: 'Dock Session', context: null, harness: 'claude', model: null });
   await page.getByRole('option', { name: /Dock Session/ }).click();
@@ -105,4 +119,20 @@ scenario('MEM-2.3: closing the last tab stops the shared sampler', world().memor
   await expect(line).toContainText('pressure warn', { timeout: 8000 });
   await page.close();
   await expectReleased(world);
+});
+
+scenario('MEM-1.2: the memory status row stays at the dock bottom in views without a Session status line', world().memory(memory).usage(usage), async ({ page, world }) => {
+  for (const path of ['/', '/l/missing', '/h/claude/missing']) {
+    await page.goto(new URL(path, world.url).href);
+    await expect(page.getByTestId('usage-strip').locator('[data-field="jev"]')).toHaveText('ready');
+    await expect(page.getByRole('group', { name: 'Status line', exact: true })).toHaveCount(0);
+    const dock = (await page.locator('[data-shell-column="left"] [data-shell-row="dock"]').boundingBox())!;
+    const memoryRow = page.getByRole('button', { name: 'Memory details', exact: true });
+    const bounds = (await memoryRow.boundingBox())!;
+    expect(dock.height).toBe(121);
+    expect(bounds.height).toBe(28);
+    expect(bounds.y + bounds.height).toBe(dock.y + dock.height);
+    expect(bounds.y + bounds.height).toBe(await page.evaluate(() => window.innerHeight));
+    expect(await memoryRow.evaluate((el) => getComputedStyle(el).borderTopWidth)).toBe('1px');
+  }
 });

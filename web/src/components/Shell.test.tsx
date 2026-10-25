@@ -316,7 +316,7 @@ describe('one grid (SIDE-8.1)', () => {
    * that height at rest in every view, with or without a main-pane dock. The measured positions are
    * checked by eye (manual).
    */
-  it.each(views)('SIDE-8.1: in the %s view the sidebar’s dock holds the resting dock under the usage panel', async (_, show) => {
+  it.each(views)('SIDE-8.1 / MEM-1.2: in the %s view the sidebar’s dock anchors its memory status row below usage', async (_, show) => {
     await show();
     const dock = cellOf(screen.getByRole('button', { name: 'Usage details' }));
     expect(where(dock)).toBe('dock/left');
@@ -325,6 +325,11 @@ describe('one grid (SIDE-8.1)', () => {
     expect(rest).toHaveAttribute('aria-hidden', 'true');
     expect(rest).toHaveAttribute('inert');
     expect(rest!.classList).toContain('invisible');
+    const memory = screen.getByRole('button', { name: 'Memory details' });
+    expect(memory).toHaveClass('h-7', 'items-center', 'mt-auto', 'border-t', 'border-sidebar-border/70');
+    expect(memory.parentElement).toHaveClass('flex', 'flex-col', 'self-stretch');
+    expect(memory.parentElement!.parentElement).toBe(dock);
+    expect(screen.getByRole('button', { name: 'Usage details' }).parentElement).toBe(memory.parentElement);
   });
 
   it('SIDE-8.1: the resting dock is drawn by the composer’s and the status line’s own parts, so its height can’t drift from theirs', async () => {

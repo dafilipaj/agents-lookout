@@ -31,10 +31,10 @@ export function MemoryLine({ memory, sessions, now, open, onOpenChange, onSelect
         aria-label="Memory details"
         aria-describedby={summaryId}
         title={description}
-        className="flex h-5 w-full shrink-0 items-start gap-1.5 px-2.5 pb-1 text-left text-caption leading-4 whitespace-nowrap outline-none hover:bg-sidebar-accent/50 focus-visible:bg-sidebar-accent/60"
+        className="mt-auto flex h-7 w-full shrink-0 items-center gap-1.5 border-t border-sidebar-border/70 bg-muted/30 px-2.5 text-left text-caption leading-4 whitespace-nowrap outline-none hover:bg-sidebar-accent/50 focus-visible:bg-sidebar-accent/60"
       >
         <span id={summaryId} className="sr-only">{description}</span>
-        <span aria-hidden data-field="memory-glyph" className={cn('mt-0.5 h-3 w-[3px] shrink-0 rounded-full transition-colors duration-700 motion-reduce:transition-none', MEMORY_GLYPH[memory ? watchedLevel(memory) : 'normal'])} />
+        <span aria-hidden data-field="memory-glyph" className={cn('h-3 w-[3px] shrink-0 rounded-full transition-colors duration-700 motion-reduce:transition-none', MEMORY_GLYPH[memory ? watchedLevel(memory) : 'normal'])} />
         {memory ? (
           <span>
             <span className="font-medium tabular-nums">{formatBytes(memory.watchedBytes)}</span>

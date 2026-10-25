@@ -324,7 +324,7 @@ export function Sidebar(props: SidebarProps) {
           stacked under it, keeps the row at the resting composer's height in every view. */}
       <ShellCell row="dock" className="grid items-start border-sidebar-border *:col-start-1 *:row-start-1">
         <DockRest />
-        <div>
+        <div className="flex flex-col self-stretch">
           <UsageStrip usage={props.usage} now={now} onOpen={props.onUsageOpen} open={dockPopover === 'usage'} onOpenChange={(open) => changePopover('usage', open)} />
           <MemoryLine memory={props.memory ?? null} sessions={sessions} now={now} open={dockPopover === 'memory'} onOpenChange={(open) => changePopover('memory', open)} onSelect={selectId} />
         </div>

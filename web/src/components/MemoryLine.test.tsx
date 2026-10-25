@@ -28,13 +28,19 @@ it('MEM-1.1: a sibling caption button below usage reads memory and load, with a 
   expect(trigger()).toHaveTextContent('Reading memory…');
   app.emit({ type: 'memory', memory: sample() });
   expect(trigger()).toHaveTextContent('2.4 GB · load 3.3');
-  expect(trigger().className).toContain('text-caption');
+  expect(trigger()).toHaveClass('text-caption', 'h-7', 'items-center', 'border-t', 'border-sidebar-border/70');
   expect(trigger().title).toContain('2.4 GB watched of 24 GB, pressure normal, sampled 12 s ago');
   const glyph = trigger().querySelector('[data-field="memory-glyph"]')!;
   expect(glyph).toHaveClass('w-[3px]', 'h-3', 'rounded-full');
   const usage = screen.getByRole('button', { name: 'Usage details' });
   expect(usage.parentElement).toBe(trigger().parentElement);
   expect(usage.compareDocumentPosition(trigger()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  for (const mode of ['light', 'dark'] as Mode[]) {
+    const tokens = themeTokens(css)[mode];
+    const background = paint(tokens, 'muted', solid(tokens, 'sidebar'), .3);
+    expect(contrast(paint(tokens, 'muted-foreground', background), background)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(paint(tokens, 'sidebar-foreground', background), background)).toBeGreaterThanOrEqual(4.5);
+  }
 });
 
 it('MEM-1.2: new samples update the line in a fixed-height dock slot, loading and stale included', () => {
@@ -44,7 +50,10 @@ it('MEM-1.2: new samples update the line in a fixed-height dock slot, loading an
   app.emit({ type: 'memory', memory: sample({ watchedBytes: 812 * MB, old: true }) });
   expect(trigger()).toHaveTextContent('812 MB');
   expect(trigger().className).toBe(cls);
-  expect(trigger()).toHaveClass('h-5', 'whitespace-nowrap');
+  expect(trigger()).toHaveClass('h-7', 'items-center', 'mt-auto', 'border-t', 'border-sidebar-border/70', 'bg-muted/30', 'whitespace-nowrap');
+  expect(trigger()).not.toHaveClass('pb-1');
+  expect(trigger().querySelector('[data-field="memory-glyph"]')).not.toHaveClass('mt-0.5');
+  expect(screen.getByRole('button', { name: 'Usage details' })).toHaveClass('pt-1', 'pb-0.5');
   expect(document.querySelector('[data-dock-rest]')).toBeInTheDocument();
 });
 
