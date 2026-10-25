@@ -69,14 +69,17 @@ scenario('LIB-3.3: opened HTML runs scripts in an opaque origin, cannot read Loo
   expect(await report.evaluate(() => { try { localStorage.getItem('lookout.right'); return 'read'; } catch { return 'blocked'; } })).toBe('blocked');
   expect(await report.evaluate(async () => { try { return await (await fetch('/api/bootstrap')).text(); } catch { return 'blocked'; } })).toBe('blocked');
   expect(await report.evaluate(() => window.opener === null)).toBe(true);
-  const response = await page.request.get(`${w.url}/api/library/file?path=${encodeURIComponent(join(w.home, 'output/not-listed.html'))}`);
+  // World URLs end in /; resolve from the origin so this reaches the API, not the SPA fallback.
+  const fileUrl = new URL('/api/library/file', w.url);
+  fileUrl.searchParams.set('path', join(w.home, 'output/not-listed.html'));
+  const response = await page.request.get(fileUrl.href);
   expect(response.status()).toBe(404); expect(response.headers()['content-security-policy']).toBe('sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox'); expect(response.headers()['x-content-type-options']).toBe('nosniff');
 });
 scenario('LIB-3.5: live Session chips select the existing Session, deleted Transcripts Show read-only and pruned chips have no button', world().outputs([{ kind: 'file', path: 'output/live.html', title: 'Live report', sessionId: 'library-live' }, { kind: 'file', path: 'output/missing.html', title: 'Missing Transcript report', transcriptMissing: true, sessionId: 'library-missing' }, { kind: 'file', path: 'output/pruned.html', title: 'Pruned report', pruned: true, sessionId: 'library-pruned' }]), async ({ page, world: w }) => {
   w.fleet.gainSession(fleetRow('library-live', w.home)); await open(page);
   const live = rows(page).filter({ hasText: 'Live report' }); await live.click(); await expect(live.getByRole('button', { name: 'Open World report writer, Idle' })).toBeVisible();
-  await library(page).getByRole('listbox').press('s'); await expect(page).toHaveURL(`${w.url}/s/library-live`); expect(w.calls().some((c) => c.includes('spawn'))).toBe(false);
-  const missing = rows(page).filter({ hasText: 'Missing Transcript report' }); await missing.click(); await library(page).getByRole('listbox').press('s'); await expect(page).toHaveURL(`${w.url}/h/claude/library-missing`);
+  await library(page).getByRole('listbox').press('s'); await expect(page).toHaveURL(new URL('/s/library-live', w.url).href); expect(w.calls().some((c) => c.includes('spawn'))).toBe(false);
+  const missing = rows(page).filter({ hasText: 'Missing Transcript report' }); await missing.click(); await library(page).getByRole('listbox').press('s'); await expect(page).toHaveURL(new URL('/h/claude/library-missing', w.url).href);
   const pruned = rows(page).filter({ hasText: 'Pruned report' }); await pruned.click(); await expect(pruned.getByText('library-', { exact: true })).toHaveAttribute('title', "removed from tb-session's index"); await expect(pruned.getByRole('button', { name: /World report writer/ })).toHaveCount(0);
 });
 scenario('LIB-2.8: a pre-outputs tb-session gives Library its own upgrade hint while History still answers', world().outputs([], { unsupported: true }), async ({ page }) => {
