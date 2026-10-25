@@ -21,7 +21,7 @@ import type { FakeCommand, FakeViolation } from './index.ts';
  */
 
 /** The fakes a test steers this way. */
-export type FakeName = Extract<FakeCommand, 'tb-prod' | 'tb-pr' | 'tb-session'>;
+export type FakeName = Extract<FakeCommand, 'tb-prod' | 'tb-pr' | 'tb-session' | 'ps' | 'sysctl'>;
 
 /** Set by the fake's `bin/` wrapper: its directory, and the World's violations log. */
 export const STATE_ENV = 'LOOKOUT_FAKE_STATE';
@@ -79,7 +79,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * waits while it is held, then prints `respond`'s outcome. `respond` gets the declaration read when
  * the call started, and the moment it started.
  */
-export async function serveCall<A>(name: FakeName, respond: (argv: string[], answer: A, now: Date) => Outcome | Refusal): Promise<void> {
+export async function serveCall<A>(name: FakeCommand, respond: (argv: string[], answer: A, now: Date) => Outcome | Refusal): Promise<void> {
   const argv = process.argv.slice(2);
   const dir = process.env[STATE_ENV];
   const violations = process.env[VIOLATIONS_ENV];
@@ -159,7 +159,7 @@ export class FakeControl<A> {
 
   private need(): string {
     if (this.dir === null) {
-      const method = this.name === 'tb-prod' ? 'tbProd' : this.name === 'tb-pr' ? 'tbPr' : 'outputs';
+      const method = this.name === 'tb-prod' ? 'tbProd' : this.name === 'tb-pr' ? 'tbPr' : this.name === 'tb-session' ? 'outputs' : 'memory';
       throw new Error(`This World has no ${this.name}: declare it with world().${method}(…).`);
     }
     return this.dir;

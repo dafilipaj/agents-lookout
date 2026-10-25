@@ -24,9 +24,9 @@ const SOURCES = Object.fromEntries(
 /**
  * Files that draw with `<svg>`: the Harness logos and the Status shapes (both 0008 exceptions), and
  * the Session row's context gauge (`ContextRing`), a tiny chart of a number rather than an icon.
- * The chat rail's Marks are CSS shapes and need no entry.
+ * MEM's sparkline is a chart too. The chat rail's Marks are CSS shapes and need no entry.
  */
-const SVG_FILES = new Set(['web/src/components/HarnessIcon.tsx', 'web/src/components/StatusMarker.tsx', 'web/src/components/SessionItem.tsx']);
+const SVG_FILES = new Set(['web/src/components/HarnessIcon.tsx', 'web/src/components/StatusMarker.tsx', 'web/src/components/SessionItem.tsx', 'web/src/components/MemoryLine.tsx']);
 
 /**
  * The packages UI source may import. Any other package fails the guard until someone checks it isn't

@@ -267,6 +267,9 @@ const FAMILIES: Record<string, Family> = {
   warning: {
     tokens: ['warning', 'warning-text'],
     files: {
+      'web/src/lib/memory.ts': { why: 'memory and load warning levels (MEM-1.3, MEM-5.2)', uses: ['bg-warning', 'text-warning-text'] },
+      'web/src/components/SessionItem.tsx': { why: 'a growing Process tree (MEM-4.1)', uses: ['text-warning-text'] },
+      'web/src/components/ui/chip.tsx': { why: 'the growth warning chip (MEM-3.5)', uses: ['border-warning/40', 'text-warning-text'] },
       'web/src/lib/sessions.ts': { why: 'context above 40% (CONTEXT_LEVEL_CLASS), in the status line, the sidebar and a PR aged 3 to 10 days', uses: ['text-warning-text'] },
       'web/src/lib/usage.ts': { why: "the usage warning level's triangle, and its bar's edge (and the details' solid bar)", uses: ['bg-warning', 'text-warning-text'] },
     },
@@ -274,6 +277,7 @@ const FAMILIES: Record<string, Family> = {
   destructive: {
     tokens: ['destructive', 'destructive-soft', 'destructive-text'],
     files: {
+      'web/src/lib/memory.ts': { why: 'memory and load critical levels (MEM-1.3, MEM-5.2)', uses: ['bg-destructive', 'text-destructive-text'] },
       'web/src/components/ui/button.tsx': { why: 'the destructive Button variant, and an invalid field', uses: ['bg-destructive', 'bg-destructive/60', 'bg-destructive/90', 'border-destructive', 'ring-destructive/20', 'ring-destructive/40'] },
       'web/src/components/ui/input.tsx': { why: 'an invalid field', uses: ['border-destructive', 'ring-destructive/20', 'ring-destructive/40'] },
       'web/src/components/ui/textarea.tsx': { why: 'an invalid field', uses: ['border-destructive', 'ring-destructive/20', 'ring-destructive/40'] },
@@ -300,6 +304,7 @@ const FAMILIES: Record<string, Family> = {
   info: {
     tokens: ['info-soft', 'info-border', 'info-text'],
     files: {
+      'web/src/components/MemoryLine.tsx': { why: 'a skipped memory sample is old (MEM-2.6)', uses: ['text-info-text'] },
       'web/src/components/ui/alert.tsx': { why: 'the info Alert (DS-4): staleness and notices, its box, text and icon', uses: ['bg-info-soft', 'border-info-border', 'text-info-text'] },
       'web/src/components/ui/chip.tsx': { why: 'the info chip: "old" (DS-3.3)', uses: ['bg-info-soft', 'text-info-text'] },
       'web/src/components/SessionView.tsx': { why: 'the terminal preview\'s "… · retrying" (DS-3.3)', uses: ['text-info-text'] },

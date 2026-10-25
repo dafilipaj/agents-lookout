@@ -101,7 +101,7 @@ Patterns the review found three or more times, each drawn slightly differently.
 
 - [x] DS-8.1 `EmptyState` (a title, a hint, an optional icon and an optional action) replaces the sidebar's and History's `Message`, the chat's `Notice` and the main pane's hint. (test)
 - [x] DS-8.2 `CommandBlock` shows a command to copy: monospace `caption`, wrapped, selected whole on click. Fleet's and tb-session's "isn't installed" and Work's problems use it. (test)
-- [x] DS-8.3 `Chip` is one pill in `caption`, with a tone: `neutral`, `info` or a Status, and for Work's PR states `muted` (draft) and `ok` (approved, WORK-3.2). It replaces the "old", "live", "headless", "milestone" and PR state chips and the chat's message tag. (test)
+- [x] DS-8.3 `Chip` is one pill in `caption`, with a tone: `neutral`, `info` or a Status, and for Work's PR states `muted` (draft) and `ok` (approved, WORK-3.2), and `warning` for memory growth (MEM-3.5), with a `warning/40` border and `warning-text`. It replaces the "old", "live", "headless", "milestone" and PR state chips and the chat's message tag. (test)
 - [x] DS-8.4 `Kbd` is one key: the Filter box's `/`, the main pane's hints, the launcher's ⌘↵ and the composer hint's `i`. A sentence is never a key: the launcher's "Esc to close · your input is kept" keeps only "Esc" in a `Kbd`. (test)
 
 ### DS-9 The Session list takes keyboard focus
@@ -245,7 +245,7 @@ DS changes only `web/src`. Nothing on the server changes, so every check is a un
 7. **Icon buttons (DS-7.2).** `size="icon…"` on a `Button` only inside `components/ui/`; no `size-`, `h-`, `w-`, `min-…` or `max-…` class, with any variant, on an `IconButton`; and a `<button>` or `<Button>` whose children are only icons (lucide's, `HarnessIcon`, `MarkShape`, also in a conditional, besides `aria-hidden` elements) only in three pinned places: Copy session ID and a code block's copy button, which show "Copied" beside the icon for 2 s, and a Mark on the chat's rail, a 12 px target by design on a 16 px rail (VIEW-1.11).
 8. **One key, one command (DS-8.2, 8.4).** A `<kbd>` only in `kbd.tsx`, and `select-all` only in `command-block.tsx`.
 
-The icons guard keeps its rules: `SessionMarker` draws with lucide and `StatusMarker`, so no new file draws an `<svg>`. It reads a key glyph inside `<Kbd>` as it reads one inside `<kbd>` (the launcher's ⌘↵).
+The icons guard keeps its rules: `SessionMarker` draws with lucide and `StatusMarker`, and `MemoryLine.tsx` draws MEM’s sparkline, a chart like `SessionItem.tsx`’s context gauge; both chart files are named in the icons guard. It reads a key glyph inside `<Kbd>` as it reads one inside `<kbd>` (the launcher's ⌘↵).
 
 ### Tokens
 
@@ -362,4 +362,5 @@ None.
 - 2026-10-23: Spacing around the labelled buttons, from Dario's testing: they sat too close to the details above and below. `RowActions` (`components/ui/icon-button.tsx`) now holds them in Work's and History's expanded rows, in one place: 8 px between buttons (was 4), 12 px above (was 6) and 4 px below (was 0). DS-7.4 states it and stays unticked for Dario to re-check.
 - 2026-10-23: DS-7.4 ticked: Dario checked the labelled row buttons' size and their wider spacing in the running app.
 
+- 2026-10-24: MEM adds the warning Chip tone (DS-8.3); the colour guard allows memory/load levels in `lib/memory.ts`, the Session growth mark in `SessionItem.tsx`, the warning Chip in `ui/chip.tsx`, and stale memory age in `MemoryLine.tsx`, each pinned to its classes. The shared level icon accepts a label so memory and load never announce usage percentages.
 - 2026-10-25: Library slice 1 uses highlight for title, path and URL search hits (LIB-2.4); extended DS-3.4 and the DS-2.3 guard’s file list.

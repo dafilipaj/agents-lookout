@@ -12,7 +12,7 @@ import { FakeControl, readViolations } from '../fakes/control.ts';
 import type { FakeViolation } from '../fakes/index.ts';
 import { BrowserGuard } from './browser.ts';
 import type { FleetRow } from '../../server/fleet.ts';
-import { type GitIdentityDecl, type TbPrDecl, type TbProdDecl, type WorldSpec, checkTbPr, checkTbProd } from './builder.ts';
+import { type MemoryDecl, checkMemory, type GitIdentityDecl, type TbPrDecl, type TbProdDecl, type WorldSpec, checkTbPr, checkTbProd } from './builder.ts';
 import { type Budget, WaitTimedOut, type Waiting, Waits } from './budget.ts';
 import { REPO_ROOT, checkPins } from './pins.ts';
 import {
@@ -82,7 +82,6 @@ export const REAL_TOOLS: Readonly<Record<string, string>> = {
   cat: '/bin/cat',
   date: '/bin/date',
   echo: '/bin/echo',
-  sysctl: '/usr/sbin/sysctl',
   uname: '/usr/bin/uname',
   id: '/usr/bin/id',
 };
@@ -196,6 +195,7 @@ export interface RunningWorld extends Waiting {
   /** The fake `tb-pr`'s controls (TEST-1.6), as `tbProd`'s. */
   readonly tbPr: FakeControl<TbPrDecl>;
   readonly tbOutputs: FakeControl<TbSessionAnswer>;
+  readonly memory: FakeControl<MemoryDecl>;
   /** Test controls that add CLI JSON rows without bypassing Fleet or tb-session's command boundary. */
   readonly fleet: { gainSession(row: FleetRow): void };
   readonly tbSession: { indexSession(row: Record<string, unknown>): void };
@@ -337,6 +337,7 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
   const tbSessionDir = join(root, 'tb-session');
   const fleetExtrasPath = join(fleetDir, 'extra-rows.json');
   const tbSessionExtrasPath = join(tbSessionDir, 'extra-results.json');
+  const usageDir = spec.usage ? join(root, 'fakes', 'usage') : '';
   const callsLog = join(logs, 'calls.log');
   const violationsLog = join(logs, 'violations.jsonl');
   const serverLogPath = join(logs, 'server.log');
@@ -355,6 +356,7 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
   const waitUntil = (what: string, check: () => boolean, o?: { timeoutMs?: number }) => waits.waitUntil(what, check, o);
   const tbProd = new FakeControl<TbProdDecl>('tb-prod', spec.tbProd ? fakeDir('tb-prod') : null, checkTbProd, waitUntil);
   const tbOutputs = new FakeControl<TbSessionAnswer>('tb-session', spec.outputs ? fakeDir('tb-session') : null, checkTbSession, waitUntil);
+  const memory = new FakeControl<MemoryDecl>('ps', fakeDir('ps'), checkMemory, waitUntil);
   const tbPr = new FakeControl<TbPrDecl>('tb-pr', spec.tbPr ? fakeDir('tb-pr') : null, checkTbPr, waitUntil);
   let worldPort: number;
   let worldUrl: string;
@@ -427,7 +429,7 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
 
   /** TEST-2.4: what each fake answered, as the test changed it, not only what it was declared with. */
   const fakesReport = (): string | null => {
-    const fakes = Object.fromEntries([...(spec.tbProd ? [[tbProd.name, tbProd.history()]] : []), ...(spec.tbPr ? [[tbPr.name, tbPr.history()]] : []), ...(spec.outputs ? [[tbOutputs.name, tbOutputs.history()]] : [])]);
+    const fakes = Object.fromEntries([['memory', memory.history()], ...(spec.tbProd ? [[tbProd.name, tbProd.history()]] : []), ...(spec.tbPr ? [[tbPr.name, tbPr.history()]] : []), ...(spec.outputs ? [[tbOutputs.name, tbOutputs.history()]] : [])]);
     return Object.keys(fakes).length ? JSON.stringify(fakes, null, 2) : null;
   };
 
@@ -571,12 +573,15 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
     // bin/: real tools, shims, logged wrappers. Nothing else.
     await step(Promise.all(Object.entries(REAL_TOOLS).map(([name, target]) => symlink(target, join(bin, name)))));
     await writeExecutable(join(bin, 'tmux'), fillTemplate('tmux', { TMUX_TMPDIR: tmuxTmpdir, REAL_TMUX: tmuxBin, SOCKET: socket }));
-    await writeExecutable(join(bin, 'ps'), fillTemplate('ps', {}));
+    await writeExecutable(join(bin, 'ps'), fillTemplate('ps', { NODE: process.execPath, SCRIPT: join(FAKES, 'ps.ts'), STATE: fakeDir('ps'), VIOLATIONS: violationsLog, LOG: callsLog }));
     for (const [name, real] of [['fleet', bins.fleet], ['tb-session', bins.tbSession]] as const) {
       if (!real || (name === 'tb-session' && spec.outputs)) continue;
       const extras = name === 'fleet' ? fleetExtrasPath : tbSessionExtrasPath;
       await writeExecutable(join(bin, name), fillTemplate('logged', {
         NAME: name,
+        USAGE: usageDir,
+        USAGE_SCRIPT: join(FAKES, 'fleet-usage.ts'),
+        VIOLATIONS: violationsLog,
         LOG: callsLog,
         REAL: real,
         SELF: join(bin, name),
@@ -597,7 +602,15 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
     await installFake(tbProd, spec.tbProd);
     await installFake(tbPr, spec.tbPr);
     if (spec.outputs) await installFake(tbOutputs, await materializeOutputs(home, spec.outputs.items, spec.outputs.unsupported));
-    // TODO(TEST-1.4, TEST-1.7): the other declared fakes from e2e/fakes/ (claude, codex, tb-jev, curl).
+    await mkdir(fakeDir('ps'), { recursive: true });
+    memory.answer(spec.memory);
+    await writeExecutable(join(bin, 'sysctl'), fillTemplate('sysctl', { REAL_SYSCTL: '/usr/sbin/sysctl', NAME: 'sysctl', LOG: callsLog, NODE: process.execPath, SCRIPT: join(FAKES, 'sysctl.ts'), STATE: fakeDir('ps'), VIOLATIONS: violationsLog }));
+    if (spec.usage) {
+      await mkdir(usageDir, { recursive: true });
+      await writeFile(join(usageDir, 'answer.json'), JSON.stringify(spec.usage));
+      await writeExecutable(join(bin, 'tb-jev'), fillTemplate('fake', { NAME: 'tb-jev', LOG: callsLog, NODE: process.execPath, SCRIPT: join(FAKES, 'tb-jev.ts'), STATE: usageDir, VIOLATIONS: violationsLog }));
+    }
+    // TODO(TEST-1.4, TEST-1.7): Fake Harnesses, curl and standalone Jev declarations.
 
     // TEST-1.2: a login shell (a tmux pane, Fleet's `$SHELL -l`) runs /etc/profile, whose
     // path_helper puts /usr/bin, /usr/local/bin and /opt/homebrew/bin back on PATH, with
@@ -738,6 +751,7 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
     tbProd,
     tbPr,
     tbOutputs,
+    memory,
     fleet: {
       gainSession: (row) => writeWorldJson(fleetExtrasPath, [...readJsonArray<FleetRow>(fleetExtrasPath).filter((existing) => existing.session_id !== row.session_id), row]),
     },

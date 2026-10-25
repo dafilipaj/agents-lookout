@@ -1,3 +1,4 @@
+import type { MemorySnapshot } from '@shared/memory.ts';
 import { sortSessions } from '@shared/order.ts';
 import type { FleetHealth, LaunchView, SessionRow } from '@shared/types.ts';
 import type { UsageSnapshot } from '@shared/usage.ts';
@@ -11,6 +12,7 @@ import { Kbd } from '@/components/ui/kbd';
 import { isLongIdle, matchesFilter, sessionOptionId } from '@/lib/sessions';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
+import { MemoryLine } from './MemoryLine';
 import { LaunchItem } from './LaunchItem';
 import { SessionItem } from './SessionItem';
 import { DockRest } from './SessionView';
@@ -43,6 +45,8 @@ export interface SidebarProps {
   keyboardEnabled: boolean;
   /** USAGE-1: the strip at the bottom. */
   usage: UsageSnapshot | null;
+  memory?: MemorySnapshot | null;
+  onMemoryOpenChange?(open: boolean): void;
   /** USAGE-2.1: its details opened. */
   onUsageOpen?(): void;
 }
@@ -50,6 +54,12 @@ export interface SidebarProps {
 export function Sidebar(props: SidebarProps) {
   const { sessions, fleet, loaded, connected, idleThresholdHours, selectedId, now, onSelect, launches, selectedLaunchId, onSelectLaunch } = props;
   const [filter, setFilter] = useState('');
+  const [dockPopover, setDockPopover] = useState<'usage' | 'memory' | null>(null);
+  const onMemoryOpenChange = props.onMemoryOpenChange;
+  useEffect(() => onMemoryOpenChange?.(dockPopover === 'memory'), [dockPopover, onMemoryOpenChange]);
+  const changePopover = (which: 'usage' | 'memory', open: boolean) => {
+    setDockPopover((current) => open ? which : current === which ? null : current);
+  };
   const filterRef = useRef<HTMLInputElement>(null);
 
   // SIDE-3.4: while the pointer is over the sidebar, rows keep their places; new ones go last.
@@ -314,7 +324,10 @@ export function Sidebar(props: SidebarProps) {
           stacked under it, keeps the row at the resting composer's height in every view. */}
       <ShellCell row="dock" className="grid items-start border-sidebar-border *:col-start-1 *:row-start-1">
         <DockRest />
-        <UsageStrip usage={props.usage} now={now} onOpen={props.onUsageOpen} />
+        <div className="flex flex-col self-stretch">
+          <UsageStrip usage={props.usage} now={now} onOpen={props.onUsageOpen} open={dockPopover === 'usage'} onOpenChange={(open) => changePopover('usage', open)} />
+          <MemoryLine memory={props.memory ?? null} sessions={sessions} now={now} open={dockPopover === 'memory'} onOpenChange={(open) => changePopover('memory', open)} onSelect={selectId} />
+        </div>
       </ShellCell>
     </aside>
   );

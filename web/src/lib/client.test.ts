@@ -188,3 +188,31 @@ it('LIB-2.1: Library continuation and CLI page travel together in the HTTP reque
   read.resolve(Response.json({ state: 'ok', items: [], nextPage: 5, hasMore: false, hiddenGone: 0, unfilteredEmpty: false, projects: [] }));
   await result;
 });
+
+describe('memory watches', () => {
+  it('MEM-3.1: sends the latest open state in order, retries failures, and transfers the watch after reconnecting', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const client = createHttpClient();
+    const memoryPuts = () => pending.filter((p) => p.url === '/api/memory/watch');
+    void client.watchMemory('tab-1', true);
+    void client.watchMemory('tab-1', false);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(memoryPuts()).toHaveLength(1);
+    expect(body(memoryPuts()[0]!)).toEqual({ clientId: 'tab-1', open: true });
+    expect(memoryPuts()[0]!.init?.method).toBe('PUT');
+    memoryPuts()[0]!.resolve(Response.json({ ok: true }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(body(memoryPuts()[1]!)).toEqual({ clientId: 'tab-1', open: false });
+    memoryPuts()[1]!.resolve(Response.json({}, { status: 500 }));
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(body(memoryPuts()[2]!)).toEqual({ clientId: 'tab-1', open: false });
+    memoryPuts()[2]!.resolve(Response.json({}, { status: 404 }));
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(memoryPuts()).toHaveLength(3);
+    void client.watchMemory('tab-2', true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(body(memoryPuts()[3]!)).toEqual({ clientId: 'tab-2', open: true });
+    memoryPuts()[3]!.resolve(Response.json({ ok: true }));
+    await vi.advanceTimersByTimeAsync(0);
+  });
+});

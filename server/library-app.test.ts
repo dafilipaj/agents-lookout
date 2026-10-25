@@ -26,6 +26,7 @@ function app(library: Library, staticDir: string | null = null) {
     settings: { get: defaultSettings, update: async () => defaultSettings(), onChange: () => () => {} },
     launcher: { list: () => [], recentStarts: () => [], harnesses: async () => [], start: vi.fn(), dismiss: () => false },
     usage: { snapshot: () => null, watch: () => () => {}, refresh: async () => {}, refreshJev: async () => {} },
+    memory: { snapshot: () => null, watch: () => () => {}, setOpen: () => {}, drop: () => {} },
     files: { check: vi.fn() },
     history: { find: vi.fn(), detail: vi.fn(), peek: vi.fn(), resume: vi.fn() },
     viewer: { watch: () => {}, drop: () => {}, send: vi.fn(), earlier: vi.fn() },

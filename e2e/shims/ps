@@ -1,7 +1,13 @@
 #!/bin/sh
-# The World's ps (TEST-1.2). For now it passes every call through to /bin/ps.
-#
-# TODO(TEST-1.10): a machine-wide listing (`-ax`, `-e`) keeps only the processes whose tty belongs
-# to a pane of the World's tmux server, and their descendants, so the user's own Codex TUIs stay
-# out of Fleet's discovery. Until then no World may declare Codex (see WorldBuilder.with).
+# Sampling is always declared, including in an empty World. Fleet's discovery keeps its shim.
+case "$*" in
+  *rss*)
+    printf '%s\n' 'ps sampling' >> '@LOG@'
+    LOOKOUT_FAKE_STATE='@STATE@'
+    LOOKOUT_FAKE_VIOLATIONS='@VIOLATIONS@'
+    export LOOKOUT_FAKE_STATE LOOKOUT_FAKE_VIOLATIONS
+    exec '@NODE@' '@SCRIPT@' "$@"
+    ;;
+esac
+# TODO(TEST-1.10): filter Fleet's machine-wide discovery to this World's panes before Codex Worlds.
 exec /bin/ps "$@"

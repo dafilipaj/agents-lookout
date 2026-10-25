@@ -149,7 +149,7 @@ describe('Loading in its places', () => {
 
   it('DS-6.4: with a Starting row or a Session, the hint stays (VIEW-5.4)', () => {
     const app = renderApp('/');
-    app.emit({ type: 'snapshot', sessions: [], fleet: { state: 'ok' }, settings: settings(), launches: [launchView({ id: 'l-1' })], started: [], clientId: 'tab-1', usage: null } as ServerEvent);
+    app.emit({ type: 'snapshot', sessions: [], fleet: { state: 'ok' }, settings: settings(), launches: [launchView({ id: 'l-1' })], started: [], clientId: 'tab-1', usage: null, memory: null } as ServerEvent);
     expect(within(main()).getByText('Select a Session')).toBeInTheDocument();
     expect(within(main()).queryByText('No Sessions running')).toBeNull();
     app.snapshot([row({ id: 'a' })]);

@@ -150,6 +150,7 @@ beforeEach(async () => {
         return { kind: 'live', sessionId: 'abc' };
       },
     },
+    memory: { snapshot: () => null, watch: () => () => {}, setOpen: () => {}, drop: () => {} },
     staticDir: null,
   });
   await new Promise<void>((r) => app.server.listen(0, '127.0.0.1', r));

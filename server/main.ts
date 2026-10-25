@@ -14,6 +14,7 @@ import { fetchFleetList, resolveFleetBin } from './fleet.ts';
 import { GitCache, readGitLocation, readGlobalGitEmail } from './git.ts';
 import { History, resolveTbSessionBin, resumePast } from './history.ts';
 import { Launcher } from './launcher.ts';
+import { MemoryMonitor } from './memory.ts';
 import { SessionMonitor } from './monitor.ts';
 import { parsePort } from './port.ts';
 import { localAllowLists } from './security.ts';
@@ -70,8 +71,10 @@ const monitor: SessionMonitor = new SessionMonitor({
   // a changed Start directory re-derives the rows.
   startRepos: trackStartDirectories(settings, git, () => monitor),
   models: modelSwitches,
+  memoryGrowth: (row) => memory.growthFor(row),
   onEvent: (e) => app.broadcast(e),
   onList: (rows) => {
+    memory.prune();
     launcher.observe(rows);
     work.setLiveSessions(rows.flatMap((row) => (row.session_id ? [row.session_id] : [])));
   },
@@ -115,6 +118,15 @@ const usage = new UsageMonitor({
   onChange: (u) => app.broadcast({ type: 'usage', usage: u }),
 });
 
+const memory = new MemoryMonitor({
+  runner: run,
+  sessions: () => monitor.snapshot().sessions,
+  onChange: (m) => {
+    monitor.refreshDerived();
+    app.broadcast({ type: 'memory', memory: m });
+  },
+});
+
 // WORK-2.8: a saved Productive email drops the Tasks kept for the previous one, and reads its own.
 // Registered before the app's own listener, so tabs hear the list dropped before the new email.
 settings.onChange((s) => work.setProductiveEmail(s.productiveEmail));
@@ -127,6 +139,7 @@ const app = createApp({
   launcher,
   viewer,
   usage,
+  memory,
   work,
   sessions: {
     answer: (id, req) => viewer.answer(id, req),
@@ -190,8 +203,8 @@ const shutdown = async () => {
   viewer.stop();
   app.server.close();
   app.server.closeAllConnections();
-  // Cancel the usage reads and wait until their processes have exited, so none is orphaned.
-  await Promise.all([usage.close().catch(() => {}), work.close().catch(() => {})]);
+  // Cancel the pollers and wait until their processes have exited, so none is orphaned.
+  await Promise.all([usage.close().catch(() => {}), memory.close().catch(() => {}), work.close().catch(() => {})]);
   process.exit(0);
 };
 process.on('SIGINT', shutdown);

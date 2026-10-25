@@ -256,3 +256,24 @@ describe('SessionMonitor', () => {
     expect(calls).toEqual(['before', 'after', 'after']);
   });
 });
+
+it('MEM-4.2: memory growth re-derives only the growth field, and Fleet removal drops its row', async () => {
+  let growth: number | null = null;
+  let rows = [recorded[0]!];
+  const events: MonitorEvent[] = [];
+  const monitor = new SessionMonitor({ fetchList: async () => ok(rows), git: { get: () => null, prune: () => {} }, now: () => 1_792_146_000_000, memoryGrowth: () => growth, onEvent: (e) => events.push(e) });
+  await monitor.tick();
+  const before = monitor.snapshot().sessions[0]!;
+  events.length = 0;
+  growth = 30 * 1024 * 1024;
+  monitor.refreshDerived();
+  expect(events).toEqual([{ type: 'sessions', upsert: [{ ...before, memoryGrowthBytes: growth }], remove: [] }]);
+  events.length = 0;
+  growth = null;
+  monitor.refreshDerived();
+  expect(events).toEqual([{ type: 'sessions', upsert: [before], remove: [] }]);
+  events.length = 0;
+  rows = [];
+  await monitor.tick();
+  expect(events).toEqual([{ type: 'sessions', upsert: [], remove: [before.id] }]);
+});

@@ -1,4 +1,6 @@
 import { checkOutputs } from '../fakes/outputs.ts';
+
+import { GB, type Pressure } from '../../shared/memory.ts';
 import type { Settings } from '../../shared/settings.ts';
 
 /**
@@ -202,6 +204,23 @@ export interface OutputDecl {
   json?: boolean;
 }
 
+/** MEM: deterministic process readings, independent of the runner's machine. */
+export interface MemoryDecl {
+  processes: { pid: number; ppid: number | 'lookout'; bytes: number; cpuPct: number; name: string }[];
+  ramBytes: number;
+  pressure: Pressure;
+  psFailure?: 'refused' | 'timeout';
+  sysctlFailure?: boolean;
+}
+export const DEFAULT_MEMORY: MemoryDecl = { processes: [], ramBytes: 24 * GB, pressure: 'normal' };
+
+/** Populated dock usage for layout checks, served through Fleet and tb-jev's CLI contracts. */
+export interface DockUsageDecl {
+  claude: { session: number; weekly_all: number };
+  codex: { session: number; weekly_all: number };
+  jev: 'ready' | 'not-set-up';
+}
+
 export interface WorldSpec {
   /** Real tools removed from PATH (and from `LOOKOUT_*_BIN`). */
   without: RemovableTool[];
@@ -220,6 +239,9 @@ export interface WorldSpec {
   tbProd: TbProdDecl | null;
   /** The fake `tb-pr` on PATH and what it answers; absent unless declared. */
   tbPr: TbPrDecl | null;
+  memory: MemoryDecl;
+  /** Null unless declared: Fleet's usage override and the Jev probe, for dock layout checks. */
+  usage: DockUsageDecl | null;
   /** `lastLaunch`: what the launcher remembers as started last (WORK-5.2). */
   settings: Partial<Pick<Settings, 'idleThresholdHours' | 'startDirectories' | 'lastLaunch' | 'productiveEmail'>>;
 }
@@ -288,7 +310,7 @@ export class WorldBuilder {
     throw new NotYetBuilt('world().history()', 'TEST-1.5');
   }
 
-  /** TODO(TEST-1.7): the fake `tb-jev`, answering `status --json` with USAGE's 0.2.0 contract. */
+  /** TODO(TEST-1.7): standalone Jev declarations; populated dock fixtures use usage(). */
   jev(state: 'ready' | 'not-set-up'): WorldBuilder {
     void state;
     throw new NotYetBuilt('world().jev()', 'TEST-1.7');
@@ -321,6 +343,21 @@ export class WorldBuilder {
     return this.next({ outputs: { items: checkOutputs(items), unsupported: opts.unsupported === true } });
   }
 
+  usage(decl: DockUsageDecl): WorldBuilder {
+    for (const provider of [decl.claude, decl.codex]) {
+      for (const percent of [provider.session, provider.weekly_all]) {
+        if (!Number.isInteger(percent) || percent < 0 || percent > 100) refuse('.usage()', 'percentages must be integers from 0 to 100');
+      }
+    }
+    if (!['ready', 'not-set-up'].includes(decl.jev)) refuse('.usage()', 'unknown Jev state');
+    return this.next({ usage: structuredClone(decl), jev: decl.jev });
+  }
+
+  /** MEM: the sampler's ps/sysctl answers, replaceable through world.memory during a test. */
+  memory(decl: MemoryDecl): WorldBuilder {
+    return this.next({ memory: checkMemory(decl) });
+  }
+
   /** Lookout's settings file, merged over the defaults. */
   settings(settings: WorldSpec['settings']): WorldBuilder {
     return this.next({ settings: { ...this.spec.settings, ...settings } });
@@ -346,6 +383,8 @@ export function world(): WorldBuilder {
     gitIdentity: null,
     tbProd: null,
     tbPr: null,
+    memory: structuredClone(DEFAULT_MEMORY),
+    usage: null,
     settings: {},
   });
 }
@@ -464,6 +503,21 @@ export function checkTbPr(decl: TbPrDecl): TbPrDecl {
         refuse(what, `${column} has PRs of its own next to "${TB_PR_SEARCH_EMPTY}", which tb-pr says only when no search returned a PR`);
       }
     }
+  }
+  return structuredClone(decl);
+}
+
+export function checkMemory(decl: MemoryDecl): MemoryDecl {
+  if (!Number.isSafeInteger(decl.ramBytes) || decl.ramBytes <= 0) refuse('.memory()', 'ramBytes must be a positive integer');
+  if (!['normal', 'warn', 'critical'].includes(decl.pressure)) refuse('.memory()', 'unknown Pressure');
+  if (decl.psFailure !== undefined && !['refused', 'timeout'].includes(decl.psFailure)) refuse('.memory()', 'unknown ps failure');
+  const pids = new Set<number>();
+  for (const p of decl.processes) {
+    if (!Number.isSafeInteger(p.pid) || p.pid <= 0 || pids.has(p.pid)) refuse('.memory()', 'pids must be unique positive integers');
+    pids.add(p.pid);
+    if (p.ppid !== 'lookout' && (!Number.isSafeInteger(p.ppid) || p.ppid < 0)) refuse('.memory()', 'invalid parent pid');
+    if (!Number.isFinite(p.bytes) || p.bytes < 0 || !Number.isFinite(p.cpuPct) || p.cpuPct < 0) refuse('.memory()', 'bytes and CPU must be nonnegative');
+    if (!oneLine(p.name) || p.name.includes('/')) refuse('.memory()', 'name must be an executable basename');
   }
   return structuredClone(decl);
 }

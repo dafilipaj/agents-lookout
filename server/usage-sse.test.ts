@@ -74,6 +74,7 @@ beforeAll(async () => {
     usage,
     work: new WorkMonitor({ runner: async () => '', tbPrBin: () => '/nonexistent/tb-pr', tbProdBin: () => '/nonexistent/tb-prod', tbSessionBin: () => '/nonexistent/tb-session', onChange: () => {} }),
     viewer: { watch: () => {}, drop: () => {}, send: async () => {}, earlier: async () => ({ entries: [], before: null }) },
+    memory: { snapshot: () => null, watch: () => () => {}, setOpen: () => {}, drop: () => {} },
     staticDir: null,
   });
   await new Promise<void>((r) => app.server.listen(0, '127.0.0.1', r));

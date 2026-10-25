@@ -47,6 +47,8 @@ export interface LookoutClient {
   refreshJev(): Promise<void>;
   /** USAGE-2.2: a window's reset passed; have the server read the limits again. */
   refreshUsage(): Promise<void>;
+  /** MEM-3.1: whether this tab has the breakdown open, naming its current event stream. */
+  watchMemory(clientId: string, open: boolean): Promise<void>;
   /** WORK-8.1: whether this tab has Work open, so the server reads only while some tab does. */
   watchWork(clientId: string, open: boolean): Promise<void>;
   /**
@@ -252,6 +254,44 @@ export function createHttpClient(): LookoutClient {
     }
   };
 
+  let memoryWanted: { clientId: string; open: boolean } | null = null;
+  let memoryAcked: string | null = null;
+  let memoryPumping = false;
+  let memoryWake: (() => void) | null = null;
+  const memoryPump = async () => {
+    if (memoryPumping) return;
+    memoryPumping = true;
+    let attempt = 0;
+    try {
+      while (memoryWanted && JSON.stringify(memoryWanted) !== memoryAcked) {
+        const sending = memoryWanted;
+        try {
+          await call(() => send('PUT', '/api/memory/watch', sending), 'Watching Memory');
+          memoryAcked = JSON.stringify(sending);
+          attempt = 0;
+        } catch (err) {
+          if (err instanceof SaveError && err.status === 404) {
+            memoryAcked = JSON.stringify(sending);
+            continue;
+          }
+          const delay = WATCH_RETRY_MS[Math.min(attempt, WATCH_RETRY_MS.length - 1)];
+          await new Promise<void>((resolve) => {
+            const timer = setTimeout(done, delay);
+            function done() {
+              clearTimeout(timer);
+              memoryWake = null;
+              resolve();
+            }
+            memoryWake = done;
+          });
+          attempt++;
+        }
+      }
+    } finally {
+      memoryPumping = false;
+    }
+  };
+
   return {
     subscribe(listener) {
       let es: EventSource | null = null;
@@ -296,6 +336,11 @@ export function createHttpClient(): LookoutClient {
       workWanted = { clientId, open };
       workWake?.();
       void workPump();
+    },
+    watchMemory: async (clientId, open) => {
+      memoryWanted = { clientId, open };
+      memoryWake?.();
+      void memoryPump();
     },
     // WORK-8.2: the read's outcome, or a 429 with the time Refresh is back, which every tab's Refresh
     // shows anyway. Anything else didn't run, said in plain words (WORK UX, Errors): a 409, the server

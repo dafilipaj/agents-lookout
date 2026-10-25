@@ -1,0 +1,12 @@
+    1     0   24576   0.0 /sbin/launchd
+  100     1   52224   0.1 /opt/homebrew/bin/node
+  101   100   12288   0.0 /opt/homebrew/bin/fleet
+  200   100  466944  97.5 /opt/homebrew/bin/claude
+  201   200   98304   2.5 /opt/homebrew/bin/node
+  202   200  219136  40.0 /opt/homebrew/bin/vitest
+  203   200     512   0.0 /bin/sh
+  300   201  417792  10.0 /opt/homebrew/bin/claude
+  400     1  102400   0.0 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Helper (Renderer)
+  401     1  102400   0.0 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Helper (Renderer)
+this line is not a process
+  999     1     bad   0.0 /bin/no

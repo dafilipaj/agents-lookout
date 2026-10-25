@@ -665,6 +665,7 @@ scenario(
       stopped = await inner.stop({ collect: true });
       const at = expect.stringMatching(/^\d\d:\d\d:\d\d$/);
       expect(JSON.parse(stopped.report?.fakes ?? 'null')).toEqual({
+        memory: [{ at, answer: inner.declaration.memory }],
         'tb-prod': [
           { at, answer: { tasks: { [ME]: [] } } },
           { at, answer: { failure: 403 } },

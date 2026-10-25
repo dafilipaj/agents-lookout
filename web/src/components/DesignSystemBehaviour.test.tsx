@@ -45,7 +45,7 @@ describe('the Session list takes keyboard focus (DS-9)', () => {
     app.unmount();
 
     const starting = renderApp('/l/l-1');
-    starting.emit({ type: 'snapshot', sessions: [row({ id: 'z' })], fleet: { state: 'ok' }, settings: settings(), launches: [launchView({ id: 'l-1' })], started: [], clientId: 'tab-1', usage: null } as ServerEvent);
+    starting.emit({ type: 'snapshot', sessions: [row({ id: 'z' })], fleet: { state: 'ok' }, settings: settings(), launches: [launchView({ id: 'l-1' })], started: [], clientId: 'tab-1', usage: null, memory: null } as ServerEvent);
     expect(document.querySelector('[data-launch-id="l-1"]')).not.toBeNull();
     expect(listbox()).not.toHaveAttribute('aria-activedescendant');
     starting.unmount();
@@ -68,7 +68,7 @@ describe('the Session list takes keyboard focus (DS-9)', () => {
       launches: [launchView({ id: 'l-1', state: 'failed', error: 'It exited.' })],
       started: [],
       clientId: 'tab-1',
-      usage: null,
+      usage: null, memory: null,
     } as ServerEvent);
     screen.getByRole('searchbox', { name: 'Filter Sessions' }).focus();
     await user.tab();

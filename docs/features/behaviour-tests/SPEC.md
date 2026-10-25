@@ -27,8 +27,8 @@ What a Behaviour test runs in. A World is built fresh for each Behaviour test an
 
 - [x] TEST-1.1 When a Behaviour test starts, its World has its own temporary HOME, its own settings file, a private tmux server and a Lookout server on a free port. That port is never 4747 or 4748. Nothing from the user's HOME, tmux server, keychain or settings is visible to Lookout, Fleet, tb-session or the Fake Harnesses. (test)
 - [ ] TEST-1.2 PATH holds only what the World declares:
-  - **real:** Fleet, tb-session, tmux (through a shim to the private `-L` server), git, ps (through the shim of TEST-1.10), lsof, sh, node, and the plain system tools these need;
-  - **fake:** claude, codex, tb-jev, curl, tb-prod and tb-pr, each only when declared;
+  - **real:** Fleet, tb-session, tmux (through a shim to the private `-L` server), git, ps for discovery (through the shim of TEST-1.10; memory sampling is faked, MEM-2.1), lsof, sh, node, and the plain system tools these need;
+  - **fake:** claude, codex, tb-jev, curl, tb-prod and tb-pr, each only when declared; the memory sampler’s `ps` and `sysctl`, always injected with deterministic defaults or a `.memory()` declaration (MEM);
   - **absent:** security, gh, ssh and osascript.
 
   A command the World doesn't declare can't be found, also not through Fleet's fallback directories (`/opt/homebrew/bin`, `/usr/local/bin`). (test)
@@ -226,11 +226,12 @@ scripts/req-check.mjs
    - `TMUX_TMPDIR` at `/tmp/lw-<id>`;
    - `home/Projects/work`, which is the default Start directory.
 2. **`bin/`:**
-   - **Real tools:** symlinks to git, lsof, sh, node and the plain system tools they need: `bash`, `env`, `hostname`, `sleep`, `cat`, `date`, `echo`, `sysctl`, `uname` and `id` (`REAL_TOOLS` in `e2e/world/runtime.ts`).
+   - **Real tools:** symlinks to git, lsof, sh, node and the plain system tools they need: `bash`, `env`, `hostname`, `sleep`, `cat`, `date`, `echo`, `uname` and `id` (`REAL_TOOLS` in `e2e/world/runtime.ts`).
    - **Fleet and tb-session:** a `logged` wrapper each, which appends its argv to `logs/calls.log` (TEST-2.4) and runs the pinned binary from `.cache/` under the wrapper's own path. The wrapper sets `FLEET_PATH_ONLY=1` itself, so a caller that drops it still gets a PATH-only Fleet. `LOOKOUT_FLEET_BIN` and `LOOKOUT_TB_SESSION_BIN` point at the wrappers; `.without('fleet')` leaves out both the wrapper and the variable.
    - **tmux shim:** `exec <real tmux> -L lookout-world-<rand> -f /dev/null "$@"`. Lookout and Fleet both reach the private server through it.
    - **ps shim:** passes every call through to `/bin/ps`, except that a machine-wide listing (`-ax`, `-e`) keeps only processes whose tty belongs to a pane of the World's tmux server, and their descendants. This keeps the user's own Codex TUIs out of Fleet's discovery (TEST-1.10).
-   - **Fakes:** the declared ones among claude, codex, tb-jev, curl, tb-prod and tb-pr.
+   - **sysctl shim:** memory-key reads always reach MEM’s strict fake; unrelated calls, including login-shell startup’s `sysctl -n kern.boottime`, pass through to `/usr/sbin/sysctl` with their arguments, output and exit status preserved.
+   - **Fakes:** the declared ones among claude, codex, tb-jev, curl, tb-prod and tb-pr. `.usage({ claude, codex, jev })` supplies dock-layout readings through a strict `tb-jev status --json` fake and a Fleet-wrapper answer for only `--local usage --json`; every other Fleet call stays real.
    - **Kept out:** `security`, `gh`, `ssh` and `osascript`.
 3. **Fleet config** (`FLEET_CONFIG`) only turns naming, grouping and stacks off, since each would run `claude -p`. Every Fleet the World runs has `FLEET_PATH_ONLY=1` (step 4, and the `logged` wrapper sets it itself), so the launchers stay Fleet's defaults (`claude`, `codex`, `pi`), as do `tmux` and `gh`: each is found on the World's PATH or not at all. A Harness is installed exactly when the World puts its fake in `bin/`; no per-binary override is needed to keep Fleet out of `/opt/homebrew/bin` or `/usr/local/bin`.
 4. **Environment for the Lookout server and everything it starts:**
@@ -430,3 +431,7 @@ None.
 - 2026-10-19: For WORK's PRs (slice B). A Behaviour test (TEST-1.5) reads the fake `tb-pr`'s boards and declared failures with WORK's own parser (`parseTbPrList`, `classifyTbPrFailure` in `server/work.ts`), and checks that every PR has tb-pr 0.3.1's fields in their order, so the fake and WORK's reading of tb-pr can't drift apart unnoticed; a change to that parser can now fail TEST's self-tests too. `.settings()` also takes `lastLaunch`, for WORK-5.2. The fakes' tests use invented repos, people and emails.
 - 2026-10-20: tb-session 0.3.0 is released (`tb-session-v0.3.0`), so `e2e/pins.json` moves from the `feature/tb-session-sources` commit to the release commit `33a26f3`, the one Dario has installed.
 - 2026-10-23: The pre-push hook runs at half the usual parallelism, from Dario's testing: a push that ran 6 Worlds and Vitest on every core at once, while other agents were working, pushed the load average to 33 and froze Chrome, and today's pre-push failures were all timing tests that lost to the load and passed alone. `pnpm test` and `pnpm e2e` run by hand keep their full speed. Technical approach, Before each push.
+
+- 2026-10-24: MEM adds `.memory({ processes, pressure, ramBytes })` and replaceable sampler answers. The World always fakes memory sampling, including when empty; the `ps` shim retains discovery calls, and undeclared `sysctl` argv is a violation. Declared readings include the real server and sampler pids with deterministic RSS.
+- 2026-10-24: TEST-1.2 regression fix: the sysctl override is a shim, preserving unrelated system reads used by login shells. Only memory-key calls reach the strict fake, including malformed sampler calls, which remain violations. A shell-wrapper unit test uses a stand-in system command to verify pass-through without reading host memory.
+- 2026-10-25: MEM dock regression coverage adds a `.usage()` declaration for populated Claude/Codex windows and Jev readiness. The CLI fixtures go through Lookout’s real usage parser and Jev probe. Memory release Behaviour checks span a full fast interval; fake-clock API tests additionally check 30 seconds exactly, within TEST-2.6’s unchanged 30-second Behaviour budget.

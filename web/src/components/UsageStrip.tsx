@@ -29,14 +29,14 @@ const JEV_LABEL: Record<JevStatus['state'], string> = {
 const windowKey = (p: ProviderUsage, w: UsageWindow) => `${p.id}-${w.kind}-${w.model ?? ''}`;
 
 /** USAGE-1: the always-visible strip at the bottom of the Session sidebar; click for details. */
-export function UsageStrip({ usage, now, onOpen }: { usage: UsageSnapshot | null; now: number; onOpen?(): void }) {
+export function UsageStrip({ usage, now, onOpen, open, onOpenChange }: { usage: UsageSnapshot | null; now: number; onOpen?(): void; open?: boolean; onOpenChange?(open: boolean): void }) {
   const summaryId = useId();
   return (
-    <Popover onOpenChange={(open) => open && onOpen?.()}>
+    <Popover open={open} onOpenChange={(next) => { onOpenChange?.(next); if (next) onOpen?.(); }}>
       <PopoverTrigger
         aria-label="Usage details"
         aria-describedby={usage ? summaryId : undefined}
-        className="w-full shrink-0 px-2.5 py-2 text-left outline-none hover:bg-sidebar-accent/50 focus-visible:bg-sidebar-accent/60"
+        className="w-full shrink-0 px-2.5 pt-1 pb-0.5 text-left outline-none hover:bg-sidebar-accent/50 focus-visible:bg-sidebar-accent/60"
       >
         {usage ? (
           <>

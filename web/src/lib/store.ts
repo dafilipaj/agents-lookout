@@ -1,5 +1,6 @@
 import { type SettingsView, defaultSettings } from '@shared/settings.ts';
 import type { ChatPage, FleetHealth, LaunchView, ServerEvent, SessionRow } from '@shared/types.ts';
+import type { MemorySnapshot } from '@shared/memory.ts';
 import type { UsageSnapshot } from '@shared/usage.ts';
 import type { WorkSnapshot } from '@shared/work.ts';
 import { type Dispatch, useEffect, useReducer } from 'react';
@@ -49,6 +50,7 @@ export interface LookoutState {
   prompts: ReadonlyMap<string, ScreenState>;
   /** USAGE: the latest numbers, or null before the first read. */
   usage: UsageSnapshot | null;
+  memory: MemorySnapshot | null;
   /** WORK: the latest PRs and Refresh state, or null before the server sent any. */
   work: WorkSnapshot | null;
   /**
@@ -111,6 +113,7 @@ export const initialState: LookoutState = {
   previews: new Map(),
   prompts: new Map(),
   usage: null,
+  memory: null,
   work: null,
   chats: new Map(),
   chatOrder: [],
@@ -178,6 +181,7 @@ export function reducer(state: LookoutState, action: Action): LookoutState {
         previews: new Map(), // a new stream: previews come again once it says what it views
         prompts: new Map(),
         usage: e.usage ?? state.usage,
+        memory: e.memory,
         work: e.work ?? state.work,
       };
     }
@@ -201,6 +205,8 @@ export function reducer(state: LookoutState, action: Action): LookoutState {
     }
     case 'settings':
       return { ...state, settings: e.settings };
+    case 'memory':
+      return { ...state, memory: e.memory };
     case 'usage':
       return { ...state, usage: e.usage };
     case 'work':
