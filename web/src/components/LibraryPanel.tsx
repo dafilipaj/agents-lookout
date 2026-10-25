@@ -41,6 +41,20 @@ function openOutput(item: OutputItem) {
   else if (item.url) window.open(item.url, '_blank', 'noopener,noreferrer');
 }
 
+/** LIB-2.7: starts, ends, replacement processes and Subagent completions can add Outputs.
+ * Activity, context, model and Status updates during normal polling wait for the 60-second read.
+ */
+function outputsChanged(before: ReadonlyMap<string, SessionRow>, after: ReadonlyMap<string, SessionRow>): boolean {
+  if (before.size !== after.size) return true;
+  for (const [id, row] of after) {
+    const previous = before.get(id);
+    if (!previous || previous.harness !== row.harness || previous.pid !== row.pid || previous.procStart !== row.procStart) return true;
+    // Finished counts are per Turn: a reset or a new running Subagent is not a completion.
+    if ((row.subagents?.finished ?? 0) > (previous.subagents?.finished ?? 0)) return true;
+  }
+  return false;
+}
+
 export interface LibraryPanelProps {
   focusKey: number;
   visible: boolean;
@@ -82,7 +96,7 @@ export function LibraryPanel({ focusKey, visible, sessions, now, search, status,
   const q = query.trim(), types = filter.types.join(',');
   const request = useRef({ search, status, q, filter, headless });
   useLayoutEffect(() => { request.current = { search, status, q, filter, headless }; });
-  const ask = (page: number) => { const r = request.current; return r.search({ ...r.filter, query: r.q, page, headless: r.headless }); };
+  const ask = (page: number, continuation?: string) => { const r = request.current; return r.search({ ...r.filter, query: r.q, page, ...(continuation ? { continuation } : {}), headless: r.headless }); };
   const apply = (next: Results) => { if (frozen.current) pending.current = next; else setResults(next); };
   useEffect(() => { if (!expanded && !hovered && pending.current) { setResults(pending.current); pending.current = null; } }, [expanded, hovered]);
   useEffect(() => { if (visible) input.current?.focus(); }, [focusKey, visible]);
@@ -121,10 +135,13 @@ export function LibraryPanel({ focusKey, visible, sessions, now, search, status,
     const invalidate = () => { seq.current++; };
     return () => { clearTimeout(timer); invalidate(); };
   }, [q, types, filter.project, filter.hideGone, headless, visible]);
-  // Fleet changes can arrive with a fresh Map whose contents did not change; only changed facts refresh.
-  const fleet = JSON.stringify([...sessions.values()]);
-  const previousFleet = useRef(fleet);
-  useEffect(() => { if (previousFleet.current !== fleet && visible) refresh.current(); previousFleet.current = fleet; }, [fleet, visible]);
+  // Comparing whole rows would index growing Transcripts on every two-second activity update.
+  const previousFleet = useRef(sessions);
+  useEffect(() => {
+    const changed = outputsChanged(previousFleet.current, sessions);
+    previousFleet.current = sessions;
+    if (changed && visible) refresh.current();
+  }, [sessions, visible]);
   useEffect(() => {
     if (!visible) return;
     const timer = setInterval(() => { if (document.visibilityState === 'visible') refresh.current(); }, 60_000);
@@ -145,7 +162,7 @@ export function LibraryPanel({ focusKey, visible, sessions, now, search, status,
     const r = current.current, tail = r?.pages.at(-1);
     if (!r || !tail?.hasMore || r.gen !== seq.current || reading.current || (auto && r.auto >= AUTO_FILL_PAGES)) return;
     const mine = r.gen; reading.current = true; setMoreBusy(true); setError(null);
-    ask(tail.nextPage).then((page) => {
+    ask(tail.nextPage, tail.continuation).then((page) => {
       if (mine !== seq.current) return;
       if (page.state === 'not-installed') { setInstall(page.installCommand); return; }
       const old = pending.current ?? current.current;

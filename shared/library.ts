@@ -13,6 +13,8 @@ export interface LibraryFilter {
 export interface LibraryQuery extends LibraryFilter {
   query: string;
   page: number;
+  /** The overflow belonging to this continuation, independent of refreshes and other tabs. */
+  continuation?: string;
   headless: boolean;
 }
 export interface OutputSource {
@@ -50,4 +52,4 @@ export interface OutputItem {
 }
 export type LibraryPage =
   | { state: 'not-installed'; installCommand: string }
-  | { state: 'ok'; items: OutputItem[]; nextPage: number; hasMore: boolean; projects: string[]; hiddenGone: number; unfilteredEmpty: boolean };
+  | { state: 'ok'; items: OutputItem[]; nextPage: number; continuation?: string; hasMore: boolean; projects: string[]; hiddenGone: number; unfilteredEmpty: boolean };

@@ -179,3 +179,67 @@ it('LIB-2.7: Fleet changes during paging queue a page-one refresh, whose keys re
   expect(rows()[0]).toHaveTextContent('B report'); expect(rows()[1]).toHaveTextContent('Harbor report');
   expect(library.mock.calls.map(([q]) => q.page)).toEqual([1, 2, 1]);
 });
+
+it('LIB-2.7: routine Session metadata waits for the 60-second refresh and never queues another indexing call', async () => {
+  vi.useFakeTimers({ now: NOW });
+  const base = row({ id: 'writer', status: 'busy', subagents: { running: 1, finished: 0 } });
+  const library = vi.fn(async () => ok([output()]));
+  const app = renderApp('/', { library });
+  app.snapshot([base]);
+  fireEvent.click(screen.getByRole('button', { name: 'Library' }));
+  await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+  expect(library).toHaveBeenCalledTimes(1);
+  for (let seconds = 2; seconds < 60; seconds += 2) {
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    app.snapshot([{
+      ...base, contextPct: seconds, activity: `Reading file ${seconds}`, model: `model-${seconds}`,
+      modelAt: String(seconds), title: `Writer ${seconds}`, status: seconds % 4 ? 'idle' : 'busy', statusSince: NOW + seconds * 1000,
+    }]);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(library).toHaveBeenCalledTimes(1);
+  }
+  // The periodic read is slow: metadata changes while it runs must not arm refreshQueued.
+  let finish: ((p: LibraryPage) => void) | undefined;
+  library.mockImplementationOnce(() => new Promise((r) => { finish = r; }));
+  await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+  expect(library).toHaveBeenCalledTimes(2);
+  for (let n = 0; n < 3; n++) {
+    app.snapshot([{ ...base, contextPct: 70 + n, activity: `Streaming ${n}` }]);
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+  }
+  await act(async () => { finish!(ok([output()])); await vi.advanceTimersByTimeAsync(0); });
+  expect(library).toHaveBeenCalledTimes(2);
+  // Subagent completion, process replacement, Session start and Session end still refresh promptly.
+  let current = { ...base, subagents: { running: 0, finished: 1 } };
+  app.snapshot([current]); await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+  expect(library).toHaveBeenCalledTimes(3);
+  current = { ...current, subagents: { running: 2, finished: 0 } };
+  app.snapshot([current]); await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+  expect(library).toHaveBeenCalledTimes(3);
+  current = { ...current, pid: 200, procStart: '2026-10-16T12:01:00Z' };
+  app.snapshot([current]); await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+  expect(library).toHaveBeenCalledTimes(4);
+  const another = row({ id: 'another' });
+  app.snapshot([current, another]); await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+  expect(library).toHaveBeenCalledTimes(5);
+  app.snapshot([another, current]); await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+  expect(library).toHaveBeenCalledTimes(5);
+  app.snapshot([current]); await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+  expect(library).toHaveBeenCalledTimes(6);
+});
+
+it('LIB-2.1: a refresh keeps the retained later page’s overflow continuation when loading more', async () => {
+  let firstReads = 0;
+  const library = vi.fn(async (q) => q.page === 1
+    ? ok([output()], { hasMore: true, nextPage: 3, continuation: `first-${++firstReads}` })
+    : q.page === 3 ? ok([output({ key: 'second', title: 'Second report' })], { hasMore: true, nextPage: 4, continuation: 'retained-overflow' })
+      : ok([output({ key: 'third', title: 'Third report' })]));
+  const app = renderApp('/', { library }); await open(app);
+  fireEvent.click(await within(panel()).findByRole('button', { name: 'Load more' }));
+  await waitFor(() => expect(rows()).toHaveLength(2));
+  app.snapshot([row({ id: 'new-writer' })]);
+  await waitFor(() => expect(library).toHaveBeenCalledTimes(3));
+  fireEvent.click(within(panel()).getByRole('button', { name: 'Load more' }));
+  await waitFor(() => expect(rows()).toHaveLength(3));
+  expect(library).toHaveBeenLastCalledWith(expect.objectContaining({ page: 4, continuation: 'retained-overflow' }));
+});

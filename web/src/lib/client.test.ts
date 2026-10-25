@@ -175,3 +175,16 @@ describe('sending and pressing Esc (VIEW-3.7, VIEW-4.5)', () => {
     expect(pending.at(-1)!.init?.body).toBeUndefined();
   });
 });
+
+it('LIB-2.1: Library continuation and CLI page travel together in the HTTP request', async () => {
+  const client = createHttpClient();
+  const result = client.library({ query: '', page: 4, continuation: 'issued-overflow', types: ['pages', 'pdf'], project: '', hideGone: true, headless: false });
+  await settle();
+  const read = pending[0]!;
+  const url = new URL(read.url, 'http://localhost');
+  expect(url.pathname).toBe('/api/library');
+  expect(url.searchParams.get('page')).toBe('4');
+  expect(url.searchParams.get('continuation')).toBe('issued-overflow');
+  read.resolve(Response.json({ state: 'ok', items: [], nextPage: 5, hasMore: false, hiddenGone: 0, unfilteredEmpty: false, projects: [] }));
+  await result;
+});

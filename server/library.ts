@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { stat as fsStat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, isAbsolute } from 'node:path';
@@ -33,6 +34,7 @@ export function parseLibraryQuery(params: URLSearchParams): LibraryQuery {
   return {
     query: (params.get('q') ?? '').replace(/[\0\r\n\t]+/g, ' ').trim().slice(0, 500),
     page: Number.isInteger(n) ? Math.min(100_000, Math.max(1, n)) : 1,
+    ...(params.has('continuation') ? { continuation: (params.get('continuation') ?? '').slice(0, 128) } : {}),
     types: types.length ? types : [...DEFAULT_LIBRARY_TYPES],
     project: project(params.get('project')) ?? '',
     headless: params.get('headless') === '1',
@@ -53,8 +55,8 @@ export class Library {
   readonly files = new OutputFiles();
   private readonly opts: LibraryOptions;
   private readonly projects = new Set<string>();
-  /** A CLI page can overshoot 50 kept rows. Its tail belongs to the next cursor, never discarded. */
-  private readonly tails = new Map<string, OutputItem[]>();
+  /** Immutable overflow snapshots: refreshes and other tabs cannot replace an issued continuation. */
+  private readonly tails = new Map<string, { filter: string; page: number; items: OutputItem[]; hasMore: boolean }>();
   private revision: string | null = null;
   private upgrading: Promise<string | null> | null = null;
   private activeIndex = 0;
@@ -99,14 +101,17 @@ export class Library {
   }
 
   async find(q: LibraryQuery): Promise<LibraryPage> {
-    const filterKey = JSON.stringify({ ...q, page: 0 });
-    const tailKey = (page: number) => `${filterKey}:${page}`;
+    const filterKey = JSON.stringify([q.query, q.types, q.project, q.headless, q.hideGone]);
     if (q.project) this.projects.add(q.project);
-    if (q.page === 1) for (const k of this.tails.keys()) if (k.startsWith(`${filterKey}:`)) this.tails.delete(k);
-    const tail = this.tails.get(tailKey(q.page)) ?? [];
+    const carried = q.continuation === undefined ? undefined : this.tails.get(q.continuation);
+    if (q.continuation !== undefined && (!carried || carried.filter !== filterKey || carried.page !== q.page)) {
+      throw new LibraryError(409, "Library's continuation is no longer available. Reopen Library to load it again.");
+    }
+    // Never consume or mutate an issued continuation: retained pages in other tabs still use it.
+    const tail = carried ? structuredClone(carried.items) : [];
     await this.check(tail);
     const kept = tail.filter((r) => !q.hideGone || r.kind !== 'file' || r.exists);
-    let nextPage = q.page, hasMore = true, hiddenGone = tail.length - kept.length;
+    let nextPage = q.page, hasMore = carried?.hasMore ?? true, hiddenGone = tail.length - kept.length;
     for (let reads = 0; reads < 5 && kept.length < PAGE_SIZE && hasMore; reads++) {
       const out = await this.call(this.args(q, nextPage));
       if (out === null) return { state: 'not-installed', installCommand: TB_SESSION_INSTALL_COMMAND };
@@ -123,8 +128,11 @@ export class Library {
       nextPage++;
     }
     const overflow = kept.slice(PAGE_SIZE);
-    if (overflow.length) {
-      this.tails.set(tailKey(nextPage), overflow);
+    const snapshot = { filter: filterKey, page: nextPage, items: overflow, hasMore };
+    // Stable identity for identical overflow avoids evicting retained pages on every 60-second read.
+    const continuation = overflow.length ? createHash('sha256').update(JSON.stringify(snapshot)).digest('hex') : undefined;
+    if (continuation) {
+      this.tails.set(continuation, snapshot);
       if (this.tails.size > 200) this.tails.delete(this.tails.keys().next().value!);
     }
     // The exact unfiltered total is needed only to distinguish "nothing produced" from no match.
@@ -148,7 +156,7 @@ export class Library {
     await Promise.all(items.flatMap((r) => r.sessions.map(async (s) => {
       if (!s.blocked && !s.pruned && s.projectPath && !(await this.isDirectory(s.projectPath))) s.blocked = 'folder-gone';
     })));
-    return { state: 'ok', items, nextPage, hasMore: hasMore || overflow.length > 0, hiddenGone, unfilteredEmpty: this.empty === true, projects: [...this.projects].sort() };
+    return { state: 'ok', items, nextPage, ...(continuation ? { continuation } : {}), hasMore: hasMore || overflow.length > 0, hiddenGone, unfilteredEmpty: this.empty === true, projects: [...this.projects].sort() };
   }
   private async isDirectory(p: string) {
     return this.opts.isDirectory ? this.opts.isDirectory(p) : fsStat(p).then((s) => s.isDirectory(), () => false);

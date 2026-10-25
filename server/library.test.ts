@@ -24,7 +24,7 @@ it('LIB-2.1: fills 50 rows from at most five CLI pages, preserves overflow for t
   expect(first.items).toHaveLength(50);
   expect(first).not.toHaveProperty('total');
   expect(first.nextPage).toBe(3);
-  const next = await lib.find(query(`page=${first.nextPage}`));
+  const next = await lib.find(query(new URLSearchParams({ page: String(first.nextPage), ...(first.continuation ? { continuation: first.continuation } : {}) }).toString()));
   if (next.state !== 'ok') throw new Error('missing page');
   expect(next.items).toHaveLength(50);
   expect(new Set([...first.items, ...next.items].map((i) => i.key)).size).toBe(100);
@@ -88,4 +88,90 @@ it('LIB-2.8: an indexing timeout names the manual index command, and concurrent 
   await vi.waitFor(() => expect(lib.indexing).toBe(true)); expect(runner).toHaveBeenCalledTimes(1);
   finish!(answer([file('/report.html')])); await Promise.all([first, second]);
   expect(lib.indexing).toBe(false); expect(runner.mock.calls.map((c) => c[2].timeoutMs)).toEqual([60000, 20000]);
+});
+
+it('LIB-2.7: page-one refresh preserves overflow continuations for multiple loaded pages in every tab', async () => {
+  const lib = new Library({
+    runner: async (_bin, argv) => {
+      const page = Number(argv[argv.indexOf('--page') + 1]);
+      return answer(Array.from({ length: 50 }, (_, i) => file(`/report-${(page - 1) * 50 + i}.html`)).filter((_r, i) => (page - 1) * 50 + i < 200), 200);
+    },
+    bin: () => 'tb-session',
+    stat: async (p) => ({ isFile: () => p !== '/report-0.html' && p !== '/report-50.html' }),
+    isDirectory: async () => true,
+  });
+  const load = async (page = 1, continuation?: string) => {
+    const result = await lib.find(query(new URLSearchParams({ page: String(page), ...(continuation ? { continuation } : {}) }).toString()));
+    if (result.state !== 'ok') throw new Error('missing page');
+    return result;
+  };
+  // Two browser tabs hold different responses from the same shared server and filter.
+  const firstA = await load(), secondA = await load(firstA.nextPage, firstA.continuation);
+  const firstB = await load(), secondB = await load(firstB.nextPage, firstB.continuation);
+  expect(secondA.items.at(-1)?.key).toBe('/report-101.html');
+  for (const second of [secondA, secondB]) {
+    const refreshed = await load();
+    const third = await load(second.nextPage, second.continuation);
+    expect(third.items[0]?.key).toBe('/report-102.html');
+    const fourth = await load(third.nextPage, third.continuation);
+    const visible = [...refreshed.items, ...second.items.filter((i) => !refreshed.items.some((r) => r.key === i.key)), ...third.items, ...fourth.items];
+    expect(visible.map((i) => i.key)).toEqual(Array.from({ length: 200 }, (_, n) => n).filter((n) => n !== 0 && n !== 50).map((n) => `/report-${n}.html`));
+    expect(fourth.hasMore).toBe(false);
+  }
+});
+
+it('LIB-2.1: another tab cannot overwrite an issued overflow continuation when its page boundary changes', async () => {
+  const gone = new Set(['/report-0.html', '/report-50.html']);
+  const lib = new Library({
+    runner: async (_bin, argv) => {
+      const page = Number(argv[argv.indexOf('--page') + 1]);
+      return answer(Array.from({ length: 50 }, (_, i) => file(`/report-${(page - 1) * 50 + i}.html`)), 200);
+    },
+    bin: () => 'tb-session', stat: async (p) => ({ isFile: () => !gone.has(p) }), isDirectory: async () => true,
+  });
+  const load = async (page = 1, continuation?: string) => {
+    const result = await lib.find(query(new URLSearchParams({ page: String(page), ...(continuation ? { continuation } : {}) }).toString()));
+    if (result.state !== 'ok') throw new Error('missing page');
+    return result;
+  };
+  const first = await load(), second = await load(first.nextPage, first.continuation);
+  gone.add('/report-51.html');
+  const otherFirst = await load(), otherSecond = await load(otherFirst.nextPage, otherFirst.continuation);
+  expect(otherSecond.items.at(-1)?.key).toBe('/report-102.html');
+  const third = await load(second.nextPage, second.continuation);
+  expect(third.items.map((i) => i.key)).toEqual(Array.from({ length: 50 }, (_, n) => `/report-${n + 102}.html`));
+  // A continuation is reusable by its tab, rather than consumed by another request.
+  expect((await load(second.nextPage, second.continuation)).items.map((i) => i.key)).toEqual(third.items.map((i) => i.key));
+});
+
+it('LIB-2.7: repeated unchanged refreshes do not expire a retained page’s overflow continuation', async () => {
+  const lib = new Library({
+    runner: async (_bin, argv) => {
+      const page = Number(argv[argv.indexOf('--page') + 1]);
+      return answer(Array.from({ length: 50 }, (_, i) => file(`/report-${(page - 1) * 50 + i}.html`)), 200);
+    },
+    bin: () => 'tb-session', stat: async (p) => ({ isFile: () => p !== '/report-0.html' && p !== '/report-50.html' }), isDirectory: async () => true,
+  });
+  const first = await lib.find(query()); if (first.state !== 'ok') throw new Error('missing page');
+  const second = await lib.find(query(`page=${first.nextPage}&continuation=${first.continuation}`)); if (second.state !== 'ok') throw new Error('missing page');
+  for (let n = 0; n < 205; n++) await lib.find(query());
+  const third = await lib.find(query(`page=${second.nextPage}&continuation=${second.continuation}`));
+  expect(third).toMatchObject({ state: 'ok', items: expect.arrayContaining([expect.objectContaining({ key: '/report-102.html' })]) });
+});
+
+it('LIB-2.8: mismatched and expired overflow continuations fail explicitly instead of skipping their rows', async () => {
+  const runner = vi.fn<import('./exec.ts').Runner>(async (_bin, argv) => {
+    const page = Number(argv[argv.indexOf('--page') + 1]);
+    return answer(Array.from({ length: 50 }, (_, i) => file(`/report-${(page - 1) * 50 + i}.html`)), 200);
+  });
+  const lib = new Library({ runner, bin: () => 'tb-session', stat: async (p) => ({ isFile: () => p !== '/report-0.html' }), isDirectory: async () => true });
+  const first = await lib.find(query()); if (first.state !== 'ok') throw new Error('missing page');
+  const cursor = `page=${first.nextPage}&continuation=${first.continuation}`;
+  const reads = runner.mock.calls.length;
+  for (const params of [`${cursor}&q=other-filter`, `page=99&continuation=${first.continuation}`, 'page=3&continuation=unknown']) {
+    await expect(lib.find(query(params))).rejects.toMatchObject({ status: 409, message: expect.stringContaining('Reopen Library') });
+  }
+  expect(runner).toHaveBeenCalledTimes(reads);
+  for (let n = 0; n < 201; n++) await lib.find(query(`q=scope-${n}`));
+  await expect(lib.find(query(cursor))).rejects.toMatchObject({ status: 409, message: expect.stringContaining('Reopen Library') });
 });
