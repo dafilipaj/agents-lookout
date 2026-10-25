@@ -80,7 +80,7 @@ const snap = (p: Partial<PrSection> = {}, refresh: Partial<WorkSnapshot['refresh
 const withTasks = (t: Partial<TaskSection> = {}, p: Partial<PrSection> = {}) => snap(p, {}, tasks(t));
 
 const workPanel = () => screen.getByTestId('work-panel');
-const tab = (name: 'History' | 'Work') => screen.getByRole('tab', { name });
+const tab = (name: 'History' | 'Work' | 'Library') => screen.getByRole('tab', { name });
 const listbox = () => within(workPanel()).getByRole('listbox', { name: 'PRs', hidden: true });
 const options = () => within(workPanel()).queryAllByRole('option', { hidden: true });
 const shown = () => options().map((o) => o.getAttribute('data-pr'));
@@ -382,9 +382,11 @@ describe('the Work tab (WORK-1)', () => {
     expect(tab('Work')).toHaveAttribute('aria-selected', 'true');
     expect(tab('Work')).toHaveFocus();
     await user.keyboard('{ArrowRight}');
+    expect(tab('Library')).toHaveAttribute('aria-selected', 'true');
+    await user.keyboard('{ArrowRight}');
     expect(tab('History')).toHaveAttribute('aria-selected', 'true');
     // Work kept its selection meanwhile.
-    await user.keyboard('{ArrowLeft}');
+    await user.keyboard('{ArrowLeft}{ArrowLeft}');
     expect(selectedPr()).toBe('willow#2102');
     expect(window.location.pathname).toBe('/s/alpha');
   });

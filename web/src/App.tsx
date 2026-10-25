@@ -1,3 +1,4 @@
+import { LibraryPanel } from '@/components/LibraryPanel';
 import type { LaunchHarness } from '@shared/settings.ts';
 import type { AnswerRequest, ChatPage, EndTarget, EscStatus, HistoryItem, LaunchRequest, LaunchView, ResumeResult, SessionRow, Status } from '@shared/types.ts';
 import type { WorkPr, WorkSessionLink, WorkTask } from '@shared/work.ts';
@@ -320,7 +321,7 @@ export function App({ client }: { client: LookoutClient }) {
   // this browser (HIST-1.3, WORK-1.2, WORK-1.5).
   const [layout, setLayout] = useState<RightLayout>(loadLayout);
   /** Bumped to move focus into the panel just opened or switched to (HIST-1.1). */
-  const [rightFocus, setRightFocus] = useState<Record<RightTab, number>>({ history: 0, work: 0 });
+  const [rightFocus, setRightFocus] = useState<Record<RightTab, number>>({ history: 0, work: 0, library: 0 });
   const updateLayout = useCallback((patch: Partial<RightLayout>) => {
     setLayout((l) => {
       const next = { ...l, ...patch };
@@ -351,10 +352,10 @@ export function App({ client }: { client: LookoutClient }) {
     const onKey = (e: KeyboardEvent) => {
       if (e.isComposing || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
       const key = e.key.toLowerCase();
-      if (key !== 'h' && key !== 'w') return;
+      if (key !== 'h' && key !== 'w' && key !== 'l') return;
       if (modalOpen || isTextField(e.target)) return;
       e.preventDefault();
-      toggleRight(key === 'h' ? 'history' : 'work');
+      toggleRight(key === 'h' ? 'history' : key === 'w' ? 'work' : 'library');
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -378,6 +379,7 @@ export function App({ client }: { client: LookoutClient }) {
     [client],
   );
   // WORK-1.7: the tab strip's ↑/↓ and j/k, handed to the open panel.
+  const libraryNav = useRef<PanelNav>(null);
   const historyNav = useRef<PanelNav>(null);
   const workNav = useRef<PanelNav>(null);
   // A launcher opened from Work gives focus back to Work when it closes without a start, to the list
@@ -411,6 +413,8 @@ export function App({ client }: { client: LookoutClient }) {
     },
     [state.settings, openLauncher],
   );
+  const searchLibrary = useCallback((q: Parameters<LookoutClient['library']>[0]) => client.library(q), [client]);
+  const libraryStatus = useCallback(() => client.libraryStatus(), [client]);
   const searchHistory = useCallback((q: Parameters<LookoutClient['history']>[0]) => client.history(q), [client]);
   const loadPast = useCallback((harness: HistoryItem['harness'], id: string) => client.pastSession(harness, id), [client]);
   const peekPast = useCallback((harness: HistoryItem['harness'], id: string) => client.pastPeek(harness, id), [client]);
@@ -797,7 +801,8 @@ export function App({ client }: { client: LookoutClient }) {
             onRefresh={refreshWork}
             now={now}
             panels={{
-              history: <HistoryPanel focusKey={rightFocus.history} sessions={state.sessions} now={now} search={searchHistory} peek={peekPast} onOpen={openPast} navRef={historyNav} />,
+              library: <LibraryPanel focusKey={rightFocus.library} visible={layout.tab === 'library'} sessions={state.sessions} now={now} search={searchLibrary} status={libraryStatus} filter={layout.libraryFilter} onFilter={(libraryFilter) => updateLayout({ libraryFilter })} headless={layout.headless} onHeadless={(headless) => updateLayout({ headless })} onSession={openPast} keyboardEnabled={!modalOpen} navRef={libraryNav} />,
+              history: <HistoryPanel headless={layout.headless} onHeadless={(headless) => updateLayout({ headless })} focusKey={rightFocus.history} sessions={state.sessions} now={now} search={searchHistory} peek={peekPast} onOpen={openPast} navRef={historyNav} />,
               work: (
                 <WorkPanel
                   work={state.work}
@@ -815,7 +820,7 @@ export function App({ client }: { client: LookoutClient }) {
                 />
               ),
             }}
-            nav={{ history: historyNav, work: workNav }}
+            nav={{ history: historyNav, work: workNav, library: libraryNav }}
           />
         ) : (
           <RightRail onOpen={toggleRight} />

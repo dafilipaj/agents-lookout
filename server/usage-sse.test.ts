@@ -1,3 +1,4 @@
+import { Library } from './library.ts';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { request } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -43,6 +44,7 @@ beforeAll(async () => {
     onChange: (u) => app.broadcast({ type: 'usage', usage: u }),
   });
   app = createApp({
+    library: new Library({ runner: async () => '{}', bin: () => 'tb-session' }),
     guard: { allowedHosts: hosts, allowedOrigins: new Set(), token: 't' },
     monitor: { snapshot: () => ({ sessions: [], fleet: { state: 'ok' } }), watch: () => () => {} },
     settings,

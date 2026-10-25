@@ -1,3 +1,4 @@
+import { Library } from './library.ts';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { type IncomingMessage, request } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -59,6 +60,7 @@ beforeEach(async () => {
     throw new Error('unused');
   };
   app = createApp({
+    library: new Library({ runner: async () => '{}', bin: () => 'tb-session' }),
     guard: { allowedHosts: hosts, allowedOrigins: origins, token: TOKEN },
     monitor: { snapshot: () => ({ sessions: [], fleet: { state: 'ok' } }), watch: () => () => {} },
     settings,

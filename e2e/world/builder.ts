@@ -1,3 +1,4 @@
+import { checkOutputs } from '../fakes/outputs.ts';
 import type { Settings } from '../../shared/settings.ts';
 
 /**
@@ -177,9 +178,34 @@ export interface TbPrDecl {
   failure?: TbPrFailure;
 }
 
+/** LIB fixtures: paths are relative to the World's HOME; URLs and ids must be invented. */
+export interface OutputDecl {
+  kind: 'file' | 'artifact' | 'share';
+  path?: string;
+  sourcePath?: string;
+  type?: 'markdown' | 'html' | 'pdf' | 'image';
+  title?: string;
+  url?: string;
+  projectPath?: string;
+  sessionId?: string;
+  sessionTitle?: string;
+  headless?: boolean;
+  transcriptMissing?: boolean;
+  pruned?: boolean;
+  exists?: boolean;
+  contents?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  events?: number;
+  subagent?: boolean;
+  refused?: boolean;
+  json?: boolean;
+}
+
 export interface WorldSpec {
   /** Real tools removed from PATH (and from `LOOKOUT_*_BIN`). */
   without: RemovableTool[];
+  outputs: { items: OutputDecl[]; unsupported: boolean } | null;
   /** Harnesses present, each with its Fake Harness on PATH. Absent unless declared. */
   harnesses: Partial<Record<HarnessId, HarnessDecl>>;
   /** Harnesses declared absent on purpose; reported in the declaration, absent either way. */
@@ -235,6 +261,7 @@ export class WorldBuilder {
    * and `~/.codex`). For Fleet or tb-session: not on PATH, no `LOOKOUT_*_BIN`.
    */
   without(what: HarnessId | RemovableTool): WorldBuilder {
+    if (what === 'tb-session' && this.spec.outputs) throw new Error('Cannot remove tb-session from a World with outputs.');
     if (what === 'claude' || what === 'codex') {
       const { [what]: _removed, ...harnesses } = this.spec.harnesses;
       return this.next({ harnesses, absentHarnesses: unique([...this.spec.absentHarnesses, what]) });
@@ -288,6 +315,12 @@ export class WorldBuilder {
     return this.next({ tbPr: checkTbPr(decl) });
   }
 
+  /** LIB's contract fake until a real release is pinned. Writes files and tool-block fixtures. */
+  outputs(items: OutputDecl[], opts: { unsupported?: boolean } = {}): WorldBuilder {
+    if (this.spec.without.includes('tb-session')) throw new Error('Cannot declare outputs without tb-session.');
+    return this.next({ outputs: { items: checkOutputs(items), unsupported: opts.unsupported === true } });
+  }
+
   /** Lookout's settings file, merged over the defaults. */
   settings(settings: WorldSpec['settings']): WorldBuilder {
     return this.next({ settings: { ...this.spec.settings, ...settings } });
@@ -303,6 +336,7 @@ export class WorldBuilder {
 export function world(): WorldBuilder {
   return new WorldBuilder({
     without: [],
+    outputs: null,
     harnesses: {},
     absentHarnesses: [],
     sessions: [],

@@ -75,6 +75,8 @@ export function launchView(over: Partial<LaunchView> & { id: string }): LaunchVi
 }
 
 interface RenderOptions {
+  library?: LookoutClient['library'];
+  libraryStatus?: LookoutClient['libraryStatus'];
   harnesses?: () => Promise<HarnessOption[]>;
   launch?: LookoutClient['launch'];
   sendMessage?: (sessionId: string, text: string) => Promise<void>;
@@ -129,6 +131,8 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
     answer: vi.fn(options.answer ?? (async () => ({ epoch: 1 }))),
     stopSession: vi.fn(options.stopSession ?? (async () => {})),
     escSession: vi.fn(options.escSession ?? (async () => {})),
+    library: vi.fn(options.library ?? (async () => ({ state: 'ok' as const, items: [], nextPage: 2, hasMore: false, hiddenGone: 0, unfilteredEmpty: true, projects: [] }))),
+    libraryStatus: vi.fn(options.libraryStatus ?? (async () => ({ indexing: false }))),
     history: vi.fn(options.history ?? (async (): Promise<HistoryPage> => ({ state: 'ok', items: [], page: 1, hasMore: false }))),
     pastSession: vi.fn(
       options.pastSession ??

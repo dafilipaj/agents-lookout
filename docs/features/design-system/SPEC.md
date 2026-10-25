@@ -3,7 +3,7 @@ title: "Design system"
 code: "DS"
 status: "In Progress"
 created: "2026-10-22"
-updated: "2026-10-23"
+updated: "2026-10-25"
 ---
 
 # Design system
@@ -53,7 +53,7 @@ The design review's suggestion 3, as decided with Dario.
 - [x] DS-3.1 Harness logos are drawn in the text colour around them (monochrome), in the sidebar's rows, the usage strip and History's filter and results. They keep the brand colour in two places: the main pane's header (a live, a starting and a past Session's) and the new Session modal (the launcher). (test)
 - [x] DS-3.2 A usage bar on the strip keeps its fill `foreground/55` at every level, which stays 3:1 or more against the track in both modes. The level shows as a 3 px edge at the fill's end: `warning` at 80% to 94%, `destructive` at 95% or more, none below 80%, set off from the fill by a 1 px gap in the sidebar's colour (3:1 or more against the fill in both modes), since the edge's own lightness is within 2:1 of the fill's and only the gap makes it a separate mark. The fill is `overflow-hidden`, so the edge follows its rounded end. The warning triangle and critical octagon (USAGE-1.2) stay. The usage details popover keeps its solid bars. (test)
 - [x] DS-3.3 Staleness uses the info tone, never amber: Work's "Possibly out of date" (WORK-7.5), Work's "old" chip (WORK-7.3), the sidebar's banners for a stale Fleet list and a lost server (SIDE-6.2), Work's "Session links are unavailable", and the terminal preview's "… · retrying", and the usage strip's "old · …" on a reading marked old. (test)
-- [x] DS-3.4 History's search hits are marked with the `highlight` token, not Needs you's amber. (test)
+- [x] DS-3.4 History's and Library's search hits are marked with the `highlight` token, not Needs you's amber. (test)
 - [x] DS-3.5 A sidebar row's context usage, its number and its ring, takes the status line's colours (VIEW-5.5): the row's quiet colour up to 40%, `warning-text` above 40%, `destructive-text` above 60%, from the same `contextLevel`. Its text keeps 4.5:1 on every row state (SIDE-3.11). (test)
 - [x] DS-3.6 Status colours show only a Status, or something its Status spec ties to one (UX, "Colour by meaning"): Work's "milestone" chip and PR "ready" chip are neutral; chat and Markdown links are underlined in the surrounding text colour; Work's CI-running spinner and the chat rail's finished-Subagent Mark are `muted-foreground`; History's live marker and a live Linked Session's marker in Work show the Session's real Status (DS-5.2, DS-5.3), never a stand-in colour. (test)
 - [x] DS-3.7 Seen in both modes at 1440 px with several Sessions and a limit at 95% or more: the brightest things on screen are the Status markers, strips and the Needs you tint, and nothing is amber that neither needs you nor warns of a limit. (manual)
@@ -167,7 +167,7 @@ The design review's suggestion 10.
 | Destructive | `destructive`, `-soft`, `-text` | an error, a critical level, a destructive action | error Alerts, the critical octagon and the bar's edge, context above 60% (`-text`), a PR over 10 days, End Session, a failed start |
 | OK | `ok`, `-text` | something passed | CI passing, an approved PR, a PR under 3 days |
 | Info | `info-soft`, `-border`, `-text` | staleness, or something to know that needs nothing from you | info Alerts, the "old" chip, a usage reading marked old, "retrying" |
-| Highlight | `highlight` | a search hit | History's snippets |
+| Highlight | `highlight` | a search hit | History's snippets and Library's title, path and URL hits |
 | Neutral | `foreground`, `muted…`, `border`, `accent`, `sidebar…` | everything else | |
 
 - **Amber means "act on it"**: now (Needs you) or soon (a warning level). Never "this is old" or "this matched".
@@ -361,3 +361,5 @@ None.
 - 2026-10-23: The labelled size built (DS-7.1): `labelledButtonVariants` and `RowAction` in `components/ui/icon-button.tsx`, outline, `text-body` in the foreground, 28 px tall, the 20 px going to a lucide icon and to an icon that is the target's own child (a Harness logo), while a Session marker inside keeps its size. `RowAction` is a mouse target with a button's role, for a listbox option; its press never reaches the row. A new guard keeps `size-5` (20 px) in `components/ui/`. DS-7.2's sentence on Work's row buttons now names `RowAction`, since the `sm` look it named is gone from Work (`iconButtonLook` removed); the guard is unchanged. DS-7.4 stays for Dario to see live: in a World, the labelled buttons measured 28 px tall with 20 px icons, 4 px apart.
 - 2026-10-23: Spacing around the labelled buttons, from Dario's testing: they sat too close to the details above and below. `RowActions` (`components/ui/icon-button.tsx`) now holds them in Work's and History's expanded rows, in one place: 8 px between buttons (was 4), 12 px above (was 6) and 4 px below (was 0). DS-7.4 states it and stays unticked for Dario to re-check.
 - 2026-10-23: DS-7.4 ticked: Dario checked the labelled row buttons' size and their wider spacing in the running app.
+
+- 2026-10-25: Library slice 1 uses highlight for title, path and URL search hits (LIB-2.4); extended DS-3.4 and the DS-2.3 guard’s file list.

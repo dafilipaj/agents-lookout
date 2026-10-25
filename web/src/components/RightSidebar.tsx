@@ -1,5 +1,5 @@
 import type { WorkSnapshot } from '@shared/work.ts';
-import { BriefcaseBusiness, History as HistoryIcon, RefreshCw, X } from 'lucide-react';
+import { BookOpen, BriefcaseBusiness, History as HistoryIcon, RefreshCw, X } from 'lucide-react';
 import { type ComponentType, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject, useEffect, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { IconButton } from '@/components/ui/icon-button';
@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils';
 import { refreshState } from '@/lib/work';
 import { SHELL_COLUMN, ShellCell } from './Shell';
 
-const TAB_ICON: Record<RightTab, ComponentType<{ className?: string }>> = { history: HistoryIcon, work: BriefcaseBusiness };
+const TAB_ICON: Record<RightTab, ComponentType<{ className?: string }>> = { history: HistoryIcon, work: BriefcaseBusiness, library: BookOpen };
 
 export interface RightSidebarProps {
   width: number;
@@ -207,6 +207,7 @@ export function RightRail({ onOpen }: { onOpen(tab: RightTab): void }) {
       </ShellCell>
       <ShellCell row="body" toBottom className="flex flex-col items-center pt-1.5">
         {button('work')}
+        {button('library')}
       </ShellCell>
     </div>
   );

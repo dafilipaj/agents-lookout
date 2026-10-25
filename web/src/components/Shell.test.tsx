@@ -121,7 +121,7 @@ describe('one grid (SIDE-8.1)', () => {
     // like Filter on the left; History's search field sits below it.
     const tabs = screen.getByRole('tablist', { name: 'Right sidebar' });
     expect(where(tabs)).toBe('header/right');
-    expect(within(tabs).getAllByRole('tab').map((t) => t.textContent)).toEqual(['History', 'Work']);
+    expect(within(tabs).getAllByRole('tab').map((t) => t.textContent)).toEqual(['History', 'Work', 'Library']);
     expect(within(cellOf(tabs)).getByRole('button', { name: 'Close History' })).toBeInTheDocument();
     expect(screen.getByRole('complementary', { name: 'Right sidebar' })).toBe(screen.getByTestId('right-sidebar'));
     const search = screen.getByRole('searchbox', { name: 'Search past Sessions' });

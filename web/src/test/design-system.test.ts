@@ -310,6 +310,7 @@ const FAMILIES: Record<string, Family> = {
     tokens: ['highlight'],
     files: {
       'web/src/components/HistoryPanel.tsx': { why: "History's search hits (DS-3.4)", uses: ['bg-highlight'] },
+      'web/src/components/LibraryPanel.tsx': { why: "Library's title, path and URL search hits (LIB-2.4, DS-3.4)", uses: ['bg-highlight'] },
     },
   },
 };

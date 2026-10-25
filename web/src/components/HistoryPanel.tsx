@@ -31,6 +31,8 @@ export const AUTO_FILL_PAGES = 5;
 export interface HistoryPanelProps {
   /** Bumped to focus the search box (HIST-1.1). */
   focusKey: number;
+  headless: boolean;
+  onHeadless(value: boolean): void;
   /** The live Sessions, for the live marker (HIST-2.3) and the live check (HIST-3.2). */
   sessions: ReadonlyMap<string, SessionRow>;
   now: number;
@@ -61,9 +63,8 @@ type Peek = { state: 'loading' } | { state: 'ok'; peek: HistoryPeek } | { state:
  * A click or Enter selects a result and expands it in place (HIST-3.5); its one button, or Enter on
  * the expanded result, resumes, opens or shows it (HIST-3.1 to 3.3).
  */
-export function HistoryPanel({ focusKey, sessions, now, search, peek, onOpen, navRef }: HistoryPanelProps) {
+export function HistoryPanel({ focusKey, sessions, now, search, peek, onOpen, navRef, headless, onHeadless }: HistoryPanelProps) {
   const [query, setQuery] = useState('');
-  const [headless, setHeadless] = useState(false);
   // HIST-2.8: both by default; one can be switched off, never both. Remembered across reloads.
   const [harnesses, setHarnesses] = useState<HarnessFilter>(loadHarnessFilter);
   const harness = filterHarness(harnesses);
@@ -327,7 +328,7 @@ export function HistoryPanel({ focusKey, sessions, now, search, peek, onOpen, na
               type="checkbox"
               checked={headless}
               onChange={(e) => {
-                setHeadless(e.target.checked);
+                onHeadless(e.target.checked);
                 setExpanded(null);
               }}
               className="size-3.5"

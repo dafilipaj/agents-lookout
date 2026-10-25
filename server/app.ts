@@ -7,6 +7,9 @@ import type { UsageSnapshot } from '../shared/usage.ts';
 import type { WorkSnapshot } from '../shared/work.ts';
 import { AnswerError, parseAnswerRequest, parseEscStatus } from './answerer.ts';
 import { EndError, parseEndTarget } from './closer.ts';
+import { type Library } from './library.ts';
+import { LibraryError, parseLibraryQuery } from './library.ts';
+import { OUTPUT_HEADERS } from './output-files.ts';
 import { PathsError } from './files.ts';
 import { ModelSwitchError, parseEffortRequest, parseModelRequest } from './model-switch.ts';
 import { RenameError, parseRenameRequest } from './renamer.ts';
@@ -70,6 +73,8 @@ export interface AppOptions {
     peek(sessionId: string, harness: Harness): Promise<HistoryPeek>;
     resume(input: unknown): Promise<ResumeResult>;
   };
+  /** LIB: read-only Outputs and the paths learned from CLI answers. */
+  library: Pick<Library, 'find' | 'indexing' | 'files'>;
   /** WORK: Tasks through tb-prod and PRs through tb-pr, read only while a tab has Work open. */
   work: {
     snapshot(): WorkSnapshot;
@@ -169,8 +174,15 @@ export function createApp(opts: AppOptions): LookoutApp {
 
   const handle = async (req: IncomingMessage, res: ServerResponse) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
+    const outputFile = url.pathname === '/api/library/file';
+    if (outputFile) for (const [k, v] of Object.entries(OUTPUT_HEADERS)) res.setHeader(k, v);
     const verdict = guardRequest(req, opts.guard);
-    if (!verdict.ok) return json(res, verdict.status, { error: verdict.reason });
+    if (!verdict.ok) return json(res, verdict.status, { error: verdict.reason }, outputFile);
+    if (outputFile) {
+      if (req.method !== 'GET') return json(res, 405, { error: 'method not allowed' }, true);
+      try { return await opts.library.files.serve(url.searchParams.get('path') ?? '', res); }
+      catch { if (!res.headersSent) json(res, 500, { error: 'This file could not be read.' }, true); else res.destroy(); return; }
+    }
 
     const route = `${req.method} ${url.pathname}`;
     switch (route) {
@@ -208,6 +220,8 @@ export function createApp(opts: AppOptions): LookoutApp {
         }
       }
     }
+    if (route === 'GET /api/library') return historyCall(res, () => opts.library.find(parseLibraryQuery(url.searchParams)));
+    if (route === 'GET /api/library/status') return json(res, 200, { indexing: opts.library.indexing });
     // HIST-2: reads (the guard still checks Host, Origin and Sec-Fetch-Site).
     if (route === 'GET /api/history') {
       return historyCall(res, () => opts.history.find(parseFindQuery(url.searchParams)));
@@ -452,13 +466,13 @@ async function historyCall(res: ServerResponse, call: () => Promise<unknown>): P
   try {
     return json(res, 200, await call());
   } catch (err) {
-    if (err instanceof HistoryError || err instanceof LaunchError) return json(res, err.status, { error: err.message });
+    if (err instanceof LibraryError || err instanceof HistoryError || err instanceof LaunchError) return json(res, err.status, { error: err.message });
     throw err;
   }
 }
 
-function json(res: ServerResponse, status: number, body: unknown): void {
-  res.writeHead(status, { ...SECURITY_HEADERS, 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+function json(res: ServerResponse, status: number, body: unknown, outputFile = false): void {
+  res.writeHead(status, { ...SECURITY_HEADERS, ...(outputFile ? OUTPUT_HEADERS : {}), 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
   res.end(JSON.stringify(body));
 }
 

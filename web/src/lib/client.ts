@@ -1,3 +1,4 @@
+import type { LibraryPage, LibraryQuery } from '@shared/library.ts';
 import type { PathAnswer } from '@shared/files.ts';
 import type { Settings, SettingsView } from '@shared/settings.ts';
 import type { WorkRefreshResult } from '@shared/work.ts';
@@ -54,6 +55,8 @@ export interface LookoutClient {
    */
   refreshWork(): Promise<WorkRefreshResult>;
   /** HIST-2: past Sessions, newest first (empty query) or best match first. */
+  library(q: LibraryQuery): Promise<LibraryPage>;
+  libraryStatus(): Promise<{ indexing: boolean }>;
   history(q: HistoryQuery): Promise<HistoryPage>;
   /** HIST-3.3: a past Session's latest messages, read-only. */
   pastSession(harness: Harness, sessionId: string): Promise<HistoryDetail>;
@@ -318,6 +321,8 @@ export function createHttpClient(): LookoutClient {
     refreshJev: async () => {
       await call(() => send('POST', '/api/usage/jev'), 'Checking Jev');
     },
+    library: ({ query, page, headless, types, project, hideGone }) => call<LibraryPage>(() => fetch(`/api/library?${new URLSearchParams({ q: query, page: String(page), headless: headless ? '1' : '0', types: types.join(','), project, hideGone: hideGone ? '1' : '0' })}`), 'Reading Library'),
+    libraryStatus: () => call<{ indexing: boolean }>(() => fetch('/api/library/status'), 'Reading Library status'),
     history: ({ query, page, headless, harness }) =>
       call<HistoryPage>(
         () =>

@@ -1,3 +1,4 @@
+import { Library } from './library.ts';
 import { randomBytes } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import { fileURLToPath } from 'node:url';
@@ -159,6 +160,7 @@ const app = createApp({
   },
   // VIEW-1.18: a Session's file links, resolved against the cwd of its last listed row.
   files: { check: (id, body) => checkSessionPaths({ lookup: (sid) => monitor.get(sid) }, id, body) },
+  library: new Library({ runner: run, bin: () => resolveTbSessionBin(env), env }),
   history: {
     find: (q) => history.find(q),
     detail: (id, harness) => history.detail(id, harness),

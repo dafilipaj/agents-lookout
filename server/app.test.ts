@@ -1,3 +1,4 @@
+import { Library } from './library.ts';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { request } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -62,6 +63,7 @@ beforeEach(async () => {
   const settings = new SettingsStore(join(dir, 'settings.json'));
   await settings.load();
   app = createApp({
+    library: new Library({ runner: async () => '{}', bin: () => 'tb-session' }),
     guard: { allowedHosts: hosts, allowedOrigins: origins, token: TOKEN },
     monitor: { snapshot: () => ({ sessions: [], fleet: { state: 'ok' } }), watch: () => () => {} },
     settings,
