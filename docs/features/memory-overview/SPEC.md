@@ -59,7 +59,7 @@ A click on the memory line opens a popover, as the usage strip's does (USAGE-2.1
 
 - [x] MEM-4.1 When MEM-2.5 says a Session's tree grew 30 MB or more in 10 minutes, its row shows lucide's `TrendingUp` in `warning-text`, the size of the context ring, in the second line's numbers group before the Subagent count (SIDE-9.1's place); its tooltip reads "Memory +180 MB in 10 min", the row's accessible name adds "memory growing, +180 MB in 10 min" before the Subagent count (SIDE-3.10's order), and its colour keeps 4.5:1 on every row state (SIDE-3.11's test). Nothing shows otherwise: never a "0", never a mark for shrinking. (test)
 - [x] MEM-4.2 The mark follows the samples through the `memory` event: it shows within one sample of the growth (MEM-2.3), goes within one of the 10-minute window no longer holding it, goes with its row when Fleet stops listing the Session, and changes nothing else on the row: not the Status, the marker, the strip, the age or the order (SIDE-3.1, SIDE-3.4). (test)
-- [ ] MEM-4.3 At 280 px the mark is never cut: it joins the numbers group, which never shrinks (SIDE-2.14, SIDE-9.5), and sits clear of the Subagent count and the age, the row's lines still aligned (SIDE-3.8). (manual)
+- [x] MEM-4.3 At 280 px the mark is never cut: it joins the numbers group, which never shrinks (SIDE-2.14, SIDE-9.5), and sits clear of the Subagent count and the age, the row's lines still aligned (SIDE-3.8). (manual)
 
 ### MEM-5 CPU and load
 
