@@ -3,7 +3,7 @@ title: "Memory overview"
 code: "MEM"
 status: "In Progress"
 created: "2026-10-24"
-updated: "2026-10-24"
+updated: "2026-10-25"
 ---
 
 # Memory overview
@@ -197,6 +197,7 @@ interface MemoryRow {
 ### Dependencies
 
 - **Fleet:** nothing new; `pid` has been in `list --json` from the start ([0004](../../decisions/0004-fleet-cli-as-session-layer.md), [0006](../../decisions/0006-run-a-fork-of-fleet.md)).
+- **Dock layout fixture:** `.usage({ claude, codex, jev })` declares session and weekly percentages for both providers and Jev readiness. Only `fleet --local usage --json` is intercepted by the Fleet wrapper; all other Fleet calls stay real. A strict `tb-jev status --json` fake supplies Jev. The dock test selects a declared Session and compares its resting composer against the dock with all three usage lines populated.
 - **World needs (TEST-1.5):** a `.memory({ processes, pressure, ramBytes })` declaration: the World's `ps` answers the sampler's exact argv (`-axo pid=,ppid=,rss=,comm=`, with `%cpu=` for MEM-5) from an answer file the test can rewrite mid-test (as `tb-prod`'s, TEST-1.6), with the declared rows plus the World's own Lookout server and its children (so the Lookout row is real), and passes every other call to the shim's behaviour (`e2e/shims/ps`, which Fleet's discovery needs, TEST-1.10); a `sysctl` shim passing unrelated calls through to the system command, while calls naming either memory key always reach a strict fake: it answers only `-n hw.memsize kern.memorystatus_vm_pressure_level` with the declared values and refuses malformed memory calls (TEST-1.5). A Session row in a World needs a Fake Harness with a known pid (TEST-1.4), still unbuilt.
 - **Tags:** the World memory fakes exist: MEM-1.2, MEM-2.3 and MEM-3.1 are `(e2e)`. MEM-3.6 and MEM-4.2 turn `(e2e)` mechanically when Fake Harnesses with known pids exist (TEST-1.4); until then they remain `(test)`. MEM-2.1, 2.2 and 2.5 stay `(test)` on the pure module with a sanitized `ps` fixture using the Mac readings recorded above (TEST-6.2: no user name or home path in a `comm`).
 - **Design system:** `Chip` gains a `warning` tone (a `warning/40` border and `warning-text`, built as the `ok` tone is) in the same change (DS-8.3, [0009](../../decisions/0009-one-design-system-guarded-by-tests.md)); the usage details' solid bar and level icons and `Loading` exist; `TrendingUp` and `TrendingDown` come from lucide ([0008](../../decisions/0008-lucide-icons-only.md)).
@@ -244,3 +245,4 @@ None.
 - 2026-10-24: Built the sampler, dock line, breakdown and Session growth marks; status Ready to In Progress, pending verification. Added the World memory declaration and exact-argv `ps`/`sysctl` fakes with replaceable answers; MEM-1.2, MEM-2.3 and MEM-3.1 now have Behaviour tests and are retagged `(e2e)`. MEM-3.6 and MEM-4.2 remain `(test)` until Fake Harnesses exist (TEST-1.4), as the Dependencies section requires. Manual criteria remain for Dario.
 - 2026-10-24: All 20 `(test)` criteria pass and are ticked. The three Behaviour criteria remain unticked: e2e global setup cannot read its own process start time in this sandbox, before any World starts. The three `(manual)` criteria remain unticked for Dario; status stays In Progress. The accounting fixture uses sanitized names and RSS values recorded in this spec with synthetic pids and tree edges, rather than a fresh host process capture.
 - 2026-10-24: Fixed the World sysctl override breaking login-shell startup (`sysctl -n kern.boottime`, TEST-1.2). Like the ps shim, the sysctl shim passes unrelated calls through; either memory key always selects the strict fake, so malformed sampler calls cannot reach the real command.
+- 2026-10-25: Review round 1: expire trend points by timestamp on recording, snapshot reads and failed samples, and filter the rendered trend and delta by the app clock (MEM-2.4, MEM-3.3); count current Session-row growth marks for the announcement (MEM-1.4); repeatedly apply the split-bar minimum while redistributing (MEM-3.4). Behaviour tests now check release after closing the breakdown, disconnecting its stream and closing the last tab; API tests verify the exact 30-second boundary and zero reads without tabs (MEM-2.3). The dock test now declares Claude, Codex and Jev usage and checks SIDE-8.1’s resting composer height and alignment (MEM-1.2).

@@ -59,7 +59,9 @@ export class MemoryMonitor {
     this.ramBytes = (opts.totalmem ?? totalmem)();
   }
 
-  snapshot(): MemorySnapshot | null { return this.current; }
+  snapshot(): MemorySnapshot | null {
+    return this.current ? { ...this.current, trend: this.history.readTrend(this.now()) } : null;
+  }
 
   growthFor(root: MemoryRoot): number | null {
     if (this.generations.get(root.id) !== root.pid) return null;
@@ -139,7 +141,7 @@ export class MemoryMonitor {
     ]);
     if (this.abort.signal.aborted) return;
     if (ps.status === 'rejected') {
-      if (this.current) this.publish({ ...this.current, old: true });
+      if (this.current) this.publish({ ...this.current, old: true, trend: this.history.readTrend(this.now()) });
       return;
     }
     let pressure: Pressure = 'normal';

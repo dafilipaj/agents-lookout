@@ -24,7 +24,7 @@ interface Props {
 export function MemoryLine({ memory, sessions, now, open, onOpenChange, onSelect }: Props) {
   const summaryId = useId();
   const titleId = useId();
-  const description = memory ? memoryDescription(memory, now) : 'Reading memory…';
+  const description = memory ? memoryDescription(memory, now, sessions) : 'Reading memory…';
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger
@@ -87,7 +87,7 @@ function Details({ memory, sessions, now, onSelect }: { memory: MemorySnapshot; 
           <span className={cn('inline-flex items-center gap-1', MEMORY_TEXT[pressureLevel])}><UsageLevelIcon level={pressureLevel} label={pressureLevel} />pressure {memory.pressure}</span>
         </div>
         <div className={cn('mt-1 flex items-center gap-1 text-meta', MEMORY_TEXT[load])}><UsageLevelIcon level={load} label={load} /><span className={MEMORY_TEXT[load]}>load {memory.load.one.toFixed(1)} · {memory.load.cores} cores</span></div>
-        <Trend memory={memory} />
+        <Trend memory={memory} now={now} />
         <Split memory={memory} />
       </header>
       <section className="px-3.5 py-3" aria-label="Lookout memory">
@@ -135,9 +135,9 @@ function RowContent({ row, name, session, max, cores }: { row: MemoryRow; name: 
   );
 }
 
-function Trend({ memory }: { memory: MemorySnapshot }) {
-  const shape = trendShape(memory.trend);
-  const delta = shape ? memory.trend.at(-1)!.bytes - memory.trend[0]!.bytes : 0;
+function Trend({ memory, now }: { memory: MemorySnapshot; now: number }) {
+  const shape = trendShape(memory.trend, now);
+  const delta = shape?.delta ?? 0;
   const Icon = delta < 0 ? TrendingDown : TrendingUp;
   return (
     <div className="my-3 flex items-center gap-2 text-caption text-muted-foreground" data-field="trend">

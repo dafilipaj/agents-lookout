@@ -79,7 +79,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * waits while it is held, then prints `respond`'s outcome. `respond` gets the declaration read when
  * the call started, and the moment it started.
  */
-export async function serveCall<A>(name: FakeName, respond: (argv: string[], answer: A, now: Date) => Outcome | Refusal): Promise<void> {
+export async function serveCall<A>(name: FakeCommand, respond: (argv: string[], answer: A, now: Date) => Outcome | Refusal): Promise<void> {
   const argv = process.argv.slice(2);
   const dir = process.env[STATE_ENV];
   const violations = process.env[VIOLATIONS_ENV];

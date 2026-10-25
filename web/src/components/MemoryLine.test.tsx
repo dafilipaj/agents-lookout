@@ -16,7 +16,7 @@ const trigger = () => screen.getByRole('button', { name: 'Memory details' });
 const details = () => screen.getByRole('dialog', { name: 'Memory details' });
 function show(memory: MemorySnapshot | null = sample()) {
   const app = renderApp();
-  app.snapshot([row({ id: 'a', title: 'First' }), row({ id: 'b', title: 'Second', harness: 'codex' })]);
+  app.snapshot([row({ id: 'a', title: 'First', memoryGrowthBytes: memory?.sessions.find((s) => s.id === 'a')?.growthBytes ?? null }), row({ id: 'b', title: 'Second', harness: 'codex', memoryGrowthBytes: memory?.sessions.find((s) => s.id === 'b')?.growthBytes ?? null })]);
   if (memory) app.emit({ type: 'memory', memory });
   return app;
 }
@@ -248,3 +248,27 @@ it('MEM-5.3: the line rounds load to one decimal and substitutes the Pressure wo
   expect(trigger()).not.toHaveTextContent('load');
 });
 
+
+it('MEM-1.4: the announced count follows current row marks when Fleet removes a growing Session between samples', async () => {
+  const app = renderApp();
+  app.snapshot([row({ id: 'a', title: 'Growing', memoryGrowthBytes: 30 * MB }), row({ id: 'b', title: 'Remaining' })]);
+  app.emit({ type: 'memory', memory: sample({ sessions: [mr('a', GB, 30 * MB), mr('b', GB)] }) });
+  expect(trigger()).toHaveAccessibleDescription(expect.stringContaining('1 Session growing'));
+  await userEvent.setup().click(trigger());
+  app.emit({ type: 'sessions', upsert: [], remove: ['a'] });
+  expect(screen.queryByRole('option', { name: /Growing/ })).not.toBeInTheDocument();
+  expect(within(details()).queryByRole('button', { name: /Open Growing/ })).not.toBeInTheDocument();
+  expect(trigger()).not.toHaveAccessibleDescription(expect.stringContaining('growing'));
+  expect(trigger().title).not.toContain('growing');
+  app.emit({ type: 'sessions', upsert: [row({ id: 'b', title: 'Remaining', memoryGrowthBytes: 30 * MB })], remove: [] });
+  expect(trigger()).toHaveAccessibleDescription(expect.stringContaining('1 Session growing'));
+});
+
+it('MEM-3.3: the displayed delta and collecting state ignore points older than thirty minutes', async () => {
+  const app = show(sample({ old: true, trend: [{ at: NOW - 3_600_000, bytes: GB }, { at: NOW - 30_000, bytes: 2 * GB }, { at: NOW, bytes: 2 * GB + 10 * MB }] }));
+  await userEvent.setup().click(trigger());
+  expect(within(details()).getByText('+10 MB')).toBeInTheDocument();
+  app.emit({ type: 'memory', memory: sample({ old: true, trend: [{ at: NOW - 3_600_000, bytes: GB }, { at: NOW - 3_570_000, bytes: 2 * GB }] }) });
+  expect(within(details()).getByText('collecting…')).toBeInTheDocument();
+  expect(details().querySelector('[data-field="sparkline"]')).toBeNull();
+});

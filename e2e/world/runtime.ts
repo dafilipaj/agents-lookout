@@ -335,6 +335,7 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
   const tbSessionDir = join(root, 'tb-session');
   const fleetExtrasPath = join(fleetDir, 'extra-rows.json');
   const tbSessionExtrasPath = join(tbSessionDir, 'extra-results.json');
+  const usageDir = spec.usage ? join(root, 'fakes', 'usage') : '';
   const callsLog = join(logs, 'calls.log');
   const violationsLog = join(logs, 'violations.jsonl');
   const serverLogPath = join(logs, 'server.log');
@@ -575,6 +576,9 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
       const extras = name === 'fleet' ? fleetExtrasPath : tbSessionExtrasPath;
       await writeExecutable(join(bin, name), fillTemplate('logged', {
         NAME: name,
+        USAGE: usageDir,
+        USAGE_SCRIPT: join(FAKES, 'fleet-usage.ts'),
+        VIOLATIONS: violationsLog,
         LOG: callsLog,
         REAL: real,
         SELF: join(bin, name),
@@ -597,7 +601,12 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
     await mkdir(fakeDir('ps'), { recursive: true });
     memory.answer(spec.memory);
     await writeExecutable(join(bin, 'sysctl'), fillTemplate('sysctl', { REAL_SYSCTL: '/usr/sbin/sysctl', NAME: 'sysctl', LOG: callsLog, NODE: process.execPath, SCRIPT: join(FAKES, 'sysctl.ts'), STATE: fakeDir('ps'), VIOLATIONS: violationsLog }));
-    // TODO(TEST-1.4, TEST-1.7): the other declared fakes from e2e/fakes/ (claude, codex, tb-jev, curl).
+    if (spec.usage) {
+      await mkdir(usageDir, { recursive: true });
+      await writeFile(join(usageDir, 'answer.json'), JSON.stringify(spec.usage));
+      await writeExecutable(join(bin, 'tb-jev'), fillTemplate('fake', { NAME: 'tb-jev', LOG: callsLog, NODE: process.execPath, SCRIPT: join(FAKES, 'tb-jev.ts'), STATE: usageDir, VIOLATIONS: violationsLog }));
+    }
+    // TODO(TEST-1.4, TEST-1.7): Fake Harnesses, curl and standalone Jev declarations.
 
     // TEST-1.2: a login shell (a tmux pane, Fleet's `$SHELL -l`) runs /etc/profile, whose
     // path_helper puts /usr/bin, /usr/local/bin and /opt/homebrew/bin back on PATH, with

@@ -188,6 +188,13 @@ export interface MemoryDecl {
 }
 export const DEFAULT_MEMORY: MemoryDecl = { processes: [], ramBytes: 24 * GB, pressure: 'normal' };
 
+/** Populated dock usage for layout checks, served through Fleet and tb-jev's CLI contracts. */
+export interface DockUsageDecl {
+  claude: { session: number; weekly_all: number };
+  codex: { session: number; weekly_all: number };
+  jev: 'ready' | 'not-set-up';
+}
+
 export interface WorldSpec {
   /** Real tools removed from PATH (and from `LOOKOUT_*_BIN`). */
   without: RemovableTool[];
@@ -206,6 +213,8 @@ export interface WorldSpec {
   /** The fake `tb-pr` on PATH and what it answers; absent unless declared. */
   tbPr: TbPrDecl | null;
   memory: MemoryDecl;
+  /** Null unless declared: Fleet's usage override and the Jev probe, for dock layout checks. */
+  usage: DockUsageDecl | null;
   /** `lastLaunch`: what the launcher remembers as started last (WORK-5.2). */
   settings: Partial<Pick<Settings, 'idleThresholdHours' | 'startDirectories' | 'lastLaunch' | 'productiveEmail'>>;
 }
@@ -273,7 +282,7 @@ export class WorldBuilder {
     throw new NotYetBuilt('world().history()', 'TEST-1.5');
   }
 
-  /** TODO(TEST-1.7): the fake `tb-jev`, answering `status --json` with USAGE's 0.2.0 contract. */
+  /** TODO(TEST-1.7): standalone Jev declarations; populated dock fixtures use usage(). */
   jev(state: 'ready' | 'not-set-up'): WorldBuilder {
     void state;
     throw new NotYetBuilt('world().jev()', 'TEST-1.7');
@@ -298,6 +307,16 @@ export class WorldBuilder {
    */
   tbPr(decl: TbPrDecl = {}): WorldBuilder {
     return this.next({ tbPr: checkTbPr(decl) });
+  }
+
+  usage(decl: DockUsageDecl): WorldBuilder {
+    for (const provider of [decl.claude, decl.codex]) {
+      for (const percent of [provider.session, provider.weekly_all]) {
+        if (!Number.isInteger(percent) || percent < 0 || percent > 100) refuse('.usage()', 'percentages must be integers from 0 to 100');
+      }
+    }
+    if (!['ready', 'not-set-up'].includes(decl.jev)) refuse('.usage()', 'unknown Jev state');
+    return this.next({ usage: structuredClone(decl), jev: decl.jev });
   }
 
   /** MEM: the sampler's ps/sysctl answers, replaceable through world.memory during a test. */
@@ -330,6 +349,7 @@ export function world(): WorldBuilder {
     tbProd: null,
     tbPr: null,
     memory: structuredClone(DEFAULT_MEMORY),
+    usage: null,
     settings: {},
   });
 }

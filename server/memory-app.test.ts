@@ -88,3 +88,36 @@ it('MEM-3.1: memory watches require a live client, boolean, token and Origin, an
     expect(after.res.statusCode).toBe(404);
   } finally { stream.req.emit('close'); await memory.close(); }
 });
+
+for (const release of ['breakdown', 'stream', 'last tab'] as const) {
+  it(`MEM-2.3: releasing the ${release} restores the 30-second cadence or stops sampling with no tabs`, async () => {
+    vi.useFakeTimers();
+    const { memory, exchange } = setup();
+    const tick = vi.spyOn(memory, 'tick');
+    const first = exchange('GET', '/api/events');
+    const second = release === 'last tab' ? null : exchange('GET', '/api/events');
+    try {
+      const snapshot = first.events()[0];
+      if (snapshot?.type !== 'snapshot') throw new Error('missing snapshot');
+      await vi.advanceTimersByTimeAsync(2000);
+      const opened = exchange('PUT', '/api/memory/watch', { clientId: snapshot.clientId, open: true });
+      await opened.done;
+      await vi.advanceTimersByTimeAsync(5000);
+      const count = tick.mock.calls.length;
+      if (release === 'breakdown') await exchange('PUT', '/api/memory/watch', { clientId: snapshot.clientId, open: false }).done;
+      else first.req.emit('close');
+      await vi.advanceTimersByTimeAsync(29_999);
+      expect(tick).toHaveBeenCalledTimes(count);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(tick).toHaveBeenCalledTimes(count + (release === 'last tab' ? 0 : 1));
+      if (release === 'last tab') {
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(tick).toHaveBeenCalledTimes(count);
+      }
+    } finally {
+      first.req.emit('close'); second?.req.emit('close');
+      await memory.close();
+      vi.useRealTimers();
+    }
+  });
+}

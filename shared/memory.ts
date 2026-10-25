@@ -5,6 +5,7 @@ export const GB = 1024 * MB;
 export const GROWTH_BYTES = 30 * MB;
 export const GROWTH_WINDOW_MS = 10 * 60_000;
 export const MEMORY_INTERVAL_MS = 30_000;
+export const TREND_WINDOW_MS = 30 * 60_000;
 
 export type Pressure = 'normal' | 'warn' | 'critical';
 export interface MemoryPoint { at: number; bytes: number }
@@ -95,7 +96,13 @@ export class MemoryHistory {
     for (const [id, row] of this.rows) if (live.get(id) !== row.pid) this.rows.delete(id);
   }
 
+  readTrend(at: number): MemoryPoint[] {
+    this.trend = recentTrend(this.trend, at);
+    return this.trend;
+  }
+
   record(at: number, watchedBytes: number, rows: readonly (MemoryRoot & { bytes: number })[]): Map<string, number | null> {
+    this.readTrend(at);
     if (!this.trend.length || at - this.trend.at(-1)!.at >= MEMORY_INTERVAL_MS) {
       this.trend = [...this.trend, { at, bytes: watchedBytes }].slice(-60);
     }
@@ -135,19 +142,37 @@ export function formatBytes(bytes: number): string {
 export function splitWidths(values: number[]): number[] {
   const total = values.reduce((a, b) => a + b, 0);
   if (!total) return values.map(() => 0);
-  const raw = values.map((v) => v / total * 100);
-  const small = raw.filter((v) => v > 0 && v < 2);
-  const rest = raw.filter((v) => v >= 2).reduce((a, b) => a + b, 0);
-  return raw.map((v) => v === 0 ? 0 : v < 2 ? 2 : v / rest * (100 - small.length * 2));
+  const widths = values.map(() => 0);
+  const remaining = values.map((value, index) => ({ value, index })).filter((r) => r.value > 0);
+  let available = 100;
+  while (remaining.length) {
+    const sum = remaining.reduce((n, r) => n + r.value, 0);
+    const small = remaining.filter((r) => r.value / sum * available < 2);
+    if (!small.length) {
+      for (const r of remaining) widths[r.index] = r.value / sum * available;
+      break;
+    }
+    for (const r of small) {
+      widths[r.index] = 2;
+      available -= 2;
+      remaining.splice(remaining.indexOf(r), 1);
+    }
+  }
+  return widths;
 }
 
-export function trendShape(trend: MemoryPoint[]) {
+export function recentTrend(trend: readonly MemoryPoint[], now: number): MemoryPoint[] {
+  return trend.filter((p) => p.at >= now - TREND_WINDOW_MS);
+}
+
+export function trendShape(history: MemoryPoint[], now = history.at(-1)?.at ?? 0) {
+  const trend = recentTrend(history, now);
   if (trend.length < 2) return null;
   const min = Math.min(...trend.map((p) => p.bytes));
   const max = Math.max(...trend.map((p) => p.bytes));
   const span = Math.max(50 * MB, max - min);
   const bottom = (max + min - span) / 2;
-  const start = Math.max(trend[0]!.at, trend.at(-1)!.at - 30 * 60_000);
-  const points = trend.map((p) => [(p.at - start) / (30 * 60_000) * 100, 100 - (p.bytes - bottom) / span * 100]);
-  return { span, points };
+  const start = Math.max(trend[0]!.at, trend.at(-1)!.at - TREND_WINDOW_MS);
+  const points = trend.map((p) => [(p.at - start) / TREND_WINDOW_MS * 100, 100 - (p.bytes - bottom) / span * 100]);
+  return { span, points, delta: trend.at(-1)!.bytes - trend[0]!.bytes };
 }

@@ -93,3 +93,32 @@ describe('memory accounting', () => {
     expect([11.9, 12, 23.9, 24].map((one) => loadLevel({ one, cores: 12 }))).toEqual(['normal', 'warning', 'warning', 'critical']);
   });
 });
+
+it('MEM-2.4: recording after a disconnect gap expires old points even below the 60-point cap', () => {
+  const history = new MemoryHistory();
+  history.record(0, GB, []);
+  history.record(30_000, GB + MB, []);
+  history.record(3_600_000, 2 * GB, []);
+  expect(history.trend).toEqual([{ at: 3_600_000, bytes: 2 * GB }]);
+  history.record(3_630_000, 2 * GB + MB, []);
+  expect(history.trend).toHaveLength(2);
+  const sparse = new MemoryHistory();
+  sparse.record(0, GB, []);
+  sparse.record(1_790_000, 2 * GB, []);
+  sparse.record(1_800_001, 2 * GB, []);
+  expect(sparse.trend).toEqual([{ at: 1_790_000, bytes: 2 * GB }]);
+});
+
+it('MEM-3.3: expired trend points affect neither the chart coordinates nor its delta after a gap', () => {
+  const points = [{ at: 0, bytes: GB }, { at: 3_570_000, bytes: 2 * GB }, { at: 3_600_000, bytes: 2 * GB + 10 * MB }];
+  const shape = trendShape(points)!;
+  expect(shape.points).toHaveLength(2);
+  expect(shape.points.every(([x]) => x! >= 0 && x! <= 100)).toBe(true);
+  expect(shape).toHaveProperty('delta', 10 * MB);
+});
+
+it('MEM-3.4: redistributing a tiny slice keeps boundary slices at the 2% minimum', () => {
+  expect(splitWidths([2, 1, 97])).toEqual([2, 2, 96]);
+  expect(splitWidths([97, 1, 2])).toEqual([96, 2, 2]);
+  expect(splitWidths([2.01, 1, 96.99])).toEqual([2, 2, 96]);
+});

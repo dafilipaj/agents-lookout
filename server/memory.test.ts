@@ -201,3 +201,29 @@ it('MEM-2.6: unknown Pressure is normal, a first failed ps leaves Loading, and n
   expect(monitor.snapshot()).toMatchObject({ pressure: 'normal', watchedBytes: 3 * MB });
   await monitor.close();
 });
+
+it('MEM-2.4: snapshot reads and failed samples expire the trend without adding a point', async () => {
+  vi.useFakeTimers();
+  let fails = false;
+  const { monitor } = setup(async (file) => {
+    if (file.endsWith('ps')) {
+      if (fails) throw new Error('refused');
+      return ps;
+    }
+    return `${24 * GB}\n1`;
+  });
+  await monitor.tick();
+  await vi.advanceTimersByTimeAsync(30_000);
+  await monitor.tick();
+  expect(monitor.snapshot()?.trend).toHaveLength(2);
+  await vi.advanceTimersByTimeAsync(30 * 60_000 - 15_000);
+  // No new sample: the first point expired while the newer one is still in range.
+  expect(monitor.snapshot()?.trend).toHaveLength(1);
+  fails = true;
+  await monitor.tick();
+  expect(monitor.snapshot()).toMatchObject({ old: true, trend: [expect.anything()] });
+  await vi.advanceTimersByTimeAsync(30_000);
+  await monitor.tick();
+  expect(monitor.snapshot()?.trend).toEqual([]);
+  await monitor.close();
+});
