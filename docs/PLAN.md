@@ -12,6 +12,8 @@ Updated: 2026-10-25.
 
 ## Now
 
+- **DS-12: Lookout's own colour** ([spec](features/design-system/SPEC.md), amended 2026-10-26 from Dario's pick on a canvas of current, violet and Productive indigo). Cool-tinted neutrals, the side columns as a plane, Primary in Productive's indigo for buttons, focus, a chosen option and your own messages, and a louder Needs you. Built by Codex on `feature/ds-colour`; DS-12.7 is Dario's to see.
+
 ## Next: specs first
 
 4. **TOOLS: the CLIs Lookout runs and their updates** (Backlog TOOLS, becomes a spec). Checked 2026-10-21: claude 2.1.306, codex 0.163.0, tb-pr 0.3.1, tb-prod 1.2.0 and tb-session 0.3.0 were all the latest. tb-pr 0.4.0 (released 2026-10-25) is the kind of minimum version TOOLS should explain.

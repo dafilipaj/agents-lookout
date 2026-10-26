@@ -3,7 +3,7 @@ title: "Design system"
 code: "DS"
 status: "In Progress"
 created: "2026-10-22"
-updated: "2026-10-25"
+updated: "2026-10-26"
 ---
 
 # Design system
@@ -128,6 +128,18 @@ The design review's suggestion 10.
 - [x] DS-11.4 Seen on a 700 px tall window: when a Session starts to Need you and the preview opens on its own (VIEW-2.2), the question card and the Needs you row stay in view. (manual)
 - [x] DS-11.5 Kept heights for Sessions no longer in the Session list are removed, so storage doesn't grow. Reading or writing storage that fails or holds junk falls back to the default, without an error; where storage can't be written, the handle still resizes for as long as the page lives, the heights just aren't kept beyond it. Invalid values inside an otherwise valid stored map go with the next prune. (test)
 
+### DS-12 Lookout's own colour
+
+Once colour meant only Status (DS-3), Lookout read as flat and grey (Dario, 2026-10-26). Colour comes back where no one can take it for a Status: in the surfaces, and in one hue, Productive's indigo, for you and what you act on. Needs you grows with it, so it stays the loudest thing on screen.
+
+- [ ] DS-12.1 The neutral tokens take a cool tint, hue 270 at a chroma of 0.016 or less, in light and dark mode, with the values in UX, "DS-12 token values": `background`, `foreground`, `card`, `popover` and the foregrounds that go with them, `secondary`, `muted`, `muted-foreground`, `accent`, `border` and `input` (light), and the `sidebar…` tokens. The Status, Warning, Destructive, OK, Info and Highlight tokens keep their chroma as it is, and `idle…` stays without one, so Idle's grey never leans toward Busy's blue. Every contrast pair already tested (DS-2.2, DS-3.2, DS-3.5, SIDE-3.11, VIEW-5.9, WORK-3.5, SIDE-9.6) still passes. (test)
+- [ ] DS-12.2 The side columns are a plane of their own: the Session sidebar, the right sidebar and its rail are `sidebar`, the main pane is `background`, and the two differ by 0.03 lightness or more in each mode. In dark mode the sidebar is the darker one (0.155 under 0.19, where today it is the lighter), in light mode the greyer one (0.962 under 0.995). (test)
+- [ ] DS-12.3 `primary` is Productive's Indigo (`#5D2BFF`, hue 281) at a lower chroma, so it's on brand and still quieter than Needs you: `primary`, `primary-foreground`, a new `primary-soft`, and `ring` take the values in UX, "DS-12 token values". `primary-foreground` on `primary` and `foreground` on `primary-soft` (over the background) keep 4.5:1, and `ring` keeps 3:1 against the background and the sidebar, in both modes. (test)
+- [ ] DS-12.4 Primary marks you and what you act on, and nothing else: a `Button` of the default variant (the composer's Send, Start a Session, the launcher's Start, a question card's submit, Settings' Save); keyboard focus, a focused field's border and a resize handle while dragged (`ring`, as today); a question's chosen option (its border, and its dot or tick in `primary`); and your own messages in the chat (`bg-primary-soft`). Never a Status marker, strip, row tint or Status tag, a Chip, a link, a list row's selection (a selected row keeps its neutral ring, SIDE-3.9) or a chart. The colour guard (DS-2.3) gets a Primary family, its files pinned to these classes. (test)
+- [ ] DS-12.5 Needs you grows with the rest. A sidebar row's Needs you tint is 16% at rest, 22% under the pointer and 28% selected (was 12, 20 and 26), and light `needs-you-text` darkens to `oklch(0.48 0.13 55)`, so the "waiting for" line keeps 4.5:1 on the selected tint over the new sidebar (SIDE-3.11's test). The header's Status tag for Needs you is solid: a `needs-you` fill under a new `needs-you-foreground`, 4.5:1 or more in both modes; the Busy, Idle and Unknown tags stay as they are (VIEW-5.9). (test)
+- [ ] DS-12.6 With one or more Controllable Sessions Needing you, a "Needs you" header with their count sits above them in the Session sidebar, in `needs-you-text`, built and spaced as the "View only" header. It isn't a Session: ↑/↓, j/k, ⌘1–9, ⌘J and the filter skip it as they skip "View only", it hides when the filter leaves no Needs you row, and screen readers get it the way they get "View only". A View only Session that Needs you stays under "View only". (test)
+- [ ] DS-12.7 Seen in both modes at 1440 px, with Sessions in every Status and the chat showing a question card: the Needs you rows, their header and the header's tag are still the most prominent things on screen (DS-3.7 still holds); a Primary button or your own message never reads as Busy's blue beside a Busy marker; and the sidebar and the chat read as two planes. (manual)
+
 ## Non-goals
 
 - **Narrow widths** (the review's suggestion 2): columns that collapse below about 1024 px, a header that folds its buttons, a status line that drops whole parts. Dario uses Lookout full screen; it's in the Backlog.
@@ -135,7 +147,8 @@ The design review's suggestion 10.
 - **What a sidebar row shows** (suggestion 1): hiding a repeated `repo · branch`, a Busy row's activity. A separate SIDE-2.1 amendment, in the Plan.
 - **Select, then act** in History and Work (suggestion 8). Its own spec, merged with Plan item 2.
 - A Storybook, a separate package, or a published component library. The design system is the code in `web/src`, this spec and its tests.
-- Retuning existing colours (`muted-foreground`, the Status hues) or the contrast rules SIDE-3.11, VIEW-5.9 and WORK-3.5 already test.
+- Retuning the Status hues or the contrast rules SIDE-3.11, VIEW-5.9 and WORK-3.5 already test. DS-12 tints the neutrals and darkens light `needs-you-text` by 0.02; no Status changes hue.
+- More hues: a colour per project or repo, Harness brand colours in lists (DS-3.1 stands), links in Primary. Each would compete with Status in a list or with the text around a link.
 - Line heights, spacing and row heights beyond icon buttons. They're consistent enough today.
 - The review's smaller findings not listed in DS's requirements: the View only row's grey marker, the composer's Needs you border, the flagged usage line's dimming, the composer hint, the chat's measure, the header's Status tag shape, the launcher's layout, Settings' three Save buttons, a `?` shortcut overlay. Each can come back as its own item.
 - A theme switch or other themes. Dark mode follows the system, as now.
@@ -168,10 +181,12 @@ The design review's suggestion 10.
 | OK | `ok`, `-text` | something passed | CI passing, an approved PR, a PR under 3 days |
 | Info | `info-soft`, `-border`, `-text` | staleness, or something to know that needs nothing from you | info Alerts, the "old" chip, a usage reading marked old, "retrying" |
 | Highlight | `highlight` | a search hit | History's snippets and Library's title, path and URL hits |
-| Neutral | `foreground`, `muted…`, `border`, `accent`, `sidebar…` | everything else | |
+| Primary | `primary`, `-foreground`, `-soft`, `ring` | you, and what you act on (DS-12.4) | the default Button, keyboard focus and a focused field, a resize handle in use, a question's chosen option, your own messages |
+| Neutral | `foreground`, `muted…`, `border`, `accent`, `sidebar…` | everything else, cool-tinted (DS-12.1) | |
 
 - **Amber means "act on it"**: now (Needs you) or soon (a warning level). Never "this is old" or "this matched".
 - **Info is grey, not blue**, since blue is Busy. The icon and the box tell it from plain text.
+- **Primary is Productive's indigo, for you and what you act on**: buttons, focus, a chosen option, your messages. It sits on things you click or wrote, never on a shape that stands for a Session, so it can't be read as Busy's blue: a Status is a marker, a strip, a tint or a tag; Primary is a button, a ring or a bubble.
 - **Harness logos**: monochrome, `currentColor`, everywhere but two places: the main pane's header and the new Session modal (the launcher), where the logo is the choice being made. History's filter and a sidebar row are monochrome; in a row the logo takes the row's quiet colour.
 - **Usage bar**: the strip's fill is `foreground/55` at every level, 3:1 against its track in both modes, `overflow-hidden`. The level is a 3 px edge at the fill's end: `warning` at 80 to 94%, `destructive` at 95% or more, none under 80%, a 1 px sidebar-coloured gap between it and the fill; the triangle or octagon sits beside it. The details popover keeps solid fills.
 - **Links** (chat and Markdown): underlined in the surrounding text colour, with the underline kept on hover and a focus ring for keyboard focus. Blue is Busy's, so no link takes it.
@@ -188,6 +203,31 @@ Proposed values, checked by DS-2.2's test (`destructive-text`: by DS-3.5's):
 | `warning`, `-text` | Needs you's values today | Needs you's values today |
 | `destructive-soft` | `oklch(0.577 0.245 27.325 / 14%)` | `oklch(0.704 0.191 22.216 / 20%)` |
 | `destructive-text` (changed, dark only) | `oklch(0.5 0.21 27.325)`, as before | `oklch(0.78 0.15 22.216)`, was `oklch(0.704 0.191 22.216)` |
+
+#### DS-12 token values
+
+Neutrals at hue 270, Primary at Productive Indigo's hue 281. Today's value in brackets. Tokens not listed keep their values.
+
+| Token | Light | Dark |
+|---|---|---|
+| `background` | `oklch(0.995 0.002 270)` (`1 0 0`) | `oklch(0.19 0.013 270)` (`0.17 0 0`) |
+| `foreground`, `card-foreground`, `popover-foreground`, `sidebar-foreground` | `oklch(0.17 0.012 270)` (`0.145 0 0`) | `oklch(0.96 0.004 270)` (`0.96 0 0`) |
+| `card`, `popover` | `oklch(1 0 0)`, as before | `oklch(0.22 0.014 270)` (`0.205 0 0`) |
+| `secondary`, `muted` | `oklch(0.955 0.008 270)` (`0.97 0 0`) | `oklch(0.26 0.016 270)`, `oklch(0.25 0.016 270)` (`0.269`, `0.25`) |
+| `secondary-foreground`, `accent-foreground` | `oklch(0.21 0.012 270)` (`0.205 0 0`) | `oklch(0.96 0.004 270)` (`0.96 0 0`) |
+| `muted-foreground` | `oklch(0.5 0.018 270)` (`0.52 0 0`) | `oklch(0.71 0.016 270)` (`0.68 0 0`) |
+| `accent` | `oklch(0.945 0.01 270)` (`0.955 0 0`) | `oklch(0.26 0.016 270)` (`0.269 0 0`) |
+| `border`, `input`, `sidebar-border` | `oklch(0.9 0.009 270)` (`0.922 0 0`) | as before (white at 10%, 15%, 8%) |
+| `sidebar` | `oklch(0.962 0.008 270)` (`0.985 0 0`) | `oklch(0.155 0.012 270)` (`0.2 0 0`) |
+| `sidebar-accent` | `oklch(0.925 0.01 270)` (`0.94 0 0`) | `oklch(0.235 0.016 270)` (`0.27 0 0`) |
+| `primary` | `oklch(0.52 0.2 281)` (`0.205 0 0`) | `oklch(0.55 0.19 281)` (`0.922 0 0`) |
+| `primary-foreground` | `oklch(0.99 0 0)` | `oklch(0.99 0 0)` (`0.205 0 0`) |
+| `primary-soft` (new) | `oklch(0.95 0.035 281)` | `oklch(0.6 0.17 281 / 20%)` |
+| `ring` | `oklch(0.52 0.2 281)` (`0.708 0 0`) | `oklch(0.74 0.14 281)` (`0.556 0 0`) |
+| `needs-you-text` | `oklch(0.48 0.13 55)` (`0.5 0.13 55`) | as before |
+| `needs-you-foreground` (new) | `oklch(0.2 0.045 55)` | `oklch(0.22 0.04 60)` |
+
+Measured before building (sRGB, WCAG): `primary-foreground` on `primary` 5.8:1 light, 5.0:1 dark (dark `primary` at 0.58 measured 4.4:1, hence 0.55); `foreground` on `primary-soft` 16:1 light, 13:1 dark; `ring` against the background 5.9:1 light, 7.8:1 dark; `needs-you-foreground` on `needs-you` 6.5:1 light, 9.1:1 dark; light `needs-you-text` on the selected Needs you tint (28%) over the new sidebar 4.7:1 (4.3:1 at today's 0.5); `muted-foreground` on the sidebar 5.4:1 light, 7.6:1 dark. The tests are what count.
 
 ### Components
 
@@ -252,6 +292,7 @@ The icons guard keeps its rules: `SessionMarker` draws with lucide and `StatusMa
 - **Type:** `@theme` in `index.css` gains `--text-caption: 11px` with `--text-caption--line-height: 16px`, and so on for each step (UX table). Tailwind v4 makes each a `text-<step>` class. Tailwind's own sizes are cleared (`--text-*: initial`), so `text-sm` generates nothing. The page's `body` takes `text-body`, so text without a class of its own is on the scale too, and `cn()` (`lib/utils.ts`) tells tailwind-merge the steps are font sizes, or it would take `text-meta` for a colour and drop it beside `text-muted-foreground`.
 - **Colour:** the new tokens in `:root` and the dark media query, mapped to `--color-*` in `@theme inline`, so `test/contrast.ts`'s `themeTokens` reads them. DS-2.2 is a contrast test over those, as SIDE-3.11's and VIEW-5.9's are.
 - **Context danger:** `CONTEXT_LEVEL_CLASS.danger` moves from `destructive` to `destructive-text`, in the status line and the sidebar alike: `destructive` is under 4.5:1 on a Needs you row's tint (3.55:1 selected, light) and on a plain row under the pointer or selected (light). Dark `destructive-text` is raised to `oklch(0.78 0.15 22.216)`, the nearest that keeps 4.5:1 on a selected Needs you row (4.64:1); everything that already used it only gains contrast.
+- **DS-12:** the values in UX, "DS-12 token values", in `:root` and the dark block; `--color-primary-soft` and `--color-needs-you-foreground` mapped in `@theme inline` (and added to the guard's known `--color-*` set). DS-12.1 to 12.3 and 12.5 are contrast tests over `themeTokens`, beside DS-2.2's; DS-12.2 also checks the lightness gap. Primary joins the colour guard as a family (rule 3), so `bg-primary`, `bg-primary-soft`, `border-primary` and `text-primary-foreground` are allowed only where DS-12.4 lists them, each file pinned to its classes. `ring` stays where it is today; DS-12.4 doesn't move it.
 - **Warning:** `CONTEXT_LEVEL_CLASS.warning` (`lib/sessions.ts`), the usage `warning` level (`lib/usage.ts`) and `AGE_LEVEL_CLASS.aging` (`lib/work.ts`) move from `needs-you-text` to `warning-text`. The usage bar's warning level is a 3 px `bg-warning` edge at the fill's end (the fill stays `foreground/55`), as the critical level is with `destructive`.
 
 ### Components
@@ -304,6 +345,13 @@ Every place to change. Lines are from `main` on 2026-10-22; the guard finds any 
 
 **Terminal preview (DS-11).** `SessionView.tsx:792-823` (`Drawer`, `h-64` at `:816`), which reads and keeps the height by the Session's id; the pruning runs where the Session list is read.
 
+**Lookout's own colour (DS-12).** Lines from `main` on 2026-10-26.
+
+- Tokens: `index.css:7-45` (light), `:48-85` (dark), `:87-132` (`@theme inline`).
+- Planes: `RightSidebar.tsx:111,204` already use `bg-sidebar`; the Session sidebar's column and the main pane keep theirs. Check that nothing in the main pane paints `sidebar`, and nothing in the side columns paints `background` except fields (the filter boxes' `bg-background/60`).
+- Primary: `ui/button.tsx:11` (the default variant) reaches Send (`SessionView.tsx:1117`), Start a Session (`MainPane.tsx:137`), the launcher's Start (`Launcher.tsx:271`), Settings' Save (`SettingsPage.tsx:82,161`) and the question card's submit (`Answering.tsx:174`) with no change at those places. A question's chosen option: `Answering.tsx:133` (`border-foreground/40 bg-accent` today) and its dot or tick (`Answering.tsx:11-16`). Your own message: `Chat.tsx:511` (`bg-muted` today). `ring` uses stay: focus (`input`, `textarea`, `button`, `dialog`, `checkbox`, `Sidebar.tsx:223,275`, `LibraryPanel.tsx:227,261`, `Launcher.tsx:190,206`, `SessionView.tsx:515,1108,1224`, `StatusMenu.tsx:70`, `SessionTitle.tsx:222,242`, `Markdown.tsx:124`, `MemoryLine.tsx:107`, `RightSidebar.tsx:143`, `lib/links.tsx:9`) and resize handles (`RightSidebar.tsx:123`, `SessionView.tsx:946`).
+- Needs you: `ROW_TONE.needsYou` (`lib/sessions.ts:32-37`), `STATUS_TAG_CLASS['needs-you']` (`lib/sessions.ts:51`), the "View only" header (`Sidebar.tsx:230-244`) as the pattern for the new header.
+
 ### Other specs to amend
 
 Each lands with the code it covers, with a Changelog line in that spec:
@@ -316,6 +364,8 @@ Each lands with the code it covers, with a Changelog line in that spec:
 - **USAGE**: "Reading usage…" is a `Loading` (DS-6.3): `meta`, not `caption`, and it counts seconds.
 - **WORK**: UX "Markers and buttons" (DS-5.3), the milestone and "ready" chips (DS-3.6), "Possibly out of date" and "old" (DS-3.3), the CI-running spinner (DS-3.6).
 - **USAGE**: the bar's edge at 80% to 94% and at 95% or more (DS-3.2), the Harness marks (DS-3.1), and "old · …" moving from amber to info (DS-3.3).
+- **SIDE** (DS-12): the Needs you row tints (SIDE-3.7, 3.9) and the "Needs you" header (SIDE-1.5, 3.1, and SIDE-5's keys skipping it), with SIDE-3.11's values.
+- **VIEW** (DS-12): the Needs you Status tag is solid (VIEW-5.9); your own message's colour and a chosen option's (VIEW-1, UX).
 
 ### Key decisions
 
@@ -325,6 +375,9 @@ Each lands with the code it covers, with a Changelog line in that spec:
 - **Warning has its own token names**: the guard can keep Needs you to the Status and levels to levels, even while both are amber.
 - **Two Alert tones, no amber one**: after DS-3.3 nothing left is an amber box but Needs you cards, which are a Status.
 - **Info is grey**: blue is Busy, and every other hue is taken.
+- **Productive indigo for Primary, at chroma 0.2** (Dario, 2026-10-26, from a canvas of current, violet and indigo): on brand, and further from Busy's blue in what it marks than in hue. The brand's own chroma (0.28) would be the most saturated colour on screen and pull the eye from Needs you.
+- **The tint is cool and faint, and leaves Status alone**: hue 270 at chroma 0.016 or less gives the greys depth without reading as a colour; `idle` and Info stay achromatic so grey still means "nothing to do".
+- **A plane, not a card**: the side columns step back (darker in dark mode, greyer in light), the chat is the surface you read on. No shadows or gradients.
 - **`StatusMarker` stays put; `SessionMarker` wraps it**: 0008 and its guard name the file, and moving it would need a decision for no gain.
 - **A Linked Session's Status comes from the browser's Session list**: Work and History already have it, and a server field would duplicate Fleet's.
 - **The pulse goes by the Status's age**: a reload, a second tab or a re-render doesn't restart it.
@@ -364,3 +417,4 @@ None.
 
 - 2026-10-24: MEM adds the warning Chip tone (DS-8.3); the colour guard allows memory/load levels in `lib/memory.ts`, the Session growth mark in `SessionItem.tsx`, the warning Chip in `ui/chip.tsx`, and stale memory age in `MemoryLine.tsx`, each pinned to its classes. The shared level icon accepts a label so memory and load never announce usage percentages.
 - 2026-10-25: Library slice 1 uses highlight for title, path and URL search hits (LIB-2.4); extended DS-3.4 and the DS-2.3 guard’s file list.
+- 2026-10-26: DS-12 added, Lookout's own colour: cool-tinted neutrals, the side columns as a plane, Primary in Productive's indigo for you and what you act on, and a louder Needs you (tints, a solid header tag, a "Needs you" header). From a canvas Dario chose from (current, violet, Productive indigo). The Non-goal on retuning colours narrowed to the Status hues; a Non-goal on more hues added. DS is In Progress again.
