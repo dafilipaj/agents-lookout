@@ -617,12 +617,12 @@ describe('status at a glance', () => {
     ]);
     // The background at rest: classes without a variant (`hover:` is SIDE-3.9's).
     const background = (id: string) => [...rowEl(id).classList].filter((c) => c.startsWith('bg-'));
-    expect(background('n')).toEqual(['bg-needs-you/12']);
-    expect(background('vn')).toEqual(['bg-needs-you/12']);
+    expect(background('n')).toEqual(['bg-needs-you/16']);
+    expect(background('vn')).toEqual(['bg-needs-you/16']);
     for (const id of ['b', 'i', 'u', 'vb']) expect(background(id)).toEqual([]);
 
     app.emit({ type: 'sessions', upsert: [row({ id: 'b', status: 'needs-you', statusSince: NOW })], remove: [] });
-    expect(background('b')).toEqual(['bg-needs-you/12']);
+    expect(background('b')).toEqual(['bg-needs-you/16']);
     app.emit({ type: 'sessions', upsert: [row({ id: 'n', status: 'idle', statusSince: NOW })], remove: [] });
     expect(background('n')).toEqual([]);
   });
@@ -630,10 +630,10 @@ describe('status at a glance', () => {
   it('SIDE-3.9 (support): the selected row has a ring on every Status, and the pointer changes a Needs you row too', () => {
     const app = renderApp('/s/n');
     app.snapshot([row({ id: 'n', status: 'needs-you' }), row({ id: 'n2', status: 'needs-you' }), row({ id: 'b', status: 'busy' })]);
-    expect(rowEl('n')).toHaveClass('ring-1', 'bg-needs-you/26');
+    expect(rowEl('n')).toHaveClass('ring-1', 'bg-needs-you/28');
     expect(rowEl('n2')).not.toHaveClass('ring-1');
     // Under the pointer, a tinted row gets more tint than at rest, but less than the selected one.
-    expect(rowEl('n2')).toHaveClass('bg-needs-you/12', 'hover:bg-needs-you/20');
+    expect(rowEl('n2')).toHaveClass('bg-needs-you/16', 'hover:bg-needs-you/22');
     expect(rowEl('b')).not.toHaveClass('ring-1');
 
     app.emit({ type: 'sessions', upsert: [row({ id: 'n', status: 'busy', statusSince: NOW })], remove: [] });
@@ -721,6 +721,69 @@ describe('status at a glance', () => {
 
 describe('both sections', () => {
   const other = { backend: 'unknown' as const, controllable: false };
+
+  it('DS-12.6: the Needs you header counts only visible Controllable Sessions and follows live Status changes and the filter', async () => {
+    pinDate();
+    const user = userEvent.setup();
+    const app = renderApp();
+    app.snapshot([row({ id: 'wait-a', status: 'needs-you' }), row({ id: 'wait-b', status: 'needs-you' }), row({ id: 'busy', status: 'busy' }), row({ id: 'view', status: 'needs-you', ...other })]);
+    const group = screen.getByRole('group', { name: 'Controllable' });
+    const heading = () => within(screen.getByRole('group', { name: 'Controllable' })).queryByText('Needs you', { selector: 'span' });
+    expect(group).toHaveAccessibleDescription('Needs you');
+    expect(heading()).toHaveClass('text-caption', 'font-medium', 'tracking-wide', 'text-needs-you-text', 'uppercase');
+    const header = heading()!.closest('li')!;
+    expect(header).toHaveAttribute('role', 'presentation');
+    expect(header).toHaveClass('flex', 'items-baseline', 'gap-1.5', 'px-2', 'pt-1', 'pb-1');
+    expect(header).toHaveTextContent('Needs you2');
+    expect(header.nextElementSibling).toBe(rowEl('wait-a'));
+    expect(header.querySelector('button, [tabindex]')).toBeNull();
+    expect(within(screen.getByRole('group', { name: 'View only' })).getAllByRole('option')).toEqual([rowEl('view')]);
+    expect(screen.getAllByRole('option')).toHaveLength(4);
+
+    await user.keyboard('/wait-a');
+    expect(heading()!.closest('li')).toHaveTextContent('Needs you1');
+    await user.clear(screen.getByRole('searchbox', { name: 'Filter Sessions' }));
+    await user.keyboard('busy');
+    expect(heading()).toBeNull();
+    await user.clear(screen.getByRole('searchbox', { name: 'Filter Sessions' }));
+    await user.keyboard('Needs you');
+    expect(screen.getByText('No matching Sessions')).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    app.emit({ type: 'sessions', upsert: [row({ id: 'wait-a', status: 'busy' }), row({ id: 'wait-b', status: 'idle' })], remove: [] });
+    expect(heading()).toBeNull();
+    app.emit({ type: 'sessions', upsert: [row({ id: 'busy', status: 'needs-you' })], remove: [] });
+    expect(heading()!.closest('li')).toHaveTextContent('Needs you1');
+  });
+
+  it('DS-12.6: arrows, j/k, every ⌘1–9 and ⌘J skip both section headers', async () => {
+    pinDate();
+    const user = userEvent.setup();
+    const app = renderApp();
+    app.snapshot(Array.from({ length: 9 }, (_, i) => row({ id: `s${i + 1}`, status: i === 0 || i === 7 ? 'needs-you' : 'idle', ...(i >= 7 ? other : {}) })));
+    const ids = visibleTitles();
+    expect(ids).toHaveLength(9);
+    for (const key of ['{ArrowDown}', 'j']) {
+      for (const id of ids) {
+        await user.keyboard(key);
+        expect(window.location.pathname).toBe(`/s/${id}`);
+      }
+      for (const id of ids.slice(0, -1).reverse()) {
+        await user.keyboard(key === 'j' ? 'k' : '{ArrowUp}');
+        expect(window.location.pathname).toBe(`/s/${id}`);
+      }
+      await user.keyboard('{Meta>}1{/Meta}');
+      // Reset to nothing selected for the next complete walk.
+      act(() => { window.history.pushState(null, '', '/'); window.dispatchEvent(new PopStateEvent('popstate')); });
+    }
+    for (let i = 1; i <= 9; i++) {
+      await user.keyboard(`{Meta>}${i}{/Meta}`);
+      expect(window.location.pathname).toBe(`/s/${ids[i - 1]}`);
+    }
+    await user.keyboard('{Meta>}j{/Meta}');
+    expect(window.location.pathname).toBe('/s/s1');
+    await user.keyboard('{Meta>}j{/Meta}');
+    expect(window.location.pathname).toBe('/s/s8');
+  });
 
   it('SIDE-5 (support): keyboard moves through both sections, and ⌘J finds Needs you in either', async () => {
     pinDate();

@@ -270,7 +270,7 @@ export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, h
             </Button>
             <Button type="submit" size="sm" disabled={!canStart}>
               {submitting ? 'Starting…' : 'Start'}
-              <Kbd className="border-primary-foreground/30 opacity-70">⌘↵</Kbd>
+              <Kbd className="border-current/30 opacity-70">⌘↵</Kbd>
             </Button>
           </div>
         </form>

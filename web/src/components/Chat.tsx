@@ -508,7 +508,7 @@ function Prompt({ text, ts, state }: { text: string; ts: string | null; state: '
       <Meta who="You" ts={ts} extra={queued ? 'queued' : null} srLabel={state === 'sending' ? 'sending' : null} />
       <div
         className={cn(
-          'max-w-[85%] rounded-lg bg-muted px-3.5 py-2 text-prose leading-[1.6] break-words whitespace-pre-wrap',
+          'max-w-[85%] rounded-lg bg-primary-soft px-3.5 py-2 text-prose leading-[1.6] break-words whitespace-pre-wrap',
           queued && 'border border-dashed border-border bg-transparent text-muted-foreground',
         )}
       >

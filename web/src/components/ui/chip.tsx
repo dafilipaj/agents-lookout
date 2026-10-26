@@ -9,9 +9,9 @@ export type ChipTone = 'neutral' | 'muted' | 'info' | 'ok' | 'warning' | Status;
 /**
  * DS-8.3: one pill, `rounded-full px-1.5`, `caption` medium on a 16 px line, with a tone. `neutral`:
  * `bg-muted`, the foreground. `muted`: a border and muted text (a draft PR). `info`: the info tone's
- * (staleness, "old"). `ok`: something passed (an approved PR, WORK-3.2). A Status's: its tag's `-soft`
- * and `-text` (VIEW-5.9, from `STATUS_TAG_CLASS`). Every tone has the 1 px border, transparent where
- * it shows none, so chips are one height.
+ * (staleness, "old"). `ok`: something passed (an approved PR, WORK-3.2). A Status's: its header tag's
+ * colours (VIEW-5.9, from `STATUS_TAG_CLASS`), solid for Needs you, soft for the others. Every tone
+ * has the 1 px border, transparent where it shows none, so chips are one height.
  */
 export const chipVariants = cva('inline-flex shrink-0 items-center gap-0.5 rounded-full border border-transparent px-1.5 text-caption leading-4 font-medium whitespace-nowrap', {
   variants: {

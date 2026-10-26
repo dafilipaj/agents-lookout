@@ -277,7 +277,7 @@ describe('shared pieces', () => {
     for (const text of ['live', 'old', 'Needs you', 'Busy']) expect(screen.getByText(text)).toHaveClass('rounded-full', 'px-1.5', 'text-caption', 'font-medium', 'leading-4');
     expect(screen.getByText('live')).toHaveClass('bg-muted', 'text-foreground');
     expect(screen.getByText('old')).toHaveClass('bg-info-soft', 'text-info-text');
-    expect(screen.getByText('Needs you')).toHaveClass('bg-needs-you-soft', 'text-needs-you-text');
+    expect(screen.getByText('Needs you')).toHaveClass('bg-needs-you', 'text-needs-you-foreground');
     expect(screen.getByText('Busy')).toHaveClass('bg-busy-soft', 'text-busy-text');
   });
 

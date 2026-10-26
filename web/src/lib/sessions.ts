@@ -30,9 +30,9 @@ export const STATUS_STRIP_CLASS: Record<Status, string> = {
  */
 export const ROW_TONE = {
   needsYou: {
-    rest: 'bg-needs-you/12',
-    hover: 'hover:bg-needs-you/20',
-    selected: 'bg-needs-you/26 hover:bg-needs-you/26 ring-needs-you/70',
+    rest: 'bg-needs-you/16',
+    hover: 'hover:bg-needs-you/22',
+    selected: 'bg-needs-you/28 hover:bg-needs-you/28 ring-needs-you/70',
     quiet: 'text-foreground/70',
   },
   plain: {
@@ -46,9 +46,9 @@ export const ROW_TONE = {
 /** SIDE-2.6, VIEW-5.16: the tooltip of an Idle Session's background shell mark. */
 export const BACKGROUND_SHELL_TIP = 'A background shell command is still running';
 
-/** VIEW-5.9: the header's Status tag, tinted in its Status's colour with text in its readable shade. */
+/** VIEW-5.9: the header's Status tag, solid for Needs you (DS-12.5), soft for the other Statuses. */
 export const STATUS_TAG_CLASS: Record<Status, string> = {
-  'needs-you': 'bg-needs-you-soft text-needs-you-text',
+  'needs-you': 'bg-needs-you text-needs-you-foreground',
   busy: 'bg-busy-soft text-busy-text',
   idle: 'bg-idle-soft text-idle-text',
   unknown: 'bg-idle-soft text-idle-text',

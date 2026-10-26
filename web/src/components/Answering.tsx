@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils';
 /** VIEW-1.9: a box for several picks, a circle for one; checked, or with a dot, when picked. */
 export function ChoiceIcon({ multiSelect, chosen }: { multiSelect: boolean; chosen: boolean }) {
   const Icon = multiSelect ? (chosen ? SquareCheck : Square) : chosen ? CircleDot : Circle;
-  return <Icon className="size-3.5" />;
+  return <Icon className={cn('size-3.5', chosen && 'text-primary')} />;
 }
 
 /**
@@ -130,7 +130,7 @@ export function QuestionForm({
                         className={cn(
                           'flex w-full gap-2 rounded-md border bg-background px-2.5 py-1.5 text-left text-body transition-colors outline-none',
                           'hover:border-foreground/40 hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-60 aria-disabled:pointer-events-none aria-disabled:opacity-60',
-                          chosen ? 'border-foreground/40 bg-accent font-medium' : 'border-border',
+                          chosen ? 'border-primary hover:border-primary bg-accent font-medium' : 'border-border',
                         )}
                       >
                         <span aria-hidden className="flex h-[1lh] w-3.5 shrink-0 items-center justify-center text-muted-foreground" data-field="choice">

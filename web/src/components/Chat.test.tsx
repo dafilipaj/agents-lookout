@@ -49,6 +49,15 @@ function open(id = 'a', over: Parameters<typeof row>[0] | object = {}, options: 
 }
 
 describe('chat rendering', () => {
+  it('DS-12.4: your messages use Primary soft, while replies and queued prompts keep their own surfaces', () => {
+    const { reset } = open();
+    reset([you('Your prompt'), agent('A reply')], null, [you('Queued prompt', { queued: true })]);
+    expect(screen.getByText('Your prompt').closest('.rounded-lg')).toHaveClass('bg-primary-soft');
+    expect(screen.getByText('A reply').closest('.bg-primary-soft')).toBeNull();
+    expect(screen.getByText('Queued prompt').closest('.rounded-lg')).toHaveClass('bg-transparent');
+    expect(screen.getByText('Queued prompt').closest('.rounded-lg')).not.toHaveClass('bg-primary-soft');
+  });
+
   it('VIEW-1.1: prompts and replies in order, newest at the bottom, replies as Markdown with code blocks', () => {
     const { app, reset } = open();
     reset([you('Fix the rate rounding'), agent('The rounding is in **`RateCalculator#apply`**:\n\n```ruby\nlines.sum { |l| l.amount }\n```')]);

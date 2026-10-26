@@ -235,10 +235,11 @@ type Family = { tokens: string[]; files: Record<string, { why: string; uses: str
 
 const FAMILIES: Record<string, Family> = {
   'needs-you': {
-    tokens: ['needs-you', 'needs-you-soft', 'needs-you-text'],
+    tokens: ['needs-you', 'needs-you-soft', 'needs-you-text', 'needs-you-foreground'],
     files: {
       'web/src/components/StatusMarker.tsx': { why: 'the Needs you marker', uses: ['text-needs-you'] },
-      'web/src/lib/sessions.ts': { why: "the Status's strip, row tint and header tag", uses: ['bg-needs-you', 'bg-needs-you-soft', 'bg-needs-you/12', 'bg-needs-you/20', 'bg-needs-you/26', 'ring-needs-you/70', 'text-needs-you-text'] },
+      'web/src/lib/sessions.ts': { why: "the Status's strip, row tint and header tag", uses: ['bg-needs-you', 'bg-needs-you/16', 'bg-needs-you/22', 'bg-needs-you/28', 'ring-needs-you/70', 'text-needs-you-foreground'] },
+      'web/src/components/Sidebar.tsx': { why: 'the Needs you section header and count (DS-12.6)', uses: ['text-needs-you-text'] },
       'web/src/components/SessionItem.tsx': { why: 'a Needs you row\'s "waiting for" line', uses: ['text-needs-you-text'] },
       'web/src/components/ChatActivity.tsx': { why: 'the Needs you row in the chat', uses: ['bg-needs-you', 'text-needs-you-text'] },
       'web/src/components/ChatRail.tsx': { why: "a question's Mark on the chat rail", uses: ['bg-needs-you'] },
@@ -316,6 +317,31 @@ const FAMILIES: Record<string, Family> = {
     files: {
       'web/src/components/HistoryPanel.tsx': { why: "History's search hits (DS-3.4)", uses: ['bg-highlight'] },
       'web/src/components/LibraryPanel.tsx': { why: "Library's title, path and URL search hits (LIB-2.4, DS-3.4)", uses: ['bg-highlight'] },
+    },
+  },
+  primary: {
+    tokens: ['primary', 'primary-foreground', 'primary-soft', 'ring'],
+    files: {
+      'web/src/components/ui/button.tsx': { why: 'the default Button, keyboard focus and a focused field (DS-12.4)', uses: ['bg-primary', 'bg-primary/90', 'border-ring', 'ring-ring/50', 'text-primary-foreground'] },
+      'web/src/components/Answering.tsx': { why: 'a chosen option’s border and dot or tick, and keyboard focus (DS-12.4)', uses: ['border-primary', 'border-ring', 'ring-ring', 'ring-ring/25', 'text-primary'] },
+      'web/src/components/Chat.tsx': { why: 'your own message bubble and keyboard focus (DS-12.4)', uses: ['bg-primary-soft', 'ring-ring'] },
+      'web/src/index.css': { why: 'the base outline colour, as before DS-12', uses: ['outline-ring/50'] },
+      'web/src/lib/links.tsx': { why: 'keyboard focus on a link', uses: ['outline-ring'] },
+      'web/src/components/ChatRail.tsx': { why: 'keyboard focus on a Mark', uses: ['ring-ring'] },
+      'web/src/components/HistoryPanel.tsx': { why: 'keyboard focus and a focused filter', uses: ['border-ring', 'ring-ring/30'] },
+      'web/src/components/Launcher.tsx': { why: 'keyboard focus and focused fields', uses: ['border-ring', 'ring-ring/30'] },
+      'web/src/components/LibraryPanel.tsx': { why: 'keyboard focus on the filter and list', uses: ['ring-ring/30'] },
+      'web/src/components/Markdown.tsx': { why: 'keyboard focus on Copy', uses: ['ring-ring'] },
+      'web/src/components/MemoryLine.tsx': { why: 'keyboard focus on a Session', uses: ['ring-ring/50'] },
+      'web/src/components/RightSidebar.tsx': { why: 'keyboard focus and the resize handle while dragged', uses: ['bg-ring/20', 'ring-ring/50'] },
+      'web/src/components/SessionTitle.tsx': { why: 'keyboard focus on the title and its edit', uses: ['ring-ring'] },
+      'web/src/components/SessionView.tsx': { why: 'keyboard focus, the focused composer and the resize handle while dragged', uses: ['bg-ring', 'border-ring', 'ring-ring', 'ring-ring/25'] },
+      'web/src/components/Sidebar.tsx': { why: 'keyboard focus and the focused filter', uses: ['border-ring', 'ring-ring/30', 'ring-ring/50'] },
+      'web/src/components/StatusMenu.tsx': { why: 'keyboard focus on the menu', uses: ['ring-ring'] },
+      'web/src/components/ui/checkbox.tsx': { why: 'keyboard focus on the checkbox', uses: ['outline-ring'] },
+      'web/src/components/ui/dialog.tsx': { why: 'keyboard focus on Close', uses: ['ring-ring'] },
+      'web/src/components/ui/input.tsx': { why: 'keyboard focus and a focused field', uses: ['border-ring', 'ring-ring/50'] },
+      'web/src/components/ui/textarea.tsx': { why: 'keyboard focus and a focused field', uses: ['border-ring', 'ring-ring/50'] },
     },
   },
 };
@@ -556,8 +582,8 @@ describe('colour by meaning', () => {
 
   it("DS-2.3: index.css maps exactly the known colour tokens: shadcn's and the families', so a new one is a reviewed change", () => {
     const SHADCN = [
-      'background', 'foreground', 'card', 'card-foreground', 'popover', 'popover-foreground', 'primary', 'primary-foreground', 'secondary', 'secondary-foreground', 'muted', 'muted-foreground',
-      'accent', 'accent-foreground', 'border', 'input', 'ring', 'sidebar', 'sidebar-foreground', 'sidebar-accent', 'sidebar-border',
+      'background', 'foreground', 'card', 'card-foreground', 'popover', 'popover-foreground', 'secondary', 'secondary-foreground', 'muted', 'muted-foreground',
+      'accent', 'accent-foreground', 'border', 'input', 'sidebar', 'sidebar-foreground', 'sidebar-accent', 'sidebar-border',
     ];
     const mapped = [...uncommented(css).matchAll(/--color-([\w-]+)\s*:\s*([^;]*);/g)];
     expect(mapped.map((m) => m[1]!).sort()).toEqual([...SHADCN, ...Object.values(FAMILIES).flatMap((f) => f.tokens)].sort());
@@ -580,6 +606,29 @@ describe('colour by meaning', () => {
         return JSON.stringify(actual) === JSON.stringify(pinned) ? [] : [`${name}: ${path}: pinned ${JSON.stringify(pinned)}, uses ${JSON.stringify(actual)}`];
       }),
     );
+
+  it('DS-12.4: Primary is pinned to default buttons, chosen options, your messages and the existing focus and resize classes', () => {
+    expect(FAMILIES.primary).toBeDefined();
+    expect(FAMILIES.primary!.tokens).toEqual(['primary', 'primary-foreground', 'primary-soft', 'ring']);
+    const primary = FAMILIES.primary!;
+    const coloured = Object.entries(primary.files).filter(([, { uses }]) => uses.some((c) => /primary/.test(c))).map(([path]) => path).sort();
+    expect(coloured).toEqual(['web/src/components/Answering.tsx', 'web/src/components/Chat.tsx', 'web/src/components/ui/button.tsx']);
+    expect(classesOf('primary', 'web/src/components/ui/button.tsx')).not.toContain('text-primary');
+    expect(familyUses('primary', `'bg-primary-soft border-primary text-primary text-primary-foreground ring-ring bg-ring outline-ring'`)).toHaveLength(7);
+    expect(familyUses('primary', `'bg-primary-soft'`, 'web/src/components/SessionItem.tsx')).toHaveLength(1);
+    expect(primary.files['web/src/components/SessionItem.tsx']).toBeUndefined();
+    expect(pinDrift({ primary }, { ...SOURCES, 'web/src/components/Chat.tsx': `${SOURCES['web/src/components/Chat.tsx']}\n'bg-primary';` })).toEqual([expect.stringContaining('primary: web/src/components/Chat.tsx:')]);
+    expect(pinDrift({ primary }, SOURCES)).toEqual([]);
+  });
+
+  it('DS-12.2: both side columns and the closed rail paint sidebar, while main-pane views inherit background', () => {
+    expect(SOURCES['web/src/components/Sidebar.tsx']).toContain('bg-sidebar text-sidebar-foreground');
+    expect(SOURCES['web/src/components/RightSidebar.tsx']!.match(/\bbg-sidebar\b(?!-)/g)).toHaveLength(2);
+    for (const path of ['MainPane', 'SessionView', 'StartingView', 'PastSessionView', 'SettingsPage', 'Chat', 'Answering', 'Shell']) {
+      expect(SOURCES[`web/src/components/${path}.tsx`], path).not.toMatch(/\bbg-sidebar(?:\/\d+)?(?=[\s'"`])/);
+    }
+    expect(css).toMatch(/body \{\s*@apply bg-background\b/);
+  });
 
   it('DS-2.3, DS-3.6: each colour family is used only in the files its meaning lists, and in the classes it pins there', () => {
     const found = Object.keys(FAMILIES).flatMap((name) =>
@@ -616,7 +665,7 @@ describe('colour by meaning', () => {
   });
 
   it('DS-3.6: Needs you\'s colours stay off staleness, search hits and the usage bar', () => {
-    for (const path of ['web/src/components/Sidebar.tsx', 'web/src/components/UsageStrip.tsx', 'web/src/components/WorkPanel.tsx', 'web/src/components/SessionView.tsx', 'web/src/components/HistoryPanel.tsx']) {
+    for (const path of ['web/src/components/UsageStrip.tsx', 'web/src/components/WorkPanel.tsx', 'web/src/components/SessionView.tsx', 'web/src/components/HistoryPanel.tsx']) {
       expect(familyUses('needs-you', SOURCES[path]!, path), path).toEqual([]);
     }
   });

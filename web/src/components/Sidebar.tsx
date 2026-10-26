@@ -214,6 +214,7 @@ export function Sidebar(props: SidebarProps) {
     // from the window's handler above. DS-9.2: a ring for keyboard focus only; a click focuses it
     // without one, and the selected row keeps its own ring.
     const active = selectedId !== null && visible.some((r) => r.id === selectedId) ? sessionOptionId(selectedId) : undefined;
+    const needsYou = controllable.filter((r) => r.status === 'needs-you').length;
     return (
       <div
         role="listbox"
@@ -224,7 +225,13 @@ export function Sidebar(props: SidebarProps) {
         data-stale={stale}
       >
         {controllable.length > 0 ? (
-          <ul role="group" aria-label="Controllable" className="flex flex-col gap-px px-1.5">
+          <ul role="group" aria-label="Controllable" aria-describedby={needsYou > 0 ? 'needs-you-heading' : undefined} className="flex flex-col gap-px px-1.5">
+            {needsYou > 0 && (
+              <li role="presentation" className="flex items-baseline gap-1.5 px-2 pt-1 pb-1">
+                <span id="needs-you-heading" className="text-caption font-medium tracking-wide text-needs-you-text uppercase">Needs you</span>
+                <span className="text-caption text-needs-you-text tabular-nums">{needsYou}</span>
+              </li>
+            )}
             {controllable.map(item)}
           </ul>
         ) : (

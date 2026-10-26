@@ -3,7 +3,7 @@ title: Session sidebar
 code: SIDE
 status: In Progress
 created: 2026-10-16
-updated: 2026-10-23
+updated: 2026-10-26
 ---
 
 # Session sidebar
@@ -26,7 +26,7 @@ The sidebar lists every live Session on this Host that Fleet finds, whichever te
 - [x] SIDE-1.2 A Session whose process exits disappears within 3 s. (manual)
 - [x] SIDE-1.3 Claude Code and Codex Sessions both appear. (manual)
 - [x] SIDE-1.4 Given a recorded `fleet list --json` output, the server produces the expected rows. (test)
-- [x] SIDE-1.5 Sessions that aren't Controllable (e.g. Claude Desktop, IDE terminals) are shown in their own "View only" section below the others, so you know they exist. The section's header shows only when it has Sessions. (test)
+- [x] SIDE-1.5 Sessions that aren't Controllable (e.g. Claude Desktop, IDE terminals) are shown in their own "View only" section below the others, so you know they exist. The section's header shows only when it has Sessions. Above the Controllable Sessions, a "Needs you" header in `needs-you-text` shows their visible Needs you count when nonzero, built and spaced as "View only" (DS-12.6); a View only Session that Needs you stays under "View only". (test)
 
 ### SIDE-2 One row per Session
 
@@ -59,15 +59,15 @@ Sidebar rows show what varies. Nearly every Session runs in the main Start direc
 
 ### SIDE-3 Status at a glance
 
-- [x] SIDE-3.1 Controllable Sessions come first, then the "View only" section. Within each, rows are ordered Needs you → Busy → Idle → Unknown, and within each Status the most recent status change comes first. (test)
+- [x] SIDE-3.1 Controllable Sessions come first, then the "View only" section. The "Needs you" header sits above the Controllable Sessions that Need you and is not a Session row. Within each section, rows are ordered Needs you → Busy → Idle → Unknown, and within each Status the most recent status change comes first. (test)
 - [x] SIDE-3.2 Each Status has its own marker. Needs you is the most prominent, and is recognizable without colour. (manual)
 - [x] SIDE-3.3 The browser tab title shows how many Sessions need you, e.g. "(2) Lookout", and no count when none do. (test)
 - [x] SIDE-3.4 Status markers and row text update live, also while the pointer is over the sidebar. Only reordering waits: rows don't move while the pointer is over the sidebar, and pending moves apply once it leaves. (manual)
 - [x] SIDE-3.5 A Session Idle for longer than the idle threshold (default 4 h, SIDE-7) is dimmed. It returns to normal as soon as its Status changes. (test)
 - [x] SIDE-3.6 Each row has a strip down its left edge in its Status's colour: amber for Needs you, blue for Busy, grey for Idle, and grey dashed for Unknown, like its marker's dashed ring. A View only row's strip is fainter, as its marker is. (test)
-- [x] SIDE-3.7 A Needs you row's background is tinted with the Needs you colour, Controllable or View only, so the rows that want action stand out. No other Status tints its row. (test)
+- [x] SIDE-3.7 A Needs you row's background is tinted with the Needs you colour, Controllable or View only, so the rows that want action stand out. The tint is 16% at rest, 22% under the pointer and 28% selected (DS-12.5). No other Status tints its row. (test)
 - [x] SIDE-3.8 The Status markers in the sidebar are a size up from the header's (18 px for Needs you, the others in proportion), and a row's second and third lines stay aligned with its title, "Starting…" rows included. (manual)
-- [x] SIDE-3.9 On every Status, a tinted Needs you row included, the selected row and the row under the pointer are each clearly visible and tell apart from each other, in light and dark mode. The keyboard moves the selection (SIDE-5), so a row selected from the keyboard looks like one selected by click. (manual)
+- [x] SIDE-3.9 On every Status, a tinted Needs you row included, the selected row and the row under the pointer are each clearly visible and tell apart from each other, in light and dark mode. A Needs you row takes its 16/22/28% tint steps (DS-12.5); a plain row keeps its neutral selection and ring. The keyboard moves the selection (SIDE-5), so a row selected from the keyboard looks like one selected by click. (manual)
 - [x] SIDE-3.10 The strip and the tint are decoration, hidden from screen readers: a row's accessible name stays what it was (its marker's Status, title, Harness, age and context, and the location and activity it shows, SIDE-2.15). (test)
 - [x] SIDE-3.11 Every text on a row keeps a contrast of 4.5:1 or more against the row's background at rest, under the pointer and selected, in light and dark mode. A dimmed long-Idle row (SIDE-3.5) and a stale list (SIDE-6.2) are faint on purpose and don't count. (test)
 
@@ -78,6 +78,8 @@ Sidebar rows show what varies. Nearly every Session runs in the main Start direc
 - [x] SIDE-4.3 If the selected Session ends, it stays selected and the main pane says it ended, until you select another. (manual)
 
 ### SIDE-5 Keyboard
+
+The "Needs you" and "View only" headers are not Session rows: ↑/↓, j/k, ⌘1–9, ⌘J and the filter skip both (DS-12.6). A header hides when the filter leaves no row for it.
 
 - [x] SIDE-5.1 ↑/↓ and j/k move the selection. ↑/↓ pressed inside the chat scroll the chat instead (VIEW-1.11). (manual)
 - [x] SIDE-5.2 ⌘1–⌘9 select the first to ninth row. (manual)
@@ -131,6 +133,7 @@ A row shows how many Subagents its Session has running right now, so a Session w
 ┌──────────────────────────────┬───────────────────────────────────┐
 │ / filter                + ⚙  │ header (VIEW)                     │
 ├──────────────────────────────┼───────────────────────────────────┤
+│ NEEDS YOU 1                  │                                   │
 │ ◆ fix-deal-rates        [cl] │   selected Session (VIEW spec)    │
 │   [wt] crm-rates          2m │                                   │
 │   permission: Bash(rspec …)  │                                   │
@@ -153,6 +156,7 @@ A row shows how many Subagents its Session has running right now, so a Session w
 
 - `[cl]` and `[ox]` are the Harness marks: Claude's and OpenAI's (for Codex), each with its name as the accessible label. They're monochrome, in the row's quieter colour (DS-3.1): in a list the Status carries the colour, and the brand colour is kept for the main pane's header and the launcher.
 - Context usage (SIDE-2.4): the number and its ring take the status line's colours (VIEW-5.5, DS-3.5): the row's quieter colour up to 40%, `warning-text` above 40%, `destructive-text` above 60%, each 4.5:1 or more on every row state (SIDE-3.11).
+- "Needs you" (DS-12.6) sits above the Controllable rows when one or more Need you, with their visible count. Its presentation row, caption, weight, tracking and spacing match "View only", with the label and count in `needs-you-text`. It describes the Controllable group for screen readers, leaves the group's name intact, and never becomes an option or keyboard stop. Status changes and filtering update its count; with no matching Controllable Needs you row it hides.
 - "View only" holds the Sessions that aren't Controllable, in the same Status order. Keyboard navigation, ⌘1–9, ⌘J and the filter run across both sections, and hover-freeze (SIDE-3.4) applies to both.
 - "Starting…" rows (LAUNCH-4) sit above both sections and are rows like any other for ↑/↓, j/k and ⌘1–9 (LAUNCH-4.7): the first of them is ⌘1, and a failed one takes no number. ⌘J skips them (they never Need you), and the filter leaves them in place. Selecting one shows the start in the main pane (LAUNCH-4.6).
 
@@ -188,7 +192,7 @@ A row shows how many Subagents its Session has running right now, so a Session w
   - The repo name comes from the common git dir's parent (for a bare repo, the common dir's own name minus `.git`).
   - Outside git, the row shows the working directory's name instead.
   - **Default location (SIDE-2.7–2.9).** `GitLocation` (`shared/types.ts`) gains `commonDir` (the absolute `--git-common-dir`, already read) and `defaultBranch: string | null`, read in the same `readGitLocation` call, so it costs one more `git` process and rides the existing 30 s cache and `onChange`. `defaultBranch`: one `git for-each-ref --format='%(refname) %(symref)' refs/remotes/origin/HEAD refs/heads/main refs/heads/master` (argv, no shell): `origin/HEAD`'s target with `origin/` removed; else `main` if that ref is listed, then `master`; else null. Nothing already in the code gives it (`readBranch` reads the current branch only). `origin/HEAD` exists in a repo that was cloned (git sets it then) and may be missing in one made with `git init` and a remote added; Lookout doesn't fix it. The set of Start directories' repos (their `commonDir`s) is read through the same cache from Settings. The server, not the tab, decides "default": the row gains `locationShown: {repo: boolean, where: boolean}`, so the tab renders what it's told and the rule has one home beside `normalize.ts`. The filter keeps matching `git.repo`, `git.worktree` and `git.branch`, which stay on the row (SIDE-2.13).
-- **Status colours (SIDE-3.6, 3.7):** the theme's Status tokens in `web/src/index.css` (`--needs-you`, `--busy`, `--idle`, each with a light and a dark value). `STATUS_STRIP_CLASS` in `web/src/lib/sessions.ts` gives each Status's strip, and `STATUS_TAG_CLASS` beside it the header's tag (VIEW-5.9), so a Status has one colour wherever it shows. The Needs you tint and its pointer and selected steps are the Needs you colour at 12%, 20% and 26%, which reads in both modes. `ROW_TONE` beside them holds each row state's background and quieter text, and a test computes every text's contrast on every state from the tokens, compositing as the browser does (SIDE-3.11). The lowest ratios: 5.4:1 for the quieter text on a selected Needs you row in dark mode, 4.7:1 for what it waits for on a selected one in light mode, 4.6:1 for the muted grey on a selected plain row in light mode. The muted grey alone fell to 4.1:1 (light) and 3.6:1 (dark) on the selected tint.
+- **Status colours (SIDE-3.6, 3.7):** the theme's Status tokens in `web/src/index.css` (`--needs-you`, `--busy`, `--idle`, each with a light and a dark value). `STATUS_STRIP_CLASS` in `web/src/lib/sessions.ts` gives each Status's strip, and `STATUS_TAG_CLASS` beside it the header's tag (VIEW-5.9), so a Status has one colour wherever it shows. The Needs you tint and its pointer and selected steps are the Needs you colour at 16%, 22% and 28%, which reads in both modes. `ROW_TONE` beside them holds each row state's background and quieter text, and a test computes every text's contrast on every state from the tokens, compositing as the browser does (SIDE-3.11). The lowest ratios: 5.7:1 for the quieter text on a selected Needs you row in dark mode, 4.7:1 for what it waits for on a selected one in light mode (`needs-you-text` at `oklch(0.48 0.13 55)`), 4.8:1 for the muted grey on a selected plain row in light mode. Light `warning-text` at `oklch(0.491 0.13 55)` keeps 4.506:1 on the selected Needs you tint (DS-3.5, DS-12). The muted grey alone is 4.15:1 (light) and 4.25:1 (dark) on the selected tint.
 - **Settings:** stored by the server in `~/.config/lookout/settings.json`, not in browser storage. A change is pushed to every open tab over the same event stream.
 - **Session identity:** `session_id` when present, otherwise `<harness>:<pid>`. Fleet's `session_id` is Claude's UUID, so Codex rows may not have one.
 - **Prerequisite:** Fleet installed and pinned with `cargo install --git https://github.com/ilucin/fleet --rev 38a461c --locked fleet`.
@@ -332,3 +336,4 @@ None.
 - 2026-10-23: Built the activity half of Plan item 13 on Fleet's `activity` field (fork `lookout` `570ce97`, now the pin): `server/normalize.ts` keeps a string, collapses whitespace runs, cuts it to 120 characters and drops an empty one, and only a Busy row carries it; `SessionItem` puts a Busy row's activity in the left slot at the default location, or on a third line under a shown location, in the row's quieter colour, with the words then the location in its tooltip. The recorded `fleet list --json` fixture's Busy row and the fake `fleet`'s list gain the field. SIDE-2.1, 2.10, 2.11, 2.15 and SIDE-3.10 ticked: tests cover every case of SIDE-2.10, the cleaning, the Busy-only rule (server and row), a Busy row without one looking Idle, an activity-only change keeping the Status, order, age and strip, the tooltip and the accessible names. Seen in Chromium with the fake Fleet and a temp repo at 280 px, light and dark, at 1280 and 760 px windows: a long activity truncates before the numbers, which are never cut (measured), a Busy row in a Worktree has it on a third line, and rows with and without it are the same height. SIDE-2.14 and 2.16 (manual) stay open for Dario's eye and a live Session.
 - 2026-10-23: Review fixes to the activity half: a cut activity ends in an ellipsis, so its tooltip shows it was cut (SIDE-2.14); the cut counts graphemes, never splitting an emoji or an accent; bidi controls are dropped so a command never shows reversed. Left for the manual check of SIDE-2.16: a Busy row in a Worktree gains and loses its third line as the activity comes and goes.
 - 2026-10-23: SIDE-2.14 and SIDE-2.16 ticked: Dario checked them in the running app. A `git switch` in a checkout several Sessions share shows the new branch on every one of their rows, as it should: the branch belongs to the checkout.
+- 2026-10-26: DS-12 built: the Needs you row tint is 16/22/28% (SIDE-3.7, 3.9), with darker light Needs you and Warning text for SIDE-3.11's contrast on the new sidebar plane. The "Needs you" header counts visible Controllable Sessions only (SIDE-1.5, 3.1), follows live Status and filter changes, and stays out of SIDE-5's navigation and filter matching like "View only". Hover-freeze and View only membership stay as they were; the header describes the Controllable group for screen readers.

@@ -258,7 +258,7 @@ describe('Session view header', () => {
     const app = renderApp('/s/a');
     const tag = () => header().querySelector<HTMLElement>('[data-field="status"]')!;
     const colours = {
-      'needs-you': ['bg-needs-you-soft', 'text-needs-you-text'],
+      'needs-you': ['bg-needs-you', 'text-needs-you-foreground'],
       busy: ['bg-busy-soft', 'text-busy-text'],
       idle: ['bg-idle-soft', 'text-idle-text'],
       unknown: ['bg-idle-soft', 'text-idle-text'],

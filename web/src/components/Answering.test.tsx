@@ -304,6 +304,26 @@ describe('questions (VIEW-4.1)', () => {
     expect(el).not.toBeDisabled();
   };
 
+  it('DS-12.4: a chosen option has a Primary border and dot or tick, and Submit is a Primary button', async () => {
+    const user = userEvent.setup();
+    const app = open({}, [question([q({ multiSelect: true }), q({ header: 'Second', question: 'One choice?' })])]);
+    app.form();
+    const buttons = within(screen.getByTestId('chat')).getAllByRole('button', { name: /^Only push/ });
+    for (const b of buttons) {
+      expect(b).not.toHaveClass('border-primary');
+      expect(b.querySelector('[data-field="choice"] svg')).not.toHaveClass('text-primary');
+      await user.click(b);
+      expect(b).toHaveClass('border-primary', 'bg-accent');
+      expect(b.querySelector('[data-field="choice"] svg')).toHaveClass('text-primary');
+    }
+    expect(buttons[0]!.querySelector('svg')).toHaveClass('lucide-square-check');
+    expect(buttons[1]!.querySelector('svg')).toHaveClass('lucide-circle-dot');
+    expect(submit()).toHaveClass('bg-primary', 'text-primary-foreground', 'hover:bg-primary/90');
+    await user.click(buttons[0]!);
+    expect(buttons[0]).not.toHaveClass('border-primary');
+    expect(buttons[0]!.querySelector('svg')).not.toHaveClass('text-primary');
+  });
+
   it('VIEW-4.1: one question with one choice answers on click, with no Submit', async () => {
     const user = userEvent.setup();
     const app = open({}, [question([q()])]);
