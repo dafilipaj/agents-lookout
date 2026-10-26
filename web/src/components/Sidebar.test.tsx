@@ -755,6 +755,33 @@ describe('both sections', () => {
     expect(heading()!.closest('li')).toHaveTextContent('Needs you1');
   });
 
+  it('DS-12.6: during a hover the header neither comes nor goes, so rows stay put (SIDE-3.4); it catches up when the pointer leaves', () => {
+    const app = renderApp();
+    app.snapshot([row({ id: 'a', status: 'busy' }), row({ id: 'b', status: 'idle' })]);
+    const aside = screen.getByRole('complementary', { name: 'Session sidebar' });
+    const header = () => within(screen.getByRole('group', { name: 'Controllable' })).queryByText('Needs you', { selector: 'span' })?.closest('li') ?? null;
+    const enter = () => act(() => aside.dispatchEvent(new PointerEvent('pointerover', { bubbles: true })));
+    const leave = () => act(() => aside.dispatchEvent(new PointerEvent('pointerout', { bubbles: true, relatedTarget: document.body })));
+
+    // None when the pointer came in: a Session that starts to Need you adds no header until it leaves.
+    enter();
+    app.emit({ type: 'sessions', upsert: [row({ id: 'b', status: 'needs-you', statusSince: NOW })], remove: [] });
+    expect(header()).toBeNull();
+    expect(rowEl('a').previousElementSibling).toBeNull();
+    leave();
+    expect(header()).toHaveTextContent('Needs you1');
+    expect(header()!.nextElementSibling).toBe(rowEl('b'));
+
+    // One when the pointer came in: the last one going leaves the header's room, empty and unread.
+    enter();
+    app.emit({ type: 'sessions', upsert: [row({ id: 'b', status: 'idle', statusSince: NOW })], remove: [] });
+    expect(header()).toHaveClass('invisible');
+    expect(header()).toHaveAttribute('aria-hidden', 'true');
+    expect(screen.getByRole('group', { name: 'Controllable' })).not.toHaveAccessibleDescription();
+    leave();
+    expect(header()).toBeNull();
+  });
+
   it('DS-12.6: arrows, j/k, every ⌘1–9 and ⌘J skip both section headers', async () => {
     pinDate();
     const user = userEvent.setup();

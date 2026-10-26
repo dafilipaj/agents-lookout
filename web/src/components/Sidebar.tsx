@@ -83,6 +83,11 @@ export function Sidebar(props: SidebarProps) {
     // Keyboard order follows what's on screen: the first section, then the second.
     return { controllable, viewOnly, visible: [...controllable, ...viewOnly] };
   }, [orderedIds, byId, filter]);
+  // DS-12.6: the "Needs you" header's count, live. Whether it takes room is held with the order
+  // during a hover (SIDE-3.4), so its coming or going doesn't move the rows under the pointer.
+  const needsYouCount = controllable.filter((r) => r.status === 'needs-you').length;
+  const [heldHeader, setHeldHeader] = useState<boolean | null>(null);
+  const headerShown = heldHeader ?? needsYouCount > 0;
 
   // SIDE-5: keyboard. Rows in screen order: "Starting…" rows first (LAUNCH-4.7), then the Sessions.
   const rows = useMemo<NavRow[]>(
@@ -214,7 +219,8 @@ export function Sidebar(props: SidebarProps) {
     // from the window's handler above. DS-9.2: a ring for keyboard focus only; a click focuses it
     // without one, and the selected row keeps its own ring.
     const active = selectedId !== null && visible.some((r) => r.id === selectedId) ? sessionOptionId(selectedId) : undefined;
-    const needsYou = controllable.filter((r) => r.status === 'needs-you').length;
+    // Held during a hover with none left, the header keeps its room but shows and says nothing.
+    const headerEmpty = headerShown && needsYouCount === 0;
     return (
       <div
         role="listbox"
@@ -225,11 +231,11 @@ export function Sidebar(props: SidebarProps) {
         data-stale={stale}
       >
         {controllable.length > 0 ? (
-          <ul role="group" aria-label="Controllable" aria-describedby={needsYou > 0 ? 'needs-you-heading' : undefined} className="flex flex-col gap-px px-1.5">
-            {needsYou > 0 && (
-              <li role="presentation" className="flex items-baseline gap-1.5 px-2 pt-1 pb-1">
+          <ul role="group" aria-label="Controllable" aria-describedby={headerShown && !headerEmpty ? 'needs-you-heading' : undefined} className="flex flex-col gap-px px-1.5">
+            {headerShown && (
+              <li role="presentation" aria-hidden={headerEmpty || undefined} className={cn('flex items-baseline gap-1.5 px-2 pt-1 pb-1', headerEmpty && 'invisible')}>
                 <span id="needs-you-heading" className="text-caption font-medium tracking-wide text-needs-you-text uppercase">Needs you</span>
-                <span className="text-caption text-needs-you-text tabular-nums">{needsYou}</span>
+                <span className="text-caption text-needs-you-text tabular-nums">{needsYouCount}</span>
               </li>
             )}
             {controllable.map(item)}
@@ -265,8 +271,14 @@ export function Sidebar(props: SidebarProps) {
       aria-label="Session sidebar"
       className={cn(SHELL_COLUMN, 'w-[280px] border-r border-sidebar-border bg-sidebar text-sidebar-foreground')}
       data-shell-column="left"
-      onPointerEnter={() => setFrozenOrder(orderedIds)}
-      onPointerLeave={() => setFrozenOrder(null)}
+      onPointerEnter={() => {
+        setFrozenOrder(orderedIds);
+        setHeldHeader(needsYouCount > 0);
+      }}
+      onPointerLeave={() => {
+        setFrozenOrder(null);
+        setHeldHeader(null);
+      }}
     >
       {/* SIDE-8.1: the Filter bar is this column's header cell. */}
       <ShellCell row="header" className="gap-1.5 border-sidebar-border px-2.5 py-2">

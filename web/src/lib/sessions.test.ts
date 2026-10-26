@@ -65,7 +65,7 @@ describe('Status colours', () => {
       ['secondary', '0.955 0.008 270', '0.26 0.016 270'],
       ['muted', '0.955 0.008 270', '0.25 0.016 270'],
       ['secondary-foreground accent-foreground', '0.21 0.012 270', '0.96 0.004 270'],
-      ['muted-foreground', '0.5 0.018 270', '0.71 0.016 270'],
+      ['muted-foreground', '0.5 0.016 270', '0.71 0.016 270'],
       ['accent', '0.945 0.01 270', '0.26 0.016 270'],
       ['border', '0.9 0.009 270', '1 0 0 / 10%'],
       ['input', '0.9 0.009 270', '1 0 0 / 15%'],
@@ -78,6 +78,12 @@ describe('Status colours', () => {
         expect(themed(name)).toEqual({ token: name, light: true, dark: true, theme: true });
         expect(THEMES.light[name], `light ${name}`).toEqual(parseOklch(lightValue!));
         expect(THEMES.dark[name], `dark ${name}`).toEqual(parseOklch(darkValue!));
+        // The rule itself, not only the table: hue 270 at a chroma of 0.016 or less.
+        for (const mode of MODES) {
+          const { c, h } = THEMES[mode][name]!;
+          expect(c, `${mode} ${name} chroma`).toBeLessThanOrEqual(0.016);
+          if (c > 0) expect(h, `${mode} ${name} hue`).toBe(270);
+        }
       }
     }
     const chromas = [
