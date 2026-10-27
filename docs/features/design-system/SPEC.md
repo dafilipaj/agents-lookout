@@ -161,10 +161,10 @@ Once colour meant only Status (DS-3), Lookout read as flat and grey (Dario, 2026
 | Step | Size / line height | Use | Replaces |
 |---|---|---|---|
 | `caption` | 11 / 16 px | chips, keys, a usage line's second line, tertiary counts | 10, 10.5, 11 px; `text-xs` in a chip |
-| `meta` | 12 / 16 px | second lines, section headers, the status line, hints, inline errors | 11.5, 12, 12.5 px where secondary; `text-xs` |
+| `meta` | 12 / 16 px | second lines, the status line, hints, inline errors | 11.5, 12, 12.5 px where secondary; `text-xs` |
 | `body` | 13 / 20 px | row titles, controls, menus, dialogs, Settings, notices | 12.5 px where body text, 13 px; `text-sm`, `text-base` in controls |
 | `prose` | 14 / 22 px | the chat's text, the composer, a question's text, Markdown's smaller headings | 13.5, 14, 14.5 px |
-| `title` | 15 / 20 px | the main pane's title, a dialog's title, Markdown's first heading | 15 px; `text-lg` |
+| `title` | 15 / 20 px | the main pane's title, a dialog's title, section headers (Work's, the Session sidebar's), Markdown's first heading | 15 px; `text-lg` |
 
 - Classes are `text-caption`, `text-meta`, `text-body`, `text-prose` and `text-title`, from `--text-*` theme variables, each with its line height. None of the names is a colour token, so `text-…` stays unambiguous.
 - Monospace (the status line, commands, the terminal preview) uses the same steps.
@@ -423,3 +423,4 @@ None.
 - 2026-10-26: DS-12.1–12.6 built and verified by token, contrast, guard and component tests: cool-tinted planes, Productive indigo on the default Button, chosen options and your messages, the louder Needs you tint and solid tag, and its sidebar header with a visible Controllable count. The Primary family pins every allowed class, including existing focus and resize uses; input selection, the link Button and the launcher's key border are neutral. SIDE and VIEW amended. DS-12.7 stays unticked for Dario's visual check.
 - 2026-10-26: Review fixes, round 1 (Codex). DS-12.6: the header came and went during a hover, moving every row below it by its height under the pointer (SIDE-3.4); now whether it takes room is held with the order until the pointer leaves, its count live, and a held header with no Needs you left is invisible and hidden from screen readers. DS-12.1: light `muted-foreground` was at chroma 0.018 in the token table, over the 0.016 the criterion sets; now `oklch(0.5 0.016 270)`, and the test checks the bound and the hue for every neutral, not only the table.
 - 2026-10-26: Dario checked DS-12.7 in the running app, in both modes: Needs you is still the most prominent, Primary doesn't read as Busy's blue, and the sidebar and chat read as two planes. Ticked; every criterion is ticked, so DS is Done.
+- 2026-10-27: Section headers moved from `meta` to `title`, semibold, in sentence case: Work's "Tasks" and "PRs" and the Session sidebar's "Needs you" and "View only" (DS-12.6) sat too close to the row text. Their counts, ages and Loading stay `meta`/`caption` muted.

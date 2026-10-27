@@ -234,7 +234,7 @@ export function Sidebar(props: SidebarProps) {
           <ul role="group" aria-label="Controllable" aria-describedby={headerShown && !headerEmpty ? 'needs-you-heading' : undefined} className="flex flex-col gap-px px-1.5">
             {headerShown && (
               <li role="presentation" aria-hidden={headerEmpty || undefined} className={cn('flex items-baseline gap-1.5 px-2 pt-1 pb-1', headerEmpty && 'invisible')}>
-                <span id="needs-you-heading" className="text-caption font-medium tracking-wide text-needs-you-text uppercase">Needs you</span>
+                <span id="needs-you-heading" className="text-title font-semibold text-needs-you-text">Needs you</span>
                 <span className="text-caption text-needs-you-text tabular-nums">{needsYouCount}</span>
               </li>
             )}
@@ -248,7 +248,7 @@ export function Sidebar(props: SidebarProps) {
             <li role="presentation" className="flex items-baseline gap-1.5 px-2 pt-1 pb-1">
               <span
                 id="view-only-heading"
-                className="text-caption font-medium tracking-wide text-muted-foreground uppercase"
+                className="text-title font-semibold text-muted-foreground"
                 title="Running in another app (an IDE, Claude Desktop, another terminal app): Lookout shows them but can't type into them."
               >
                 View only

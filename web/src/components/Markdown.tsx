@@ -288,16 +288,16 @@ const components: Components = {
   span: ({ children, node }) => (node && FILE_PATH in node.properties ? <FilePath text={textOf(node)} /> : <span>{children}</span>),
   table: ({ children }) => (
     <div className="my-2 overflow-x-auto first:mt-0 last:mb-0">
-      <table className="w-max min-w-[50%] border-collapse text-body">{children}</table>
+      <table className="w-fit max-w-full border-collapse text-body">{children}</table>
     </div>
   ),
   th: ({ children, style }) => (
-    <th style={style} className="border border-border bg-muted/60 px-2.5 py-1 text-left font-medium">
+    <th style={style} className="border border-border bg-muted/60 px-2.5 py-1 text-left font-medium break-words">
       {children}
     </th>
   ),
   td: ({ children, style }) => (
-    <td style={style} className="border border-border px-2.5 py-1">
+    <td style={style} className="border border-border px-2.5 py-1 break-words">
       {children}
     </td>
   ),

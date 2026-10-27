@@ -730,7 +730,7 @@ describe('both sections', () => {
     const group = screen.getByRole('group', { name: 'Controllable' });
     const heading = () => within(screen.getByRole('group', { name: 'Controllable' })).queryByText('Needs you', { selector: 'span' });
     expect(group).toHaveAccessibleDescription('Needs you');
-    expect(heading()).toHaveClass('text-caption', 'font-medium', 'tracking-wide', 'text-needs-you-text', 'uppercase');
+    expect(heading()).toHaveClass('text-title', 'font-semibold', 'text-needs-you-text');
     const header = heading()!.closest('li')!;
     expect(header).toHaveAttribute('role', 'presentation');
     expect(header).toHaveClass('flex', 'items-baseline', 'gap-1.5', 'px-2', 'pt-1', 'pb-1');

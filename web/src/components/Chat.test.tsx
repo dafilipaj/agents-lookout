@@ -510,6 +510,19 @@ describe('code blocks (VIEW-1.14, VIEW-1.15)', () => {
     expect(blocks.slice(0, 4).every((b) => b.classList.contains('break-words'))).toBe(true);
   });
 
+  it('VIEW-1.20: a table fits the chat: cells wrap at word boundaries, the table is never wider than the chat, and scrolling is only a fallback', () => {
+    // jsdom has no layout: assert the classes that make it wrap.
+    const { reset } = open();
+    reset([agent('| a | b | c |\n|---|---|---|\n| x | a long sentence of prose https://example.com/a/very/long/unbroken/address | z |')]);
+    const table = document.querySelector('[data-kind="assistant"] table')!;
+    expect(table).toHaveClass('w-fit', 'max-w-full');
+    expect(table).not.toHaveClass('w-max');
+    expect(table.parentElement).toHaveClass('overflow-x-auto');
+    const cells = [...table.querySelectorAll('th, td')];
+    expect(cells).toHaveLength(6);
+    expect(cells.every((c) => c.classList.contains('break-words') && !c.classList.contains('[overflow-wrap:anywhere]'))).toBe(true);
+  });
+
   it('VIEW-1.19: a wrapped block makes room for the copy button on its first line only, and the room holds no text', () => {
     // Only the structure: whether the first line clears the button is layout, checked by hand in Chromium.
     const { reset } = open();

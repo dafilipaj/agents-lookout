@@ -243,7 +243,9 @@ describe('the Work tab (WORK-1)', () => {
     expect(prsSection.querySelector('[data-field="updated"]')).toHaveTextContent('updated 2m ago');
     expect(tasksRegion().querySelector('[data-field="count"]')).toHaveTextContent(/^2 open$/);
     expect(tasksRegion().querySelector('[data-field="updated"]')).toHaveTextContent('updated 7m ago');
-    expect(within(workPanel()).getByRole('heading', { name: 'Tasks' })).toBeInTheDocument();
+    expect(within(workPanel()).getByRole('heading', { name: 'Tasks' })).toHaveClass('text-title', 'font-semibold');
+    expect(within(workPanel()).getByRole('heading', { name: 'PRs' })).toHaveClass('text-title', 'font-semibold');
+    expect(prsSection.querySelector('[data-field="count"]')!.parentElement).toHaveClass('text-meta');
   });
 
   it('WORK-1.5: the filter offers All (the default), Tasks and PRs; Tasks shows only Tasks, PRs only PRs with both groups; the choice is remembered', async () => {

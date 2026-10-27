@@ -392,7 +392,7 @@ function SectionHeader({ id, title, count, fetchedAt, now, loading, stale }: Sec
   const updated = fetchedAt === null ? null : `updated ${formatAge(now - fetchedAt)} ago`;
   return (
     <header className="flex min-w-0 items-center gap-1 px-3 pt-1 pb-1 text-meta text-muted-foreground">
-      <h3 id={id} className="font-semibold text-foreground">
+      <h3 id={id} className="text-title font-semibold text-foreground">
         {title}
       </h3>
       {count !== null && (
