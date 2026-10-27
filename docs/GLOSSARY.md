@@ -68,6 +68,8 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Transcript**: The JSONL log a Harness writes for a Session, for example under `~/.claude/projects/` or `~/.codex/sessions/`.
 
+**Trust prompt**: The question a Harness asks before it runs in a folder it hasn't been told to trust: Claude Code's "Yes, I trust this folder" or "No, exit", listing what the folder's settings pre-approve; Codex's "Trust this folder?". Claude Code registers with Fleet only once it's answered, so a start waiting on it isn't a Session yet. Lookout answers it only when you click (LAUNCH-6), and the Harness remembers the answer per folder.
+
 **Type**: What a file Output is, from its extension, as `tb-session outputs` says it: `markdown`, `html`, `pdf` or `image`. Its `--type` flag filters file rows by it. In the Library an Artifact's and a Share's Type word is its Kind.
 
 **Turn**: What a Session does for one prompt of yours: from that prompt, sent from Lookout or typed in its terminal, until your next one. Work the Session picks up on its own in between, such as a reply to a Subagent's result, belongs to the same Turn, and Idle doesn't end it. A tool's result, a task notification, another Session's message and a slash command the Harness handles itself (`/effort`) aren't prompts. Fleet finds where the current one starts (SIDE-9). Not Codex's own "turn" (`task_started` to `task_complete`), which ends whenever the agent stops.
