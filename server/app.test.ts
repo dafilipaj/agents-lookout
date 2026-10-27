@@ -63,6 +63,7 @@ beforeEach(async () => {
   const settings = new SettingsStore(join(dir, 'settings.json'));
   await settings.load();
   app = createApp({
+    attachmentsDir: join(dir, 'attachments'),
     library: new Library({ runner: async () => '{}', bin: () => 'tb-session' }),
     guard: { allowedHosts: hosts, allowedOrigins: origins, token: TOKEN },
     monitor: { snapshot: () => ({ sessions: [], fleet: { state: 'ok' } }), watch: () => () => {} },

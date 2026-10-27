@@ -25,6 +25,18 @@ const body = (p: Pending) => JSON.parse(String(p.init?.body));
 const bootstraps = () => fetchMock.mock.calls.filter(([u]) => u === '/api/bootstrap').length;
 
 describe('telling the server what the tab views', () => {
+  it('VIEW-9.18: an attachment goes only to the own-server route as raw bytes with a name and token', async () => {
+    const file = new File(['private bytes'], 'shot.png');
+    const client = createHttpClient();
+    const result = client.attach(file, 'My shot.png');
+    await settle();
+    expect(pending).toHaveLength(1);
+    expect(pending[0]!.url).toBe('/api/attachments?name=My%20shot.png');
+    expect(pending[0]!.init).toEqual({ method: 'POST', headers: { 'content-type': 'application/octet-stream', 'x-lookout-token': 'tok' }, body: file });
+    pending[0]!.resolve(Response.json({ path: '/private/attachments/shot.png' }, { status: 201 }));
+    expect(await result).toBe('/private/attachments/shot.png');
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual(['/api/bootstrap', '/api/attachments?name=My%20shot.png']);
+  });
   it('sends one watch at a time, then only the latest wanted state', async () => {
     const client = createHttpClient();
     void client.watch('tab-1', 'a', false);

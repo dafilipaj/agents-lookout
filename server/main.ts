@@ -1,5 +1,7 @@
 import { Library } from './library.ts';
 import { randomBytes } from 'node:crypto';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_PORT } from '../shared/defaults.ts';
@@ -132,6 +134,7 @@ const memory = new MemoryMonitor({
 settings.onChange((s) => work.setProductiveEmail(s.productiveEmail));
 
 const app = createApp({
+  attachmentsDir: join(homedir(), '.lookout', 'attachments'),
   guard,
   monitor,
   settings,

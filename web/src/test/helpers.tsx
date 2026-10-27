@@ -76,6 +76,7 @@ export function launchView(over: Partial<LaunchView> & { id: string }): LaunchVi
 }
 
 interface RenderOptions {
+  attach?: LookoutClient['attach'];
   library?: LookoutClient['library'];
   libraryStatus?: LookoutClient['libraryStatus'];
   harnesses?: () => Promise<HarnessOption[]>;
@@ -106,6 +107,7 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
   let served = settings();
   const saveSettings = vi.fn(options.saveSettings ?? (async (patch: Partial<Settings>): Promise<SettingsView> => (served = { ...served, ...patch })));
   const client: LookoutClient = {
+    attach: vi.fn(options.attach ?? (async (_file, name) => `/attachments/${name}`)),
     subscribe(l) {
       listener = l;
       return () => {

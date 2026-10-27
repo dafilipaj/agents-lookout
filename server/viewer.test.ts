@@ -83,6 +83,12 @@ beforeEach(() => vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] }));
 afterEach(() => vi.useRealTimers());
 
 describe('terminal preview', () => {
+  it('VIEW-9.7: a message beginning with an attachment path reaches the send runner intact as a prompt', async () => {
+    const t = setup();
+    const text = '/Users/me/.lookout/attachments/2026-10-27/shot.png what is this?';
+    await t.viewer.send('sess-a', { text });
+    expect(t.calls.at(-1)!.args).toEqual(['--local', 'send', '--json', '--require-empty', '--', 'sess-a', text]);
+  });
   it('VIEW-2.1: while a tab’s drawer is open, the last 40 lines are read every second and pushed to that tab', async () => {
     const t = setup();
     t.viewer.watch('tab-1', 'sess-a', true);

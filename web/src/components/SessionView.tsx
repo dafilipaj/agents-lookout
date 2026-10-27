@@ -1,5 +1,5 @@
 import type { AnswerRequest, ChatPage, EndTarget, RenameResult, SessionRow } from '@shared/types.ts';
-import { Check, ChevronDown, CircleSlash, CircleStop, Copy, FolderGit2, GitBranch, Info, OctagonX, Power, SendHorizontal, TerminalSquare } from 'lucide-react';
+import { Check, ChevronDown, CircleSlash, CircleStop, Copy, FolderGit2, GitBranch, Info, OctagonX, Paperclip, Power, SendHorizontal, TerminalSquare } from 'lucide-react';
 import { type ComponentPropsWithRef, type ComponentPropsWithoutRef, type KeyboardEvent, type PointerEvent, type ReactNode, type RefObject, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -7,6 +7,7 @@ import { Kbd } from '@/components/ui/kbd';
 import { Loading } from '@/components/ui/loading';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '@/components/ui/dialog';
 import { turnRunning } from '@/lib/activity';
+import { type ComposerAttachments, attachmentDrag, carriesFileUri, fromDrop, fromPaste, insertion } from '@/lib/attachments';
 import { useCopy } from '@/lib/copy';
 import { type Echo, NO_ECHOES, settleEchoes, shown } from '@/lib/echoes';
 import {
@@ -46,6 +47,7 @@ import { StatusMarker } from './StatusMarker';
 import { StatusMenu } from './StatusMenu';
 
 export interface SessionViewProps {
+  attachments: ComposerAttachments;
   row: SessionRow;
   /** The Session's process is gone (SIDE-4.3); `row` is the last one seen. */
   ended: boolean;
@@ -138,8 +140,22 @@ export function SessionView({
   stopRequest,
   onStop,
   onEsc,
+  attachments,
 }: SessionViewProps) {
   const controls = row.controllable && !ended;
+  const [dragging, setDragging] = useState(false);
+  const dragDepth = useRef(0);
+  const resetDrag = () => { dragDepth.current = 0; setDragging(false); };
+  useEffect(() => {
+    const reset = () => { dragDepth.current = 0; setDragging(false); };
+    const cancel = (event: globalThis.KeyboardEvent) => { if (event.key === 'Escape') reset(); };
+    window.addEventListener('dragend', reset);
+    window.addEventListener('drop', reset);
+    window.addEventListener('blur', reset);
+    window.addEventListener('keydown', cancel);
+    return () => { window.removeEventListener('dragend', reset); window.removeEventListener('drop', reset); window.removeEventListener('blur', reset); window.removeEventListener('keydown', cancel); };
+  }, []);
+  const accepts = (target: EventTarget) => controls && target instanceof Element && target.closest('[data-shell-row]')?.getAttribute('data-shell-row') !== 'header';
 
   // VIEW-4: the permission prompt's buttons under the chat, and the question that can be answered in it.
   const permission = permissionPanel(row, ended, screen, attempt);
@@ -254,7 +270,29 @@ export function SessionView({
   // SIDE-8.1: header, then the chat with the Terminal row in the content row, then the dock: the
   // composer (or the ended / View only banner) and the status line, under the shell's dock line.
   return (
-    <ShellView>
+    <ShellView
+      onDragEnter={e => {
+        if (accepts(e.target) && attachmentDrag(e.dataTransfer)) { e.preventDefault(); dragDepth.current++; setDragging(true); }
+      }}
+      onDragOver={e => {
+        if (accepts(e.target) && attachmentDrag(e.dataTransfer)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }
+      }}
+      onDragLeave={e => {
+        if (dragDepth.current > 0 && --dragDepth.current === 0) resetDrag();
+        if (e.relatedTarget instanceof Node && !e.currentTarget.contains(e.relatedTarget)) resetDrag();
+      }}
+      onDrop={e => {
+        resetDrag();
+        if (!accepts(e.target)) return;
+        const inputs = fromDrop(e.dataTransfer);
+        attachments.clear(row.id);
+        if (inputs.length || attachmentDrag(e.dataTransfer)) {
+          e.preventDefault();
+          void attachments.add(row.id, inputs);
+          if (!inputs.length && !carriesFileUri(e.dataTransfer) && e.target === composerRef.current) insertText(composerRef.current, e.dataTransfer.getData('text/plain'));
+        }
+      }}
+    >
       <Header
         row={row}
         ended={ended}
@@ -321,6 +359,8 @@ export function SessionView({
             onEdit={onEdit}
             onSend={send}
             inputRef={composerRef}
+            attachments={attachments}
+            dragging={dragging}
           />
         )}
         <StatusLine
@@ -1001,6 +1041,8 @@ function useDrawerSpace(ref: RefObject<HTMLElement | null>): { pane: number; roo
 }
 
 interface ComposerProps {
+  attachments: ComposerAttachments;
+  dragging: boolean;
   sessionId: string;
   title: string;
   drafts: Map<string, string>;
@@ -1012,7 +1054,10 @@ interface ComposerProps {
 }
 
 /** VIEW-3: Enter sends, Shift+Enter adds a line; a failed send keeps the text. */
-function Composer({ sessionId, title, drafts, sending, error, onEdit, onSend, inputRef }: ComposerProps) {
+function Composer({ sessionId, title, drafts, sending, error, onEdit, onSend, inputRef, attachments, dragging }: ComposerProps) {
+  const attachmentState = useSyncExternalStore(attachments.subscribe, () => attachments.state(sessionId));
+  const attaching = attachmentState.loading !== null;
+  const issue = [error, attachmentState.error].filter(Boolean).join(' ') || null;
   const [text, setText] = useState(() => drafts.get(sessionId) ?? '');
   // A send that finished while this box was remounted: App cleared the stored draft only if it
   // was still exactly what was sent, so an empty draft means the box holds the sent text.
@@ -1028,9 +1073,23 @@ function Composer({ sessionId, title, drafts, sending, error, onEdit, onSend, in
     if (value) drafts.set(sessionId, value);
     else drafts.delete(sessionId);
   };
+  const edit = useRef(update);
+  useLayoutEffect(() => { edit.current = update; });
+  useLayoutEffect(() => attachments.bind(sessionId, (paths, append) => {
+    const box = inputRef.current;
+    if (!box) return;
+    const focused = !append && document.activeElement === box;
+    const start = focused ? box.selectionStart : box.value.length;
+    const end = focused ? box.selectionEnd : box.value.length;
+    const result = insertion(box.value, start, end, paths);
+    box.focus(); box.setSelectionRange(start, end);
+    insertText(box, result.text.slice(start, result.caret));
+    edit.current(box.value);
+  }), [attachments, sessionId, inputRef]);
 
   const submit = async () => {
-    if (sending || text.trim() === '') return;
+    if (sending || attachments.state(sessionId).loading || text.trim() === '') return;
+    attachments.clear(sessionId);
     const sent = text;
     // On success, clear the box only if it still holds what was sent (App does the same for the
     // stored draft), so text typed meanwhile stays. A failure's error is kept by App.
@@ -1054,7 +1113,9 @@ function Composer({ sessionId, title, drafts, sending, error, onEdit, onSend, in
         e.preventDefault();
         void submit();
       }}
-      error={error}
+      error={issue}
+      loading={attachmentState.loading}
+      dragging={dragging}
       field={{
         ref: inputRef,
         'aria-label': 'Message',
@@ -1062,10 +1123,16 @@ function Composer({ sessionId, title, drafts, sending, error, onEdit, onSend, in
         value: text,
         onChange: (e) => update(e.target.value),
         onKeyDown,
-        'aria-invalid': error ? true : undefined,
+        onPaste: e => {
+          attachments.clear(sessionId);
+          const inputs = fromPaste(e.clipboardData);
+          if (!inputs.length) return;
+          e.preventDefault(); void attachments.add(sessionId, inputs);
+        },
+        'aria-invalid': issue ? true : undefined,
       }}
       send={{
-        disabled: sending || text.trim() === '',
+        disabled: sending || attaching || text.trim() === '',
         children: (
           <>
             {sending ? 'Sending…' : 'Send'}
@@ -1084,6 +1151,8 @@ function Composer({ sessionId, title, drafts, sending, error, onEdit, onSend, in
 }
 
 interface ComposerFrameProps extends Omit<ComponentPropsWithoutRef<'form'>, 'children'> {
+  loading?: string | null;
+  dragging?: boolean;
   /** VIEW-3.4: the last failed send's error, above the box. */
   error?: string | null;
   /** The message field. */
@@ -1101,11 +1170,13 @@ interface ComposerFrameProps extends Omit<ComponentPropsWithoutRef<'form'>, 'chi
  * An empty field is one line high whatever its placeholder: it sizes to its content only once it
  * holds text, and the placeholder stays on one line, cut short with an ellipsis.
  */
-function ComposerFrame({ error, field, send, hint, hintTitle, className, ...form }: ComposerFrameProps) {
+function ComposerFrame({ error, field, send, hint, hintTitle, className, loading, dragging, ...form }: ComposerFrameProps) {
   return (
     <form className={cn('flex-1 px-4 py-3', className)} {...form}>
       {error && <Alert layout="inline" title={error} className="mb-2" />}
-      <div className="flex items-end gap-2 rounded-lg border border-input bg-background px-3 py-2 focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/25 dark:bg-input/20">
+      {loading && <Loading label={loading} className="mb-2" />}
+      <div className={cn('relative flex items-end gap-2 rounded-lg border px-3 py-2 focus-within:ring-2 focus-within:ring-ring/25', dragging ? 'border-dashed border-primary bg-primary-soft' : 'border-input bg-background focus-within:border-ring dark:bg-input/20')}>
+        {dragging && <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center gap-1.5 rounded-lg bg-primary-soft text-meta text-primary"><Paperclip className="size-3.5" />Drop to attach</div>}
         <textarea
           rows={1}
           {...field}
@@ -1121,6 +1192,15 @@ function ComposerFrame({ error, field, send, hint, hintTitle, className, ...form
       </p>
     </form>
   );
+}
+
+/** One native edit preserves the textarea's undo history. jsdom has no execCommand. */
+function insertText(box: HTMLTextAreaElement | null, text: string): void {
+  if (!box || !text) return;
+  box.focus();
+  if (typeof document.execCommand === 'function' && document.execCommand('insertText', false, text)) return;
+  box.setRangeText(text, box.selectionStart, box.selectionEnd, 'end');
+  box.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
 /**

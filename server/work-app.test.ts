@@ -60,6 +60,7 @@ beforeEach(async () => {
     throw new Error('unused');
   };
   app = createApp({
+    attachmentsDir: join(dir, 'attachments'),
     library: new Library({ runner: async () => '{}', bin: () => 'tb-session' }),
     guard: { allowedHosts: hosts, allowedOrigins: origins, token: TOKEN },
     monitor: { snapshot: () => ({ sessions: [], fleet: { state: 'ok' } }), watch: () => () => {} },

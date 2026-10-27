@@ -1,4 +1,5 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import { IncomingMessage, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -21,6 +22,7 @@ async function request(app: ReturnType<typeof createApp>, url: string, headers: 
 }
 function app(library: Library, staticDir: string | null = null) {
   return createApp({
+    attachmentsDir: join(tmpdir(), `lookout-unused-attachments-${randomUUID()}`),
     library, guard: { ...localAllowLists(4747), token: 'test-token' },
     monitor: { snapshot: () => ({ sessions: [], fleet: { state: 'ok' } }), watch: () => () => {} },
     settings: { get: defaultSettings, update: async () => defaultSettings(), onChange: () => () => {} },

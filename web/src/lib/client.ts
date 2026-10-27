@@ -11,6 +11,8 @@ export interface ClientListener {
 
 /** How the UI talks to the Lookout server. Tests pass a fake. */
 export interface LookoutClient {
+  /** VIEW-9: sends one file's bytes to this Lookout server and returns its absolute saved path. */
+  attach(file: File, name: string): Promise<string>;
   subscribe(listener: ClientListener): () => void;
   saveSettings(patch: Partial<Settings>): Promise<SettingsView>;
   harnesses(): Promise<HarnessOption[]>;
@@ -293,6 +295,17 @@ export function createHttpClient(): LookoutClient {
   };
 
   return {
+    attach: async (file, name) => {
+      const upload = async (retry = true): Promise<Response> => {
+        const res = await fetch(`/api/attachments?name=${encodeURIComponent(name)}`, {
+          method: 'POST', headers: { 'content-type': 'application/octet-stream', 'x-lookout-token': await getToken() },
+          body: file,
+        });
+        if (res.status === 403 && retry) { token = null; return upload(false); }
+        return res;
+      };
+      return (await call<{ path: string }>(() => upload(), 'Attaching')).path;
+    },
     subscribe(listener) {
       let es: EventSource | null = null;
       let retryTimer: ReturnType<typeof setTimeout> | null = null;

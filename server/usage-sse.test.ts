@@ -44,6 +44,7 @@ beforeAll(async () => {
     onChange: (u) => app.broadcast({ type: 'usage', usage: u }),
   });
   app = createApp({
+    attachmentsDir: join(dir, 'attachments'),
     library: new Library({ runner: async () => '{}', bin: () => 'tb-session' }),
     guard: { allowedHosts: hosts, allowedOrigins: new Set(), token: 't' },
     monitor: { snapshot: () => ({ sessions: [], fleet: { state: 'ok' } }), watch: () => () => {} },

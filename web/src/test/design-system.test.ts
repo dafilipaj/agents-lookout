@@ -335,7 +335,7 @@ const FAMILIES: Record<string, Family> = {
       'web/src/components/MemoryLine.tsx': { why: 'keyboard focus on a Session', uses: ['ring-ring/50'] },
       'web/src/components/RightSidebar.tsx': { why: 'keyboard focus and the resize handle while dragged', uses: ['bg-ring/20', 'ring-ring/50'] },
       'web/src/components/SessionTitle.tsx': { why: 'keyboard focus on the title and its edit', uses: ['ring-ring'] },
-      'web/src/components/SessionView.tsx': { why: 'keyboard focus, the focused composer and the resize handle while dragged', uses: ['bg-ring', 'border-ring', 'ring-ring', 'ring-ring/25'] },
+      'web/src/components/SessionView.tsx': { why: 'keyboard focus, the focused composer, the resize handle while dragged and the attachment drop target (VIEW-9.2)', uses: ['bg-primary-soft', 'bg-ring', 'border-primary', 'border-ring', 'ring-ring', 'ring-ring/25', 'text-primary'] },
       'web/src/components/Sidebar.tsx': { why: 'keyboard focus and the focused filter', uses: ['border-ring', 'ring-ring/30', 'ring-ring/50'] },
       'web/src/components/StatusMenu.tsx': { why: 'keyboard focus on the menu', uses: ['ring-ring'] },
       'web/src/components/ui/checkbox.tsx': { why: 'keyboard focus on the checkbox', uses: ['outline-ring'] },
@@ -607,12 +607,12 @@ describe('colour by meaning', () => {
       }),
     );
 
-  it('DS-12.4: Primary is pinned to default buttons, chosen options, your messages and the existing focus and resize classes', () => {
+  it('DS-12.4: Primary is pinned to default buttons, chosen options, your messages, the composer drop target and the existing focus and resize classes', () => {
     expect(FAMILIES.primary).toBeDefined();
     expect(FAMILIES.primary!.tokens).toEqual(['primary', 'primary-foreground', 'primary-soft', 'ring']);
     const primary = FAMILIES.primary!;
     const coloured = Object.entries(primary.files).filter(([, { uses }]) => uses.some((c) => /primary/.test(c))).map(([path]) => path).sort();
-    expect(coloured).toEqual(['web/src/components/Answering.tsx', 'web/src/components/Chat.tsx', 'web/src/components/ui/button.tsx']);
+    expect(coloured).toEqual(['web/src/components/Answering.tsx', 'web/src/components/Chat.tsx', 'web/src/components/SessionView.tsx', 'web/src/components/ui/button.tsx']);
     expect(classesOf('primary', 'web/src/components/ui/button.tsx')).not.toContain('text-primary');
     expect(familyUses('primary', `'bg-primary-soft border-primary text-primary text-primary-foreground ring-ring bg-ring outline-ring'`)).toHaveLength(7);
     expect(familyUses('primary', `'bg-primary-soft'`, 'web/src/components/SessionItem.tsx')).toHaveLength(1);

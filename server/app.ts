@@ -1,11 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { type IncomingMessage, type Server, type ServerResponse, createServer } from 'node:http';
+import { MAX_ATTACHMENT_BYTES } from '../shared/attachments.ts';
 import { type Settings, SettingsError, type SettingsView } from '../shared/settings.ts';
 import type { AnswerRequest, AnswerResult, ChatPage, EffortSwitchRequest, EffortSwitchResult, EndResult, EndTarget, EscStatus, Harness, HarnessOption, HistoryDetail, HistoryPage, HistoryPeek, LaunchView, ModelSwitchRequest, ModelSwitchResult, RenameResult, ResumeResult, ServerEvent } from '../shared/types.ts';
 import type { PathAnswer } from '../shared/files.ts';
 import type { UsageSnapshot } from '../shared/usage.ts';
 import type { WorkSnapshot } from '../shared/work.ts';
 import { AnswerError, parseAnswerRequest, parseEscStatus } from './answerer.ts';
+import { AttachmentError, Attachments, DAY_MS } from './attachments.ts';
 import { EndError, parseEndTarget } from './closer.ts';
 import { type Library } from './library.ts';
 import { LibraryError, parseLibraryQuery } from './library.ts';
@@ -24,6 +26,8 @@ import { MAX_MESSAGE, ViewError } from './viewer.ts';
 import type { RefreshAnswer } from './work.ts';
 
 export interface AppOptions {
+  /** VIEW-9: explicit storage location; tests always pass a temporary directory. */
+  attachmentsDir: string;
   guard: GuardConfig;
   monitor: Pick<SessionMonitor, 'snapshot' | 'watch'>;
   settings: Pick<SettingsStore, 'get' | 'update' | 'onChange'>;
@@ -125,6 +129,7 @@ const SECURITY_HEADERS = {
 };
 
 export function createApp(opts: AppOptions): LookoutApp {
+  const attachments = new Attachments(opts.attachmentsDir);
   const clients = new Map<string, ServerResponse>();
   /** WORK-8.1: the tabs that have Work open, each with its hold on the Work poller. */
   const workOpen = new Map<string, () => void>();
@@ -192,6 +197,21 @@ export function createApp(opts: AppOptions): LookoutApp {
 
     const route = `${req.method} ${url.pathname}`;
     switch (route) {
+      case 'POST /api/attachments': {
+        const name = url.searchParams.get('name');
+        if (!name || name.length > 1024) return json(res, 400, { error: 'Expected a file name of 1 to 1,024 characters.' });
+        if (req.headers['content-type'] !== 'application/octet-stream') return json(res, 415, { error: 'Expected application/octet-stream.' });
+        const rawLength = req.headers['content-length'];
+        if (rawLength === undefined) return json(res, 411, { error: 'Content-Length is required.' });
+        const length = Number(rawLength);
+        if (!Number.isSafeInteger(length) || length < 0) return json(res, 400, { error: 'Invalid Content-Length.' });
+        if (length > MAX_ATTACHMENT_BYTES) return json(res, 413, { error: 'The file is over the 25 MB limit.' });
+        try { return json(res, 201, { path: await attachments.save(name, req, length) }); }
+        catch (err) {
+          // Never let filesystem errors (including paths) reach the request logger.
+          return json(res, err instanceof AttachmentError ? err.status : 500, { error: err instanceof AttachmentError ? err.message : `Lookout couldn't save ${name}.` });
+        }
+      }
       case 'GET /api/bootstrap':
         return json(res, 200, { token: opts.guard.token });
       case 'GET /api/events':
@@ -473,6 +493,14 @@ export function createApp(opts: AppOptions): LookoutApp {
       else res.end();
     });
   });
+  // Only listening servers own the daily job; in-memory handler tests don't leave timers behind.
+  let pruneTimer: NodeJS.Timeout | undefined;
+  server.once('listening', () => {
+    void attachments.prune();
+    pruneTimer = setInterval(() => { void attachments.prune(); }, DAY_MS);
+    pruneTimer.unref();
+  });
+  server.once('close', () => clearInterval(pruneTimer));
   return { server, broadcast, sendTo };
 }
 

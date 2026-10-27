@@ -1,4 +1,7 @@
 import { IncomingMessage, ServerResponse } from 'node:http';
+import { randomUUID } from 'node:crypto';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { Socket } from 'node:net';
 import { expect, it, vi } from 'vitest';
 import { defaultSettings } from '../shared/settings.ts';
@@ -15,6 +18,7 @@ function setup() {
   const setOpen = vi.spyOn(memory, 'setOpen');
   const drop = vi.spyOn(memory, 'drop');
   const app = createApp({
+    attachmentsDir: join(tmpdir(), `lookout-unused-attachments-${randomUUID()}`),
     guard: { allowedHosts: new Set(['localhost']), allowedOrigins: new Set(['http://localhost']), token: 'test' },
     monitor: { snapshot: () => ({ sessions: [], fleet: { state: 'ok' } }), watch: () => () => {} },
     settings: { get: defaultSettings, update: unused, onChange: () => () => {} },

@@ -130,9 +130,13 @@ export function shown(echoes: readonly Echo[]): Echo[] {
   return echoes.filter((e) => e.state !== 'replaced');
 }
 
-/** A slash command (`/usage`, `/review 42`): it pairs only with a copy of its own text. */
+/**
+ * A slash command (`/usage`, `/review 42`): it pairs only with a copy of its own text. VIEW-9.7: a
+ * first word holding a second `/` is a path, not a command; a backslash keeps the character after
+ * it in the word, so an inserted `/My\ Folder/shot.png` (VIEW-9.6) is one word, and a path.
+ */
 export function isCommand(text: string): boolean {
-  return normal(text).startsWith('/');
+  return /^\/(?:\\[^/]|[^\s/\\])*(?:\s|\\?$)/.test(normal(text));
 }
 
 interface Copy {

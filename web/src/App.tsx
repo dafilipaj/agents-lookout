@@ -15,6 +15,7 @@ import { Sidebar } from '@/components/Sidebar';
 import { StartingView } from '@/components/StartingView';
 import { WorkPanel } from '@/components/WorkPanel';
 import { type LookoutClient, SaveError } from '@/lib/client';
+import { ComposerAttachments, preventDropNavigation } from '@/lib/attachments';
 import { tidySentAt } from '@/lib/activity';
 import {
   type AnswerAttempt,
@@ -116,6 +117,16 @@ export function App({ client }: { client: LookoutClient }) {
   const switchOps = useRef(0);
   // The rows as last listed, for what a switch does once its answer comes (the Status may have moved on).
   const liveSessions = useRef(state.sessions);
+  const [attachments] = useState(() => new ComposerAttachments((file, name) => client.attach(file, name), drafts));
+  useLayoutEffect(() => { attachments.setLive(id => liveSessions.current.get(id)?.controllable === true); }, [attachments]);
+  // VIEW-9.9: uploads follow a Codex Session's id change, by the aliases its draft moves by, before
+  // its composer mounts under the new id (the draft's move below is a passive effect).
+  useLayoutEffect(() => attachments.follow(state.aliases, state.sessions), [attachments, state.aliases, state.sessions]);
+  useEffect(() => {
+    window.addEventListener('dragover', preventDropNavigation);
+    window.addEventListener('drop', preventDropNavigation);
+    return () => { window.removeEventListener('dragover', preventDropNavigation); window.removeEventListener('drop', preventDropNavigation); };
+  }, []);
   useLayoutEffect(() => {
     liveSessions.current = state.sessions;
   });
@@ -769,6 +780,7 @@ export function App({ client }: { client: LookoutClient }) {
               drawerOpen={drawerOpen}
               onToggleDrawer={toggleDrawer}
               drafts={drafts}
+              attachments={attachments}
               questionDrafts={questionDrafts}
               sending={sending}
               sendErrors={sendErrors}

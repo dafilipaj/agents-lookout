@@ -34,6 +34,14 @@ function sent(...messages: [text: string, at: number][]) {
 }
 
 describe('VIEW-1.13 rules', () => {
+  it('VIEW-9.7: an absolute first-word path pairs as a prompt while a command still pairs only its own text', () => {
+    // An escaped blank in the first segment (VIEW-9.6) keeps the path one word.
+    for (const path of ['/Users/me/shot.png', '/tmp/My\\ Notes.pdf what is this?', '  /a/b ', '/My\\ Folder/file.png', '/My\\ Folder/file.png what is this?', '/A\\ \\(1\\)/b.pdf']) {
+      expect(isCommand(path)).toBe(false);
+      expect(sent([path, T])({ entries: [you(T + 10, 'image recorded differently')] })).toEqual([]);
+    }
+    for (const text of ['/usage', '/clear', '/model opus', '/review 42', '/name arg/with/slashes', '  /clear  ']) expect(isCommand(text)).toBe(true);
+  });
   it('VIEW-1.13: a message shows until a prompt of yours written at or after the send reaches the chat', () => {
     // A reply, a prompt from before the send, or one without a time isn't its copy.
     expect(sent(['Fix it', T])({ entries: [you(T - 60_000), reply(T - 50_000), you(T - 1), reply(T + 500), you(null, 'Fix it')] })).toEqual(['Fix it']);
