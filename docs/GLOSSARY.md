@@ -4,6 +4,8 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Acceptance criterion**: A checkable condition under a Requirement, ID'd `<CODE>-n.m`, verified by a test or by looking at the running app.
 
+**Attachment**: A file you drop or paste into a Session's composer that Lookout copies, because the browser can't see its path (from Finder, or the clipboard): saved under `~/.lookout/attachments/<YYYY-MM-DD>/` and put into your message by its absolute path, so the Harness reads it with its own tools. Deleted after 14 days. A file dragged with its real path (from VS Code) isn't one: its own path goes in. See VIEW-9.
+
 **Behaviour test**: An end-to-end test of one Acceptance criterion: Playwright drives the built Lookout inside a World. Its title starts with the criterion's ID. See the TEST spec.
 
 **Building block**: A CLI with a stable `--json` contract that Lookout consumes and other people's UIs could consume too: Fleet, `tb-session`, the ports CLI. Building blocks live outside this repo.
