@@ -165,3 +165,9 @@ Discussed and decided against. Each keeps why, so it isn't proposed again withou
 - **What:** while a Session waits on a test suite or a script, show how far it is, e.g. tests passed and left.
 - **Why dropped:** researched, and it can't be done properly. A Bash call's output reaches the Transcript only when it ends, and the terminal screen shows no progress that could be read reliably across tools. The Backlog's "Live activity text" covers what can be read: the Harness's own spinner line.
 - **Dropped:** 2026-10-22, by Dario.
+
+### The Session's Task and PR in its header (VIEW, WORK)
+
+- **What:** chips in the main pane's header for the Session's Linked PR and Task, from Work's Links plus a new Link from the Session's branch to an open PR with that head branch, each opening the PR on GitHub or the Task in Fantastic.
+- **Why dropped:** drafted and found too clunky. Keeping the chips current needs Work's reads to run whenever a tab shows a Session, not only while Work is open, and the branch Link would rarely fire: 12 of 345 Sessions in 14 days ran on an open PR's branch, all headless Codex runs. The draft (VIEW-5.17–5.24, WORK-4.11–4.14) is kept outside the repo, in Dario's `output/lookout-2026-10-27/header-links-dropped.patch`.
+- **Dropped:** 2026-10-27, by Dario.
