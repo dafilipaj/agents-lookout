@@ -2,7 +2,7 @@
 
 The command Lookout's Starting view ([LAUNCH-6](../features/launch-session/SPEC.md)) uses to read and answer a Harness's Trust prompt in a Session host. It's built in the Fleet fork (`dafilipaj/fleet`, branch `lookout`, [0006](../decisions/0006-run-a-fork-of-fleet.md)) as one commit, and verified there, in Fleet's own tests; Lookout's fake `fleet` follows this file, and `pnpm req-check` never looks here (the criteria are LAUNCH-6). Points are numbered C1 to C10 so the commit's tests can cite them. Every field and flag is add-only: a later Fleet may add, never rename or drop.
 
-Written 2026-10-27 from Dario's report of a resume stuck at Claude Code's Trust prompt, against the fork at `570ce97` (Lookout's pin in `e2e/pins.json`). Nothing here was run against a live Claude Code: the screens in C9 are still to be recorded.
+Written 2026-10-27 from Dario's report of a resume stuck at Claude Code's Trust prompt, against the fork at `570ce97` (Lookout's pin in `e2e/pins.json`). Amended 2026-10-27 after real captures of Claude Code 2.1.311 (C9): the Fleet implementation follows those screens, and C2, C3, C4, C8 and C9 say what they showed. Before that, nothing here had been run against a live Claude Code.
 
 ## Why a new command
 
@@ -32,8 +32,10 @@ fleet trust <tmux_session> --json [--pane <handle>] [--allow-attached] [-n]
 ```json
 { "ok": true, "host": "mac", "tmux_session": "new-repo", "handle": "%12",
   "prompt": { "kind": "trust", "harness": "claude", "id": "t1.9f2c01aa",
-              "lines": ["…",
-                        "⚠ This folder pre-approves 10 tool permissions in .claude/settings.json: Bash(…), Bash(…), … and 2 more",
+              "lines": ["Accessing workspace:",
+                        "/Users/me/Projects/new-repo",
+                        "…",
+                        "⚠ This folder pre-approves 10 tool permissions in .claude/settings.json: Bash(…), Bash(…), …, and 2 more",
                         "These will apply without asking. Only proceed if you trust this configuration.",
                         "",
                         "Security guide"],
@@ -45,19 +47,20 @@ fleet trust <tmux_session> --json [--pane <handle>] [--allow-attached] [-n]
 
 - `prompt` is `null` when the screen shows no Trust prompt (`detail: "no_prompt"`, or `"shell"` when the pane's foreground is its shell).
 - `harness`: whose Trust prompt it is, told by its answers (C3), not by what was typed.
-- `lines`: the prompt's text from its top (C3) down to the line above its first answer, as drawn: frame characters at the edges and trailing blanks removed, a run of blank lines kept as one, lines tmux wrapped joined (`capture-pane -J`). At most 60 lines of at most 2,000 characters each; more is `clipped`. The text is the screen's: paths, permission rules, whatever the folder's settings name.
-- `choices`: the answers in screen order, their labels as drawn, and which one trusts (`accept`). `selected`: the index the cursor is on.
+- `lines`: the prompt's text from its top (C3) down to the line above its first answer, as drawn: frame characters at the edges and trailing blanks removed, a run of blank lines kept as one, lines tmux wrapped joined (`capture-pane -J`). Claude Code wraps its own text at the pane's width with real line breaks, so `lines` differ between 80 and 200 columns. In the captures the permissions warning wraps at both widths (mid-entry at 80) and ends ", and N more". At most 60 lines of at most 2,000 characters each; more is `clipped`. The text is the screen's: paths, permission rules, whatever the folder's settings name.
+- `choices`: the answers in screen order, their labels as drawn (Claude Code 2.1.311 draws them unnumbered), and which one trusts (`accept`). `selected`: the index the cursor is on.
 - `untouched`: the cursor on the answer the Harness preselects (Claude Code: "No, exit") and nothing typed.
-- `id`: `t1.` and 8 hex digits, FNV-1a of `harness`, the `lines` and the labels joined by `\n`, leaving out the frame and the pane's width, as `answer`'s `id` does. Another folder, other pre-approved permissions or other wording give another id.
+- `id`: `t1.` and 8 hex digits, FNV-1a of `harness`, the dialog's paragraphs and the labels joined by `\n`, leaving out the frame and the pane's width, as `answer`'s `id` does. A paragraph is the dialog's wrapped lines joined with a space, a blank line ending it, so the same prompt has the same id at any pane width; an id over `lines` as wrapped couldn't. Another folder, other pre-approved permissions or other wording give another id.
 - `answerable`: `--accept` and `--decline` would pass the screen checks now (C4 step 2): the prompt read whole, untouched and alone. Not the lock or the attached-client check.
 - `detail`: why not, one code from C6; `null` when answerable.
 - A Trust prompt recognised by its answers but not read whole is `{ "kind": "trust", "harness", "incomplete": true, "id": null, "lines": null, "choices": null, "selected": null, "untouched": false }` with `answerable: false` and `detail` `clipped` or `layout_unsupported`.
-- One `--list` reads the screen once, plus the pane's foreground command and size: the same tmux queries `answer --list` makes. It types nothing and takes no lock.
+- One `--list` reads the screen once. From the same tmux call as the capture it also gets the pane's cursor position, height, mode (copy mode is `not_alone`) and current command (C3). It types nothing and takes no lock.
 
 ## C3. What counts as a Trust prompt
 
-- **Claude Code:** an answer list whose labels are exactly "Yes, I trust this folder" and "No, exit", numbered (`1.`) or not, in either order, with the cursor marker `❯` on one of them, and under it at most the footer "Enter to confirm · Esc to cancel". Its top is the first line of the dialog (its frame's top rule, or its first line of text when it has no frame), as the recorded screens (C9) show it. Between the top and the answers it may hold any number of warnings (pre-approved permissions, MCP servers, hooks): Fleet returns them as `lines` and never interprets them.
-- **Alone:** the prompt is the live screen and the only thing on it. Its answers sit at the bottom of the visible screen with at most its footer under them (`answer`'s rule, `MAX_FOOTER_LINES`); there's no input box and no other answer list on the visible screen; above its top there are only blank lines or what the shell printed before the Harness started (the launch line `spawn` typed). And the pane's foreground command isn't a shell (`pane_current_command`, as the web spawner's `ensureStarted` checks it), so the Harness is running. Otherwise `not_alone` or `shell`.
+- **Claude Code:** an answer list whose labels are exactly "Yes, I trust this folder" and "No, exit", numbered (`1.`) or not, in either order, with the cursor marker `❯` on one of them, and under it at most the footer "Enter to confirm · Esc to cancel". Claude Code 2.1.311 draws, from the top: a full-width `─` rule, the heading "Accessing workspace:" alone on its line with the folder's path on the next, its text and warnings, then the answers, unnumbered, with "No, exit" preselected, then the footer. Its top is the first line of the dialog (that rule, or its first line of text when it has no frame), as the recorded screens (C9) show it. Between the top and the answers it may hold any number of warnings (pre-approved permissions, MCP servers, hooks): Fleet returns them as `lines` and never interprets them.
+- **Alone:** the prompt is the live screen and the only thing on it. Its answers sit above the footer, and under the footer there are only blank rows: Claude Code doesn't draw the dialog at the very bottom, and the captures show blank rows below it. Anything else under the footer is `not_alone`. There's no input box and no other answer list on the visible screen; above its top there are only blank lines or what the shell printed before the Harness started (the launch line `spawn` typed). And the pane's foreground command isn't a shell (`pane_current_command`, as the web spawner's `ensureStarted` checks it), so the Harness is running. The pane's cursor is on the dialog (the selected answer's `❯`); a pane in copy mode is `not_alone`. Otherwise `not_alone` or `shell`.
+- **After Esc, or a decline:** Claude Code uses no alternate screen, so the dialog's text stays on the screen above the shell's prompt, which sits under its footer (captured after Esc; after a decline presumably the same, not captured). A dialog with the cursor below it, on the shell, isn't a prompt: `no_prompt`, or `shell` when the pane's foreground is its shell. Anything under the footer is `not_alone`; a cursor anywhere else is `layout_unsupported`.
 - The same words in the scrollback, or quoted in a conversation, never count, as for `answer`.
 - **Codex:** C10.
 
@@ -68,7 +71,7 @@ Under a lock named after the tmux session (an `flock` on `trust-<tmux_session>.l
 1. The pane is checked against `--pane`, then attached clients (unless `--allow-attached`).
 2. The screen is read again. It must show a Trust prompt whose `id` is `--prompt`, and `answerable` (C2). Otherwise nothing is typed: `prompt_not_on_screen` with `detail` `no_prompt`, `shell`, `different_prompt`, `touched` or `not_alone`, or `prompt_incomplete` with `clipped` or `layout_unsupported`.
 3. Keys, each checked before the next: `Down` or `Up` until the screen shows the cursor on the chosen answer ("Yes, I trust this folder" for `--accept`, "No, exit" for `--decline`), then `Enter`. A key the dialog ignored (the screen unchanged: it's drawn before it listens for keys) is pressed again, at most 4 times, 400 ms apart; any other screen stops it with `prompt_changed`, saying how many keys went out. Enter is pressed only while the screen shows the cursor on the chosen answer. No other key is ever pressed: no number, no Esc.
-4. After Enter the prompt must leave the screen within 3 s: then `answered: true`. Otherwise `outcome_uncertain`, with `screen` (what `--list` reads now, or `null`).
+4. After Enter the prompt must leave the screen within 3 s: then `answered: true`. Otherwise `outcome_uncertain`, with `screen` (what `--list` reads now, or `null`). Leaving means the dialog is gone, not that it is no longer a prompt (C3, after Esc): an `--accept` that ends at the shell, or leaves the dialog's text on screen, is `outcome_uncertain` too.
 
 Success (exit 0):
 
@@ -118,12 +121,12 @@ A failure (exit 1, exit 2 for `usage` from clap) prints `{ "ok": false, "host", 
 ## C8. Boundary
 
 - Fleet answers a Trust prompt only when `trust --accept` or `--decline` is run. `spawn`, `restore`, `handoff`, `stack spawn`, jobs and `list` never do, and `trust --list` types nothing. The web spawner's auto-accept stays as it is: it isn't part of the CLI.
-- `trust` presses keys only on a Trust prompt, and reads nothing but that pane's screen, its foreground command and its size.
+- `trust` presses keys only on a Trust prompt, and reads nothing but that pane's screen, cursor position, height, mode and current command, all from one tmux call with the capture.
 - Whether a folder is trusted is the Harness's own record (Claude Code's `hasTrustDialogAccepted` in `~/.claude.json`); Fleet never reads or writes it, and keeps no record of answers.
 
 ## C9. Tests in the fork
 
-- Screens recorded from claude 2.1.309, in a Session host `spawn` made: the plain prompt in a new directory under `~`; one whose `.claude/settings.json` pre-approves more permissions than the prompt lists (the "… and N more" line from the report); each at 200×50 and 80×24; the same after one Down; and one with the shell's launch line above it.
+- Screens recorded 2026-10-27 from Claude Code 2.1.311 (`testdata/screens/live/claude-trust-*`, with a README), launched by hand at a shell prompt with a separate `CLAUDE_CONFIG_DIR`, not through `fleet spawn`: on this Mac `~/.claude.json` trusts `/`, so no folder normally asks. The plain prompt in a new directory; one whose `.claude/settings.json` pre-approves 12 permissions (the warning lists 8 and ", and 4 more"); each at 200×50 and 80×24; the same after one Down, after one Up and after Esc; and a resume (`--resume`) with the dialog first. The unit tests derive other screens from them (reworded, numbered, framed, clipped, a composer, Codex).
 - Through a fake tmux, as `spawn`'s and `answer`'s tests do: every `detail`; the ignored first Down pressed again; Enter never pressed off the chosen answer; `--pane` that doesn't match; `--close` with the Harness exited and with it still running; the lock held; `session_starting` with and without a pane (C7).
 
 ## C10. Codex (a later commit)
