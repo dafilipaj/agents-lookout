@@ -22,7 +22,7 @@ function setup() {
     guard: { allowedHosts: new Set(['localhost']), allowedOrigins: new Set(['http://localhost']), token: 'test' },
     monitor: { snapshot: () => ({ sessions: [], fleet: { state: 'ok' } }), watch: () => () => {} },
     settings: { get: defaultSettings, update: unused, onChange: () => () => {} },
-    launcher: { list: () => [], recentStarts: () => [], harnesses: unused, start: unused, dismiss: () => false },
+    launcher: { list: () => [], recentStarts: () => [], harnesses: unused, start: unused, answerTrust: async () => null, trustDisconnected: () => {}, dismiss: () => false },
     usage: { snapshot: () => null, watch: () => () => {}, refresh: unused, refreshJev: unused },
     memory,
     library: new Library({ runner: unused, bin: () => 'tb-session' }),

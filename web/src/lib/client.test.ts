@@ -24,6 +24,31 @@ const puts = () => pending.filter((p) => p.url === '/api/watch');
 const body = (p: Pending) => JSON.parse(String(p.init?.body));
 const bootstraps = () => fetchMock.mock.calls.filter(([u]) => u === '/api/bootstrap').length;
 
+it('LAUNCH-6.10: a trust click posts the displayed id with a token, has a timeout, and never retries even after a 403', async () => {
+  const client = createHttpClient();
+  const req = { answer: 'accept' as const, prompt: 't1.9f2c01aa' };
+  const result = client.answerTrust('launch-1', req);
+  const refused = expect(result).rejects.toMatchObject({ status: 403 });
+  await settle();
+  expect(pending).toHaveLength(1);
+  expect(pending[0]!.url).toBe('/api/launches/launch-1/trust');
+  expect(body(pending[0]!)).toEqual(req);
+  expect(pending[0]!.init?.headers).toMatchObject({ 'x-lookout-token': 'tok' });
+  expect(pending[0]!.init?.signal).toBeInstanceOf(AbortSignal);
+  pending[0]!.resolve(Response.json({ error: 'bad token' }, { status: 403 }));
+  await refused;
+  expect(pending).toHaveLength(1);
+});
+
+it('LAUNCH-6.6: an unexpected trust HTTP reply is uncertain instead of enabling a second click', async () => {
+  const result = createHttpClient().answerTrust('launch-1', { answer: 'accept', prompt: 't1.9f2c01aa' });
+  const uncertain = expect(result).rejects.toMatchObject({ kind: 'uncertain' });
+  await settle();
+  pending[0]!.resolve(Response.json({}));
+  await uncertain;
+  expect(pending).toHaveLength(1);
+});
+
 describe('telling the server what the tab views', () => {
   it('VIEW-9.18: an attachment goes only to the own-server route as raw bytes with a name and token', async () => {
     const file = new File(['private bytes'], 'shot.png');

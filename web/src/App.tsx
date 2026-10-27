@@ -1,6 +1,6 @@
 import { LibraryPanel } from '@/components/LibraryPanel';
 import type { LaunchHarness } from '@shared/settings.ts';
-import type { AnswerRequest, ChatPage, EndTarget, EscStatus, HistoryItem, LaunchRequest, LaunchView, ResumeResult, SessionRow, Status } from '@shared/types.ts';
+import type { AnswerRequest, ChatPage, EndTarget, EscStatus, HistoryItem, LaunchRequest, LaunchView, LaunchTrust, ResumeResult, SessionRow, Status } from '@shared/types.ts';
 import type { WorkPr, WorkSessionLink, WorkTask } from '@shared/work.ts';
 import { hasReset } from '@shared/usage.ts';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -63,7 +63,7 @@ interface DrawerOverride {
 
 /** LAUNCH-4.2: the row this tab shows for its own start until the server lists it. */
 function ownLaunch(id: string, title: string, harness: LaunchHarness, directory: string): LaunchView {
-  return { id, title, harness, directory, startedAt: Date.now(), state: 'starting', error: null, terminal: null };
+  return { id, title, harness, directory, startedAt: Date.now(), state: 'starting', trust: null, error: null, terminal: null };
 }
 
 /** The server's title for a start (LAUNCH-3.3): its name, else "<Harness> in <folder>". */
@@ -204,7 +204,64 @@ export function App({ client }: { client: LookoutClient }) {
     [navigate],
   );
   // LAUNCH-4.2: the server's launches, then this tab's own it doesn't list yet.
-  const launches = useMemo(() => shownLaunches(state), [state]);
+  const listedLaunches = useMemo(() => shownLaunches(state), [state]);
+  const [trustAttempts, setTrustAttempts] = useState<ReadonlyMap<string, { prompt: string; base: LaunchTrust | null; answering: 'accept' | 'decline' | null; message: string | null }>>(new Map());
+  // HTTP and SSE use separate connections. Keep a confirmed answer visible until the stream
+  // reaches it; an older buffered read must not restore the answered prompt's buttons.
+  const [trustResults, setTrustResults] = useState<ReadonlyMap<string, { prompt: string; launch: LaunchView | null }>>(new Map());
+  const [uncertainTrust, setUncertainTrust] = useState<ReadonlySet<string>>(new Set());
+  const trustInFlight = useRef(new Set<string>());
+  const [cancelFocus, setCancelFocus] = useState<{ id: string | null } | null>(null);
+  useEffect(() => {
+    setTrustResults((results) => {
+      const next = new Map(results);
+      for (const [id, r] of next) if (!listedLaunches.some((l) => l.id === id && l.state === 'trust' && l.trust?.id === r.prompt)) next.delete(id);
+      return next.size === results.size ? results : next;
+    });
+  }, [listedLaunches]);
+  const launches = useMemo(() => listedLaunches.flatMap((l) => {
+    const result = trustResults.get(l.id);
+    if (result && l.state === 'trust' && l.trust?.id === result.prompt) return result.launch ? [result.launch] : [];
+    if (!l.trust) return [l];
+    const a = trustAttempts.get(l.id);
+    if (uncertainTrust.has(`${l.id}:${l.trust.id}`)) return [{ ...l, trust: { ...l.trust, answerable: false, answering: null, message: "It may have been answered, but Lookout can't tell." } }];
+    if (!a || a.prompt !== l.trust.id || (!a.answering && a.base !== l.trust)) return [l];
+    return [{ ...l, trust: { ...l.trust, answering: a.answering, message: a.message ?? l.trust.message } }];
+  }), [listedLaunches, trustAttempts, trustResults, uncertainTrust]);
+  const latestLaunches = useRef(listedLaunches);
+  useLayoutEffect(() => { latestLaunches.current = listedLaunches; }, [listedLaunches]);
+  useLayoutEffect(() => {
+    if (!cancelFocus) return;
+    const button = cancelFocus.id && document.querySelector<HTMLElement>(`[data-launch-id="${CSS.escape(cancelFocus.id)}"] button`);
+    (button || document.querySelector<HTMLElement>('main[tabindex]'))?.focus();
+    setCancelFocus(null);
+  }, [cancelFocus, route]);
+  const answerTrust = async (id: string, answer: 'accept' | 'decline', prompt: string) => {
+    const l = latestLaunches.current.find((l) => l.id === id);
+    if (!l?.trust || !l.trust.answerable || l.trust.id !== prompt || trustInFlight.current.has(id) || uncertainTrust.has(`${id}:${prompt}`)) return;
+    trustInFlight.current.add(id);
+    const index = latestLaunches.current.indexOf(l);
+    setTrustAttempts((m) => new Map(m).set(id, { prompt, base: l.trust, answering: answer, message: null }));
+    try {
+      const launch = await client.answerTrust(id, { answer, prompt });
+      const current = latestLaunches.current.find((l) => l.id === id);
+      if (current?.state === 'trust' && current.trust?.id === prompt) setTrustResults((m) => new Map(m).set(id, { prompt, launch }));
+      if (answer === 'decline' && launch === null && window.location.pathname === routePath({ name: 'launch', id })) {
+        const rows = latestLaunches.current;
+        const at = rows.findIndex((l) => l.id === id);
+        const remaining = rows.filter((l) => l.id !== id);
+        const position = at < 0 ? Math.min(index, remaining.length) : at;
+        const next = remaining[position]?.id ?? remaining[position - 1]?.id ?? null;
+        navigate(next ? { name: 'launch', id: next } : { name: 'home' }, { replace: true });
+        setCancelFocus({ id: next });
+      }
+      setTrustAttempts((m) => { const out = new Map(m); out.delete(id); return out; });
+    } catch (err) {
+      const uncertain = !(err instanceof SaveError) || err.lost || err.kind === 'uncertain' || err.status === null || err.status >= 500;
+      if (uncertain) setUncertainTrust((s) => new Set(s).add(`${id}:${prompt}`));
+      setTrustAttempts((m) => new Map(m).set(id, { prompt, base: latestLaunches.current.find((l) => l.id === id)?.trust ?? null, answering: null, message: uncertain ? "It may have been answered, but Lookout can't tell." : err.message }));
+    } finally { trustInFlight.current.delete(id); }
+  };
   // The save's answer shows at once, before the server's `settings` event (WORK-2.5, UX Settings).
   const savedSince = state.settings;
   const save = useCallback(
@@ -758,7 +815,7 @@ export function App({ client }: { client: LookoutClient }) {
           ) : route.name === 'launch' ? (
             // Its Session is taking over the selection (the layout effect above): show nothing meanwhile.
             takeOver ? null : (
-              <StartingView launch={launches.find((l) => l.id === route.id) ?? null} loaded={state.loaded} now={now} />
+              <StartingView launch={launches.find((l) => l.id === route.id) ?? null} loaded={state.loaded} now={now} onTrust={(answer, prompt) => void answerTrust(route.id, answer, prompt)} />
             )
           ) : (
             <MainPane

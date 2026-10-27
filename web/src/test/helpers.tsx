@@ -69,6 +69,7 @@ export function launchView(over: Partial<LaunchView> & { id: string }): LaunchVi
     directory: '~/Projects/work',
     startedAt: NOW,
     state: 'starting',
+    trust: null,
     error: null,
     terminal: null,
     ...over,
@@ -81,6 +82,7 @@ interface RenderOptions {
   libraryStatus?: LookoutClient['libraryStatus'];
   harnesses?: () => Promise<HarnessOption[]>;
   launch?: LookoutClient['launch'];
+  answerTrust?: LookoutClient['answerTrust'];
   sendMessage?: (sessionId: string, text: string) => Promise<void>;
   endSession?: LookoutClient['endSession'];
   renameSession?: LookoutClient['renameSession'];
@@ -117,6 +119,7 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
     saveSettings,
     harnesses: vi.fn(options.harnesses ?? (async () => HARNESSES)),
     launch: vi.fn(options.launch ?? (async (req: LaunchRequest, launchId: string) => launchView({ id: launchId, title: req.name || 'New Session' }))),
+    answerTrust: vi.fn(options.answerTrust ?? (async () => null)),
     dismissLaunch: vi.fn(async () => {}),
     earlierMessages: vi.fn(options.earlierMessages ?? (async (): Promise<ChatPage> => ({ entries: [], before: null }))),
     watch: vi.fn(async () => {}),

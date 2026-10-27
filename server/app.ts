@@ -16,7 +16,7 @@ import { PathsError } from './files.ts';
 import { ModelSwitchError, parseEffortRequest, parseModelRequest } from './model-switch.ts';
 import { RenameError, parseRenameRequest } from './renamer.ts';
 import { type FindQuery, HistoryError, parseFindQuery } from './history.ts';
-import { LaunchError } from './launcher.ts';
+import { LaunchError, TrustError } from './launcher.ts';
 import type { MemoryMonitor } from './memory.ts';
 import type { SessionMonitor } from './monitor.ts';
 import { type GuardConfig, guardRequest } from './security.ts';
@@ -39,6 +39,8 @@ export interface AppOptions {
     harnesses(): Promise<HarnessOption[]>;
     start(input: unknown): Promise<LaunchView>;
     dismiss(id: string): boolean;
+    answerTrust(id: string, body: unknown): Promise<LaunchView | null>;
+    trustDisconnected(id: string, prompt: string): void;
   };
   memory: Pick<MemoryMonitor, 'snapshot' | 'watch' | 'setOpen' | 'drop'>;
   usage: {
@@ -469,6 +471,24 @@ export function createApp(opts: AppOptions): LookoutApp {
       } catch (err) {
         if (err instanceof ViewError) return json(res, err.status, { error: err.message, field: err.field });
         throw err;
+      }
+    }
+    const trust = /^\/api\/launches\/([0-9a-f-]{36})\/trust$/.exec(url.pathname);
+    if (trust && req.method === 'POST') {
+      const body = await readJson(req, res, 1024, null);
+      if (body === NO_BODY) return;
+      const disconnected = () => {
+        const prompt = typeof body === 'object' && body !== null ? (body as Record<string, unknown>).prompt : null;
+        if (!res.writableEnded && typeof prompt === 'string') opts.launcher.trustDisconnected(trust[1]!, prompt);
+      };
+      res.once('close', disconnected);
+      try {
+        return json(res, 200, { launch: await opts.launcher.answerTrust(trust[1]!, body) });
+      } catch (err) {
+        if (err instanceof TrustError) return json(res, err.status, { error: err.message, kind: err.kind });
+        throw err;
+      } finally {
+        res.off('close', disconnected);
       }
     }
     const dismiss = /^\/api\/launch\/([0-9a-f-]{36})$/.exec(url.pathname);

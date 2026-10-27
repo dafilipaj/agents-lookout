@@ -2,7 +2,7 @@ import type { LibraryPage, LibraryQuery } from '@shared/library.ts';
 import type { PathAnswer } from '@shared/files.ts';
 import type { Settings, SettingsView } from '@shared/settings.ts';
 import type { WorkRefreshResult } from '@shared/work.ts';
-import { HELD_REASONS, type AnswerRequest, type AnswerResult, type ChatPage, type EffortSwitchRequest, type EffortSwitchResult, type EndResult, type EndTarget, type Harness, type HarnessOption, type HeldReason, type HistoryDetail, type HistoryPage, type HistoryPeek, type LaunchRequest, type LaunchView, type ModelSwitchRequest, type ModelSwitchResult, type RenameResult, type ResumeResult, type ServerEvent } from '@shared/types.ts';
+import { HELD_REASONS, type AnswerRequest, type AnswerResult, type ChatPage, type EffortSwitchRequest, type EffortSwitchResult, type EndResult, type EndTarget, type Harness, type HarnessOption, type HeldReason, type HistoryDetail, type HistoryPage, type HistoryPeek, type LaunchRequest, type LaunchView, type TrustRequest, type ModelSwitchRequest, type ModelSwitchResult, type RenameResult, type ResumeResult, type ServerEvent } from '@shared/types.ts';
 
 export interface ClientListener {
   onEvent(event: ServerEvent): void;
@@ -19,6 +19,7 @@ export interface LookoutClient {
   /** LAUNCH-4.2: `launchId` is the tab's own, so its row is selected before this answers. */
   launch(req: LaunchRequest, launchId: string): Promise<LaunchView>;
   dismissLaunch(id: string): Promise<void>;
+  answerTrust(id: string, req: TrustRequest): Promise<LaunchView | null>;
   /** VIEW-1.6: "Show earlier": the chat entries before `before`. */
   earlierMessages(sessionId: string, before: string): Promise<ChatPage>;
   /** Tells the server what this tab views, and whether its terminal drawer is open (VIEW-2). */
@@ -133,9 +134,10 @@ export function createHttpClient(): LookoutClient {
   };
 
   /** A mutating request: needs the token; the server makes a new one on each start. */
-  const send = async (method: string, path: string, body?: unknown, retry = true): Promise<Response> => {
+  const send = async (method: string, path: string, body?: unknown, retry = true, signal?: AbortSignal): Promise<Response> => {
     const res = await fetch(path, {
       method,
+      ...(signal ? { signal } : {}),
       headers: {
         ...(body === undefined ? {} : { 'content-type': 'application/json' }),
         'x-lookout-token': await getToken(),
@@ -332,6 +334,13 @@ export function createHttpClient(): LookoutClient {
     saveSettings: (patch) => call<SettingsView>(() => send('PUT', '/api/settings', patch), 'Saving'),
     harnesses: async () => (await call<{ harnesses: HarnessOption[] }>(() => fetch('/api/harnesses'), 'Loading Harnesses')).harnesses,
     launch: async (req, launchId) => (await call<{ launch: LaunchView }>(() => send('POST', '/api/launch', { ...req, launchId }), 'Starting')).launch,
+    answerTrust: async (id, req) => {
+      const body = await call<{ launch?: LaunchView | null }>(() => send('POST', `/api/launches/${encodeURIComponent(id)}/trust`, req, false, AbortSignal.timeout(20_000)), 'Answering trust prompt');
+      if (body.launch !== null && (!body.launch || body.launch.id !== id || !['starting', 'trust', 'failed'].includes(body.launch.state))) {
+        throw new SaveError("It may have been answered, but Lookout can't tell.", null, 502, { kind: 'uncertain' });
+      }
+      return body.launch;
+    },
     dismissLaunch: async (id) => {
       await call(() => send('DELETE', `/api/launch/${encodeURIComponent(id)}`), 'Dismissing');
     },

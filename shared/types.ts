@@ -158,10 +158,26 @@ export interface LaunchView {
   directory: string;
   startedAt: number;
   /** `failed`: not reported by Fleet within 15 s; its Session host is left running. */
-  state: 'starting' | 'failed';
+  state: 'starting' | 'trust' | 'failed';
+  trust: LaunchTrust | null;
   error: string | null;
-  /** The last lines of its terminal, once failed. */
+  /** The last lines of its terminal, once failed or a Trust prompt's answer is uncertain. */
   terminal: string[] | null;
+}
+
+/** LAUNCH-6: the screen the person is asked to judge; never logged or summarized. */
+export interface LaunchTrust {
+  id: string | null;
+  lines: string[] | null;
+  answerable: boolean;
+  detail: string | null;
+  answering: 'accept' | 'decline' | null;
+  message: string | null;
+}
+
+export interface TrustRequest {
+  answer: 'accept' | 'decline';
+  prompt: string;
 }
 
 /** Events the server pushes over SSE (`/api/events`). */

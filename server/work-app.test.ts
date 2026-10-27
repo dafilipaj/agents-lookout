@@ -66,7 +66,7 @@ beforeEach(async () => {
     monitor: { snapshot: () => ({ sessions: [], fleet: { state: 'ok' } }), watch: () => () => {} },
     settings,
     productiveEmailSuggestion: SUGGESTION,
-    launcher: { list: () => [], recentStarts: () => [], harnesses: async () => [], start: unused, dismiss: () => false },
+    launcher: { list: () => [], recentStarts: () => [], harnesses: async () => [], start: unused, answerTrust: async () => null, trustDisconnected: () => {}, dismiss: () => false },
     usage: { snapshot: () => null, watch: () => () => {}, refreshJev: async () => {}, refresh: async () => {} },
     work,
     viewer: { watch: () => {}, drop: () => {}, send: async () => {}, earlier: unused },

@@ -56,6 +56,7 @@ beforeAll(async () => {
       start: async () => {
         throw new Error('unused');
       },
+      answerTrust: async () => null, trustDisconnected: () => {},
       dismiss: () => false,
     },
     sessions: { end: async () => ({ how: 'exit' as const }), answer: async () => ({ epoch: 1 }), stop: async () => {}, rename: async () => ({ result: 'renamed' as const }), switchModel: async () => ({ model: 'x', confirmed: false }), switchEffort: async () => ({ effort: 'x', confirmed: false, saved: true }) },

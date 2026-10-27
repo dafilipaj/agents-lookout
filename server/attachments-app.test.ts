@@ -20,7 +20,7 @@ beforeEach(async () => {
     attachmentsDir: join(root, 'attachments'), guard: { ...localAllowLists(12345), token: 'test' },
     monitor: { snapshot: () => ({ sessions: [], fleet: { state: 'ok' } }), watch: () => () => {} },
     settings: { get: defaultSettings, update: vi.fn(), onChange: () => () => {} },
-    launcher: { list: () => [], recentStarts: () => [], harnesses: vi.fn(), start: vi.fn(), dismiss: () => false },
+    launcher: { list: () => [], recentStarts: () => [], harnesses: vi.fn(), start: vi.fn(), answerTrust: async () => null, trustDisconnected: () => {}, dismiss: () => false },
     usage: { snapshot: () => null, watch: () => () => {}, refresh: vi.fn(), refreshJev: vi.fn() },
     memory: { snapshot: () => null, watch: () => () => {}, setOpen: () => {}, drop: () => {} },
     files: { check: vi.fn() }, history: { find: vi.fn(), detail: vi.fn(), peek: vi.fn(), resume: vi.fn() },

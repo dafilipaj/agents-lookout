@@ -91,7 +91,7 @@ export function Sidebar(props: SidebarProps) {
 
   // SIDE-5: keyboard. Rows in screen order: "Starting…" rows first (LAUNCH-4.7), then the Sessions.
   const rows = useMemo<NavRow[]>(
-    () => [...launches.map((l) => ({ kind: 'launch' as const, id: l.id, failed: l.state === 'failed' })), ...visible.map((r) => ({ kind: 'session' as const, id: r.id, needsYou: r.status === 'needs-you' }))],
+    () => [...launches.map((l) => ({ kind: 'launch' as const, id: l.id, failed: l.state === 'failed', needsYou: l.state === 'trust' })), ...visible.map((r) => ({ kind: 'session' as const, id: r.id, needsYou: r.status === 'needs-you' }))],
     [launches, visible],
   );
   const latest = useRef({ rows, selectedId, selectedLaunchId, onSelect, onSelectLaunch, enabled: props.keyboardEnabled });
@@ -122,9 +122,9 @@ export function Sidebar(props: SidebarProps) {
           // A failed start stays until it's dismissed, so it doesn't take a number (LAUNCH-4.7).
           select(rows.filter((r) => r.kind === 'session' || !r.failed)[Number(e.key) - 1], 'push');
         } else if (e.key.toLowerCase() === 'j') {
-          // "Starting…" rows never Need you, so ⌘J skips them.
+          // LAUNCH-6.14: Trust prompts Need you, ahead of Sessions; plain starts are skipped.
           e.preventDefault();
-          const needsYou = (r: NavRow) => r.kind === 'session' && r.needsYou;
+          const needsYou = (r: NavRow) => r.needsYou;
           const waiting = rows.filter(needsYou);
           if (!waiting.length) return;
           select(rows.slice(index + 1).find(needsYou) ?? waiting[0], 'push');
@@ -369,7 +369,7 @@ function Code({ children }: { children: ReactNode }) {
 }
 
 /** A row keyboard navigation can land on: a "Starting…" row or a Session's. */
-type NavRow = { kind: 'launch'; id: string; failed: boolean } | { kind: 'session'; id: string; needsYou: boolean };
+type NavRow = { kind: 'launch'; id: string; failed: boolean; needsYou: boolean } | { kind: 'session'; id: string; needsYou: boolean };
 
 /** The frozen order, minus rows that are gone, plus new rows at the end. */
 function keepOrder(frozen: readonly string[], current: readonly string[]): string[] {

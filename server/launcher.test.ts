@@ -32,6 +32,7 @@ function setup(over: { spawn?: (call: Call) => Promise<string>; env?: NodeJS.Pro
     calls.push(call);
     if (args.includes('harness')) return over.harnesses ?? HARNESS_JSON;
     if (args.includes('spawn')) return over.spawn ? over.spawn(call) : spawned('fix-rates');
+    if (args.includes('trust')) return JSON.stringify({ ok: true, prompt: null, answerable: false, detail: 'no_prompt' });
     if (file === 'tmux') return 'Welcome\n\n Quick safety check: Is this a project you trust?\n ❯ No, exit\n   Yes, I trust this folder\n\n\n';
     throw new Error(`unexpected ${file} ${args.join(' ')}`);
   });
@@ -115,19 +116,19 @@ describe('starting Sessions', () => {
   });
 
   it('LAUNCH-4.1: reads the Session host from `fleet spawn --json`', () => {
-    expect(parseSpawnAnswer(spawned('work-2'))).toEqual({ ok: true, tmuxSession: 'work-2' });
-    expect(parseSpawnAnswer(spawned('x', { tmux_session: null, backend: 'iterm' }))).toEqual({ ok: true, tmuxSession: null });
-    expect(parseSpawnAnswer(spawned('bad name; rm'))).toEqual({ ok: true, tmuxSession: null });
+    expect(parseSpawnAnswer(spawned('work-2'))).toEqual({ ok: true, tmuxSession: 'work-2', handle: '%12' });
+    expect(parseSpawnAnswer(spawned('x', { tmux_session: null, backend: 'iterm' }))).toEqual({ ok: true, tmuxSession: null, handle: '%12' });
+    expect(parseSpawnAnswer(spawned('bad name; rm'))).toEqual({ ok: true, tmuxSession: null, handle: '%12' });
     expect(parseSpawnAnswer('spawned tmux session work-2  (attach: tmux attach -t work-2)')).toBeNull();
-    expect(parseSpawnAnswer('{"ok":false,"kind":"dir_missing","error":"nope"}')).toEqual({ ok: false, kind: 'dir_missing', error: 'nope' });
+    expect(parseSpawnAnswer('{"ok":false,"kind":"dir_missing","error":"nope"}')).toEqual({ ok: false, kind: 'dir_missing', error: 'nope', starting: null });
   });
 
   it('LAUNCH-4.1: a Session host named after a long directory (201 characters, or 255 and a suffix) is still recognized', async () => {
     const long = `${'a'.repeat(200)}b`;
     const longest = `${'c'.repeat(255)}-2`;
-    expect(parseSpawnAnswer(spawned(long))).toEqual({ ok: true, tmuxSession: long });
-    expect(parseSpawnAnswer(spawned(longest))).toEqual({ ok: true, tmuxSession: longest });
-    expect(parseSpawnAnswer(spawned('x'.repeat(MAX_TMUX_NAME + 1)))).toEqual({ ok: true, tmuxSession: null });
+    expect(parseSpawnAnswer(spawned(long))).toEqual({ ok: true, tmuxSession: long, handle: '%12' });
+    expect(parseSpawnAnswer(spawned(longest))).toEqual({ ok: true, tmuxSession: longest, handle: '%12' });
+    expect(parseSpawnAnswer(spawned('x'.repeat(MAX_TMUX_NAME + 1)))).toEqual({ ok: true, tmuxSession: null, handle: '%12' });
     const t = setup({ spawn: async () => spawned(long) });
     const launch = await t.launcher.start(req());
     t.launcher.observe([row({ session_id: 'sess-9', tmux_session: long })]);
@@ -550,8 +551,8 @@ describe('resuming past Sessions (HIST-3), through the same path as a start', ()
     await t.launcher.resume(resumeReq);
     await vi.advanceTimersByTimeAsync(15_000);
     const failed = t.launcher.list()[0]!;
-    expect(failed).toMatchObject({ state: 'failed', terminal: null, error: expect.stringContaining('being started elsewhere') });
-    expect(failed.error).toMatch(/trust prompt/);
+    expect(failed).toMatchObject({ state: 'failed', terminal: null, error: expect.stringContaining('being started in another terminal app') });
+    expect(failed.error).toMatch(/Trust prompt/);
     expect(failed.error).not.toMatch(/tmux/i);
     expect(t.calls.some((c) => c.file === 'tmux')).toBe(false);
   });
@@ -564,7 +565,7 @@ describe('resuming past Sessions (HIST-3), through the same path as a start', ()
     expect(t.launcher.list()[0]!.error).toContain('Session host is still running');
     answer(spawnFailed('session_starting', `session ${resumeReq.sessionId} is starting`));
     await pending;
-    expect(t.launcher.list()[0]).toMatchObject({ state: 'failed', terminal: null, error: expect.stringContaining('being started elsewhere') });
+    expect(t.launcher.list()[0]).toMatchObject({ state: 'failed', terminal: null, error: expect.stringContaining('being started in another terminal app') });
   });
 
   it('HIST-3.3: Fleet\u2019s `dir_missing` keeps its kind (DirMissingError), and no row stays', async () => {

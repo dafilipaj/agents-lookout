@@ -74,9 +74,10 @@ beforeEach(async () => {
       harnesses: async () => [],
       start: async (input: unknown) => {
         launched.push(input);
-        return { id: 'l', title: 't', harness: 'claude', directory: '~', startedAt: 0, state: 'starting', error: null, terminal: null };
+        return { id: 'l', title: 't', harness: 'claude', directory: '~', startedAt: 0, state: 'starting', trust: null, error: null, terminal: null };
       },
       dismiss: () => false,
+      answerTrust: async () => null, trustDisconnected: () => {},
     },
     usage: { snapshot: () => USAGE, watch: () => () => {}, refreshJev: async () => {}, refresh: async () => {} },
     work: new WorkMonitor({ runner: async () => '', tbPrBin: () => '/nonexistent/tb-pr', tbProdBin: () => '/nonexistent/tb-prod', tbSessionBin: () => '/nonexistent/tb-session', onChange: () => {} }),
@@ -162,6 +163,7 @@ beforeEach(async () => {
   origin = `http://127.0.0.1:${port}`;
   origins.add(origin);
 });
+
 afterEach(async () => {
   real?.viewer.stop();
   real = null;

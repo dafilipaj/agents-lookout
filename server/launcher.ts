@@ -8,6 +8,7 @@ import { sessionId } from './normalize.ts';
 import { sanitizeLine } from './sanitize.ts';
 import { EFFORT_LEVEL, MODEL_ID } from '../shared/model.ts';
 import { expandHome } from './settings.ts';
+import { object, parseTrustRead, TRUST_ID, TRUST_UNCERTAIN, trustCode, trustMessage } from './launch-trust.ts';
 
 export { LAUNCH_TIMEOUT_MS } from '../shared/defaults.ts';
 import { LAUNCH_TIMEOUT_MS } from '../shared/defaults.ts';
@@ -15,6 +16,8 @@ import { LAUNCH_TIMEOUT_MS } from '../shared/defaults.ts';
 export const HARNESS_CACHE_MS = 10 * 60_000;
 /** A completed start's Session stays known this long, for a tab that reconnects (LAUNCH-4.2). */
 export const RECENT_START_MS = 60_000;
+/** LAUNCH-6.1: Trust prompt reads must not wait for Fleet list polls to finish. */
+const TRUST_POLL_INTERVAL_MS = 2000;
 
 const SPAWN_TIMEOUT_MS = 20_000;
 const MAX_NAME = 80;
@@ -63,8 +66,8 @@ export function cleanEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 
 /** What `fleet spawn --json` answered (Fleet docs/cli.md, "Spawning"), validated. */
 export type SpawnAnswer =
-  | { ok: true; tmuxSession: string | null }
-  | { ok: false; kind: string; error: string | null }
+  | { ok: true; tmuxSession: string | null; handle: string | null }
+  | { ok: false; kind: string; error: string | null; starting: { tmuxSession: string; handle: string } | null }
   | null;
 
 /**
@@ -87,10 +90,10 @@ export function parseSpawnAnswer(text: string | undefined): SpawnAnswer {
   if (typeof v !== 'object' || v === null || Array.isArray(v)) return null;
   const r = v as Record<string, unknown>;
   if (r.ok === true) {
-    return { ok: true, tmuxSession: typeof r.tmux_session === 'string' && TMUX_NAME.test(r.tmux_session) ? r.tmux_session : null };
+    return { ok: true, tmuxSession: typeof r.tmux_session === 'string' && TMUX_NAME.test(r.tmux_session) ? r.tmux_session : null, handle: paneHandle(r.handle) };
   }
   if (r.ok === false) {
-    return { ok: false, kind: typeof r.kind === 'string' ? r.kind.slice(0, 40) : 'other', error: typeof r.error === 'string' ? r.error : null };
+    return { ok: false, kind: typeof r.kind === 'string' ? r.kind.slice(0, 40) : 'other', error: typeof r.error === 'string' ? r.error : null, starting: startingHost(r.starting) };
   }
   return null;
 }
@@ -132,11 +135,32 @@ function tmuxSafe(name: string): string {
     .replace(/^-|-$/g, '');
 }
 
+function paneHandle(v: unknown): string | null {
+  return typeof v === 'string' && /^%[0-9]{1,16}$/.test(v) ? v : null;
+}
+function startingHost(v: unknown): { tmuxSession: string; handle: string } | null {
+  if (typeof v !== 'object' || v === null) return null;
+  const r = v as Record<string, unknown>;
+  const handle = paneHandle(r.handle);
+  return typeof r.tmux_session === 'string' && TMUX_NAME.test(r.tmux_session) && handle ? { tmuxSession: r.tmux_session, handle } : null;
+}
+
+export class TrustError extends LaunchError {
+  readonly kind: 'refused' | 'uncertain';
+  constructor(status: number, message: string, kind: 'refused' | 'uncertain' = 'refused') { super(status, message); this.kind = kind; }
+}
+
 interface Launch extends LaunchView {
+  handle: string | null;
+  reading: Promise<void> | null;
+  answering: boolean;
+  uncertain: Set<string>;
+  readDetail: string | null;
+  trustEpoch: number;
   tmuxSession: string | null;
   /** HIST-3.1: the Session it resumes, which Fleet reports under the same id. */
   resumes: string | null;
-  /** Fleet's `session_starting`: started elsewhere, so no Session host of its own to read. */
+  /** Fleet's `session_starting`: started elsewhere; C7 may name its Session host. */
   elsewhere: boolean;
   timer: NodeJS.Timeout | null;
 }
@@ -150,6 +174,7 @@ export interface LauncherOptions {
   env?: NodeJS.ProcessEnv;
   now?: () => number;
   timeoutMs?: number;
+  log?: (line: string) => void;
 }
 
 /** Starts Sessions through `fleet spawn` (LAUNCH) and follows them until Fleet reports them. */
@@ -160,6 +185,9 @@ export class Launcher {
   private harnessCache: { at: number; value: HarnessOption[] } | null = null;
   /** Bumped by `dropHarnesses`: a read started before it isn't cached. */
   private harnessEpoch = 0;
+  private trustSupported = true;
+  private stopped = false;
+  private trustTimer: NodeJS.Timeout | null = null;
   private readonly opts: LauncherOptions;
   private readonly now: () => number;
 
@@ -308,6 +336,13 @@ export class Launcher {
       directory: init.directory,
       startedAt: this.now(),
       state: 'starting',
+      trust: null,
+      handle: null,
+      reading: null,
+      answering: false,
+      uncertain: new Set(),
+      readDetail: null,
+      trustEpoch: 0,
       error: null,
       terminal: null,
       tmuxSession: null,
@@ -317,8 +352,7 @@ export class Launcher {
     };
     this.launches.set(launch.id, launch);
     // LAUNCH-4.5: the 15 s count from when the "Starting…" row appears, not from when spawn returns.
-    launch.timer = setTimeout(() => this.timedOut(launch.id), this.opts.timeoutMs ?? LAUNCH_TIMEOUT_MS);
-    launch.timer.unref?.();
+    this.armTimer(launch);
     this.changed();
 
     let stdout: string;
@@ -330,10 +364,18 @@ export class Launcher {
       // this "Starting…" row stays and follows the Session id until Fleet reports it.
       if (init.resumes !== null && spawnKind(err as RunError) === 'session_starting') {
         launch.elsewhere = true;
+        const answer = parseSpawnAnswer((err as RunError).stdout);
+        if (answer && !answer.ok && answer.starting) {
+          launch.tmuxSession = answer.starting.tmuxSession;
+          launch.handle = answer.starting.handle;
+          this.scheduleTrustReads();
+          await this.readTrust(launch);
+        }
         // Already past the deadline while spawn ran: the failure says why there are no lines.
         if (launch.state === 'failed' && this.launches.has(launch.id)) {
           launch.error = this.timeoutError(launch);
           this.changed();
+          if (launch.tmuxSession) void this.attachTerminal(launch.id);
         }
         return view(launch);
       }
@@ -344,6 +386,9 @@ export class Launcher {
     }
     const answer = parseSpawnAnswer(stdout);
     launch.tmuxSession = answer?.ok ? answer.tmuxSession : null;
+    launch.handle = answer?.ok ? answer.handle : null;
+    this.scheduleTrustReads();
+    await this.readTrust(launch);
     // Already past the deadline while spawn ran: its terminal can be read now.
     if (launch.state === 'failed' && this.launches.has(launch.id)) void this.attachTerminal(launch.id);
     return view(launch);
@@ -377,20 +422,183 @@ export class Launcher {
   /** Removes a failed launch's row. Its Session host keeps running. */
   dismiss(id: string): boolean {
     const launch = this.launches.get(id);
-    if (!launch || launch.state !== 'failed') return false;
+    if (!launch || launch.answering || (launch.state !== 'failed' && launch.state !== 'trust')) return false;
+    if (launch.timer) clearTimeout(launch.timer);
     this.launches.delete(id);
     this.changed();
     return true;
   }
 
   stop(): void {
+    this.stopped = true;
+    if (this.trustTimer) clearTimeout(this.trustTimer);
+    this.trustTimer = null;
     for (const l of this.launches.values()) if (l.timer) clearTimeout(l.timer);
   }
 
-  /** LAUNCH-4.5: mark it failed at once; its terminal's last lines follow when they're read. */
-  private timedOut(id: string): void {
+  /** An independent cadence: even a stalled list poll cannot hold back the Trust card. */
+  private scheduleTrustReads(): void {
+    if (this.trustTimer || this.stopped || !this.trustSupported) return;
+    if (![...this.launches.values()].some((l) => l.harness === 'claude' && l.tmuxSession && l.handle && l.state !== 'failed')) return;
+    this.trustTimer = setTimeout(() => {
+      this.trustTimer = null;
+      this.scheduleTrustReads();
+      void this.readTrusts();
+    }, TRUST_POLL_INTERVAL_MS);
+    this.trustTimer.unref?.();
+  }
+
+  /** LAUNCH-6.1: reads on the launcher's cadence; no overlapping read per launch. */
+  async readTrusts(): Promise<void> {
+    // These reads run in the background: one unexpected failure must never reject its caller.
+    await Promise.allSettled([...this.launches.values()].map((l) => this.readTrust(l)));
+  }
+
+  private readTrust(l: Launch): Promise<void> {
+    if (this.stopped || !this.trustSupported || this.launches.get(l.id) !== l || l.harness !== 'claude' || !l.tmuxSession || !l.handle || l.state === 'failed' || l.answering) return Promise.resolve();
+    if (l.reading) return l.reading;
+    const epoch = l.trustEpoch;
+    l.reading = (async () => {
+      let res: Record<string, unknown> | null;
+      try {
+        res = object(await this.opts.runner(this.opts.fleetBin(), this.trustArgs(l, '--list'), { timeoutMs: 5000, env: this.env }));
+      } catch (err) {
+        const e = err as RunError;
+        if (typeof e?.stderr === 'string' && /error: unrecognized subcommand ['"]trust['"]/.test(e.stderr)) {
+          if (this.trustSupported) this.log('lookout: trust unavailable: kind=unsupported detail=none typed=false');
+          this.trustSupported = false;
+        }
+        res = object(e?.stdout);
+      }
+      if (this.stopped || this.launches.get(l.id) !== l || l.state === 'failed' || epoch !== l.trustEpoch) return;
+      if (res?.detail != null && typeof res.detail !== 'string') return;
+      const missing = res?.ok === false && typeof res.kind === 'string' && ['target_not_found', 'target_changed', 'host_unsupported'].includes(res.kind);
+      const trust = missing ? null : parseTrustRead(res);
+      if (trust === undefined) return;
+      if (trust === null) {
+        l.readDetail = null;
+        if (l.state !== 'trust') return;
+        this.waitAgain(l);
+      } else {
+        if (!trust.answerable && trust.detail !== l.readDetail) this.logTrust(l, 'read', null, res?.detail, false);
+        l.readDetail = trust.detail;
+        if (trust.id && l.uncertain.has(trust.id)) {
+          trust.answerable = false;
+          trust.message = TRUST_UNCERTAIN;
+        }
+        const changedId = l.trust?.id !== trust.id;
+        if (changedId) l.terminal = null;
+        l.state = 'trust';
+        l.trust = trust;
+        if (l.timer) clearTimeout(l.timer);
+        l.timer = null;
+        if (changedId && trust.message === TRUST_UNCERTAIN && trust.id) void this.attachTerminal(l.id, trust.id);
+      }
+      this.changed();
+    })().finally(() => { l.reading = null; });
+    return l.reading;
+  }
+
+  private trustArgs(l: Launch, mode: '--list' | '--accept' | '--decline'): string[] {
+    return ['--local', 'trust', l.tmuxSession!, '--pane', l.handle!, '--json', mode];
+  }
+
+  /** The tab lost its answer's connection. A confirmed outcome wins; otherwise this id stays held. */
+  trustDisconnected(id: string, prompt: string): void {
+    const l = this.launches.get(id);
+    if (l?.answering && l.trust?.id === prompt) l.uncertain.add(prompt);
+  }
+
+  /** LAUNCH-6.4–6.12: only an explicit click enters this method; Fleet checks the screen again. */
+  async answerTrust(id: string, input: unknown): Promise<LaunchView | null> {
+    const req = typeof input === 'object' && input !== null ? input as Record<string, unknown> : {};
+    if ((req.answer !== 'accept' && req.answer !== 'decline') || typeof req.prompt !== 'string' || !TRUST_ID.test(req.prompt)) throw new TrustError(400, 'Invalid trust answer.');
+    const l = this.launches.get(id);
+    if (!l || l.state !== 'trust' || !l.trust) throw new TrustError(409, 'The prompt is gone, so nothing was typed.');
+    if (l.answering) throw new TrustError(409, 'Another tab is answering…');
+    if (l.trust.id !== req.prompt) throw new TrustError(409, 'The prompt changed before Lookout answered, so nothing was typed.');
+    if (l.uncertain.has(req.prompt)) throw new TrustError(409, TRUST_UNCERTAIN, 'uncertain');
+    if (!l.trust.answerable) throw new TrustError(409, l.trust.message ?? 'Lookout cannot answer this prompt.');
+    l.answering = true;
+    l.trustEpoch++;
+    l.trust = { ...l.trust, answering: req.answer, message: null };
+    this.changed();
+    let result: Record<string, unknown> | null;
+    let runError: RunError | null = null;
+    const args = [...this.trustArgs(l, req.answer === 'accept' ? '--accept' : '--decline'), '--prompt', req.prompt, '--allow-attached'];
+    if (req.answer === 'decline') args.push('--close');
+    try {
+      result = object(await this.opts.runner(this.opts.fleetBin(), args, { timeoutMs: 15_000, env: this.env }));
+    } catch (err) {
+      runError = err as RunError;
+      result = object(runError.stdout);
+    }
+    l.answering = false;
+    // A monitor tick can have reported the Session while Fleet was verifying the answer.
+    if (this.launches.get(id) !== l || this.stopped) return this.launches.has(id) ? view(l) : null;
+    const success = !runError && result?.ok === true && result.answered === true && result.id === req.prompt && result.answer === req.answer;
+    if (success && req.answer === 'accept') {
+      this.waitAgain(l);
+      this.changed();
+      return view(l);
+    }
+    if (success && result && req.answer === 'decline' && typeof result.closed === 'boolean') {
+      if (result.closed) {
+        this.launches.delete(id);
+        this.changed();
+        return null;
+      }
+      l.state = 'failed';
+      l.trust = null;
+      l.error = result.close_detail === 'still_running'
+        ? "Cancelled, but Claude Code didn't exit, so its Session host is still running."
+        : "Cancelled, but its Session host couldn't be closed.";
+      this.changed();
+      await this.attachTerminal(id);
+      return view(l);
+    }
+    const kind = trustCode(result?.kind, 'kind');
+    const uncertain = l.uncertain.has(req.prompt) || runError?.timedOut || result?.ok !== false || result.typed !== false || kind === 'none' || kind === 'other' || kind === 'prompt_changed' || kind === 'outcome_uncertain';
+    const message = uncertain ? TRUST_UNCERTAIN : trustMessage(result?.kind, result?.detail, result?.pane);
+    if (uncertain) l.uncertain.add(req.prompt);
+    l.trust = { ...l.trust, answering: null, answerable: false, message };
+    this.changed();
+    this.logTrust(l, req.answer, result?.kind, result?.detail, typeof result?.typed === 'boolean' ? result.typed : !!uncertain);
+    if (uncertain) await this.attachTerminal(id, req.prompt);
+    throw new TrustError(uncertain ? 502 : 409, message, uncertain ? 'uncertain' : 'refused');
+  }
+
+  private waitAgain(l: Launch): void {
+    l.state = 'starting';
+    l.trust = null;
+    l.terminal = null;
+    this.armTimer(l);
+  }
+
+  private armTimer(l: Launch): void {
+    if (l.timer) clearTimeout(l.timer);
+    l.timer = setTimeout(() => { void this.timedOut(l.id); }, this.opts.timeoutMs ?? LAUNCH_TIMEOUT_MS);
+    l.timer.unref?.();
+  }
+
+  private logTrust(l: Launch, answer: string, kind: unknown, detail: unknown, typed: boolean): void {
+    this.log(`lookout: trust refused: launch=${LAUNCH_ID.test(l.id) ? l.id : 'other'} answer=${answer} kind=${trustCode(kind, 'kind')} detail=${trustCode(detail, 'detail')} typed=${typed}`);
+  }
+
+  private log(line: string): void {
+    try { (this.opts.log ?? console.warn)(line); } catch { /* A logger cannot change an answer's outcome. */ }
+  }
+
+  /** LAUNCH-6.2: check once more at the deadline before failing; its last lines follow. */
+  private async timedOut(id: string): Promise<void> {
     const launch = this.launches.get(id);
     if (!launch || launch.state !== 'starting') return;
+    // A monitor read may have captured its screen before the deadline. Wait it out, then
+    // capture again: a prompt drawn in that gap must still hold the start (LAUNCH-6.2).
+    if (launch.reading) await launch.reading;
+    if (this.stopped || this.launches.get(id) !== launch || launch.state !== 'starting') return;
+    await this.readTrust(launch);
+    if (this.stopped || this.launches.get(id) !== launch || launch.state !== 'starting') return;
     launch.state = 'failed';
     launch.timer = null;
     launch.error = this.timeoutError(launch);
@@ -405,14 +613,14 @@ export class Launcher {
   private timeoutError(launch: Launch): string {
     const after = `Fleet hasn't reported it after ${Math.round((this.opts.timeoutMs ?? LAUNCH_TIMEOUT_MS) / 1000)} s.`;
     if (launch.elsewhere && !launch.tmuxSession) {
-      return `${after} It's being started elsewhere (waiting at a trust prompt, say); answer it there.`;
+      return `${after} It's being started in another terminal app (waiting at its Trust prompt, say); answer it there.`;
     }
     // Decision 0001: the UI never mentions tmux; the Session host is the Glossary's word.
     return `${after} Its Session host is still running.`;
   }
 
   /** Reads the Session host's screen (the only place Lookout touches tmux) and shows its end. */
-  private async attachTerminal(id: string): Promise<void> {
+  private async attachTerminal(id: string, prompt?: string): Promise<void> {
     const launch = this.launches.get(id);
     if (!launch?.tmuxSession) return;
     let out: string;
@@ -421,7 +629,7 @@ export class Launcher {
     } catch {
       return;
     }
-    if (this.launches.get(id) !== launch) return; // reported or dismissed meanwhile
+    if (this.launches.get(id) !== launch || (prompt && launch.trust?.id !== prompt)) return; // reported, dismissed or another prompt meanwhile
     launch.terminal = lastLines(out, TERMINAL_LINES);
     this.changed();
   }
@@ -473,6 +681,7 @@ function view(l: Launch): LaunchView {
     directory: l.directory,
     startedAt: l.startedAt,
     state: l.state,
+    trust: l.trust,
     error: l.error,
     terminal: l.terminal,
   };
