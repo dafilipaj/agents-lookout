@@ -117,7 +117,16 @@ export class Viewer {
       env: opts.env,
       intervalMs: opts.intervalMs,
     });
-    this.answerer = { runner: opts.runner, fleetBin: opts.fleetBin, lookup: opts.lookup, freshList: opts.freshList, ledger: opts.ledger, env: opts.env };
+    this.answerer = {
+      runner: opts.runner,
+      fleetBin: opts.fleetBin,
+      lookup: opts.lookup,
+      freshList: opts.freshList,
+      ledger: opts.ledger,
+      env: opts.env,
+      // VIEW-10.3: the answer is checked against its question as the chat read it from the Transcript.
+      questions: (sessionId, questionId) => this.chat.question(sessionId, questionId),
+    };
     this.chat = new ChatFeed({
       runner: opts.runner,
       fleetBin: opts.fleetBin,

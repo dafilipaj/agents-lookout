@@ -22,6 +22,9 @@ const MAX_CURSOR = 512;
 const MAX_QUESTIONS = 10;
 const MAX_OPTIONS = 20;
 const MAX_LABEL = 1000;
+/** VIEW-10: an option's preview is kept whole or not at all: a cut mockup would mislead. */
+const MAX_PREVIEW = 16_000;
+const MAX_PREVIEW_LINES = 400;
 
 /** Failure kinds from the contract, plus what can go wrong before Fleet answers. */
 export type MessagesFailureKind =
@@ -238,11 +241,36 @@ function toQuestions(v: unknown): ChatQuestion[] | null {
     const options = r.options
       .slice(0, MAX_OPTIONS)
       .map((o) => (typeof o === 'object' && o !== null ? (o as Record<string, unknown>) : {}))
-      .map((o) => ({ label: str(o.label, MAX_LABEL) ?? '', description: str(o.description, MAX_LABEL) ?? '' }));
+      .map((o) => {
+        const option: ChatQuestion['options'][number] = { label: str(o.label, MAX_LABEL) ?? '', description: str(o.description, MAX_LABEL) ?? '' };
+        const preview = toPreview(o.preview);
+        if (preview === TOO_LONG) option.previewTooLong = true;
+        else if (preview !== null) option.preview = preview;
+        return option;
+      });
     out.push({ question, header: str(r.header, 200) ?? '', multiSelect: r.multiSelect === true, options });
   }
   return out;
 }
+
+/**
+ * VIEW-10: an option's preview, exactly as Fleet gives it (contract C1: the Transcript's text, never
+ * trimmed or rendered), when it's a string of at most 16,000 characters and 400 lines. One over
+ * those is never cut: a sentinel marks the option (`previewTooLong`) and its box says so. A
+ * blank one, or not a string, is none, as Fleet counts it (C1), so a question has previews in
+ * Lookout exactly when Fleet draws it with them (C4).
+ */
+function toPreview(v: unknown): string | typeof TOO_LONG | null {
+  if (typeof v !== 'string' || isBlank(v)) return null;
+  if (v.length > MAX_PREVIEW || v.split('\n').length > MAX_PREVIEW_LINES) return TOO_LONG;
+  return v;
+}
+
+/** Not a string, so a preview whose text is literally `too-long` stays a preview. */
+const TOO_LONG = Symbol('too-long');
+
+/** Blank as Rust's `str::trim` has it (Unicode White_Space), which JS `trim()` differs from at U+FEFF. */
+const isBlank = (s: string) => /^[\t-\r \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]*$/.test(s);
 
 function toAnswer(v: unknown, questions: ChatQuestion[]): ChatAnswer | null {
   if (typeof v !== 'object' || v === null) return null;

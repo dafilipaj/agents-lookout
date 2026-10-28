@@ -196,6 +196,81 @@ describe('entries are validated and bounded', () => {
       answer: { declined: true },
     });
   });
+
+  it('VIEW-10.2: an option’s preview reaches the chat exactly as Fleet gives it; one over 16,000 characters or 400 lines is dropped, never cut, and marked `previewTooLong`; a blank one or one not a string is none', () => {
+    const exact = '  ┌──┐  \n  │[__________]│\n\n  └──┘\t\n';
+    const options = (q: unknown) => (q as { questions: { options: Record<string, unknown>[] }[] }).questions[0]!.options;
+    const parsed = toEntry({
+      cursor: 'c',
+      kind: 'question',
+      id: 'toolu_1',
+      questions: [
+        {
+          question: 'Which layout?',
+          header: 'Layout',
+          multiSelect: false,
+          options: [
+            { label: 'A', description: '', preview: exact },
+            { label: 'B', preview: 'x'.repeat(16_000) },
+            { label: 'C', preview: 'x'.repeat(16_001) },
+            { label: 'D', preview: Array.from({ length: 400 }, () => 'l').join('\n') },
+            { label: 'E', preview: Array.from({ length: 401 }, () => 'l').join('\n') },
+            { label: 'F', preview: '  \n ' },
+            { label: 'G', preview: 7 },
+            { label: 'H' },
+          ],
+        },
+      ],
+      status: 'pending',
+    });
+    const got = options(parsed);
+    expect(got[0]).toEqual({ label: 'A', description: '', preview: exact });
+    expect(got[1]!.preview).toHaveLength(16_000);
+    expect(got[3]!.preview!.toString().split('\n')).toHaveLength(400);
+    for (const i of [2, 4, 5, 6, 7]) expect(got[i], String(i)).not.toHaveProperty('preview');
+    for (const i of [2, 4]) expect(got[i], String(i)).toMatchObject({ previewTooLong: true });
+    for (const i of [0, 1, 3, 5, 6, 7]) expect(got[i], String(i)).not.toHaveProperty('previewTooLong');
+  });
+
+  it('VIEW-10.2: a preview whose text is literally `too-long` stays a preview; one of only U+FEFF is kept, as Fleet (Rust’s trim) keeps it, while Unicode white space is blank', () => {
+    const parsed = toEntry({
+      cursor: 'c',
+      kind: 'question',
+      id: 'toolu_1',
+      questions: [
+        {
+          question: 'Which?',
+          header: 'H',
+          multiSelect: false,
+          options: [
+            { label: 'A', preview: 'too-long' },
+            { label: 'B', preview: '\uFEFF' },
+            { label: 'C', preview: '\u00a0\u3000\u2003 ' },
+          ],
+        },
+      ],
+      status: 'pending',
+    });
+    const got = (parsed as unknown as { questions: { options: Record<string, unknown>[] }[] }).questions[0]!.options;
+    expect(got[0]).toEqual({ label: 'A', description: '', preview: 'too-long' });
+    expect(got[1]).toEqual({ label: 'B', description: '', preview: '\uFEFF' });
+    expect(got[2]).toEqual({ label: 'C', description: '' });
+  });
+
+  it('VIEW-10.2: the fake `fleet`’s `messages` gives an option its `preview`, as the fork does (contract C1, C8)', async () => {
+    const res = await fetchReal('eeeeeeee-0000-4000-8000-000000000106', { limit: 30 });
+    if (!res.ok) throw new Error(res.error);
+    const questions = res.entries.filter((e) => e.kind === 'question');
+    expect(questions.map((q) => [q.id, q.status])).toEqual([
+      ['toolu_p1', 'answered'],
+      ['toolu_p2', 'pending'],
+    ]);
+    const [answered, pending] = questions;
+    // A's question: every option with its mockup, as Claude Code wrote it.
+    expect(answered!.questions[0]!.options.map((o) => o.preview?.split('\n')[3])).toEqual(['│ Team     │ Name   [__________] │', '│ Name   [__________]            │', '│ ──────────────────────         │']);
+    // P1's form: the plain question has none, the second has three.
+    expect(pending!.questions.map((q) => q.options.filter((o) => 'preview' in o).length)).toEqual([0, 3]);
+  });
 });
 
 describe('Fleet error text', () => {

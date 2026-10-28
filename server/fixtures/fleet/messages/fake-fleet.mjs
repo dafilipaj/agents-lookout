@@ -32,12 +32,14 @@
 //   `--list` reports the row's `fake_prompt` (a permission prompt, `{ kind: 'permission',
 //   incomplete: true, reason }`, a question form, a cut-off one `{ kind: 'question', incomplete:
 //   true, id: null, … }`, or null); without one, a `waiting` row whose Transcript has a pending
-//   question shows that question's form, untouched. Beside it, as the fork from ec4ed52 does,
+//   question shows that question's form, untouched, a form with previews too (VIEW-10, the fork's
+//   preview layout from 4a79da9: contract C4, C8). Beside it, as the fork from ec4ed52 does,
 //   `answerable`, `detail` (why not: the row's `fake_detail`, else what the prompt shows: `no_form`,
 //   `clipped`, `cursor_moved`, `touched`) and `pane` (the row's `fake_pane`, default 200x50; `null`
 //   too). `--choice` and `--question` check what Fleet checks (the prompt on screen, whole and
 //   untouched, its id, the choice, the question pending and the one waiting, the Session
-//   `waiting`, the answers' shape) and fail with Fleet's kinds, each failure with `detail` and
+//   `waiting`, the answers' shape: a single-select question with a `preview` on an option takes
+//   exactly one option and no text, contract C5) and fail with Fleet's kinds, each failure with `detail` and
 //   `pane`; with FAKE_FLEET_DIR an answer clears the prompt, records a question's answer and turns
 //   the row `busy`. A row's `fake_answer` (any kind, e.g. `busy`, `outcome_uncertain`,
 //   `prompt_changed`, `prompt_incomplete`) makes every answer fail with it, and `fake_detail`;
@@ -436,7 +438,11 @@ function answerQuestion(row, base, prompt, opts, refuse) {
   out({ ...base, answered: !dryRun, ...(dryRun ? { dry_run: true } : {}), prompt_kind: 'question', id: q.id, steps: [] });
 }
 
-/** Fleet's `validate_answer`: one answer per question, options in range, single-select exactly one. */
+/**
+ * Fleet's `validate_answer`: one answer per question, options in range, single-select exactly one;
+ * a question in the preview layout (single-select, a `preview` on an option) exactly one option and
+ * no text (contract C5).
+ */
 function validateAnswers(answers, questions, refuse) {
   if (!Array.isArray(answers) || answers.length !== questions.length) refuse('answer_invalid', `answers must be an array of ${questions.length}`);
   return answers.map((a, i) => {
@@ -448,6 +454,10 @@ function validateAnswers(answers, questions, refuse) {
     if (/[\u0000-\u001f\u007f-\u009f]/.test(raw)) refuse('answer_invalid', `answers[${i}].text must be a single line without control characters`);
     const text = raw.trim();
     const options = [...new Set(opts)].sort((x, y) => x - y);
+    if (!q.multiSelect && q.options.some((o) => typeof o.preview === 'string' && !/^[\t-\r \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]*$/.test(o.preview))) {
+      if (options.length !== 1 || text) refuse('answer_invalid', `answers[${i}]: the question's options have previews — pick exactly one option, no text`);
+      return { options, text: '' };
+    }
     if (q.multiSelect ? options.length === 0 && !text : options.length + (text ? 1 : 0) !== 1) {
       refuse('answer_invalid', `answers[${i}]: pick ${q.multiSelect ? 'at least one option' : 'exactly one option'} or type something`);
     }

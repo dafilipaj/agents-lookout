@@ -8,6 +8,7 @@ import {
   INCOMPLETE,
   LOST_ANSWER,
   LOST_STOP,
+  QUESTION_LAYOUT,
   QUESTION_NOT_SHOWN,
   QUESTION_TOUCHED,
   QUESTION_UNCHECKED,
@@ -18,7 +19,7 @@ import {
   doesntFit,
 } from '@/lib/answers';
 import { SaveError } from '@/lib/client';
-import { NOW, renderApp, row, rowEl } from '@/test/helpers';
+import { NOW, fakeResizeObserver, movePointer, renderApp, row, rowEl, sizeBoxByText } from '@/test/helpers';
 
 const PERMISSION: Extract<ScreenPrompt, { kind: 'permission' }> = {
   kind: 'permission',
@@ -1004,5 +1005,257 @@ describe('Esc (VIEW-4.5)', () => {
     expect(header().querySelector('[data-slot="stop-error"]')).toHaveTextContent(LOST_STOP);
     expect(escButton()).toHaveAccessibleDescription(LOST_STOP);
     expect(drawerToggle()).toHaveAttribute('aria-expanded', 'true');
+  });
+});
+
+describe('questions with previews (VIEW-10)', () => {
+  /** P1's mockups (Claude Code 2.1.312 capture, 2026-10-28, neutral text): a framed box, six lines inside. */
+  const mockup = (title: string) =>
+    ['┌──────────────────────┐', ...[title, 'line 2', 'line 3', 'line 4', 'line 5', 'line 6'].map((l) => `│ ${l.padEnd(21)}│`), '└──────────────────────┘'].join('\n');
+  /** P1's form: a plain question, then one whose options have previews (here the last without one). */
+  const FRUIT: ChatQuestion = {
+    question: 'Which fruit do you prefer?',
+    header: 'Fruit',
+    multiSelect: false,
+    options: [
+      { label: 'Apple', description: 'Crisp and sweet' },
+      { label: 'Pear', description: 'Soft and juicy' },
+    ],
+  };
+  const LAYOUT: ChatQuestion = {
+    question: 'Which layout should the page use?',
+    header: 'Layout',
+    multiSelect: false,
+    options: [
+      { label: 'Sidebar', description: 'Option Sidebar', preview: mockup('Sidebar') },
+      { label: 'Top tabs', description: 'Option Top tabs', preview: mockup('Top tabs') },
+      { label: 'Single page', description: 'Option Single page' },
+    ],
+  };
+  const chat = () => screen.getByTestId('chat');
+  const card = () => chat().querySelector('[data-kind="question"]') as HTMLElement;
+  const option = (name: RegExp | string) => within(chat()).getByRole('button', { name });
+  const box = () => within(chat()).getByRole('region', { name: /^Preview: / });
+  const submit = () => within(chat()).queryByRole('button', { name: 'Submit' });
+
+  it('VIEW-10.1: one box beside the options shows the option under the pointer, else the focused one, else the pick, else the first; one without a preview says "No preview"; a narrow card puts it under the options', async () => {
+    const user = userEvent.setup();
+    open({}, [question([LAYOUT])]).form();
+    expect(within(chat()).getAllByRole('region', { name: /^Preview: / })).toHaveLength(1);
+    // Nothing pointed at, focused or picked: the first.
+    expect(box()).toHaveAccessibleName('Preview: Sidebar');
+    expect(box().textContent).toBe(mockup('Sidebar'));
+    await user.hover(option(/^Top tabs/));
+    expect(box()).toHaveAccessibleName('Preview: Top tabs');
+    expect(box().textContent).toBe(mockup('Top tabs'));
+    // The option the box shows for the pointer has the hover look.
+    expect(option(/^Top tabs/)).toHaveClass('bg-accent', 'border-foreground/40');
+    await user.unhover(option(/^Top tabs/));
+    expect(box()).toHaveAccessibleName('Preview: Sidebar');
+    // Keyboard focus moves it too, and has the hover look; the pointer wins over it.
+    act(() => option(/^Top tabs/).focus());
+    expect(box()).toHaveAccessibleName('Preview: Top tabs');
+    expect(option(/^Top tabs/)).toHaveClass('bg-accent');
+    await user.hover(option(/^Single page/));
+    expect(box()).toHaveAccessibleName('Preview: Single page');
+    expect(box()).toHaveTextContent(/^No preview$/);
+    expect(box()).toHaveClass('text-muted-foreground');
+    // A pick holds it once the pointer and focus are elsewhere; it keeps the pick's own look.
+    await user.click(option(/^Single page/));
+    await user.unhover(option(/^Single page/));
+    act(() => option(/^Single page/).blur());
+    expect(box()).toHaveAccessibleName('Preview: Single page');
+    expect(option(/^Single page/)).toHaveClass('border-primary');
+    // Beside the options in a 20rem column, their tops level; under them below 36rem of the card's width.
+    expect(card()).toHaveClass('@container');
+    const layout = card().querySelector('[data-field="with-preview"]') as HTMLElement;
+    expect(layout).toHaveClass('flex', 'flex-col', '@min-[36rem]:flex-row', '@min-[36rem]:items-start');
+    expect(layout.firstElementChild).toHaveClass('@min-[36rem]:w-80', '@min-[36rem]:shrink-0');
+    expect(layout.lastElementChild).toHaveClass('min-w-0', '@min-[36rem]:flex-1');
+    expect(layout.firstElementChild).toContainElement(option(/^Sidebar/));
+    expect(layout.lastElementChild).toContainElement(box());
+    // The option's label over the box, in caption, muted.
+    expect(within(layout.lastElementChild as HTMLElement).getByText('Single page', { selector: 'p' })).toHaveClass('text-caption', 'text-muted-foreground');
+  });
+
+  it('VIEW-10.2: the box shows the preview as the Transcript has it, in the code font: never Markdown, never wrapped, never linked; it scrolls inside itself past 24 lines or sideways', () => {
+    const raw = [
+      '  Name   [__________]   **not bold**  ',
+      '# not a heading',
+      'see https://example.com/settings and src/app/settings.ts:12',
+      `wide ${'─'.repeat(300)}`,
+      ...Array.from({ length: 30 }, (_, i) => `row ${i + 1}`),
+    ].join('\n');
+    const odd: ChatQuestion = { ...LAYOUT, options: [{ label: 'Form', description: '', preview: raw }, LAYOUT.options[1]!] };
+    open({}, [question([odd])]).form();
+    const pre = box();
+    expect(pre.tagName).toBe('PRE');
+    // Line for line, spaces kept, nothing rendered.
+    expect(pre.textContent).toBe(raw);
+    expect(pre.querySelector('a, strong, h1, code')).toBeNull();
+    expect(pre.children).toHaveLength(0);
+    // The chat's code look (VIEW-1.14's block), never wrapped, at most 24 lines tall, scrolling inside itself.
+    expect(pre).toHaveClass('font-mono', 'text-meta', 'leading-[1.55]', 'bg-muted/60', 'border', 'border-border', 'rounded-md');
+    expect(pre).toHaveClass('whitespace-pre', 'overflow-auto', 'max-h-[calc(24lh_+_1.25rem_+_2px)]');
+    expect(pre.className).not.toMatch(/whitespace-pre-wrap|break-words|break-all/);
+    // Its column can shrink below the preview's width, so the chat never scrolls sideways.
+    expect(pre.parentElement).toHaveClass('min-w-0');
+  });
+
+  it('VIEW-10.3: a click picks and shows its preview, and Submit answers; one click never answers; no "Type something" for it, while a question without previews in the same form keeps its own', async () => {
+    const user = userEvent.setup();
+    const app = open({}, [question([FRUIT, LAYOUT])]);
+    app.form();
+    expect(within(chat()).getAllByRole('textbox')).toEqual([screen.getByRole('textbox', { name: 'Type something: Fruit' })]);
+    expect(screen.queryByRole('textbox', { name: 'Type something: Layout' })).toBeNull();
+    await user.click(option(/^Top tabs/));
+    expect(option(/^Top tabs/)).toHaveAttribute('aria-pressed', 'true');
+    expect(option(/^Top tabs/).querySelector('[data-field="choice"] svg')).toHaveClass('lucide-circle-dot');
+    expect(box()).toHaveAccessibleName('Preview: Top tabs');
+    expect(app.client.answer).not.toHaveBeenCalled();
+    expect(submit()).toBeDisabled();
+    await user.type(screen.getByRole('textbox', { name: 'Type something: Fruit' }), 'Mango');
+    await user.click(submit()!);
+    expect(app.client.answer).toHaveBeenCalledWith('a', { kind: 'question', question: 'toolu_13', answers: [{ options: [], text: 'Mango' }, { options: [1] }], epoch: 1 });
+  });
+
+  it('VIEW-10.3: alone, a question with previews still takes a pick, then Submit', async () => {
+    const user = userEvent.setup();
+    const app = open({}, [question([LAYOUT])]);
+    app.form();
+    expect(submit()).toBeDisabled();
+    await user.click(option(/^Sidebar/));
+    expect(app.client.answer).not.toHaveBeenCalled();
+    expect(option(/^Sidebar/)).toHaveAttribute('aria-pressed', 'true');
+    await user.click(option(/^Single page/));
+    await user.click(submit()!);
+    expect(app.client.answer).toHaveBeenCalledTimes(1);
+    expect(app.client.answer).toHaveBeenCalledWith('a', { kind: 'question', question: 'toolu_13', answers: [{ options: [2] }], epoch: 1 });
+  });
+
+  it('VIEW-10.4: its options are locked until a read confirms its form, as any question’s; a form Fleet recognises by its preview layout but can’t read says at once that Lookout can’t answer this kind of question', async () => {
+    const user = userEvent.setup();
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    try {
+      vi.setSystemTime(NOW);
+      const app = open({ statusSince: NOW - 60_000 }, [question([FRUIT, LAYOUT], { ts: new Date(NOW).toISOString() })]);
+      // Before the first read: locked, but the box still follows the pointer.
+      expect(option(/^Top tabs/)).toHaveAttribute('aria-disabled', 'true');
+      await user.hover(option(/^Top tabs/));
+      expect(box()).toHaveAccessibleName('Preview: Top tabs');
+      // Just asked, and Fleet says its layout can't be read: said at once, never "doesn't show it".
+      app.emit({ ...confirmed(), prompt: { kind: 'question', id: null, untouched: false }, answerable: false, detail: 'layout_unsupported', since: NOW - 60_000 });
+      expect(within(card()).getByRole('alert')).toHaveTextContent(QUESTION_LAYOUT);
+      expect(QUESTION_LAYOUT).toBe('Lookout can’t answer this kind of question. Answer it in the terminal.');
+      act(() => vi.advanceTimersByTime(FORM_WAIT_MS * 2));
+      expect(within(card()).getByRole('alert')).toHaveTextContent(QUESTION_LAYOUT);
+      expect(card()).not.toHaveTextContent(QUESTION_NOT_SHOWN);
+      // Read-only meanwhile, its box still there.
+      expect(within(card()).queryAllByRole('button')).toEqual([]);
+      expect(box()).toBeInTheDocument();
+      // A read that shows its form, untouched, as Fleet can answer it: the buttons come.
+      app.form(2);
+      expect(option(/^Top tabs/)).toBeEnabled();
+      expect(option(/^Top tabs/)).not.toHaveAttribute('aria-disabled');
+      expect(within(card()).queryByRole('alert')).toBeNull();
+      expect(app.client.answer).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('VIEW-10.5: a question with previews that takes several answers shows no box and is answered as any multi-select question', async () => {
+    const user = userEvent.setup();
+    const app = open({}, [question([{ ...LAYOUT, multiSelect: true }])]);
+    app.form();
+    expect(within(chat()).queryByRole('region', { name: /^Preview: / })).toBeNull();
+    expect(card().querySelector('[data-field="with-preview"]')).toBeNull();
+    expect(option(/^Sidebar/).querySelector('[data-field="choice"] svg')).toHaveClass('lucide-square');
+    await user.click(option(/^Sidebar/));
+    await user.click(option(/^Single page/));
+    await user.type(screen.getByRole('textbox', { name: 'Type something: Layout' }), 'and a footer');
+    await user.click(submit()!);
+    expect(app.client.answer).toHaveBeenCalledWith('a', { kind: 'question', question: 'toolu_13', answers: [{ options: [0, 2], text: 'and a footer' }], epoch: 1 });
+  });
+
+  it('VIEW-10.1: moving from an option into the box keeps its preview, by pointer and by Tab, and a box that scrolls stays focusable; it falls back only when the pointer and focus leave the area', async () => {
+    const { resize } = fakeResizeObserver();
+    const user = userEvent.setup();
+    open({}, [question([{ ...LAYOUT, options: LAYOUT.options.map((o) => ({ ...o, preview: o.preview ?? mockup(o.label) })) }])]).form();
+    await user.click(option(/^Sidebar/)); // the pick
+    // By pointer: across the gap into the box.
+    await user.hover(option(/^Top tabs/));
+    movePointer(option(/^Top tabs/), box());
+    expect(box()).toHaveAccessibleName('Preview: Top tabs');
+    expect(option(/^Top tabs/)).toHaveClass('bg-accent');
+    await user.unhover(box());
+    expect(box()).toHaveAccessibleName('Preview: Sidebar');
+    // By Tab: a focus the box follows, into the box, which scrolls. Real sizes: only Sidebar's
+    // preview fits its box.
+    const pre = box();
+    sizeBoxByText(pre, [mockup('Sidebar')]);
+    resize(pre);
+    expect(pre).not.toHaveAttribute('tabindex');
+    act(() => option(/^Single page/).focus());
+    expect(box()).toHaveAccessibleName('Preview: Single page');
+    expect(pre).toHaveAttribute('tabindex', '0');
+    await user.tab();
+    expect(pre).toHaveFocus();
+    expect(box()).toHaveAccessibleName('Preview: Single page');
+    // Pointing at an option whose preview fits remeasures the box; it keeps the focus it has.
+    await user.hover(option(/^Sidebar/));
+    expect(box()).toHaveTextContent('Sidebar');
+    expect(pre).toHaveAttribute('tabindex', '0');
+    expect(pre).toHaveFocus();
+    // Focus leaves the area: the pick again.
+    await user.tab();
+    expect(pre).not.toHaveFocus();
+    expect(box()).toHaveAccessibleName('Preview: Sidebar');
+  });
+
+  it('VIEW-10.3: a question whose previews are all too long still has previews: picked, then submitted, no "Type something…", and its box says so', async () => {
+    const user = userEvent.setup();
+    const long: ChatQuestion = {
+      ...LAYOUT,
+      options: [
+        { label: 'Sidebar', description: '', previewTooLong: true },
+        { label: 'Top tabs', description: '', previewTooLong: true },
+      ],
+    };
+    const app = open({}, [question([long])]);
+    app.form();
+    expect(within(chat()).queryByRole('textbox')).toBeNull();
+    expect(box()).toHaveTextContent(/^This preview is too long to show here\.$/);
+    expect(box()).toHaveClass('text-muted-foreground');
+    await user.click(option(/^Top tabs/));
+    expect(app.client.answer).not.toHaveBeenCalled();
+    expect(box()).toHaveAccessibleName('Preview: Top tabs');
+    await user.click(submit()!);
+    expect(app.client.answer).toHaveBeenCalledWith('a', { kind: 'question', question: 'toolu_13', answers: [{ options: [1] }], epoch: 1 });
+  });
+
+  it('VIEW-10.7: the box is a region named "Preview: <label>", not a live region; it takes focus only while it scrolls, so the keyboard can scroll it', async () => {
+    const { resize } = fakeResizeObserver();
+    const user = userEvent.setup();
+    open({}, [question([LAYOUT])]).form();
+    const pre = box();
+    expect(pre).toHaveAttribute('role', 'region');
+    expect(pre).toHaveAccessibleName('Preview: Sidebar');
+    expect(pre).not.toHaveAttribute('aria-live');
+    expect(pre.closest('[aria-live], [role="status"], [role="alert"], [role="log"]')).toBeNull();
+    // Fits: no tab stop.
+    expect(pre).not.toHaveAttribute('tabindex');
+    // Taller than its 24 lines (jsdom has no layout: the sizes are set by hand), measured on resize.
+    sizeBoxByText(pre, ['No preview']);
+    resize(pre);
+    expect(pre).toHaveAttribute('tabindex', '0');
+    act(() => pre.focus());
+    expect(pre).toHaveFocus();
+    // Moving to another option changes its name, silently.
+    await user.hover(option(/^Top tabs/));
+    expect(box()).toHaveAccessibleName('Preview: Top tabs');
+    expect(box()).not.toHaveAttribute('aria-live');
+    // The label over it is its look, not a second announcement.
+    expect(within(chat()).getByText('Top tabs', { selector: 'p' })).toHaveAttribute('aria-hidden', 'true');
   });
 });

@@ -190,7 +190,7 @@ describe('fleet list → sidebar rows', () => {
       ['dddddddd-0000-4000-8000-000000000004', null],
       ['ffffffff-0000-4000-8000-000000000006', 'xhigh'],
     ]);
-    expect(normalizeRows(fixture('messages/list.json'), deps).map((r) => r.effort)).toEqual(['high', 'xhigh', null, 'medium', 'high']);
+    expect(normalizeRows(fixture('messages/list.json'), deps).map((r) => r.effort)).toEqual(['high', 'xhigh', null, 'medium', 'high', 'high']);
     expect(normalizeRows(fixture('recorded-2026-10-16.json'), deps).every((r) => r.effort === null)).toBe(true);
   });
 

@@ -3,6 +3,7 @@ import {
   type AnswerDetail,
   type AnswerRequest,
   type AnswerResult,
+  type ChatQuestion,
   type EscStatus,
   type PaneSize,
   type PromptChoice,
@@ -10,6 +11,7 @@ import {
   type ScreenPrompt,
   type ServerEvent,
   type SessionRow,
+  hasPreviews,
 } from '../shared/types.ts';
 import { EndError, closeTarget, isPidOnly } from './closer.ts';
 import type { RunError, Runner } from './exec.ts';
@@ -56,10 +58,13 @@ export class AnswerError extends Error {
    * (or one is being typed now). It holds only until the tab gets a newer read.
    */
   readonly kind: 'stale' | null;
-  constructor(status: number, message: string, kind: 'stale' | null = null) {
+  /** The request's field the refusal is about (VIEW-10.3: `answers`), for a 400; null otherwise. */
+  readonly field: string | null;
+  constructor(status: number, message: string, kind: 'stale' | null = null, field: string | null = null) {
     super(message);
     this.status = status;
     this.kind = kind;
+    this.field = field;
   }
 }
 
@@ -75,6 +80,12 @@ export interface AnswererOptions {
   env?: NodeJS.ProcessEnv;
   /** VIEW-4.8: the server's log, one line per answer Fleet refused; `console.warn` by default. */
   log?: (line: string) => void;
+  /**
+   * VIEW-10.3: the question's questions as the Session's Transcript has them (the chat feed of a
+   * Session some tab views), by its tool_use id; null when the server doesn't hold them, and Fleet
+   * then refuses what its question can't take (contract C5).
+   */
+  questions?(sessionId: string, questionId: string): readonly ChatQuestion[] | null;
 }
 
 const env = (opts: { env?: NodeJS.ProcessEnv }) => cleanEnv(opts.env ?? process.env);
@@ -635,6 +646,7 @@ export async function answerPrompt(opts: AnswererOptions, sessionId: string, req
   if (req.kind === 'question' && row.harness !== 'claude') {
     throw new AnswerError(409, 'Lookout can only answer Claude Code’s questions. Answer this one in the terminal.');
   }
+  if (req.kind === 'question') refuseTextForPreviews(opts.questions?.(row.id, req.question) ?? null, req.answers);
   const key = answerKey(req);
   opts.ledger.beginAnswer(row, req.epoch, key);
   let outcome: 'none' | 'typed' | 'uncertain' = 'none';
@@ -678,6 +690,23 @@ export async function answerPrompt(opts: AnswererOptions, sessionId: string, req
 }
 
 const UNCERTAIN = 'It may have been answered, but Lookout can’t tell. Check the terminal.';
+
+/** VIEW-10.3: what the server says of text for a question with previews. */
+export const PREVIEW_TEXT = 'This question takes one of its options, not typed text. Pick one, then Submit.';
+
+/**
+ * VIEW-10.3: a question with previews has no "Type something" row in the terminal (contract C5), so
+ * text for it is refused here, as a field error, before Fleet is asked or the ledger moves. Without
+ * the questions (no tab's chat holds them), Fleet's own check refuses it (`answer_invalid`).
+ */
+function refuseTextForPreviews(questions: readonly ChatQuestion[] | null, answers: readonly QuestionAnswer[]): void {
+  if (!questions) return;
+  for (const [i, a] of answers.entries()) {
+    const q = questions[i];
+    if (q && hasPreviews(q) && a.text !== undefined) throw new AnswerError(400, PREVIEW_TEXT, null, 'answers');
+  }
+}
+
 const NOTHING_TYPED = 'so nothing was typed. Answer it in the terminal.';
 
 /** VIEW-4.3: Fleet refused before typing anything: why, in plain words, by kind. Nothing names tmux (0001). */

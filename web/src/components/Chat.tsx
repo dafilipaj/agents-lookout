@@ -1,13 +1,13 @@
-import type { ChatEntry, ChatPage, Harness } from '@shared/types.ts';
+import type { ChatEntry, ChatPage, ChatQuestion, Harness } from '@shared/types.ts';
 import { ArrowDown, ChevronRight, CircleHelp, type LucideIcon, MessagesSquare, TerminalSquare, Wrench } from 'lucide-react';
-import { type PointerEvent as ReactPointerEvent, type ReactNode, memo, useCallback, useContext, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, memo, useCallback, useContext, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Chip } from '@/components/ui/chip';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Loading } from '@/components/ui/loading';
-import { AnswerContext, type TerminalLink } from '@/lib/answers';
+import { AnswerContext, type TerminalLink, hasPreviews } from '@/lib/answers';
 import { type ChatItem, type QuestionEntry, type ToolCall, answerFor, chatItems, clockTime, toolsLabel } from '@/lib/chat';
 import { type Echo, IN_TERMINAL, NOT_TAKEN, NO_ECHOES, isCommand } from '@/lib/echoes';
 import { FileLinksContext, SessionFilesContext } from '@/lib/files';
@@ -16,7 +16,7 @@ import { JUMP_MARGIN_PX, chatMarks, firstLine, stepMark } from '@/lib/marks';
 import { HARNESS_NAME } from '@/lib/sessions';
 import type { Chat as ChatState } from '@/lib/store';
 import { cn } from '@/lib/utils';
-import { AnswerInTerminal, ChoiceIcon, QuestionForm, TerminalNote } from './Answering';
+import { AnswerInTerminal, ChoiceIcon, type OptionRowProps, PreviewOptions, QuestionForm, TerminalNote } from './Answering';
 import { ChatRail, MarkShape } from './ChatRail';
 import { LinkedText } from './FilePath';
 import { Markdown } from './Markdown';
@@ -470,7 +470,11 @@ function scrollsChat(t: EventTarget | null, chat: HTMLElement | null): boolean {
 
 /** Space or Enter presses it rather than scrolling. A link only takes Space without a modifier (above). */
 function isPressable(t: EventTarget | null): boolean {
-  return t instanceof Element && !!t.closest('button, summary, [role="button"], [role="checkbox"], [role="radio"], [role="option"]');
+  if (!(t instanceof Element)) return false;
+  // An option in a read-only listbox (a question already answered) presses nothing.
+  const option = t.closest('[role="option"]');
+  if (option && option.closest('[role="listbox"]')?.getAttribute('aria-readonly') === 'true' && !t.closest('button, summary, [role="button"], [role="checkbox"], [role="radio"]')) return false;
+  return !!t.closest('button, summary, [role="button"], [role="checkbox"], [role="radio"], [role="option"]');
 }
 
 function isTextField(t: EventTarget | null): boolean {
@@ -586,7 +590,8 @@ function Question({ entry, label }: { entry: QuestionEntry; label: string }) {
     <div
       data-kind="question"
       data-status={entry.status}
-      className={cn('rounded-lg border px-4 py-3', entry.status === 'pending' ? 'border-needs-you/60 bg-needs-you-soft' : 'border-border')}
+      // VIEW-10.1: the card is the container its preview box's layout asks about.
+      className={cn('@container rounded-lg border px-4 py-3', entry.status === 'pending' ? 'border-needs-you/60 bg-needs-you-soft' : 'border-border')}
     >
       <p className="mb-2 flex items-center gap-1.5 text-meta text-muted-foreground">
         <CircleHelp className="size-3.5" />
@@ -612,30 +617,7 @@ function Question({ entry, label }: { entry: QuestionEntry; label: string }) {
                 {q.header && <p className="text-caption font-medium tracking-wide text-muted-foreground uppercase">{linkify(q.header)}</p>}
                 <p className="text-prose font-medium">{linkify(q.question)}</p>
                 {q.multiSelect && <p className="text-meta text-muted-foreground">Several can be picked</p>}
-                <ul className="mt-1.5 space-y-1">
-                  {q.options.map((o, oi) => {
-                    const chosen = picked.has(oi);
-                    return (
-                      <li
-                        key={oi}
-                        data-picked={chosen || undefined}
-                        className={cn(
-                          'flex gap-2 rounded-md border px-2.5 py-1.5 text-body',
-                          chosen ? 'border-foreground/40 bg-accent font-medium' : 'border-border',
-                          entry.status !== 'pending' && !chosen && 'opacity-60',
-                        )}
-                      >
-                        <span aria-hidden className="flex h-[1lh] w-3.5 shrink-0 items-center justify-center text-muted-foreground" data-field="choice">
-                          <ChoiceIcon multiSelect={q.multiSelect} chosen={chosen} />
-                        </span>
-                        <span className="min-w-0">
-                          {linkify(o.label)}
-                          {o.description && <span className="block text-meta font-normal text-muted-foreground">{linkify(o.description)}</span>}
-                        </span>
-                      </li>
-                    );
-                  })}
-                </ul>
+                <ReadOnlyOptions q={q} picked={picked} faded={entry.status !== 'pending'} />
                 {other && (
                   <p className="mt-1.5 text-body">
                     <span className="text-muted-foreground">Answered: </span>
@@ -655,6 +637,86 @@ function Question({ entry, label }: { entry: QuestionEntry; label: string }) {
         </p>
       )}
     </div>
+  );
+}
+
+/**
+ * VIEW-1.9: a question's options, read-only, the picked ones marked. VIEW-10.6: one with previews
+ * shows its box too, starting on the pick (the first option when none was picked), and following
+ * the pointer and the keyboard: its options take one tab stop, and ↑/↓ move between them.
+ */
+function ReadOnlyOptions({ q, picked, faded }: { q: ChatQuestion; picked: Set<number>; faded: boolean }) {
+  const rows = useRef<(HTMLLIElement | null)[]>([]);
+  // The option that holds the tab stop: the one last focused, else the pick, else the first.
+  const [stop, setStop] = useState<number | null>(null);
+  const list = (preview?: { row: (i: number) => OptionRowProps; shown: number; followed: boolean }) => {
+    const tabStop = stop ?? [...picked][0] ?? 0;
+    const onKeyDown = (e: ReactKeyboardEvent<HTMLLIElement>, i: number) => {
+      if ((e.key !== 'ArrowDown' && e.key !== 'ArrowUp') || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      const next = i + (e.key === 'ArrowDown' ? 1 : -1);
+      // At the first or last option there's nowhere to go: leave the key to the page.
+      if (next < 0 || next >= q.options.length) return;
+      e.preventDefault();
+      setStop(next);
+      rows.current[next]?.focus();
+    };
+    return (
+      <ul
+        className={cn('space-y-1', !preview && 'mt-1.5')}
+        role={preview ? 'listbox' : undefined}
+        aria-readonly={preview ? true : undefined}
+        aria-label={preview ? q.header || q.question : undefined}
+      >
+        {q.options.map((o, oi) => {
+          const chosen = picked.has(oi);
+          const hovered = !!preview && preview.followed && preview.shown === oi && !chosen;
+          return (
+            <li
+              key={oi}
+              ref={(el) => {
+                rows.current[oi] = el;
+              }}
+              {...preview?.row(oi)}
+              role={preview ? 'option' : undefined}
+              aria-selected={preview ? chosen : undefined}
+              tabIndex={preview ? (oi === tabStop ? 0 : -1) : undefined}
+              onKeyDown={preview ? (e) => onKeyDown(e, oi) : undefined}
+              onFocus={
+                preview
+                  ? (e) => {
+                      preview.row(oi).onFocus?.(e);
+                      setStop(oi);
+                    }
+                  : undefined
+              }
+              data-picked={chosen || undefined}
+              data-shown={(preview && preview.shown === oi) || undefined}
+              className={cn(
+                'flex gap-2 rounded-md border px-2.5 py-1.5 text-body',
+                chosen ? 'border-foreground/40 bg-accent font-medium' : hovered ? 'border-foreground/40 bg-accent' : 'border-border',
+                faded && !chosen && !hovered && 'opacity-60',
+                preview && 'outline-none hover:border-foreground/40 hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring',
+              )}
+            >
+              <span aria-hidden className="flex h-[1lh] w-3.5 shrink-0 items-center justify-center text-muted-foreground" data-field="choice">
+                <ChoiceIcon multiSelect={q.multiSelect} chosen={chosen} />
+              </span>
+              <span className="min-w-0">
+                {/* A row with previews is a tab stop, so (VIEW-1.12) its text is plain: no links inside it. */}
+                {preview ? o.label : linkify(o.label)}
+                {o.description && <span className="block text-meta font-normal text-muted-foreground">{preview ? o.description : linkify(o.description)}</span>}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    );
+  };
+  if (!hasPreviews(q)) return list();
+  return (
+    <PreviewOptions question={q} picked={picked}>
+      {(row, shown, followed) => list({ row, shown, followed })}
+    </PreviewOptions>
   );
 }
 

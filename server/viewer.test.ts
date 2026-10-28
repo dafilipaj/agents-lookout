@@ -391,4 +391,45 @@ describe('answering and Stop (VIEW-4)', () => {
     expect(runner.mock.calls.filter(([, a]) => a.includes('keys'))).toHaveLength(0);
     viewer.stop();
   });
+
+  it('VIEW-10.3: text for a question with previews is refused by the Viewer against the question its chat read from the Transcript, without asking Fleet', async () => {
+    const asked = {
+      cursor: 'c1.0',
+      role: 'assistant',
+      kind: 'question',
+      id: 'toolu_p2',
+      text: '',
+      ts: null,
+      questions: [
+        { question: 'Which fruit do you prefer?', header: 'Fruit', multiSelect: false, options: [{ label: 'Apple', description: '' }, { label: 'Pear', description: '' }] },
+        { question: 'Which layout should the page use?', header: 'Layout', multiSelect: false, options: [{ label: 'Sidebar', description: '', preview: '┌──┐\n│ │\n└──┘' }, { label: 'Top tabs', description: '' }] },
+      ],
+      status: 'pending',
+      answer: null,
+    };
+    const rows = new Map<string, SessionRow>([['sess-a', row({ id: 'sess-a', status: 'needs-you' })]]);
+    const runner = vi.fn(async (_file: string, args: readonly string[]) => {
+      if (args.includes('messages')) return JSON.stringify({ ok: true, entries: [asked], has_more_before: false, has_more_after: false, cursor: 'c1.0' });
+      if (args.includes('--list')) return JSON.stringify({ ok: true, session_id: 'sess-a', harness: 'claude', prompt: { kind: 'question', id: 'toolu_p2', untouched: true }, answerable: true, detail: null, pane: null });
+      if (args.includes('answer')) return JSON.stringify({ ok: true, answered: true });
+      throw new Error(`unexpected ${args.join(' ')}`);
+    });
+    const viewer = new Viewer({
+      runner,
+      fleetBin: () => '/bin/fleet',
+      lookup: (id) => rows.get(id) ?? null,
+      freshList: async () => ({ kind: 'ok', rows: [] }),
+      sendTo: () => {},
+      ledger: new AnswerLedger({ now: () => 41 }),
+    });
+    viewer.watch('tab-1', 'sess-a', false);
+    await vi.advanceTimersByTimeAsync(0);
+    const answer = (layout: { options: number[]; text?: string }) => viewer.answer('sess-a', { kind: 'question', question: 'toolu_p2', answers: [{ options: [], text: 'Mango' }, layout], epoch: 41 });
+    await expect(answer({ options: [0], text: 'Bento' })).rejects.toMatchObject({ status: 400, field: 'answers' });
+    expect(runner.mock.calls.filter(([, a]) => a.includes('answer') && !a.includes('--list'))).toHaveLength(0);
+    // Text for the question without previews still goes, with the other's one option.
+    expect(await answer({ options: [0] })).toEqual({ epoch: 42 });
+    expect(runner.mock.calls.filter(([, a]) => a.includes('--question'))).toHaveLength(1);
+    viewer.stop();
+  });
 });

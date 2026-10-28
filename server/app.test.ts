@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { AnswerRequest, EffortSwitchRequest, EndTarget, EscStatus, ModelSwitchRequest, ServerEvent } from '../shared/types.ts';
-import { AnswerError } from './answerer.ts';
+import { AnswerError, PREVIEW_TEXT } from './answerer.ts';
 import { type LookoutApp, createApp } from './app.ts';
 import { EndError } from './closer.ts';
 import type { FleetRow } from './fleet.ts';
@@ -105,6 +105,7 @@ beforeEach(async () => {
       answer: async (sessionId: string, req: AnswerRequest) => {
         if (sessionId === 'moved') throw new AnswerError(409, 'The terminal no longer shows this prompt as it was, so nothing was typed. Answer it in the terminal.');
         if (sessionId === 'stale') throw new AnswerError(409, 'This was already answered from another tab, so nothing was typed.', 'stale');
+        if (sessionId === 'previews') throw new AnswerError(400, PREVIEW_TEXT, null, 'answers');
         answers.push({ sessionId, req });
         return { epoch: 7 };
       },
@@ -676,6 +677,14 @@ describe('VIEW-4 routes', () => {
       error: 'The answer has characters that can’t be typed.',
     });
     expect((await answer(JSON.stringify({ kind: 'question', question: 'toolu_1', answers: [{ options: [], text: 'x'.repeat(200_000) }], epoch: 5 }))).status).toBe(413);
+    expect(answers).toEqual([]);
+  });
+
+  it('VIEW-10.3: text for a question with previews comes back as a 400 field error on `answers`, with why', async () => {
+    const body = JSON.stringify({ kind: 'question', question: 'toolu_p2', answers: [{ options: [1], text: 'and more' }], epoch: 5 });
+    const res = await call('POST', '/api/sessions/previews/answer', { ...json, origin, 'x-lookout-token': TOKEN }, body);
+    expect(res.status).toBe(400);
+    expect(JSON.parse(res.body)).toEqual({ error: PREVIEW_TEXT, field: 'answers' });
     expect(answers).toEqual([]);
   });
 

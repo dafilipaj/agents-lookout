@@ -232,3 +232,30 @@ export function fakeResizeObserver() {
     });
   return { observed, resize };
 }
+
+/**
+ * The pointer crossing from one element into another (user-event's `hover` gives its events no
+ * `relatedTarget`, so React takes every move as leaving the page): `out` of `from`, `over` `to`.
+ */
+export function movePointer(from: Element, to: Element) {
+  const pointer = (type: string, target: Element, related: Element) => {
+    const e = new MouseEvent(type, { bubbles: true, relatedTarget: related });
+    act(() => {
+      target.dispatchEvent(e);
+    });
+  };
+  pointer('pointerout', from, to);
+  pointer('pointerover', to, from);
+}
+
+/**
+ * jsdom has no layout: give a preview box sizes as its text would have them. It fits when its text
+ * is one of `fits`, else it is taller than its box and scrolls. Read live, so the box measures
+ * what it shows after the option under the pointer changes.
+ */
+export function sizeBoxByText(pre: Element, fits: string[]) {
+  Object.defineProperty(pre, 'scrollHeight', { configurable: true, get: () => (fits.includes(pre.textContent ?? '') ? 100 : 900) });
+  Object.defineProperty(pre, 'clientHeight', { configurable: true, get: () => 300 });
+  Object.defineProperty(pre, 'scrollWidth', { configurable: true, get: () => 100 });
+  Object.defineProperty(pre, 'clientWidth', { configurable: true, get: () => 300 });
+}

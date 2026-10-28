@@ -338,7 +338,21 @@ export interface ChatQuestion {
   question: string;
   header: string;
   multiSelect: boolean;
-  options: { label: string; description: string }[];
+  /**
+   * VIEW-10: `preview`, an option's mockup or snippet as the Transcript has it (line breaks as `\n`),
+   * when it has one Lookout keeps (`server/messages.ts` bounds it); absent otherwise. `previewTooLong`:
+   * Fleet gave it a preview Lookout doesn't keep (over its bounds), so it still counts as a preview.
+   */
+  options: { label: string; description: string; preview?: string; previewTooLong?: true }[];
+}
+
+/**
+ * VIEW-10: a question Claude Code draws with its previews (the contract's C4, Fleet's
+ * `preview_layout`): single-select, with a `preview` on at least one option (one too long to keep counts). It's picked, then
+ * submitted, with one option and no text (C5). A multi-select one is drawn plainly (VIEW-10.5).
+ */
+export function hasPreviews(q: Pick<ChatQuestion, 'multiSelect' | 'options'>): boolean {
+  return !q.multiSelect && q.options.some((o) => o.preview !== undefined || o.previewTooLong === true);
 }
 
 /**

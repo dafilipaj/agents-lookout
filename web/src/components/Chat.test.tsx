@@ -7,7 +7,7 @@ import { BATCH_DELAY_MS, pathParts, vscodeHref } from '@/lib/files';
 import { CACHED_ENTRIES, MAX_CHAT_ENTRIES, answerFor, applyChatEvent, applyPage, chatItems, emptyChat, setFollowing, toolsLabel } from '@/lib/chat';
 import { textParts } from '@/lib/links';
 import { initialState, reducer } from '@/lib/store';
-import { renderApp, row } from '@/test/helpers';
+import { fakeResizeObserver, movePointer, renderApp, row, sizeBoxByText } from '@/test/helpers';
 
 let n = 0;
 const c = () => `c${++n}`;
@@ -1006,5 +1006,207 @@ describe('chat state', () => {
     expect(state.chats.get('b')!.before).toBe(state.chats.get('b')!.entries[0]!.cursor);
     const ignored = reducer(state, { type: 'event', event: { type: 'chat', sessionId: 'b', op: 'append', entries: [agent('late')], updated: [], queue: [] } });
     expect(ignored).toBe(state);
+  });
+});
+
+describe('questions with previews, read-only (VIEW-10.6)', () => {
+  /** A's question (Claude Code 2.1.312 capture, 2026-10-28, neutral text): three settings layouts, each with its mockup. */
+  const SIDEBAR = [
+    '┌──────────┬─────────────────────┐',
+    '│ General  │ Settings / General  │',
+    '│ Billing  │                     │',
+    '│ Team     │ Name   [__________] │',
+    '│ Security │ Email  [__________] │',
+    '│          │                     │',
+    '│          │      [Save changes] │',
+    '└──────────┴─────────────────────┘',
+  ].join('\n');
+  const TABS = [
+    '┌────────────────────────────────┐',
+    '│ General | Billing | Team       │',
+    '├────────────────────────────────┤',
+    '│ Name   [__________]            │',
+    '│ Email  [__________]            │',
+    '│                                │',
+    '│            [Save changes]      │',
+    '└────────────────────────────────┘',
+  ].join('\n');
+  const layout = (over: Partial<Extract<ChatEntry, { kind: 'question' }>> = {}) =>
+    question({
+      id: 'toolu_layout',
+      questions: [
+        {
+          question: 'Which layout should the settings page use?',
+          header: 'Layout',
+          multiSelect: false,
+          options: [
+            { label: 'Sidebar navigation with grouped sections (Recommended)', description: 'Left rail with sections', preview: SIDEBAR },
+            { label: 'Top tabs', description: 'Horizontal tabs', preview: TABS },
+            { label: 'Single scrolling page', description: 'All on one page' },
+          ],
+        },
+      ],
+      ...over,
+    });
+  const card = () => document.querySelector('[data-kind="question"]') as HTMLElement;
+  const box = () => within(card()).getByRole('region', { name: /^Preview: / });
+  const items = () => within(card()).getAllByRole('option');
+
+  it('VIEW-10.6: an answered question shows the same box, read-only, on the picked option; pointer and keyboard move it, its options one tab stop with ↑/↓ between them', async () => {
+    const user = userEvent.setup();
+    const { reset } = open('a', { status: 'idle' });
+    reset([layout({ status: 'answered', answer: { answers: ['Top tabs'], picked: [[1]] } })]);
+    expect(card()).toHaveTextContent('Answered');
+    expect(box()).toHaveAccessibleName('Preview: Top tabs');
+    expect(box().textContent).toBe(TABS);
+    // Read-only: no buttons, no field.
+    expect(within(card()).queryAllByRole('button')).toEqual([]);
+    expect(within(card()).queryByRole('textbox')).toBeNull();
+    // One tab stop: the picked option.
+    expect(items().map((li) => li.getAttribute('tabindex'))).toEqual(['-1', '0', '-1']);
+    await user.hover(items()[0]!);
+    expect(box()).toHaveAccessibleName('Preview: Sidebar navigation with grouped sections (Recommended)');
+    expect(box().textContent).toBe(SIDEBAR);
+    await user.unhover(items()[0]!);
+    expect(box()).toHaveAccessibleName('Preview: Top tabs');
+    // Tab reaches the list once, on the pick; ↓ and ↑ move focus, and the box with it.
+    for (let i = 0; i < 50 && !card().contains(document.activeElement); i++) await user.tab();
+    expect(items()[1]).toHaveFocus();
+    await user.keyboard('{ArrowDown}');
+    expect(items()[2]).toHaveFocus();
+    expect(box()).toHaveAccessibleName('Preview: Single scrolling page');
+    expect(box()).toHaveTextContent(/^No preview$/);
+    await user.keyboard('{ArrowDown}'); // the last stays the last
+    expect(items()[2]).toHaveFocus();
+    await user.keyboard('{ArrowUp}{ArrowUp}');
+    expect(items()[0]).toHaveFocus();
+    expect(box()).toHaveAccessibleName('Preview: Sidebar navigation with grouped sections (Recommended)');
+    expect(items().map((li) => li.getAttribute('tabindex'))).toEqual(['0', '-1', '-1']);
+    // ↑/↓ there move between options; they don't scroll the chat or switch Sessions.
+    expect(window.location.pathname).toBe('/s/a');
+    // The next Tab leaves the list (the box fits, so it's no tab stop); the box goes back to the pick.
+    await user.tab();
+    expect(items()).not.toContain(document.activeElement);
+    expect(box()).toHaveAccessibleName('Preview: Top tabs');
+  });
+
+  it('VIEW-10.6: the options are a read-only listbox, the pick selected; their text is plain, never a link; ↑/↓ at the ends or with a modifier are left alone', async () => {
+    const user = userEvent.setup();
+    const { reset } = open('a', { status: 'idle' });
+    const linked = layout({ status: 'answered', answer: { answers: ['Top tabs'], picked: [[1]] } }) as Extract<ChatEntry, { kind: 'question' }>;
+    linked.questions[0]!.options[0]!.description = 'see https://example.com/spec and src/app/settings.ts:12';
+    reset([linked]);
+    const list = within(card()).getByRole('listbox', { name: 'Layout' });
+    expect(list).toHaveAttribute('aria-readonly', 'true');
+    expect(items().map((li) => li.getAttribute('aria-selected'))).toEqual(['false', 'true', 'false']);
+    expect(within(list).queryAllByRole('link')).toEqual([]);
+    expect(items()[0]).toHaveTextContent('see https://example.com/spec and src/app/settings.ts:12');
+    await user.tab();
+    while (!card().contains(document.activeElement)) await user.tab();
+    expect(items()[1]).toHaveFocus();
+    // Not at an end, unmodified: the list takes it (default prevented). At the end, or with a modifier: it doesn't.
+    const press = (el: Element, init: KeyboardEventInit) => !fireEvent.keyDown(el, init) /* true when prevented */;
+    expect(press(items()[1]!, { key: 'ArrowDown' })).toBe(true);
+    expect(items()[2]).toHaveFocus();
+    expect(press(items()[2]!, { key: 'ArrowDown' })).toBe(false);
+    expect(items()[2]).toHaveFocus();
+    expect(press(items()[2]!, { key: 'ArrowUp', altKey: true })).toBe(false);
+    expect(press(items()[2]!, { key: 'ArrowUp', metaKey: true })).toBe(false);
+    expect(press(items()[2]!, { key: 'ArrowUp', shiftKey: true })).toBe(false);
+    expect(items()[2]).toHaveFocus();
+    expect(press(items()[2]!, { key: 'ArrowUp' })).toBe(true);
+    expect(items()[1]).toHaveFocus();
+    expect(press(items()[0]!, { key: 'ArrowUp' })).toBe(false);
+  });
+
+  it('VIEW-10.6: moving from an option into the box keeps its preview, by pointer and by Tab, and the box stays focusable; it falls back only when the pointer and focus leave the area', async () => {
+    const { resize } = fakeResizeObserver();
+    const user = userEvent.setup();
+    const { reset } = open('a', { status: 'idle' });
+    reset([layout({ status: 'answered', answer: { answers: ['Top tabs'], picked: [[1]] } })]);
+    // By pointer: from the first option across into the box.
+    await user.hover(items()[0]!);
+    expect(box()).toHaveAccessibleName('Preview: Sidebar navigation with grouped sections (Recommended)');
+    movePointer(items()[0]!, box());
+    expect(box()).toHaveAccessibleName('Preview: Sidebar navigation with grouped sections (Recommended)');
+    await user.unhover(box());
+    expect(box()).toHaveAccessibleName('Preview: Top tabs');
+    // By Tab: an option, then the box, which scrolls so it takes the next Tab. Real sizes: only
+    // Top tabs' preview and "No preview" (the third option) fit their box.
+    const pre = box();
+    sizeBoxByText(pre, [TABS, 'No preview']);
+    resize(pre);
+    expect(pre).not.toHaveAttribute('tabindex');
+    act(() => items()[0]!.focus());
+    expect(box()).toHaveAccessibleName('Preview: Sidebar navigation with grouped sections (Recommended)');
+    expect(pre).toHaveAttribute('tabindex', '0');
+    await user.tab();
+    expect(pre).toHaveFocus();
+    // Pointing at an option whose preview fits remeasures the box; it keeps the focus it has.
+    await user.hover(items()[2]!);
+    expect(box()).toHaveAccessibleName('Preview: Single scrolling page');
+    expect(pre).toHaveAttribute('tabindex', '0');
+    expect(pre).toHaveFocus();
+    // Out of the area altogether: the pick again.
+    await user.unhover(items()[2]!);
+    await user.tab();
+    expect(card().contains(document.activeElement)).toBe(false);
+    expect(box()).toHaveAccessibleName('Preview: Top tabs');
+  });
+
+  it('VIEW-10.6: Space on an option of an answered question (a read-only listbox) is the chat scrolling, so it releases a jump’s hold', async () => {
+    const { reset } = open();
+    reset([you('Pick one'), layout({ status: 'answered', answer: { answers: ['Top tabs'], picked: [[1]] } })]);
+    const chat = screen.getByTestId('chat');
+    const holds = () => {
+      fireEvent.scroll(chat);
+      return !!screen.queryByRole('button', { name: /Jump to latest/ });
+    };
+    fireEvent.click(await screen.findByRole('button', { name: /^Your prompt/ }));
+    expect(holds()).toBe(true);
+    const item = within(card()).getAllByRole('option')[0]!;
+    item.focus();
+    fireEvent.keyDown(item, { key: ' ' });
+    expect(holds()).toBe(false);
+  });
+
+  it('VIEW-10.6: a declined or abandoned question starts on the first option’s preview', () => {
+    const { reset } = open('a', { status: 'idle' });
+    reset([layout({ status: 'declined', answer: { declined: true } })]);
+    expect(card()).toHaveTextContent('Not answered');
+    expect(box()).toHaveAccessibleName('Preview: Sidebar navigation with grouped sections (Recommended)');
+    expect(items().map((li) => li.getAttribute('tabindex'))).toEqual(['0', '-1', '-1']);
+    reset([layout({ status: 'abandoned', answer: null })]);
+    expect(box()).toHaveAccessibleName('Preview: Sidebar navigation with grouped sections (Recommended)');
+  });
+
+  it('VIEW-10.6: an ended Session’s chat, and a past Session’s, show it too', async () => {
+    const { app, reset } = open('a', { status: 'idle' });
+    reset([layout({ status: 'answered', answer: { answers: ['Top tabs'], picked: [[1]] } })]);
+    app.emit({ type: 'sessions', upsert: [], remove: ['a'] });
+    expect(screen.getByText('This Session ended')).toBeInTheDocument();
+    expect(box()).toHaveAccessibleName('Preview: Top tabs');
+    app.unmount();
+
+    const pastSession = vi.fn(async (): Promise<HistoryDetail> => ({
+      item: { sessionId: 'gone-1', harness: 'claude', headless: false, title: 'settings', projectPath: '/Users/me/Projects/settings-page', repo: null, branch: null, lastActiveAt: null, snippet: null, firstPrompt: null, projectDisplay: null, blocked: 'folder-gone' },
+      source: 'transcript',
+      preview: 'latest',
+      totalMessages: 2,
+      entries: [you('Sketch a few layouts for the settings page.'), layout({ status: 'answered', answer: { answers: ['Top tabs'], picked: [[1]] } })],
+    }));
+    renderApp('/h/claude/gone-1', { pastSession }).snapshot([]);
+    const view = await screen.findByTestId('past-session');
+    const past = await within(view).findByRole('region', { name: 'Preview: Top tabs' });
+    expect(past.textContent).toBe(TABS);
+  });
+
+  it('VIEW-10.6: a question without previews keeps its read-only options out of the tab order', () => {
+    const { reset } = open('a', { status: 'idle' });
+    reset([question({ status: 'answered', answer: { answers: ['Recalculate all'], picked: [[2]] } })]);
+    expect(within(card()).queryByRole('region', { name: /^Preview: / })).toBeNull();
+    const rows = within(card()).getAllByRole('listitem');
+    expect(rows.every((li) => !li.hasAttribute('tabindex'))).toBe(true);
+    expect(within(card()).queryByRole('listbox')).toBeNull();
   });
 });

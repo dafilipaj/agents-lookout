@@ -433,7 +433,8 @@ export function createApp(opts: AppOptions): LookoutApp {
         return json(res, 200, await opts.sessions.answer(sessionId, parseAnswerRequest(body)));
       } catch (err) {
         // `stale`: the tab's read was older than another tab's answer; it holds until a newer read.
-        if (err instanceof AnswerError) return json(res, err.status, err.kind ? { error: err.message, kind: err.kind } : { error: err.message });
+        // VIEW-10.3: text for a question with previews is a field error (`answers`).
+        if (err instanceof AnswerError) return json(res, err.status, { error: err.message, ...(err.kind ? { kind: err.kind } : {}), ...(err.field ? { field: err.field } : {}) });
         throw err;
       }
     }

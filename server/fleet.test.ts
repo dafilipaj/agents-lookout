@@ -29,7 +29,7 @@ describe('calling fleet list', () => {
     if (result.kind !== 'ok') throw new Error('fake Fleet did not list');
     const rows = normalizeRows(result.rows, { git: () => null, statusSince: () => null });
     expect(rows.map((r) => r.subagents)).toEqual([
-      { running: 1, finished: 2 }, { running: 3, finished: 0 }, null, { running: 0, finished: 3 }, { running: 0, finished: 0 },
+      { running: 1, finished: 2 }, { running: 3, finished: 0 }, null, { running: 0, finished: 3 }, { running: 0, finished: 0 }, null,
     ]);
   });
 

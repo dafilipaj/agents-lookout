@@ -1,5 +1,8 @@
-import type { AnswerDetail, ChatEntry, ChatQuestion, EscStatus, HeldReason, PaneSize, QuestionAnswer, ScreenPrompt, SessionRow } from '@shared/types.ts';
+import { type AnswerDetail, type ChatEntry, type ChatQuestion, type EscStatus, type HeldReason, type PaneSize, type QuestionAnswer, type ScreenPrompt, type SessionRow, hasPreviews } from '@shared/types.ts';
 import { createContext } from 'react';
+
+/** VIEW-10: a question Claude Code draws with its previews (one in `shared/types.ts`, so the server's check is the same). */
+export { hasPreviews };
 
 /**
  * VIEW-4.4: after one Esc, Stop waits this long for the Session to leave Busy before it can be
@@ -240,9 +243,24 @@ function notAnswerable(q: Extract<ChatEntry, { kind: 'question' }>, screen: Scre
   }
 }
 
-/** VIEW-4.1: one question with one choice answers on click; several questions, or a multi-select one, are picked, then submitted. */
+/**
+ * VIEW-4.1: one question with one choice answers on click; several questions, or a multi-select one,
+ * are picked, then submitted. VIEW-10.3: so is a question with previews, whose options are compared
+ * before one is sent.
+ */
 export function answersOnClick(questions: readonly ChatQuestion[]): boolean {
-  return questions.length === 1 && !questions[0]!.multiSelect;
+  return questions.length === 1 && !questions[0]!.multiSelect && !questions.some(hasPreviews);
+}
+
+/**
+ * VIEW-10.1: which option a question's preview box shows: the one under the pointer, else the one
+ * with keyboard focus, else the picked one, else the first.
+ */
+export function shownOption(pointer: number | null, focus: number | null, picked: Iterable<number>): number {
+  if (pointer !== null) return pointer;
+  if (focus !== null) return focus;
+  for (const i of picked) return i;
+  return 0;
 }
 
 /** The picks and text of one question, before Submit. */
@@ -304,11 +322,20 @@ export function typeText(q: ChatQuestion, d: Draft, text: string): Draft {
   return q.multiSelect || clean.trim() === '' ? { ...d, text: clean } : { picked: [], text: clean };
 }
 
-/** VIEW-4.1: the answers to send, one per question, or null while a question has none (Submit stays disabled). */
+/**
+ * VIEW-4.1: the answers to send, one per question, or null while a question has none (Submit stays
+ * disabled). VIEW-10.3: a question with previews takes its one option and never text, as the
+ * terminal has no "Type something" row for it (contract C5).
+ */
 export function draftAnswers(questions: readonly ChatQuestion[], drafts: readonly Draft[]): QuestionAnswer[] | null {
   const out: QuestionAnswer[] = [];
   for (const [i, q] of questions.entries()) {
     const d = drafts[i] ?? emptyDraft;
+    if (hasPreviews(q)) {
+      if (d.picked.length !== 1) return null;
+      out.push({ options: d.picked });
+      continue;
+    }
     const text = typeable(d.text).trim();
     const count = d.picked.length + (text ? 1 : 0);
     if (q.multiSelect ? count === 0 : count !== 1) return null;

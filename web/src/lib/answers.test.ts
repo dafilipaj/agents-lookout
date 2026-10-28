@@ -25,11 +25,13 @@ import {
   draftAnswers,
   emptyDraft,
   escButton,
+  hasPreviews,
   permissionPanel,
   pick,
   processKey,
   questionPanel,
   sendErrorText,
+  shownOption,
   stopButton,
   tidyQuestionDrafts,
   typeText,
@@ -484,5 +486,50 @@ describe('a held send in the composer (VIEW-3.7)', () => {
     expect(sendErrorText({ message: 'Text.', held: 'text' }, true)).toBe('Text.');
     expect(sendErrorText({ message: 'Unreadable.', held: 'unreadable' }, true)).toBe('Unreadable.');
     expect(sendErrorText({ message: "Couldn't send: x", held: null }, true)).toBe("Couldn't send: x");
+  });
+});
+
+describe('questions with previews (VIEW-10)', () => {
+  /** P1's second question, shortened: an option's preview as the Transcript has it (neutral capture, 2026-10-28). */
+  const withPreviews = (over: Partial<ChatQuestion> = {}): ChatQuestion =>
+    q({
+      question: 'Which layout should the page use?',
+      header: 'Layout',
+      options: [
+        { label: 'Sidebar', description: 'Option Sidebar', preview: '┌────┐\n│ Sidebar │\n└────┘' },
+        { label: 'Top tabs', description: 'Option Top tabs', preview: '┌────┐\n│ Top tabs │\n└────┘' },
+        { label: 'Single page', description: 'Option Single page' },
+      ],
+      ...over,
+    });
+
+  it('VIEW-10.5: a question has previews when it takes one answer and an option has a preview; a multi-select one with previews is answered as any multi-select', () => {
+    expect(hasPreviews(withPreviews())).toBe(true);
+    // One preview is enough (Fleet's rule, contract C4).
+    expect(hasPreviews(withPreviews({ options: [{ label: 'A', description: '', preview: 'x' }, { label: 'B', description: '' }] }))).toBe(true);
+    expect(hasPreviews(q())).toBe(false);
+    const several = withPreviews({ multiSelect: true });
+    expect(hasPreviews(several)).toBe(false);
+    expect(draftAnswers([several], [{ picked: [0, 1], text: 'and docs' }])).toEqual([{ options: [0, 1], text: 'and docs' }]);
+  });
+
+  it('VIEW-10.3: never answered on one click, even alone: picked, then submitted, with its one option and never text', () => {
+    expect(answersOnClick([withPreviews()])).toBe(false);
+    expect(answersOnClick([q(), withPreviews()])).toBe(false);
+    // A question without previews in the same form keeps its text.
+    const qs = [q(), withPreviews()];
+    expect(draftAnswers(qs, [{ picked: [], text: 'mine' }, emptyDraft])).toBeNull();
+    expect(draftAnswers(qs, [{ picked: [], text: 'mine' }, { picked: [1], text: '' }])).toEqual([{ options: [], text: 'mine' }, { options: [1] }]);
+    // Text left in a kept draft never goes out for it.
+    expect(draftAnswers([withPreviews()], [{ picked: [2], text: 'stray' }])).toEqual([{ options: [2] }]);
+    expect(draftAnswers([withPreviews()], [{ picked: [], text: 'stray' }])).toBeNull();
+  });
+
+  it('VIEW-10.1: the box shows the option under the pointer, else the one with focus, else the picked one, else the first', () => {
+    expect(shownOption(2, 1, [0])).toBe(2);
+    expect(shownOption(null, 1, [0])).toBe(1);
+    expect(shownOption(null, null, [2])).toBe(2);
+    expect(shownOption(null, null, new Set([1]))).toBe(1);
+    expect(shownOption(null, null, [])).toBe(0);
   });
 });

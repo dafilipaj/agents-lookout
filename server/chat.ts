@@ -1,4 +1,4 @@
-import type { ChatEntry, ChatEvent, ChatPage, ChatProblem, SessionRow } from '../shared/types.ts';
+import type { ChatEntry, ChatEvent, ChatPage, ChatProblem, ChatQuestion, SessionRow } from '../shared/types.ts';
 import type { Runner } from './exec.ts';
 import { AFTER_LIMIT, INITIAL_LIMIT, type MessagesResult, PAGE_LIMIT, fetchMessages } from './messages.ts';
 
@@ -98,6 +98,16 @@ export class ChatFeed {
 
   drop(clientId: string): void {
     this.view(clientId, null);
+  }
+
+  /**
+   * VIEW-10.3: a question's questions as the feed last read them from the Transcript, by its tool_use
+   * id; null when no feed of the Session holds it (no tab views it, or it's older than the buffer).
+   */
+  question(sessionId: string, questionId: string): ChatQuestion[] | null {
+    const f = this.feeds.get(sessionId);
+    const e = f?.entries.findLast((x) => x.kind === 'question' && x.id === questionId);
+    return e?.kind === 'question' ? e.questions : null;
   }
 
   /** Session ids being followed (for tests and diagnostics); parked feeds don't count. */

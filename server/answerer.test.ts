@@ -2,8 +2,8 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AnswerRequest, ScreenPrompt, ServerEvent, SessionRow } from '../shared/types.ts';
-import { AnswerError, AnswerLedger, PromptWatch, STOP_SETTLE_MS, answerPrompt, listPrompt, parseAnswerRequest, parseScreenPrompt, sameProcess, stopSession } from './answerer.ts';
+import { type AnswerRequest, type ChatQuestion, type ScreenPrompt, type ServerEvent, type SessionRow, hasPreviews } from '../shared/types.ts';
+import { AnswerError, AnswerLedger, PREVIEW_TEXT, PromptWatch, STOP_SETTLE_MS, answerPrompt, listPrompt, parseAnswerRequest, parseScreenPrompt, sameProcess, stopSession } from './answerer.ts';
 import { type RunOptions, run } from './exec.ts';
 import { type FleetRow, fetchFleetList } from './fleet.ts';
 import { MONITOR_INTERVAL_MS } from './monitor.ts';
@@ -818,6 +818,102 @@ describe('answering (VIEW-4.1–4.3)', () => {
     expect(() => parseAnswerRequest({ kind: 'permission', prompt: 'p2.0badc0de', choice: 1 })).toThrow('Invalid answer.');
     expect(() => parseAnswerRequest({ kind: 'permission', prompt: 'p2.0badc0de', choice: 1, epoch: -1 })).toThrow('Invalid answer.');
     expect(() => parseAnswerRequest({ kind: 'permission', prompt: 'p2.0badc0de', choice: 1, epoch: '41' })).toThrow('Invalid answer.');
+  });
+});
+
+describe('questions with previews (VIEW-10.3, VIEW-10.4)', () => {
+  /** Waiting on P1's form (a plain question, then one whose options have previews), after A's question with previews, answered. */
+  const PREVIEWS = 'eeeeeeee-0000-4000-8000-000000000106';
+  /** The questions as the Session's Transcript has them: what the Viewer's chat feed gives the answerer. */
+  const transcript = (id: string): ChatQuestion[] | null => {
+    const s = JSON.parse(readFileSync(join(dir, 'fleet', 'sessions', `${PREVIEWS}.json`), 'utf8')) as { entries: { id?: string; questions?: ChatQuestion[] }[] };
+    return s.entries.find((e) => e.id === id)?.questions ?? null;
+  };
+
+  it('VIEW-10.4: `--list` reads a form with previews as any question form: by its id, untouched, and answerable now (the fake as the fork, contract C4, C8)', async () => {
+    const t = await setup();
+    expect(await listPrompt(t.opts, t.known.find((r) => r.id === PREVIEWS)!)).toEqual({
+      ok: true,
+      prompt: { kind: 'question', id: 'toolu_p2', untouched: true },
+      answerable: true,
+      detail: null,
+      pane: { cols: 200, rows: 50 },
+    });
+  });
+
+  it('VIEW-10.4: a form Fleet recognises by its preview layout but can’t read reaches the tab as `layout_unsupported`, never as no form', async () => {
+    editRow(bySession(PREVIEWS), { fake_prompt: { kind: 'question', incomplete: true, id: null, questions: null, active: null, untouched: false }, fake_detail: 'layout_unsupported' });
+    const t = await setup();
+    expect(await listPrompt(t.opts, t.known.find((r) => r.id === PREVIEWS)!)).toEqual({
+      ok: true,
+      prompt: { kind: 'question', id: null, untouched: false },
+      answerable: false,
+      detail: 'layout_unsupported',
+      pane: { cols: 200, rows: 50 },
+    });
+  });
+
+  it('VIEW-10.3: its one option goes through `--question --answers` as any answer, beside text for a question without previews in the same form', async () => {
+    const t = await setup();
+    const opts = { ...t.opts, questions: (_session: string, id: string) => transcript(id) };
+    const answers = [{ options: [], text: 'Mango' }, { options: [1] }];
+    expect(await answerPrompt(opts, PREVIEWS, { kind: 'question', question: 'toolu_p2', answers, epoch: 41 })).toEqual({ epoch: 42 });
+    expect(typed()).toEqual([['--local', 'answer', `id:${PREVIEWS}`, '--json', '--allow-attached', '--question', 'toolu_p2', '--answers', JSON.stringify(answers)]]);
+    expect(transcript('toolu_p2')).not.toBeNull();
+    const session = JSON.parse(readFileSync(join(dir, 'fleet', 'sessions', `${PREVIEWS}.json`), 'utf8')) as { entries: { id?: string }[] };
+    expect(session.entries.find((e) => e.id === 'toolu_p2')).toMatchObject({ status: 'answered', answer: { answers: ['Mango', 'Top tabs'], picked: [[], [1]] } });
+  });
+
+  it('VIEW-10.3: text for a question with previews is refused as a field error without asking Fleet; nothing moves, and a pick then answers', async () => {
+    const t = await setup();
+    const opts = { ...t.opts, questions: (_session: string, id: string) => transcript(id) };
+    const listed = fleetCalls().length; // setup's own `list`
+    for (const second of [{ options: [], text: 'Bento grid' }, { options: [1], text: 'with a footer' }]) {
+      let err: unknown;
+      try {
+        await answerPrompt(opts, PREVIEWS, { kind: 'question', question: 'toolu_p2', answers: [{ options: [0] }, second], epoch: 41 });
+      } catch (e) {
+        err = e;
+      }
+      expect(err).toBeInstanceOf(AnswerError);
+      expect(err).toMatchObject({ status: 400, message: PREVIEW_TEXT, field: 'answers', kind: null });
+    }
+    // Fleet was never asked, not even for a fresh list, and the ledger didn't move.
+    expect(fleetCalls().slice(listed)).toEqual([]);
+    expect(t.answered).not.toHaveBeenCalled();
+    expect(await answerPrompt(opts, PREVIEWS, { kind: 'question', question: 'toolu_p2', answers: [{ options: [0] }, { options: [2] }], epoch: 41 })).toEqual({ epoch: 42 });
+  });
+
+  it('VIEW-10.3: a question whose only preview is too long (`previewTooLong`) still has previews: text for it is refused as a field error', async () => {
+    const t = await setup();
+    const long: ChatQuestion[] = [
+      { question: 'Which layout?', header: 'Layout', multiSelect: false, options: [{ label: 'A', description: '', previewTooLong: true }, { label: 'B', description: '' }] },
+    ];
+    expect(hasPreviews(long[0]!)).toBe(true);
+    const opts = { ...t.opts, questions: () => long };
+    const listed = fleetCalls().length;
+    let err: unknown;
+    try {
+      await answerPrompt(opts, PREVIEWS, { kind: 'question', question: 'toolu_p2', answers: [{ options: [], text: 'Bento grid' }], epoch: 41 });
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(AnswerError);
+    expect(err).toMatchObject({ status: 400, message: PREVIEW_TEXT, field: 'answers', kind: null });
+    expect(fleetCalls().slice(listed)).toEqual([]);
+    expect(t.answered).not.toHaveBeenCalled();
+  });
+
+  it('VIEW-10.3: without the server’s copy of the question, Fleet refuses the text itself (contract C5): nothing typed', async () => {
+    const t = await setup();
+    expect(await refusal(t.answer(PREVIEWS, { kind: 'question', question: 'toolu_p2', answers: [{ options: [0] }, { options: [1], text: 'and more' }], epoch: 41 }))).toEqual({
+      status: 409,
+      message: 'Lookout can’t type this answer safely (it could read as another option), so nothing was typed. Answer it in the terminal.',
+    });
+    expect(t.answered).not.toHaveBeenCalled();
+    expect(transcript('toolu_p2')).not.toBeNull();
+    const session = JSON.parse(readFileSync(join(dir, 'fleet', 'sessions', `${PREVIEWS}.json`), 'utf8')) as { entries: { id?: string; status?: string }[] };
+    expect(session.entries.find((e) => e.id === 'toolu_p2')?.status).toBe('pending');
   });
 });
 
