@@ -1,14 +1,15 @@
 # Contract: questions with previews in `fleet messages` and `fleet answer`
 
-What the Fleet fork (`dafilipaj/fleet`, branch `lookout`, [0006](../decisions/0006-run-a-fork-of-fleet.md)) adds so Lookout can show and answer a Claude Code question whose options have previews ([VIEW-10](../features/session-view/SPEC.md)). It's built in the fork as one commit and verified there, in Fleet's own tests; Lookout's fake `fleet` follows this file, and `pnpm req-check` never looks here (the criteria are VIEW-10). Points are numbered C1 to C8 so the commit's tests can cite them. Every field and flag is add-only: a later Fleet may add, never rename or drop.
+What the Fleet fork (`dafilipaj/fleet`, branch `lookout`, [0006](../decisions/0006-run-a-fork-of-fleet.md)) adds so Lookout can show and answer a Claude Code question whose options have previews ([VIEW-10](../features/session-view/SPEC.md)). It's built in the fork as one commit and verified there, in Fleet's own tests; Lookout's fake `fleet` follows this file, and `pnpm req-check` never looks here (the criteria are VIEW-10). Points are numbered C1 to C8 (with C2a) so the commit's tests can cite them. Every field and flag is add-only: a later Fleet may add, never rename or drop.
 
-Written 2026-10-28 from a live Session Lookout couldn't answer (Dario's Session `51c047a3`, a fantastic-productive spec question), against the fork at `bcec75c` (Lookout's pin in `e2e/pins.json`), and from real captures of Claude Code 2.1.312 taken the same day: `~/Projects/work/output/lookout-2026-10-28/preview-form/` (scenarios A to G, each `<name>.ans` from `capture-pane -p -e` plus `<name>.cursor`; `A-transcript.jsonl` and `C-transcript.jsonl`; the live four-question form, `claude-question-previews-200x50.json`, and its review screen, `live-4q-review-200x50.txt`).
+Written 2026-10-28 from a live Session Lookout couldn't answer (Dario's Session `51c047a3`, a fantastic-productive spec question), against the fork at `bcec75c` (Lookout's pin in `e2e/pins.json`), and from real captures of Claude Code 2.1.312 taken the same day: `~/Projects/work/output/lookout-2026-10-28/preview-form/` (scenarios A to G, each `<name>.ans` from `capture-pane -p -e` plus `<name>.cursor`; `A-transcript.jsonl` and `C-transcript.jsonl`; the live four-question form, `claude-question-previews-200x50.json`, and its review screen, `live-4q-review-200x50.txt`). Amended the same day with C2a, after captures H1 to H4 showed what the live screen's `│ ` gutter is.
 
 ## Why
 
 - AskUserQuestion's options may carry a `preview` (an ASCII mockup, a code snippet). For a single-select question with previews, Claude Code draws another layout: the options in a left column, the focused option's preview in a box beside them, no descriptions, no "Type something" row, and `n` for notes.
 - Fleet reads neither. `core/questions.rs` keeps only a `preview: bool` (not serialized), `cli/answer.rs` refuses any call one of whose questions has previews (`has_previews`, `layout_unsupported`), and `prompt::read_form` doesn't recognise the layout at all, so `answer --list` says `no_form`: Lookout locks the options and, after 5 s, says the terminal doesn't show the question, which is false.
 - The layout is per question: in the live form only question 1 had previews, and questions 2 to 4 were drawn in the plain layout. A multi-select question with previews is drawn plainly too (C4).
+- A question longer than 80 characters gets a `│ ` gutter in either layout, which Fleet doesn't expect, so such a question can't be answered from Lookout even without previews (C2a).
 
 ## C1. `messages --json`: an option's preview
 
@@ -32,12 +33,16 @@ From the bottom up:
    - a label's wrapped lines, indented four spaces (`    grouped sections`, `    (Recommended)`), joined to the label with one space;
    - blank (the box running below the last option).
    The numbers run from 1 without a gap. Descriptions aren't drawn.
-4. **The question**, its wrapped lines joined. On the live screen it carried a `│ ` gutter (`│ New proposal on the global …`); the scratch captures didn't. A leading `│ ` is dropped.
+4. **The question**, its wrapped lines joined. A question longer than 80 characters carries a `│ ` gutter on every line (`│ New proposal on the global …`), in either layout (C2a); it's dropped.
 5. **The head's top:** the tab bar (`←  ☐ Form shape  ☐ Deals  …  ✔ Submit  →`) or, with one question, a lone tab (` ☐ Layout `), then the form's top rule.
 
 The box can be cut short: `├─── ✂ ─── N lines hidden ───┤` (a 45-line preview at 200×50, and a 9-line one at 80×24). The options, the notes row and the head stay whole in every capture, so a cut box doesn't make the form `clipped`. A form whose option rows or head run off the captured screen is `clipped`, as today.
 
 A screen with that footer that can't be read this way (no `┌` on option 1's row, numbers with a gap, a row left of the box that is neither an option nor a wrapped label) is `layout_unsupported`, never `no_form`.
+
+## C2a. The `│ ` gutter of a long question (both layouts)
+
+Captures H1 to H4 (2026-10-28) settled it: Claude Code 2.1.312 draws a `│ ` gutter before a question's text when the text is longer than 80 characters (59, 73 and 80: none; 81, 82, 83, 84, 87, 90, 120 and 230: always), whatever its options. On the form every wrapped line of the question carries it (`│ foxtrot…`); on the review screen the item reads ` │ ● <question>` and its wrapped lines ` │   …`. It never shows on an option row, a `→` answer line, "Submit answers" or "Cancel". So it hits the plain layout too: before this commit a plain question over 80 characters failed `Form::check` on its text (`question`), and Lookout said the form didn't match. The gutter is dropped wherever it shows: the question's lines in both layouts, and a review item and its continuation lines. H1 is the live four-question input; H2 to H4 plain questions of chosen lengths (inputs in `H-input*.json`).
 
 ## C3. Which question it shows, and untouched
 
@@ -56,7 +61,7 @@ A screen with that footer that can't be read this way (no `┌` on option 1's ro
 - A single-select question with previews takes exactly one option and no `text`: anything else is `answer_invalid`, nothing typed. The terminal has no "Type something" row for it, and notes are a later slice (C6).
 - Keys, as today: `Down` to the option, then `Enter`, each checked before the next (`form_at`): in the preview layout the cursor's row is the expected option (C2's numbered row, `❯ `), the tabs answered so far `☒`, the notes row untouched. `Down` past the last option goes to `Chat about this` and stays there (captures A-down3, A-down4); the plan never goes there.
 - Forms with several questions mix layouts (the live form). Each step reads the question on screen in its own layout; questions without previews are planned and answered as today.
-- **The review screen:** read as today, with one addition: a `│ ` gutter before an item's `●` is dropped (`│ ● New proposal …`). The live review showed it before questions 1, 3 and 4 and not 2; the scratch two-question review (capture C) had none. Without this, an answer would stop at the review after its options were typed (`prompt_changed`). Before the commit, the cause is looked for in one more capture, a four-question form like the live one; if the gutter marks something (a focused item, a question with previews), the reader says so in a comment.
+- **The review screen:** read as today, with C2a's gutter dropped from an item (` │ ● New proposal …`) and its wrapped lines. The live review showed it before questions 1, 3 and 4 (165, 105 and 100 characters) and not 2 (72). Without this, an answer would stop at the review after its options were typed (`prompt_changed`).
 - After the last key: as today (`landed`).
 
 ## C6. Not in this commit
@@ -69,7 +74,7 @@ A screen with that footer that can't be read this way (no `┌` on option 1's ro
 ## C7. Tests in the fork
 
 - The captures copied to `testdata/screens/live/claude-question-preview-*` (`.ans` and `.cursor`), keeping their scenario letters, and the live screens as `claude-question-preview-live-4q-*`.
-- Unit tests per point: C2 on every capture (the box's column, wrapped labels, the cut box at 80×24 and 200×50, `Chat about this` with the cursor, the notes row's three states, the live `│ ` question); C3 against each capture's Transcript question (shows, untouched; `cursor_moved` on A-down1 to A-down4; `touched` on A-notes-open and A-notes-typed); C4 (`answerable` on A-initial, C-initial and the live form; E answered as a plain multi-select; `layout_unsupported` on a damaged A-initial without its `┌`); C5's plan for a one-question and the live four-question form, and the review with and without the gutter.
+- Unit tests per point: C2 on every capture (the box's column, wrapped labels, the cut box at 80×24 and 200×50, `Chat about this` with the cursor, the notes row's three states, the live `│ ` question); C3 against each capture's Transcript question (shows, untouched; `cursor_moved` on A-down1 to A-down4; `touched` on A-notes-open and A-notes-typed); C4 (`answerable` on A-initial, C-initial and the live form; E answered as a plain multi-select; `layout_unsupported` on a damaged A-initial without its `┌`); C5's plan for a one-question and the live four-question form, and the review with and without the gutter; C2a on H1 to H4 (80 and 81 characters, a wrapped question on the form and on the review), with every plain-layout test still passing.
 - An answer end to end against a Fake form isn't possible in the fork either; the live check is Lookout's VIEW-10.8.
 
 ## C8. Boundary
