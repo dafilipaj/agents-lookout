@@ -150,6 +150,13 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
   - the one-time setup on each Mac: Amphetamine's Power Protect helper and the Automation permission.
 - **Added:** 2026-10-23.
 
+## Notes on a question with previews (VIEW)
+
+- **What:** a Notes field for a question whose options have previews (VIEW-10), sent as the terminal's `n`, the note, then Enter. Claude Code records it with the pick (`toolUseResult.annotations[question].notes`), and the agent reads it with the answer.
+- **Why:** it's the only free text such a question takes in the terminal; VIEW-10 answers it with options alone.
+- **How:** a Fleet commit after the [contract](contracts/fleet-question-previews.md)'s (C6): `--answers` takes `notes` for a question with previews; one capture first, of notes in a form with several questions (in a one-question form, Enter in the notes field submits the whole answer).
+- **Added:** 2026-10-28, split out of VIEW-10 by Dario.
+
 ## Dropped
 
 Discussed and decided against. Each keeps why, so it isn't proposed again without something new.
