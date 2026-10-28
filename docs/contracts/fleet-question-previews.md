@@ -2,7 +2,7 @@
 
 What the Fleet fork (`dafilipaj/fleet`, branch `lookout`, [0006](../decisions/0006-run-a-fork-of-fleet.md)) adds so Lookout can show and answer a Claude Code question whose options have previews ([VIEW-10](../features/session-view/SPEC.md)). It's built in the fork as one commit and verified there, in Fleet's own tests; Lookout's fake `fleet` follows this file, and `pnpm req-check` never looks here (the criteria are VIEW-10). Points are numbered C1 to C8 (with C2a) so the commit's tests can cite them. Every field and flag is add-only: a later Fleet may add, never rename or drop.
 
-Written 2026-10-28 from a live Session Lookout couldn't answer (Dario's Session `51c047a3`, a fantastic-productive spec question), against the fork at `bcec75c` (Lookout's pin in `e2e/pins.json`), and from real captures of Claude Code 2.1.312 taken the same day: `~/Projects/work/output/lookout-2026-10-28/preview-form/` (scenarios A to G, each `<name>.ans` from `capture-pane -p -e` plus `<name>.cursor`; `A-transcript.jsonl` and `C-transcript.jsonl`; the live four-question form, `claude-question-previews-200x50.json`, and its review screen, `live-4q-review-200x50.txt`). Amended the same day with C2a, after captures H1 to H4 showed what the live screen's `│ ` gutter is.
+Written 2026-10-28 from a live Session Lookout couldn't answer (Dario's Session `51c047a3`, a fantastic-productive spec question), against the fork at `bcec75c` (Lookout's pin in `e2e/pins.json`), and from real captures of Claude Code 2.1.312 taken the same day: `~/Projects/work/output/lookout-2026-10-28/preview-form/` (scenarios A to G, each `<name>.ans` from `capture-pane -p -e` plus `<name>.cursor`; `A-transcript.jsonl` and `C-transcript.jsonl`; the live four-question form, `claude-question-previews-200x50.json`, and its review screen, `live-4q-review-200x50.txt`). Amended the same day with C2a, after captures H1 to H4 showed what the live screen's `│ ` gutter is, and after review with captures N1 (the live form's shape, neutral text), P1 (question 2 with previews), P2 and P3 (80×24: the footer wraps; Esc in the notes field closes only the field, its text kept).
 
 ## Why
 
@@ -18,7 +18,7 @@ Written 2026-10-28 from a live Session Lookout couldn't answer (Dario's Session 
 
 ## C2. Recognising the preview layout (Claude Code 2.1.312)
 
-Lines are read as `read_form` reads them today (the captured screen, colours dropped, trailing blanks trimmed). A form is in the preview layout when its footer, the last non-empty line, holds both "Enter to select" and "n to add notes". The captures show three footers:
+Lines are read as `read_form` reads them today (the captured screen, colours dropped, trailing blanks trimmed). A form is in the preview layout when its footer holds both "Enter to select" and "n to add notes". The footer is the last non-empty line, or the last two joined with a space when it wraps: at 80 columns the several-question footer breaks before `Esc to cancel` (P2) and the notes field's before `to cancel` (P3). The captures show three footers:
 
 - `Enter to select · ↑/↓ to navigate · n to add notes · Esc to cancel` (one question);
 - `Enter to select · ↑/↓ to navigate · n to add notes · Tab to switch questions · Esc to cancel` (several);
