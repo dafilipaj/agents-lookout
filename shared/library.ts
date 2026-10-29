@@ -1,6 +1,6 @@
 import type { HistoryItem } from './types.ts';
 
-/** LIB slice 1, normalized from docs/contracts/tb-session-outputs.md. */
+/** LIB slice 1: Lookout's rules over docs/contracts/tb-session-events.md. */
 export type OutputType = 'markdown' | 'html' | 'pdf' | 'image';
 export const LIBRARY_TYPES = ['pages', 'pdf', 'markdown', 'image', 'share'] as const;
 export type LibraryType = (typeof LIBRARY_TYPES)[number];
@@ -13,8 +13,8 @@ export interface LibraryFilter {
 export interface LibraryQuery extends LibraryFilter {
   query: string;
   page: number;
-  /** The overflow belonging to this continuation, independent of refreshes and other tabs. */
-  continuation?: string;
+  /** The complete server-held read used for paging and local filters. */
+  readId?: string;
   headless: boolean;
 }
 export interface OutputSource {
@@ -52,4 +52,5 @@ export interface OutputItem {
 }
 export type LibraryPage =
   | { state: 'not-installed'; installCommand: string }
-  | { state: 'ok'; items: OutputItem[]; nextPage: number; continuation?: string; hasMore: boolean; projects: string[]; hiddenGone: number; unfilteredEmpty: boolean };
+  | { state: 'read-again' }
+  | { state: 'ok'; items: OutputItem[]; readId: string; total: number; nextPage: number; hasMore: boolean; projects: string[]; hiddenGone: number; unfilteredEmpty: boolean };

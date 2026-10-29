@@ -198,7 +198,11 @@ export interface RunningWorld extends Waiting {
   readonly memory: FakeControl<MemoryDecl>;
   /** Test controls that add CLI JSON rows without bypassing Fleet or tb-session's command boundary. */
   readonly fleet: { gainSession(row: FleetRow): void };
-  readonly tbSession: { indexSession(row: Record<string, unknown>): void };
+  readonly tbSession: {
+    indexSession(row: Record<string, unknown>): void;
+    /** Add recorded tool calls and their files; the next real events call indexes them. */
+    produce(items: import('./builder.ts').OutputDecl[]): Promise<void>;
+  };
   /** Calls the World's fakes refused to answer so far; each fails the Behaviour test (TEST-1.5, `StopReport.violations`). */
   violations(): FakeViolation[];
   /** The URLs the World's pages asked for outside its Lookout origin, each aborted (TEST-1.7). */
@@ -336,6 +340,7 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
   const fleetDir = join(root, 'fleet');
   const tbSessionDir = join(root, 'tb-session');
   const fleetExtrasPath = join(fleetDir, 'extra-rows.json');
+  const fleetResumePath = join(fleetDir, 'resume.json');
   const tbSessionExtrasPath = join(tbSessionDir, 'extra-results.json');
   const usageDir = spec.usage ? join(root, 'fakes', 'usage') : '';
   const callsLog = join(logs, 'calls.log');
@@ -355,7 +360,9 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
   const fakeDir = (name: string) => join(root, 'fakes', name);
   const waitUntil = (what: string, check: () => boolean, o?: { timeoutMs?: number }) => waits.waitUntil(what, check, o);
   const tbProd = new FakeControl<TbProdDecl>('tb-prod', spec.tbProd ? fakeDir('tb-prod') : null, checkTbProd, waitUntil);
-  const tbOutputs = new FakeControl<TbSessionAnswer>('tb-session', spec.outputs ? fakeDir('tb-session') : null, checkTbSession, waitUntil);
+  const tbOutputs = new FakeControl<TbSessionAnswer>('tb-session', spec.outputs?.unsupported ? fakeDir('tb-session') : null, checkTbSession, waitUntil);
+  const outputDeclarations = structuredClone(spec.outputs?.items ?? []);
+  let outputFixtures: Awaited<ReturnType<typeof materializeOutputs>> | null = null;
   const memory = new FakeControl<MemoryDecl>('ps', fakeDir('ps'), checkMemory, waitUntil);
   const tbPr = new FakeControl<TbPrDecl>('tb-pr', spec.tbPr ? fakeDir('tb-pr') : null, checkTbPr, waitUntil);
   let worldPort: number;
@@ -429,7 +436,7 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
 
   /** TEST-2.4: what each fake answered, as the test changed it, not only what it was declared with. */
   const fakesReport = (): string | null => {
-    const fakes = Object.fromEntries([['memory', memory.history()], ...(spec.tbProd ? [[tbProd.name, tbProd.history()]] : []), ...(spec.tbPr ? [[tbPr.name, tbPr.history()]] : []), ...(spec.outputs ? [[tbOutputs.name, tbOutputs.history()]] : [])]);
+    const fakes = Object.fromEntries([['memory', memory.history()], ...(spec.tbProd ? [[tbProd.name, tbProd.history()]] : []), ...(spec.tbPr ? [[tbPr.name, tbPr.history()]] : []), ...(spec.outputs?.unsupported ? [[tbOutputs.name, tbOutputs.history()]] : [])]);
     return Object.keys(fakes).length ? JSON.stringify(fakes, null, 2) : null;
   };
 
@@ -553,6 +560,7 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
     );
     await writeFile(callsLog, '');
     await writeFile(fleetExtrasPath, '[]');
+    await writeFile(fleetResumePath, JSON.stringify(spec.fleetResume ? [spec.fleetResume] : []));
     await writeFile(tbSessionExtrasPath, '[]');
 
     // TEST-1.9: a trap on the default socket in the World's TMUX_TMPDIR. Anything that ignored the
@@ -575,7 +583,7 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
     await writeExecutable(join(bin, 'tmux'), fillTemplate('tmux', { TMUX_TMPDIR: tmuxTmpdir, REAL_TMUX: tmuxBin, SOCKET: socket }));
     await writeExecutable(join(bin, 'ps'), fillTemplate('ps', { NODE: process.execPath, SCRIPT: join(FAKES, 'ps.ts'), STATE: fakeDir('ps'), VIOLATIONS: violationsLog, LOG: callsLog }));
     for (const [name, real] of [['fleet', bins.fleet], ['tb-session', bins.tbSession]] as const) {
-      if (!real || (name === 'tb-session' && spec.outputs)) continue;
+      if (!real || (name === 'tb-session' && spec.outputs?.unsupported)) continue;
       const extras = name === 'fleet' ? fleetExtrasPath : tbSessionExtrasPath;
       await writeExecutable(join(bin, name), fillTemplate('logged', {
         NAME: name,
@@ -588,6 +596,7 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
         NODE: process.execPath,
         MERGE_SCRIPT: join(REPO_ROOT, 'e2e/shims/merge-json.mjs'),
         EXTRAS: extras,
+        RESUME: fleetResumePath,
       }));
     }
     // TEST-1.2, TEST-1.5: the declared fakes, each run by node from e2e/fakes/ through a wrapper that
@@ -601,7 +610,8 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
     };
     await installFake(tbProd, spec.tbProd);
     await installFake(tbPr, spec.tbPr);
-    if (spec.outputs) await installFake(tbOutputs, await materializeOutputs(home, spec.outputs.items, spec.outputs.unsupported));
+    if (spec.outputs?.unsupported) await installFake(tbOutputs, { results: [], sessions: [], unsupported: true });
+    else if (spec.outputs) outputFixtures = await materializeOutputs(home, outputDeclarations);
     await mkdir(fakeDir('ps'), { recursive: true });
     memory.answer(spec.memory);
     await writeExecutable(join(bin, 'sysctl'), fillTemplate('sysctl', { REAL_SYSCTL: '/usr/sbin/sysctl', NAME: 'sysctl', LOG: callsLog, NODE: process.execPath, SCRIPT: join(FAKES, 'sysctl.ts'), STATE: fakeDir('ps'), VIOLATIONS: violationsLog }));
@@ -655,6 +665,19 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
       FLEET_CONNECT_TIMEOUT: '2',
       [FLEET_PATH_ONLY]: '1',
     });
+
+    // LIB-2.6, LIB-3.5: let the pinned tool index real Transcripts before deleting them.
+    // Prune only the declared pruned Session; the other missing Transcript keeps its index row.
+    if (outputFixtures && (outputFixtures.missingTranscripts.length || outputFixtures.prunedTranscripts.length)) {
+      const indexed = await step(call(join(bin, 'tb-session'), ['index', '--all-projects']));
+      if (indexed.code !== 0) throw new Error(`tb-session fixture index failed: ${indexed.stderr}`);
+      for (const path of outputFixtures.prunedTranscripts) await rm(path);
+      if (outputFixtures.prunedTranscripts.length) {
+        const pruned = await step(call(join(bin, 'tb-session'), ['index', '--all-projects', '--prune']));
+        if (pruned.code !== 0) throw new Error(`tb-session fixture prune failed: ${pruned.stderr}`);
+      }
+      for (const path of outputFixtures.missingTranscripts) await rm(path);
+    }
 
     // The private tmux server, kept alive while it has no sessions. It daemonizes, which no other
     // process of the World may (escapedProcesses), so its pid is kept. It starts with the World's
@@ -757,6 +780,11 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
     },
     tbSession: {
       indexSession: (row) => writeWorldJson(tbSessionExtrasPath, [...readJsonArray<Record<string, unknown>>(tbSessionExtrasPath).filter((existing) => existing.session_id !== row.session_id), row]),
+      produce: async (items) => {
+        if (!spec.outputs || spec.outputs.unsupported) throw new Error('produce needs a World with real Output fixtures.');
+        outputDeclarations.push(...items);
+        await materializeOutputs(home, outputDeclarations);
+      },
     },
     violations: () => readViolations(violationsLog),
     browserRequests: () => browser.requests(),

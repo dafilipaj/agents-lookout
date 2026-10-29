@@ -31,6 +31,11 @@ function pidsWith(marker: string): string[] {
 const rejection = (p: Promise<unknown>) => p.then(() => null, (e: RunError) => e);
 
 describe('run', () => {
+  it('LIB-2.10: passes file paths to a read-only git question through stdin without shell interpretation', async () => {
+    const paths = '/report with spaces.md\n/report$(whoami).html\n';
+    expect(await run('/bin/cat', [], { timeoutMs: 2000, stdin: paths })).toBe(paths);
+  });
+
   it('resolves stdout, passing arguments as argv without a shell', async () => {
     expect(await run('/bin/echo', ['$(whoami)', '; ls'], { timeoutMs: 2000 })).toBe('$(whoami) ; ls\n');
   });

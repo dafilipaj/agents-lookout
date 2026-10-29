@@ -5,10 +5,11 @@ import { NOW, launchView, renderApp, row } from '@/test/helpers';
 
 const session = (over: Partial<OutputSession> = {}): OutputSession => ({ sessionId: 'writer', harness: 'claude', title: 'Report writer', projectPath: '/project', projectDisplay: '/project', repo: 'project', branch: null, headless: false, lastActiveAt: NOW, snippet: null, firstPrompt: null, blocked: null, pruned: false, event: 'write', ...over });
 const output = (over: Partial<OutputItem> = {}): OutputItem => ({ kind: 'file', key: '/report.html', type: 'html', title: 'Harbor report', path: '/report.html', url: null, display: '~/report.html', projectPath: '/project', repo: 'project', createdAt: NOW - 86400000, updatedAt: NOW, events: 3, exists: true, source: null, sourcePath: null, sourceDisplay: null, version: null, sessions: [session()], ...over });
-const ok = (items: OutputItem[], over = {}): LibraryPage => ({ state: 'ok', items, nextPage: 2, hasMore: false, hiddenGone: 0, unfilteredEmpty: false, projects: ['/project'], ...over });
+const ok = (items: OutputItem[], over = {}): LibraryPage => ({ state: 'ok', items, readId: 'read-1', total: items.length, nextPage: 2, hasMore: false, hiddenGone: 0, unfilteredEmpty: false, projects: ['/project'], ...over });
 const panel = () => screen.getByTestId('library-panel');
 const rows = () => within(within(panel()).getByRole('listbox', { name: 'Outputs' })).queryAllByRole('option');
 const first = () => within(within(panel()).getByRole('listbox', { name: 'Outputs' })).findByRole('option');
+function nextPage() { fireEvent.scroll(within(panel()).getByRole('listbox').parentElement!); }
 async function open(app: ReturnType<typeof renderApp>) { app.snapshot([]); if (!screen.queryByTestId('library-panel')) fireEvent.keyDown(document.body, { key: 'l' }); await waitFor(() => expect(app.client.library).toHaveBeenCalled()); }
 beforeEach(() => { window.localStorage.clear(); vi.useFakeTimers({ toFake: ['Date'], now: NOW }); });
 afterEach(() => vi.useRealTimers());
@@ -33,14 +34,13 @@ it('LIB-1.2: remembers Library, open state and width in lookout.right across rel
   expect(screen.getByRole('complementary', { name: 'Right sidebar' })).toHaveStyle({ width: '420px' });
   await waitFor(() => expect(app.client.library).toHaveBeenCalledWith(expect.objectContaining({ types: ['share'], project: '/other', hideGone: false })));
 });
-it('LIB-2.1: groups by local day and loads the next server cursor, with at most five automatic fills before Load more', async () => {
-  const library = vi.fn(async (q) => ok([], { nextPage: q.page + 5, hasMore: true }));
+it('LIB-2.1: keeps loading an underfilled panel beyond five pages from one read, then groups by local day', async () => {
+  const library = vi.fn(async (q: LibraryQuery) => ok(q.page < 8 ? [] : [output(), output({ key: 'yesterday', updatedAt: NOW - 86400000 }), output({ key: 'older', updatedAt: NOW - 3 * 86400000 })], { nextPage: q.page + 1, hasMore: q.page < 8 }));
   const app = renderApp('/', { library }); await open(app);
-  await waitFor(() => expect(within(panel()).getByRole('button', { name: 'Load more' })).toBeVisible());
-  await waitFor(() => expect(library).toHaveBeenCalledTimes(6));
-  expect(library.mock.calls.map(([q]) => q.page)).toEqual([1, 6, 11, 16, 21, 26]);
-  app.unmount();
-  const grouped = renderApp('/', { library: async () => ok([output(), output({ key: 'yesterday', updatedAt: NOW - 86400000 }), output({ key: 'older', updatedAt: NOW - 3 * 86400000 })]) }); await open(grouped);
+  await waitFor(() => expect(rows()).toHaveLength(3));
+  expect(library.mock.calls.map(([q]) => q.page)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+  expect(library.mock.calls.slice(1).every(([q]) => q.readId === 'read-1')).toBe(true);
+  expect(within(panel()).queryByRole('button', { name: 'Load more' })).toBeNull();
   expect(within(panel()).getByText('Today')).toBeVisible(); expect(within(panel()).getByText('Yesterday')).toBeVisible();
 });
 it('LIB-2.2: rows expose title, Type, repo, age, path and live/gone chips as options of one focusable listbox with decorative icons', async () => {
@@ -74,6 +74,15 @@ it('LIB-2.4: debounces text search within one second, shows Loading and marks ti
   await act(async () => finish!(ok([output()])));
   expect(panel().querySelectorAll('mark.bg-highlight')).toHaveLength(2);
 });
+it('LIB-2.4: highlights Unicode literal hits at their original positions after expanding case folds', async () => {
+  const app = renderApp('/', { library: async () => ok([output({ title: 'İ Straße 𐐀 ﬃ', display: '~/a.html' })]) });
+  await open(app); await waitFor(() => expect(rows()).toHaveLength(1));
+  for (const [query, hit] of [['STRASSE', 'Straße'], ['i\u0307', 'İ'], ['𐐨', '𐐀'], ['FFI', 'ﬃ']]) {
+    fireEvent.change(within(panel()).getByRole('searchbox'), { target: { value: query } });
+    await waitFor(() => expect(app.client.library).toHaveBeenLastCalledWith(expect.objectContaining({ query })));
+    await waitFor(() => expect([...panel().querySelectorAll('mark.bg-highlight')].map((mark) => mark.textContent)).toEqual([hit]));
+  }
+});
 it('LIB-2.5: arrows and j/k move without acting and collapse, Enter expands then opens except for gone files, and tab arrows reach all three tabs', async () => {
   const browser = vi.spyOn(window, 'open').mockImplementation(() => null);
   const app = renderApp('/', { library: async () => ok([output(), output({ key: 'gone', title: 'Gone report', exists: false })]) }); await open(app);
@@ -103,7 +112,7 @@ it('LIB-2.8: uses Loading, EmptyState, hidden-gone explanation, error Alert and 
   const app = renderApp('/', { library: async () => ok([], { hiddenGone: 4 }) }); await open(app);
   expect(await within(panel()).findByText('Nothing matches')).toBeVisible(); expect(panel()).toHaveTextContent('4 gone Outputs are hidden'); expect(panel()).toHaveTextContent('Hide gone'); app.unmount();
   const empty = renderApp('/', { library: async () => ok([], { unfilteredEmpty: true }) }); await open(empty); expect(await within(panel()).findByText('Nothing produced yet')).toBeVisible(); empty.unmount();
-  const missing = renderApp('/', { library: async () => ({ state: 'not-installed', installCommand: 'install tb-session' }) }); await open(missing); expect((await within(panel()).findByRole('alert')).querySelector('[data-slot="command-block"]')).toHaveTextContent('install tb-session'); missing.unmount();
+  const missing = renderApp('/', { library: async () => ({ state: 'not-installed', installCommand: 'install tb-session' }) }); await open(missing); expect(await within(panel()).findByRole('alert')).toHaveTextContent('tb-session needs events'); expect((await within(panel()).findByRole('alert')).querySelector('[data-slot="command-block"]')).toHaveTextContent('install tb-session'); missing.unmount();
   const failed = renderApp('/', { library: async () => { throw new Error('Read failed'); } }); await open(failed); expect(await within(panel()).findByRole('alert')).toHaveTextContent('Read failed');
 });
 it('LIB-3.1: a row click only selects and expands, Esc leaves it selected, and the current Session stays in the main pane', async () => {
@@ -164,20 +173,56 @@ it('LIB-2.8: a slow migration says Indexing Transcripts until the first answer a
   await act(async () => finish!(ok([output()])));
   expect(within(panel()).queryByText('Indexing Transcripts…')).toBeNull();
 });
-it('LIB-2.7: Fleet changes during paging queue a page-one refresh, whose keys replace later-page duplicates', async () => {
-  const a = output(), c = output({ key: 'c', title: 'C report' }), b = output({ key: 'b', title: 'B report' });
+it('LIB-2.7: Fleet changes during paging queue a fresh read that replaces every loaded page without gaps or duplicates', async () => {
+  const outputs = ['A', 'B', 'C', 'D', 'E'].map((title) => output({ key: title, title }));
   let refreshed = false, finish: ((p: LibraryPage) => void) | undefined;
-  const library = vi.fn((q) => q.page === 1 ? Promise.resolve(ok(refreshed ? [b, a] : [a, c], { hasMore: true })) : new Promise<LibraryPage>((r) => { finish = r; }));
-  const app = renderApp('/', { library }); await open(app);
-  fireEvent.click(await within(panel()).findByRole('button', { name: 'Load more' }));
-  await waitFor(() => expect(library).toHaveBeenCalledTimes(2));
+  const library = vi.fn((q: LibraryQuery) => {
+    if (q.page === 1) return Promise.resolve(ok(refreshed ? [outputs[3]!, outputs[0]!] : outputs.slice(0, 2), { hasMore: true, readId: refreshed ? 'fresh-read' : 'old-read' }));
+    if (!refreshed) return new Promise<LibraryPage>((r) => { finish = r; });
+    return Promise.resolve(ok(q.page === 2 ? [outputs[1]!, outputs[2]!] : [outputs[4]!], { readId: 'fresh-read', nextPage: q.page + 1, hasMore: q.page === 2 }));
+  });
+  const app = renderApp('/', { library }); await open(app); await waitFor(() => expect(rows()).toHaveLength(2));
+  nextPage(); await waitFor(() => expect(library).toHaveBeenCalledTimes(2));
   refreshed = true; app.snapshot([row({ id: 'new-writer' })]);
   expect(library).toHaveBeenCalledTimes(2);
-  await act(async () => finish!(ok([b], { nextPage: 3 })));
-  await waitFor(() => expect(library).toHaveBeenCalledTimes(3));
-  await waitFor(() => expect(rows()).toHaveLength(2));
-  expect(rows()[0]).toHaveTextContent('B report'); expect(rows()[1]).toHaveTextContent('Harbor report');
-  expect(library.mock.calls.map(([q]) => q.page)).toEqual([1, 2, 1]);
+  await act(async () => finish!(ok(outputs.slice(2, 4), { nextPage: 3, hasMore: true, readId: 'old-read' })));
+  await waitFor(() => expect(rows().map((r) => r.textContent?.includes('D'))).toEqual([true, false, false, false]));
+  expect(rows().map((r) => r.querySelector('[data-field="title"]')!.textContent)).toEqual(['D', 'A', 'B', 'C']);
+  expect(library.mock.calls.map(([q]) => [q.page, q.readId])).toEqual([[1, undefined], [2, 'old-read'], [1, undefined], [2, 'fresh-read']]);
+  nextPage(); await waitFor(() => expect(rows()).toHaveLength(5));
+  expect(library).toHaveBeenLastCalledWith(expect.objectContaining({ page: 3, readId: 'fresh-read' }));
+});
+
+it('LIB-2.7: a queued refresh starts before another automatic page of the old read', async () => {
+  vi.useFakeTimers({ now: NOW });
+  const replies: ((page: LibraryPage) => void)[] = [];
+  const library = vi.fn<(q: LibraryQuery) => Promise<LibraryPage>>(() => new Promise((resolve) => replies.push(resolve)));
+  const app = renderApp('/', { library }); app.snapshot([]);
+  fireEvent.click(screen.getByRole('button', { name: 'Library' }));
+  await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+  const scroll = within(panel()).getByRole('listbox').parentElement!;
+  Object.defineProperties(scroll, { clientHeight: { value: 500 }, scrollHeight: { value: 100 } });
+  await act(async () => replies[0]!(ok([output()], { hasMore: true })));
+  expect(library).toHaveBeenCalledTimes(2);
+  app.snapshot([row({ id: 'new-writer' })]);
+  await act(async () => replies[1]!(ok([output({ key: 'second' })], { hasMore: true, nextPage: 3 })));
+  expect(library.mock.calls.map(([q]) => [q.page, q.readId])).toEqual([[1, undefined], [2, 'read-1'], [1, undefined]]);
+  await act(async () => replies[2]!(ok([output(), output({ key: 'new-second' })], { readId: 'new-read' })));
+  expect(rows()).toHaveLength(2);
+});
+
+it('LIB-2.7: a growing read keeps the loaded row count and retains the rest of its fetched page for scrolling', async () => {
+  let fresh = false;
+  const a = output({ key: 'a', title: 'A report' }), b = output({ key: 'b', title: 'B report' }), c = output({ key: 'c', title: 'C report' });
+  const library = vi.fn(async () => ok(fresh ? [c, a, b] : [a, b], { readId: fresh ? 'fresh' : 'old' }));
+  const app = renderApp('/', { library }); await open(app); await waitFor(() => expect(rows()).toHaveLength(2));
+  fresh = true; app.snapshot([row({ id: 'new-writer' })]);
+  await waitFor(() => expect(rows()[0]).toHaveTextContent('C report'));
+  expect(rows()).toHaveLength(2);
+  nextPage();
+  await waitFor(() => expect(rows()).toHaveLength(3));
+  expect(rows().map((r) => r.querySelector('[data-field="title"]')!.textContent)).toEqual(['C report', 'A report', 'B report']);
+  expect(library).toHaveBeenCalledTimes(2);
 });
 
 it('LIB-2.7: routine Session metadata waits for the 60-second refresh and never queues another indexing call', async () => {
@@ -228,102 +273,92 @@ it('LIB-2.7: routine Session metadata waits for the 60-second refresh and never 
   expect(library).toHaveBeenCalledTimes(6);
 });
 
-it('LIB-2.1: a refresh keeps the retained later page’s overflow continuation when loading more', async () => {
-  let firstReads = 0;
-  const library = vi.fn(async (q) => q.page === 1
-    ? ok([output()], { hasMore: true, nextPage: 3, continuation: `first-${++firstReads}` })
-    : q.page === 3 ? ok([output({ key: 'second', title: 'Second report' })], { hasMore: true, nextPage: 4, continuation: 'retained-overflow' })
-      : ok([output({ key: 'third', title: 'Third report' })]));
-  const app = renderApp('/', { library }); await open(app);
-  fireEvent.click(await within(panel()).findByRole('button', { name: 'Load more' }));
-  await waitFor(() => expect(rows()).toHaveLength(2));
-  app.snapshot([row({ id: 'new-writer' })]);
-  await waitFor(() => expect(library).toHaveBeenCalledTimes(3));
-  fireEvent.click(within(panel()).getByRole('button', { name: 'Load more' }));
-  await waitFor(() => expect(rows()).toHaveLength(3));
-  expect(library).toHaveBeenLastCalledWith(expect.objectContaining({ page: 4, continuation: 'retained-overflow' }));
-});
-
-it.each([
-  { freeze: 'hover', stop: 'last page', fills: 2 },
-  { freeze: 'expansion', stop: 'last page', fills: 2 },
-  { freeze: 'hover', stop: 'five-page budget', fills: 5 },
-  { freeze: 'expansion', stop: 'five-page budget', fills: 5 },
-] as const)('LIB-2.1: $freeze-frozen automatic filling respects $stop', async ({ freeze, stop, fills }) => {
+it.each(['hover', 'expansion'] as const)('LIB-2.1: %s-frozen automatic filling continues beyond five pages and applies only on thaw', async (freeze) => {
   vi.useFakeTimers({ now: NOW });
   const replies: ((page: LibraryPage) => void)[] = [];
   const library = vi.fn<(q: LibraryQuery) => Promise<LibraryPage>>(() => new Promise((resolve) => replies.push(resolve)));
   const app = renderApp('/', { library }); app.snapshot([]);
   fireEvent.click(screen.getByRole('button', { name: 'Library' }));
   await act(async () => { await vi.advanceTimersByTimeAsync(0); });
-  // A real underfilled viewport, without relying on jsdom's zero layout measurements.
   const scroll = within(panel()).getByRole('listbox').parentElement!;
   Object.defineProperties(scroll, { clientHeight: { value: 500 }, scrollHeight: { value: 100 } });
-  await act(async () => { replies[0]!(ok([output()], { hasMore: true, nextPage: 2, continuation: 'overflow-2' })); await vi.advanceTimersByTimeAsync(0); });
-  expect(library).toHaveBeenCalledTimes(2); // The first automatic read is already in flight.
+  await act(async () => { replies[0]!(ok([output()], { hasMore: true })); await vi.advanceTimersByTimeAsync(0); });
+  expect(library).toHaveBeenCalledTimes(2);
   if (freeze === 'hover') fireEvent.mouseEnter(rows()[0]!);
   else fireEvent.click(rows()[0]!);
-  for (let fill = 1; fill <= fills; fill++) {
+  for (let fill = 1; fill <= 7; fill++) {
     await act(async () => {
-      replies[fill]!(ok([output({ key: `output-${fill}`, title: `Report ${fill}` })], {
-        hasMore: stop === 'five-page budget' || fill < fills,
-        nextPage: fill + 2, continuation: `overflow-${fill + 2}`,
-      }));
+      replies[fill]!(ok([output({ key: `output-${fill}`, title: `Report ${fill}` })], { hasMore: fill < 7, nextPage: fill + 2 }));
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(rows()).toHaveLength(1); // Pending pages must not move a frozen row.
-    const expectedCalls = fill < fills ? fill + 2 : fill + 1;
-    expect(library).toHaveBeenCalledTimes(expectedCalls);
-    expect(library.mock.calls.map(([q]) => q.page)).toEqual(Array.from({ length: expectedCalls }, (_, n) => n + 1));
+    expect(rows()).toHaveLength(1);
+    expect(library).toHaveBeenCalledTimes(fill < 7 ? fill + 2 : fill + 1);
   }
   if (freeze === 'hover') fireEvent.mouseLeave(rows()[0]!);
   else fireEvent.keyDown(within(panel()).getByRole('listbox'), { key: 'Escape' });
   await act(async () => { await vi.advanceTimersByTimeAsync(0); });
-  expect(rows()).toHaveLength(fills + 1);
-  expect(library).toHaveBeenCalledTimes(fills + 1);
-  if (stop === 'five-page budget') {
-    fireEvent.click(within(panel()).getByRole('button', { name: 'Load more' }));
-    expect(library).toHaveBeenCalledTimes(fills + 2);
-    expect(library).toHaveBeenLastCalledWith(expect.objectContaining({ page: 7, continuation: 'overflow-7' }));
-    await act(async () => { replies[fills + 1]!(ok([output({ key: 'manual', title: 'Manual report' })])); await vi.advanceTimersByTimeAsync(0); });
-    expect(rows()).toHaveLength(fills + 2);
-  }
+  expect(rows()).toHaveLength(8);
+  expect(library.mock.calls.slice(1).every(([q]) => q.readId === 'read-1')).toBe(true);
 });
 
-it('LIB-2.3: changing Type after a two-page frozen refresh drops old-filter rows and continuations, including late replies', async () => {
+it('LIB-2.3: Type, repo, Hide gone and query changes filter the held read; headless and reopening start fresh reads', async () => {
+  const library = vi.fn<(q: LibraryQuery) => Promise<LibraryPage>>(async () => ok([output()], { projects: ['/project', '/other'] }));
+  const app = renderApp('/', { library }); await open(app); await waitFor(() => expect(rows()).toHaveLength(1));
+  fireEvent.click(within(panel()).getByRole('button', { name: 'Markdown' }), { altKey: true });
+  await waitFor(() => expect(library).toHaveBeenLastCalledWith(expect.objectContaining({ types: ['markdown'], page: 1, readId: 'read-1' })));
+  fireEvent.change(within(panel()).getByRole('combobox', { name: 'Repo' }), { target: { value: '/other' } });
+  await waitFor(() => expect(library).toHaveBeenLastCalledWith(expect.objectContaining({ project: '/other', readId: 'read-1' })));
+  fireEvent.click(within(panel()).getByRole('checkbox', { name: 'Hide gone' }));
+  await waitFor(() => expect(library).toHaveBeenLastCalledWith(expect.objectContaining({ hideGone: false, readId: 'read-1' })));
+  fireEvent.change(within(panel()).getByRole('searchbox'), { target: { value: 'Report' } });
+  await waitFor(() => expect(library).toHaveBeenLastCalledWith(expect.objectContaining({ query: 'Report', readId: 'read-1' })));
+  fireEvent.click(within(panel()).getByRole('checkbox', { name: 'Show Headless Sessions' }));
+  await waitFor(() => expect(library).toHaveBeenLastCalledWith(expect.objectContaining({ headless: true })));
+  expect(library.mock.calls.at(-1)![0]).not.toHaveProperty('readId');
+  fireEvent.keyDown(document.body, { key: 'l' }); fireEvent.keyDown(document.body, { key: 'l' });
+  await waitFor(() => expect(library).toHaveBeenCalledTimes(7));
+  expect(library.mock.calls.at(-1)![0]).not.toHaveProperty('readId');
+});
+
+it('LIB-2.1: an evicted read silently restarts page one and replaces the old rows', async () => {
+  const library = vi.fn(async (q: LibraryQuery) => q.page > 1 ? { state: 'read-again' } as LibraryPage : ok([output({ title: q.readId ? 'Held report' : 'Fresh report' })], { readId: 'fresh', hasMore: library.mock.calls.length === 1 }));
+  const app = renderApp('/', { library }); await open(app); await waitFor(() => expect(rows()).toHaveLength(1));
+  nextPage();
+  await waitFor(() => expect(library).toHaveBeenCalledTimes(3));
+  expect(library.mock.calls.map(([q]) => [q.page, q.readId])).toEqual([[1, undefined], [2, 'fresh'], [1, undefined]]);
+  expect(rows()).toHaveLength(1); expect(rows()[0]).toHaveTextContent('Fresh report');
+  expect(within(panel()).queryByRole('alert')).toBeNull();
+});
+
+it('LIB-2.8: the hidden-gone explanation uses the exact read count once across pages', async () => {
+  const library = vi.fn(async (q: LibraryQuery) => ok([], { hasMore: q.page < 3, nextPage: q.page + 1, hiddenGone: 4 }));
+  const app = renderApp('/', { library }); await open(app);
+  expect(await within(panel()).findByText('Nothing matches')).toBeVisible();
+  expect(panel()).toHaveTextContent('4 gone Outputs are hidden');
+  expect(panel()).not.toHaveTextContent('12 gone Outputs are hidden');
+});
+
+it('LIB-2.3: changing Type discards frozen and late old-filter replies while retaining the new read for paging', async () => {
   vi.useFakeTimers({ now: NOW });
   const replies: ((page: LibraryPage) => void)[] = [];
   const library = vi.fn<(q: LibraryQuery) => Promise<LibraryPage>>(() => new Promise((resolve) => replies.push(resolve)));
   const app = renderApp('/', { library }); app.snapshot([]);
   fireEvent.click(screen.getByRole('button', { name: 'Library' }));
   await act(async () => { await vi.advanceTimersByTimeAsync(0); });
-  await act(async () => { replies[0]!(ok([output()], { hasMore: true, continuation: 'old-second' })); await vi.advanceTimersByTimeAsync(0); });
-  fireEvent.click(within(panel()).getByRole('button', { name: 'Load more' }));
-  await act(async () => { replies[1]!(ok([output({ key: 'old-pdf', title: 'Old PDF', type: 'pdf' })], { hasMore: true, nextPage: 3, continuation: 'old-third' })); await vi.advanceTimersByTimeAsync(0); });
-  expect(rows()).toHaveLength(2);
+  await act(async () => { replies[0]!(ok([output()], { hasMore: true })); await vi.advanceTimersByTimeAsync(0); });
   fireEvent.click(rows()[0]!);
   app.snapshot([row({ id: 'new-writer' })]);
-  await act(async () => { replies[2]!(ok([output({ title: 'Frozen HTML' })], { hasMore: true, continuation: 'old-refreshed' })); await vi.advanceTimersByTimeAsync(0); });
-  expect(rows()[0]).toHaveTextContent('Harbor report');
-  expect(rows()[0]).toHaveAttribute('aria-expanded', 'true');
-  // Another old-filter read stays in flight across the change to Markdown only.
-  app.snapshot([]);
-  expect(library).toHaveBeenCalledTimes(4);
   fireEvent.click(within(panel()).getByRole('button', { name: 'Markdown' }), { altKey: true });
   await act(async () => { await vi.advanceTimersByTimeAsync(0); });
-  expect(library).toHaveBeenLastCalledWith(expect.objectContaining({ types: ['markdown'], page: 1 }));
+  expect(library).toHaveBeenLastCalledWith(expect.objectContaining({ types: ['markdown'], page: 1, readId: 'read-1' }));
   const markdown = output({ key: 'markdown', title: 'Markdown report', type: 'markdown', path: '/report.md' });
-  await act(async () => { replies[4]!(ok([markdown], { hasMore: true, continuation: 'markdown-second' })); await vi.advanceTimersByTimeAsync(0); });
-  expect(rows()).toHaveLength(1);
-  expect(rows()[0]).toHaveTextContent('Markdown report');
-  await act(async () => { replies[3]!(ok([output({ title: 'Late HTML' })], { hasMore: true, continuation: 'late-old' })); await vi.advanceTimersByTimeAsync(0); });
-  expect(rows()).toHaveLength(1);
-  expect(rows()[0]).toHaveTextContent('Markdown report');
-  fireEvent.click(within(panel()).getByRole('button', { name: 'Load more' }));
-  expect(library).toHaveBeenLastCalledWith(expect.objectContaining({ types: ['markdown'], page: 2, continuation: 'markdown-second' }));
-  await act(async () => { replies[5]!(ok([output({ ...markdown, key: 'markdown-2', title: 'Second Markdown report' })])); await vi.advanceTimersByTimeAsync(0); });
+  await act(async () => { replies[2]!(ok([markdown], { hasMore: true, readId: 'read-1' })); await vi.advanceTimersByTimeAsync(0); });
+  await act(async () => { replies[1]!(ok([output({ title: 'Late HTML' })], { readId: 'late-read' })); await vi.advanceTimersByTimeAsync(0); });
+  expect(rows()).toHaveLength(1); expect(rows()[0]).toHaveTextContent('Markdown report');
+  nextPage();
+  expect(library).toHaveBeenLastCalledWith(expect.objectContaining({ types: ['markdown'], page: 2, readId: 'read-1' }));
+  await act(async () => { replies[3]!(ok([output({ ...markdown, key: 'markdown-2', title: 'Second Markdown report' })])); await vi.advanceTimersByTimeAsync(0); });
   expect(rows()).toHaveLength(2);
-  expect(rows().every((r) => r.getAttribute('aria-label')!.includes('Markdown'))).toBe(true);
 });
 
 it('LIB-2.7: a cross-Turn Subagent finishing refreshes when running falls without a finished increase', async () => {

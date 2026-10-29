@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 /* global process */
-// A stand-in `tb-session` for tests and manual runs. Implements `list`, `search` and `show`
-// with `--json`, per the tb-session 0.3.0 contract in docs/features/history/SPEC.md (Technical
+// A stand-in `tb-session` for tests and manual runs. Implements `events`, `list`, `search` and `show`
+// with `--json`, per the tb-session 0.4.0 events contract and the History contract in docs/features/history/SPEC.md (Technical
 // approach), from hand-written synthetic Sessions; never real Transcripts. It never resumes.
 //
 //   FAKE_TB_SESSION_FILE     the sessions file (default: sessions.json next to this file)
+//   FAKE_TB_SESSION_EVENTS_FILE  raw synthetic event rows (default: none)
 //   FAKE_TB_SESSION_ROOT     what `@root` in a `project_path` stands for (default: this dir)
 //   FAKE_TB_SESSION_VERSION  `0.2.0` behaves like the real tb-session 0.2.0 (checked against it
 //                            with cli-toolbox's synthetic fixtures): Claude Code only; rows
@@ -19,15 +20,20 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const legacy = process.env.FAKE_TB_SESSION_VERSION === '0.2.0';
+const version = process.env.FAKE_TB_SESSION_VERSION || '0.4.0';
+const legacy = version === '0.2.0';
 if (process.env.FAKE_TB_SESSION_LOG) appendFileSync(process.env.FAKE_TB_SESSION_LOG, `${JSON.stringify(process.argv.slice(2))}\n`);
 
 const args = process.argv.slice(2);
 if (args[0] === '--version' || args[0] === '-V') {
-  process.stdout.write(`tb-session ${legacy ? '0.2.0' : '0.3.0'}\n`);
+  process.stdout.write(`tb-session ${version}\n`);
   process.exit(0);
 }
 const cmd = args.shift();
+if (cmd === 'events' && version.startsWith('0.3.')) {
+  process.stderr.write("error: unrecognized subcommand 'events'\n");
+  process.exit(2);
+}
 
 const root = process.env.FAKE_TB_SESSION_ROOT || here;
 const all = () =>
@@ -117,6 +123,33 @@ function list(rest) {
   );
 }
 
+/** Raw facts only, per docs/contracts/tb-session-events.md E1–E5. */
+function events(rest) {
+  const { opts, pos } = parse(rest);
+  if (!opts.json) { process.stderr.write('the fixture requires --json\n'); process.exit(2); }
+  const file = process.env.FAKE_TB_SESSION_EVENTS_FILE;
+  let rows = file ? JSON.parse(readFileSync(file, 'utf8')).map((row) => {
+    const out = { ...row };
+    for (const key of ['path', 'source_path', 'project_path', 'key']) if (typeof out[key] === 'string') out[key] = out[key].replace(/^@root/, root);
+    return out;
+  }) : [];
+  const kinds = opts.kind?.split(',');
+  if (kinds?.some((kind) => !['write', 'edit', 'artifact', 'share'].includes(kind))) { process.stderr.write('error: invalid value for --kind\n'); process.exit(2); }
+  const extensions = opts.ext?.split(',').map((ext) => ext.replace(/^\./, '').toLowerCase());
+  const q = String(opts.q ?? pos.join(' ')).toLocaleLowerCase();
+  rows = harnessFilter(headlessFilter(rows, opts.headless), opts.harness).filter((row) => {
+    const path = ['write', 'edit'].includes(row.kind) ? row.path ?? row.key : row.source_path;
+    const ext = row.ext ?? (typeof path === 'string' ? path.split('/').at(-1)?.split('.').at(-1) : undefined);
+    return (!kinds || kinds.includes(row.kind)) && (!extensions || extensions.includes(String(ext ?? '').toLowerCase())) &&
+      (!opts.project || row.project_path === opts.project) && (!opts.session || row.session_id === opts.session) &&
+      (!opts.after || row.timestamp >= opts.after) && (!opts.before || row.timestamp.slice(0, 10) <= opts.before.slice(0, 10)) &&
+      (!q || [row.title, row.key, row.source_path].some((value) => typeof value === 'string' && value.toLocaleLowerCase().includes(q)));
+  }).sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp)) || Number(b.id) - Number(a.id));
+  const limit = Number(opts.limit ?? 50), page = Number(opts.page ?? 1);
+  if (!Number.isInteger(limit) || limit < 1 || !Number.isInteger(page) || page < 1) { process.stderr.write('error: page and limit must be positive integers\n'); process.exit(2); }
+  process.stdout.write(`${JSON.stringify({ total_results: rows.length, page, results: rows.slice((page - 1) * limit, page * limit) })}\n`);
+}
+
 function search(rest) {
   const { opts, pos } = parse(rest);
   const query = (pos[0] ?? '').toLowerCase();
@@ -175,6 +208,9 @@ function fail(obj) {
 }
 
 switch (cmd) {
+  case 'events':
+    events(args);
+    break;
   case 'list':
     list(args);
     break;

@@ -17,25 +17,30 @@ if [ "@NAME@" = fleet ] && [ "$#" -eq 3 ] && [ "$1" = --local ] && [ "$2" = usag
   export LOOKOUT_FAKE_STATE LOOKOUT_FAKE_VIOLATIONS
   exec '@NODE@' '@USAGE_SCRIPT@' "$@"
 fi
+# An explicitly declared World resume is a CLI outcome only: no Harness or pane is started.
+if [ "@NAME@" = fleet ] && [ "$1" = --local ] && [ "$2" = spawn ]; then
+  resumed="$('@NODE@' '@MERGE_SCRIPT@' fleet-resume - '@RESUME@' "$@")"
+  if [ -n "$resumed" ]; then printf '%s\n' "$resumed"; exit 0; fi
+fi
 if [ "@NAME@" = fleet ] && [ "$#" -eq 3 ] && [ "$1" = --local ] && [ "$2" = list ] && [ "$3" = --json ]; then
   raw='@EXTRAS@.raw.'$$
   '@REAL@' "$@" > "$raw"
   code=$?
-  if [ "$code" -ne 0 ]; then rm -f "$raw"; exit "$code"; fi
+  if [ "$code" -ne 0 ]; then /bin/rm -f "$raw"; exit "$code"; fi
   '@NODE@' '@MERGE_SCRIPT@' fleet "$raw" '@EXTRAS@' "$@"
   code=$?
-  rm -f "$raw"
+  /bin/rm -f "$raw"
   exit "$code"
 fi
-if [ "@NAME@" = tb-session ] && [ "$1" = search ]; then
+if [ "@NAME@" = tb-session ] && { [ "$1" = search ] || [ "$1" = list ] || [ "$1" = events ]; }; then
   raw='@EXTRAS@.raw.'$$
   '@REAL@' "$@" > "$raw"
   code=$?
-  if [ "$code" -ne 0 ]; then rm -f "$raw"; exit "$code"; fi
+  if [ "$code" -ne 0 ]; then /bin/rm -f "$raw"; exit "$code"; fi
   '@NODE@' '@MERGE_SCRIPT@' tb-session "$raw" '@EXTRAS@' "$@"
   code=$?
   printf '%s tb-session-finished %s\n' "$(/bin/date +%H:%M:%S)" "$code" >> '@LOG@'
-  rm -f "$raw"
+  /bin/rm -f "$raw"
   exit "$code"
 fi
 if [ "@NAME@" = tb-session ] && [ "$1" = show ]; then

@@ -388,7 +388,7 @@ export function createHttpClient(): LookoutClient {
     refreshJev: async () => {
       await call(() => send('POST', '/api/usage/jev'), 'Checking Jev');
     },
-    library: ({ query, page, continuation, headless, types, project, hideGone }) => call<LibraryPage>(() => fetch(`/api/library?${new URLSearchParams({ q: query, page: String(page), headless: headless ? '1' : '0', types: types.join(','), project, hideGone: hideGone ? '1' : '0', ...(continuation ? { continuation } : {}) })}`), 'Reading Library'),
+    library: ({ query, page, readId, headless, types, project, hideGone }) => call<LibraryPage>(() => fetch(`/api/library?${new URLSearchParams({ q: query, page: String(page), headless: headless ? '1' : '0', types: types.join(','), project, hideGone: hideGone ? '1' : '0', ...(readId ? { readId } : {}) })}`), 'Reading Library'),
     libraryStatus: () => call<{ indexing: boolean }>(() => fetch('/api/library/status'), 'Reading Library status'),
     history: ({ query, page, headless, harness }) =>
       call<HistoryPage>(

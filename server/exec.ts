@@ -3,6 +3,8 @@ import { spawn } from 'node:child_process';
 export interface RunOptions {
   timeoutMs: number;
   env?: NodeJS.ProcessEnv;
+  /** Bytes for commands such as git check-ignore --stdin; never interpreted by a shell. */
+  stdin?: string;
   /**
    * Cancels the run: the whole process group gets SIGTERM, then SIGKILL. The promise rejects
    * only once the process has exited, so awaiting it means nothing is left behind.
@@ -41,9 +43,13 @@ export const run: Runner = (file, args, opts) =>
     }
     const child = spawn(file, [...args], {
       env: opts.env ?? process.env,
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: ['pipe', 'pipe', 'pipe'],
       detached: true, // own process group: `-pid` addresses all of it
     });
+    // EPIPE is possible when a refusing command exits before consuming its input. Its exit
+    // status remains the authoritative answer, as for commands without stdin.
+    child.stdin?.on('error', () => {});
+    child.stdin?.end(opts.stdin);
     // Chunks are kept as bytes and decoded once, so a UTF-8 character split across two
     // chunks survives.
     const out: Buffer[] = [];

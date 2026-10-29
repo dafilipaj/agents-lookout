@@ -1,177 +1,188 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
+import type { Runner } from './exec.ts';
+import { run } from './exec.ts';
 import { Library, LibraryError, parseLibraryQuery } from './library.ts';
 
 const at = '2026-10-23T10:00:00Z';
-const touch = { harness: 'claude', session_id: 'parent-session', title: 'Report writer', project_path: '/project', last_at: at, event: 'write', events: 1 };
-const file = (path: string, extra = {}) => ({ kind: 'file', key: path, path, type: 'html', title: path, created_at: at, updated_at: at, events: 1, sessions: [touch], ...extra });
+const event = (path: string, extra = {}) => ({ kind: 'write', key: path, path, timestamp: at, title: path, harness: 'claude', session_id: 'parent-session', project_path: '/project', ...extra });
 const answer = (results: unknown[], total = results.length) => JSON.stringify({ results, total_results: total, page: 1 });
 const query = (s = '') => parseLibraryQuery(new URLSearchParams(s));
-const dirs: string[] = [];
-afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
+const roots: string[] = [];
+afterEach(async () => { vi.useRealTimers(); for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
+const fake = (rows: unknown[], sessions: unknown[] = []) => vi.fn<Runner>(async (bin, args) => bin === 'git' ? Promise.reject(Object.assign(new Error('not a repo'), { code: 128 })) : answer(args[0] === 'list' ? sessions : args.includes('write,edit') ? rows : []));
+const options = (runner: Runner) => ({ runner, bin: () => '/fake-tb-session', stat: async () => ({ isFile: () => true }), isDirectory: async () => true });
 
-it('LIB-2.1: fills 50 rows from at most five CLI pages, preserves overflow for the next page, ignores future kinds, and exposes no total', async () => {
-  const runner = vi.fn(async (_bin, argv: readonly string[]) => {
-    const p = Number(argv[argv.indexOf('--page') + 1]);
-    return answer(Array.from({ length: 50 }, (_, i) => file(`/report-${(p - 1) * 50 + i}.html`, { kind: i === 0 ? 'future' : 'file' })), 1000);
+it('LIB-2.1: reads all three sources in parallel, follows short CLI pages, holds exact pages and rereads only after expiry', async () => {
+  let release!: () => void;
+  const barrier = new Promise<void>((r) => { release = r; });
+  const rows = Array.from({ length: 121 }, (_, n) => event(`/report-${n}.pdf`, { timestamp: new Date(Date.parse(at) - n * 1000).toISOString() }));
+  const runner = vi.fn<Runner>(async (bin, args) => {
+    if (bin === 'git') throw Object.assign(new Error('not a repo'), { code: 128 });
+    await barrier;
+    if (args[0] === 'list' || args.includes('artifact,share')) return answer([]);
+    const page = args.includes('--page') ? Number(args[args.indexOf('--page') + 1]) : 1;
+    return answer(rows.slice((page - 1) * 70, page * 70), rows.length);
   });
-  const lib = new Library({ runner, bin: () => 'tb-session', stat: async (p) => ({ isFile: () => !p.includes('report-1') }), isDirectory: async () => true });
-  const first = await lib.find(query());
-  expect(first.state).toBe('ok');
-  if (first.state !== 'ok') return;
-  expect(first.items).toHaveLength(50);
-  expect(first).not.toHaveProperty('total');
-  expect(first.nextPage).toBe(3);
-  const next = await lib.find(query(new URLSearchParams({ page: String(first.nextPage), ...(first.continuation ? { continuation: first.continuation } : {}) }).toString()));
-  if (next.state !== 'ok') throw new Error('missing page');
-  expect(next.items).toHaveLength(50);
-  expect(new Set([...first.items, ...next.items].map((i) => i.key)).size).toBe(100);
-  const gone = new Library({ runner, bin: () => 'tb-session', stat: async () => ({ isFile: () => false }) });
-  runner.mockClear();
-  const empty = await gone.find(query());
-  expect(runner).toHaveBeenCalledTimes(5);
-  expect(empty).toMatchObject({ state: 'ok', items: [], hasMore: true, nextPage: 6 });
+  const lib = new Library(options(runner));
+  const pending = lib.find(query());
+  await vi.waitFor(() => expect(runner.mock.calls.filter(([bin]) => bin !== 'git')).toHaveLength(3));
+  release();
+  const first = await pending; if (first.state !== 'ok') throw new Error('missing');
+  expect(first).toMatchObject({ total: 121, hasMore: true, nextPage: 2 }); expect(first.items).toHaveLength(50);
+  const calls = runner.mock.calls.length;
+  const second = await lib.find(query(`page=2&readId=${first.readId}`));
+  expect(second).toMatchObject({ total: 121, items: expect.arrayContaining([expect.objectContaining({ key: '/report-50.pdf' })]) });
+  await lib.find(query()); expect(runner).toHaveBeenCalledTimes(calls);
+  expect(runner.mock.calls.filter(([bin]) => bin !== 'git').map(([, a]) => a)).toEqual(expect.arrayContaining([
+    ['events', '--all-projects', '--json', '--headless', 'exclude', '--limit', '100000', '--kind', 'write,edit', '--ext', 'md,html,htm,pdf,png,jpg,jpeg,gif,svg,webp'],
+    ['events', '--all-projects', '--json', '--headless', 'exclude', '--limit', '100000', '--kind', 'artifact,share'],
+    ['list', '--all-projects', '--json', '--limit', '100000'],
+  ]));
+  expect(await lib.find(query('page=2&readId=evicted'))).toEqual({ state: 'read-again' });
 });
 
-it('LIB-2.3: filters through exact CLI flags, keeps repos seen across answers, and uses argv for a flag-like query', async () => {
-  const runner = vi.fn<import('./exec.ts').Runner>(async () => answer([file('/r.html', { project_path: '/project/seen' })]));
-  const lib = new Library({ runner, bin: () => 'tb-session', stat: async () => ({ isFile: () => true }) });
-  await lib.find(query('q=--%25_&types=pages,markdown,share&project=/project/chosen&headless=1'));
-  expect(runner.mock.calls[0]?.[1]).toEqual(['outputs', '--all-projects', '--json', '--limit', '50', '--page', '1', '--kind', 'file,artifact,share', '--type', 'html,markdown', '--project', '/project/chosen', '--headless', 'include', '--q', '--', '--%_']);
-  const page = await lib.find(query());
-  expect(page).toMatchObject({ projects: ['/project/chosen', '/project/seen'] });
+it('LIB-2.1: leaves out rows of a kind Lookout does not know (contract E9)', async () => {
+  const runner = vi.fn<Runner>(async (bin, args) => bin === 'git' ? Promise.reject(Object.assign(new Error('not a repo'), { code: 128 })) : answer(args[0] === 'list' ? [] : args.includes('write,edit') ? [event('/kept.pdf')] : [event('/doc', { kind: 'doc', key: 'https://example.invalid/doc', url: 'https://example.invalid/doc', title: 'A doc' })]));
+  expect(await new Library(options(runner)).find(query())).toMatchObject({ total: 1, items: [{ key: '/kept.pdf' }] });
+});
+
+it('LIB-2.3: filters a named read locally with exact repo and gone totals and projects from the entire read', async () => {
+  const runner = fake([event('/one.html', { project_path: '/project/one' }), event('/gone.html', { project_path: '/project/two' }), event('/notes.md')]);
+  const lib = new Library({ ...options(runner), stat: async (p) => ({ isFile: () => !p.includes('gone') }) });
+  const first = await lib.find(query()); if (first.state !== 'ok') throw new Error('missing');
+  const calls = runner.mock.calls.length;
+  expect(first).toMatchObject({ total: 1, hiddenGone: 1, projects: ['/project', '/project/one', '/project/two'] });
+  expect(await lib.find(query(`readId=${first.readId}&types=markdown&project=/project`))).toMatchObject({ total: 1, items: [{ path: '/notes.md' }] });
+  expect(await lib.find(query(`readId=${first.readId}&project=/chosen`))).toMatchObject({ total: 0, unfilteredEmpty: false, projects: expect.arrayContaining(['/chosen']) });
+  expect(await lib.find(query(`readId=${first.readId}&hideGone=0`))).toMatchObject({ total: 2, hiddenGone: 0 });
+  expect(runner).toHaveBeenCalledTimes(calls);
   expect(query('types=&page=-2')).toMatchObject({ types: ['pages', 'pdf'], page: 1, hideGone: true });
 });
 
-it('LIB-2.6: uses parent Session credits, marks deleted and pruned Sessions without calling show', async () => {
-  const lib = new Library({ runner: async () => answer([file('/subagent.html', { sessions: [touch, { ...touch, session_id: 'deleted', transcript_missing: true }, { harness: 'claude', session_id: 'pruned-session', pruned: true, event: 'edit', last_at: at }] })]), bin: () => 'tb-session', stat: async () => ({ isFile: () => true }), isDirectory: async () => true });
-  const page = await lib.find(query());
+it('LIB-2.4: literal Unicode case-insensitive search runs on the held read over title, path, URL and source path', async () => {
+  const runner = fake([event('/ÄPFEL.html'), event('/percent%_.html'), event('/x.html', { kind: 'artifact', key: 'https://example.invalid/report', url: 'https://example.invalid/report', title: 'İstanbul', source_path: '/source/Σ.html' })]);
+  const lib = new Library(options(runner));
+  const first = await lib.find(query()); if (first.state !== 'ok') throw new Error('missing');
+  const calls = runner.mock.calls.length;
+  for (const q of ['äpfel', '%_', 'σ.html', 'REPORT']) expect(await lib.find(query(`readId=${first.readId}&q=${encodeURIComponent(q)}`))).toMatchObject({ total: 1 });
+  expect(runner).toHaveBeenCalledTimes(calls);
+});
+
+it('LIB-2.6: joins Session titles, preserves parent credits, missing and pruned metadata without show', async () => {
+  const rows = [event('/s.html', { subagent: 'agent-world.jsonl' }), event('/s.html', { session_id: 'deleted', transcript_missing: true }), event('/s.html', { session_id: 'pruned-session', pruned: true }), event('/s.html', { session_id: 'prompt-session' })];
+  const runner = fake(rows, [{ session_id: 'parent-session', harness: 'claude', summary: 'Writer', first_prompt: 'Prompt' }, { session_id: 'prompt-session', harness: 'claude', first_prompt: 'First prompt' }]);
+  const page = await new Library(options(runner)).find(query()); if (page.state !== 'ok') throw new Error('missing');
+  expect(page.items[0]?.sessions).toEqual(expect.arrayContaining([
+    expect.objectContaining({ sessionId: 'parent-session', title: 'Writer', blocked: null }),
+    expect.objectContaining({ sessionId: 'prompt-session', title: 'First prompt' }),
+    expect.objectContaining({ sessionId: 'deleted', blocked: 'transcript-missing' }),
+    expect.objectContaining({ sessionId: 'pruned-session', title: 'pruned-s', pruned: true }),
+  ]));
+  expect(runner.mock.calls.some(([, args]) => args[0] === 'show')).toBe(false);
+});
+
+it('LIB-2.7: retains only the last three immutable reads, scopes headless reuse and checks existence again on refresh', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  const gone = new Set<string>();
+  const runner = fake([event('/report.html')]);
+  const lib = new Library({ ...options(runner), stat: async (p) => ({ isFile: () => !gone.has(p) }) });
+  const first = await lib.find(query()); if (first.state !== 'ok') throw new Error('missing');
+  gone.add('/report.html');
+  for (let n = 0; n < 3; n++) { vi.setSystemTime(Date.now() + 2100); await lib.find(query(n % 2 ? 'headless=1' : '')); }
+  expect(await lib.find(query(`page=2&readId=${first.readId}`))).toEqual({ state: 'read-again' });
+  expect(await lib.find(query())).toMatchObject({ total: 0, hiddenGone: 1 });
+});
+
+it('LIB-2.8: grants the first read per binary revision 60s, coalesces queries, detects missing events and redacts failures', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  const runner = fake([]), lib = new Library(options(runner));
+  await Promise.all([lib.find(query()), lib.find(query('q=other'))]);
+  expect(runner.mock.calls).toHaveLength(3); expect(runner.mock.calls.map(([, , o]) => o.timeoutMs)).toEqual([60000, 60000, 60000]);
+  vi.setSystemTime(Date.now() + 2100); await lib.find(query());
+  expect(runner.mock.calls.slice(3).map(([, , o]) => o.timeoutMs)).toEqual([20000, 20000, 20000]);
+  const missing = new Library(options(async () => { throw Object.assign(new Error('raw'), { code: 2, stderr: "error: unrecognized subcommand 'events'" }); }));
+  expect(await missing.find(query())).toMatchObject({ state: 'not-installed' });
+  const failed = new Library(options(async () => { throw Object.assign(new Error('raw'), { stderr: 'Authorization: Bearer ghp_secret\nsecond line sk-secret' }); }));
+  await expect(failed.find(query())).rejects.toThrow('tb-session failed: Authorization: …');
+  const slow = new Library(options(async () => { throw Object.assign(new Error('raw'), { timedOut: true }); }));
+  await expect(slow.find(query())).rejects.toThrow('tb-session index --all-projects');
+  expect(slow.indexing).toBe(false);
+  const malformed = new Library(options(async () => answer([], 1)));
+  await expect(malformed.find(query())).rejects.toBeInstanceOf(LibraryError);
+});
+
+it('LIB-2.9: stats every file and Artifact source before paging in batches of at most 100 with a shared deadline', async () => {
+  const checked: string[] = [];
+  const rows = Array.from({ length: 201 }, (_, n) => event(`/report-${n}.pdf`));
+  const lib = new Library({ ...options(fake(rows)), stat: async (p) => { checked.push(p); if (p === '/report-0.pdf') return new Promise(() => {}); return { isFile: () => p !== '/report-200.pdf' }; }, statTimeoutMs: 5 });
+  expect(await lib.find(query())).toMatchObject({ total: 199, hiddenGone: 2, items: expect.any(Array) });
+  expect(checked).toHaveLength(201);
+});
+
+it('LIB-2.10: absolute plain document paths outside Harness homes, present directories and read-only git ownership per file', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'lookout-library-rules-')); roots.push(home);
+  const repo = join(home, 'repo'); await mkdir(join(repo, 'ignored'), { recursive: true });
+  await run('git', ['init', '--quiet', repo], { timeoutMs: 5000 });
+  await writeFile(join(repo, '.gitignore'), 'ignored/\n*.html\n');
+  const owned = join(repo, 'owned.md'), ignored = join(repo, 'ignored/report.md'), tracked = join(repo, 'ignored/tracked.md');
+  for (const p of [owned, ignored, tracked]) await writeFile(p, '# Document');
+  await run('git', ['-C', repo, 'add', '-f', 'ignored/tracked.md'], { timeoutMs: 5000 });
+  const paths = [owned, ignored, tracked, join(home, 'outside.PDF'), join(home, 'gone/a.pdf'), join(home, '.claude/a.md'), join(home, '.codex/a.md'), join(home, '.pi/a.md'), 'relative.md', '/a:b.md', '/bad\nname.md', join(home, 'code.ts')];
+  await writeFile(join(home, 'outside.PDF'), 'pdf');
+  const calls: string[][] = [];
+  const runner: Runner = async (bin, args, opts) => { if (bin === 'git') { calls.push([...args]); return run(bin, args, opts); } return answer(args.includes('write,edit') ? paths.map((p) => event(p)) : []); };
+  const lib = new Library({ runner, bin: () => '/fake-tb-session', env: { ...process.env, HOME: home } });
+  const page = await lib.find(query('types=markdown,pdf&hideGone=0'));
+  expect(page).toMatchObject({ total: 2, items: expect.arrayContaining([expect.objectContaining({ path: ignored }), expect.objectContaining({ path: join(home, 'outside.PDF') })]) });
+  expect(calls.filter((a) => a.includes('check-ignore'))).toHaveLength(1);
+  expect(calls.every((a) => a.includes('rev-parse') || a.includes('check-ignore'))).toBe(true);
+  expect(await readFile(owned, 'utf8')).toBe('# Document');
+});
+
+it('LIB-2.11: groups actions across history, credits fork copies to earliest-created Session, folds sources on both Artifacts and keeps newer edits', async () => {
+  const rows = [event('/report.html', { tool_use_id: 'copy', session_id: 'z-original' }), event('/report.html', { tool_use_id: 'copy', session_id: 'a-fork' }), event('/report.html', { kind: 'edit', timestamp: '2026-10-25T10:00:00Z', session_id: 'editor' }), ...['one', 'two'].map((n) => event('/unused', { kind: 'artifact', key: `https://example.invalid/${n}`, url: `https://example.invalid/${n}`, title: n, source_path: '/report.html', timestamp: '2026-10-24T10:00:00Z' }))];
+  const runner = fake(rows, [{ harness: 'claude', session_id: 'z-original', created_at: '2026-10-20T10:00:00Z' }, { harness: 'claude', session_id: 'a-fork', created_at: '2026-10-22T10:00:00Z' }]);
+  const page = await new Library(options(runner)).find(query()); if (page.state !== 'ok') throw new Error('missing');
+  expect(page.total).toBe(2);
+  for (const item of page.items) {
+    expect(item).toMatchObject({ kind: 'artifact', events: 1, updatedAt: Date.parse('2026-10-24T10:00:00Z'), source: { events: 2, createdAt: Date.parse(at), updatedAt: Date.parse('2026-10-25T10:00:00Z') } });
+    expect(item.sessions.map((s) => s.sessionId)).not.toContain('a-fork');
+    expect(item.sessions[0]).toMatchObject({ sessionId: 'editor', event: 'edit' });
+  }
+});
+
+it('LIB-2.12: reads only the first 8KB for Markdown/HTML titles, skipping front matter and fences, cached by path+mtime+size', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'lookout-library-titles-')); roots.push(home);
+  const md = join(home, 'notes.md'), html = join(home, 'report.html'), late = join(home, 'late.md');
+  await writeFile(md, '---\ntitle: front\n# Wrong\n---\n```md\n# Code\n```\n~~~\n# More code\n~~~\n# Right heading\n');
+  await writeFile(html, '<html><TITLE>Actual &amp; title</TITLE></html>'); await writeFile(late, 'x'.repeat(8192) + '\n# Too late');
+  vi.useFakeTimers({ toFake: ['Date'] });
+  const lib = new Library({ runner: fake([event(md), event(html), event(late)]), bin: () => '/fake-tb-session' });
+  expect(await lib.find(query('types=markdown,pages'))).toMatchObject({ total: 3, items: expect.arrayContaining([expect.objectContaining({ title: 'Right heading' }), expect.objectContaining({ title: 'Actual & title' }), expect.objectContaining({ title: 'late.md' })]) });
+  await writeFile(md, '# Changed heading\n'); vi.setSystemTime(Date.now() + 2100);
+  expect(await lib.find(query('types=markdown&q=changed'))).toMatchObject({ total: 1, items: [{ title: 'Changed heading' }] });
+});
+
+it('LIB-2.11: fork credit prefers a known creation time over a Session absent from list, then uses the id fallback', async () => {
+  const rows = [event('/known.html', { tool_use_id: 'copy', session_id: 'a-pruned', pruned: true }), event('/known.html', { tool_use_id: 'copy', session_id: 'z-known' }), event('/fallback.html', { tool_use_id: 'fallback', session_id: 'z-missing' }), event('/fallback.html', { tool_use_id: 'fallback', session_id: 'a-missing' })];
+  const page = await new Library(options(fake(rows, [{ harness: 'claude', session_id: 'z-known', created_at: at }]))).find(query());
   if (page.state !== 'ok') throw new Error('missing');
-  expect(page.items[0]?.sessions.map((s) => [s.sessionId, s.blocked, s.pruned])).toEqual([['parent-session', null, false], ['deleted', 'transcript-missing', false], ['pruned-session', 'no-folder', true]]);
+  expect(page.items.find((i) => i.path === '/known.html')?.sessions.map((s) => s.sessionId)).toEqual(['z-known']);
+  expect(page.items.find((i) => i.path === '/fallback.html')?.sessions.map((s) => s.sessionId)).toEqual(['a-missing']);
 });
 
-it('LIB-2.8: uses a separate install hint, redacts errors, and grants only the first call per binary revision 60 seconds', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'lookout-library-')); dirs.push(dir);
-  const bin = join(dir, 'tb-session'); writeFileSync(bin, 'version one');
-  const runner = vi.fn<import('./exec.ts').Runner>(async () => answer([file('/report.html')]));
-  const lib = new Library({ runner, bin: () => bin });
-  await lib.find(query()); await lib.find(query());
-  expect(runner.mock.calls.map((c) => c[2].timeoutMs)).toEqual([60000, 20000]);
-  writeFileSync(bin, 'version two, changed'); await lib.find(query());
-  expect(runner.mock.calls[2]?.[2].timeoutMs).toBe(60000);
-  runner.mockRejectedValueOnce(Object.assign(new Error('raw secret'), { code: 2, stderr: "error: unrecognized subcommand 'outputs'" }));
-  expect(await lib.find(query())).toMatchObject({ state: 'not-installed' });
-  runner.mockRejectedValueOnce(Object.assign(new Error('raw secret'), { stderr: 'Authorization: Bearer ghp_secret\nsecond line sk-secret' }));
-  await expect(lib.find(query())).rejects.toThrow('tb-session failed: Authorization: …');
-  runner.mockRejectedValueOnce(Object.assign(new Error('raw secret'), { timedOut: true }));
-  await expect(lib.find(query())).rejects.toThrow(LibraryError);
-});
-
-it('LIB-2.9: stats absolute plain files and folded sources only, times out the batch, and never hides an Artifact for its gone source', async () => {
-  const stat = vi.fn(async (p: string) => { if (p === '/slow.html') return new Promise<{ isFile(): boolean }>(() => {}); return { isFile: () => p === '/exists.html' }; });
-  const artifact = { ...file('/unused'), kind: 'artifact', key: 'https://example.invalid/artifact', url: 'https://example.invalid/artifact', source: { path: '/gone.html', type: 'html', created_at: at, updated_at: at, events: 1 } };
-  const lib = new Library({ runner: async () => answer([file('/exists.html'), file('/slow.html'), file('relative.html'), file('/a:b.html'), file('/line\nbreak.html'), file(`/long${'x'.repeat(1050)}.html`), artifact]), bin: () => 'tb-session', stat, statTimeoutMs: 5 });
-  const page = await lib.find(query());
-  expect(page).toMatchObject({ state: 'ok', hiddenGone: 5, items: [{ exists: true }, { kind: 'artifact', source: { exists: false } }] });
-  expect(stat.mock.calls.map((c) => c[0])).toEqual(['/exists.html', '/slow.html', '/gone.html']);
-});
-
-it('LIB-2.8: an indexing timeout names the manual index command, and concurrent reads wait for that first flight', async () => {
-  const failed = new Library({ runner: async () => { throw Object.assign(new Error('raw'), { timedOut: true }); }, bin: () => '/fake-tb-session' });
-  await expect(failed.find(query())).rejects.toThrow('tb-session index --all-projects');
-  let finish: ((s: string) => void) | undefined;
-  const runner = vi.fn<import('./exec.ts').Runner>().mockImplementationOnce(() => new Promise((r) => { finish = r; })).mockResolvedValue(answer([file('/report.html')]));
-  const lib = new Library({ runner, bin: () => '/fake-tb-session', stat: async () => ({ isFile: () => true }) });
-  const first = lib.find(query()), second = lib.find(query('q=report'));
-  await vi.waitFor(() => expect(lib.indexing).toBe(true)); expect(runner).toHaveBeenCalledTimes(1);
-  finish!(answer([file('/report.html')])); await Promise.all([first, second]);
-  expect(lib.indexing).toBe(false); expect(runner.mock.calls.map((c) => c[2].timeoutMs)).toEqual([60000, 20000]);
-});
-
-it('LIB-2.7: page-one refresh preserves overflow continuations for multiple loaded pages in every tab', async () => {
-  const lib = new Library({
-    runner: async (_bin, argv) => {
-      const page = Number(argv[argv.indexOf('--page') + 1]);
-      return answer(Array.from({ length: 50 }, (_, i) => file(`/report-${(page - 1) * 50 + i}.html`)).filter((_r, i) => (page - 1) * 50 + i < 200), 200);
-    },
-    bin: () => 'tb-session',
-    stat: async (p) => ({ isFile: () => p !== '/report-0.html' && p !== '/report-50.html' }),
-    isDirectory: async () => true,
-  });
-  const load = async (page = 1, continuation?: string) => {
-    const result = await lib.find(query(new URLSearchParams({ page: String(page), ...(continuation ? { continuation } : {}) }).toString()));
-    if (result.state !== 'ok') throw new Error('missing page');
-    return result;
-  };
-  // Two browser tabs hold different responses from the same shared server and filter.
-  const firstA = await load(), secondA = await load(firstA.nextPage, firstA.continuation);
-  const firstB = await load(), secondB = await load(firstB.nextPage, firstB.continuation);
-  expect(secondA.items.at(-1)?.key).toBe('/report-101.html');
-  for (const second of [secondA, secondB]) {
-    const refreshed = await load();
-    const third = await load(second.nextPage, second.continuation);
-    expect(third.items[0]?.key).toBe('/report-102.html');
-    const fourth = await load(third.nextPage, third.continuation);
-    const visible = [...refreshed.items, ...second.items.filter((i) => !refreshed.items.some((r) => r.key === i.key)), ...third.items, ...fourth.items];
-    expect(visible.map((i) => i.key)).toEqual(Array.from({ length: 200 }, (_, n) => n).filter((n) => n !== 0 && n !== 50).map((n) => `/report-${n}.html`));
-    expect(fourth.hasMore).toBe(false);
-  }
-});
-
-it('LIB-2.1: another tab cannot overwrite an issued overflow continuation when its page boundary changes', async () => {
-  const gone = new Set(['/report-0.html', '/report-50.html']);
-  const lib = new Library({
-    runner: async (_bin, argv) => {
-      const page = Number(argv[argv.indexOf('--page') + 1]);
-      return answer(Array.from({ length: 50 }, (_, i) => file(`/report-${(page - 1) * 50 + i}.html`)), 200);
-    },
-    bin: () => 'tb-session', stat: async (p) => ({ isFile: () => !gone.has(p) }), isDirectory: async () => true,
-  });
-  const load = async (page = 1, continuation?: string) => {
-    const result = await lib.find(query(new URLSearchParams({ page: String(page), ...(continuation ? { continuation } : {}) }).toString()));
-    if (result.state !== 'ok') throw new Error('missing page');
-    return result;
-  };
-  const first = await load(), second = await load(first.nextPage, first.continuation);
-  gone.add('/report-51.html');
-  const otherFirst = await load(), otherSecond = await load(otherFirst.nextPage, otherFirst.continuation);
-  expect(otherSecond.items.at(-1)?.key).toBe('/report-102.html');
-  const third = await load(second.nextPage, second.continuation);
-  expect(third.items.map((i) => i.key)).toEqual(Array.from({ length: 50 }, (_, n) => `/report-${n + 102}.html`));
-  // A continuation is reusable by its tab, rather than consumed by another request.
-  expect((await load(second.nextPage, second.continuation)).items.map((i) => i.key)).toEqual(third.items.map((i) => i.key));
-});
-
-it('LIB-2.7: repeated unchanged refreshes do not expire a retained page’s overflow continuation', async () => {
-  const lib = new Library({
-    runner: async (_bin, argv) => {
-      const page = Number(argv[argv.indexOf('--page') + 1]);
-      return answer(Array.from({ length: 50 }, (_, i) => file(`/report-${(page - 1) * 50 + i}.html`)), 200);
-    },
-    bin: () => 'tb-session', stat: async (p) => ({ isFile: () => p !== '/report-0.html' && p !== '/report-50.html' }), isDirectory: async () => true,
-  });
-  const first = await lib.find(query()); if (first.state !== 'ok') throw new Error('missing page');
-  const second = await lib.find(query(`page=${first.nextPage}&continuation=${first.continuation}`)); if (second.state !== 'ok') throw new Error('missing page');
-  for (let n = 0; n < 205; n++) await lib.find(query());
-  const third = await lib.find(query(`page=${second.nextPage}&continuation=${second.continuation}`));
-  expect(third).toMatchObject({ state: 'ok', items: expect.arrayContaining([expect.objectContaining({ key: '/report-102.html' })]) });
-});
-
-it('LIB-2.8: mismatched and expired overflow continuations fail explicitly instead of skipping their rows', async () => {
-  const runner = vi.fn<import('./exec.ts').Runner>(async (_bin, argv) => {
-    const page = Number(argv[argv.indexOf('--page') + 1]);
-    return answer(Array.from({ length: 50 }, (_, i) => file(`/report-${(page - 1) * 50 + i}.html`)), 200);
-  });
-  const lib = new Library({ runner, bin: () => 'tb-session', stat: async (p) => ({ isFile: () => p !== '/report-0.html' }), isDirectory: async () => true });
-  const first = await lib.find(query()); if (first.state !== 'ok') throw new Error('missing page');
-  const cursor = `page=${first.nextPage}&continuation=${first.continuation}`;
-  const reads = runner.mock.calls.length;
-  for (const params of [`${cursor}&q=other-filter`, `page=99&continuation=${first.continuation}`, 'page=3&continuation=unknown']) {
-    await expect(lib.find(query(params))).rejects.toMatchObject({ status: 409, message: expect.stringContaining('Reopen Library') });
-  }
-  expect(runner).toHaveBeenCalledTimes(reads);
-  for (let n = 0; n < 201; n++) await lib.find(query(`q=scope-${n}`));
-  await expect(lib.find(query(cursor))).rejects.toMatchObject({ status: 409, message: expect.stringContaining('Reopen Library') });
+it('LIB-2.8: opposite headless reads during an upgrade share the 60-second migration budget', async () => {
+  let finish!: () => void;
+  const barrier = new Promise<void>((r) => { finish = r; });
+  const runner = vi.fn<Runner>(async () => { await barrier; return answer([]); });
+  const lib = new Library(options(runner));
+  const first = lib.find(query());
+  await vi.waitFor(() => expect(runner).toHaveBeenCalledTimes(3));
+  const other = lib.find(query('headless=1'));
+  await vi.waitFor(() => expect(runner).toHaveBeenCalledTimes(6));
+  finish(); await Promise.all([first, other]);
+  expect(runner.mock.calls.map(([, , o]) => o.timeoutMs)).toEqual(Array(6).fill(60000));
 });

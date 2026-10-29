@@ -7,7 +7,10 @@ const extras = JSON.parse(readFileSync(extrasPath, 'utf8'));
 const fail = (message) => { process.stderr.write(`${message}\n`); process.exit(2); };
 if (!Array.isArray(extras)) fail(`${tool} merge sidecar must be a JSON array`);
 
-if (tool === 'fleet') {
+if (tool === 'fleet-resume') {
+  const at = argv.indexOf('--resume');
+  if (at >= 0 && extras.some((row) => row.sessionId === argv[at + 1])) process.stdout.write(JSON.stringify({ ok: true }));
+} else if (tool === 'fleet') {
   if (!Array.isArray(base)) fail('Fleet list --json must be a JSON array');
   const rows = base;
   const ids = new Set(rows.map((row) => row.session_id).filter(Boolean));
@@ -15,12 +18,20 @@ if (tool === 'fleet') {
   process.stdout.write(JSON.stringify([...rows, ...added]));
 } else if (tool === 'tb-session') {
   if (base === null || typeof base !== 'object' || Array.isArray(base) || !Array.isArray(base.results)) {
-    fail('tb-session search --json must contain a results array');
+    fail('tb-session list/search/events --json must contain a results array');
   }
-  const query = String(argv.at(-1) ?? '').toLowerCase();
-  const rows = base.results;
-  const additions = extras.filter((row) => typeof row?.first_prompt === 'string' && row.first_prompt.toLowerCase().includes(query));
-  process.stdout.write(JSON.stringify({ ...base, results: [...rows, ...additions].slice(0, 200) }));
+  if (argv[0] === 'events') {
+    // Raw event facts always come from the pinned tool; no consumer grouping or fold here.
+    process.stdout.write(JSON.stringify(base));
+  } else {
+    const query = argv[0] === 'search' ? String(argv.at(-1) ?? '').toLowerCase() : '';
+    const rows = base.results;
+    const ids = new Set(rows.map((row) => `${row.harness}:${row.session_id}`));
+    const additions = extras.filter((row) => typeof row?.first_prompt === 'string' && row.first_prompt.toLowerCase().includes(query) && !ids.has(`${row.harness}:${row.session_id}`));
+    const limitAt = argv.indexOf('--limit');
+    const limit = limitAt < 0 ? 200 : Number(argv[limitAt + 1]);
+    process.stdout.write(JSON.stringify({ ...base, ...(typeof base.total_results === 'number' ? { total_results: base.total_results + additions.length } : {}), results: [...rows, ...additions].slice(0, limit) }));
+  }
 } else if (tool === 'tb-session-show') {
   // A Session the test indexed, shown as tb-session would: nothing is printed for any other id, so the real `show` answers.
   const row = extras.find((r) => r?.session_id === argv.at(-1));

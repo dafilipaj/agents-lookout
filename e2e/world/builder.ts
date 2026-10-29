@@ -191,6 +191,14 @@ export interface OutputDecl {
   projectPath?: string;
   sessionId?: string;
   sessionTitle?: string;
+  /** A fork repeats the original Session's tool_use_id; its own creation is later. */
+  forkOf?: string;
+  sessionCreatedAt?: string;
+  toolUseId?: string;
+  /** A removed scratchpad folder, or a real git ownership fixture. */
+  directoryGone?: boolean;
+  git?: 'tracked' | 'ignored';
+  version?: number;
   headless?: boolean;
   transcriptMissing?: boolean;
   pruned?: boolean;
@@ -225,6 +233,8 @@ export interface WorldSpec {
   /** Real tools removed from PATH (and from `LOOKOUT_*_BIN`). */
   without: RemovableTool[];
   outputs: { items: OutputDecl[]; unsupported: boolean } | null;
+  /** A declared CLI resume which waits for a Session Fleet never reports; no Harness runs. */
+  fleetResume: { sessionId: string } | null;
   /** Harnesses present, each with its Fake Harness on PATH. Absent unless declared. */
   harnesses: Partial<Record<HarnessId, HarnessDecl>>;
   /** Harnesses declared absent on purpose; reported in the declaration, absent either way. */
@@ -337,10 +347,17 @@ export class WorldBuilder {
     return this.next({ tbPr: checkTbPr(decl) });
   }
 
-  /** LIB's contract fake until a real release is pinned. Writes files and tool-block fixtures. */
+  /** LIB: real tool-block Transcripts and named files, mined by the pinned tb-session. */
   outputs(items: OutputDecl[], opts: { unsupported?: boolean } = {}): WorldBuilder {
     if (this.spec.without.includes('tb-session')) throw new Error('Cannot declare outputs without tb-session.');
     return this.next({ outputs: { items: checkOutputs(items), unsupported: opts.unsupported === true } });
+  }
+
+  /** A controlled spawn --resume CLI outcome, for Starting and its 15 s failure. */
+  fleetResume(sessionId: string): WorldBuilder {
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9-]{0,127}$/.test(sessionId)) throw new Error('Invalid resume Session id.');
+    if (this.spec.without.includes('fleet')) throw new Error('Cannot declare a resume without Fleet.');
+    return this.next({ fleetResume: { sessionId } });
   }
 
   usage(decl: DockUsageDecl): WorldBuilder {
@@ -374,6 +391,7 @@ export function world(): WorldBuilder {
   return new WorldBuilder({
     without: [],
     outputs: null,
+    fleetResume: null,
     harnesses: {},
     absentHarnesses: [],
     sessions: [],

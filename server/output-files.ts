@@ -16,7 +16,7 @@ const MEDIA: Record<string, string> = {
   '.html': 'text/html; charset=utf-8', '.htm': 'text/html; charset=utf-8', '.pdf': 'application/pdf',
   '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.svg': 'image/svg+xml', '.webp': 'image/webp',
 };
-/** The server's capabilities, learned only from outputs answers, oldest out at 10,000. */
+/** LIB-3.3: the paths the server's Library reads listed (file Outputs and Artifact sources), oldest out at 10,000. */
 export class OutputFiles {
   private readonly paths = new Set<string>();
   allow(path: string): void {

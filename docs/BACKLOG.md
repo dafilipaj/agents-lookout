@@ -58,7 +58,7 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
 ## The CLIs Lookout uses, and which can be updated (TOOLS)
 
 - **What:** one place, e.g. a "Tools" section in Settings, listing every CLI Lookout runs (fleet, tb-session, tb-pr, tb-prod, tb-jev, claude, codex): where it was found, its installed version, the latest release, and the command that updates it.
-- **Why:** today nothing shows which versions Lookout runs on, or that a newer one exists. Several features depend on a minimum version (tb-pr 0.3.1's `column_issues`, tb-session 0.3.0's Codex support, Fleet's pin), and Fleet's screen reading is only as good as the Harness versions its fixtures were captured from.
+- **Why:** today nothing shows which versions Lookout runs on, or that a newer one exists. Several features depend on a minimum version (tb-pr 0.3.1's `column_issues`, tb-session 0.3.0's Codex support, tb-session 0.4.0's `events` for the Library, Fleet's pin), and Fleet's screen reading is only as good as the Harness versions its fixtures were captured from.
 - **How (proposal):**
   - Show-only: Lookout copies the update command, never runs it.
   - The latest release is checked at most once a day, through tools that are already signed in (`gh` for cli-toolbox releases) or public registries for Claude Code and Codex.

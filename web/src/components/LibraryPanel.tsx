@@ -1,4 +1,5 @@
 import { BLOCK_REASON } from '@shared/history.ts';
+import { libraryMatches } from '@shared/library-search.ts';
 import { LIBRARY_TYPES, type LibraryFilter, type LibraryPage, type LibraryQuery, type LibraryType, type OutputItem, type OutputSession, type OutputType } from '@shared/library.ts';
 import type { HistoryItem, SessionRow } from '@shared/types.ts';
 import { Copy, ExternalLink, File, FileCode, FileText, Globe, Image, CircleSlash, Search, Share2 } from 'lucide-react';
@@ -18,7 +19,7 @@ import type { PanelNav } from '@/lib/right-sidebar';
 import { STATUS_LABEL } from '@/lib/sessions';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
-import { AUTO_FILL_PAGES, SEARCH_DEBOUNCE_MS } from './HistoryPanel';
+import { SEARCH_DEBOUNCE_MS } from './HistoryPanel';
 import { HarnessIcon } from './HarnessIcon';
 
 const TYPE_LABEL: Record<OutputType | 'artifact' | 'share', string> = { markdown: 'Markdown', html: 'HTML', pdf: 'PDF', image: 'Image', artifact: 'Artifact', share: 'Share' };
@@ -73,10 +74,10 @@ export interface LibraryPanelProps {
   navRef?: Ref<PanelNav>;
 }
 type Page = Extract<LibraryPage, { state: 'ok' }>;
-interface Results { pages: Page[]; auto: number; gen: number }
+interface Results { pages: Page[]; gen: number; limit?: number }
 interface Actions { open(): void; copy(): void; session(): void }
 
-/** LIB: the tab renders the CLI's rows. It never mines a Transcript or fetches an external URL. */
+/** LIB: the tab renders the server's held read. It never mines a Transcript or fetches an external URL. */
 export function LibraryPanel({ focusKey, visible, sessions, now, search, status, filter, onFilter, headless, onHeadless, onSession, keyboardEnabled, navRef }: LibraryPanelProps) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Results | null>(null);
@@ -88,6 +89,8 @@ export function LibraryPanel({ focusKey, visible, sessions, now, search, status,
   const alive = useRef(false);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   const refreshQueued = useRef(false);
+  const heldRead = useRef<string | undefined>(undefined);
+  const readScope = useRef({ visible: false, headless });
   const seq = useRef(0), pending = useRef<Results | null>(null), reading = useRef(false);
   const frozen = useRef(false);
   useLayoutEffect(() => { frozen.current = expanded !== null || hovered !== null; });
@@ -98,7 +101,7 @@ export function LibraryPanel({ focusKey, visible, sessions, now, search, status,
   const q = query.trim(), types = filter.types.join(',');
   const request = useRef({ search, status, q, filter, headless });
   useLayoutEffect(() => { request.current = { search, status, q, filter, headless }; });
-  const ask = (page: number, continuation?: string) => { const r = request.current; return r.search({ ...r.filter, query: r.q, page, ...(continuation ? { continuation } : {}), headless: r.headless }); };
+  const ask = (page: number, readId?: string) => { const r = request.current; return r.search({ ...r.filter, query: r.q, page, ...(readId ? { readId } : {}), headless: r.headless }); };
   const apply = (next: Results) => {
     if (next.gen !== seq.current) return;
     if (frozen.current) pending.current = next;
@@ -112,21 +115,30 @@ export function LibraryPanel({ focusKey, visible, sessions, now, search, status,
   }, [expanded, hovered]);
   useEffect(() => { if (visible) input.current?.focus(); }, [focusKey, visible]);
 
-  const refresh = useRef(() => { });
-  const refreshNow = () => {
+  const refresh = useRef<(readId?: string) => void>(() => { });
+  const refreshNow = (readId?: string) => {
     if (!visible || !alive.current) return;
     if (reading.current) { refreshQueued.current = true; return; }
-    const mine = seq.current; reading.current = true; setBusy(true); setError(null);
-    ask(1).then((page) => {
-      if (seq.current !== mine) return;
-      if (page.state === 'not-installed') { setInstall(page.installCommand); setResults(null); return; }
-      setInstall(null);
-      const previous = pending.current ?? current.current;
-      const old = previous?.gen === mine ? previous : null;
-      const seen = new Set(page.items.map(key));
-      const later = (old?.pages.slice(1) ?? []).map((p) => ({ ...p, items: p.items.filter((i) => !seen.has(key(i))) }));
-      apply({ pages: [page, ...later], auto: old?.auto ?? 0, gen: mine });
-    }, (err: unknown) => { if (seq.current === mine) setError(err instanceof Error ? err.message : "Couldn't read Library."); }).finally(() => {
+    const mine = seq.current;
+    const previous = pending.current ?? current.current;
+    const target = previous?.gen === mine ? previous.limit ?? previous.pages.reduce((n, page) => n + page.items.length, 0) : 0;
+    reading.current = true; setBusy(true); setError(null);
+    // Rebuild the whole loaded range from one read before replacing any rows. An edit can
+    // move a later row onto page one, shifting every page that follows it.
+    const read = async () => {
+      let pages: Page[] = [], count = 0, pageNumber = 1, id = readId;
+      while (mine === seq.current) {
+        const page = await ask(pageNumber, id);
+        if (mine !== seq.current) return;
+        if (page.state === 'not-installed') { setInstall(page.installCommand); setResults(null); return; }
+        if (page.state === 'read-again') { pages = []; count = 0; pageNumber = 1; id = undefined; continue; }
+        heldRead.current = page.readId; setInstall(null);
+        pages.push(page); count += page.items.length;
+        if (!page.hasMore || count >= target) { apply({ pages, gen: mine, ...(target > 0 && count > target ? { limit: target } : {}) }); return; }
+        pageNumber = page.nextPage; id = page.readId;
+      }
+    };
+    void read().catch((err: unknown) => { if (seq.current === mine) setError(err instanceof Error ? err.message : "Couldn't read Library."); }).finally(() => {
       if (seq.current === mine) {
         reading.current = false; setBusy(false); setIndexing(false);
         if (refreshQueued.current) { refreshQueued.current = false; setTimeout(() => { if (seq.current === mine) refresh.current(); }, 0); }
@@ -141,9 +153,13 @@ export function LibraryPanel({ focusKey, visible, sessions, now, search, status,
   }
   // Invalidate before the passive thaw effect: collapsing on a new filter must not restore its old buffer.
   useLayoutEffect(() => {
+    const fresh = !readScope.current.visible || readScope.current.headless !== headless;
+    readScope.current = { visible, headless };
     if (!visible) { seq.current++; reading.current = false; return; }
     ++seq.current; reading.current = false; refreshQueued.current = false; pending.current = null;
-    const timer = setTimeout(() => refresh.current(), q ? SEARCH_DEBOUNCE_MS : 0);
+    const readId = fresh ? undefined : heldRead.current;
+    if (fresh) heldRead.current = undefined;
+    const timer = setTimeout(() => refresh.current(readId), q ? SEARCH_DEBOUNCE_MS : 0);
     const invalidate = () => { seq.current++; };
     return () => { clearTimeout(timer); invalidate(); };
   }, [q, types, filter.project, filter.hideGone, headless, visible]);
@@ -168,25 +184,36 @@ export function LibraryPanel({ focusKey, visible, sessions, now, search, status,
     return () => { stopped = true; clearInterval(timer); };
   }, [busy, moreBusy]);
 
-  const last = results?.pages.at(-1), items = results?.pages.flatMap((p) => p.items) ?? [];
-  const load = useRef((auto = false) => { void auto; });
-  const loadMore = (auto = false) => {
+  const last = results?.pages.at(-1), items = (results?.pages.flatMap((p) => p.items) ?? []).slice(0, results?.limit);
+  const load = useRef(() => { });
+  const loadMore = () => {
     const r = pending.current ?? current.current, tail = r?.pages.at(-1);
-    if (!r || !tail?.hasMore || r.gen !== seq.current || reading.current || (auto && r.auto >= AUTO_FILL_PAGES)) return;
+    if (!r || r.gen !== seq.current || reading.current) return;
+    // A refresh can fill the last page past the previous visible row count. Reveal its
+    // retained rows first, so the next request still starts at a whole-page boundary.
+    if (r.limit !== undefined) { apply({ ...r, limit: undefined }); return; }
+    if (!tail?.hasMore) return;
     const mine = r.gen; reading.current = true; setMoreBusy(true); setError(null);
-    ask(tail.nextPage, tail.continuation).then((page) => {
+    let restart = false;
+    void ask(tail.nextPage, tail.readId).then((page) => {
       if (mine !== seq.current) return;
       if (page.state === 'not-installed') { setInstall(page.installCommand); return; }
+      if (page.state === 'read-again') { restart = true; return; }
       const old = pending.current ?? current.current;
       if (!old || old.gen !== mine) return;
       const seen = new Set(old.pages.flatMap((p) => p.items.map(key)));
-      apply({ ...old, pages: [...old.pages, { ...page, items: page.items.filter((i) => !seen.has(key(i))) }], auto: auto ? old.auto + 1 : 0 });
-    }, (err: unknown) => { if (mine === seq.current) setError(err instanceof Error ? err.message : "Couldn't load more Outputs."); }).finally(() => { if (mine === seq.current) { reading.current = false; setMoreBusy(false); setIndexing(false); if (refreshQueued.current) { refreshQueued.current = false; setTimeout(() => { if (seq.current === mine) refresh.current(); }, 0); } } });
+      apply({ ...old, pages: [...old.pages, { ...page, items: page.items.filter((i) => !seen.has(key(i))) }] });
+    }).catch((err: unknown) => { if (mine === seq.current) setError(err instanceof Error ? err.message : "Couldn't load more Outputs."); }).finally(() => {
+      if (mine !== seq.current) return;
+      reading.current = false; setMoreBusy(false); setIndexing(false);
+      // Start the queued read now, before the auto-fill effect can ask the old read for another page.
+      if (restart || refreshQueued.current) { refreshQueued.current = false; refresh.current(); }
+    });
   };
   useLayoutEffect(() => { load.current = loadMore; });
   useEffect(() => {
     const el = scroll.current;
-    if (!busy && !moreBusy && !error && results && (items.length === 0 || (el && el.clientHeight > 0 && el.scrollHeight <= el.clientHeight + 200))) load.current(true);
+    if (!busy && !moreBusy && !error && results && (items.length === 0 || (el && el.clientHeight > 0 && el.scrollHeight <= el.clientHeight + 200))) load.current();
   }, [results, items.length, busy, moreBusy, error]);
   // Retain selection by key when a refresh moves rows, including across day headings.
   const selected = items.findIndex((i) => key(i) === active);
@@ -214,7 +241,7 @@ export function LibraryPanel({ focusKey, visible, sessions, now, search, status,
     setOpening(true); setActionError(null);
     try { await onSession(s, isLive(s, sessions)); } catch (e) { setActionError(e instanceof Error ? e.message : "Couldn't open its Session."); } finally { setOpening(false); }
   };
-  const hidden = results?.pages.reduce((sum, p) => sum + p.hiddenGone, 0) ?? 0;
+  const hidden = results?.pages[0]?.hiddenGone ?? 0;
   const projects = new Set([...(results?.pages.flatMap((p) => p.projects) ?? []), ...(filter.project ? [filter.project] : [])]);
   const typeToggle = (t: LibraryType, only: boolean) => {
     const next = only ? [t] : filter.types.includes(t) ? filter.types.filter((v) => v !== t) : LIBRARY_TYPES.filter((v) => v === t || filter.types.includes(v));
@@ -250,14 +277,14 @@ export function LibraryPanel({ focusKey, visible, sessions, now, search, status,
     </div>
     {error && <Alert title="Couldn't read Library" detail={error} className="mx-2.5 my-3" />}
     {actionError && <Alert title={actionError} className="mx-2.5 my-2" />}
-    {install ? <Alert title="tb-session needs outputs" detail="Install a tb-session with outputs, then reopen Library:" className="mx-2.5 my-3">
+    {install ? <Alert title="tb-session needs events" detail="Install a tb-session with events, then reopen Library:" className="mx-2.5 my-3">
       <CommandBlock>
         {install}
       </CommandBlock>
     </Alert> : <>
       {busy && <Loading label={indexing ? 'Indexing Transcripts…' : 'Loading…'} className={cn('items-center px-4 py-3', results && 'absolute right-2 bottom-2 z-10 rounded-md bg-sidebar')} />}
       <div ref={scroll} onScroll={() => { const el = scroll.current; if (el && el.scrollTop + el.clientHeight >= el.scrollHeight - 200) load.current(); }} className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
-        {!busy && !error && results && items.length === 0 && !moreBusy && (!last?.hasMore || results.auto >= AUTO_FILL_PAGES) && <EmptyState role="status" title={results.pages[0]?.unfilteredEmpty ? 'Nothing produced yet' : q ? `Nothing matches “${q}”` : 'Nothing matches'} hint={hidden ? `${hidden} gone Outputs are hidden. Turn off Hide gone to show them.` : undefined} />}
+        {!busy && !error && results && items.length === 0 && !moreBusy && !last?.hasMore && <EmptyState role="status" title={results.pages[0]?.unfilteredEmpty ? 'Nothing produced yet' : q ? `Nothing matches “${q}”` : 'Nothing matches'} hint={hidden ? `${hidden} gone Outputs are hidden. Turn off Hide gone to show them.` : undefined} />}
         <div ref={list} role="listbox" aria-label="Outputs" tabIndex={0} aria-activedescendant={items[index] ? `library-${encodeURIComponent(key(items[index]!))}` : undefined} className="outline-none focus-visible:ring-2 focus-visible:ring-ring/30">
           <RowSettling value={settling}>
             {items.map((item, n) => <div key={key(item)}>
@@ -269,22 +296,20 @@ export function LibraryPanel({ focusKey, visible, sessions, now, search, status,
           </RowSettling>
         </div>
         {moreBusy && <Loading label={indexing ? 'Indexing Transcripts…' : 'Loading more…'} className="items-center py-2" />}
-        {last?.hasMore && !busy && !moreBusy && <div className="flex justify-center py-2">
-          <Button variant="ghost" size="sm" onClick={() => load.current()}>Load more</Button>
-        </div>}
       </div>
     </>}
   </section>;
 }
 
-/** Literal substring hits, with no regex or HTML from the query. */
+/** Literal hits (LIB-2.4), marked by the same folding the server searched with; no regex or HTML from the query. */
 function Hit({ text, query }: { text: string; query: string }) {
-  if (!query) return text;
-  const parts = []; const folded = text.toLocaleLowerCase(), q = query.toLocaleLowerCase(); let at = 0;
-  for (let hit = folded.indexOf(q); hit >= 0; hit = folded.indexOf(q, at)) {
-    parts.push(text.slice(at, hit), <mark key={hit} className="rounded-sm bg-highlight px-0.5 text-foreground">
-      {text.slice(hit, hit + q.length)}
-    </mark>); at = hit + q.length;
+  const hits = libraryMatches(text, query);
+  if (!hits.length) return text;
+  const parts = []; let at = 0;
+  for (const [from, to] of hits) {
+    parts.push(text.slice(at, from), <mark key={from} className="rounded-sm bg-highlight px-0.5 text-foreground">
+      {text.slice(from, to)}
+    </mark>); at = to;
   }
   parts.push(text.slice(at)); return parts;
 }
