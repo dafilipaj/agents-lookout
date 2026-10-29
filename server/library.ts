@@ -13,6 +13,8 @@ import { sanitizeLine } from './sanitize.ts';
 import { OutputFiles } from './output-files.ts';
 
 const PAGE_SIZE = 50;
+// list pages hold whole first prompts: 2,406 Sessions printed 22 MB in one page, over the runner's 16 MB cap.
+const LIST_PAGE = '200';
 const EXTENSIONS: Record<string, OutputType> = { md: 'markdown', html: 'html', htm: 'html', pdf: 'pdf', png: 'image', jpg: 'image', jpeg: 'image', gif: 'image', svg: 'image', webp: 'image' };
 const object = (v: unknown): Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v) ? v as Record<string, unknown> : {};
 const string = (v: unknown, max = 1024): string | null => typeof v === 'string' && v.length <= max && v.length > 0 && !/[\p{Cc}\p{Cf}]/u.test(v) ? v : null;
@@ -126,7 +128,7 @@ export class Library {
       const prefix = ['events', '--all-projects', '--json', '--headless', headless ? 'include' : 'exclude', '--limit', '100000'];
       const [files, remote, sessions] = await Promise.all([
         all([...prefix, '--kind', 'write,edit', '--ext', Object.keys(EXTENSIONS).join(',')]),
-        all([...prefix, '--kind', 'artifact,share']), all(['list', '--all-projects', '--json', '--limit', '100000']),
+        all([...prefix, '--kind', 'artifact,share']), all(['list', '--all-projects', '--json', '--limit', LIST_PAGE]),
       ]);
       if (!files || !remote || !sessions) return null;
       const metadata = new Map(sessions.map((s) => { const r = object(s); return [`${r.harness}:${r.session_id}`, r] as const; }));

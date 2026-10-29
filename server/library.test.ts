@@ -39,7 +39,7 @@ it('LIB-2.1: reads all three sources in parallel, follows short CLI pages, holds
   expect(runner.mock.calls.filter(([bin]) => bin !== 'git').map(([, a]) => a)).toEqual(expect.arrayContaining([
     ['events', '--all-projects', '--json', '--headless', 'exclude', '--limit', '100000', '--kind', 'write,edit', '--ext', 'md,html,htm,pdf,png,jpg,jpeg,gif,svg,webp'],
     ['events', '--all-projects', '--json', '--headless', 'exclude', '--limit', '100000', '--kind', 'artifact,share'],
-    ['list', '--all-projects', '--json', '--limit', '100000'],
+    ['list', '--all-projects', '--json', '--limit', '200'],
   ]));
   expect(await lib.find(query('page=2&readId=evicted'))).toEqual({ state: 'read-again' });
 });
@@ -82,6 +82,23 @@ it('LIB-2.6: joins Session titles, preserves parent credits, missing and pruned 
     expect.objectContaining({ sessionId: 'pruned-session', title: 'pruned-s', pruned: true }),
   ]));
   expect(runner.mock.calls.some(([, args]) => args[0] === 'show')).toBe(false);
+});
+
+it('LIB-2.6: reads Session titles from list 200 at a time, following its pages', async () => {
+  const sessions = Array.from({ length: 450 }, (_, n) => ({ session_id: `s-${n}`, harness: 'claude', summary: `Title ${n}` }));
+  const runner = vi.fn<Runner>(async (bin, args) => {
+    if (bin === 'git') throw Object.assign(new Error('not a repo'), { code: 128 });
+    if (args[0] !== 'list') return answer(args.includes('write,edit') ? [event('/late.html', { session_id: 's-449' })] : []);
+    const page = args.includes('--page') ? Number(args[args.indexOf('--page') + 1]) : 1;
+    return answer(sessions.slice((page - 1) * 200, page * 200), sessions.length);
+  });
+  const page = await new Library(options(runner)).find(query()); if (page.state !== 'ok') throw new Error('missing');
+  expect(page.items[0]?.sessions).toEqual([expect.objectContaining({ sessionId: 's-449', title: 'Title 449' })]);
+  expect(runner.mock.calls.filter(([, args]) => args[0] === 'list').map(([, args]) => args)).toEqual([
+    ['list', '--all-projects', '--json', '--limit', '200'],
+    ['list', '--all-projects', '--json', '--limit', '200', '--page', '2'],
+    ['list', '--all-projects', '--json', '--limit', '200', '--page', '3'],
+  ]);
 });
 
 it('LIB-2.7: retains only the last three immutable reads, scopes headless reuse and checks existence again on refresh', async () => {

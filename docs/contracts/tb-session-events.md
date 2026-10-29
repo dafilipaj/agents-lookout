@@ -93,7 +93,7 @@ All filters, `total_results`, `--limit` and `--page` run in SQL.
 
 - `events` first refreshes the parent and Subagent Transcripts that changed, then queries the index, so a new Output is in the next call. An unchanged file is skipped until its mtime or size changes, or `--no-cache` forces it. `list` and `search` refresh parent facts without scanning Subagents; `events` and `index` refresh both.
 - Schema v4 upgrades a v3 index without losing Session history and re-parses on first use. Measured: 16.7 s for the upgrade on Dario's Mac (18.9 s in the PR's own run); the Library's 60 s first-call budget stays (LIB-2.8). `tb-session index --all-projects` runs it by hand. A tb-session 0.3.2 refuses a v4 index (`Error: the index was written by a newer tb-session (schema 4, this build knows 3)`) and leaves it untouched.
-- Warm, a call with nothing changed is 0.12 s for the whole Library read (E5); `list --all-projects --json --limit 100000` is 0.75 s for 2,398 Sessions (fields `summary`, `first_prompt`, `created_at`, among others).
+- Warm, a call with nothing changed is 0.12 s for the whole Library read (E5); `list --all-projects --json --limit 200` is 0.73 s over 13 pages for 2,406 Sessions (one page of all of them is 22 MB, mostly `first_prompt`) (fields `summary`, `first_prompt`, `created_at`, among others).
 
 ## E9. Add-only
 
