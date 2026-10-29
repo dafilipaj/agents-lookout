@@ -1,18 +1,22 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, open, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { Runner } from './exec.ts';
 import { run } from './exec.ts';
+import { libraryIncludes, libraryMatches } from '../shared/library-search.ts';
 import { Library, LibraryError, parseLibraryQuery } from './library.ts';
+
+vi.mock('node:fs/promises', async (original) => { const m = await original<typeof import('node:fs/promises')>(); return { ...m, open: vi.fn(m.open) }; });
 
 const at = '2026-10-23T10:00:00Z';
 const event = (path: string, extra = {}) => ({ kind: 'write', key: path, path, timestamp: at, title: path, harness: 'claude', session_id: 'parent-session', project_path: '/project', ...extra });
 const answer = (results: unknown[], total = results.length) => JSON.stringify({ results, total_results: total, page: 1 });
 const query = (s = '') => parseLibraryQuery(new URLSearchParams(s));
+const notRepo = () => Object.assign(new Error('raw'), { code: 128, stderr: 'fatal: not a git repository (or any of the parent directories): .git' });
 const roots: string[] = [];
 afterEach(async () => { vi.useRealTimers(); for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
-const fake = (rows: unknown[], sessions: unknown[] = []) => vi.fn<Runner>(async (bin, args) => bin === 'git' ? Promise.reject(Object.assign(new Error('not a repo'), { code: 128 })) : answer(args[0] === 'list' ? sessions : args.includes('write,edit') ? rows : []));
+const fake = (rows: unknown[], sessions: unknown[] = []) => vi.fn<Runner>(async (bin, args) => bin === 'git' ? Promise.reject(notRepo()) : answer(args[0] === 'list' ? sessions : args.includes('write,edit') ? rows : []));
 const options = (runner: Runner) => ({ runner, bin: () => '/fake-tb-session', stat: async () => ({ isFile: () => true }), isDirectory: async () => true });
 
 it('LIB-2.1: reads all three sources in parallel, follows short CLI pages, holds exact pages and rereads only after expiry', async () => {
@@ -20,7 +24,7 @@ it('LIB-2.1: reads all three sources in parallel, follows short CLI pages, holds
   const barrier = new Promise<void>((r) => { release = r; });
   const rows = Array.from({ length: 121 }, (_, n) => event(`/report-${n}.pdf`, { timestamp: new Date(Date.parse(at) - n * 1000).toISOString() }));
   const runner = vi.fn<Runner>(async (bin, args) => {
-    if (bin === 'git') throw Object.assign(new Error('not a repo'), { code: 128 });
+    if (bin === 'git') throw notRepo();
     await barrier;
     if (args[0] === 'list' || args.includes('artifact,share')) return answer([]);
     const page = args.includes('--page') ? Number(args[args.indexOf('--page') + 1]) : 1;
@@ -45,7 +49,7 @@ it('LIB-2.1: reads all three sources in parallel, follows short CLI pages, holds
 });
 
 it('LIB-2.1: leaves out rows of a kind Lookout does not know (contract E9)', async () => {
-  const runner = vi.fn<Runner>(async (bin, args) => bin === 'git' ? Promise.reject(Object.assign(new Error('not a repo'), { code: 128 })) : answer(args[0] === 'list' ? [] : args.includes('write,edit') ? [event('/kept.pdf')] : [event('/doc', { kind: 'doc', key: 'https://example.invalid/doc', url: 'https://example.invalid/doc', title: 'A doc' })]));
+  const runner = vi.fn<Runner>(async (bin, args) => bin === 'git' ? Promise.reject(notRepo()) : answer(args[0] === 'list' ? [] : args.includes('write,edit') ? [event('/kept.pdf')] : [event('/doc', { kind: 'doc', key: 'https://example.invalid/doc', url: 'https://example.invalid/doc', title: 'A doc' })]));
   expect(await new Library(options(runner)).find(query())).toMatchObject({ total: 1, items: [{ key: '/kept.pdf' }] });
 });
 
@@ -87,7 +91,7 @@ it('LIB-2.6: joins Session titles, preserves parent credits, missing and pruned 
 it('LIB-2.6: reads Session titles from list 200 at a time, following its pages', async () => {
   const sessions = Array.from({ length: 450 }, (_, n) => ({ session_id: `s-${n}`, harness: 'claude', summary: `Title ${n}` }));
   const runner = vi.fn<Runner>(async (bin, args) => {
-    if (bin === 'git') throw Object.assign(new Error('not a repo'), { code: 128 });
+    if (bin === 'git') throw notRepo();
     if (args[0] !== 'list') return answer(args.includes('write,edit') ? [event('/late.html', { session_id: 's-449' })] : []);
     const page = args.includes('--page') ? Number(args[args.indexOf('--page') + 1]) : 1;
     return answer(sessions.slice((page - 1) * 200, page * 200), sessions.length);
@@ -131,12 +135,33 @@ it('LIB-2.8: grants the first read per binary revision 60s, coalesces queries, d
   await expect(malformed.find(query())).rejects.toBeInstanceOf(LibraryError);
 });
 
-it('LIB-2.9: stats every file and Artifact source before paging in batches of at most 100 with a shared deadline', async () => {
-  const checked: string[] = [];
-  const rows = Array.from({ length: 201 }, (_, n) => event(`/report-${n}.pdf`));
-  const lib = new Library({ ...options(fake(rows)), stat: async (p) => { checked.push(p); if (p === '/report-0.pdf') return new Promise(() => {}); return { isFile: () => p !== '/report-200.pdf' }; }, statTimeoutMs: 5 });
-  expect(await lib.find(query())).toMatchObject({ total: 199, hiddenGone: 2, items: expect.any(Array) });
-  expect(checked).toHaveLength(201);
+it('LIB-2.9: stats every file and Artifact source before paging, 100 paths a batch with one shared deadline per batch', async () => {
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const files = [...Array.from({ length: 200 }, (_, n) => event(`/report-${n}.pdf`)), event('/source.html')];
+  const artifact = event('/unused', { kind: 'artifact', key: 'https://example.invalid/a', url: 'https://example.invalid/a', title: 'A', source_path: '/source.html' });
+  const runner = vi.fn<Runner>(async (bin, args) => bin === 'git' ? Promise.reject(notRepo()) : answer(args[0] === 'list' ? [] : args.includes('write,edit') ? files : [artifact]));
+  const started: { path: string; at: number }[] = [];
+  let release!: () => void;
+  const second = new Promise<void>((r) => { release = r; });
+  // Batch one never answers (so only its deadline ends it), batch two waits for the test, batch three answers at once.
+  const stat = async (p: string) => {
+    started.push({ path: p, at: Date.now() });
+    if (started.length <= 100) return new Promise<{ isFile(): boolean }>(() => {});
+    if (started.length <= 200) await second;
+    return { isFile: () => true };
+  };
+  const lib = new Library({ ...options(runner), stat, statTimeoutMs: 200 });
+  const pending = lib.find(query());
+  await sleep(100); expect(started).toHaveLength(100);
+  await vi.waitFor(() => expect(started).toHaveLength(200));
+  await sleep(60); expect(started).toHaveLength(200);
+  release();
+  const page = await pending; if (page.state !== 'ok') throw new Error('missing');
+  expect(started).toHaveLength(201); expect(started.at(-1)?.path).toBe('/source.html');
+  expect(started[100]!.at - started[0]!.at).toBeGreaterThanOrEqual(180);
+  expect(started[99]!.at - started[0]!.at).toBeLessThan(100);
+  expect(page).toMatchObject({ total: 101, hiddenGone: 100 });
+  expect(page.items.find((i) => i.kind === 'artifact')).toMatchObject({ source: { path: '/source.html', exists: true } });
 });
 
 it('LIB-2.10: absolute plain document paths outside Harness homes, present directories and read-only git ownership per file', async () => {
@@ -157,6 +182,104 @@ it('LIB-2.10: absolute plain document paths outside Harness homes, present direc
   expect(calls.filter((a) => a.includes('check-ignore'))).toHaveLength(1);
   expect(calls.every((a) => a.includes('rev-parse') || a.includes('check-ignore'))).toBe(true);
   expect(await readFile(owned, 'utf8')).toBe('# Document');
+});
+
+const gitRead = (home: string, paths: string[], log: (l: string) => void, wrap: (r: Runner) => Runner = (r) => r) => {
+  const runner: Runner = wrap(async (bin, args, opts) => bin === 'git' ? run(bin, args, opts) : answer(args.includes('write,edit') ? paths.map((p) => event(p)) : args[0] === 'list' ? [] : [{ kind: 'share', key: 'https://example.invalid/s', url: 'https://example.invalid/s', title: 'A share', timestamp: at, harness: 'claude', session_id: 'parent-session', project_path: '/project' }]));
+  return new Library({ runner, bin: () => '/fake-tb-session', env: { ...process.env, HOME: home }, log });
+};
+const repoIn = async (home: string, name: string) => {
+  const repo = join(home, name); await mkdir(join(repo, 'ignored'), { recursive: true });
+  await run('git', ['init', '--quiet', repo], { timeoutMs: 5000 });
+  await writeFile(join(repo, '.gitignore'), 'ignored/\n');
+  for (const f of ['owned.md', 'ignored/report.md']) await writeFile(join(repo, f), '# Document');
+  return repo;
+};
+
+it('LIB-2.10: asks git about physical paths, so a repo reached through a symlinked folder is read and answered with the recorded paths', async () => {
+  const home = await realpath(await mkdtemp(join(tmpdir(), 'lookout-library-link-'))); roots.push(home);
+  await mkdir(join(home, 'real'));
+  await repoIn(join(home, 'real'), 'repo');
+  await symlink(join(home, 'real'), join(home, 'link'));
+  const lines: string[] = [];
+  const recorded = [join(home, 'link/repo/owned.md'), join(home, 'link/repo/ignored/report.md')];
+  const page = await gitRead(home, recorded, (l) => lines.push(l)).find(query('types=markdown'));
+  expect(page).toMatchObject({ state: 'ok', total: 1, items: [{ path: recorded[1] }] });
+  expect(lines).toEqual([]);
+});
+
+it('LIB-2.10: a root git cannot answer for (corrupt index, timeout) leaves out its files only; the read and its other Outputs are answered, one path-free line per failure', async () => {
+  const home = await realpath(await mkdtemp(join(tmpdir(), 'lookout-library-damaged-'))); roots.push(home);
+  const bad = await repoIn(home, 'bad'), good = await repoIn(home, 'good'), slow = await repoIn(home, 'slow');
+  await writeFile(join(bad, '.git/index'), 'garbage, not an index');
+  const paths = [join(bad, 'owned.md'), join(bad, 'ignored/report.md'), join(good, 'owned.md'), join(good, 'ignored/report.md'), join(slow, 'ignored/report.md'), join(home, 'plain.pdf')];
+  await writeFile(join(home, 'plain.pdf'), 'pdf');
+  const lines: string[] = [];
+  const timeout: (r: Runner) => Runner = (r) => async (bin, args, opts) => { if (bin === 'git' && args[1] === slow && args[2] === 'check-ignore') throw Object.assign(new Error('raw'), { timedOut: true, code: null }); return r(bin, args, opts); };
+  const page = await gitRead(home, paths, (l) => lines.push(l), timeout).find(query('types=markdown,pdf,share'));
+  if (page.state !== 'ok') throw new Error('missing');
+  expect(page.items.map((i) => i.path ?? i.url).sort()).toEqual([join(good, 'ignored/report.md'), join(home, 'plain.pdf'), 'https://example.invalid/s'].sort());
+  expect(lines).toHaveLength(2);
+  expect(lines.every((l) => l.startsWith('lookout: library: git could not answer') && !l.includes(home))).toBe(true);
+  expect(lines.join('\n')).toContain('timed out'); expect(lines.join('\n')).toMatch(/damaged index|failed \(exit 128\)/);
+});
+
+it("LIB-2.10: only git's \"not a git repository\" means no work tree; a dubious-ownership refusal leaves the files out and is asked again next read", async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  let refuse = true;
+  const lines: string[] = [];
+  const runner = vi.fn<Runner>(async (bin, args) => {
+    if (bin === 'git') throw refuse ? Object.assign(new Error('raw'), { code: 128, stderr: "fatal: detected dubious ownership in repository at '/secret/place'" }) : notRepo();
+    return answer(args[0] === 'list' ? [] : args.includes('write,edit') ? [event('/owned.md')] : []);
+  });
+  const lib = new Library({ ...options(runner), log: (l) => lines.push(l) });
+  expect(await lib.find(query('types=markdown'))).toMatchObject({ total: 0 });
+  expect(lines).toEqual(['lookout: library: git could not answer for a folder, its files are left out: dubious ownership']);
+  refuse = false; vi.setSystemTime(Date.now() + 2100);
+  expect(await lib.find(query('types=markdown'))).toMatchObject({ total: 1 });
+  const asked = () => runner.mock.calls.filter(([bin]) => bin === 'git').length;
+  expect(asked()).toBe(2);
+  vi.setSystemTime(Date.now() + 2100); await lib.find(query('types=markdown'));
+  expect(asked()).toBe(2);
+});
+
+it('LIB-2.4: a capital sharp S folds with ß and ss, in matching and in highlight ranges', async () => {
+  expect(libraryIncludes('STRAẞE', 'Straße')).toBe(true); expect(libraryIncludes('Straße', 'STRAẞE')).toBe(true); expect(libraryIncludes('strasse', 'STRAẞE')).toBe(true);
+  expect(libraryMatches('a STRAẞE b', 'straße')).toEqual([[2, 8]]);
+  expect(libraryMatches('Straße', 'ẞ')).toEqual([[4, 5]]);
+  const runner = fake([event('/STRAẞE.html')]);
+  expect(await new Library(options(runner)).find(query(`q=${encodeURIComponent('Straße')}`))).toMatchObject({ total: 1 });
+});
+
+it('LIB-2.12: a title inside an HTML comment, script or style is not the page title', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'lookout-library-html-')); roots.push(home);
+  const pages = { comment: '<!-- <title>Template</title> --><title>Actual</title>', script: '<script>var t = "<title>Script</title>";</script><style>/* <title>Style</title> */</style><TITLE>Real</TITLE>', open: '<!-- <title>Cut</title>', nested: '<script><!--</script><title>After</title>', literal: '<title>How <script> works</title>' };
+  const paths = Object.keys(pages).map((n) => join(home, `${n}.html`));
+  for (const [n, html] of Object.entries(pages)) await writeFile(join(home, `${n}.html`), html);
+  const page = await new Library({ runner: fake(paths.map((p) => event(p))), bin: () => '/fake-tb-session' }).find(query());
+  if (page.state !== 'ok') throw new Error('missing');
+  expect(Object.fromEntries(page.items.map((i) => [basename(i.path!), i.title]))).toEqual({ 'comment.html': 'Actual', 'script.html': 'Real', 'open.html': 'open.html', 'nested.html': 'After', 'literal.html': 'How <script> works' });
+});
+
+it('LIB-2.12: an unchanged file reuses its cached title, a changed one is read again, an entry unused for an hour goes, a gone path is never opened', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'lookout-library-cache-')); roots.push(home);
+  const a = join(home, 'a.md'), b = join(home, 'b.md'), gone = join(home, 'gone.md');
+  await writeFile(a, '# Title A'); await writeFile(b, '# Title B');
+  vi.useFakeTimers({ toFake: ['Date'] });
+  let current = [a, b, gone];
+  const runner = vi.fn<Runner>(async (bin, args) => bin === 'git' ? Promise.reject(notRepo()) : answer(args[0] === 'list' ? [] : args.includes('write,edit') ? current.map((p) => event(p)) : []));
+  const lib = new Library({ runner, bin: () => '/fake-tb-session' });
+  const opened = () => vi.mocked(open).mock.calls.map(([p]) => String(p));
+  const read = async (...paths: string[]) => { current = paths; vi.setSystemTime(Date.now() + 2100); return lib.find(query('types=markdown&hideGone=0')); };
+  vi.mocked(open).mockClear();
+  await read(a, b, gone); expect(opened().sort()).toEqual([a, b]);
+  await read(a, b, gone); expect(opened()).toHaveLength(2);
+  await writeFile(a, '# Title A, longer');
+  expect(await read(a, b)).toMatchObject({ items: expect.arrayContaining([expect.objectContaining({ title: 'Title A, longer' })]) }); expect(opened()).toHaveLength(3);
+  await read(b); vi.setSystemTime(Date.now() + 1_800_000); await read(a, b); expect(opened()).toHaveLength(3);
+  await read(b); vi.setSystemTime(Date.now() + 3_700_000); await read(b); expect(opened()).toHaveLength(3);
+  await read(a, b); expect(opened().filter((p) => p === a)).toHaveLength(3); expect(opened().filter((p) => p === b)).toHaveLength(1);
+  expect(opened()).not.toContain(gone);
 });
 
 it('LIB-2.11: groups actions across history, credits fork copies to earliest-created Session, folds sources on both Artifacts and keeps newer edits', async () => {
@@ -202,4 +325,53 @@ it('LIB-2.8: opposite headless reads during an upgrade share the 60-second migra
   await vi.waitFor(() => expect(runner).toHaveBeenCalledTimes(6));
   finish(); await Promise.all([first, other]);
   expect(runner.mock.calls.map(([, , o]) => o.timeoutMs)).toEqual(Array(6).fill(60000));
+});
+
+const files = (...paths: string[]) => paths.map((p) => event(p));
+const gitRunner = (rows: unknown[], git: Runner) => vi.fn<Runner>(async (bin, args, o) => bin === 'git' ? git(bin, args, o) : answer(args[0] === 'list' ? [] : args.includes('write,edit') ? rows : []));
+
+it("LIB-2.10: a realpath that stalls or rejects leaves that folder's files out within the budget and keeps the others", async () => {
+  const lines: string[] = [];
+  const runner = gitRunner(files('/stalled/a.md', '/broken/b.md', '/fine/c.md'), async () => { throw notRepo(); });
+  const lib = new Library({ ...options(runner), log: (l) => lines.push(l), realpath: async (d) => d === '/stalled' ? new Promise<string>(() => {}) : d === '/broken' ? Promise.reject(Object.assign(new Error('raw /broken'), { code: 'EIO' })) : d });
+  const started = Date.now();
+  const page = await lib.find(query('types=markdown'));
+  expect(Date.now() - started).toBeLessThan(3500);
+  expect(page).toMatchObject({ total: 1, items: [{ key: '/fine/c.md' }] });
+  expect(lines.sort()).toEqual(['lookout: library: git could not answer for a folder, its files are left out: failed (exit unknown)', 'lookout: library: git could not answer for a folder, its files are left out: timed out']);
+  expect(runner.mock.calls.filter(([bin]) => bin === 'git')).toHaveLength(1);
+}, 8000);
+
+it('LIB-2.10: git always runs in the C locale, whatever locale the server inherited', async () => {
+  const runner = gitRunner(files('/x/a.md'), async () => { throw notRepo(); });
+  await new Library({ ...options(runner), realpath: async (d) => d, env: { ...process.env, LANG: 'de_DE.UTF-8', LC_ALL: 'de_DE.UTF-8', LANGUAGE: 'de' } }).find(query('types=markdown'));
+  const envs = runner.mock.calls.filter(([bin]) => bin === 'git').map(([, , o]) => o.env);
+  expect(envs).toHaveLength(1);
+  expect(envs[0]).toMatchObject({ LC_ALL: 'C' }); expect(envs[0]!.LANGUAGE ?? '').toBe('');
+});
+
+it('LIB-2.10: only a diagnostic that starts a line means no work tree, not words inside a path', async () => {
+  const stderr = "fatal: detected dubious ownership in repository at '/tmp/not a git repository'";
+  const lines: string[] = [];
+  const runner = gitRunner(files('/x/a.md'), async () => { throw Object.assign(new Error('raw'), { code: 128, stderr }); });
+  expect(await new Library({ ...options(runner), realpath: async (d) => d, log: (l) => lines.push(l) }).find(query('types=markdown'))).toMatchObject({ total: 0 });
+  expect(lines).toEqual(['lookout: library: git could not answer for a folder, its files are left out: dubious ownership']);
+});
+
+it('LIB-2.10: two recorded folders with one physical folder make one git call and one log line, and a failure is asked again next read', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  let refuse = true;
+  const lines: string[] = [];
+  const runner = gitRunner(files('/a/one.md', '/b/two.md'), async (_bin, args) => {
+    if (refuse) throw Object.assign(new Error('raw'), { code: 128, stderr: "fatal: detected dubious ownership in repository at '/real'" });
+    if (args.includes('rev-parse')) return '/real\n';
+    return '/real/one.md\0/real/two.md\0';
+  });
+  const lib = new Library({ ...options(runner), log: (l) => lines.push(l), realpath: async () => '/real' });
+  const asked = () => runner.mock.calls.filter(([bin]) => bin === 'git').length;
+  expect(await lib.find(query('types=markdown'))).toMatchObject({ total: 0 });
+  expect(asked()).toBe(1); expect(lines).toHaveLength(1);
+  refuse = false; vi.setSystemTime(Date.now() + 2100);
+  expect(await lib.find(query('types=markdown'))).toMatchObject({ total: 2 });
+  expect(asked()).toBe(3);
 });

@@ -56,7 +56,7 @@ scenario('LIB-2.1: one complete read gives exact pages, newest first by local da
   expect(eventCalls(w).every((a) => a.includes('--all-projects') && a.includes('--json') && a.includes('--limit 100000') && a.includes('--headless exclude'))).toBe(true);
   expect(eventCalls(w).filter((a) => a.includes('write') && a.includes('edit') && a.includes('--ext'))).toHaveLength(1);
   expect(eventCalls(w).filter((a) => a.includes('artifact') && a.includes('share') && !a.includes('--ext'))).toHaveLength(1);
-  expect(w.calls().some((a) => /tb-session list\b/.test(a) && a.includes('--all-projects') && a.includes('--limit 100000'))).toBe(true);
+  expect(w.calls().some((a) => /tb-session list\b/.test(a) && a.includes('--all-projects') && a.includes('--limit 200'))).toBe(true);
   await rows(page).last().scrollIntoViewIfNeeded();
   await expect(rows(page)).toHaveCount(70);
   expect(new Set(await rows(page).allTextContents()).size).toBe(70);

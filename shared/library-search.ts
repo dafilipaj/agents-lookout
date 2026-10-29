@@ -1,13 +1,13 @@
 /**
  * LIB-2.4: literal, case-insensitive text search for all of Unicode, shared by the server's
  * filter and the panel's hit marks so both agree on what matches. Each code point is folded
- * on its own (no locale, no final-sigma context): upper then lower case gives full case
- * folding's expansions (ß → ss, ﬃ → ffi, İ → i̇), with dotless ı kept apart from I as
+ * on its own (no locale, no final-sigma context): lower, upper, then lower case gives full case
+ * folding's expansions (ß and ẞ → ss, ﬃ → ffi, İ → i̇), with dotless ı kept apart from I as
  * Unicode's default folding does, and final ς folded with σ.
  */
 function foldPoint(c: string): string {
   if (c === 'ı') return c;
-  return c.toUpperCase().toLowerCase().replace(/ς/g, 'σ');
+  return c.toLowerCase().toUpperCase().toLowerCase().replace(/ς/g, 'σ');
 }
 
 export function foldLibraryText(text: string): string {

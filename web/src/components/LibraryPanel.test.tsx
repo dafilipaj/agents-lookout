@@ -321,12 +321,19 @@ it('LIB-2.3: Type, repo, Hide gone and query changes filter the held read; headl
 });
 
 it('LIB-2.1: an evicted read silently restarts page one and replaces the old rows', async () => {
-  const library = vi.fn(async (q: LibraryQuery) => q.page > 1 ? { state: 'read-again' } as LibraryPage : ok([output({ title: q.readId ? 'Held report' : 'Fresh report' })], { readId: 'fresh', hasMore: library.mock.calls.length === 1 }));
+  let reads = 0;
+  const library = vi.fn(async (q: LibraryQuery) => {
+    if (q.page > 1) return { state: 'read-again' } as LibraryPage;
+    reads++;
+    return ok([output(reads === 1 ? { key: 'old', title: 'Old report' } : { key: 'new', title: 'New report' })], { readId: `read-${reads}`, hasMore: reads === 1 });
+  });
   const app = renderApp('/', { library }); await open(app); await waitFor(() => expect(rows()).toHaveLength(1));
+  expect(rows()[0]).toHaveTextContent('Old report');
   nextPage();
   await waitFor(() => expect(library).toHaveBeenCalledTimes(3));
-  expect(library.mock.calls.map(([q]) => [q.page, q.readId])).toEqual([[1, undefined], [2, 'fresh'], [1, undefined]]);
-  expect(rows()).toHaveLength(1); expect(rows()[0]).toHaveTextContent('Fresh report');
+  expect(library.mock.calls.map(([q]) => [q.page, q.readId])).toEqual([[1, undefined], [2, 'read-1'], [1, undefined]]);
+  await waitFor(() => expect(rows()[0]).toHaveTextContent('New report'));
+  expect(rows()).toHaveLength(1); expect(within(panel()).queryByText('Old report')).toBeNull();
   expect(within(panel()).queryByRole('alert')).toBeNull();
 });
 

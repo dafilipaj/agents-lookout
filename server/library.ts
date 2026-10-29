@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { open, stat as fsStat } from 'node:fs/promises';
+import { open, realpath, stat as fsStat } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { basename, dirname, extname, isAbsolute, normalize } from 'node:path';
+import { basename, dirname, extname, isAbsolute, join, normalize } from 'node:path';
 import { TB_SESSION_INSTALL_COMMAND } from '../shared/defaults.ts';
 import { libraryIncludes } from '../shared/library-search.ts';
 import { DEFAULT_LIBRARY_TYPES, LIBRARY_TYPES, type LibraryPage, type LibraryQuery, type OutputItem, type OutputSession, type OutputType } from '../shared/library.ts';
@@ -48,6 +48,8 @@ interface LibraryOptions {
   stat?: (path: string) => Promise<FileStat>;
   statTimeoutMs?: number;
   isDirectory?: (path: string) => Promise<boolean>;
+  realpath?: (path: string) => Promise<string>;
+  log?: (line: string) => void;
 }
 interface Read { id: string; at: number; headless: boolean; items: OutputItem[]; projects: string[] }
 interface Action {
@@ -217,35 +219,71 @@ export class Library {
   }
 
   private async gitOwned(paths: string[], directories: Set<string>): Promise<Set<string>> {
-    const byRoot = new Map<string, string[]>();
+    // LIB-2.10: git is asked about physical paths (a symlinked folder is refused otherwise); answers map back to the recorded ones.
+    // A folder or root git can't answer for leaves its files out and never fails the read.
+    const owned = new Set<string>();
+    const byRoot = new Map<string, { recorded: string; real: string }[]>();
+    // One discovery per physical directory per read: aliases share the call and its log line; failures are not kept across reads.
+    const found = new Map<string, Promise<string | null | undefined>>();
+    const discover = (real: string) => {
+      let p = found.get(real);
+      if (!p) { p = this.workTree(real); found.set(real, p); }
+      return p;
+    };
     const dirs = [...new Set(paths.map(dirname))].filter((d) => directories.has(d));
     await mapLimit(dirs, 8, async (dir) => {
-      let cached = this.roots.get(dir);
-      if (!cached || Date.now() - cached.at >= 600_000) {
-        let root: string | null;
-        try { root = path((await this.git(['-C', dir, 'rev-parse', '--show-toplevel'])).trim()); }
-        catch (err) { if ((err as RunError).code !== 128) throw this.gitError(err); root = null; }
-        cached = { at: Date.now(), root }; this.roots.set(dir, cached);
+      const files = paths.filter((p) => dirname(p) === dir);
+      let real: string;
+      try { real = await within(this.opts.realpath ? this.opts.realpath(dir) : realpath(dir), 2000); }
+      catch (err) { this.gitFailed({ timedOut: (err as RunError).timedOut === true }, 'folder'); for (const f of files) owned.add(f); return; }
+      const root = await discover(real);
+      if (root === undefined) { for (const f of files) owned.add(f); return; }
+      if (root) {
+        const entries = byRoot.get(root) ?? [];
+        entries.push(...files.map((recorded) => ({ recorded, real: join(real, basename(recorded)) })));
+        byRoot.set(root, entries);
       }
-      if (cached.root) { const entries = byRoot.get(cached.root) ?? []; entries.push(...paths.filter((p) => dirname(p) === dir)); byRoot.set(cached.root, entries); }
     });
-    const owned = new Set<string>();
     await mapLimit([...byRoot], 8, async ([root, files]) => {
       let output: string;
-      try { output = await this.git(['-C', root, 'check-ignore', '-z', '--stdin'], files.join('\0') + '\0'); }
-      catch (err) { if ((err as RunError).code !== 1) throw this.gitError(err); output = (err as RunError).stdout ?? ''; }
+      try { output = await this.git(['-C', root, 'check-ignore', '-z', '--stdin'], files.map((f) => f.real).join('\0') + '\0'); }
+      catch (err) {
+        if ((err as RunError).code !== 1) { this.gitFailed(err, 'root'); for (const f of files) owned.add(f.recorded); return; }
+        output = (err as RunError).stdout ?? '';
+      }
       const ignored = new Set(output.split('\0'));
-      for (const p of files) if (!ignored.has(p)) owned.add(p);
+      for (const f of files) if (!ignored.has(f.real)) owned.add(f.recorded);
     });
     for (const [d, r] of this.roots) if (Date.now() - r.at >= 600_000) this.roots.delete(d);
     return owned;
   }
+  /** The work tree root of a physical directory: null when it has none, undefined when git could not answer (logged once). */
+  private async workTree(real: string): Promise<string | null | undefined> {
+    const cached = this.roots.get(real);
+    if (cached && Date.now() - cached.at < 600_000) return cached.root;
+    let root: string | null;
+    try {
+      root = path((await this.git(['-C', real, 'rev-parse', '--show-toplevel'])).trim());
+      if (!root) throw new Error('unusable work tree root');
+    } catch (err) {
+      // Only git's own "not a git repository" refusal means no work tree; anything else is not cached.
+      if (!isNotRepository(err)) { this.gitFailed(err, 'folder'); return undefined; }
+      root = null;
+    }
+    this.roots.set(real, { at: Date.now(), root });
+    return root;
+  }
   private git(args: string[], stdin?: string) {
     const valid = args.length === 4 && args[0] === '-C' && path(args[1]) && args[2] === 'rev-parse' && args[3] === '--show-toplevel' || args.length === 5 && args[0] === '-C' && path(args[1]) && args[2] === 'check-ignore' && args[3] === '-z' && args[4] === '--stdin';
     if (!valid) throw new LibraryError(500, 'Unexpected Library git question.');
-    return this.opts.runner('git', args, { timeoutMs: 2000, env: { ...cleanEnv(this.opts.env ?? process.env), GIT_OPTIONAL_LOCKS: '0' }, ...(stdin === undefined ? {} : { stdin }) });
+    return this.opts.runner('git', args, { timeoutMs: 2000, env: { ...cleanEnv(this.opts.env ?? process.env), GIT_OPTIONAL_LOCKS: '0', LC_ALL: 'C', LANGUAGE: '' }, ...(stdin === undefined ? {} : { stdin }) });
   }
-  private gitError(err: unknown) { return new LibraryError(502, `Could not check file ownership: ${sanitizeLine((err as RunError).stderr, 200) ?? 'git did not answer'}`); }
+  /** One line per failing folder or root per read: a category only, never a path or git's own text. */
+  private gitFailed(err: unknown, what: 'folder' | 'root') {
+    const e = err as RunError, stderr = e.stderr ?? '';
+    const why = e.timedOut ? 'timed out' : /dubious ownership/i.test(stderr) ? 'dubious ownership' : /index file|corrupt|bad index/i.test(stderr) ? 'damaged index' : e.code === 'ENOENT' ? 'git not found' : `failed (exit ${typeof e.code === 'number' ? e.code : 'unknown'})`;
+    try { (this.opts.log ?? ((l: string) => console.warn(l)))(`lookout: library: git could not answer for a ${what}, its files are left out: ${why}`); } catch { /* A logger cannot change a read. */ }
+  }
   private async title(p: string, type: OutputType, stat: FileStat): Promise<string> {
     const fallback = basename(p);
     if (type !== 'markdown' && type !== 'html' || stat.mtimeMs === undefined || stat.size === undefined) return fallback;
@@ -262,6 +300,12 @@ export class Library {
   }
 }
 
+/** Rejects with a timed-out error when the work does not answer in time (the same limit as a git question). */
+const within = <T>(work: Promise<T>, ms: number) => new Promise<T>((resolve, reject) => {
+  const timer = setTimeout(() => reject({ timedOut: true }), ms);
+  work.then((v) => { clearTimeout(timer); resolve(v); }, (e) => { clearTimeout(timer); reject(e); });
+});
+const isNotRepository = (err: unknown) => (err as RunError).code === 128 && /^fatal: not a git repository/m.test((err as RunError).stderr ?? '');
 async function mapLimit<T>(values: T[], limit: number, visit: (v: T) => Promise<void>): Promise<void> {
   let n = 0;
   await Promise.all(Array.from({ length: Math.min(limit, values.length) }, async () => { while (n < values.length) await visit(values[n++]!); }));
@@ -283,8 +327,12 @@ function markdownTitle(text: string): string | null {
   }
   return null;
 }
-function htmlTitle(text: string): string | null {
-  const title = /<title\b[^>]*>([\s\S]*?)<\/title\s*>/i.exec(text)?.[1];
+function htmlTitle(raw: string): string | null {
+  // Outside the <title> element, comments and script/style content are not markup: a `<title>` inside one is not the page's.
+  // The title's own text is kept as written, so `<title>How <script> works</title>` stays.
+  const skip = /<!--[\s\S]*?(?:-->|$)|<(script|style)\b[^>]*>[\s\S]*?(?:<\/\1\s*>|$)|<title\b[^>]*>([\s\S]*?)<\/title\s*>/gi;
+  let title: string | undefined;
+  for (let m = skip.exec(raw); m; m = skip.exec(raw)) if (m[2] !== undefined) { title = m[2]; break; }
   if (title === undefined) return null;
   const named: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
   return title.replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos|nbsp);/gi, (all, entity: string) => {
