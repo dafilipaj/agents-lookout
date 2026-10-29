@@ -26,7 +26,7 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Host**: A machine that runs Sessions. For now only this Mac.
 
-**Kind**: What an Output is, as `tb-session outputs` says it: a file, an Artifact or a Share. Its `--kind` flag filters by it.
+**Kind**: What an Output is: a file, an Artifact or a Share. tb-session's `events` records the actions behind them as `write` and `edit` (a file), `artifact` and `share`; Lookout groups them into Outputs by kind and key. Its `--kind` flag filters the actions.
 
 **Library**: The right-sidebar tab, next to History and Work, that lists Outputs. See the LIB spec.
 
@@ -40,7 +40,7 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Needs you**: The Status of a Session that is blocked on you: a permission prompt, a question, or input.
 
-**Output**: A document file, an Artifact on claude.ai or a Backyard Share that a Session, or one of its Subagents, produced, as `tb-session outputs` mines it from the Transcripts. A file counts only when it has a document extension and no git repo owns it. An Artifact and the file it was published from are one Output, the Artifact's. See the LIB spec.
+**Output**: A document file, an Artifact on claude.ai or a Backyard Share that a Session, or one of its Subagents, produced. tb-session's `events` lists the recorded actions, and Lookout's server turns them into Outputs: one per kind and key, with the Sessions that touched it. A file counts only when it has a document extension, isn't under a Harness home, still has its folder and isn't owned by git. An Artifact and the file it was published from are one Output, the Artifact's. See the LIB spec.
 
 **Page**: An Output that opens as a page in a browser tab: an HTML file or an Artifact. The Library's "Pages" chip shows both.
 
@@ -70,7 +70,7 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Trust prompt**: The question a Harness asks before it runs in a folder it hasn't been told to trust: Claude Code's "Yes, I trust this folder" or "No, exit", listing what the folder's settings pre-approve; Codex's "Trust this folder?". Claude Code registers with Fleet only once it's answered, so a start waiting on it isn't a Session yet. Lookout answers it only when you click (LAUNCH-6), and the Harness remembers the answer per folder.
 
-**Type**: What a file Output is, from its extension, as `tb-session outputs` says it: `markdown`, `html`, `pdf` or `image`. Its `--type` flag filters file rows by it. In the Library an Artifact's and a Share's Type word is its Kind.
+**Type**: What a file Output is, from its extension, by the table in LIB-2.10: `markdown`, `html`, `pdf` or `image`. Lookout derives it; tb-session's `events` has only the extension (`--ext`). In the Library an Artifact's and a Share's Type word is its Kind.
 
 **Turn**: What a Session does for one prompt of yours: from that prompt, sent from Lookout or typed in its terminal, until your next one. Work the Session picks up on its own in between, such as a reply to a Subagent's result, belongs to the same Turn, and Idle doesn't end it. A tool's result, a task notification, another Session's message and a slash command the Harness handles itself (`/effort`) aren't prompts. Fleet finds where the current one starts (SIDE-9). Not Codex's own "turn" (`task_started` to `task_complete`), which ends whenever the agent stops.
 

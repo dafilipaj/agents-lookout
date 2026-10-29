@@ -26,3 +26,4 @@ date: 2026-10-16
 
 - HIST and PORTS depend on cli-toolbox PRs landing first; each spec states that gap.
 - Claude sessions working on this repo send no telemetry: the remote isn't `productiveio/*`.
+- See also [0010](0010-single-consumer-rules-stay-with-the-consumer.md): a Building block gives facts; a rule only one consumer needs stays with that consumer.

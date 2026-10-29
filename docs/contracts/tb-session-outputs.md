@@ -1,5 +1,7 @@
 # Contract: `tb-session outputs`
 
+> **Superseded 2026-10-29 by [`tb-session-events.md`](tb-session-events.md).** The command this file describes was never released: in the review of cli-toolbox PR #106 it became `tb-session events` (0.4.0), which returns one row per recorded action and no Library rules ("Library rules (extensions, git-tracked files, Artifact-source fold) move to Lookout", [0010](../decisions/0010-single-consumer-rules-stay-with-the-consumer.md)). The rules below moved into the LIB spec: the include rule C3 and the extension table C4 are LIB-2.10, one item per key with its Sessions (C6) and the fold (C5) are LIB-2.11, the file titles (C2) are LIB-2.12, and the boundary (C9) is E11 of the new contract. The tables, change keys and performance budget (C7, C8, C10) are tb-session's own. Kept for history; don't build against it.
+
 The command Lookout's Library ([LIB](../features/library/SPEC.md)) reads. It's built in cli-toolbox (`crates/tb-session`) by a separate PR that lands first (LIB, Dependencies, Gap 1), and verified there, in tb-session's own tests; Lookout's fake tb-session follows this file, and `pnpm req-check` never looks here (the Library's criteria are LIB-1 to LIB-3). Points are numbered C1 to C10 so the PR's tests can cite them. Every field and flag is add-only: a later tb-session may add, never rename or drop.
 
 Written 2026-10-23 from the LIB spec and its grill. Measurements are from Dario's Mac on that day (tb-session 0.3.2 installed, 0.3.1 checked out).
