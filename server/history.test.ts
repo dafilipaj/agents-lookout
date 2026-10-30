@@ -591,3 +591,13 @@ describe('clicking a past Session (HIST-3), end to end through fake tb-session a
     t.launcher.stop();
   });
 });
+
+it("HIST-2: a first prompt and a Session's prompts show pasted text without Claude Code's <pasted_content> tags", async () => {
+  const pasted = (s: string) => `Findings:\n\n\n<pasted_content id="6545">\n${s}\n</pasted_content id="6545">\n`;
+  const row = { session_id: 'p-1', harness: 'claude', first_prompt: pasted('1. one\n2. two') };
+  const page = await ok(find(new History({ runner: printing({ results: [row] }), bin: () => 'tb-session' })));
+  expect(page.items[0]).toMatchObject({ title: 'Findings: 1. one 2. two', firstPrompt: 'Findings:\n1. one\n2. two' });
+  const shown = { ...row, messages: [{ role: 'user', content: pasted('a') }, { role: 'assistant', content: pasted('b') }] };
+  const detail = await new History({ runner: printing(shown), bin: () => 'tb-session' }).detail('p-1', 'claude');
+  expect(detail.entries.map((e) => e.kind !== 'tool_call' && e.kind !== 'question' && e.text)).toEqual(['Findings:\na', pasted('b')]);
+});

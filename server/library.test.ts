@@ -77,7 +77,7 @@ it('LIB-2.4: literal Unicode case-insensitive search runs on the held read over 
 
 it('LIB-2.6: joins Session titles, preserves parent credits, missing and pruned metadata without show', async () => {
   const rows = [event('/s.html', { subagent: 'agent-world.jsonl' }), event('/s.html', { session_id: 'deleted', transcript_missing: true }), event('/s.html', { session_id: 'pruned-session', pruned: true }), event('/s.html', { session_id: 'prompt-session' })];
-  const runner = fake(rows, [{ session_id: 'parent-session', harness: 'claude', summary: 'Writer', first_prompt: 'Prompt' }, { session_id: 'prompt-session', harness: 'claude', first_prompt: 'First prompt' }]);
+  const runner = fake(rows, [{ session_id: 'parent-session', harness: 'claude', summary: 'Writer', first_prompt: 'Prompt' }, { session_id: 'prompt-session', harness: 'claude', first_prompt: '\n\n<pasted_content id="34d8">\nFirst prompt\n</pasted_content id="34d8">\n' }]);
   const page = await new Library(options(runner)).find(query()); if (page.state !== 'ok') throw new Error('missing');
   expect(page.items[0]?.sessions).toEqual(expect.arrayContaining([
     expect.objectContaining({ sessionId: 'parent-session', title: 'Writer', blocked: null }),

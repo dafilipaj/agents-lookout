@@ -105,7 +105,7 @@ export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, h
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="gap-0 p-0 sm:max-w-xl"
+        className="max-h-[calc(100dvh-2rem)] gap-0 overflow-y-auto p-0 sm:max-w-xl"
         onOpenAutoFocus={(e) => {
           e.preventDefault();
           promptRef.current?.focus();
@@ -252,7 +252,7 @@ export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, h
               value={draft.prompt}
               aria-invalid={error?.field === 'prompt' || undefined}
               onChange={(e) => set({ prompt: e.target.value })}
-              className="min-h-28 resize-y text-body leading-5"
+              className="max-h-[min(24rem,35dvh)] min-h-28 resize-y overflow-y-auto text-body leading-5"
               rows={5}
             />
           </div>

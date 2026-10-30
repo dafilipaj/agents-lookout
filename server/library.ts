@@ -11,6 +11,7 @@ import { SESSION_ID } from './history.ts';
 import { cleanEnv } from './launcher.ts';
 import { sanitizeLine } from './sanitize.ts';
 import { OutputFiles } from './output-files.ts';
+import { unwrapPasted } from './pasted.ts';
 
 const PAGE_SIZE = 50;
 // list pages hold whole first prompts: 2,406 Sessions printed 22 MB in one page, over the runner's 16 MB cap.
@@ -190,7 +191,7 @@ export class Library {
     if (!key || !Number.isFinite(at) || !id || !SESSION_ID.test(id) || harness !== 'claude' && harness !== 'codex' || !file && !u) return null;
     const projectPath = path(r.project_path), title = metadata.get(`${harness}:${id}`);
     const word = file ? r.kind as 'write' | 'edit' : r.kind === 'artifact' ? 'publish' : 'upload';
-    const session: OutputSession = { sessionId: id, harness, title: label(title?.summary) ?? label(title?.first_prompt) ?? id.slice(0, 8), projectPath, projectDisplay: projectPath ? this.display(projectPath) : null, repo: projectPath ? basename(projectPath) : null, headless: typeof r.headless === 'boolean' ? r.headless : null, branch: label(r.git_branch), lastActiveAt: at, snippet: null, firstPrompt: null, blocked: r.transcript_missing === true ? 'transcript-missing' : !projectPath ? 'no-folder' : null, pruned: r.pruned === true, event: word };
+    const session: OutputSession = { sessionId: id, harness, title: label(title?.summary) ?? label(unwrapPasted(title?.first_prompt)) ?? id.slice(0, 8), projectPath, projectDisplay: projectPath ? this.display(projectPath) : null, repo: projectPath ? basename(projectPath) : null, headless: typeof r.headless === 'boolean' ? r.headless : null, branch: label(r.git_branch), lastActiveAt: at, snippet: null, firstPrompt: null, blocked: r.transcript_missing === true ? 'transcript-missing' : !projectPath ? 'no-folder' : null, pruned: r.pruned === true, event: word };
     return { kind: file ? 'file' : r.kind as 'artifact' | 'share', key, at, word, tool: string(r.tool_use_id), path: p, type, url: u, sourcePath: path(r.source_path), title: file ? basename(p!) : label(r.title) ?? u!, version: typeof r.version === 'number' ? r.version : null, session };
   }
   private group(actions: Action[]): OutputItem {

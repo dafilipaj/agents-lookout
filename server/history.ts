@@ -6,6 +6,7 @@ import { TB_SESSION_INSTALL_COMMAND } from '../shared/defaults.ts';
 import type { ChatEntry, Harness, HistoryBlock, HistoryDetail, HistoryItem, HistoryPage, HistoryPeek, ResumeResult } from '../shared/types.ts';
 import type { RunError, Runner } from './exec.ts';
 import { DirMissingError, LAUNCH_ID, type Launcher, SessionLiveError, cleanEnv } from './launcher.ts';
+import { unwrapPasted } from './pasted.ts';
 import { sanitizeLine } from './sanitize.ts';
 
 /**
@@ -166,7 +167,7 @@ export class History {
     const { row, messages, legacy } = await this.show(sessionId, harness, 1);
     const m = legacy ? null : messages.at(-1);
     const last = typeof m === 'object' && m !== null ? (m as Record<string, unknown>) : null;
-    const said = last && (last.role === 'user' || last.role === 'assistant') ? lines(last.content) : null;
+    const said = last && (last.role === 'user' || last.role === 'assistant') ? lines(last.role === 'user' ? unwrapPasted(last.content) : last.content) : null;
     return { firstPrompt: row.item.firstPrompt, last: said ? { role: last!.role as 'user' | 'assistant', text: said } : null, tailed: !legacy };
   }
 
@@ -315,7 +316,7 @@ function toRow(v: unknown, home: string, requirePrompt = true): Row | null {
   // tb-session 0.2's `list` rows carry no `first_prompt` at all (its `search` and `show` do), and
   // it lists empty Sessions: there, a Session with messages counts as one with a prompt. That's
   // a guess (0.2 counts assistant-only and empty messages too), so `show` checks it on a click.
-  const firstPrompt = text(r.first_prompt, MAX_TITLE);
+  const firstPrompt = text(unwrapPasted(r.first_prompt), MAX_TITLE);
   const legacyList = r.first_prompt === undefined && typeof r.message_count === 'number';
   if (requirePrompt && !firstPrompt && !(legacyList && (r.message_count as number) > 0)) return null;
   const projectPath = typeof r.project_path === 'string' && isAbsolute(r.project_path) && !/[\0\n\r]/.test(r.project_path) && r.project_path.length <= MAX_PATH
@@ -335,7 +336,7 @@ function toRow(v: unknown, home: string, requirePrompt = true): Row | null {
       branch: text(r.git_branch, MAX_BRANCH),
       lastActiveAt: Number.isFinite(at) ? at : Number.isFinite(created) ? created : null,
       snippet: text(r.matched_snippet, MAX_SNIPPET),
-      firstPrompt: lines(r.first_prompt),
+      firstPrompt: lines(unwrapPasted(r.first_prompt)),
     },
     transcriptMissing: r.transcript_missing === true,
   };
@@ -346,7 +347,7 @@ function toEntry(v: unknown, i: number): ChatEntry | null {
   if (typeof v !== 'object' || v === null) return null;
   const m = v as Record<string, unknown>;
   if (typeof m.content !== 'string' || !m.content.trim()) return null;
-  const content = bound(m.content, MAX_TEXT);
+  const content = bound(m.role === 'user' ? unwrapPasted(m.content) : m.content, MAX_TEXT);
   const ts = typeof m.timestamp === 'string' ? bound(m.timestamp, 64) : null;
   const cursor = `h${i}`;
   if (m.role === 'user') return { kind: 'user', cursor, ts, text: content, queued: false };

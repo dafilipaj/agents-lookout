@@ -1,5 +1,6 @@
 import type { ChatAnswer, ChatEntry, ChatQuestion } from '../shared/types.ts';
 import type { RunError, Runner } from './exec.ts';
+import { unwrapPasted } from './pasted.ts';
 import { sanitizeLine } from './sanitize.ts';
 
 /**
@@ -202,7 +203,7 @@ export function toEntry(v: unknown): ChatEntry | null {
   const cursor = cursorOf(r);
   if (!cursor) return null;
   const ts = typeof r.ts === 'string' ? bound(r.ts, 64) : null;
-  const text = str(r.text, MAX_TEXT) ?? '';
+  const text = str(r.kind === 'user' ? unwrapPasted(r.text) : r.text, MAX_TEXT) ?? '';
   switch (r.kind) {
     case 'user':
       return text.trim() ? { kind: 'user', cursor, ts, text, queued: r.queued === true } : null;

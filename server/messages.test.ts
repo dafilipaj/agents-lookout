@@ -292,3 +292,10 @@ describe('Fleet error text', () => {
     expect(cleanFleetError(42)).toBeNull();
   });
 });
+
+it("a user prompt shows its pasted text without Claude Code's <pasted_content> tags; a reply keeps what it says", () => {
+  const wrapped = 'see \n\n<pasted_content id="34d8">\nhttps://example.com/6\n</pasted_content id="34d8">\n\n here';
+  expect(toEntry({ cursor: 'c1', kind: 'user', role: 'user', text: wrapped, ts: null })).toMatchObject({ kind: 'user', text: 'see https://example.com/6 here' });
+  expect(toEntry({ cursor: 'c2', kind: 'user', role: 'user', text: wrapped, ts: null, queued: true })).toMatchObject({ text: 'see https://example.com/6 here', queued: true });
+  expect(toEntry({ cursor: 'c3', kind: 'assistant', role: 'assistant', text: wrapped, ts: null })).toMatchObject({ text: wrapped });
+});
