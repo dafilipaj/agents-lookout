@@ -5,7 +5,7 @@ const HARNESSES: readonly string[] = ['claude', 'codex'] satisfies Harness[];
 
 /**
  * Fleet status → Glossary Status. SIDE-2.6: `shell` (Claude Code 2.1.308's Idle with a background
- * shell command still running) is Idle; the row keeps the shell as `backgroundShell`.
+ * shell command still running, from a Fleet before upstream's `background`) is Idle.
  */
 export function toStatus(fleetStatus: string): Status {
   switch (fleetStatus) {
@@ -67,6 +67,12 @@ export function subagents(value: unknown): SessionRow['subagents'] {
   const { running, finished } = value as Record<string, unknown>;
   const isCount = (n: unknown): n is number => typeof n === 'number' && Number.isInteger(n) && n >= 0 && n <= 1000;
   return isCount(running) ? { running, finished: isCount(finished) ? finished : 0 } : null;
+}
+
+/** SIDE-2.6: a background shell command still runs: Fleet's `background.shells`, or an older Fleet's `shell`. */
+export function backgroundShell(r: Pick<FleetRow, 'status' | 'background'>): boolean {
+  const shells = typeof r.background === 'object' && r.background !== null ? r.background.shells : undefined;
+  return r.status === 'shell' || (typeof shells === 'number' && Number.isInteger(shells) && shells > 0);
 }
 
 const MAX_ACTIVITY = 120;
@@ -149,7 +155,7 @@ export function normalizeRows(rows: readonly FleetRow[], deps: NormalizeDeps): S
       subagents: subagents(r.subagents),
       // SIDE-2.11: only while Busy, so a stale value never shows on another Status.
       activity: status === 'busy' ? activity(r.activity) : null,
-      backgroundShell: r.status === 'shell',
+      backgroundShell: status === 'idle' && backgroundShell(r),
       procStart: procStart(r.proc_start),
       pendingModel: null,
       pendingEffort: null,

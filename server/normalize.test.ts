@@ -350,6 +350,25 @@ describe('fleet list → sidebar rows', () => {
     ]);
   });
 
+  it('SIDE-2.6: an Idle row whose `background` counts shells has `backgroundShell`; agents alone, a bad count or another Status don\'t', () => {
+    const base = { session_id: null, cwd: null, waiting_for: null, updated_at: null, display_title: 'x', context: null, model: null, harness: 'claude', backend: 'tmux' };
+    const cases: [string, unknown][] = [
+      ['idle', { agents: [], shells: 1 }],
+      ['idle', { agents: [], shells: 2 }],
+      ['idle', { agents: [{ id: 'a' }], shells: 0 }],
+      ['idle', { shells: '1' }],
+      ['idle', { shells: 1.5 }],
+      ['idle', null],
+      ['idle', undefined],
+      ['busy', { agents: [], shells: 1 }],
+    ];
+    const rows = normalizeRows(
+      cases.map(([status, background], i) => ({ ...base, pid: i + 1, status, background }) as FleetRow),
+      deps,
+    );
+    expect(rows.map((r) => r.backgroundShell)).toEqual([true, true, false, false, false, false, false, false]);
+  });
+
   it('identifies a Session by session_id, else <harness>:<pid>', () => {
     expect(sessionId({ session_id: 'abc', harness: 'claude', pid: 1 })).toBe('abc');
     expect(sessionId({ session_id: null, harness: 'codex', pid: 7 })).toBe('codex:7');

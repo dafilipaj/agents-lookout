@@ -37,6 +37,11 @@ export interface FleetRow {
    * null for any other Status and for Codex. Missing from a Fleet older than the fork's `activity`.
    */
   activity?: string | null;
+  /**
+   * SIDE-2.6: what runs beside the main thread; `shells` counts background shell commands, at
+   * least 1 for Claude Code's `shell`, which this Fleet reports as `idle`. Missing from an older Fleet.
+   */
+  background?: { shells?: unknown } | null;
   /** The agent process's start time, RFC 3339 UTC; null when Fleet can't read it (VIEW-5.6). */
   proc_start?: string | null;
   /**
