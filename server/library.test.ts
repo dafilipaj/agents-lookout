@@ -350,14 +350,14 @@ const gitRunner = (rows: unknown[], git: Runner) => vi.fn<Runner>(async (bin, ar
 it("LIB-2.10: a realpath that stalls or rejects leaves that folder's files out within the budget and keeps the others", async () => {
   const lines: string[] = [];
   const runner = gitRunner(files('/stalled/a.md', '/broken/b.md', '/fine/c.md'), async () => { throw notRepo(); });
-  const lib = new Library({ ...options(runner), log: (l) => lines.push(l), realpath: async (d) => d === '/stalled' ? new Promise<string>(() => {}) : d === '/broken' ? Promise.reject(Object.assign(new Error('raw /broken'), { code: 'EIO' })) : d });
+  const lib = new Library({ ...options(runner), log: (l) => lines.push(l), realpathTimeoutMs: 100, realpath: async (d) => d === '/stalled' ? new Promise<string>(() => {}) : d === '/broken' ? Promise.reject(Object.assign(new Error('raw /broken'), { code: 'EIO' })) : d });
   const started = Date.now();
   const page = await lib.find(query('types=markdown'));
-  expect(Date.now() - started).toBeLessThan(3500);
+  expect(Date.now() - started).toBeLessThan(1500);
   expect(page).toMatchObject({ total: 1, items: [{ key: '/fine/c.md' }] });
   expect(lines.sort()).toEqual(['lookout: library: git could not answer for a folder, its files are left out: failed (exit unknown)', 'lookout: library: git could not answer for a folder, its files are left out: timed out']);
   expect(runner.mock.calls.filter(([bin]) => bin === 'git')).toHaveLength(1);
-}, 8000);
+});
 
 it('LIB-2.10: git always runs in the C locale, whatever locale the server inherited', async () => {
   const runner = gitRunner(files('/x/a.md'), async () => { throw notRepo(); });

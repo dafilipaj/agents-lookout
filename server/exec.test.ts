@@ -3,7 +3,7 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { KILL_GRACE_MS, type RunError, run } from './exec.ts';
+import { type RunError, run } from './exec.ts';
 
 // Made in a hook, not at import: `pnpm req-check` imports this file to collect its titles.
 let dir: string;
@@ -65,17 +65,17 @@ describe('run', () => {
     const marker = `lookout-test-child-${process.pid}-b`;
     const file = script('stubborn', `trap '' TERM\nsh -c 'sleep 60; : ${marker}' &\nsleep 60`);
     const started = Date.now();
-    const err = await rejection(run(file, [], { timeoutMs: 300 }));
+    const err = await rejection(run(file, [], { timeoutMs: 300, killGraceMs: 200 }));
     expect(err?.timedOut).toBe(true);
     // The run settles only once the group is gone: after the SIGKILL grace, with nothing left.
-    expect(Date.now() - started).toBeGreaterThanOrEqual(300 + KILL_GRACE_MS - 50);
+    expect(Date.now() - started).toBeGreaterThanOrEqual(300 + 200 - 50);
     expect(pidsWith(marker)).toEqual([]);
   });
 
   it('a run that printed too much also settles only after its group has exited', async () => {
     const marker = `lookout-test-child-${process.pid}-c`;
     const file = script('chatty', `trap '' TERM\nsh -c 'sleep 60; : ${marker}' &\nhead -c 20000000 /dev/zero\nsleep 60`);
-    const err = await rejection(run(file, [], { timeoutMs: 20_000 }));
+    const err = await rejection(run(file, [], { timeoutMs: 20_000, killGraceMs: 200 }));
     expect(err?.message).toMatch(/printed more than/);
     expect(pidsWith(marker)).toEqual([]);
   });

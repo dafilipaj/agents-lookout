@@ -2,6 +2,7 @@ import type { LibraryPage, LibraryQuery, OutputItem, OutputSession } from '@shar
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { NOW, launchView, renderApp, row } from '@/test/helpers';
+import { COPY_FEEDBACK_MS } from '@/lib/copy';
 
 const session = (over: Partial<OutputSession> = {}): OutputSession => ({ sessionId: 'writer', harness: 'claude', title: 'Report writer', projectPath: '/project', projectDisplay: '/project', repo: 'project', branch: null, headless: false, lastActiveAt: NOW, snippet: null, firstPrompt: null, blocked: null, pruned: false, event: 'write', ...over });
 const output = (over: Partial<OutputItem> = {}): OutputItem => ({ kind: 'file', key: '/report.html', type: 'html', title: 'Harbor report', path: '/report.html', url: null, display: '~/report.html', projectPath: '/project', repo: 'project', createdAt: NOW - 86400000, updatedAt: NOW, events: 3, exists: true, source: null, sourcePath: null, sourceDisplay: null, version: null, sessions: [session()], ...over });
@@ -144,9 +145,11 @@ it('LIB-3.3: Open uses the file route, Markdown uses VS Code, external URLs use 
 it('LIB-3.4: Copy link copies an absolute path and reports success for 2 seconds or refusal', async () => {
   const write = vi.fn(async () => {}); Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: write } });
   const app = renderApp('/', { library: async () => ok([output()]) }); await open(app); fireEvent.click(await first());
-  fireEvent.click(within(panel()).getByRole('button', { name: 'Copy link' })); await waitFor(() => expect(within(panel()).getByRole('button', { name: 'Copied' })).toBeVisible()); expect(write).toHaveBeenCalledWith('/report.html');
-  await waitFor(() => expect(within(panel()).getByRole('button', { name: 'Copy link' })).toBeVisible(), { timeout: 2500 });
-  write.mockRejectedValueOnce(new Error('refused')); fireEvent.click(within(panel()).getByRole('button', { name: 'Copy link' })); expect(await within(panel()).findByRole('button', { name: "Couldn't copy" })).toBeVisible();
+  vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'], now: NOW });
+  fireEvent.click(within(panel()).getByRole('button', { name: 'Copy link' })); await act(async () => {}); expect(within(panel()).getByRole('button', { name: 'Copied' })).toBeVisible(); expect(write).toHaveBeenCalledWith('/report.html');
+  act(() => vi.advanceTimersByTime(COPY_FEEDBACK_MS - 1)); expect(within(panel()).getByRole('button', { name: 'Copied' })).toBeVisible();
+  act(() => vi.advanceTimersByTime(1)); expect(within(panel()).getByRole('button', { name: 'Copy link' })).toBeVisible();
+  write.mockRejectedValueOnce(new Error('refused')); fireEvent.click(within(panel()).getByRole('button', { name: 'Copy link' })); await act(async () => {}); expect(within(panel()).getByRole('button', { name: "Couldn't copy" })).toBeVisible();
 });
 it('LIB-3.5: Session chips select live Sessions, resume through History’s Starting row, Show blocked ones, and never act for pruned ones', async () => {
   let finish: ((v: Awaited<ReturnType<ReturnType<typeof renderApp>['client']['resume']>>) => void) | undefined;

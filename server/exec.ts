@@ -10,6 +10,8 @@ export interface RunOptions {
    * only once the process has exited, so awaiting it means nothing is left behind.
    */
   signal?: AbortSignal;
+  /** How long the group gets after SIGTERM before SIGKILL; KILL_GRACE_MS unless a test shortens it. */
+  killGraceMs?: number;
 }
 
 /** Runs a program with an argv array (never a shell string) and resolves its stdout. */
@@ -80,8 +82,8 @@ export const run: Runner = (file, args, opts) =>
         setTimeout(() => {
           child.stdout.destroy();
           child.stderr.destroy();
-        }, KILL_GRACE_MS).unref();
-      }, KILL_GRACE_MS);
+        }, opts.killGraceMs ?? KILL_GRACE_MS).unref();
+      }, opts.killGraceMs ?? KILL_GRACE_MS);
     };
     const endEarly = (reason: Partial<RunError> & { message: string }) => {
       if (ending || settled) return;

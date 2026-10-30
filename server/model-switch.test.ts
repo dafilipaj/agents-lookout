@@ -252,9 +252,9 @@ describe('switching the model (VIEW-6)', { timeout: 30_000 }, () => {
   });
 
   it('VIEW-6.6: a held switch says why by Fleet’s reason and what to do in the terminal; what the box holds is never read or shown', async () => {
+    const t = await setup(); // one wiring for every case: each case is its own `fleet model` run
     for (const reason of ['text', 'prompt', 'no_input_box', 'unreadable'] as const) {
       editRow(CLAUDE, { fake_model_held: reason, fake_input: 'SECRET-DRAFT' });
-      const t = await setup();
       const r = await refusal(t.switchTo('claude-sonnet-5-5'));
       expect(r).toEqual({ status: 409, message: MODEL_HELD[reason], uncertain: false });
       expect(JSON.stringify(r)).not.toContain('SECRET');
@@ -287,9 +287,9 @@ describe('switching the model (VIEW-6)', { timeout: 30_000 }, () => {
       [{ fake_model: 'confirm_unrecognized' }, MODEL_UNCERTAIN, true],
       [{ fake_model: 'something_new' }, MODEL_UNCERTAIN, true],
     ];
+    const t = await setup(); // one wiring for every case: each case is its own `fleet model` run
     for (const [patch, message, uncertain] of cases) {
       editRow(CLAUDE, { fake_model: undefined, fake_model_reason: undefined, fake_model_error: undefined, ...patch });
-      const t = await setup();
       const before = switches().length;
       const r = await refusal(t.switchTo('claude-sonnet-5-5'));
       expect(r.message).toBe(message);
@@ -313,9 +313,9 @@ describe('switching the model (VIEW-6)', { timeout: 30_000 }, () => {
       [IO_UNTYPED, null, typing, true],
       [undefined, null, typing, true],
     ];
+    const t = await setup(); // one wiring for every case: each case is its own `fleet model` run
     for (const [error, typed, message, uncertain] of cases) {
       editRow(CLAUDE, { fake_model: 'io', fake_model_error: error, fake_model_typed: typed });
-      const t = await setup();
       expect(await refusal(t.switchTo('claude-sonnet-5-5'))).toEqual({ status: 502, message, uncertain });
     }
     expect(MODEL_IO).toMatch(/nothing was typed/);
@@ -346,9 +346,10 @@ describe('switching the model (VIEW-6)', { timeout: 30_000 }, () => {
     const ok = await setup();
     await ok.switchTo('claude-sonnet-5-5');
     expect(ok.drop).toHaveBeenCalledOnce();
+    const t = await setup(); // one wiring for every case: each case is its own `fleet model` run
     for (const [kind, error, typed] of [['outcome_uncertain', undefined, undefined], ['io', IO_TYPING, true], ['io', IO_UNTYPED, null]] as const) {
       editRow(CLAUDE, { fake_model: kind, fake_model_error: error, fake_model_typed: typed });
-      const t = await setup();
+      t.drop.mockClear();
       await refusal(t.switchTo('claude-sonnet-5-5'));
       expect(t.drop).toHaveBeenCalledOnce();
     }
@@ -357,7 +358,7 @@ describe('switching the model (VIEW-6)', { timeout: 30_000 }, () => {
     expect(timedOut.drop).toHaveBeenCalledOnce();
     for (const [kind, error, typed] of [['model_not_found', undefined, undefined], ['not_idle', undefined, undefined], ['switch_refused', undefined, undefined], ['io', IO_UNTYPED, false]] as const) {
       editRow(CLAUDE, { fake_model: kind, fake_model_error: error, fake_model_typed: typed });
-      const t = await setup();
+      t.drop.mockClear();
       await refusal(t.switchTo('claude-sonnet-5-5'));
       expect(t.drop).not.toHaveBeenCalled();
     }
@@ -551,9 +552,9 @@ describe('switching the Effort (VIEW-7)', { timeout: 30_000 }, () => {
   });
 
   it('VIEW-7.6: a held switch says why by Fleet’s reason, in VIEW-6.6’s words naming /effort; what the box holds is never read or shown', async () => {
+    const t = await setup(); // one wiring for every case: each case is its own `fleet model` run
     for (const reason of ['text', 'prompt', 'no_input_box', 'unreadable'] as const) {
       editRow(CLAUDE, { fake_effort_held: reason, fake_input: 'SECRET-DRAFT' });
-      const t = await setup();
       const r = await refusal(t.effortTo('high'));
       expect(r).toEqual({ status: 409, message: EFFORT_HELD[reason], uncertain: false });
       expect(JSON.stringify(r)).not.toContain('SECRET');
@@ -583,9 +584,9 @@ describe('switching the Effort (VIEW-7)', { timeout: 30_000 }, () => {
       [{ fake_effort: 'io', fake_effort_error: EFFORT_IO_TYPING, fake_effort_typed: true }, 'Fleet couldn’t finish typing /effort, so Lookout can’t tell whether the Effort was switched. Check the terminal.', true],
       [{ fake_effort: 'io', fake_effort_typed: false }, EFFORT_IO, false],
     ];
+    const t = await setup(); // one wiring for every case: each case is its own `fleet model` run
     for (const [patch, message, uncertain] of cases) {
       editRow(CLAUDE, { fake_effort: undefined, fake_effort_reason: undefined, fake_effort_error: undefined, fake_effort_typed: undefined, ...patch });
-      const t = await setup();
       const before = effortRuns().length;
       const r = await refusal(t.effortTo('high'));
       expect(r.message).toBe(message);
@@ -615,15 +616,16 @@ describe('switching the Effort (VIEW-7)', { timeout: 30_000 }, () => {
     const max = await setup();
     await max.effortTo('max');
     expect(max.drop).not.toHaveBeenCalled();
+    const t = await setup(); // one wiring for every case: each case is its own `fleet model` run
     for (const patch of [{ fake_effort: 'outcome_uncertain' }, { fake_effort: 'io', fake_effort_typed: true }]) {
       editRow(CLAUDE, Object.assign({ fake_effort: undefined, fake_effort_typed: undefined }, patch));
-      const t = await setup();
+      t.drop.mockClear();
       await refusal(t.effortTo('high'));
       expect(t.drop).toHaveBeenCalledOnce();
     }
     for (const patch of [{ fake_effort: 'not_idle' }, { fake_effort: 'io', fake_effort_typed: false }, { fake_effort_held: 'text' }]) {
       editRow(CLAUDE, { fake_effort: undefined, fake_effort_typed: undefined, fake_effort_held: undefined, ...patch });
-      const t = await setup();
+      t.drop.mockClear();
       await refusal(t.effortTo('high'));
       expect(t.drop).not.toHaveBeenCalled();
     }

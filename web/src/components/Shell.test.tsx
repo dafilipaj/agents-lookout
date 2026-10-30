@@ -316,8 +316,16 @@ describe('one grid (SIDE-8.1)', () => {
    * that height at rest in every view, with or without a main-pane dock. The measured positions are
    * checked by eye (manual).
    */
-  it.each(views)('SIDE-8.1 / MEM-1.2: in the %s view the sidebar’s dock anchors its memory status row below usage', async (_, show) => {
+  // One render per view checks both: the dock (SIDE-8.1 / MEM-1.2) and, in support of SIDE-8.1, that the
+  // main pane is a ShellView of shell cells with a header cell.
+  it.each(views)('SIDE-8.1 / MEM-1.2: in the %s view the sidebar’s dock anchors its memory status row below usage, and the view is a ShellView of shell cells with a header cell', async (_, show) => {
     await show();
+    const children = [...column('main')!.children];
+    expect(children).toHaveLength(1);
+    const view = children[0]!;
+    expect(view.matches('[data-shell-view]')).toBe(true);
+    for (const cell of view.children) expect(cell.matches('[data-shell-row]'), cell.outerHTML.slice(0, 80)).toBe(true);
+    expect(view.querySelector(':scope > [data-shell-row="header"]')).not.toBeNull();
     const dock = cellOf(screen.getByRole('button', { name: 'Usage details' }));
     expect(where(dock)).toBe('dock/left');
     const rest = dock.querySelector<HTMLElement>(':scope > [data-dock-rest]');
@@ -523,13 +531,4 @@ describe('one grid (SIDE-8.1)', () => {
     expect(window.location.pathname).toBe(path);
   });
 
-  it.each(views)('SIDE-8.1 (support): the %s view is a ShellView of shell cells, with a header cell', async (_, show) => {
-    await show();
-    const children = [...column('main')!.children];
-    expect(children).toHaveLength(1);
-    const view = children[0]!;
-    expect(view.matches('[data-shell-view]')).toBe(true);
-    for (const cell of view.children) expect(cell.matches('[data-shell-row]'), cell.outerHTML.slice(0, 80)).toBe(true);
-    expect(view.querySelector(':scope > [data-shell-row="header"]')).not.toBeNull();
-  });
 });

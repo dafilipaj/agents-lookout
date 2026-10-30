@@ -52,6 +52,8 @@ interface LibraryOptions {
   statTimeoutMs?: number;
   isDirectory?: (path: string) => Promise<boolean>;
   realpath?: (path: string) => Promise<string>;
+  /** LIB-2.10: how long a folder's realpath may take before its files are left out; 2 s unless a test shortens it. */
+  realpathTimeoutMs?: number;
   log?: (line: string) => void;
   /** TOOLS-2.5: tb-session's version as Settings › Tools last read it, for the "too old" line; null when unknown. */
   toolVersion?: () => string | null;
@@ -246,7 +248,7 @@ export class Library {
     await mapLimit(dirs, 8, async (dir) => {
       const files = paths.filter((p) => dirname(p) === dir);
       let real: string;
-      try { real = await within(this.opts.realpath ? this.opts.realpath(dir) : realpath(dir), 2000); }
+      try { real = await within(this.opts.realpath ? this.opts.realpath(dir) : realpath(dir), this.opts.realpathTimeoutMs ?? 2000); }
       catch (err) { this.gitFailed({ timedOut: (err as RunError).timedOut === true }, 'folder'); for (const f of files) owned.add(f); return; }
       const root = await discover(real);
       if (root === undefined) { for (const f of files) owned.add(f); return; }

@@ -165,6 +165,13 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
 - **How:** a Fleet commit after the [contract](contracts/fleet-question-previews.md)'s (C6): `--answers` takes `notes` for a question with previews; one capture first, of notes in a form with several questions (in a one-question form, Enter in the notes field submits the whole answer).
 - **Added:** 2026-10-28, split out of VIEW-10 by Dario.
 
+## A catalogue of agents (new)
+
+- **What:** one place listing the custom agents a Session can spawn: Claude Code's from `~/.claude/agents/`, a project's `.claude/agents/` and installed plugins, with each one's description, model, effort, tools and where it's defined; Codex's equivalents once it has them. Per agent, how often it ran lately and what it cost, from the Transcripts' Subagent sidecars (`subagents/*.meta.json` name the agent type).
+- **Why:** frequent prompts are moving into agents (e.g. a reviewer pinned to Opus at high effort, an Output Index agent on Sonnet), and today you can't see which exist, which a project overrides, or which are expensive without opening files and Transcripts by hand.
+- **How:** read the agent files' frontmatter directly (no Harness call needed); usage and cost from the same Transcript reads LIB and the token analysis use. Open questions: a sidebar tab or a Settings page; whether picking one starts a Session with it (LAUNCH) or only shows it; whether to show plugin agents a project disables.
+- **Added:** 2026-10-30, by Dario.
+
 ## Dropped
 
 Discussed and decided against. Each keeps why, so it isn't proposed again without something new.
