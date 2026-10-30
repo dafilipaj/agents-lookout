@@ -25,5 +25,5 @@ date: 2026-10-16
 
 ## Consequences
 
-- To verify before relying on `-CC`: whether closing an iTerm2 tab in integration mode kills the tmux window (and so the Session) instead of detaching.
+- To verify before relying on `-CC`: whether closing an iTerm2 tab in integration mode kills the tmux window (and so the Session) instead of detaching. Verified 2026-10-16; the plain-attach fallback is dropped by [0011](0011-open-in-iterm2-through-its-tmux-integration.md).
 - A live terminal inside the app is deferred. If added later, it attaches xterm.js to the same tmux session, which brings tmux's mouse behaviour back into that view.

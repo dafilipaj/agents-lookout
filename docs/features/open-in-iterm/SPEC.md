@@ -1,7 +1,7 @@
 ---
 title: Open in iTerm2
 code: ITERM
-status: Draft
+status: Ready
 created: 2026-10-16
 updated: 2026-10-30
 ---
@@ -20,15 +20,15 @@ The Terminal preview (VIEW-2) can't be typed into, which Dario's testing reporte
 
 ## Requirements
 
-Criteria marked with an Open question follow its recommendation until it's answered. iTerm2 is a GUI app a World can't hold (TEST Non-goals: no `osascript`, and Fleet's `FLEET_PATH_ONLY` refuses the iTerm backend), so Lookout's side is `(test)` against the fake `fleet`, and what happens in iTerm2 is `(manual)`.
+iTerm2 is a GUI app a World can't hold (TEST Non-goals: no `osascript`, and Fleet's `FLEET_PATH_ONLY` refuses the iTerm backend), so Lookout's side is `(test)` against the fake `fleet`, and what happens in iTerm2 is `(manual)`.
 
 ### ITERM-1 The button and the shortcut
 
 "Open in iTerm2" sits with the Session's actions in the header (VIEW-5.1), for the Sessions Lookout can show in iTerm2.
 
 - [ ] ITERM-1.1 The header shows "Open in iTerm2" for a live, Controllable Session that runs in an iTerm2 tab (backend `iterm`) or alone in its Session host (backend `tmux` and `ownHost`, as VIEW-5.6 decides it), in any Status. It sits after Stop or Esc and before End Session; Copy session ID stays last (VIEW-5.10). (test)
-- [ ] ITERM-1.2 No button for a Session that isn't Controllable (View only), has ended (VIEW-5.3), or shares its Session host with another listed Session (Open question 1); nor on a "Starting…" row's view (LAUNCH-4.6) or a past Session (HIST-3.3). (test)
-- [ ] ITERM-1.3 `O`, when focus isn't in a text field and no modal is open, does what the button does for the selected Session; with no button, it does nothing. Inside the Work and Library panels `O` keeps its own meaning there (WORK, LIB), and the page's handler stands down for it (Open question 4). (test)
+- [ ] ITERM-1.2 No button for a Session that isn't Controllable (View only), has ended (VIEW-5.3), or shares its Session host with another listed Session (Key decisions); nor on a "Starting…" row's view (LAUNCH-4.6) or a past Session (HIST-3.3). (test)
+- [ ] ITERM-1.3 `O`, when focus isn't in a text field and no modal is open, does what the button does for the selected Session; with no button, it does nothing. Inside the Work and Library panels `O` keeps its own meaning there (WORK, LIB), and the page's handler stands down for it (Key decisions). (test)
 - [ ] ITERM-1.4 The button's tooltip names the key and what happens. For a Session host: "Open in iTerm2 (O). To close its window and keep the Session running, choose Hide or Detach; Kill ends the Session." For an iTerm2 tab: "Show its iTerm2 tab (O)". The button is named "Open in iTerm2" for both and declares the key (`aria-keyshortcuts="O"`). (test)
 - [ ] ITERM-1.5 The header stays one line at any width (VIEW-5.1): the button never shrinks, and its words go below 26rem, as the other buttons' do, leaving the icon with its name and tooltip. (manual)
 - [ ] ITERM-1.6 While the Terminal preview is open (VIEW-2.1) for a Session with the button, its Terminal row says, muted, "Read-only · O opens it in iTerm2". For a Session without the button the row is as before. (test)
@@ -44,20 +44,20 @@ Criteria marked with an Open question follow its recommendation until it's answe
 ### ITERM-3 Already showing somewhere
 
 - [ ] ITERM-3.1 A Session in an iTerm2 tab (backend `iterm`) is brought to the front there: iTerm2 comes forward with that tab's window, tab and pane selected. Nothing is attached and no tab opens. (manual)
-- [ ] ITERM-3.2 A Session host that an iTerm2 window already shows (one Lookout opened and you haven't closed, or an iTerm2 tab where it's attached) has that window brought to the front, and no second iTerm2 window is attached to it. If iTerm2's tmux integration is attached to it but Fleet can't find the window, nothing new is attached (ITERM-4.4's `already_attached`). (Open question 2) (manual)
-- [ ] ITERM-3.3 A Session host attached only in another app (Terminal, Ghostty, an editor's terminal) is attached in iTerm2 as well, as ITERM-2.1 says; the other terminal stays attached, and both show the same Session (Open question 3). (manual)
+- [ ] ITERM-3.2 A Session host that an iTerm2 window already shows (one Lookout opened and you haven't closed, or an iTerm2 tab where it's attached) has that window brought to the front, and no second iTerm2 window is attached to it. Fleet finds the window by the Session's pane process (Verified 2026-10-30). If iTerm2's tmux integration is attached to the Session host but no iTerm2 window shows the Session's pane, nothing new is attached (ITERM-4.4's `already_attached`). (manual)
+- [ ] ITERM-3.3 A Session host attached only in another app (Terminal, Ghostty, an editor's terminal) is attached in iTerm2 as well, as ITERM-2.1 says; the other terminal stays attached, and both show the same Session (Key decisions). (manual)
 - [ ] ITERM-3.4 What happened is announced once, politely, while the button keeps its name: "Opened in iTerm2" for a new window, "Shown in iTerm2" for one brought to the front. Nothing else in the view changes. (test)
 
 ### ITERM-4 When it can't open
 
 - [ ] ITERM-4.1 Without iTerm2 installed, the note says "iTerm2 isn't installed, so Lookout can't open the Session there." Fleet checks this before any AppleScript, so macOS never asks where iTerm2 is. (test)
 - [ ] ITERM-4.2 A failure shows beside the title, where Stop's error does (VIEW-4.4): one line, cut to fit, its whole text in the bubble on hover or focus, announced once as an alert. It stays until the next click or `O` for that Session, or until another Session is selected. Nothing is retried, and the note never names tmux or quotes Fleet's error. (test)
-- [ ] ITERM-4.3 When the server's check finds the Session changed since the click: ended: "This Session is no longer running."; restarted: "This Session was restarted since you clicked, so nothing was opened."; no longer Controllable: "This Session runs in another app, so Lookout can't open it in iTerm2."; now sharing its Session host: "This Session shares its Session host with other Sessions, so Lookout won't open it in iTerm2. Open it in a terminal yourself." (Open question 1). The same words when Fleet finds the same (`target_not_found`, `target_changed`, `backend_unsupported`). (test)
+- [ ] ITERM-4.3 When the server's check finds the Session changed since the click: ended: "This Session is no longer running."; restarted: "This Session was restarted since you clicked, so nothing was opened."; no longer Controllable: "This Session runs in another app, so Lookout can't open it in iTerm2."; now sharing its Session host: "This Session shares its Session host with other Sessions, so Lookout won't open it in iTerm2. Open it in a terminal yourself." (Key decisions). The same words when Fleet finds the same (`target_not_found`, `target_changed`, `backend_unsupported`). (test)
 - [ ] ITERM-4.4 When the attach fails, by Fleet's answer: iTerm2 couldn't be driven or typing into its new tab failed (`backend_failed`): "Couldn't open it in iTerm2.", adding, when Fleet says a tab was left open, "A new iTerm2 tab may be left behind; closing it doesn't affect the Session."; iTerm2 opened but no attach showed up in time (`outcome_uncertain`), or Fleet or the connection to Lookout timed out: "iTerm2 may have opened it, but Lookout can't tell. Look in iTerm2 before trying again."; iTerm2's tmux integration already attached but its window not found (`already_attached`, ITERM-3.2): "It's already open in iTerm2, but Lookout can't find its window. Look in iTerm2's Window menu."; Fleet not installed: "Couldn't open it: Fleet isn't installed."; a Fleet without the command: "This Fleet can't open Sessions in iTerm2 yet. Update the Fleet fork."; anything else: "Couldn't open it in iTerm2." Lookout never closes a tab Fleet left behind (ITERM-7.4). (test)
 
 ### ITERM-5 The macOS Automation permission
 
-macOS asks once before an app may control iTerm2 through AppleScript. Which app it names depends on how Lookout's server was started (Open question 6).
+macOS asks once before an app may control iTerm2 through AppleScript. Which app it names depends on how Lookout's server was started (Key decisions).
 
 - [ ] ITERM-5.1 When "Opening…" has lasted 3 s, a muted note beside it says "If macOS asks to allow control of iTerm2, allow it." It goes with "Opening…". (test)
 - [ ] ITERM-5.2 Lookout waits up to 60 s for Fleet, so the prompt can be answered; past that, ITERM-4.4's "can't tell" line. (test)
@@ -68,7 +68,7 @@ macOS asks once before an app may control iTerm2 through AppleScript. Which app 
 
 - [ ] ITERM-6.1 Lookout's view of the Session doesn't change once it's open in iTerm2: the same sidebar row, still Controllable, with the chat, composer, Terminal preview, answer buttons, Stop and Esc, rename, model and Effort menus and End Session as before. (manual)
 - [ ] ITERM-6.2 A prompt typed in the iTerm2 window shows in Lookout's chat as any prompt does (VIEW-1), and a message sent from the composer shows in the iTerm2 window. (manual)
-- [ ] ITERM-6.3 Lookout shows no marker that a Session is open in iTerm2, in the sidebar or the header (Open question 5). The button stays, and the next click brings that window forward (ITERM-3.2). (test)
+- [ ] ITERM-6.3 Lookout shows no marker that a Session is open in iTerm2, in the sidebar or the header (Key decisions). The button stays, and the next click brings that window forward (ITERM-3.2). (test)
 - [ ] ITERM-6.4 An iTerm2 window opened from Lookout stays attached and usable while Lookout's server stops and restarts, and Lookout lists the Session again once it's back. (manual)
 
 ### ITERM-7 Closing the iTerm2 window
@@ -85,10 +85,10 @@ macOS asks once before an app may control iTerm2 through AppleScript. Which app 
 - A live terminal inside Lookout, or typing into the Terminal preview: it stays read-only ([0001](../../decisions/0001-tmux-as-hidden-session-host.md)); this feature is the interactive route.
 - Closing, hiding or detaching iTerm2 windows from Lookout, or a "Close in iTerm2" action (Key decisions).
 - A confirmation or warning before iTerm2's Kill, and anything about iTerm2's own settings: its "Remember my choice" in the ⌘W dialog, whether tmux windows open as windows or tabs, burying the tab that runs the attach.
-- A plain `tmux attach` fallback (Open question 7).
-- Sessions in a shared Session host, "Starting…" rows and failed starts (LAUNCH-4.5 leaves their Session host running), and past Sessions (Open question 1).
+- A plain `tmux attach` fallback ([0011](../../decisions/0011-open-in-iterm2-through-its-tmux-integration.md)).
+- Sessions in a shared Session host, "Starting…" rows and failed starts (LAUNCH-4.5 leaves their Session host running), and past Sessions (Key decisions).
 - Opening in iTerm2 from the sidebar's rows, History, Work or the Library.
-- A marker for Sessions open in iTerm2 (Open question 5).
+- A marker for Sessions open in iTerm2 (Key decisions).
 - Starting a new Session in iTerm2: Sessions always start in a Session host (LAUNCH Non-goals).
 - Restoring the Session host's size after the iTerm2 window closes (Known gaps).
 - Other Hosts.
@@ -141,10 +141,10 @@ So the fork gains one command that does both, for anyone's UI ([0005](../../deci
 - **An `iterm` Session:** `focus`, as today. `{ok: true, how: "focused"}`.
 - **A `tmux` Session:**
   1. Ask tmux who is attached to its Session host: `list-clients -t =<host> -F '#{client_control_mode}\t#{client_tty}\t#{client_pid}'`.
-  2. A plain client whose tty is an iTerm2 session's (iTerm2's AppleScript gives each session's `tty`): select that session's window, tab and pane, activate iTerm2. A control-mode client (iTerm2's tmux integration): bring forward the iTerm2 window showing the Session's pane, if Fleet can find it (Open question 2), else fail with `already_attached`. Found: `{ok: true, how: "focused"}`.
-  3. Otherwise (no client, or clients only in other apps, Open question 3): open an iTerm2 tab, a window when none is open, running `tmux -S <socket> -CC attach -t =<host>`, where `<socket>` is the server's `#{socket_path}`, so the new tab reaches the server Fleet listed whatever its own `TMUX_TMPDIR`, and `=` makes the name exact (ITERM-2.3). Then wait up to 10 s for a new control-mode client on that host: `{ok: true, how: "attached", handle: <the new tab's iTerm2 session id>}`; none: `outcome_uncertain`, with the `handle`.
+  2. A plain client whose tty is an iTerm2 session's (iTerm2's AppleScript gives each session's `tty`): select that session's window, tab and pane, activate iTerm2. A control-mode client (iTerm2's tmux integration): bring forward the iTerm2 window showing the Session's pane: the iTerm2 session whose `tmuxRole` variable is `client` and whose `pid` variable is the pane's `#{pane_pid}` (Verified 2026-10-30); select its window, tab and session, then activate iTerm2. No such session: fail with `already_attached`. Found: `{ok: true, how: "focused"}`.
+  3. Otherwise (no client, or clients only in other apps, Key decisions): open an iTerm2 tab, a window when none is open, running `tmux -S <socket> -CC attach -t =<host>`, where `<socket>` is the server's `#{socket_path}`, so the new tab reaches the server Fleet listed whatever its own `TMUX_TMPDIR`, and `=` makes the name exact (ITERM-2.3). Then wait up to 10 s for a new control-mode client on that host: `{ok: true, how: "attached", handle: <the new tab's iTerm2 session id>}`; none: `outcome_uncertain`, with the `handle`.
   - How the attach runs is the fork commit's to settle and verify: typed into the tab's login shell with `exec`, as `iterm_run` does for `spawn`, or given to iTerm2 as the new session's `command` with tmux's absolute path, which skips the shell (and a profile that starts a program of its own) and leaves no shell behind after a detach.
-- **Before any AppleScript:** iTerm2 must be installed (looked up by its bundle id, `com.googlecode.iterm2`), else `iterm_missing`, so `tell application "iTerm2"` never asks where it is. `FLEET_PATH_ONLY` refuses it, as every iTerm2 action.
+- **Before any AppleScript:** iTerm2 must be installed (looked up by its bundle id, `com.googlecode.iterm2`), else `iterm_missing`. The AppleScript addresses it by that id (`application id "com.googlecode.iterm2"`), never by name: the app is `iTerm.app`, and `application "iTerm2"` fails with -1728 while iTerm2 isn't running (Verified 2026-10-30). `FLEET_PATH_ONLY` refuses it, as every iTerm2 action.
 - **Failures:** exit 1 with `{ok: false, kind, error}`: `usage`, the target kinds, `target_changed`, `backend_unsupported` (backend `unknown`), `iterm_missing`, `not_permitted` (AppleScript's -1743, "Not authorized to send Apple events"), `already_attached`, `backend_failed` (AppleScript or the typing failed; `handle` when a tab was left), `outcome_uncertain`, `io`.
 - **Never** closes, hides or detaches a window, tab or client, and never kills anything: a scripted close of a `-CC` window kills the Session (Verified, below).
 
@@ -169,6 +169,16 @@ So the fork gains one command that does both, for anyone's UI ([0005](../../deci
 - A plain `tmux attach` is always safe to close, but it shows tmux itself inside iTerm2: tmux's own mouse handling and scrollback, which is what made the old dashboard glitchy.
 - Not covered by that test, so checked by ITERM-7.2 and 6.4: "Detach tmux Session", and Lookout's server stopping while the window is open. Not covered at all: quitting iTerm2 (⌘Q) with the window open (Known gaps).
 
+### Verified 2026-10-30 (iTerm2 3.7.6, tmux 3.6a, throwaway server on its own socket running `sleep`)
+
+- **Finding the window:** after `tmux -L <socket> -CC attach -t <host>` from a window iTerm2 created, AppleScript saw three sessions:
+  - the gateway, which ran the attach: `tmuxRole` = `gateway`, and its `tty` is the control-mode client's `#{client_tty}` in tmux's `list-clients`;
+  - the native window showing the tmux window: `tmuxRole` = `client`, `tmuxWindowPane` = `0` (the pane number, without `%`), `tab.tmuxWindow` = `0`, and `pid` and `jobPid` equal to the pane's `#{pane_pid}`. A process id is unique across tmux servers, unlike pane numbers, so it is what Fleet matches on;
+  - selecting that window, tab and session from AppleScript brought it to the front.
+- **Naming the app:** with iTerm2 not running, `tell application "iTerm2"` failed with -1728 ("Can't get application"); `application "iTerm"` and `application id "com.googlecode.iterm2"` worked, and once it was running the name worked too.
+- **Launching iTerm2:** creating a window while iTerm2 wasn't running also opened iTerm2's own startup window, a plain shell (Known gaps).
+- **The server ending:** killing the tmux server closed the gateway and the tmux window by itself.
+
 ### Key decisions
 
 - **iTerm2's tmux integration (`tmux -CC attach`), not a plain attach** (Dario, 2026-10-30): native windows, scrollback and mouse. The risk is accepted: Kill is one click away in the ⌘W dialog.
@@ -177,8 +187,19 @@ So the fork gains one command that does both, for anyone's UI ([0005](../../deci
 - **A Session already in an iTerm2 tab is brought to the front there, not attached again**: it has no Session host to attach; its tab is where it runs.
 - **Bound to the process clicked on**, as End Session is (VIEW-5.6): a Session restarted between the click and Fleet's answer is never the one opened.
 
+Answered by Dario on 2026-10-30, all as recommended:
+
+- **The button is for a Session alone in its Session host, or in an iTerm2 tab**, nothing else in this slice (ITERM-1.1, 1.2).
+- **An already shown Session host is found, not attached again**: Fleet matches the iTerm2 session's `pid` to the pane's process, verified the same day (ITERM-3.2).
+- **A Session host attached only in another app is attached in iTerm2 as well** (ITERM-3.3).
+- **`O` is the shortcut**; Work's and Library's own `O` win inside those panels (ITERM-1.3).
+- **No "open in iTerm2" marker** in this slice (ITERM-6.3).
+- **The Automation prompt's app is settled by hand** in ITERM-5.4's check; the words name no app.
+- **No plain `tmux attach` fallback**: [0011](../../decisions/0011-open-in-iterm2-through-its-tmux-integration.md) supersedes that part of 0001.
+
 ### Known gaps
 
+- **Launching iTerm2 can leave its startup window.** When iTerm2 isn't running, the first open launches it, and iTerm2 opens its own startup window (a plain shell, per its preferences) beside the Session's. Lookout never closes windows (ITERM-7.4), so it stays.
 - **The Session host keeps iTerm2's size.** Fleet starts Session hosts at 200×50 so tall prompts fit (VIEW-4.6). Attaching resizes the Session's window to iTerm2's, and tmux keeps that size after the window closes. A smaller iTerm2 window can then leave a tall question or prompt "doesn't fit" in Lookout (VIEW-4.6's line), until the Session is opened in a bigger window. Not fixed here (Non-goals).
 - **"Remember my choice" with Kill** makes every later ⌘W on a `-CC` window kill its Session without asking. It's iTerm2's setting; ITERM-1.4's tooltip is all Lookout says.
 - **Quitting iTerm2 with the window open** wasn't tested. If it kills rather than detaches, it's the scripted close's risk again, and Lookout can't prevent it.
@@ -186,30 +207,11 @@ So the fork gains one command that does both, for anyone's UI ([0005](../../deci
 
 ## Open questions
 
-- [ ] **1. Who gets the button besides Sessions alone in their Session host and Sessions in iTerm2 tabs?**
-  - Recommended: no one else in this slice: not a Session that shares its Session host with other listed Sessions, not a "Starting…" row or failed start, not a past Session. The criteria follow this (ITERM-1.2, 4.3).
-  - Evidence: `-CC` attaches the whole Session host, so a shared one opens every window it has, and Detach in the ⌘W dialog detaches them all. End Session draws the same line for the same reason (VIEW-5.6, `ownHost`). A failed start's or Trust prompt's Session host isn't a Session Fleet lists yet, so `open` would need a Session-host target like `trust`'s (`<tmux_session> --pane <handle>`, [contract](../../contracts/fleet-trust.md) C1), which is a second fork change. LAUNCH's Known gaps name ITERM as the way to reach a start left waiting after a restart, which argues for a later slice.
-- [ ] **2. How does Fleet find the iTerm2 window that already shows a Session host through iTerm2's tmux integration?** *(blocking for ITERM-3.2)*
-  - Recommended: verify it first, on a throwaway socket as on 2026-10-16. If iTerm2's AppleScript can name the tmux pane a session shows (iTerm2 keeps it in session variables such as `tmuxWindowPane`), Fleet selects that window. If it can't, Fleet attaches nothing and answers `already_attached`, and Lookout says where to look (ITERM-3.2). Never a second `-CC` client from the same iTerm2.
-  - Evidence: tmux's `list-clients` tells a control-mode client (`client_control_mode`) and its tty; the tty is that of the iTerm2 tab that ran the attach, which iTerm2 may bury, not of the window showing the Session. Whether AppleScript exposes the pane is not verified, nor what iTerm2 does when a second `-CC` client attaches to a Session host it already shows.
-- [ ] **3. A Session host attached only in another terminal app: attach iTerm2 as well, or say where it is?**
-  - Recommended: attach as well (ITERM-3.3). You asked for it in iTerm2, tmux takes several clients, and Lookout can't bring another app's window forward.
-  - Evidence: of the Fleet commands Lookout runs, only `answer` and `trust` mind an attached client, and Lookout passes `--allow-attached` to both. With several clients the window takes the size of the latest one used (tmux's default `window-size latest`), so the other terminal may show it cut or padded until it's used again. Kill in iTerm2's dialog would end the Session for both.
-- [ ] **4. Is `O` the shortcut?**
-  - Recommended: `O`, page-wide, as `N`, `H`, `W`, `L` and `i` are; Work's and Library's own `O` win while focus is in those panels (ITERM-1.3).
-  - Evidence: there `O` already means open elsewhere (Work: the row in the browser; Library: the Output). Taken page-wide: `N`, `H`, `W`, `L`, `i`, `j`, `k`, `/`, `[`, `]`. A single letter, like the others, avoids the question of which ⌘ keys a normal Chrome tab keeps for itself (it keeps ⌘N, LAUNCH-1.1). `T`, for terminal, is free if `O` reads as the panels' key.
-- [ ] **5. Should Lookout show that a Session is open in iTerm2?**
-  - Recommended: not in this slice (ITERM-6.3). The button already brings that window forward, which is what a marker would lead you to do.
-  - Evidence: `fleet list --json` doesn't say whether a client is attached. Fleet's pane query could add `#{session_attached}` at no extra tmux call, but it counts any client, iTerm2's or not, so a marker would need ITERM-3.2's lookup on every poll to say "in iTerm2".
-- [ ] **6. Which app does macOS name in the Automation prompt, and has it already been answered?**
-  - Recommended: write no app name (ITERM-5.1, 5.3) and settle it in ITERM-5.4's check.
-  - Evidence: macOS asks for the app responsible for the `osascript` Fleet runs: the terminal app Lookout's server was started from (perhaps no prompt at all when that's iTerm2 itself, unverified), or `node` once the server starts from launchd ([0003](../../decisions/0003-browser-first-react-stack.md)). Fleet already drives iTerm2 for `iterm` Sessions (the Terminal preview, sending, answers, the tab title in `list`), so on a Mac where Lookout has shown one, the prompt may have come and gone already, possibly during a poll rather than a click.
-- [ ] **7. Does 0001's "plain `tmux attach` as the fallback" still stand?** *(blocking)*
-  - Recommended: no fallback, recorded in a new decision that supersedes 0001's "Open in iTerm2" line and closes its Consequence ("to verify before relying on `-CC`"), carrying the Verified table and both Key decisions above. This spec can't drop the fallback on its own: 0001 is Accepted.
-  - Evidence: the 2026-10-30 answer chose `-CC` for its native window, and the fallback is the plain attach that answer turned down. Nothing seen so far makes `-CC` fail where a plain attach works: the attach runs in iTerm2, which is required, and iTerm2 3.7.2 worked with tmux 3.6a.
+None. The seven draft questions were answered on 2026-10-30 (Key decisions).
 
 ## Changelog
 
 - 2026-10-16: Created with the `-CC` close-behaviour test results. Not grilled yet; parked behind using what's built.
 - 2026-10-30: Blocking question answered by Dario: `-CC`, accepting that Kill is one click away in the close dialog. Lookout never closing iTerm2 windows itself follows from it (Key decisions). Requirements are still to be written.
 - 2026-10-30: Requirements written: the button and `O` (ITERM-1), opening a Session host (ITERM-2), a Session already showing in an iTerm2 tab or window, or in another app (ITERM-3), failures (ITERM-4), the Automation permission (ITERM-5), afterwards (ITERM-6), and closing the window with Hide, Detach or Kill, with Lookout never closing one (ITERM-7). Technical approach: what the code knows of `tmux` and `iterm` Sessions, the default tmux server Lookout's Session hosts are on, and a fork commit for Fleet's `open`, since Fleet's CLI can neither open nor focus a Session in iTerm2. Non-goals, Key decisions and Known gaps follow. The Problem names the "Show terminal can't be typed into" report this answers. Not grilled; seven open questions, each with a recommendation the criteria follow; 2 and 7 block. Still Draft.
+- 2026-10-30: Ready. Dario answered the seven open questions as recommended. Open question 2 verified the same day on iTerm2 3.7.6: Fleet finds the window a `-CC` attach shows by the iTerm2 session's `pid`, which is the pane's process (ITERM-3.2, the Fleet command's step 2). The AppleScript addresses iTerm2 by bundle id, since the name fails while it isn't running. New decision 0011: no plain-attach fallback. Known gap: iTerm2's startup window.
