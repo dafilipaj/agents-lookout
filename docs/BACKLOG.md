@@ -178,3 +178,15 @@ Discussed and decided against. Each keeps why, so it isn't proposed again withou
 - **What:** chips in the main pane's header for the Session's Linked PR and Task, from Work's Links plus a new Link from the Session's branch to an open PR with that head branch, each opening the PR on GitHub or the Task in Fantastic.
 - **Why dropped:** drafted and found too clunky. Keeping the chips current needs Work's reads to run whenever a tab shows a Session, not only while Work is open, and the branch Link would rarely fire: 12 of 345 Sessions in 14 days ran on an open PR's branch, all headless Codex runs. The draft (VIEW-5.17–5.24, WORK-4.11–4.14) is kept outside the repo, in Dario's `output/lookout-2026-10-27/header-links-dropped.patch`.
 - **Dropped:** 2026-10-27, by Dario.
+
+### A Codex question shows neither in the chat nor as Esc (VIEW)
+
+- **What:** a Codex `request_user_input` question didn't show in the chat or as VIEW-4.5's Esc, though Fleet marks it as waiting (`harness.rs:1030`).
+- **Why dropped:** no repro; Dario couldn't find the Session it happened in. If it shows again, Dario saves the Session id and it comes back as a bug.
+- **Dropped:** 2026-10-30, by Dario.
+
+### A send held as "already holds text" with nothing typed (VIEW)
+
+- **What:** Fleet's `send --require-empty` answered `send_held`, reason `text` (VIEW-3.7), with nothing typed in the terminal (Claude Code, reported 2026-10-27).
+- **Why dropped:** no repro: 11 live sends on Claude Code 2.1.311 went through (captures in Dario's `output/lookout-2026-10-27/repro6/`), and Dario couldn't find the Session. If it shows again, Dario saves the Session id; then capture its screen with `capture-pane -e` and run Fleet's `input::read` on it (`crates/fleet/src/core/input.rs`).
+- **Dropped:** 2026-10-30, by Dario.

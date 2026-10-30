@@ -1,9 +1,9 @@
 ---
 title: Library
 code: LIB
-status: In Progress
+status: Done
 created: 2026-10-23
-updated: 2026-10-29
+updated: 2026-10-30
 ---
 
 # Library
@@ -28,7 +28,7 @@ A third tab in the right sidebar, beside History (HIST-1) and Work (WORK-1).
 
 - [x] LIB-1.1 The right sidebar has a third tab, Library, after Work. With focus not in a text field and no modal open, `L` opens the sidebar on Library, switches to it from another tab, and closes the sidebar when Library is showing, as `H` and `W` do (HIST-1.1, WORK-1.1). Opening it on Library focuses its text filter. The closed rail has a Library button under Work. (test)
 - [x] LIB-1.2 Which tab is open, the sidebar's width and its open state are remembered across reloads with the other tabs' (WORK-1.2). (test)
-- [ ] LIB-1.3 The Session sidebar and the main pane stay visible and usable while Library is open (HIST-1.2). (manual)
+- [x] LIB-1.3 The Session sidebar and the main pane stay visible and usable while Library is open (HIST-1.2). (manual)
 
 ### LIB-2 List what Sessions produced
 
@@ -56,7 +56,7 @@ Select, then act, as History's and Work's rows (HIST-3.5, WORK-1.12).
 - [x] LIB-3.3 Its first button is **Open**: for an existing `.md` it opens the file in VS Code (`vscode://file/<absolute path>`, VIEW-1.17); for an existing `.html`, `.htm`, `.pdf` or image it opens a new browser tab served by Lookout's read-only file route, with the file's media type and `Content-Security-Policy: sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox` on every answer, errors included, so the page runs in an opaque origin where scripts run, storage APIs don't, links in it open as ordinary tabs, and its own requests to Lookout are refused (`Origin: null`); for an Artifact or Share it opens its URL in a new tab with no referrer (VIEW-1.12). An Artifact row whose folded source file exists has **Open file** as its second button, which opens that file by the same rule for its Type. The route serves only a path one of the server's reads listed since it started and never runs a command (Technical approach, Opening). A gone file has no Open button and says it's gone. Open's tooltip names `O`. (e2e)
 - [x] LIB-3.4 **Copy link** copies the URL, or the absolute path for a file, and reads "Copied" for 2 s, or "Couldn't copy" when the browser refuses (VIEW-1.14). Its tooltip names `C`. (test)
 - [x] LIB-3.5 Each Session chip (LIB-3.2) is **Open** when the Session is live (selects it, never starts a second process), **Resume** when it can be resumed (through History's resume route, with its "Starting…" row and 15 s failure, HIST-3.1), or **Show** when it can't (read-only, with why, HIST-3.3); its accessible name says which and the Status, as WORK-4.10's ("Resume fix-eval, past"). A pruned Session's chip is text, not a button (LIB-2.6). The first chip's tooltip names `S`. (e2e)
-- [ ] LIB-3.6 The Open, Open file and Copy link buttons sit with DS-7.4's spacing, the Session chips under them, and the expanded row's layout holds at a 280 px sidebar, light and dark. (manual)
+- [x] LIB-3.6 The Open, Open file and Copy link buttons sit with DS-7.4's spacing, the Session chips under them, and the expanded row's layout holds at a 280 px sidebar, light and dark. (manual)
 - [x] LIB-3.7 `O`, `C` and `S`, with focus in Library and not in a text field, with no modifier, act on the selected row, expanded or not, once per press: `O` opens the Output exactly as its Open button does (nothing when the file is gone), `C` copies its link as Copy link does, `S` runs the first Session chip (Open, Resume or Show; nothing for a pruned one). They don't move the selection, stand down while a modal is open, and work with Caps Lock on (WORK-6.4's rules). The row's screen-reader description says "O opens it, C copies its link, S opens its Session". (test)
 
 ## Non-goals
@@ -245,7 +245,7 @@ Not criteria yet; each becomes one when its slice is picked up.
 - **Drop files whose folder is gone** (Dario, 2026-10-29): git-owned files are not Outputs as before, but Lookout decides it now (inside a work tree and not ignored, asked once per directory and cached; 510 distinct directories among 1,319 file keys). A directory that no longer exists can't be asked, so its files are dropped, not shown as gone. This changes the 2026-10-23 decision "scratchpad files are in while they exist and hidden once gone": a scratchpad report is dropped once its folder is cleared, and "Hide gone" covers only files deleted from folders that still exist.
 - **The Library's rules are Lookout's** (Dario, 2026-10-29, after the cli-toolbox PR #106 review; [0010](../../decisions/0010-single-consumer-rules-stay-with-the-consumer.md)): tb-session gives facts (`events`), and the extension table, Harness homes, git-owned check, one Output per key, fold and titles are a single consumer's rules, so they live in Lookout's server. The old contract's C3 to C6 became LIB-2.10 to LIB-2.12.
 - **Two `events` calls, `--ext` on the file call only** (2026-10-29, from measuring): on an Artifact or a Share `--ext` filters by `source_path`, which drops a Share with no source (1 of 21 real Shares here); the file call carries the table, the other `--kind artifact,share` without it.
-- **A forked Session's copied actions count once, for the earliest-created Session** (chosen 2026-10-29 while amending, Dario to confirm): rows with one `tool_use_id`, kind and key are one action; credit goes to the Session with the earliest `created_at` in `list`, else the smaller `session_id`. A fork is created after the Session it copies, so the earliest-created did the work, and unlike the row `id` the rule survives an index rebuild or a different scan order. Rows without a `tool_use_id` count as they are.
+- **A forked Session's copied actions count once, for the earliest-created Session** (chosen 2026-10-29 while amending, confirmed by Dario 2026-10-30): rows with one `tool_use_id`, kind and key are one action; credit goes to the Session with the earliest `created_at` in `list`, else the smaller `session_id`. A fork is created after the Session it copies, so the earliest-created did the work, and unlike the row `id` the rule survives an index rebuild or a different scan order. Rows without a `tool_use_id` count as they are.
 - **Session titles from `list`** (Dario, 2026-10-29): `events` has no Session title, so the server reads `tb-session list --all-projects --json --limit 200`, page after page, beside it (13 pages, 0.73 s and 3.8 MB at most a page for 2,406 Sessions here; one page of all of them was 22 MB of first prompts, over the runner's 16 MB cap); a Session not in it keeps the id's first 8 characters.
 
 ## Open questions
@@ -269,3 +269,4 @@ None.
 - 2026-10-29: Session titles are read from `list` 200 at a time, following its pages (LIB-2.1, LIB-2.6). Live on this Mac, `list --limit 100000` printed 22 MB (474 Sessions have first prompts over 10,000 characters), over the runner's 16 MB cap, so every read failed with "tb-session failed". 13 pages of 200 take 0.73 s, 3.8 MB at most a page.
 - 2026-10-29: Review round 1 of the `events` build. LIB-2.10 and Technical approach "Git-owned" amended and LIB-2.10 unticked until its tests pass: git is asked about physical paths (symlinked folders no longer break the read), and a git failure no longer fails the read, replacing the build's "a git failure other than not a work tree fails the read": a folder or root git can't answer for leaves out its file Outputs (probably git-owned), one path-free log line per failure per read; only "not a git repository" means no work tree and a failure is not cached. The search folds `ẞ` with `ß` and `ss` (lower, upper, lower case per character), and an HTML title is not taken from a comment, `<script>` or `<style>` (LIB-2.12).
 - 2026-10-29: Review round 2 of the `events` build. Technical approach "Git-owned" and "Titles" amended: `realpath` has the same 2 s limit as a git question and its timeout or error counts as a git failure (the folder's file Outputs are left out, one path-free log line); git runs in the C locale and "not a git repository" is matched only at the start of a line; folders resolving to one physical folder share one discovery per read; an HTML title keeps its own text as written (`<title>How <script> works</title>`), skipping comments, `<script>` and `<style>` only outside it (LIB-2.10, LIB-2.12).
+- 2026-10-30: LIB-1.3 and LIB-3.6 checked by Dario in the running app and ticked. Every requirement is now ticked, so the status is Done; slices 2 and 3 stay under Later. Dario confirmed the fork-credit rule (Technical approach).

@@ -3,7 +3,7 @@ title: Open in iTerm2
 code: ITERM
 status: Draft
 created: 2026-10-16
-updated: 2026-10-16
+updated: 2026-10-30
 ---
 
 # Open in iTerm2
@@ -41,12 +41,14 @@ To be written after the grill. The verified facts below shape them.
 
 ### Key decisions
 
-- (after the grill: `-CC` or plain attach, and whether Lookout ever closes iTerm2 windows itself; recommended: never)
+- **iTerm2's tmux integration (`tmux -CC attach`), not a plain attach** (Dario, 2026-10-30): native windows, scrollback and mouse. The risk is accepted: Kill is one click away in the ⌘W dialog.
+- **Lookout never closes iTerm2 windows itself**: it follows from `-CC`, since any scripted close kills the Session.
 
 ## Open questions
 
-- [ ] `-CC` (native, but Kill is one click away in the close dialog) or plain attach (always safe, but tmux's own UI)? *(blocking)*
+None.
 
 ## Changelog
 
 - 2026-10-16: Created with the `-CC` close-behaviour test results. Not grilled yet; parked behind using what's built.
+- 2026-10-30: Blocking question answered by Dario: `-CC`, accepting that Kill is one click away in the close dialog. Lookout never closing iTerm2 windows itself follows from it (Key decisions). Requirements are still to be written.
