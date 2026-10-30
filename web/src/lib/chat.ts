@@ -25,7 +25,7 @@ export const MAX_CHAT_ENTRIES = 2000;
 /** Chats kept besides the one in view, for switching back; each cut to its latest entries. */
 export const CACHED_CHATS = 3;
 /** What a cached chat keeps: the server's reset brings the same latest entries on switching back. */
-export const CACHED_ENTRIES = 100;
+export const CACHED_ENTRIES = 300;
 
 export const emptyChat: Chat = { loaded: false, entries: [], queue: [], before: null, problem: null, epoch: 0, following: true };
 

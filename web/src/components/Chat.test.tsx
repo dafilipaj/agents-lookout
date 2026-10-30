@@ -995,13 +995,13 @@ describe('chat state', () => {
 
   it('keeps the chat in view plus 3 recent ones, those cut to their latest entries; updates for others are ignored', () => {
     let state = initialState;
-    const many = Array.from({ length: 150 }, (_, i) => agent(`e${i}`));
+    const many = Array.from({ length: CACHED_ENTRIES + 50 }, (_, i) => agent(`e${i}`));
     for (const id of ['a', 'b', 'c', 'd', 'e']) {
       state = reducer(state, { type: 'chat-view', sessionId: id });
       state = reducer(state, { type: 'event', event: { type: 'chat', sessionId: id, op: 'reset', entries: many, before: null, queue: [] } });
     }
     expect([...state.chats.keys()].sort()).toEqual(['b', 'c', 'd', 'e']);
-    expect(state.chats.get('e')!.entries).toHaveLength(150);
+    expect(state.chats.get('e')!.entries).toHaveLength(CACHED_ENTRIES + 50);
     expect(state.chats.get('b')!.entries).toHaveLength(CACHED_ENTRIES);
     expect(state.chats.get('b')!.before).toBe(state.chats.get('b')!.entries[0]!.cursor);
     const ignored = reducer(state, { type: 'event', event: { type: 'chat', sessionId: 'b', op: 'append', entries: [agent('late')], updated: [], queue: [] } });

@@ -80,7 +80,7 @@ const failure = (kind: string, error: string) =>
 
 function setup(opts: { fresh?: () => Promise<FleetListResult> } = {}) {
   const transcripts = new Map<string, Transcript>([
-    ['sess-a', new Transcript(150)],
+    ['sess-a', new Transcript(350)],
     ['sess-b', new Transcript(3)],
   ]);
   const rows = new Map<string, SessionRow>([
@@ -208,14 +208,14 @@ beforeEach(() => vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] }));
 afterEach(() => vi.useRealTimers());
 
 describe('following the chat of viewed Sessions', () => {
-  it('VIEW-1.6: a viewed Session loads its latest 100 entries first, with a cursor for "Show earlier"', async () => {
+  it('VIEW-1.6: a viewed Session loads its latest 300 entries first, with a cursor for "Show earlier"', async () => {
     const t = setup();
     t.viewer.watch('tab-1', 'sess-a', false);
     await vi.advanceTimersByTimeAsync(0);
-    expect(t.calls[0]).toEqual(['--local', 'messages', '--json', '--limit', '100', '--', 'sess-a']);
+    expect(t.calls[0]).toEqual(['--local', 'messages', '--json', '--limit', '300', '--', 'sess-a']);
     const [reset] = t.chat('tab-1');
     expect(reset).toMatchObject({ op: 'reset', sessionId: 'sess-a', before: 'g1.50' });
-    expect(reset!.op === 'reset' && reset!.entries.map((e) => e.cursor)).toEqual(Array.from({ length: 100 }, (_, i) => `g1.${i + 50}`));
+    expect(reset!.op === 'reset' && reset!.entries.map((e) => e.cursor)).toEqual(Array.from({ length: 300 }, (_, i) => `g1.${i + 50}`));
   });
 
   it('VIEW-1.4: then `--after <cursor>` every second; new entries go to the tabs viewing that Session only', async () => {
@@ -295,7 +295,7 @@ describe('following the chat of viewed Sessions', () => {
     const last = t.chat('tab-1').at(-1)!;
     expect(last).toMatchObject({ op: 'reset', before: null });
     expect(last.op === 'reset' && last.entries.map((e) => e.cursor)).toEqual(['g2.0']);
-    expect(t.calls.at(-1)).toEqual(['--local', 'messages', '--json', '--limit', '100', '--', 'sess-b']);
+    expect(t.calls.at(-1)).toEqual(['--local', 'messages', '--json', '--limit', '300', '--', 'sess-b']);
   });
 
   it('VIEW-1.4: a burst larger than one poll is read on at once until Fleet has no more', async () => {
@@ -524,10 +524,10 @@ describe('"Show earlier"', () => {
   it('VIEW-1.6: loads the page before a cursor, and says when the start is reached', async () => {
     const t = setup();
     const page = await t.viewer.earlier('sess-a', 'g1.50');
-    expect(t.calls[0]).toEqual(['--local', 'messages', '--json', '--before=g1.50', '--limit', '100', '--', 'sess-a']);
+    expect(t.calls[0]).toEqual(['--local', 'messages', '--json', '--before=g1.50', '--limit', '300', '--', 'sess-a']);
     expect(page.entries.map((e) => e.cursor)).toEqual(Array.from({ length: 50 }, (_, i) => `g1.${i}`));
     expect(page.before).toBeNull();
-    const middle = await t.viewer.earlier('sess-a', 'g1.120');
+    const middle = await t.viewer.earlier('sess-a', 'g1.320');
     expect(middle.before).toBe('g1.20');
   });
 

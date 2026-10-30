@@ -10,8 +10,8 @@ import { sanitizeLine } from './sanitize.ts';
  */
 
 /** VIEW-1.6: the latest entries the chat opens with, and the size of a "Show earlier" page. */
-export const INITIAL_LIMIT = 100;
-export const PAGE_LIMIT = 100;
+export const INITIAL_LIMIT = 300;
+export const PAGE_LIMIT = 300;
 /** One `--after` poll returns at most this many; `has_more_after` makes the next one start at once. */
 export const AFTER_LIMIT = 500;
 
