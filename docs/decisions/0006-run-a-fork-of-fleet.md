@@ -35,3 +35,4 @@ date: 2026-10-16
 - The fork is public, because GitHub forks of public repos always are.
 - Rebase `lookout` on upstream regularly, and re-check Lookout's recorded `--json` fixtures after every rebase.
 - Once Fleet lives in cli-toolbox, open the remaining commits as PRs there, retire the fork, and supersede this decision.
+- The fork keeps every part of upstream, including the ones Lookout never calls (the web app, bots, Slack links, schedules), and never edits them (Dario, 2026-10-30). Trimming them would turn each upstream change to them into a rebase conflict and leave our commits unable to apply upstream. If an upstream part on Lookout's path ever breaks it and can't be turned off, a small fork commit disables it; nothing is deleted. The fork shrinks by sending its own small commits upstream.
