@@ -1,5 +1,6 @@
 #!/bin/sh
-# Before each push (TEST-4): `pnpm req-check`, `pnpm test`, then `pnpm e2e`, stopping at the first failure.
+# Before each push (TEST-4): `pnpm req-check`, `pnpm test`, then `pnpm e2e`, stopping at the first failure;
+# only `pnpm req-check` when no new commit changes anything outside docs/, AGENTS.md and CLAUDE.md (TEST-4.4).
 # `pnpm install` points git at this folder (the `prepare` script). The only way past it is `git push --no-verify`.
 set -eu
 
@@ -21,6 +22,25 @@ has_script() {
 command -v node >/dev/null 2>&1 || fail "node is not installed." "brew install node"
 command -v pnpm >/dev/null 2>&1 || fail "pnpm is not installed." "corepack enable pnpm"
 [ -d node_modules ] || fail "dependencies are not installed." "pnpm install"
+
+# A push whose new commits change only docs/, AGENTS.md or CLAUDE.md runs req-check alone (TEST-4.4): nothing
+# else reads them. New commits are the ones on no remote-tracking branch; a stale one only adds
+# commits, so the hook errs towards running everything. README.md is not under docs/: a test reads it.
+docs_only=1
+while read -r _ local_sha _ _; do
+  case $local_sha in *[!0]*) ;; *) continue ;; esac # a deleted branch
+  for commit in $(git rev-list "$local_sha" --not --remotes); do
+    if git diff-tree -m --root --no-commit-id --name-only -r "$commit" | grep -qvE '^(docs/|AGENTS\.md$|CLAUDE\.md$)'; then
+      docs_only=0
+      break 2
+    fi
+  done
+done
+if [ "$docs_only" -eq 1 ]; then
+  pnpm req-check
+  echo "pre-push: no new commit changes anything outside docs/, AGENTS.md and CLAUDE.md, so only req-check ran; unit and Behaviour tests skipped (TEST-4.4)."
+  exit 0
+fi
 
 # `pnpm e2e` runs only when package.json has an `e2e` script, so this hook works both before the
 # Behaviour tests land (TEST-1, TEST-2) and after. Without the script it says so; it never skips silently.

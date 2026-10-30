@@ -37,7 +37,25 @@ beforeEach(() => {
   for (const f of ['pnpm', 'tmux']) chmodSync(join(fakes, f), 0o755);
   pins = JSON.parse(readFileSync(join(dir, 'e2e', 'pins.json'), 'utf8'));
   for (const pin of Object.values(pins)) install(pin);
+  // One commit on no remote-tracking branch, with code in it: a push the hook tests in full.
+  commit({});
 });
+
+/** Writes the files, commits everything and returns the commit's sha. */
+function commit(files) {
+  for (const [file, text] of Object.entries(files)) {
+    mkdirSync(dirname(join(dir, file)), { recursive: true });
+    writeFileSync(join(dir, file), text);
+  }
+  execFileSync('git', ['add', '-A'], { cwd: dir });
+  execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'c'], { cwd: dir });
+  return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim();
+}
+
+/** Marks HEAD as pushed, as a fetched origin/main would. */
+function pushed() {
+  execFileSync('git', ['update-ref', 'refs/remotes/origin/main', 'HEAD'], { cwd: dir });
+}
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 /** A binary where `pnpm e2e:setup` installs the pin, with the install record cargo leaves. */
@@ -51,11 +69,14 @@ function install(pin, rev = pin.rev) {
   writeFileSync(join(installRoot(pin, cache), '.crates2.json'), JSON.stringify({ installs }));
 }
 
+/** Runs the hook as git does for a push of HEAD, with the refs on stdin. */
 function hook() {
+  const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim();
   const res = spawnSync(join(dir, '.githooks/pre-push'), [], {
     cwd: dir,
     encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
+    input: `refs/heads/main ${head} refs/heads/main ${'0'.repeat(40)}\n`,
+    stdio: ['pipe', 'pipe', 'pipe'],
     env: { HOME: join(dir, 'home'), PATH: [join(dir, 'fakes'), dirname(process.execPath), '/usr/bin', '/bin'].join(':') },
   });
   let ran = [];
@@ -64,7 +85,7 @@ function hook() {
   } catch {
     // pnpm never ran
   }
-  return { code: res.status, stderr: res.stderr, ran };
+  return { code: res.status, stdout: res.stdout, stderr: res.stderr, ran };
 }
 
 describe('pre-push', () => {
@@ -92,5 +113,25 @@ describe('pre-push', () => {
     expect(r.stderr).toContain(`fleet: built from 0123456, not the pinned ${pins.fleet.rev.slice(0, 7)}`);
     expect(r.stderr).toMatch(/pre-push: fix it with: pnpm e2e:setup\n$/);
     expect(r.ran).toEqual([]);
+  });
+
+  it('TEST-4.4: a push whose new commits change only docs/, AGENTS.md or CLAUDE.md runs req-check alone and says the tests were skipped', () => {
+    pushed();
+    commit({ 'docs/PLAN.md': 'x\n' });
+    commit({ 'AGENTS.md': 'x\n', 'CLAUDE.md': 'x\n' });
+    const r = hook();
+    expect(r.code).toBe(0);
+    expect(r.ran).toEqual(['req-check']);
+    expect(r.stdout).toContain('only req-check ran; unit and Behaviour tests skipped (TEST-4.4)');
+  });
+
+  it('TEST-4.4: any other changed file, README.md or a nested AGENTS.md included, runs req-check, test and e2e', () => {
+    for (const other of ['README.md', 'web/AGENTS.md', 'server/a.ts']) {
+      rmSync(join(dir, 'pnpm.log'), { force: true });
+      pushed();
+      commit({ 'docs/PLAN.md': `${other}\n` });
+      commit({ [other]: 'x\n' });
+      expect(hook().ran, other).toEqual(['req-check', 'test --maxWorkers=50%', 'e2e --workers=25%']);
+    }
   });
 });

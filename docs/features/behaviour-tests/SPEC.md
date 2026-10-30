@@ -92,6 +92,7 @@ What a Behaviour test runs in. A World is built fresh for each Behaviour test an
 - [ ] TEST-4.1 A pre-push hook, versioned in the repo as `.githooks/pre-push`, runs `pnpm req-check`, `pnpm test` and `pnpm e2e` in that order, and stops the push at the first failure. (manual)
 - [x] TEST-4.2 `pnpm install` sets `core.hooksPath` to `.githooks`, so a fresh clone or Worktree has the hook without a manual step. (manual)
 - [ ] TEST-4.3 A missing prerequisite (tmux, a pinned binary, Playwright's Chromium) fails the hook with the command that fixes it; it's never skipped silently. The only way to skip the hook is `git push --no-verify`. (manual)
+- [x] TEST-4.4 A push whose new commits change only files under `docs/`, `AGENTS.md` or `CLAUDE.md` runs `pnpm req-check` alone and says the unit and Behaviour tests were skipped; any other changed file, `README.md` included, runs all three. (test)
 
 ### TEST-5 Working with Behaviour tests
 
@@ -366,6 +367,7 @@ scenario(
 ### Before each push
 
 - `.githooks/pre-push` runs `pnpm req-check`, `pnpm test` and `pnpm e2e` (TEST-4.1), at half their usual parallelism: Vitest on at most half the cores (`--maxWorkers=50%`), and a quarter of them as Playwright workers (`--workers=25%`, 3 on 12 cores, against half by default). The same tests run; a push takes longer, and leaves the machine usable. A `prepare` script (`scripts/setup-hooks.mjs`) sets `git config --local core.hooksPath .githooks` on `pnpm install`, and does nothing without git or when the package isn't the top of its own checkout. It runs git without the variables it may inherit from another repo's hook (`GIT_DIR`, `GIT_WORK_TREE`, `GIT_COMMON_DIR`, `GIT_INDEX_FILE`, `GIT_CONFIG*`, `GIT_CEILING_DIRECTORIES`), so the checkout it finds is the package's own and it doesn't change another repo's hooks (TEST-4.2).
+- A docs-only push (TEST-4.4): the hook reads the refs git passes on stdin and lists each pushed commit that's on no remote-tracking branch (`git rev-list <sha> --not --remotes`), with its files from `git diff-tree -m --root`, so a merge counts every parent's changes and a first commit counts at all. If every file is under `docs/` or is `AGENTS.md` or `CLAUDE.md`, it runs `pnpm req-check`, which reads the specs, and stops there. Nothing else reads them (tests only write files with those names into temporary repos); `README.md` isn't under it, and `fleet-install-command.test.ts` reads it. A stale remote-tracking branch only adds commits to the list, so the mistake it can make is running the tests when they weren't needed.
 - No CI: a World needs macOS, tmux, a Rust build of the fork and Chromium, and the repo has one pusher.
 
 ### Decisions this follows
@@ -436,3 +438,4 @@ None.
 - 2026-10-24: TEST-1.2 regression fix: the sysctl override is a shim, preserving unrelated system reads used by login shells. Only memory-key calls reach the strict fake, including malformed sampler calls, which remain violations. A shell-wrapper unit test uses a stand-in system command to verify pass-through without reading host memory.
 - 2026-10-25: MEM dock regression coverage adds a `.usage()` declaration for populated Claude/Codex windows and Jev readiness. The CLI fixtures go through Lookout’s real usage parser and Jev probe. Memory release Behaviour checks span a full fast interval; fake-clock API tests additionally check 30 seconds exactly, within TEST-2.6’s unchanged 30-second Behaviour budget.
 - 2026-10-29: tb-session re-pinned to `tb-session-v0.4.0` (`3e15e58`), which adds `events` for LIB. A World with `.outputs([...])` now writes Transcript fixtures that the real pinned tb-session mines, instead of a contract fake; the `logged` wrapper passes `list` and `events` through as well as `search`, never adding to `events`. `.fleetResume(id)` and `world.tbSession.produce()` added for LIB's Behaviour tests.
+- 2026-10-30: TEST-4.4 added (Dario): a push that changes only `docs/`, `AGENTS.md` or `CLAUDE.md` runs req-check alone, skipping the unit and Behaviour tests, which read nothing there. `scripts/pre-push.test.mjs` now pushes a real commit through the hook's stdin, and tests TEST-4.4 both ways.
