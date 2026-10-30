@@ -95,6 +95,9 @@ The "Needs you" and "View only" headers are not Session rows: ↑/↓, j/k, ⌘1
 
 - [x] SIDE-7.1 A Settings page, reachable from the sidebar, lets you change the idle threshold in hours. (manual)
 - [x] SIDE-7.2 The server stores settings in a file, so they survive restarts and are the same in every browser tab. A changed value applies without reloading. (test)
+- [x] SIDE-7.3 A "Keyboard shortcuts" icon button (a keyboard icon, `md`, the same as New Session and Settings, 4 px beside Settings, DS-7.1, DS-7.4) sits at the end of the Session sidebar's header buttons. Its tooltip and name are "Keyboard shortcuts". Pressing it opens the Keyboard shortcuts dialog over whatever is open. It has no key of its own. (test)
+- [x] SIDE-7.4 The Keyboard shortcuts dialog (the app's `Dialog`) lists every shortcut the app handles, in groups (Sessions list, The selected Session, Panels, Composer, App), each as `Kbd` keys and a short label, with the condition where there is one. The list is one module, `web/src/lib/shortcuts.ts`, which this dialog and the empty views (VIEW-5.4, DS-6.4) render from. Only shortcuts that are built are in it. A test presses each entry's keys and checks that something happens, or names the test that does. (test)
+- [x] SIDE-7.5 Esc and the dialog's Close button close it, and focus returns to what opened it: the "Keyboard shortcuts" button, or the "All shortcuts" button of an empty view. While it is open the app's own shortcuts stand down, as for any modal (`lib/modal.ts`). (test)
 
 ### SIDE-8 One grid
 
@@ -339,3 +342,4 @@ None.
 - 2026-10-26: DS-12 built: the Needs you row tint is 16/22/28% (SIDE-3.7, 3.9), with darker light Needs you and Warning text for SIDE-3.11's contrast on the new sidebar plane. The "Needs you" header counts visible Controllable Sessions only (SIDE-1.5, 3.1), follows live Status and filter changes, and stays out of SIDE-5's navigation and filter matching like "View only". Hover-freeze and View only membership stay as they were; the header describes the Controllable group for screen readers.
 - 2026-10-26: Hover-freeze (SIDE-3.4) holds the "Needs you" header too: it doesn't appear or go while the pointer is over the sidebar, so the rows under it don't move; it catches up when the pointer leaves (DS-12.6).
 - 2026-10-27: The "Needs you" and "View only" headers are `title` semibold in sentence case, not `caption` uppercase with tracking, so they stand out from the rows (see the design system's type table).
+- 2026-10-30: Added SIDE-7.3 to 7.5 from Dario's request: a "Keyboard shortcuts" button beside Settings opens a dialog with the full grouped shortcut list over open Sessions, as a reminder, and the empty views show the most useful of the same list (VIEW-5.4, DS-6.4).

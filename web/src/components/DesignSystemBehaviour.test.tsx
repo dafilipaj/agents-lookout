@@ -76,6 +76,8 @@ describe('the Session list takes keyboard focus (DS-9)', () => {
     await user.tab();
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Settings' }));
     await user.tab();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Keyboard shortcuts' }));
+    await user.tab();
     expect(document.activeElement).toHaveAccessibleName(/Dismiss/);
     await user.tab();
     expect(document.activeElement).toBe(listbox());

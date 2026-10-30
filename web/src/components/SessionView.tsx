@@ -254,11 +254,11 @@ export function SessionView({
   };
 
   const composerRef = useRef<HTMLTextAreaElement>(null);
-  // VIEW-3.6: `i` focuses the composer when focus isn't in a text field.
+  // VIEW-3.6: `i` (or `I` with Caps Lock on, never with Shift) focuses the composer when focus isn't in a text field.
   useEffect(() => {
     if (!controls) return;
     const onKey = (e: globalThis.KeyboardEvent) => {
-      if (e.key !== 'i' || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || e.isComposing || e.defaultPrevented) return;
+      if (e.key.toLowerCase() !== 'i' || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || e.isComposing || e.defaultPrevented) return;
       if (isTextField(e.target) || document.querySelector('[role="dialog"]')) return;
       e.preventDefault();
       composerRef.current?.focus();

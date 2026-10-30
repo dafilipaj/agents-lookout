@@ -763,6 +763,16 @@ describe('composer', () => {
     expect(box).not.toHaveFocus();
   });
 
+  it('VIEW-3.6 (support): `i` works with Caps Lock on (the key is "I" without Shift), but not with Shift', async () => {
+    const app = renderApp('/s/a');
+    app.snapshot([row({ id: 'a' })]);
+    const box = screen.getByRole('textbox', { name: 'Message' });
+    fireEvent.keyDown(document.body, { key: 'I', shiftKey: true });
+    expect(box).not.toHaveFocus();
+    fireEvent.keyDown(document.body, { key: 'I' });
+    expect(box).toHaveFocus();
+  });
+
   it('switching Sessions points the server at the new one', async () => {
     const user = userEvent.setup();
     const app = renderApp('/s/a');

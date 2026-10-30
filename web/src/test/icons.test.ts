@@ -59,8 +59,11 @@ function packageOf(specifier: string): string | null {
 /** Modifier glyphs only ever name a key, so they're allowed in any text ("⌘N in the installed app"). */
 const MODIFIERS = new Set([...'⌘⌥⇧⌃']);
 /** Key glyphs that are also common as icons: allowed only in a `<kbd>` or a shortcut attribute. */
-const KEYS = new Set([...'↵⏎⌫⌦⇥⎋↑↓']);
+const KEYS = new Set([...'↵⏎⌫⌦⇥⎋↑↓←→']);
 const SHORTCUT_ATTRIBUTES = new Set(['keys', 'title', 'aria-keyshortcuts']);
+/** The `keys` and `alt` of an entry in the shortcuts list: only in that file (SIDE-7.4), not any `alt:` elsewhere. */
+const SHORTCUT_PROPERTIES = new Set(['keys', 'alt']);
+const SHORTCUTS_FILE = 'web/src/lib/shortcuts.ts';
 
 /** Typographic signs that `\p{Extended_Pictographic}` counts but aren't icons. */
 const TYPOGRAPHIC = new Set([...'©®™']);
@@ -81,9 +84,10 @@ const LONE_TIMES = /^\s*×\s*$/;
 const KEY_ELEMENTS = new Set(['kbd', 'Kbd']);
 
 /** Whether a string sits in a `<kbd>` (or `<Kbd>`) or a shortcut attribute such as `keys={['↑', '↓']}`. */
-function inShortcutHint(node: ts.Node): boolean {
+function inShortcutHint(node: ts.Node, path: string): boolean {
   for (let n: ts.Node | undefined = node.parent; n; n = n.parent) {
     if (ts.isJsxAttribute(n)) return SHORTCUT_ATTRIBUTES.has(n.name.getText());
+    if (ts.isPropertyAssignment(n)) return path === SHORTCUTS_FILE && SHORTCUT_PROPERTIES.has(n.name.getText());
     if (ts.isJsxElement(n)) return KEY_ELEMENTS.has(n.openingElement.tagName.getText());
   }
   return false;
@@ -103,7 +107,7 @@ function iconSymbols(source: string, path = 'x.tsx'): string[] {
     if (whole && LONE_TIMES.test(text)) found.push(`${where(file, start)} ×`);
     for (const m of text.matchAll(PICTOGRAPH)) {
       const c = m[0];
-      if (MODIFIERS.has(c) || TYPOGRAPHIC.has(c) || (KEYS.has(c) && inShortcutHint(node))) continue;
+      if (MODIFIERS.has(c) || TYPOGRAPHIC.has(c) || (KEYS.has(c) && inShortcutHint(node, path))) continue;
       found.push(`${where(file, start + m.index)} ${c}`);
     }
   };
@@ -150,6 +154,11 @@ describe('icons', () => {
     expect(symbols(`<span>⛔</span>; {'⚠'}; x = '✓ ready'; y = \`☑ \${z} ●\`; '⊘'; '▸'; '🚀'`)).toEqual(['⛔', '⚠', '✓', '☑', '●', '⊘', '▸', '🚀']);
     // Icon-like characters outside the emoji blocks, and a lone × as a close button.
     expect(symbols(`<button aria-label="Close">×</button>; '⋮'; '⋯'; '•'; '›'`)).toEqual(['×', '⋮', '⋯', '•', '›']);
+    // The keys of a shortcuts-list entry are key names; its label is words, and an arrow in it is an icon.
+    const entry = `const a = { keys: ['↑', '↓'], alt: ['←'], label: 'Move ↑' };`;
+    expect(iconSymbols(entry, SHORTCUTS_FILE).map((s) => s.split(' ')[1])).toEqual(['↑']);
+    // ...but only in that file: an `alt:` or `keys:` anywhere else is not a hint.
+    expect(symbols(entry)).toEqual(['↑', '↓', '←', '↑']);
     // An arrow beside text is an icon, not a shortcut hint.
     expect(symbols(`<Button>Jump to latest ↓</Button>; 'Open →'`)).toEqual(['↓', '→']);
     // `/*` and `//` outside comments don't hide what follows (a regex comment stripper would).

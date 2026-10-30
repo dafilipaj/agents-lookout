@@ -6,6 +6,7 @@ import { hasReset } from '@shared/usage.ts';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { HistoryPanel } from '@/components/HistoryPanel';
 import { Launcher } from '@/components/Launcher';
+import { ShortcutsDialog } from '@/components/ShortcutsDialog';
 import { MainPane } from '@/components/MainPane';
 import { PastSessionView } from '@/components/PastSessionView';
 import { RightRail, RightSidebar } from '@/components/RightSidebar';
@@ -284,6 +285,13 @@ export function App({ client }: { client: LookoutClient }) {
   const launchedFromWork = useRef(false);
   // Background shortcuts stand down while any modal (the launcher, End Session) is open.
   const modalOpen = useAnyModalOpen();
+  // SIDE-7.4, SIDE-7.5: the Keyboard shortcuts dialog, and the button that opened it, which gets focus back.
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [shortcutsOpener, setShortcutsOpener] = useState<HTMLElement | null>(null);
+  const showShortcuts = useCallback((opener: HTMLElement) => {
+    setShortcutsOpener(opener);
+    setShortcutsOpen(true);
+  }, []);
   const [draft, setDraft] = useState<LaunchDraft | null>(null);
   const [workDraft, setWorkDraft] = useState<LaunchDraft | null>(null);
   const [harnesses, setHarnesses] = useState<HarnessState>({ state: 'loading' });
@@ -799,6 +807,7 @@ export function App({ client }: { client: LookoutClient }) {
           settingsOpen={route.name === 'settings'}
           onOpenSettings={() => navigate(route.name === 'settings' ? { name: 'home' } : { name: 'settings' })}
           onNewSession={openOwnLauncher}
+          onShowShortcuts={showShortcuts}
           launches={launches}
           selectedLaunchId={selectedLaunchId}
           onSelectLaunch={onSelectLaunch}
@@ -835,6 +844,7 @@ export function App({ client }: { client: LookoutClient }) {
               selectedId={selectedId}
               running={state.sessions.size > 0 || launches.length > 0}
               onNewSession={openOwnLauncher}
+              onShowShortcuts={showShortcuts}
               aliases={state.aliases}
               live={(selectedId && state.sessions.get(selectedId)) || null}
               lastKnown={(selectedId && state.lastKnown.get(selectedId)) || null}
@@ -925,6 +935,7 @@ export function App({ client }: { client: LookoutClient }) {
           onStart={start}
           onCloseAutoFocus={launcherClosed}
         />
+        <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} returnFocus={shortcutsOpener} />
       </div>
     </ClockContext.Provider>
   );

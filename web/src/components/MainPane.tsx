@@ -2,13 +2,15 @@ import type { SessionRow } from '@shared/types.ts';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Kbd } from '@/components/ui/kbd';
 import { Loading } from '@/components/ui/loading';
 import { type AnswerAttempt, type ScreenState, type StopRequest, processKey } from '@/lib/answers';
 import { type SwitchState, switchKey } from '@/lib/status-switch';
 import { type FileLinks, FileLinksContext } from '@/lib/files';
 import type { Preview } from '@/lib/store';
+import { emptyViewShortcuts } from '@/lib/shortcuts';
+import { cn } from '@/lib/utils';
 import { PlainView } from './Shell';
+import { ShortcutKeys } from './ShortcutsDialog';
 import { type SessionViewProps, SessionView } from './SessionView';
 
 interface Props extends Omit<SessionViewProps, 'row' | 'ended' | 'now' | 'preview' | 'drawerOpen' | 'screen' | 'attempt' | 'stopRequest' | 'statusSwitch'> {
@@ -41,6 +43,8 @@ interface Props extends Omit<SessionViewProps, 'row' | 'ended' | 'now' | 'previe
   running: boolean;
   /** DS-6.4: "Start a Session", as `N` does. */
   onNewSession(): void;
+  /** VIEW-5.4, DS-6.4: "All shortcuts"; the button that asked gets focus back when the dialog closes. */
+  onShowShortcuts(opener: HTMLElement): void;
 }
 
 /**
@@ -56,9 +60,9 @@ function viewKey(row: SessionRow, aliases: ReadonlyMap<string, string>): string 
  * The main pane: the selected Session (VIEW), or the hint when nothing is selected (VIEW-5.4), or,
  * with no Session at all, "No Sessions running" and a way to start one (DS-6.4).
  */
-export function MainPane({ selectedId, live, lastKnown, list, now, preview, drawerOpen, aliases, prompts, attempts, stops, switches, fileLinks, running, onNewSession, ...view }: Props) {
+export function MainPane({ selectedId, live, lastKnown, list, now, preview, drawerOpen, aliases, prompts, attempts, stops, switches, fileLinks, running, onNewSession, onShowShortcuts, ...view }: Props) {
   // Before the first snapshot nothing is known: not the hint, which would give way to "No Sessions running" a moment later.
-  if (!selectedId && list !== 'loading') return list === 'known' && !running ? <NoSessions onNewSession={onNewSession} /> : <Empty />;
+  if (!selectedId && list !== 'loading') return list === 'known' && !running ? <NoSessions onNewSession={onNewSession} onShowShortcuts={onShowShortcuts} /> : <Empty onShowShortcuts={onShowShortcuts} />;
   if (!live && list === 'loading') {
     return (
       <PlainView>
@@ -104,29 +108,26 @@ export function MainPane({ selectedId, live, lastKnown, list, now, preview, draw
   );
 }
 
-/** VIEW-5.4: nothing selected among the Sessions there are: the keys that move through them. */
-function Empty() {
+/** VIEW-5.4: nothing selected among the Sessions there are: the shortcuts that matter, and the way to the rest. */
+function Empty({ onShowShortcuts }: { onShowShortcuts(opener: HTMLElement): void }) {
   return (
     <PlainView>
       <EmptyState
         className="h-full justify-center p-8"
         title="Select a Session"
         hint={
-          <ul className="mt-3 grid grid-cols-[auto_auto] gap-x-3 gap-y-1.5 text-left">
-            <Hint keys={['↑', '↓']} alt={['j', 'k']} text="Move" />
-            <Hint keys={['⌘', '1–9']} text="Jump to a row" />
-            <Hint keys={['⌘', 'J']} text="Next that needs you" />
-            <Hint keys={['/']} text="Filter" />
-            <Hint keys={['N']} text="New Session (⌘N in the installed app)" />
-          </ul>
+          <>
+            <Hints view="select" className="mt-3" />
+            <AllShortcuts onShow={onShowShortcuts} />
+          </>
         }
       />
     </PlainView>
   );
 }
 
-/** DS-6.4: no live Session and no Starting row: say so, with the launcher a click away and `N` under it. */
-function NoSessions({ onNewSession }: { onNewSession(): void }) {
+/** DS-6.4: no live Session and no Starting row: say so, with the launcher a click away and the keys under it. */
+function NoSessions({ onNewSession, onShowShortcuts }: { onNewSession(): void; onShowShortcuts(opener: HTMLElement): void }) {
   return (
     <PlainView>
       <EmptyState
@@ -137,9 +138,10 @@ function NoSessions({ onNewSession }: { onNewSession(): void }) {
             <Button size="sm" onClick={onNewSession}>
               Start a Session
             </Button>
-            <ul className="grid grid-cols-[auto_auto] gap-x-3 text-left text-meta text-muted-foreground">
-              <Hint keys={['N']} text="New Session (⌘N in the installed app)" />
-            </ul>
+            <div className="flex flex-col items-center text-meta text-muted-foreground">
+              <Hints view="none" />
+              <AllShortcuts onShow={onShowShortcuts} />
+            </div>
           </div>
         }
       />
@@ -147,16 +149,25 @@ function NoSessions({ onNewSession }: { onNewSession(): void }) {
   );
 }
 
-function Hint({ keys, alt, text }: { keys: string[]; alt?: string[]; text: string }) {
-  const kbd = (k: string) => <Kbd key={k}>{k}</Kbd>;
+/** The empty view's short list, from the one shortcuts list (SIDE-7.4). */
+function Hints({ view, className }: { view: 'select' | 'none'; className?: string }) {
   return (
-    <li className="contents">
-      <span className="flex items-center justify-end gap-1">
-        {keys.map(kbd)}
-        {alt && <span className="px-0.5">or</span>}
-        {alt?.map(kbd)}
-      </span>
-      <span className="leading-5">{text}</span>
-    </li>
+    <ul className={cn('grid grid-cols-[auto_auto] gap-x-3 gap-y-1.5 text-left', className)}>
+      {emptyViewShortcuts(view).map((s) => (
+        <li key={s.id} className="contents">
+          <ShortcutKeys shortcut={s} />
+          <span className="leading-5">{s.empty!.label}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** VIEW-5.4, DS-6.4: opens the Keyboard shortcuts dialog (SIDE-7.4). */
+function AllShortcuts({ onShow }: { onShow(opener: HTMLElement): void }) {
+  return (
+    <Button variant="link" size="xs" className="mt-2 text-meta" onClick={(e) => onShow(e.currentTarget)}>
+      All shortcuts
+    </Button>
   );
 }

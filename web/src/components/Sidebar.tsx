@@ -3,7 +3,7 @@ import { sortSessions } from '@shared/order.ts';
 import type { FleetHealth, LaunchView, SessionRow } from '@shared/types.ts';
 import { type ToolsSnapshot, toolsAttention } from '@shared/tools.ts';
 import type { UsageSnapshot } from '@shared/usage.ts';
-import { Plus, Search, Settings as SettingsIcon, TriangleAlert, WifiOff } from 'lucide-react';
+import { Keyboard, Plus, Search, Settings as SettingsIcon, TriangleAlert, WifiOff } from 'lucide-react';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { CommandBlock } from '@/components/ui/command-block';
@@ -31,6 +31,8 @@ export interface SidebarProps {
   /** `replace`: a keyboard step, which shouldn't flood the history. */
   onSelect(id: string, how: 'push' | 'replace'): void;
   onOpenSettings(): void;
+  /** SIDE-7.3: the Keyboard shortcuts button; it is the opener the dialog returns focus to. */
+  onShowShortcuts(opener: HTMLElement): void;
   settingsOpen: boolean;
   /** LAUNCH-1.1: the "+" button. */
   onNewSession(): void;
@@ -317,6 +319,9 @@ export function Sidebar(props: SidebarProps) {
             <SettingsIcon />
             {/* TOOLS-2.4: a Tool missing or behind; its name is in the tooltip. */}
             {attention.length > 0 && <span aria-hidden data-field="tools-dot" className="absolute top-1 right-1 size-1.5 rounded-full bg-destructive" />}
+          </IconButton>
+          <IconButton size="md" label="Keyboard shortcuts" onClick={(e) => props.onShowShortcuts(e.currentTarget)}>
+            <Keyboard />
           </IconButton>
         </div>
       </ShellCell>

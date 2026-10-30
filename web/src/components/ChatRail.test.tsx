@@ -79,6 +79,21 @@ afterEach(() => {
 });
 
 describe('VIEW-1.11 Marks', () => {
+  it('VIEW-1.11: ↑/↓ step between the Marks and Home/End go to the first and last, from a focused Mark', async () => {
+    const { reset } = open();
+    reset([you('a'), result('Agent "Build" finished'), question('Which one?')]);
+    const buttons = await marks();
+    act(() => buttons[0]!.focus());
+    fireEvent.keyDown(buttons[0]!, { key: 'ArrowDown' });
+    expect(buttons[1]).toHaveFocus();
+    fireEvent.keyDown(buttons[1]!, { key: 'End' });
+    expect(buttons[2]).toHaveFocus();
+    fireEvent.keyDown(buttons[2]!, { key: 'ArrowUp' });
+    expect(buttons[1]).toHaveFocus();
+    fireEvent.keyDown(buttons[1]!, { key: 'Home' });
+    expect(buttons[0]).toHaveFocus();
+  });
+
   it('VIEW-1.11: one Mark per prompt you sent (dot), subagent result (diamond) and question (triangle); none for replies, tool calls or queued prompts', async () => {
     const { reset } = open();
     const entries = [you('Fix the rounding\nin deal totals'), agent('On it.'), tool(), result('Agent "Build" finished'), question('Recalculate drafts?')];
