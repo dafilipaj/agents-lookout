@@ -10,8 +10,8 @@ const fixture = (name: string): FleetRow[] =>
   );
 
 const GIT: Record<string, GitLocation> = {
-  '/Users/dariofilipaj/Projects/work': { repo: 'work', worktree: null, branch: 'main', commonDir: '/Users/dariofilipaj/Projects/work/.git', defaultBranch: 'main' },
-  '/Users/dariofilipaj/Projects/lookout-demo/demo-repo-wt': { repo: 'demo-repo', worktree: 'demo-repo-wt', branch: 'feature/demo', commonDir: '/Users/dariofilipaj/Projects/lookout-demo/demo-repo/.git', defaultBranch: 'main' },
+  '/Users/me/Projects/work': { repo: 'work', worktree: null, branch: 'main', commonDir: '/Users/me/Projects/work/.git', defaultBranch: 'main' },
+  '/Users/me/Projects/lookout-demo/demo-repo-wt': { repo: 'demo-repo', worktree: 'demo-repo-wt', branch: 'feature/demo', commonDir: '/Users/me/Projects/lookout-demo/demo-repo/.git', defaultBranch: 'main' },
 };
 const deps = {
   git: (cwd: string) => GIT[cwd] ?? null,
@@ -77,7 +77,7 @@ describe('fleet list → sidebar rows', () => {
         waitingFor: 'input needed',
         statusSince: 1792145455214,
         contextPct: 6,
-        cwd: '/Users/dariofilipaj/Projects/lookout-demo/plain-dir',
+        cwd: '/Users/me/Projects/lookout-demo/plain-dir',
         git: null,
         locationShown: { repo: true, where: false },
         backend: 'tmux',
@@ -101,8 +101,8 @@ describe('fleet list → sidebar rows', () => {
         waitingFor: null,
         statusSince: 1792145434397,
         contextPct: 8,
-        cwd: '/Users/dariofilipaj/Projects/lookout-demo/demo-repo-wt',
-        git: GIT['/Users/dariofilipaj/Projects/lookout-demo/demo-repo-wt'],
+        cwd: '/Users/me/Projects/lookout-demo/demo-repo-wt',
+        git: GIT['/Users/me/Projects/lookout-demo/demo-repo-wt'],
         locationShown: { repo: true, where: true },
         backend: 'tmux',
         controllable: true,
@@ -125,8 +125,8 @@ describe('fleet list → sidebar rows', () => {
         waitingFor: null,
         statusSince: 1792145421960,
         contextPct: 17,
-        cwd: '/Users/dariofilipaj/Projects/work',
-        git: GIT['/Users/dariofilipaj/Projects/work'],
+        cwd: '/Users/me/Projects/work',
+        git: GIT['/Users/me/Projects/work'],
         locationShown: { repo: true, where: false },
         backend: 'unknown',
         controllable: false,
@@ -149,8 +149,8 @@ describe('fleet list → sidebar rows', () => {
         waitingFor: null,
         statusSince: 1792145011865,
         contextPct: 10,
-        cwd: '/Users/dariofilipaj/Projects/work',
-        git: GIT['/Users/dariofilipaj/Projects/work'],
+        cwd: '/Users/me/Projects/work',
+        git: GIT['/Users/me/Projects/work'],
         locationShown: { repo: true, where: false },
         backend: 'unknown',
         controllable: false,
@@ -304,14 +304,14 @@ describe('fleet list → sidebar rows', () => {
       let asked = 0;
       const startRepos = () => {
         asked++;
-        return new Set(['/Users/dariofilipaj/Projects/work/.git']);
+        return new Set(['/Users/me/Projects/work/.git']);
       };
       const rows = normalizeRows(fixture('recorded-2026-10-16.json'), { ...deps, startRepos });
       expect(asked).toBe(1);
       const byDir = (cwd: string) => rows.find((r) => r.cwd === cwd)!.locationShown;
-      expect(byDir('/Users/dariofilipaj/Projects/work')).toEqual({ repo: false, where: false });
+      expect(byDir('/Users/me/Projects/work')).toEqual({ repo: false, where: false });
       // Another repo's Worktree shows both parts.
-      expect(byDir('/Users/dariofilipaj/Projects/lookout-demo/demo-repo-wt')).toEqual({ repo: true, where: true });
+      expect(byDir('/Users/me/Projects/lookout-demo/demo-repo-wt')).toEqual({ repo: true, where: true });
       expect(rows.filter((r) => !r.git).every((r) => r.locationShown.repo && !r.locationShown.where)).toBe(true);
     });
   });
