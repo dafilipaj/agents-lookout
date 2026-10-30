@@ -17,3 +17,4 @@ One row per feature. Update the status here and in the spec's frontmatter togeth
 | Library: everything Sessions produced, searchable, each item linked to its Session | LIB | Done | [SPEC](library/SPEC.md) |
 | Memory overview: what the Sessions cost the Mac, under the usage strip, with a breakdown per Session | MEM | In Progress | [SPEC](memory-overview/SPEC.md) |
 | Tools: the CLIs Lookout runs, their versions, what's missing or behind, and the command that fixes it | TOOLS | In Progress | [SPEC](tools/SPEC.md) |
+| Topics: a Session, its PR and its Task as one Topic, Topics linked into a graph | TOPIC | Draft | [SPEC](topics/SPEC.md) |

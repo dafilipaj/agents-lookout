@@ -14,6 +14,8 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Design system**: Lookout's shared look: the type scale and colour tokens in `web/src/index.css`, the components in `web/src/components/ui/`, and the rules for using them, written down in the DS spec and guarded by tests ([0009](decisions/0009-one-design-system-guarded-by-tests.md)).
 
+**Edge**: A connection you draw between two Topics: undirected, with an optional label. Shown on both Topics in the Topics tab and as a line in the graph. See TOPIC-6.
+
 **Effort**: The reasoning effort a Session's model runs at, such as `medium`, `high` or `xhigh`. Changed with `/effort` in Claude Code, or in Codex's `/model` picker. Comes from Fleet, read from the Transcript.
 
 **Fake Harness**: A stand-in for Claude Code or Codex in a World. It runs in the World's tmux, registers and writes Transcripts the way the real Harness does, and answers from a script, so the real Fleet and tb-session see it as a Session. It never calls a model.
@@ -67,6 +69,8 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 **Task**: A Productive task assigned to you that isn't closed.
 
 **Tool**: A CLI Lookout runs on this Mac: Fleet, `claude`, `codex`, `tb-session`, `tb-pr`, `tb-prod`, `tb-jev`, `git` and `tmux`. Every Building block is a Tool; not every Tool is a Building block. See the TOOLS spec.
+
+**Topic**: A named bundle you make by hand of the Sessions, PRs and Tasks that belong to one piece of your work, with an optional brief and a state, Open or Archived. Its members are references to what the Building blocks know; Lookout keeps them in `~/.config/lookout/topics.json`. See the TOPIC spec.
 
 **Transcript**: The JSONL log a Harness writes for a Session, for example under `~/.claude/projects/` or `~/.codex/sessions/`.
 
