@@ -2,7 +2,7 @@
 
 What the Fleet fork (`dafilipaj/fleet`, branch `lookout`, [0006](../decisions/0006-run-a-fork-of-fleet.md)) adds so Settings › Tools ([TOOLS](../features/tools/SPEC.md)) can judge Fleet by the revision it was built from (TOOLS-2.2) and say where Claude Code and Codex are and which version each is (TOOLS-1.2, TOOLS-1.3). It's built in the fork as one commit and verified there, in Fleet's own tests; Lookout's fake `fleet` (`server/fixtures/fleet/messages/fake-fleet.mjs`) follows this file, and `pnpm req-check` never looks here (the criteria are TOOLS-1.2, 1.3 and 2.2). Points are numbered F1 to F4 so the commit's tests can cite them. Every field is add-only: a later Fleet may add, never rename or drop.
 
-Written 2026-10-30, while the commit is built in parallel, against the fork at `5e2afd8` (Lookout's pin in `e2e/pins.json`), which prints plain `fleet 0.1.0` and lists Harnesses without `path` or `version`. Lookout's side is built against this file and the fake; the pin moves to the commit once it is reviewed and pushed, and with it TOOLS-4.1's numbers if its fixtures moved.
+Written 2026-10-30, while the commit is built in parallel, against the fork at `5e2afd8` (Lookout's pin in `e2e/pins.json`), which prints plain `fleet 0.1.0` and lists Harnesses without `path` or `version`. Lookout's side is built against this file and the fake; the pin moves to the commit once it is reviewed and pushed, and with it TOOLS-4.1's numbers if its fixtures moved. Built and pushed as fork commit `2b23eda`, Lookout's pin since 2026-10-30.
 
 ## Why
 
@@ -40,7 +40,7 @@ Each element gains two fields, beside `id`, `label`, `command`, `installed` and 
 
 ## F3. A Fleet without them
 
-- Today's pin has neither. Lookout treats a missing field as `null`: a Harness Fleet lists as installed without a `version` is `unknown`, with "found by Fleet; version unreadable" (TOOLS-1.2), and its path is blank when `path` is missing. A `fleet --version` without a revision falls back as F1 says.
+- A Fleet older than `2b23eda` has neither. Lookout treats a missing field as `null`: a Harness Fleet lists as installed without a `version` is `unknown`, with "found by Fleet; version unreadable" (TOOLS-1.2), and its path is blank when `path` is missing. A `fleet --version` without a revision falls back as F1 says.
 - `path` must be absolute; anything else Lookout reads as `null`. `version` is cut and redacted like any line a Tool prints (TOOLS-1.3).
 
 ## F4. Tests in the fork
