@@ -21,7 +21,7 @@ const MINE_URL = 'https://github.com/productiveio/anvil/pull/2101';
 const NAME = {
   stale: 'willow #2102 approved no CI 6d Hang the willow lanterns',
   fresh: 'anvil #2101 draft CI passing 1d Sharpen the anvil corners',
-  review: 'willow #2106 no CI 1d Count the willow leaves',
+  review: 'teammate willow #2106 no CI 1d Count the willow leaves',
 };
 
 const work = (page: Page) => page.getByRole('tabpanel', { name: 'Work' });

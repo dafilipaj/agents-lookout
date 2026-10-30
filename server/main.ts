@@ -148,7 +148,8 @@ settings.onChange((s) => work.setProductiveEmail(s.productiveEmail));
 
 const app = createApp({
   attachmentsDir: join(homedir(), '.lookout', 'attachments'),
-  avatarsDir: join(homedir(), '.lookout', 'avatars'),
+  // WORK-3.9: `LOOKOUT_AVATARS=off` (every World sets it) fetches none, so a Behaviour test never asks GitHub.
+  ...(env.LOOKOUT_AVATARS === 'off' ? {} : { avatarsDir: join(homedir(), '.lookout', 'avatars') }),
   guard,
   monitor,
   settings,

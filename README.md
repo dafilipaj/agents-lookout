@@ -65,6 +65,7 @@ Checks: `pnpm test`, `pnpm typecheck`, `pnpm lint`, `pnpm req-check`. Run `pnpm 
 | Settings file | `~/.config/lookout/settings.json` | `LOOKOUT_SETTINGS` (or `XDG_CONFIG_HOME`) |
 | Attachments dropped on the composer | `~/.lookout/attachments/` | |
 | Mutation token | random on each server start | `LOOKOUT_TOKEN` |
+| Review request avatars (WORK-3.9) | fetched from GitHub, kept in `~/.lookout/avatars/` | `LOOKOUT_AVATARS=off` fetches none (initials only) |
 
 The server can start and kill processes, so it doesn't trust CORS alone ([decision 0003](docs/decisions/0003-browser-first-react-stack.md)):
 

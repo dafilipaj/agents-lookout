@@ -655,6 +655,8 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
       LOOKOUT_PORT: '0',
       LOOKOUT_TOKEN: token,
       LOOKOUT_SETTINGS: settingsPath,
+      // WORK-3.9: no avatar is fetched from GitHub; Review requests show their author's initial.
+      LOOKOUT_AVATARS: 'off',
       ...(bins.fleet ? { LOOKOUT_FLEET_BIN: join(bin, 'fleet') } : {}),
       ...(bins.tbSession ? { LOOKOUT_TB_SESSION_BIN: join(bin, 'tb-session') } : {}),
       TMUX_TMPDIR: tmuxTmpdir,
