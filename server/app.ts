@@ -13,6 +13,7 @@ import { EndError, parseEndTarget } from './closer.ts';
 import { type Library } from './library.ts';
 import { LibraryError, parseLibraryQuery } from './library.ts';
 import { OUTPUT_HEADERS } from './output-files.ts';
+import { Avatars } from './avatars.ts';
 import { PathsError } from './files.ts';
 import { ModelSwitchError, parseEffortRequest, parseModelRequest } from './model-switch.ts';
 import { RenameError, parseRenameRequest } from './renamer.ts';
@@ -29,6 +30,8 @@ import type { RefreshAnswer } from './work.ts';
 export interface AppOptions {
   /** VIEW-9: explicit storage location; tests always pass a temporary directory. */
   attachmentsDir: string;
+  /** WORK-3.9: where Review request authors' avatars are kept; without one, every avatar is a 404 (initials). */
+  avatarsDir?: string;
   guard: GuardConfig;
   monitor: Pick<SessionMonitor, 'snapshot' | 'watch'>;
   settings: Pick<SettingsStore, 'get' | 'update' | 'onChange'>;
@@ -141,6 +144,9 @@ const SECURITY_HEADERS = {
 
 export function createApp(opts: AppOptions): LookoutApp {
   const attachments = new Attachments(opts.attachmentsDir);
+  const avatars = opts.avatarsDir
+    ? new Avatars({ directory: opts.avatarsDir, allowed: () => opts.work.snapshot().prs.reviewRequests.flatMap((pr) => (pr.author ? [pr.author] : [])) })
+    : null;
   const clients = new Map<string, ServerResponse>();
   /** WORK-8.1: the tabs that have Work open, each with its hold on the Work poller. */
   const workOpen = new Map<string, () => void>();
@@ -205,6 +211,15 @@ export function createApp(opts: AppOptions): LookoutApp {
       if (req.method !== 'GET') return json(res, 405, { error: 'method not allowed' }, true);
       try { return await opts.library.files.serve(url.searchParams.get('path') ?? '', res); }
       catch { if (!res.headersSent) json(res, 500, { error: 'This file could not be read.' }, true); else res.destroy(); return; }
+    }
+
+    const avatarMatch = /^\/api\/avatars\/([^/]{1,64})$/.exec(url.pathname);
+    if (avatarMatch) {
+      if (req.method !== 'GET') return json(res, 405, { error: 'method not allowed' });
+      const avatar = avatars ? await avatars.get(decodeURIComponent(avatarMatch[1]!)).catch(() => null) : null;
+      if (!avatar) return json(res, 404, { error: 'No avatar for that login.' });
+      res.writeHead(200, { ...SECURITY_HEADERS, 'content-type': avatar.type, 'content-length': avatar.body.length, 'cache-control': 'private, max-age=3600' });
+      return res.end(avatar.body);
     }
 
     const route = `${req.method} ${url.pathname}`;

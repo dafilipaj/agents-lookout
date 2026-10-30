@@ -29,6 +29,7 @@ import {
   marksFor,
   mergePages,
   parseTasksPage,
+  githubLogin,
   parseTbPrList,
   outdatedReason,
   plainIssue,
@@ -103,6 +104,7 @@ describe('reading `tb-pr list --json` (tb-pr 0.3.1)', () => {
       number: 2101,
       title: 'Sharpen the anvil corners',
       url: 'https://github.com/productiveio/anvil/pull/2101',
+      author: 'world-tester',
       createdAt: Date.parse('2026-10-17T10:00:00Z'),
       ageDays: expect.closeTo(2.0000056, 6),
       rotting: 'fresh',
@@ -122,6 +124,19 @@ describe('reading `tb-pr list --json` (tb-pr 0.3.1)', () => {
     ]);
     expect(by(2107).chip).toBeNull();
     expect(board.fetchedAt).toBe(FETCHED);
+  });
+
+  it('WORK-3.8: a PR keeps its author when it is a GitHub login, and null for anything else', () => {
+    const authors = ['teammate', 'dependabot[bot]', '-dash', 'a--b', 'x'.repeat(40), '', 42, null];
+    const board = parseTbPrList(withBoard((b) => {
+      b.columns.waiting_on_me.find((p: Loose) => p.number === 2106).author = 'teammate';
+      b.columns.waiting_on_me.find((p: Loose) => p.number === 2107).author = 'dependabot[bot]';
+    }));
+    const author = (n: number) => board.columns.waiting_on_me.find((p) => p.number === n)!.author;
+    expect([author(2106), author(2107)]).toEqual(['teammate', null]);
+    for (const value of authors) expect(githubLogin(value), String(value)).toBe(value === 'teammate' ? 'teammate' : null);
+    expect(githubLogin('Ab-c1')).toBe('Ab-c1');
+    expect(githubLogin('x'.repeat(39))).toBe('x'.repeat(39));
   });
 
   it('WORK-3.2: titles are one line and bounded; an unreadable title shows the number', () => {
@@ -899,6 +914,7 @@ describe('reading `tb-prod query tasks` (WORK-2)', () => {
       project: 'Lantern Works',
       status: 'In progress',
       statusCategory: 'started',
+      statusColor: 4,
       dueDate: null,
       lastActivityAt: Date.parse('2026-10-19T12:12:03Z'),
       milestone: false,
@@ -972,6 +988,18 @@ describe('reading `tb-prod query tasks` (WORK-2)', () => {
     expect(tasks[1]!.project).toBeNull();
     expect(tasks[1]!.statusCategory).toBeNull();
     expect(tasks[3]).toMatchObject({ status: null, statusCategory: null, project: 'Harbor Bells' });
+  });
+
+  it("WORK-2.12: a Task's status colour is its status's `color_id` in Productive's palette, 0 to 16, else null", () => {
+    expect(parseTasksPage(TASKS).tasks.map((t) => t.statusColor)).toEqual([4, 6, 1, 1]);
+    for (const [value, want] of [[0, 0], [16, 16], ['12', 12], [17, null], [-1, null], [2.5, null], ['7a', null], ['', null], [null, null], [undefined, null]] as const) {
+      const page = JSON.parse(TASKS) as Loose;
+      page.included.find((r: Loose) => r.id === '8001').attributes.color_id = value;
+      expect(parseTasksPage(JSON.stringify(page)).tasks[0]!.statusColor, String(value)).toBe(want);
+    }
+    const page = JSON.parse(TASKS) as Loose;
+    page.data[0].relationships.workflow_status.data.id = '9999';
+    expect(parseTasksPage(JSON.stringify(page)).tasks[0]!.statusColor).toBeNull();
   });
 
   it('WORK-2.1: Tasks Lookout can’t read, a Task without a digit id or a page without data or meta.hasNextPage, are a shape error, never a shorter list', () => {

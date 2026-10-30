@@ -1,5 +1,5 @@
 ---
-status: Accepted
+status: Accepted (exceptions superseded by 0012)
 date: 2026-10-17
 ---
 

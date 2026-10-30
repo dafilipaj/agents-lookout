@@ -26,6 +26,9 @@ const SOURCES = Object.fromEntries(
  * the Session row's context gauge (`ContextRing`), a tiny chart of a number rather than an icon.
  * MEM's sparkline is a chart too. The chat rail's Marks are CSS shapes and need no entry.
  */
+/** DS-8.5 (0012): the one component that renders an `<img>`: a person's avatar, never an icon. */
+const IMG_FILES = new Set(['web/src/components/ui/avatar.tsx']);
+
 const SVG_FILES = new Set(['web/src/components/HarnessIcon.tsx', 'web/src/components/StatusMarker.tsx', 'web/src/components/SessionItem.tsx', 'web/src/components/MemoryLine.tsx']);
 
 /**
@@ -128,9 +131,10 @@ function cssSymbols(source: string): string[] {
 }
 
 /** Hand-drawn `<svg>` elements, and imports, re-exports and `import()`s of image files or packages not allowed in `path`, as `line:col what`. */
-function iconSources(source: string, path: string): { svg: string[]; imports: string[] } {
+function iconSources(source: string, path: string): { svg: string[]; img: string[]; imports: string[] } {
   const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, path.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
   const svg: string[] = [];
+  const img: string[] = [];
   const imports: string[] = [];
   const checkImport = (node: ts.Node, specifier: ts.Node | undefined) => {
     if (!specifier || !ts.isStringLiteralLike(specifier)) return;
@@ -140,12 +144,13 @@ function iconSources(source: string, path: string): { svg: string[]; imports: st
   };
   const visit = (node: ts.Node) => {
     if ((ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) && node.tagName.getText() === 'svg') svg.push(`${where(file, node.getStart())} <svg>`);
+    if ((ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) && node.tagName.getText() === 'img') img.push(`${where(file, node.getStart())} <img>`);
     if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) checkImport(node, node.moduleSpecifier);
     if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) checkImport(node, node.arguments[0]);
     ts.forEachChild(node, visit);
   };
   visit(file);
-  return { svg, imports };
+  return { svg, img, imports };
 }
 
 describe('icons', () => {
@@ -255,5 +260,21 @@ describe('icons', () => {
         return [...(SVG_FILES.has(path) ? [] : svg), ...imports].map((s) => `${path}:${s}`);
       });
     expect(found).toEqual([]);
+  });
+
+  it('DS-8.5: the guard catches an <img> however it is written, and lets other elements through', () => {
+    const img = (source: string) => iconSources(source, 'web/src/components/X.tsx').img.length;
+    expect(img('const a = <img src="/x.png" alt="" />;')).toBe(1);
+    expect(img('const a = <img src={src} alt="">{null}</img>;')).toBe(1);
+    expect(img('const a = <span role="img" aria-label="x" />; const b = <Image />; const c = "<img>";')).toBe(0);
+  });
+
+  it('DS-8.5: only the Avatar renders an <img>', () => {
+    expect(Object.keys(SOURCES)).toEqual(expect.arrayContaining([...IMG_FILES]));
+    const found = Object.entries(SOURCES)
+      .filter(([path]) => !path.endsWith('.css') && !IMG_FILES.has(path))
+      .flatMap(([path, text]) => iconSources(text, path).img.map((s) => `${path}:${s}`));
+    expect(found).toEqual([]);
+    for (const path of IMG_FILES) expect(iconSources(SOURCES[path]!, path).img.length, path).toBe(1);
   });
 });

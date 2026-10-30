@@ -3,6 +3,7 @@ import { Plus, WifiOff } from 'lucide-react';
 import { describe, expect, it, vi } from 'vitest';
 import { ClockContext } from '@/lib/time';
 import { Alert } from './alert';
+import { Avatar } from './avatar';
 import { Chip } from './chip';
 import { CommandBlock } from './command-block';
 import { EmptyState } from './empty-state';
@@ -286,5 +287,28 @@ describe('shared pieces', () => {
     const key = screen.getByText('Esc');
     expect(key.tagName.toLowerCase()).toBe('kbd');
     expect(key).toHaveClass('font-mono', 'text-caption', 'rounded', 'border', 'border-border', 'px-1', 'min-w-5');
+  });
+});
+
+describe('Avatar', () => {
+  it("DS-8.5: a person's picture over their initial, which stays until it loads and when it fails; named by the login", () => {
+    const { container, rerender } = render(<Avatar login="teammate" src="/api/avatars/teammate" />);
+    const avatar = screen.getByRole('img', { name: 'teammate' });
+    expect(avatar).toHaveAttribute('title', 'teammate');
+    expect(avatar).toHaveClass('size-4', 'rounded-full', 'bg-muted', 'text-caption');
+    expect(avatar).toHaveTextContent(/^T$/);
+    const img = container.querySelector('img')!;
+    expect(img).toHaveAttribute('src', '/api/avatars/teammate');
+    expect(img).toHaveAttribute('alt', '');
+    expect(img).toHaveClass('opacity-0');
+    fireEvent.load(img);
+    expect(avatar).toHaveAttribute('data-state', 'loaded');
+    expect(avatar).toHaveTextContent('');
+    expect(img).not.toHaveClass('opacity-0');
+
+    rerender(<Avatar key="other" login="dario" src="/api/avatars/dario" />);
+    fireEvent.error(container.querySelector('img')!);
+    expect(screen.getByRole('img', { name: 'dario' })).toHaveTextContent(/^D$/);
+    expect(container.querySelector('img')).toBeNull();
   });
 });

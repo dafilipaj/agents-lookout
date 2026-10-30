@@ -57,6 +57,24 @@
   --info-text: oklch(0.42 0 0);
   /* DS-2: a search hit */
   --highlight: oklch(0.145 0 0 / 10%);
+  /* DS-2.4: Productive's palette, a workflow status's `color_id` (0012); Productive's own colours, the same in dark mode */
+  --palette-0: oklch(0.9147 0.1908 101.03); /* Canary, #ffe500 */
+  --palette-1: oklch(0.7244 0.1756 38.71); /* Orange, #ff784b */
+  --palette-2: oklch(0.6162 0.2006 5.32); /* Fuchsia, #e03e74 */
+  --palette-3: oklch(0.7819 0.1861 131.19); /* Lime green, #8ccf3e */
+  --palette-4: oklch(0.7897 0.1253 229.83); /* Blue, #55c9fb */
+  --palette-5: oklch(0.5640 0.1889 297.66); /* Electric, #8554d4 */
+  --palette-6: oklch(0.6400 0.1471 351.64); /* Burgundy, #cd6296 */
+  --palette-7: oklch(0.5878 0.2120 270.06); /* Celtic blue, #4f6bf8 */
+  --palette-8: oklch(0.8086 0.1248 189.16); /* Turquoise, #42dad1 */
+  --palette-9: oklch(0.6066 0 0); /* Concrete, #828282 */
+  --palette-10: oklch(0.6318 0.0753 279.59); /* Logan, #8085b7 */
+  --palette-11: oklch(0.8591 0.1612 86.30); /* Yellow, #ffc837 */
+  --palette-12: oklch(0.6701 0.1729 257.37); /* Azure, #4994fd */
+  --palette-13: oklch(0.7044 0.1872 23.19); /* Red, #ff6666 */
+  --palette-14: oklch(0.7632 0.1622 161.63); /* Green, #21d191 */
+  --palette-15: oklch(0.7705 0.1317 214.60); /* Cyan, #1ec9e8 */
+  --palette-16: oklch(1 0 0); /* White, #ffffff */
 }
 
 @media (prefers-color-scheme: dark) {
@@ -147,6 +165,23 @@
   --color-idle-text: var(--idle-text);
   --color-ok: var(--ok);
   --color-ok-text: var(--ok-text);
+  --color-palette-0: var(--palette-0);
+  --color-palette-1: var(--palette-1);
+  --color-palette-2: var(--palette-2);
+  --color-palette-3: var(--palette-3);
+  --color-palette-4: var(--palette-4);
+  --color-palette-5: var(--palette-5);
+  --color-palette-6: var(--palette-6);
+  --color-palette-7: var(--palette-7);
+  --color-palette-8: var(--palette-8);
+  --color-palette-9: var(--palette-9);
+  --color-palette-10: var(--palette-10);
+  --color-palette-11: var(--palette-11);
+  --color-palette-12: var(--palette-12);
+  --color-palette-13: var(--palette-13);
+  --color-palette-14: var(--palette-14);
+  --color-palette-15: var(--palette-15);
+  --color-palette-16: var(--palette-16);
   --color-destructive-text: var(--destructive-text);
   --color-destructive-soft: var(--destructive-soft);
   --color-warning: var(--warning);

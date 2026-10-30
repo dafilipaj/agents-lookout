@@ -14,6 +14,7 @@ import { launchView, pressRowAction, renderApp, row, rowEl, settings } from '@/t
 const pr = (over: Partial<WorkPr> & { repo: string; number: number }): WorkPr => ({
   title: `${over.repo} change ${over.number}`,
   url: `https://github.com/productiveio/${over.repo}/pull/${over.number}`,
+  author: null,
   createdAt: Date.now() - 2 * 86_400_000,
   ageDays: 2,
   rotting: 'fresh',
@@ -50,6 +51,7 @@ const task = (over: Partial<WorkTask> & { id: string; title: string }): WorkTask
   project: 'Lantern Works',
   status: 'In progress',
   statusCategory: 'started',
+  statusColor: null,
   dueDate: null,
   lastActivityAt: Date.now() - 3_600_000,
   milestone: false,
@@ -784,6 +786,30 @@ describe('Tasks (WORK-2)', () => {
     }
   });
 
+  it("WORK-2.12: each Task starts with its status dot in its Productive colour, a diamond for a milestone, dashed when unknown", async () => {
+    const COLOURED = task({ id: '41000105', title: 'Trim the wicks', statusColor: 4 });
+    const KEY = task({ id: '41000106', title: 'Lantern launch', statusColor: 16, milestone: true });
+    const UNKNOWN = task({ id: '41000107', title: 'Oil the hinges', statusColor: null });
+    const UNKNOWN_KEY = task({ id: '41000108', title: 'Harbor opening', status: null, statusCategory: null, statusColor: null, milestone: true });
+    openApp('/', withTasks({ tasks: [COLOURED, KEY, UNKNOWN, UNKNOWN_KEY] }));
+    await userEvent.setup().keyboard('w');
+    const dot = (id: string) => taskOption(id).querySelector<HTMLElement>('[data-field="icon"] [data-slot="task-status-dot"]')!;
+    expect(dot('41000105')).toHaveAttribute('aria-hidden', 'true');
+    expect(dot('41000105')).toHaveAttribute('data-shape', 'circle');
+    expect(dot('41000105').firstElementChild).toHaveClass('bg-palette-4', 'rounded-full', 'border', 'border-foreground/20');
+    expect(dot('41000106')).toHaveAttribute('data-shape', 'diamond');
+    expect(dot('41000106').firstElementChild).toHaveClass('bg-palette-16', 'rotate-45', 'border');
+    for (const id of ['41000107', '41000108']) {
+      expect(dot(id)).toHaveAttribute('data-color', 'none');
+      expect(dot(id).querySelector('.lucide-circle-dashed')).toHaveClass('text-muted-foreground');
+      expect(dot(id).querySelector('[class*="bg-palette"]')).toBeNull();
+    }
+    // A sign, not a button: the status stays in words, and the row's name is unchanged.
+    expect(taskOption('41000105').querySelector('[data-field="status"]')).toHaveTextContent('In progress');
+    expect(taskOption('41000105')).toHaveAccessibleName('Trim the wicks Lantern Works In progress');
+    expect(dot('41000105').closest('button')).toBeNull();
+  });
+
   it('WORK-2.2: each Task shows its title, project and status, its due date when set, and a milestone marked as one; a screen reader hears them as its name', async () => {
     const NEXT = task({ id: '41000103', title: 'Count the lamp oil', dueDate: `${YEAR + 1}-01-05` });
     const BARE = task({ id: '41000104', title: 'Sweep the pier', project: null, status: null, statusCategory: null });
@@ -796,7 +822,8 @@ describe('Tasks (WORK-2)', () => {
     // No due date and no milestone: no line for them.
     expect(field('41000101', 'due')).toBeNull();
     expect(field('41000101', 'milestone')).toBeNull();
-    expect(taskOption('41000101').children).toHaveLength(3); // the keys' description, the title line, project and status
+    const lines = (id: string) => taskOption(id).querySelector('[data-field="icon"] + div')!.children;
+    expect(lines('41000101')).toHaveLength(2); // the title line, project and status
     expect(field('41000102', 'milestone')).toHaveTextContent('milestone');
     expect(field('41000102', 'due')).toHaveTextContent(/^due Nov 4$/);
     expect(field('41000102', 'due')!.getAttribute('title')).toMatch(/^Due .*4/);
@@ -806,7 +833,7 @@ describe('Tasks (WORK-2)', () => {
     // What tb-prod didn't give is left out.
     expect(field('41000104', 'project')).toBeNull();
     expect(field('41000104', 'status')).toBeNull();
-    expect(taskOption('41000104').children).toHaveLength(2);
+    expect(lines('41000104')).toHaveLength(1);
     expect(taskOption('41000101')).toHaveAccessibleName('Light the harbor lanterns Lantern Works In progress');
     expect(taskOption('41000102')).toHaveAccessibleName('Tune the harbor bells Harbor Bells Not started milestone due Nov 4');
     expect(taskOption('41000104')).toHaveAccessibleName('Sweep the pier');
@@ -1427,6 +1454,38 @@ describe('PRs (WORK-3)', () => {
     expect(field('kettle#2103', 'chip')).toHaveTextContent('approved');
     expect(field('willow#2106', 'chip')).toBeNull();
     expect(within(workPanel()).getAllByRole('img').map((i) => i.getAttribute('aria-label'))).toEqual(['CI passing', 'CI failing', 'no CI', 'no CI']);
+  });
+
+  it('WORK-3.7: each PR in Mine starts with a PR icon in its state chip’s tone; the chip stays', async () => {
+    openApp('/', snap({ reviewRequests: [REVIEW] }));
+    await userEvent.setup().keyboard('w');
+    const icon = (id: string) => option(id).querySelector('[data-field="icon"] [data-slot="pr-icon"]')!;
+    expect(icon('anvil#2101')).toHaveClass('lucide-git-pull-request-draft', 'size-3.5', 'text-muted-foreground');
+    expect(icon('willow#2102')).toHaveClass('lucide-git-pull-request', 'text-foreground');
+    expect(icon('kettle#2103')).toHaveClass('lucide-git-pull-request', 'text-ok');
+    for (const id of ['anvil#2101', 'willow#2102', 'kettle#2103']) {
+      expect(icon(id)).toHaveAttribute('aria-hidden', 'true');
+      expect(option(id).querySelector('[data-field="chip"]')).not.toBeNull();
+    }
+    expect(option('anvil#2101').querySelector('[data-field="icon"]')).toBe(option('anvil#2101').children[1]); // first after the keys' description
+    // No merge icon: Work lists open PRs only. A Review request without a login for an author shows the PR icon, muted.
+    expect(workPanel().querySelector('.lucide-git-merge')).toBeNull();
+    expect(icon('willow#2106')).toHaveClass('lucide-git-pull-request', 'text-muted-foreground');
+  });
+
+  it('WORK-3.8: each Review request starts with its author’s avatar from Lookout’s own server, the initial until it loads', async () => {
+    openApp('/', snap({ reviewRequests: [{ ...REVIEW, author: 'Teammate' }] }));
+    await userEvent.setup().keyboard('w');
+    const avatar = within(option('willow#2106')).getByRole('img', { name: 'Teammate' });
+    expect(avatar.closest('[data-field="icon"]')).not.toBeNull();
+    expect(avatar).toHaveAttribute('title', 'Teammate');
+    expect(avatar).toHaveTextContent(/^T$/);
+    expect(avatar.querySelector('img')).toHaveAttribute('src', '/api/avatars/Teammate');
+    expect(option('willow#2106').querySelector('[data-slot="pr-icon"]')).toBeNull();
+    fireEvent.error(avatar.querySelector('img')!);
+    expect(avatar).toHaveTextContent(/^T$/);
+    // Mine's rows never show an avatar, even with an author.
+    expect(within(group('Mine')).queryAllByRole('img').filter((i) => i.getAttribute('data-slot') === 'avatar')).toEqual([]);
   });
 
   it('WORK-3.2: a screen reader hears each row’s repo, number, chip, CI, age and title as its name, and the keys that act on it as its description', async () => {

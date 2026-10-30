@@ -45,6 +45,7 @@ New tokens, each with a light and a dark value, and one meaning per family.
 - [x] DS-2.1 `index.css` defines `info-soft`, `info-border` and `info-text` (neutral, for staleness and notices), `highlight` (search hits), `warning` and `warning-text` (a level heading toward a limit), and `destructive-soft` (the error Alert's box, DS-4), in light and dark mode, as `oklch()` values the Tailwind theme maps to `--color-*`. (test)
 - [x] DS-2.2 `info-text` on `info-soft`, on the background and on the sidebar; `warning-text` on the background and the sidebar; and the foreground on `highlight` over the background and the sidebar keep 4.5:1 or more, in light and dark mode. (test)
 - [x] DS-2.3 Each colour family is used only for its meaning (UX, "Colour by meaning"). A guard test fails when a family's token is used in a file its row doesn't list, or in a listed file in a class the row doesn't name, and on a raw colour: a Tailwind palette class (`text-amber-600`), an arbitrary colour (`bg-[#f59e0b]`, `text-[oklch(…)]`) or a hex, `rgb(` or `oklch(` in a TS string or style. The one exception is `HarnessIcon.tsx`'s brand hex. (test)
+- [x] DS-2.4 `index.css` defines Productive's palette, `palette-0` to `palette-16`, Productive's 17 colours as Fantastic has them (Canary `#ffe500` to White `#ffffff`), the same in light and dark: they're the colours a status was given in Productive, not Lookout's. It's a family of its own, used only by `TaskStatusDot` (WORK-2.12, [0012](../../decisions/0012-task-status-dots-and-author-avatars.md)), written as `oklch()` like every other token, each Fantastic's hex once converted back. (test)
 
 ### DS-3 Colour means Status
 
@@ -103,6 +104,7 @@ Patterns the review found three or more times, each drawn slightly differently.
 - [x] DS-8.2 `CommandBlock` shows a command to copy: monospace `caption`, wrapped, selected whole on click. Fleet's and tb-session's "isn't installed" and Work's problems use it. (test)
 - [x] DS-8.3 `Chip` is one pill in `caption`, with a tone: `neutral`, `info` or a Status, and for Work's PR states `muted` (draft) and `ok` (approved, WORK-3.2), and `warning` for memory growth (MEM-3.5), with a `warning/40` border and `warning-text`. It replaces the "old", "live", "headless", "milestone" and PR state chips and the chat's message tag. (test)
 - [x] DS-8.4 `Kbd` is one key: the Filter box's `/`, the main pane's hints, the launcher's ⌘↵ and the composer hint's `i`. A sentence is never a key: the launcher's "Esc to close · your input is kept" keeps only "Esc" in a `Kbd`. (test)
+- [x] DS-8.5 `Avatar` is a person's picture in a circle, 16 px in a row: an image from Lookout's own origin over the person's initial (the first letter, upper-case, `caption`, `muted-foreground` on `muted`), which stays when the image fails or hasn't loaded. Its accessible name is the person's login. It's the one component that renders an `<img>` (0012); the guard fails on an `<img>` anywhere else. (test)
 
 ### DS-9 The Session list takes keyboard focus
 
@@ -181,6 +183,7 @@ Once colour meant only Status (DS-3), Lookout read as flat and grey (Dario, 2026
 | OK | `ok`, `-text` | something passed | CI passing, an approved PR, a PR under 3 days |
 | Info | `info-soft`, `-border`, `-text` | staleness, or something to know that needs nothing from you | info Alerts, the "old" chip, a usage reading marked old, "retrying" |
 | Highlight | `highlight` | a search hit | History's snippets and Library's title, path and URL hits |
+| Productive palette | `palette-0` … `palette-16` | the colour a status was given in Productive, the same in both modes (DS-2.4) | a Task's status dot (WORK-2.12) |
 | Primary | `primary`, `-foreground`, `-soft`, `ring` | you, and what you act on (DS-12.4) | the default Button, keyboard focus and a focused field, a resize handle in use, a question's chosen option, your own messages |
 | Neutral | `foreground`, `muted…`, `border`, `accent`, `sidebar…` | everything else, cool-tinted (DS-12.1) | |
 
@@ -428,3 +431,4 @@ None.
 - 2026-10-27: Section headers moved from `meta` to `title`, semibold, in sentence case: Work's "Tasks" and "PRs" and the Session sidebar's "Needs you" and "View only" (DS-12.6) sat too close to the row text. Their counts, ages and Loading stay `meta`/`caption` muted.
 - 2026-10-30: DS-6.4 amended from Dario's request: "No Sessions running" lists the shortcuts that matter with no Session (`N`, `H`) from the one shortcuts list, with an "All shortcuts" button for the dialog (SIDE-7.4).
 - 2026-10-30: DS-6.4 reworded to match the view: the hint lists `N` and the panels `H` `W` `L` (what `NoSessions()` renders), not `N` and `H`.
+- 2026-10-30: Added DS-2.4 (Productive's palette as a colour family, used only by a Task's status dot) and DS-8.5 (`Avatar`, the one `<img>`), for WORK-2.12 and WORK-3.8, decided in [0012](../../decisions/0012-task-status-dots-and-author-avatars.md). Built the same day: both ticked, the spec Done again.

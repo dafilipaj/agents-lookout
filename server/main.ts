@@ -148,6 +148,7 @@ settings.onChange((s) => work.setProductiveEmail(s.productiveEmail));
 
 const app = createApp({
   attachmentsDir: join(homedir(), '.lookout', 'attachments'),
+  avatarsDir: join(homedir(), '.lookout', 'avatars'),
   guard,
   monitor,
   settings,

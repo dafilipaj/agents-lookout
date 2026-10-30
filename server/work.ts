@@ -222,6 +222,17 @@ function readTaskIds(v: unknown): PrTaskRef[] | null {
  * Lookout can't read, without a number, a repo or a GitHub URL, throws TbPrShapeError: a renamed
  * field must fail the read, never leave a PR silently missing (or Work saying "No open PRs").
  */
+/** WORK-3.8: GitHub's login shape: letters, digits and single hyphens, not at either end, at most 39 characters. */
+export function githubLogin(value: unknown): string | null {
+  return typeof value === 'string' && /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/.test(value) ? value : null;
+}
+
+/** WORK-2.12: a workflow status's `color_id` (a number, or digits as a string) as an index into Productive's 17 colours. */
+function paletteIndex(value: unknown): number | null {
+  const n = typeof value === 'number' ? value : typeof value === 'string' && /^[0-9]{1,2}$/.test(value) ? Number(value) : NaN;
+  return Number.isInteger(n) && n >= 0 && n <= 16 ? n : null;
+}
+
 export function parsePr(raw: unknown, column: PrColumn): WorkPr | null {
   const unreadable = (what: string) => new TbPrShapeError(`a PR in ${column} ${what}`);
   if (!isObj(raw)) throw unreadable('is not an object');
@@ -237,6 +248,7 @@ export function parsePr(raw: unknown, column: PrColumn): WorkPr | null {
     number,
     title: displayText(raw.title, MAX_TITLE) ?? `#${number}`,
     url,
+    author: githubLogin(raw.author),
     createdAt: rfc3339(raw.created_at),
     ageDays: age,
     rotting: ROT_BUCKETS.includes(raw.rotting as RotBucket) ? (raw.rotting as RotBucket) : null,
@@ -549,6 +561,7 @@ export function parseTasksPage(stdout: string): TasksPage {
       project: displayText(project?.name, MAX_TITLE),
       status: displayText(status?.name, MAX_TITLE),
       statusCategory: category === 1 ? 'not-started' : category === 2 ? 'started' : null,
+      statusColor: paletteIndex(status?.color_id),
       dueDate: typeof a.due_date === 'string' && DUE_DATE.test(a.due_date) ? a.due_date : null,
       lastActivityAt: rfc3339(a.last_activity_at),
       milestone: a.type_id === 3,

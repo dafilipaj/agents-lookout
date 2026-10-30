@@ -2,6 +2,7 @@ import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 import css from '@/index.css?raw';
 import { TYPE_SCALE } from '@/lib/utils';
+import { solid, themeTokens } from './contrast';
 
 /**
  * Decision 0009: one design system, guarded by tests (docs/features/design-system/SPEC.md, DS). Like
@@ -245,6 +246,12 @@ const FAMILIES: Record<string, Family> = {
       'web/src/components/ChatRail.tsx': { why: "a question's Mark on the chat rail", uses: ['bg-needs-you'] },
       'web/src/components/Chat.tsx': { why: 'a pending question card', uses: ['bg-needs-you-soft', 'border-needs-you/60', 'text-needs-you-text'] },
       'web/src/components/Answering.tsx': { why: 'the question and permission cards, and their TerminalNote', uses: ['bg-needs-you-soft', 'border-needs-you/60', 'text-needs-you-text'] },
+    },
+  },
+  palette: {
+    tokens: ['palette-0', 'palette-1', 'palette-2', 'palette-3', 'palette-4', 'palette-5', 'palette-6', 'palette-7', 'palette-8', 'palette-9', 'palette-10', 'palette-11', 'palette-12', 'palette-13', 'palette-14', 'palette-15', 'palette-16'],
+    files: {
+      'web/src/components/TaskStatusDot.tsx': { why: "a Task's status dot, in the colour Productive gave its status (DS-2.4, WORK-2.12)", uses: ['bg-palette-0', 'bg-palette-1', 'bg-palette-10', 'bg-palette-11', 'bg-palette-12', 'bg-palette-13', 'bg-palette-14', 'bg-palette-15', 'bg-palette-16', 'bg-palette-2', 'bg-palette-3', 'bg-palette-4', 'bg-palette-5', 'bg-palette-6', 'bg-palette-7', 'bg-palette-8', 'bg-palette-9'] },
     },
   },
   busy: {
@@ -590,6 +597,17 @@ describe('colour by meaning', () => {
     expect(mapped.map((m) => m[1]!).sort()).toEqual([...SHADCN, ...Object.values(FAMILIES).flatMap((f) => f.tokens)].sort());
     // Each is a mapping onto the variable of the same name, never a value of its own.
     expect(mapped.filter((m) => m[2]!.trim() !== `var(--${m[1]})`).map((m) => m[1])).toEqual([]);
+  });
+
+  it("DS-2.4: Productive's palette is Fantastic's 17 colours, defined once and the same in dark mode", () => {
+    const FANTASTIC = ['#ffe500', '#ff784b', '#e03e74', '#8ccf3e', '#55c9fb', '#8554d4', '#cd6296', '#4f6bf8', '#42dad1', '#828282', '#8085b7', '#ffc837', '#4994fd', '#ff6666', '#21d191', '#1ec9e8', '#ffffff'];
+    // Once each, so dark mode has no value of its own; each an oklch() that is Fantastic's hex within rounding.
+    expect([...uncommented(css).matchAll(/--palette-(\d+)\s*:/g)].map((m) => Number(m[1]))).toEqual(FANTASTIC.map((_, i) => i));
+    const { light, dark } = themeTokens(css);
+    const hex = (rgb: readonly number[]) => `#${rgb.map((v) => Math.round(v * 255).toString(16).padStart(2, '0')).join('')}`;
+    expect(FANTASTIC.map((_, i) => hex(solid(light, `palette-${i}`)))).toEqual(FANTASTIC);
+    expect(FANTASTIC.map((_, i) => hex(solid(dark, `palette-${i}`)))).toEqual(FANTASTIC);
+    expect(Object.keys(FAMILIES.palette!.files)).toEqual(['web/src/components/TaskStatusDot.tsx']);
   });
 
   it('DS-2.3: every family has its tokens defined, and each token is in exactly one family', () => {

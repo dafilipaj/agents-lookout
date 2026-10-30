@@ -96,6 +96,8 @@ export interface WorkPr {
   title: string;
   /** tb-pr's `url`, always `https://github.com/productiveio/…` (WORK-6.3); a PR without one isn't listed. */
   url: string;
+  /** WORK-3.8: tb-pr's `author`, a GitHub login; null when it isn't one (a bot's `name[bot]`, or none). */
+  author: string | null;
   /** tb-pr's `created_at`, ms since epoch; null when unreadable. */
   createdAt: number | null;
   /** tb-pr's `age_days` when the board was fetched; null when unreadable. */
@@ -162,6 +164,8 @@ export interface WorkTask {
   status: string | null;
   /** The status's category: 1 not started, 2 started; null for anything else. */
   statusCategory: 'not-started' | 'started' | null;
+  /** WORK-2.12: the status's `color_id`, an index into Productive's palette (0 to 16); null when it has none or one outside it. */
+  statusColor: number | null;
   /** `YYYY-MM-DD`, null when unset (WORK-2.2). */
   dueDate: string | null;
   /** ms since epoch; null when unreadable. */
