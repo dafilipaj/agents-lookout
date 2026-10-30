@@ -9,7 +9,8 @@ import { type Outcome, type Refusal, serveCall } from './control.ts';
  * answer at all.
  *
  * Anything else is a violation, `list` without `--json` included: a real tb-pr would reach GitHub
- * with your account.
+ * with your account. `--version`, which Settings › Tools reads when the server starts (TOOLS-1.3),
+ * prints the declared line, never reaching GitHub here.
  */
 
 const MINE = new Set<TbPrColumn>(['draft_mine', 'review_mine', 'ready_to_merge_mine']);
@@ -105,7 +106,12 @@ function failed(decl: TbPrDecl): Outcome | null {
   return error(`GitHub API error (403): rate limited — resets at ${resets} UTC. ${LATER}`);
 }
 
+/** TOOLS-1.3: what `tb-pr --version` prints in a World, where no gh can check for a newer release. */
+export const TB_PR_VERSION = 'tb-pr 0.3.1 (install gh to check for updates)';
+
 function answer(argv: string[], decl: TbPrDecl, now: Date): Outcome | Refusal {
+  // Settings › Tools reads it (TOOLS-1.3): a read like the real one's, which never reaches GitHub here.
+  if (argv.length === 1 && argv[0] === '--version') return { stdout: `${decl.version ?? TB_PR_VERSION}\n`, code: 0 };
   // `--json` is a global flag: before or after the subcommand.
   const words = argv.filter((a) => a !== '--json');
   const json = argv.length - words.length;

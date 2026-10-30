@@ -1,0 +1,20 @@
+[
+  {
+    "id": "claude",
+    "label": "Claude Code",
+    "command": "claude",
+    "installed": true,
+    "path": "/Users/me/.local/bin/claude",
+    "version": "2.1.314 (Claude Code)",
+    "models": [{ "id": "", "label": "Default (claude-opus-5-5)", "efforts": ["low", "medium", "high"], "default_effort": "medium" }]
+  },
+  {
+    "id": "codex",
+    "label": "Codex",
+    "command": "codex",
+    "installed": true,
+    "path": "/Users/me/.nvm/versions/node/v24.22.1/bin/codex",
+    "version": "codex-cli 0.163.0",
+    "models": [{ "id": "", "label": "Default (gpt-6-astra)", "efforts": ["low", "medium", "high"], "default_effort": "medium" }]
+  }
+]

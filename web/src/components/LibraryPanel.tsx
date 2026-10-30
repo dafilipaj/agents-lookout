@@ -77,12 +77,22 @@ type Page = Extract<LibraryPage, { state: 'ok' }>;
 interface Results { pages: Page[]; gen: number; limit?: number }
 interface Actions { open(): void; copy(): void; session(): void }
 
+/** LIB-2.8: what the Library says instead of Outputs when tb-session can't give them. */
+interface Install { title: string; detail: string; command: string }
+
+/** TOOLS-2.5: a tb-session that's too old says so, with the version it needs, never that it isn't installed. */
+function installHint(page: Extract<LibraryPage, { state: 'not-installed' | 'too-old' }>): Install {
+  return page.state === 'too-old'
+    ? { title: page.reason, detail: 'Update it, then reopen Library:', command: page.installCommand }
+    : { title: 'tb-session needs events', detail: 'Install a tb-session with events, then reopen Library:', command: page.installCommand };
+}
+
 /** LIB: the tab renders the server's held read. It never mines a Transcript or fetches an external URL. */
 export function LibraryPanel({ focusKey, visible, sessions, now, search, status, filter, onFilter, headless, onHeadless, onSession, keyboardEnabled, navRef }: LibraryPanelProps) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Results | null>(null);
   const [busy, setBusy] = useState(true), [moreBusy, setMoreBusy] = useState(false), [indexing, setIndexing] = useState(false);
-  const [error, setError] = useState<string | null>(null), [install, setInstall] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null), [install, setInstall] = useState<Install | null>(null);
   const [active, setActive] = useState<string | null>(null), [expanded, setExpanded] = useState<string | null>(null), [hovered, setHovered] = useState<string | null>(null);
   const [opening, setOpening] = useState(false), [actionError, setActionError] = useState<string | null>(null);
   const input = useRef<HTMLInputElement>(null), list = useRef<HTMLDivElement>(null), scroll = useRef<HTMLDivElement>(null);
@@ -130,7 +140,7 @@ export function LibraryPanel({ focusKey, visible, sessions, now, search, status,
       while (mine === seq.current) {
         const page = await ask(pageNumber, id);
         if (mine !== seq.current) return;
-        if (page.state === 'not-installed') { setInstall(page.installCommand); setResults(null); return; }
+        if (page.state === 'not-installed' || page.state === 'too-old') { setInstall(installHint(page)); setResults(null); return; }
         if (page.state === 'read-again') { pages = []; count = 0; pageNumber = 1; id = undefined; continue; }
         heldRead.current = page.readId; setInstall(null);
         pages.push(page); count += page.items.length;
@@ -197,7 +207,7 @@ export function LibraryPanel({ focusKey, visible, sessions, now, search, status,
     let restart = false;
     void ask(tail.nextPage, tail.readId).then((page) => {
       if (mine !== seq.current) return;
-      if (page.state === 'not-installed') { setInstall(page.installCommand); return; }
+      if (page.state === 'not-installed' || page.state === 'too-old') { setInstall(installHint(page)); return; }
       if (page.state === 'read-again') { restart = true; return; }
       const old = pending.current ?? current.current;
       if (!old || old.gen !== mine) return;
@@ -277,9 +287,9 @@ export function LibraryPanel({ focusKey, visible, sessions, now, search, status,
     </div>
     {error && <Alert title="Couldn't read Library" detail={error} className="mx-2.5 my-3" />}
     {actionError && <Alert title={actionError} className="mx-2.5 my-2" />}
-    {install ? <Alert title="tb-session needs events" detail="Install a tb-session with events, then reopen Library:" className="mx-2.5 my-3">
+    {install ? <Alert title={install.title} detail={install.detail} className="mx-2.5 my-3">
       <CommandBlock>
-        {install}
+        {install.command}
       </CommandBlock>
     </Alert> : <>
       {busy && <Loading label={indexing ? 'Indexing Transcripts…' : 'Loading…'} className={cn('items-center px-4 py-3', results && 'absolute right-2 bottom-2 z-10 rounded-md bg-sidebar')} />}

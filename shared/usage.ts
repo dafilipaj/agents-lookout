@@ -75,6 +75,8 @@ export interface JevStatus {
   /** The config file's path (never its contents), when tb-jev uses one. */
   configPath: string | null;
   reason: string | null;
+  /** TOOLS-2.5: the command that updates a tb-jev too old for `status` (`unavailable`); absent otherwise. */
+  fix?: string;
 }
 
 export interface UsageSnapshot {

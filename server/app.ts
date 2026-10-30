@@ -4,6 +4,7 @@ import { MAX_ATTACHMENT_BYTES } from '../shared/attachments.ts';
 import { type Settings, SettingsError, type SettingsView } from '../shared/settings.ts';
 import type { AnswerRequest, AnswerResult, ChatPage, EffortSwitchRequest, EffortSwitchResult, EndResult, EndTarget, EscStatus, Harness, HarnessOption, HistoryDetail, HistoryPage, HistoryPeek, LaunchView, ModelSwitchRequest, ModelSwitchResult, RenameResult, ResumeResult, ServerEvent } from '../shared/types.ts';
 import type { PathAnswer } from '../shared/files.ts';
+import type { ToolsSnapshot } from '../shared/tools.ts';
 import type { UsageSnapshot } from '../shared/usage.ts';
 import type { WorkSnapshot } from '../shared/work.ts';
 import { AnswerError, parseAnswerRequest, parseEscStatus } from './answerer.ts';
@@ -91,6 +92,14 @@ export interface AppOptions {
     /** WORK-8.2: a forced read; never throws a command's error (WORK-7.7). */
     refresh(): Promise<RefreshAnswer>;
   };
+  /**
+   * TOOLS: every Tool Lookout runs. `read()` reads when the last read began a minute ago or more
+   * (TOOLS-1.4), `force` for Refresh. Optional: without it, `/api/tools` is 404.
+   */
+  tools?: {
+    snapshot(): ToolsSnapshot;
+    read(opts?: { force?: boolean }): Promise<ToolsSnapshot>;
+  };
   /** Directory of the built UI; null in `pnpm dev`, where Vite serves it. */
   staticDir: string | null;
   keepAliveMs?: number;
@@ -166,6 +175,7 @@ export function createApp(opts: AppOptions): LookoutApp {
       usage: opts.usage.snapshot(),
       memory: opts.memory.snapshot(),
       work: opts.work.snapshot(),
+      ...(opts.tools ? { tools: opts.tools.snapshot() } : {}),
     });
     clients.set(clientId, res);
     const unwatch = opts.monitor.watch();
@@ -267,6 +277,12 @@ export function createApp(opts: AppOptions): LookoutApp {
       if (body === NO_BODY) return;
       return historyCall(res, () => opts.history.resume(body));
     }
+    // TOOLS-1.4: the Settings page opened: read the Tools when the last read began a minute ago or
+    // more, and answer what's known. A read runs only `--version`, so it's a GET.
+    if (route === 'GET /api/tools' && opts.tools) return json(res, 200, await opts.tools.read());
+    // TOOLS-1.4: Refresh re-reads the installed versions now, joining a read in flight; the GitHub
+    // release check keeps its once-a-minute limit. A POST, so the token and Origin apply.
+    if (route === 'POST /api/tools/refresh' && opts.tools) return json(res, 200, await opts.tools.read({ force: true }));
     if (route === 'POST /api/usage/refresh') {
       // A window's reset time passed (USAGE-2.2): read the limits again (at most every 15 s).
       await opts.usage.refresh();

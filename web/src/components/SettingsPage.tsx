@@ -1,4 +1,5 @@
 import { PRODUCTIVE_EMAIL_ERROR, type Settings, type SettingsView, parseProductiveEmail } from '@shared/settings.ts';
+import type { ToolsSnapshot } from '@shared/tools.ts';
 import { ArrowLeft, Folder, X } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
@@ -7,15 +8,21 @@ import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { PlainView } from './Shell';
+import { ToolsSection } from './ToolsSection';
 
 interface Props {
   settings: SettingsView;
   save(patch: Partial<Settings>): Promise<unknown>;
   onBack(): void;
+  /** TOOLS: the last read of every Tool, and how to ask for another. */
+  tools: ToolsSnapshot | null;
+  now: number;
+  loadTools(): Promise<unknown>;
+  refreshTools(): Promise<unknown>;
 }
 
 /** SIDE-7.1: the Settings page. Values come from the server, so every tab shows the same. */
-export function SettingsPage({ settings, save, onBack }: Props) {
+export function SettingsPage({ settings, save, onBack, tools, now, loadTools, refreshTools }: Props) {
   // What's typed; null while it matches the server's value, so changes from other tabs show.
   const [draft, setDraft] = useState<string | null>(null);
   const [state, setState] = useState<{ kind: 'idle' | 'saving' | 'saved' } | { kind: 'error'; message: string }>({
@@ -92,6 +99,8 @@ export function SettingsPage({ settings, save, onBack }: Props) {
         <ProductiveEmail settings={settings} save={save} />
 
         <StartDirectories settings={settings} save={save} />
+
+        <ToolsSection tools={tools} now={now} load={loadTools} refresh={refreshTools} />
       </div>
     </PlainView>
   );

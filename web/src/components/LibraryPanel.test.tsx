@@ -115,6 +115,13 @@ it('LIB-2.8: uses Loading, EmptyState, hidden-gone explanation, error Alert and 
   const missing = renderApp('/', { library: async () => ({ state: 'not-installed', installCommand: 'install tb-session' }) }); await open(missing); expect(await within(panel()).findByRole('alert')).toHaveTextContent('tb-session needs events'); expect((await within(panel()).findByRole('alert')).querySelector('[data-slot="command-block"]')).toHaveTextContent('install tb-session'); missing.unmount();
   const failed = renderApp('/', { library: async () => { throw new Error('Read failed'); } }); await open(failed); expect(await within(panel()).findByRole('alert')).toHaveTextContent('Read failed');
 });
+it('TOOLS-2.5: a tb-session without `events` is older than the Library needs, with the version it needs and the update command; never "not installed"', async () => {
+  const reason = 'tb-session 0.3.0 is older than the Library needs (0.4.0)';
+  const app = renderApp('/', { library: async () => ({ state: 'too-old', reason, installCommand: 'install tb-session' }) }); await open(app);
+  const alert = await within(panel()).findByRole('alert');
+  expect(alert).toHaveTextContent(reason); expect(alert).toHaveTextContent('Update it, then reopen Library'); expect(alert).not.toHaveTextContent("isn't installed");
+  expect(alert.querySelector('[data-slot="command-block"]')).toHaveTextContent('install tb-session');
+});
 it('LIB-3.1: a row click only selects and expands, Esc leaves it selected, and the current Session stays in the main pane', async () => {
   const app = renderApp('/s/current', { library: async () => ok([output()]) }); app.snapshot([row({ id: 'current' })]); fireEvent.click(screen.getByRole('button', { name: 'Library' }));
   const option = await first(); fireEvent.click(option);

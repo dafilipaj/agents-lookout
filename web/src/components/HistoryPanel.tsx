@@ -49,6 +49,8 @@ type Results =
   | { state: 'loading' }
   | { state: 'error'; message: string }
   | { state: 'not-installed'; command: string }
+  /** TOOLS-2.5: tb-session is too old for what History asked; `reason` names the version it needs. */
+  | { state: 'too-old'; reason: string; command: string }
   /**
    * `gen`: the request (query and toggle) these pages answer; only that one pages further.
    * `auto`: pages fetched on their own since the first page or the last scroll or click.
@@ -123,7 +125,9 @@ export function HistoryPanel({ focusKey, sessions, now, search, peek, onOpen, na
             setResults(
               page.state === 'ok'
                 ? { state: 'ok', gen: mine, items: page.items, page: page.page, hasMore: page.hasMore, loadingMore: false, auto: 0 }
-                : { state: 'not-installed', command: page.installCommand },
+                : page.state === 'too-old'
+                  ? { state: 'too-old', reason: page.reason, command: page.installCommand }
+                  : { state: 'not-installed', command: page.installCommand },
             );
           },
           (err: unknown) => {
@@ -265,6 +269,7 @@ export function HistoryPanel({ focusKey, sessions, now, search, peek, onOpen, na
   if (results.state === 'loading') body = <Loading label="Loading…" className="items-center px-4 py-8 text-center" />;
   else if (results.state === 'error') body = <Alert title="Couldn't search History" detail={results.message} className="mx-2.5 my-3" />;
   else if (results.state === 'not-installed') body = <NotInstalled command={results.command} />;
+  else if (results.state === 'too-old') body = <NotInstalled command={results.command} tooOld={results.reason} />;
   else if (items.length === 0 && (results.loadingMore || (results.hasMore && results.auto < AUTO_FILL_PAGES))) body = <Loading label="Loading…" className="items-center px-4 py-8 text-center" />;
   else if (items.length === 0 && results.hasMore) body = <LoadMore onClick={() => loadMore()} hint="None of the newest past Sessions can be shown here; older ones may." />;
   else if (items.length === 0) body = <EmptyState role="status" title={q ? `Nothing matches “${q}”` : 'No past Sessions'} />;
@@ -552,10 +557,17 @@ function LoadMore({ onClick, hint }: { onClick(): void; hint?: string }) {
   );
 }
 
-/** Like SIDE-6.1: how to install tb-session instead of an empty list. */
-function NotInstalled({ command }: { command: string }) {
+/**
+ * Like SIDE-6.1: how to install tb-session instead of an empty list. With `tooOld` (TOOLS-2.5), one
+ * that answered as too old says so, and the version History needs, never that it isn't installed.
+ */
+function NotInstalled({ command, tooOld }: { command: string; tooOld?: string }) {
   return (
-    <Alert title="tb-session isn't installed" detail="History searches past Sessions through tb-session. Install it, then reopen History:" className="mx-2.5 my-3">
+    <Alert
+      title={tooOld ?? "tb-session isn't installed"}
+      detail={tooOld ? 'History searches past Sessions through tb-session. Update it, then reopen History:' : 'History searches past Sessions through tb-session. Install it, then reopen History:'}
+      className="mx-2.5 my-3"
+    >
       <CommandBlock>{command}</CommandBlock>
       <p>
         Needs an authenticated <code className="rounded bg-muted px-1 font-mono text-caption">gh</code>; it installs into ~/.local/bin.

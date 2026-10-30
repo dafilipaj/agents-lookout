@@ -1,6 +1,7 @@
 import type { MemorySnapshot } from '@shared/memory.ts';
 import { sortSessions } from '@shared/order.ts';
 import type { FleetHealth, LaunchView, SessionRow } from '@shared/types.ts';
+import { type ToolsSnapshot, toolsAttention } from '@shared/tools.ts';
 import type { UsageSnapshot } from '@shared/usage.ts';
 import { Plus, Search, Settings as SettingsIcon, TriangleAlert, WifiOff } from 'lucide-react';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
@@ -45,6 +46,8 @@ export interface SidebarProps {
   keyboardEnabled: boolean;
   /** USAGE-1: the strip at the bottom. */
   usage: UsageSnapshot | null;
+  /** TOOLS-2.4: a Tool missing or behind marks the Settings button. */
+  tools?: ToolsSnapshot | null;
   memory?: MemorySnapshot | null;
   onMemoryOpenChange?(open: boolean): void;
   /** USAGE-2.1: its details opened. */
@@ -54,6 +57,7 @@ export interface SidebarProps {
 export function Sidebar(props: SidebarProps) {
   const { sessions, fleet, loaded, connected, idleThresholdHours, selectedId, now, onSelect, launches, selectedLaunchId, onSelectLaunch } = props;
   const [filter, setFilter] = useState('');
+  const attention = toolsAttention(props.tools ?? null);
   const [dockPopover, setDockPopover] = useState<'usage' | 'memory' | null>(null);
   const onMemoryOpenChange = props.onMemoryOpenChange;
   useEffect(() => onMemoryOpenChange?.(dockPopover === 'memory'), [dockPopover, onMemoryOpenChange]);
@@ -305,11 +309,14 @@ export function Sidebar(props: SidebarProps) {
           <IconButton
             size="md"
             label="Settings"
+            tip={attention.length ? `Settings: ${attention.join(', ')}` : undefined}
             aria-pressed={props.settingsOpen}
             onClick={props.onOpenSettings}
-            className={cn(props.settingsOpen && 'bg-sidebar-accent text-foreground')}
+            className={cn('relative', props.settingsOpen && 'bg-sidebar-accent text-foreground')}
           >
             <SettingsIcon />
+            {/* TOOLS-2.4: a Tool missing or behind; its name is in the tooltip. */}
+            {attention.length > 0 && <span aria-hidden data-field="tools-dot" className="absolute top-1 right-1 size-1.5 rounded-full bg-destructive" />}
           </IconButton>
         </div>
       </ShellCell>

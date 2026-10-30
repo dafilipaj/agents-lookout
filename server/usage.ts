@@ -14,9 +14,12 @@ import {
   type WindowKind,
   tightestFirst,
 } from '../shared/usage.ts';
+import { TB_JEV_INSTALL_COMMAND } from '../shared/defaults.ts';
+import { tooOld } from '../shared/tools.ts';
 import type { RunError, Runner } from './exec.ts';
 import { cleanEnv } from './launcher.ts';
 import { sanitizeLine } from './sanitize.ts';
+import { refusedAsTooOld } from './too-old.ts';
 
 /** USAGE-1.3: the limits are re-read this often (Fleet caches them for 60 s anyway). */
 export const USAGE_INTERVAL_MS = 60_000;
@@ -252,7 +255,8 @@ export const JEV_INTERVAL_MS = 5 * 60_000;
 /** Opening the details re-checks Jev at most this often. */
 export const JEV_REFRESH_MIN_MS = 10_000;
 
-export const JEV_UPDATE_NEEDED = 'update tb-jev (needs 0.2+ for status)';
+/** TOOLS-2.5: tb-jev 0.1 refuses `status`: too old, never "not installed", the needed version from TOOLS-2.1's table. */
+export const JEV_UPDATE_NEEDED = tooOld('tb-jev', 'the usage strip', null);
 const JEV_NOT_UNDERSTOOD = "tb-jev status printed something Lookout doesn't understand";
 
 const KEY_SOURCES = ['env', 'config', 'none'] as const;
@@ -277,7 +281,7 @@ export async function probeJev(runner: Runner, bin: string | null, env: NodeJS.P
     if (e.aborted) return { state: 'error', reason: 'cancelled', ...none };
     if (e.code === 'ENOENT') return { state: 'not-installed', reason: 'not installed', ...none };
     if (e.timedOut) return { state: 'error', reason: 'tb-jev status took too long', ...none };
-    if (e.code === 2) return { state: 'unavailable', reason: JEV_UPDATE_NEEDED, ...none };
+    if (refusedAsTooOld(e)) return { state: 'unavailable', reason: JEV_UPDATE_NEEDED, ...none, fix: TB_JEV_INSTALL_COMMAND };
     if (e.code !== 4) return { state: 'error', reason: `tb-jev status failed (exit ${typeof e.code === 'number' ? e.code : '?'})`, ...none };
     exit = 4;
     out = e.stdout ?? '';
@@ -394,6 +398,14 @@ export class UsageMonitor {
     if (this.ticking) return this.ticking;
     if (this.now() - this.lastTickAt < USAGE_REFRESH_MIN_MS) return;
     return this.tick();
+  }
+
+  /**
+   * TOOLS-1.3: tb-jev's last `status --json`, for Settings › Tools, which never runs tb-jev itself:
+   * the last read when there is one, else the read this monitor would make anyway (one at a time).
+   */
+  jevStatus(): Promise<JevStatus> {
+    return this.readJev(false);
   }
 
   /** The details opened: check Jev again now (at most every 10 s). */

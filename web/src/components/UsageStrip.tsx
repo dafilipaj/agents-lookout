@@ -2,6 +2,7 @@ import type { JevStatus, ProviderUsage, UsageSnapshot, UsageWindow } from '@shar
 import { freshness, hasReset, isFiveHour, isFlagged, stripWindows, usageLevel } from '@shared/usage.ts';
 import { Check } from 'lucide-react';
 import { useId } from 'react';
+import { CommandBlock } from '@/components/ui/command-block';
 import { Loading } from '@/components/ui/loading';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { HARNESS_NAME } from '@/lib/sessions';
@@ -261,6 +262,8 @@ function Details({ usage, now }: { usage: UsageSnapshot; now: number }) {
           )}
         </dl>
         {usage.jev.reason && <p className="mt-1 text-meta text-muted-foreground">{usage.jev.reason}</p>}
+        {/* TOOLS-2.5: a tb-jev too old for `status`: the command that updates it, to copy. */}
+        {usage.jev.fix && <CommandBlock className="mt-1.5">{usage.jev.fix}</CommandBlock>}
         <p className="mt-2 text-caption text-muted-foreground">Checked without a billed call. Balance: see the Typesafe console.</p>
       </section>
     </div>

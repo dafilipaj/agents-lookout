@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readCargoRecord } from '../../server/cargo-record.ts';
 
 /**
  * TEST-1.3: the real Fleet fork and tb-session, pinned in `e2e/pins.json` and installed into
@@ -120,18 +121,12 @@ export function checkPin(pin: Pin, cache = CACHE_DIR, repoRoot = REPO_ROOT): Pin
   const layout = layoutProblems(pin, cache, repoRoot);
   if (layout.length) return { ok: false, problem: `${pin.package}: ${layout.join('; ')}. Remove it and run \`${SETUP_COMMAND}\`.` };
   if (!existsSync(bin)) return fail(`not installed (${bin} is missing)`);
-  let source: string | undefined;
-  try {
-    const crates = JSON.parse(readFileSync(join(installRoot(pin, cache), '.crates2.json'), 'utf8')) as {
-      installs?: Record<string, unknown>;
-    };
-    source = Object.keys(crates.installs ?? {}).find((k) => k.startsWith(`${pin.package} `));
-  } catch {
-    return fail('cargo left no install record (.crates2.json)');
-  }
-  if (!source) return fail('cargo recorded no install of it');
-  // e.g. `fleet 0.4.0 (git+https://github.com/dafilipaj/fleet?rev=ce2bbe1…#ce2bbe152c…)`
-  const built = /#([0-9a-f]{7,40})\)$/.exec(source)?.[1];
+  // e.g. `fleet 0.4.0 (git+https://github.com/dafilipaj/fleet?rev=ce2bbe1…#ce2bbe152c…)`; the
+  // server reads it the same way for Settings › Tools (TOOLS-2.2).
+  const record = readCargoRecord(installRoot(pin, cache), pin.package);
+  if (record.state === 'no-record') return fail('cargo left no install record (.crates2.json)');
+  if (record.state === 'not-installed') return fail('cargo recorded no install of it');
+  const built = record.revision;
   if (!built || !(built.startsWith(pin.rev) || pin.rev.startsWith(built))) {
     return fail(`built from ${built?.slice(0, 7) ?? 'an unknown revision'}, not the pinned ${short}`);
   }

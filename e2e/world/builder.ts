@@ -178,6 +178,11 @@ export interface TbPrDecl {
   refreshExit?: number;
   /** Instead of the board, `list --json` and `refresh` both fail this way. */
   failure?: TbPrFailure;
+  /**
+   * What `tb-pr --version` prints (TOOLS-1.3), as cli-toolbox's `format_version_line` does; without
+   * gh in the World, `tb-pr 0.3.1 (install gh to check for updates)` when unset.
+   */
+  version?: string;
 }
 
 /** LIB fixtures: paths are relative to the World's HOME; URLs and ids must be invented. */
@@ -471,6 +476,7 @@ export function checkTbPr(decl: TbPrDecl): TbPrDecl {
     refuse(what, `unknown failure ${JSON.stringify(f)}`);
   }
   if (decl.refreshExit !== undefined && !(Number.isInteger(decl.refreshExit) && decl.refreshExit >= 0 && decl.refreshExit <= 255)) refuse(what, 'refreshExit is an exit code, 0 to 255');
+  if (decl.version !== undefined && !(oneLine(decl.version) && decl.version.startsWith('tb-pr '))) refuse(what, `version is the one line tb-pr --version prints, got ${JSON.stringify(decl.version)}`);
   const board = decl.board ?? {};
   if (board.fetched_at !== undefined && !isUtc(board.fetched_at)) refuse(what, `fetched_at is an RFC 3339 time in UTC, got ${JSON.stringify(board.fetched_at)}`);
   for (const [column, prs] of Object.entries(board.columns ?? {})) {

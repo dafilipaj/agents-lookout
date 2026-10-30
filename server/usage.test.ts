@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProviderUsage, UsageSnapshot } from '../shared/usage.ts';
 import { freshness, liveWindows, stripWindows, tightestFirst, usageLevel } from '../shared/usage.ts';
+import { TB_JEV_INSTALL_COMMAND } from '../shared/defaults.ts';
+import { neededVersion } from '../shared/tools.ts';
 import { type RunOptions, run } from './exec.ts';
 import { sanitizeLine } from './sanitize.ts';
 import {
@@ -302,9 +304,16 @@ describe('Jev (USAGE-1.4): `tb-jev status --json` through a fake tb-jev on PATH'
     expect(await probe(env)).toMatchObject({ state: 'not-installed', reason: 'not installed' });
   });
 
-  it('old binary (0.1: clap exits 2 on `status`): "update tb-jev (needs 0.2+ for status)"', async () => {
+  it('TOOLS-2.5: a tb-jev exit 2 that is not clap refusing a subcommand or long flag is a failure, not "too old"', async () => {
+    const { env } = fakeJev('other', `echo "error: something else" >&2; exit 2`);
+    expect(await probe(env)).toMatchObject({ state: 'error', reason: 'tb-jev status failed (exit 2)' });
+  });
+
+  it('TOOLS-2.5: an old binary (0.1: clap exits 2 on `status`) is older than the usage strip needs, the version from the table, with its update command; never "not installed"', async () => {
     const { env } = fakeJev('old', `echo "error: unrecognized subcommand 'status'" >&2; exit 2`);
-    expect(await probe(env)).toEqual({ state: 'unavailable', reason: JEV_UPDATE_NEEDED, version: null, keySource: null, baseUrl: null, configPath: null });
+    expect(await probe(env)).toEqual({ state: 'unavailable', reason: JEV_UPDATE_NEEDED, version: null, keySource: null, baseUrl: null, configPath: null, fix: TB_JEV_INSTALL_COMMAND });
+    expect(JEV_UPDATE_NEEDED).toBe(`tb-jev is older than the usage strip needs (${neededVersion('tb-jev', 'the usage strip')})`);
+    expect(JEV_UPDATE_NEEDED).toBe('tb-jev is older than the usage strip needs (0.2.0)');
   });
 
   it('not ready (exit 4, the object still printed): "not set up: <error_reason>"', async () => {
@@ -493,6 +502,17 @@ describe('UsageMonitor', () => {
     expect(t.count('/bin/tb-jev')).toBe(2);
     await vi.advanceTimersByTimeAsync(5 * 60_000);
     expect(t.count('/bin/tb-jev')).toBe(3);
+  });
+
+  it('TOOLS-1.3: Settings › Tools takes tb-jev’s version from this monitor’s status read, never running tb-jev again within its 5 minutes', async () => {
+    const jevOut = JSON.stringify({ version: '0.2.0', ready: true, key_present: true, key_source: 'env', base_url: null });
+    const t = setup(async () => providers, async () => jevOut);
+    await t.monitor.tick();
+    expect(t.count('/bin/tb-jev')).toBe(1);
+    const [a, b] = await Promise.all([t.monitor.jevStatus(), t.monitor.jevStatus()]);
+    expect(a).toBe(b);
+    expect(a).toMatchObject({ state: 'ready', version: '0.2.0' });
+    expect(t.count('/bin/tb-jev')).toBe(1);
   });
 
   it('a refresh after a window reset reads again, at most every 15 s', async () => {

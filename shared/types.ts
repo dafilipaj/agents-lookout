@@ -1,6 +1,7 @@
 import type { LaunchHarness, SettingsView } from './settings.ts';
 import type { MemorySnapshot } from './memory.ts';
 import type { UsageSnapshot } from './usage.ts';
+import type { ToolsSnapshot } from './tools.ts';
 import type { WorkSnapshot } from './work.ts';
 
 /** The agent CLI a Session runs (Glossary: Harness). pi is a non-goal and is filtered out. */
@@ -200,7 +201,11 @@ export type ServerEvent =
        * sends it; it's optional only so that UI tests can leave it out.
        */
       work?: WorkSnapshot;
+      /** TOOLS: the last read of every Tool; optional so that UI tests and a server without it can leave it out. */
+      tools?: ToolsSnapshot;
     }
+  /** TOOLS-2.4: a read of the Tools began or ended (sent to every tab, only when something changed). */
+  | { type: 'tools'; tools: ToolsSnapshot }
   /** USAGE: new numbers (sent to every tab, only when they changed). */
   | { type: 'usage'; usage: UsageSnapshot }
   | { type: 'memory'; memory: MemorySnapshot }
@@ -426,7 +431,9 @@ export type HistoryBlock = 'folder-gone' | 'transcript-missing' | 'no-folder';
 /** `GET /api/history`: a page of past Sessions, or how to install tb-session. */
 export type HistoryPage =
   | { state: 'ok'; items: HistoryItem[]; page: number; hasMore: boolean }
-  | { state: 'not-installed'; installCommand: string };
+  | { state: 'not-installed'; installCommand: string }
+  /** TOOLS-2.5: tb-session refused a subcommand or flag History needs: "tb-session 0.1.0 is older than History needs (0.3.0)". */
+  | { state: 'too-old'; reason: string; installCommand: string };
 
 /** HIST-3.3: a past Session that can't be resumed, read-only: its latest messages. */
 export interface HistoryDetail {

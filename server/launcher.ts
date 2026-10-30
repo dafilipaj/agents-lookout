@@ -48,6 +48,30 @@ export class LaunchError extends Error {
 }
 
 /**
+ * TOOLS-1.2: one Harness as Fleet's `harness list --json` found it. `path` and `version` come from
+ * the Fleet fork commit (docs/contracts/fleet-tools.md, F2); a Fleet without them gives null.
+ */
+export interface HarnessFact {
+  id: LaunchHarness;
+  installed: boolean;
+  /** Absolute, where Fleet's login-shell lookup found it. */
+  path: string | null;
+  /** The first line of `<path> --version`, as Fleet read it. */
+  version: string | null;
+}
+
+const MAX_HARNESS_PATH = 1024;
+
+function harnessFact(h: unknown): HarnessFact[] {
+  if (typeof h !== 'object' || h === null) return [];
+  const r = h as Record<string, unknown>;
+  if (r.id !== 'claude' && r.id !== 'codex') return [];
+  const path =
+    typeof r.path === 'string' && r.path.startsWith('/') && r.path.length <= MAX_HARNESS_PATH && !/[\p{Cc}\p{Cf}]/u.test(r.path) ? r.path : null;
+  return [{ id: r.id, installed: r.installed === true, path, version: sanitizeLine(r.version, 200) }];
+}
+
+/**
  * The environment for what Lookout starts. Decision 0002: the login shell's `claude` wrapper
  * alone decides telemetry, so nothing Lookout inherited may reach the Session: not the
  * `OTEL_*` block, not Claude Code's own variables (which would also make `claude` think it is
@@ -182,9 +206,11 @@ export class Launcher {
   private readonly launches = new Map<string, Launch>();
   /** Completed starts: the Session each became, and its process, so a later id change is followed. */
   private readonly recent = new Map<string, { sessionId: string; at: number; pid: number; harness: string }>();
-  private harnessCache: { at: number; value: HarnessOption[] } | null = null;
+  private harnessCache: { at: number; value: HarnessOption[]; facts: HarnessFact[] } | null = null;
   /** Bumped by `dropHarnesses`: a read started before it isn't cached. */
   private harnessEpoch = 0;
+  /** The facts of the last read, cached or not (a read raced by `dropHarnesses` isn't cached). */
+  private lastFacts: HarnessFact[] = [];
   private trustSupported = true;
   private stopped = false;
   private trustTimer: NodeJS.Timeout | null = null;
@@ -221,9 +247,9 @@ export class Launcher {
     this.harnessEpoch++;
   }
 
-  /** LAUNCH-3: `fleet harness list --json`, cached for 10 minutes. */
-  async harnesses(): Promise<HarnessOption[]> {
-    if (this.harnessCache && this.now() - this.harnessCache.at < HARNESS_CACHE_MS) return this.harnessCache.value;
+  /** LAUNCH-3: `fleet harness list --json`, cached for 10 minutes; `force` (TOOLS-1.4's Refresh) reads again and refreshes the cache. */
+  async harnesses(force = false): Promise<HarnessOption[]> {
+    if (!force && this.harnessCache && this.now() - this.harnessCache.at < HARNESS_CACHE_MS) return this.harnessCache.value;
     const epoch = this.harnessEpoch;
     let stdout: string;
     try {
@@ -256,8 +282,19 @@ export class Launcher {
         };
       })
       .sort((a, b) => (a.id === 'claude' ? -1 : b.id === 'claude' ? 1 : 0));
-    if (epoch === this.harnessEpoch) this.harnessCache = { at: this.now(), value };
+    const facts = (Array.isArray(parsed) ? parsed : []).flatMap((h) => harnessFact(h));
+    if (epoch === this.harnessEpoch) this.harnessCache = { at: this.now(), value, facts };
+    this.lastFacts = facts;
     return value;
+  }
+
+  /**
+   * TOOLS-1.2: where Fleet found each Harness and the version it read there, from the same cached
+   * `harness list` (docs/contracts/fleet-tools.md, F2). Throws as `harnesses()` does.
+   */
+  async harnessFacts(force = false): Promise<HarnessFact[]> {
+    await this.harnesses(force);
+    return this.harnessCache?.facts ?? this.lastFacts;
   }
 
   /**

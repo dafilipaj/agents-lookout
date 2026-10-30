@@ -4,6 +4,8 @@ import type { TbSessionAnswer } from './outputs.ts';
 
 /** Only the pre-events install hint uses this fake; ordinary Library Worlds run the pin. */
 export function respond(argv: string[], answer: TbSessionAnswer): Outcome | Refusal {
+  // Settings › Tools reads it (TOOLS-1.3); this fake stands for a 0.3.x, without `events`.
+  if (argv.length === 1 && argv[0] === '--version') return { code: 0, stdout: 'tb-session 0.3.0 (install gh to check for updates)\n' };
   const [command, ...rest] = argv;
   if (!['events', 'list', 'search', 'show'].includes(command ?? '') || !rest.includes('--json')) return { refused: 'only events, list, search and show with --json are declared' };
   if (command === 'events' && answer.unsupported) return { code: 2, stderr: "error: unrecognized subcommand 'events'\n" };

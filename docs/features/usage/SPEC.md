@@ -87,7 +87,7 @@ Limits show up only when an agent stalls. Claude's usage page and Codex's `/stat
   - **Contract (tb-jev 0.2.0, in review):** `tb-jev status --json` always prints one object with 13 fields: `version`, `ready`, `key_present`, `key_source: env|config|none`, `base_url` (already reduced to scheme://host[:port]), `base_url_source`, `base_url_has_path`, `base_url_hidden`, `config_path`, `config_exists`, `config_valid` (null when an env key is set), `config_used` and `error_reason`. Exit 0 means ready, 4 not ready (the object is still printed), 1 an I/O error. Lookout requires `ready` (bool), `version` (string) and `key_source` (in the enum); a malformed or self-contradicting object (ready with exit 4, not ready with exit 0, ready without `key_present: true`, ready with no key source) is an error, never "ready".
   - **How Lookout maps it:**
     - not on PATH or in `~/.local/bin`: "not installed";
-    - exit 2 (clap refuses `status`, as 0.1.0 does): "update tb-jev (needs 0.2+ for status)";
+    - exit 2 (clap refuses `status`, as 0.1.0 does): "tb-jev is older than the usage strip needs (0.2.0)", the version from TOOLS-2.1's table, with the command that updates it (TOOLS-2.5);
     - exit 0: "ready", with a check icon; exit 4: "not set up: <error_reason>";
     - anything else: "error", with a short reason.
   - The details show the version, where the key comes from ("env TYPESAFE_API_KEY", "config file" or "none"), the base URL, and the config path when one is used, never its contents.
@@ -136,3 +136,4 @@ None.
 - 2026-10-22: Design system review fixes (DS-3.2): the strip's bar keeps its `foreground/55` fill at every level, since a `warning-soft` or `destructive-soft` fill measured 1.2:1 against the track; the level is a 3 px `warning` or `destructive` edge at the fill's end, with the triangle or octagon beside it. This replaces the soft fills of the 2026-10-22 line above.
 - 2026-10-22: Design system review fixes, round 2 (DS-3.2): the bar's 3 px edge is set off from the fill by a 1 px gap in the sidebar's colour, so it reads as its own mark at 95% or more whatever the hue.
 - 2026-10-22: Design system (DS-6.3): "Reading usage…" is the design system's Loading, in `meta` instead of `caption`, and after 3 s it counts the seconds. The strip's text stays otherwise.
+- 2026-10-30: From TOOLS-2.5: a tb-jev that refuses `status` says "tb-jev is older than the usage strip needs (0.2.0)", the version from the Tools table, and the details show its update command to copy; it was "update tb-jev (needs 0.2+ for status)". The strip's short label, "update tb-jev", stays.

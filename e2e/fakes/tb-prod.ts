@@ -161,7 +161,12 @@ const category = (t: TaskDecl) => t.statusCategory ?? 2;
 const statusName = (t: TaskDecl) => t.status ?? (category(t) === 1 ? 'Not started' : 'In progress');
 const statusKey = (t: TaskDecl) => `${category(t)}\n${statusName(t)}`;
 
+/** TOOLS-1.3: what `tb-prod --version` prints in a World, built from cli-toolbox's `main`, with no gh to check for a newer release. */
+export const TB_PROD_VERSION = 'tb-prod 1.2.0 (install gh to check for updates)';
+
 function answer(argv: string[], decl: TbProdDecl): Outcome | Refusal {
+  // Settings › Tools reads it (TOOLS-1.3); it never reaches Productive.
+  if (argv.length === 1 && argv[0] === '--version') return { stdout: `${TB_PROD_VERSION}\n`, code: 0 };
   const opts = parse(argv);
   if ('refused' in opts) return opts;
   // tb-prod loads its config before it reads the filter (main.rs): without one, that's all it says.

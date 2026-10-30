@@ -1,0 +1,1 @@
+{"installs":{"fleet 0.1.0 (git+https://github.com/dafilipaj/fleet?rev=5e2afd8#5e2afd8c9d532c700d1ae48a802d6d87f1202b5a)":{"version_req":null,"bins":["fleet"],"features":[],"all_features":false,"no_default_features":false,"profile":"release","target":"aarch64-apple-darwin","rustc":"rustc 1.95.0"}}}

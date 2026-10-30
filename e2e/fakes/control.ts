@@ -73,6 +73,7 @@ function readLines<T>(path: string): T[] {
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const isVersionCall = (argv: readonly string[]) => argv.length === 1 && argv[0] === '--version';
 
 /**
  * The fake's side of one call: logs its argv, reads the answer, refuses what it doesn't answer,
@@ -101,15 +102,18 @@ export async function serveCall<A>(name: FakeCommand, respond: (argv: string[], 
     return;
   }
 
-  // Held: take the armed hold, if there is one, and wait for its release.
+  // Held: take the armed hold, if there is one, and wait for its release. Settings › Tools'
+  // `--version` read (TOOLS-1.3), made when the server starts, never takes it: a hold is for the
+  // test's own calls, which `calls()` lists.
   const taking = join(dir, `taking-${process.pid}`);
   let holdId: string | null = null;
   try {
+    if (isVersionCall(argv)) throw new Error('not held');
     renameSync(join(dir, HOLD), taking);
     holdId = readFileSync(taking, 'utf8').trim();
     rmSync(taking, { force: true });
   } catch {
-    // no hold armed, or another call took it
+    // no hold armed, another call took it, or a version read
   }
   if (holdId) {
     writeWhole(join(dir, heldFile(holdId)), JSON.stringify({ pid: process.pid, argv }));
@@ -219,8 +223,16 @@ export class FakeControl<A> {
     return (JSON.parse(readFileSync(join(dir, file), 'utf8')) as { argv: string[] }).argv;
   }
 
-  /** The argv of every call so far, in the order they started. */
+  /**
+   * The argv of every call so far, in the order they started, but `--version`: Settings › Tools
+   * reads that when the server starts (TOOLS-1.4), whatever the test does; `versionCalls()` counts it.
+   */
   calls(): string[][] {
-    return readLines<string[]>(join(this.need(), CALLS));
+    return readLines<string[]>(join(this.need(), CALLS)).filter((argv) => !isVersionCall(argv));
+  }
+
+  /** The `--version` calls Settings › Tools made (TOOLS-1.3). */
+  versionCalls(): string[][] {
+    return readLines<string[]>(join(this.need(), CALLS)).filter(isVersionCall);
   }
 }

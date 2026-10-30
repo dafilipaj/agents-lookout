@@ -264,6 +264,10 @@ export function App({ client }: { client: LookoutClient }) {
   };
   // The save's answer shows at once, before the server's `settings` event (WORK-2.5, UX Settings).
   const savedSince = state.settings;
+  // TOOLS-1.4: what the page's own requests answer goes into the store too, as a `tools` event would.
+  const loadTools = useCallback(async () => dispatch({ type: 'event', event: { type: 'tools', tools: await client.tools() } }), [client, dispatch]);
+  const refreshTools = useCallback(async () => dispatch({ type: 'event', event: { type: 'tools', tools: await client.refreshTools() } }), [client, dispatch]);
+
   const save = useCallback(
     async (patch: Parameters<LookoutClient['saveSettings']>[0]) => {
       const settings = await client.saveSettings(patch);
@@ -802,6 +806,7 @@ export function App({ client }: { client: LookoutClient }) {
           onDismissLaunch={(id) => void client.dismissLaunch(id).catch(() => {})}
           keyboardEnabled={!modalOpen}
           usage={state.usage}
+          tools={state.tools}
           memory={state.memory}
           onMemoryOpenChange={setMemoryOpen}
           onUsageOpen={() => void client.refreshJev().catch(() => {})}
@@ -809,7 +814,15 @@ export function App({ client }: { client: LookoutClient }) {
         {/* tabIndex -1: focus lands here after the selected start is dismissed (LAUNCH UX). */}
         <main className={cn(SHELL_COLUMN, 'outline-none')} data-shell-column="main" tabIndex={-1}>
           {route.name === 'settings' ? (
-            <SettingsPage settings={state.settings} save={save} onBack={() => navigate({ name: 'home' })} />
+            <SettingsPage
+              settings={state.settings}
+              save={save}
+              onBack={() => navigate({ name: 'home' })}
+              tools={state.tools}
+              now={now}
+              loadTools={loadTools}
+              refreshTools={refreshTools}
+            />
           ) : route.name === 'past' ? (
             <PastSessionView harness={route.harness} sessionId={route.id} now={now} load={loadPast} />
           ) : route.name === 'launch' ? (

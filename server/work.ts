@@ -27,6 +27,8 @@ import {
 import type { RunError, RunOptions, Runner } from './exec.ts';
 import { cleanEnv } from './launcher.ts';
 import { sanitizeLine } from './sanitize.ts';
+import { refusedAsTooOld } from './too-old.ts';
+import { tooOld } from '../shared/tools.ts';
 import { buildWorkLinks, parseSessionSearch, TbSessionShapeError, type SessionSearchResult } from './work-links.ts';
 
 /**
@@ -375,6 +377,11 @@ export const PR_REASON = {
   closed: 'Work was closed in every tab before the read began.',
 } as const;
 
+/** TOOLS-2.5: "tb-pr 0.2.0 is older than Work needs (0.3.1)", the version from TOOLS-2.1's table, and what to do. */
+export function prTooOldReason(installed: string | null): string {
+  return `${tooOld('tb-pr', 'Work', installed)}. Update it, then press Refresh.`;
+}
+
 /**
  * WORK-8.4: until when a rate limit holds GitHub reads. With tb-pr's "resets at HH:MM:SS UTC" (a
  * time of day without a date), the moment with that time of day nearest to now; at least 5 minutes
@@ -397,7 +404,7 @@ export function rateLimitedUntil(text: string, now: number): number {
  * error (401)". What tb-pr said goes only to `detail`, for the log: the redacted first line of
  * stderr; stdout is never looked at.
  */
-export function classifyTbPrFailure(err: unknown, now: number): PrReadFailure {
+export function classifyTbPrFailure(err: unknown, now: number, installed: string | null = null): PrReadFailure {
   const e = (typeof err === 'object' && err !== null ? err : {}) as RunError;
   const stderr = stripAnsi(typeof e.stderr === 'string' ? e.stderr : '');
   const code = typeof e.code === 'number' ? e.code : null;
@@ -413,6 +420,8 @@ export function classifyTbPrFailure(err: unknown, now: number): PrReadFailure {
   if (err instanceof WorkCommandRefused) return failure('error', err.message, { detail: null });
   if (err instanceof TbPrShapeError) return failure('error', PR_REASON.unreadable, { detail: sanitizeLine(err.detail) });
   if (e.code === 'ENOENT') return failure('not-installed', PR_REASON.notInstalled, { fix: TB_PR_INSTALL_COMMAND, detail: null });
+  // TOOLS-2.5: a subcommand or flag it doesn't know: too old, never "not installed".
+  if (refusedAsTooOld(e)) return failure('error', prTooOldReason(installed), { fix: TB_PR_INSTALL_COMMAND });
   if (e.aborted) return failure('error', PR_REASON.cancelled, { detail: null });
   if (e.timedOut) return failure('error', PR_REASON.timedOut, { detail: null });
   if (stderr.includes('`gh auth token`') || stderr.includes('GitHub API error (401)')) return failure('signed-out', PR_REASON.signedOut, { fix: SIGN_IN_COMMAND });
@@ -572,10 +581,16 @@ export interface TaskReadFailure {
   detail: string | null;
 }
 
+/** WORK-7.8, TOOLS-2.5: "tb-prod 1.1.1 is older than Work needs (1.2.0)", and how to get one that isn't. */
+export function outdatedReason(installed: string | null): string {
+  return `${tooOld('tb-prod', 'Work', installed)}. Build it from cli-toolbox's main, then press Refresh.`;
+}
+
 /** UX, "Errors": why a Tasks read failed, and what to do, in plain words. */
 export const TASK_REASON = {
   notInstalled: "tb-prod isn't installed. Work reads Tasks through it: build it from cli-toolbox's main, then press Refresh.",
-  outdated: "tb-prod is older than 1.2.0, which Work needs to read Tasks. Build it from cli-toolbox's main, then press Refresh.",
+  /** WORK-7.8, TOOLS-2.5: the version it needs from TOOLS-2.1's table; `outdatedReason` names the one installed when it's known. */
+  outdated: outdatedReason(null),
   signedOut: `tb-prod isn't signed in to Productive. Run ${TB_PROD_SIGN_IN_COMMAND}, then press Refresh.`,
   denied: "Productive denied access to your Tasks. Check what tb-prod's token's account can see, then press Refresh.",
   serverError: 'Productive had a server error. Try Refresh later.',
@@ -622,7 +637,7 @@ function isTbProd11Refusal(error: string): boolean {
  * for the log: its JSON error's code and message, or the first line of its stderr; Productive's
  * answer (`details.body`) is never read.
  */
-export function classifyTbProdFailure(err: unknown): TaskReadFailure {
+export function classifyTbProdFailure(err: unknown, installed: string | null = null): TaskReadFailure {
   const e = (typeof err === 'object' && err !== null ? err : {}) as RunError;
   const stderr = stripAnsi(typeof e.stderr === 'string' ? e.stderr : '');
   const code = typeof e.code === 'number' ? e.code : null;
@@ -648,11 +663,13 @@ export function classifyTbProdFailure(err: unknown): TaskReadFailure {
       if (json.status === 403) return failure('error', TASK_REASON.denied);
       return failure('error', json.status !== null && json.status >= 500 ? TASK_REASON.serverError : TASK_REASON.refused);
     }
-    if (json.code === 'invalid_filter' && isTbProd11Refusal(json.error)) return failure('error', TASK_REASON.outdated, { fix: TB_PROD_INSTALL_COMMAND });
+    if (json.code === 'invalid_filter' && isTbProd11Refusal(json.error)) return failure('error', outdatedReason(installed), { fix: TB_PROD_INSTALL_COMMAND });
     if (json.code === 'invalid_filter' || json.code === 'invalid_json') return failure('error', TASK_REASON.queryRefused);
     return failure('error', TASK_REASON.failed);
   }
   if (code === 1 && stderr.includes('No config found')) return failure('signed-out', TASK_REASON.signedOut, { fix: TB_PROD_SIGN_IN_COMMAND });
+  // TOOLS-2.5: a subcommand or flag it doesn't know: too old, never a refused query.
+  if (refusedAsTooOld(e)) return failure('error', outdatedReason(installed), { fix: TB_PROD_INSTALL_COMMAND });
   // clap's usage error: tb-prod couldn't parse the call, which retrying won't change.
   if (code === 2) return failure('error', TASK_REASON.queryRefused);
   return failure('error', TASK_REASON.failed);
@@ -731,6 +748,8 @@ export interface WorkMonitorOptions {
   now?: () => number;
   /** The server's log, for what tb-pr or tb-prod said (redacted, one line); never the UI's (WORK-7.7). */
   log?: (line: string, tool: WorkTool) => void;
+  /** TOOLS-2.5: a Tool's version as Settings › Tools last read it, for the "too old" line; null when unknown. */
+  toolVersion?: (tool: WorkTool) => string | null;
   intervalMs?: number;
   cooldownMs?: number;
   tbPrTimeoutMs?: number;
@@ -1240,7 +1259,7 @@ export class WorkMonitor {
       result = this.accept(board);
     } catch (err) {
       if (this.abort.signal.aborted) return { ok: false, reason: PR_REASON.cancelled };
-      const failure = classifyTbPrFailure(err, this.now());
+      const failure = classifyTbPrFailure(err, this.now(), this.opts.toolVersion?.('tb-pr') ?? null);
       if (failure.detail) this.log(failure.detail, 'tb-pr');
       result = this.fail(failure);
     }
@@ -1271,7 +1290,7 @@ export class WorkMonitor {
       result = this.acceptTasks(mergePages(pages));
     } catch (err) {
       if (this.abort.signal.aborted) return { ok: false, reason: TASK_REASON.cancelled };
-      const failure = classifyTbProdFailure(err);
+      const failure = classifyTbProdFailure(err, this.opts.toolVersion?.('tb-prod') ?? null);
       if (failure.detail) this.log(failure.detail, 'tb-prod');
       if (ask.email !== this.email) return this.discarded();
       result = this.failTasks(failure);

@@ -99,6 +99,8 @@ interface RenderOptions {
   refreshWork?: LookoutClient['refreshWork'];
   checkPaths?: LookoutClient['checkPaths'];
   saveSettings?: LookoutClient['saveSettings'];
+  tools?: LookoutClient['tools'];
+  refreshTools?: LookoutClient['refreshTools'];
 }
 
 /** Renders the whole app against a fake server the test drives. */
@@ -124,6 +126,8 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
     earlierMessages: vi.fn(options.earlierMessages ?? (async (): Promise<ChatPage> => ({ entries: [], before: null }))),
     watch: vi.fn(async () => {}),
     refreshJev: vi.fn(async () => {}),
+    tools: vi.fn(options.tools ?? (async () => ({ rows: [], checkedAt: null, reading: false }))),
+    refreshTools: vi.fn(options.refreshTools ?? (async () => ({ rows: [], checkedAt: null, reading: false }))),
     refreshUsage: vi.fn(async () => {}),
     watchMemory: vi.fn(async () => {}),
     watchWork: vi.fn(async () => {}),

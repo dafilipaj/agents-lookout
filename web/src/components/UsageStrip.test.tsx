@@ -365,6 +365,18 @@ describe('usage details', () => {
     expect(jev).not.toHaveTextContent('Config');
   });
 
+  it('TOOLS-2.5: a tb-jev too old for `status` says so in the details, with the version it needs and its update command to copy', async () => {
+    pinDate();
+    const user = userEvent.setup();
+    const reason = 'tb-jev is older than the usage strip needs (0.2.0)';
+    show(usage([provider({ id: 'claude' }), provider({ id: 'codex' })], { state: 'unavailable', version: null, keySource: null, baseUrl: null, reason, fix: 'install tb-jev' }));
+    await user.click(screen.getByRole('button', { name: 'Usage details' }));
+    const jev = within(await screen.findByTestId('usage-details')).getByRole('region', { name: 'Jev' });
+    expect(jev).toHaveTextContent(reason);
+    expect(jev).not.toHaveTextContent('not installed');
+    expect(jev.querySelector('[data-slot="command-block"]')).toHaveTextContent('install tb-jev');
+  });
+
   it('opens from the keyboard, is named, closes on Escape, and gives focus back (review #11)', async () => {
     pinDate();
     const user = userEvent.setup();

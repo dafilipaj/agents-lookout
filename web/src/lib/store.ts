@@ -1,6 +1,7 @@
 import { type SettingsView, defaultSettings } from '@shared/settings.ts';
 import type { ChatPage, FleetHealth, LaunchView, ServerEvent, SessionRow } from '@shared/types.ts';
 import type { MemorySnapshot } from '@shared/memory.ts';
+import type { ToolsSnapshot } from '@shared/tools.ts';
 import type { UsageSnapshot } from '@shared/usage.ts';
 import type { WorkSnapshot } from '@shared/work.ts';
 import { type Dispatch, useEffect, useReducer } from 'react';
@@ -53,6 +54,8 @@ export interface LookoutState {
   memory: MemorySnapshot | null;
   /** WORK: the latest PRs and Refresh state, or null before the server sent any. */
   work: WorkSnapshot | null;
+  /** TOOLS: the last read of every Tool, or null before the server sent one. */
+  tools: ToolsSnapshot | null;
   /**
    * VIEW-1: the chat of the Session in view, plus a few recently viewed ones (cut to their latest
    * entries) for switching back. Kept across reconnects, and after the Session ends.
@@ -115,6 +118,7 @@ export const initialState: LookoutState = {
   usage: null,
   memory: null,
   work: null,
+  tools: null,
   chats: new Map(),
   chatOrder: [],
   chatViewing: null,
@@ -183,6 +187,7 @@ export function reducer(state: LookoutState, action: Action): LookoutState {
         usage: e.usage ?? state.usage,
         memory: e.memory,
         work: e.work ?? state.work,
+        tools: e.tools ?? state.tools,
       };
     }
     case 'sessions': {
@@ -211,6 +216,8 @@ export function reducer(state: LookoutState, action: Action): LookoutState {
       return { ...state, usage: e.usage };
     case 'work':
       return { ...state, work: e.work };
+    case 'tools':
+      return { ...state, tools: newerTools(state.tools, e.tools) };
     case 'chat': {
       if (e.sessionId !== state.chatViewing) return state; // a late update for a Session left behind
       const chat = state.chats.get(e.sessionId) ?? emptyChat;
@@ -331,4 +338,12 @@ export function useLookout(client: LookoutClient): [LookoutState, Dispatch<Actio
     [client],
   );
   return [state, dispatch];
+}
+
+/**
+ * TOOLS-1.4: a snapshot from the event stream or from a request the page made, whichever arrives
+ * later: one that ended an older read never replaces a newer one's rows.
+ */
+export function newerTools(current: ToolsSnapshot | null, next: ToolsSnapshot): ToolsSnapshot {
+  return current && current.checkedAt !== null && (next.checkedAt === null || next.checkedAt < current.checkedAt) ? current : next;
 }

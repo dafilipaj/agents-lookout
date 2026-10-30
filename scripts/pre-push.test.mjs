@@ -12,7 +12,8 @@ import { installRoot, pinnedBin } from '../e2e/world/pins.ts';
  * Playwright, so nothing slow or real runs.
  */
 const REPO = fileURLToPath(new URL('../', import.meta.url));
-const COPIED = ['.githooks/pre-push', 'e2e/setup.ts', 'e2e/world/pins.ts', 'e2e/pins.json'];
+// `server/cargo-record.ts`: the pin code reads cargo's install record through it, as Settings › Tools does (TOOLS-2.2).
+const COPIED = ['.githooks/pre-push', 'e2e/setup.ts', 'e2e/world/pins.ts', 'server/cargo-record.ts', 'e2e/pins.json'];
 
 let dir;
 let pins;

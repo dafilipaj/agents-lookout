@@ -30,7 +30,9 @@ import {
   mergePages,
   parseTasksPage,
   parseTbPrList,
+  outdatedReason,
   plainIssue,
+  prTooOldReason,
   rateLimitedUntil,
   resolveWorkBin,
   runWorkCommand,
@@ -233,6 +235,20 @@ describe('reading `tb-pr list --json` (tb-pr 0.3.1)', () => {
 describe('failures (WORK-7)', () => {
   const now = Date.parse('2026-10-19T10:00:00Z');
   const PLAIN: readonly string[] = Object.values(PR_REASON);
+
+  it('TOOLS-2.5: a tb-pr that refuses `list` or `--json` is older than Work needs, with the version when known and the one from the table, and its install command; never "not installed"', () => {
+    for (const stderr of ["error: unrecognized subcommand 'list'", "\u001b[1m\u001b[31merror:\u001b[0m unexpected argument '--json' found\n\nUsage: tb-pr <COMMAND>"]) {
+      expect(classifyTbPrFailure(failedRun(stderr, 2), now, '0.2.0'), stderr).toMatchObject({
+        state: 'error',
+        reason: 'tb-pr 0.2.0 is older than Work needs (0.3.1). Update it, then press Refresh.',
+        fix: TB_PR_INSTALL_COMMAND,
+      });
+    }
+    expect(classifyTbPrFailure(failedRun("error: unrecognized subcommand 'list'", 2), now).reason).toBe(prTooOldReason(null));
+    expect(prTooOldReason(null)).toBe('tb-pr is older than Work needs (0.3.1). Update it, then press Refresh.');
+    // Exit 1 with the same words isn't clap's refusal.
+    expect(classifyTbPrFailure(failedRun("error: unrecognized subcommand 'list'", 1), now).reason).toBe(PR_REASON.failed);
+  });
 
   it('WORK-7.6: "not signed in" from tb-pr’s recorded outputs: `gh auth token` in its error, or GitHub API error (401)', () => {
     for (const name of ['stderr-gh-missing.txt', 'stderr-gh-signed-out.txt', 'stderr-gh-empty-token.txt', 'stderr-401.txt', 'stderr-colored-401.txt']) {
@@ -1039,10 +1055,23 @@ describe('tb-prod failures (WORK-7)', () => {
       fix: TB_PROD_INSTALL_COMMAND,
       detail: expect.stringMatching(/^invalid_filter: Unknown filter field 'folder_status' on tasks\. Available: /),
     });
-    expect(TASK_REASON.outdated).toMatch(/^tb-prod is older than 1\.2\.0/);
+    expect(TASK_REASON.outdated).toBe("tb-prod is older than Work needs (1.2.0). Build it from cli-toolbox's main, then press Refresh.");
     expect(classifyTbProdFailure(prodFailed({ stdout: prodFixture('invalid-filter-other.json') }))).toMatchObject({ state: 'error', reason: TASK_REASON.queryRefused, fix: null });
     // clap's usage error (exit 2): a call tb-prod can't parse.
     expect(classifyTbProdFailure(prodFailed({ stderr: prodFixture('stderr-usage.txt') }, 2))).toMatchObject({ state: 'error', reason: TASK_REASON.queryRefused, fix: null });
+  });
+
+  it('TOOLS-2.5: tb-prod too old for Work says so with the version installed when known and the one Work needs from the table: 1.1.x’s refusal of folder_status, or clap refusing a subcommand or long flag', () => {
+    const v11 = prodFailed({ stdout: prodFixture('invalid-filter-1.1.1.json') });
+    expect(classifyTbProdFailure(v11, '1.1.1')).toMatchObject({
+      state: 'error',
+      reason: "tb-prod 1.1.1 is older than Work needs (1.2.0). Build it from cli-toolbox's main, then press Refresh.",
+      fix: TB_PROD_INSTALL_COMMAND,
+    });
+    expect(outdatedReason(null)).toBe(TASK_REASON.outdated);
+    for (const stderr of ["error: unrecognized subcommand 'query'", "error: unexpected argument '--include' found"]) {
+      expect(classifyTbProdFailure(prodFailed({ stderr }, 2), '0.9.0'), stderr).toMatchObject({ state: 'error', reason: outdatedReason('0.9.0'), fix: TB_PROD_INSTALL_COMMAND });
+    }
   });
 
   it('WORK-7.8: only 1.1.x’s message says tb-prod is older than 1.2.0, `Unknown filter field \'folder_status\'` with board_status among the available keys; any other invalid_filter naming folder_status is a refused query', () => {

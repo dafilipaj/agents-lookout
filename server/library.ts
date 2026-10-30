@@ -10,6 +10,8 @@ import { checkPaths, isPlainPath } from './files.ts';
 import { SESSION_ID } from './history.ts';
 import { cleanEnv } from './launcher.ts';
 import { sanitizeLine } from './sanitize.ts';
+import { refusedAsTooOld } from './too-old.ts';
+import { tooOld } from '../shared/tools.ts';
 import { OutputFiles } from './output-files.ts';
 import { unwrapPasted } from './pasted.ts';
 
@@ -51,8 +53,12 @@ interface LibraryOptions {
   isDirectory?: (path: string) => Promise<boolean>;
   realpath?: (path: string) => Promise<string>;
   log?: (line: string) => void;
+  /** TOOLS-2.5: tb-session's version as Settings › Tools last read it, for the "too old" line; null when unknown. */
+  toolVersion?: () => string | null;
 }
 interface Read { id: string; at: number; headless: boolean; items: OutputItem[]; projects: string[] }
+/** Why there's no read: tb-session isn't there, or is too old for `events` (TOOLS-2.5). */
+type Unavailable = 'not-installed' | 'too-old';
 interface Action {
   kind: 'file' | 'artifact' | 'share'; key: string; at: number; tool: string | null;
   word: OutputSession['event']; path: string | null; type: OutputType | null;
@@ -65,7 +71,7 @@ export class Library {
   readonly files = new OutputFiles();
   private readonly opts: LibraryOptions;
   private readonly reads: Read[] = [];
-  private readonly flights = new Map<boolean, Promise<Read | null>>();
+  private readonly flights = new Map<boolean, Promise<Read | Unavailable>>();
   private revision: string | null = null;
   private activeIndex = 0;
   private readonly roots = new Map<string, { at: number; root: string | null }>();
@@ -86,7 +92,9 @@ export class Library {
         void flight.finally(() => { if (this.flights.get(q.headless) === flight) this.flights.delete(q.headless); }).catch(() => {});
       }
       const result = await flight;
-      if (!result) return { state: 'not-installed', installCommand: TB_SESSION_INSTALL_COMMAND };
+      if (result === 'not-installed') return { state: 'not-installed', installCommand: TB_SESSION_INSTALL_COMMAND };
+      // TOOLS-2.5: a tb-session without `events` is too old, never "not installed".
+      if (result === 'too-old') return { state: 'too-old', reason: tooOld('tb-session', 'the Library', this.opts.toolVersion?.() ?? null), installCommand: TB_SESSION_INSTALL_COMMAND };
       read = result;
     }
     const query = q.query;
@@ -101,21 +109,22 @@ export class Library {
     return { state: 'ok', readId: read.id, items: shown.slice(end - PAGE_SIZE, end), total: shown.length, nextPage: q.page + 1, hasMore: end < shown.length, hiddenGone, unfilteredEmpty: read.items.length === 0, projects: [...new Set([...read.projects, ...(q.project ? [q.project] : [])])].sort() };
   }
 
-  private async read(headless: boolean): Promise<Read | null> {
+  private async read(headless: boolean): Promise<Read | Unavailable> {
     const bin = this.opts.bin(), info = await fsStat(bin).catch(() => null);
     // A read that starts while the first read after an upgrade is still running shares its 60 s budget.
     const revision = `${bin}:${info?.mtimeMs ?? ''}:${info?.size ?? ''}`, first = revision !== this.revision || this.activeIndex > 0;
     this.revision = revision;
     if (first) this.activeIndex++;
     const env = cleanEnv(this.opts.env ?? process.env);
-    const all = async (args: string[]): Promise<unknown[] | null> => {
+    const all = async (args: string[]): Promise<unknown[] | Unavailable> => {
       const rows: unknown[] = [];
       for (let page = 1; ; page++) {
         let raw: string;
         try { raw = await this.opts.runner(bin, page === 1 ? args : [...args, '--page', String(page)], { timeoutMs: first ? 60_000 : 20_000, env }); }
         catch (err) {
           const e = err as RunError;
-          if (e.code === 'ENOENT' || e.code === 2 && /unrecognized subcommand 'events'/.test(e.stderr ?? '')) return null;
+          if (e.code === 'ENOENT') return 'not-installed';
+          if (refusedAsTooOld(e)) return 'too-old';
           if (e.timedOut) throw new LibraryError(504, first ? 'Indexing Transcripts took too long. Run tb-session index --all-projects, then reopen Library.' : 'tb-session took too long to answer.');
           throw new LibraryError(502, `tb-session failed: ${sanitizeLine(e.stderr, 200) ?? 'no details'}`);
         }
@@ -133,7 +142,9 @@ export class Library {
         all([...prefix, '--kind', 'write,edit', '--ext', Object.keys(EXTENSIONS).join(',')]),
         all([...prefix, '--kind', 'artifact,share']), all(['list', '--all-projects', '--json', '--limit', LIST_PAGE]),
       ]);
-      if (!files || !remote || !sessions) return null;
+      if (typeof files === 'string') return files;
+      if (typeof remote === 'string') return remote;
+      if (typeof sessions === 'string') return sessions;
       const metadata = new Map(sessions.map((s) => { const r = object(s); return [`${r.harness}:${r.session_id}`, r] as const; }));
       const actions = [...files, ...remote].map((r) => this.action(r, metadata)).filter((a): a is Action => a !== null);
       // LIB-2.11: a copied tool call (contract E6) is credited once.

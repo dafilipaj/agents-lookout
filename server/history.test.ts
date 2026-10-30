@@ -315,6 +315,25 @@ describe('finding past Sessions (HIST-2)', () => {
     expect(await find(h)).toEqual({ state: 'not-installed', installCommand: TB_SESSION_INSTALL_COMMAND });
   });
 
+  it('TOOLS-2.5: a tb-session that refuses a subcommand or flag History needs, even without the 0.3 flags, is older than History needs, never "not installed": the version when known, the needed one from the table, its update command', async () => {
+    const refusing = (stderr: string) =>
+      vi.fn(async (_bin: string, args: readonly string[]) => {
+        // 0.2 refuses the 0.3 flags first (`legacy`); this one refuses what's left too.
+        if (args.includes('--headless')) throw Object.assign(new Error('exit 2'), { code: 2, stderr: "error: unexpected argument '--headless' found" });
+        throw Object.assign(new Error('exit 2'), { code: 2, stderr });
+      });
+    const runner = refusing("error: unrecognized subcommand 'list'\n\nUsage: tb-session <COMMAND>");
+    const h = new History({ runner, bin: () => 'tb-session', toolVersion: () => '0.1.0' });
+    expect(await find(h)).toEqual({ state: 'too-old', reason: 'tb-session 0.1.0 is older than History needs (0.3.0)', installCommand: TB_SESSION_INSTALL_COMMAND });
+    expect(runner).toHaveBeenCalledTimes(2);
+    const unknown = new History({ runner: refusing("error: unexpected argument '--all-projects' found"), bin: () => 'tb-session' });
+    expect(await find(unknown, 'deal')).toMatchObject({ state: 'too-old', reason: 'tb-session is older than History needs (0.3.0)' });
+    // Opening one says the same, as an error.
+    const err = (await unknown.detail('s-1', 'claude').catch((e: unknown) => e)) as HistoryError;
+    expect(err).toBeInstanceOf(HistoryError);
+    expect(err.message).toBe(`tb-session is older than History needs (0.3.0). Update it: ${TB_SESSION_INSTALL_COMMAND}`);
+  });
+
   it('tb-session failing: its reason, redacted and on one line', async () => {
     const h = new History({
       runner: vi.fn(async () => {

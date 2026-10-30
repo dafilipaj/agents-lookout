@@ -81,6 +81,7 @@
 //   switched_at, dry_run }`: `confirmed` the row's `fake_effort_confirm` (default false), `saved`
 //   its `fake_effort_saved` (default: true but for `max`, as Claude Code 2.1.308 writes it).
 //   `harness list --json` prints `harnesses.json` from the fixture dir, or `[]` without one.
+//   `--version` prints FAKE_FLEET_VERSION, else `fleet 0.1.0` (TOOLS-2.2, docs/contracts/fleet-tools.md).
 //   FAKE_FLEET_REGISTER  `later`: a spawned Session doesn't show in `list` until
 //                    `fake register`, as one stuck at a trust prompt; meanwhile a second
 //                    `spawn --resume` of it within 30 s is `session_starting` (the HIST contract)
@@ -716,6 +717,10 @@ switch (cmd) {
     break;
   case 'harness':
     process.stdout.write(existsSync(join(dir, 'harnesses.json')) ? readFileSync(join(dir, 'harnesses.json'), 'utf8') : '[]\n');
+    break;
+  case '--version':
+    // TOOLS-2.2: FAKE_FLEET_VERSION (the fork commit's `fleet 0.1.0 (5e2afd8)`, contract F1), else today's pin's plain line.
+    process.stdout.write(`${process.env.FAKE_FLEET_VERSION ?? 'fleet 0.1.0'}\n`);
     break;
   case 'fake':
     fake(argv);

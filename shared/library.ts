@@ -52,5 +52,7 @@ export interface OutputItem {
 }
 export type LibraryPage =
   | { state: 'not-installed'; installCommand: string }
+  /** TOOLS-2.5: tb-session answered as one without `events`: "tb-session 0.3.0 is older than the Library needs (0.4.0)". */
+  | { state: 'too-old'; reason: string; installCommand: string }
   | { state: 'read-again' }
   | { state: 'ok'; items: OutputItem[]; readId: string; total: number; nextPage: number; hasMore: boolean; projects: string[]; hiddenGone: number; unfilteredEmpty: boolean };

@@ -29,3 +29,13 @@ export const LAUNCH_TIMEOUT_MS = 15_000;
 
 /** WORK-7.2: what signs tb-prod in to Productive. */
 export const TB_PROD_SIGN_IN_COMMAND = 'tb-prod config init';
+
+/** How cli-toolbox installs tb-jev (USAGE-1.4, TOOLS-2.5); it lands in ~/.local/bin. */
+export const TB_JEV_INSTALL_COMMAND =
+  'gh api -H "Accept: application/vnd.github.raw" repos/productiveio/cli-toolbox/contents/scripts/install.sh | bash -s -- tb-jev';
+
+/** TOOLS-3.3: Claude Code's own update, for a failed auto-update or a version below Lookout's need. */
+export const CLAUDE_UPDATE_COMMAND = 'claude update';
+
+/** TOOLS-3.2: Codex's own update, for a newer release Codex recorded or a version below Lookout's need. */
+export const CODEX_UPDATE_COMMAND = 'codex update';

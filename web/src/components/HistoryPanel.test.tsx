@@ -346,6 +346,17 @@ describe('finding past Sessions (HIST-2)', () => {
     expect(await screen.findByText('Nothing matches “zebra”')).toBeInTheDocument();
   });
 
+  it('TOOLS-2.5: a tb-session too old for History says so, with the version it needs and the update command, never that it isn’t installed', async () => {
+    const reason = 'tb-session 0.1.0 is older than History needs (0.3.0)';
+    const app = renderApp('/', { history: async () => ({ state: 'too-old', reason, installCommand: 'install tb-session' }) });
+    app.snapshot([]);
+    await openHistory(app);
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(reason);
+    expect(alert).not.toHaveTextContent("isn't installed");
+    expect(alert.querySelector('[data-slot="command-block"]')).toHaveTextContent('install tb-session');
+  });
+
   it('tb-session missing: says how to install it, like SIDE-6.1', async () => {
     const app = renderApp('/', { history: async () => ({ state: 'not-installed', installCommand: 'install tb-session' }) });
     app.snapshot([]);

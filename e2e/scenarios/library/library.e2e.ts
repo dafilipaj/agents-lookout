@@ -173,7 +173,9 @@ scenario('LIB-3.5: Resume goes through History, selects one Starting row and fai
   expect(w.calls().filter((a) => /fleet.*spawn.*--resume library-resume/.test(a))).toHaveLength(1);
 });
 
-scenario('LIB-2.8: a pre-events tb-session gives Library its own upgrade hint while History still answers', world().outputs([], { unsupported: true }), async ({ page }) => {
-  await open(page); await expect(library(page).getByRole('alert')).toContainText('tb-session needs events'); await expect(library(page).locator('[data-slot="command-block"]')).toContainText('tb-session');
+scenario('LIB-2.8: a pre-events tb-session gives Library its own upgrade hint, saying it is too old (TOOLS-2.5), while History still answers', world().outputs([], { unsupported: true }), async ({ page }) => {
+  // The version shows once Settings › Tools has read it (TOOLS-1.4, on start); the needed one always does.
+  await open(page); await expect(library(page).getByRole('alert')).toContainText(/^tb-session (0\.3\.0 )?is older than the Library needs \(0\.4\.0\)/); await expect(library(page).locator('[data-slot="command-block"]')).toContainText('tb-session');
+  await expect(library(page).getByRole('alert')).not.toContainText("isn't installed");
   await page.getByRole('tab', { name: 'History' }).click(); await expect(page.getByText('No past Sessions')).toBeVisible();
 });

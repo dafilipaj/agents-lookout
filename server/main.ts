@@ -22,6 +22,7 @@ import { parsePort } from './port.ts';
 import { localAllowLists } from './security.ts';
 import { SettingsStore, defaultSettingsPath } from './settings.ts';
 import { trackStartDirectories } from './start-repos.ts';
+import { ToolsMonitor } from './tools.ts';
 import { UsageMonitor } from './usage.ts';
 import { Viewer } from './viewer.ts';
 import { WorkMonitor, resolveWorkBin } from './work.ts';
@@ -61,6 +62,8 @@ const work = new WorkMonitor({
   tbSessionBin: () => resolveTbSessionBin(env),
   productiveEmail: settings.get().productiveEmail,
   onChange: (w) => app.broadcast({ type: 'work', work: w }),
+  // TOOLS-2.5: a Tool too old for Work says which version it is.
+  toolVersion: (tool) => tools.version(tool),
 });
 
 // VIEW-6.7, VIEW-7.7: model and Effort switches waiting for the Session's next reply, carried with its row.
@@ -106,7 +109,7 @@ const viewer = new Viewer({
   ledger: new AnswerLedger(),
 });
 
-const history = new History({ runner: run, bin: () => resolveTbSessionBin(env) });
+const history = new History({ runner: run, bin: () => resolveTbSessionBin(env), toolVersion: () => tools.version('tb-session') });
 /** HIST-3.2: live means in Fleet's current list; a fresh read, or the last one when that fails. */
 const isLive = async (id: string, harness: string) => {
   const fresh = await fetchFleetList(run, resolveFleetBin(env));
@@ -118,6 +121,16 @@ const usage = new UsageMonitor({
   runner: run,
   fleetBin: () => resolveFleetBin(env),
   onChange: (u) => app.broadcast({ type: 'usage', usage: u }),
+});
+
+// TOOLS: every Tool, read on start (TOOLS-1.4) and when Settings opens; Harnesses from LAUNCH's
+// cached `harness list`, tb-jev from USAGE's `status --json`, never run again here.
+const tools: ToolsMonitor = new ToolsMonitor({
+  runner: run,
+  env,
+  harnesses: (force) => launcher.harnessFacts(force),
+  jev: () => usage.jevStatus(),
+  onChange: (t) => app.broadcast({ type: 'tools', tools: t }),
 });
 
 const memory = new MemoryMonitor({
@@ -176,15 +189,19 @@ const app = createApp({
   },
   // VIEW-1.18: a Session's file links, resolved against the cwd of its last listed row.
   files: { check: (id, body) => checkSessionPaths({ lookup: (sid) => monitor.get(sid) }, id, body) },
-  library: new Library({ runner: run, bin: () => resolveTbSessionBin(env), env }),
+  library: new Library({ runner: run, bin: () => resolveTbSessionBin(env), env, toolVersion: () => tools.version('tb-session') }),
   history: {
     find: (q) => history.find(q),
     detail: (id, harness) => history.detail(id, harness),
     peek: (id, harness) => history.peek(id, harness),
     resume: (input) => resumePast({ history, launcher, isLive }, input),
   },
+  tools,
   staticDir: production ? fileURLToPath(new URL('../dist/web', import.meta.url)) : null,
 });
+
+// TOOLS-1.4: the first read, when the server starts.
+void tools.start();
 
 app.server.listen(requestedPort, '127.0.0.1', () => {
   const { port } = app.server.address() as AddressInfo;
@@ -207,7 +224,7 @@ const shutdown = async () => {
   app.server.close();
   app.server.closeAllConnections();
   // Cancel the pollers and wait until their processes have exited, so none is orphaned.
-  await Promise.all([usage.close().catch(() => {}), memory.close().catch(() => {}), work.close().catch(() => {})]);
+  await Promise.all([usage.close().catch(() => {}), memory.close().catch(() => {}), work.close().catch(() => {}), tools.close().catch(() => {})]);
   process.exit(0);
 };
 process.on('SIGINT', shutdown);

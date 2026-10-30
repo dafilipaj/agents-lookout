@@ -126,8 +126,9 @@ scenario('TEST-1.2: tb-prod and tb-pr are on PATH only when declared, and each c
   }
   expect((await world.run('tb-pr', ['list', '--json'])).code).toBe(0);
   expect((await world.run('tb-prod', tasksQuery(ME))).code).toBe(0);
-  // TEST-2.4: in the calls log with Fleet's and tb-session's, and per fake as argv.
-  expect(world.calls().filter((c) => /^\S+ tb-pr(od)? /.test(c))).toEqual([
+  // TEST-2.4: in the calls log with Fleet's and tb-session's, and per fake as argv. Settings › Tools'
+  // `--version` reads (TOOLS-1.3), made when the server starts, are left out here.
+  expect(world.calls().filter((c) => /^\S+ tb-pr(od)? (?!--version$)/.test(c))).toEqual([
     expect.stringMatching(/^\d\d:\d\d:\d\d tb-pr list --json$/),
     expect.stringMatching(/^\d\d:\d\d:\d\d tb-prod query tasks --filter \S+ --include project\\,workflow_status --sort=-last_activity_at --page 1$/),
   ]);

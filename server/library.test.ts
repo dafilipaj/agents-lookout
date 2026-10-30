@@ -6,6 +6,8 @@ import type { Runner } from './exec.ts';
 import { run } from './exec.ts';
 import { libraryIncludes, libraryMatches } from '../shared/library-search.ts';
 import { Library, LibraryError, parseLibraryQuery } from './library.ts';
+import { TB_SESSION_INSTALL_COMMAND } from '../shared/defaults.ts';
+import { neededVersion } from '../shared/tools.ts';
 
 vi.mock('node:fs/promises', async (original) => { const m = await original<typeof import('node:fs/promises')>(); return { ...m, open: vi.fn(m.open) }; });
 
@@ -124,8 +126,9 @@ it('LIB-2.8: grants the first read per binary revision 60s, coalesces queries, d
   expect(runner.mock.calls).toHaveLength(3); expect(runner.mock.calls.map(([, , o]) => o.timeoutMs)).toEqual([60000, 60000, 60000]);
   vi.setSystemTime(Date.now() + 2100); await lib.find(query());
   expect(runner.mock.calls.slice(3).map(([, , o]) => o.timeoutMs)).toEqual([20000, 20000, 20000]);
+  // A tb-session without `events` (0.3.x) is too old, never missing (TOOLS-2.5).
   const missing = new Library(options(async () => { throw Object.assign(new Error('raw'), { code: 2, stderr: "error: unrecognized subcommand 'events'" }); }));
-  expect(await missing.find(query())).toMatchObject({ state: 'not-installed' });
+  expect(await missing.find(query())).toMatchObject({ state: 'too-old', installCommand: TB_SESSION_INSTALL_COMMAND });
   const failed = new Library(options(async () => { throw Object.assign(new Error('raw'), { stderr: 'Authorization: Bearer ghp_secret\nsecond line sk-secret' }); }));
   await expect(failed.find(query())).rejects.toThrow('tb-session failed: Authorization: …');
   const slow = new Library(options(async () => { throw Object.assign(new Error('raw'), { timedOut: true }); }));
@@ -133,6 +136,20 @@ it('LIB-2.8: grants the first read per binary revision 60s, coalesces queries, d
   expect(slow.indexing).toBe(false);
   const malformed = new Library(options(async () => answer([], 1)));
   await expect(malformed.find(query())).rejects.toBeInstanceOf(LibraryError);
+});
+
+it('TOOLS-2.5: a tb-session without `events` is older than the Library needs, with the version installed when known, the needed one from the table and the update command; only one that is gone is not installed', async () => {
+  const refuse = async () => { throw Object.assign(new Error('raw'), { code: 2, stderr: "\u001b[31merror:\u001b[0m unrecognized subcommand 'events'\n\nUsage: tb-session <COMMAND>\n" }); };
+  const known = new Library({ ...options(refuse), toolVersion: () => '0.3.0' });
+  expect(await known.find(query())).toEqual({ state: 'too-old', reason: 'tb-session 0.3.0 is older than the Library needs (0.4.0)', installCommand: TB_SESSION_INSTALL_COMMAND });
+  expect(neededVersion('tb-session', 'the Library')).toBe('0.4.0');
+  const unknown = new Library({ ...options(refuse), toolVersion: () => null });
+  expect(await unknown.find(query())).toMatchObject({ state: 'too-old', reason: 'tb-session is older than the Library needs (0.4.0)' });
+  // A flag `events` doesn't have is the same answer.
+  const flag = new Library(options(async () => { throw Object.assign(new Error('raw'), { code: 2, stderr: "error: unexpected argument '--headless' found" }); }));
+  expect(await flag.find(query())).toMatchObject({ state: 'too-old' });
+  const gone = new Library(options(async () => { throw Object.assign(new Error('spawn ENOENT'), { code: 'ENOENT' }); }));
+  expect(await gone.find(query())).toEqual({ state: 'not-installed', installCommand: TB_SESSION_INSTALL_COMMAND });
 });
 
 it('LIB-2.9: stats every file and Artifact source before paging, 100 paths a batch with one shared deadline per batch', async () => {

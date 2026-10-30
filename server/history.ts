@@ -8,6 +8,8 @@ import type { RunError, Runner } from './exec.ts';
 import { DirMissingError, LAUNCH_ID, type Launcher, SessionLiveError, cleanEnv } from './launcher.ts';
 import { unwrapPasted } from './pasted.ts';
 import { sanitizeLine } from './sanitize.ts';
+import { refusedAsTooOld } from './too-old.ts';
+import { tooOld } from '../shared/tools.ts';
 
 /**
  * HIST: past Sessions through tb-session (decision 0005), contract in
@@ -91,7 +93,12 @@ export interface HistoryOptions {
   env?: NodeJS.ProcessEnv;
   /** Whether a directory exists (tests pass a fake). */
   isDirectory?: (path: string) => Promise<boolean>;
+  /** TOOLS-2.5: tb-session's version as Settings › Tools last read it, for the "too old" line; null when unknown. */
+  toolVersion?: () => string | null;
 }
+
+/** TOOLS-2.5: tb-session refused a subcommand or flag History needs, even without the 0.3 flags. */
+class TooOld extends Error {}
 
 export class History {
   private readonly opts: HistoryOptions;
@@ -104,6 +111,11 @@ export class History {
 
   private get isDirectory() {
     return this.opts.isDirectory ?? defaultIsDirectory;
+  }
+
+  /** TOOLS-2.5: "tb-session 0.1.0 is older than History needs (0.3.0)", the version from TOOLS-2.1's table. */
+  private tooOld(): string {
+    return tooOld('tb-session', 'History', this.opts.toolVersion?.() ?? null);
   }
 
   /** HIST-2.9: the home directory, shown as `~`. */
@@ -124,7 +136,13 @@ export class History {
       if (q.query) args.push('--', q.query);
       return args;
     };
-    const out = await this.call(run);
+    let out: string | null;
+    try {
+      out = await this.call(run);
+    } catch (err) {
+      if (err instanceof TooOld) return { state: 'too-old', reason: this.tooOld(), installCommand: TB_SESSION_INSTALL_COMMAND };
+      throw err;
+    }
     if (out === null) return { state: 'not-installed', installCommand: TB_SESSION_INSTALL_COMMAND };
     const parsed = parseObject(out);
     if (!parsed || !Array.isArray(parsed.results)) throw new HistoryError(502, 'tb-session returned an unexpected answer.');
@@ -181,10 +199,16 @@ export class History {
     if (!SESSION_ID.test(sessionId)) throw new HistoryError(400, 'Invalid session id.');
     // Which form answered: a 0.2 `show` gives the first messages, not the latest.
     const asked = { legacy: false };
-    const out = await this.call((old) => {
-      asked.legacy = old;
-      return old ? ['show', '--json', '--', sessionId] : ['show', '--json', '--harness', harness, '--tail', String(tail), '--', sessionId];
-    });
+    let out: string | null;
+    try {
+      out = await this.call((old) => {
+        asked.legacy = old;
+        return old ? ['show', '--json', '--', sessionId] : ['show', '--json', '--harness', harness, '--tail', String(tail), '--', sessionId];
+      });
+    } catch (err) {
+      if (err instanceof TooOld) throw new HistoryError(502, `${this.tooOld()}. Update it: ${TB_SESSION_INSTALL_COMMAND}`);
+      throw err;
+    }
     if (out === null) throw new HistoryError(502, "tb-session isn't installed.");
     const parsed = parseObject(out);
     // tb-session 0.2 lists Sessions without a prompt, so its `show` can be of one (HIST-2.6).
@@ -230,6 +254,8 @@ export class History {
           this.legacy = true;
           continue;
         }
+        // TOOLS-2.5: any other subcommand or flag it doesn't know: too old, never "not installed".
+        if (refusedAsTooOld(e)) throw new TooOld();
         // `show` with `--json`: resolution errors as one JSON object on stdout.
         const parsed = parseObject(e.stdout);
         if (parsed?.error === 'session_not_found') throw new HistoryError(404, 'tb-session has no such Session.');

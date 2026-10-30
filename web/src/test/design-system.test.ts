@@ -292,6 +292,7 @@ const FAMILIES: Record<string, Family> = {
       'web/src/components/WorkPanel.tsx': { why: 'CI failing', uses: ['text-destructive'] },
       'web/src/components/SessionView.tsx': { why: 'a Stop that failed, and a failed copy', uses: ['text-destructive'] },
       'web/src/components/Markdown.tsx': { why: 'a failed copy', uses: ['text-destructive'] },
+      'web/src/components/Sidebar.tsx': { why: "the Settings button's dot: a Tool missing or behind (TOOLS-2.4)", uses: ['bg-destructive'] },
     },
   },
   ok: {

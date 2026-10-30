@@ -1,6 +1,7 @@
 import type { LibraryPage, LibraryQuery } from '@shared/library.ts';
 import type { PathAnswer } from '@shared/files.ts';
 import type { Settings, SettingsView } from '@shared/settings.ts';
+import type { ToolsSnapshot } from '@shared/tools.ts';
 import type { WorkRefreshResult } from '@shared/work.ts';
 import { HELD_REASONS, type AnswerRequest, type AnswerResult, type ChatPage, type EffortSwitchRequest, type EffortSwitchResult, type EndResult, type EndTarget, type Harness, type HarnessOption, type HeldReason, type HistoryDetail, type HistoryPage, type HistoryPeek, type LaunchRequest, type LaunchView, type TrustRequest, type ModelSwitchRequest, type ModelSwitchResult, type RenameResult, type ResumeResult, type ServerEvent } from '@shared/types.ts';
 
@@ -48,6 +49,10 @@ export interface LookoutClient {
   escSession(sessionId: string): Promise<void>;
   /** USAGE-2.1: the details opened; have the server check Jev again. */
   refreshJev(): Promise<void>;
+  /** TOOLS-1.4: Settings opened: the Tools, read again when the last read is a minute old. */
+  tools(): Promise<ToolsSnapshot>;
+  /** TOOLS-1.4: Refresh: the Tools, read now. */
+  refreshTools(): Promise<ToolsSnapshot>;
   /** USAGE-2.2: a window's reset passed; have the server read the limits again. */
   refreshUsage(): Promise<void>;
   /** MEM-3.1: whether this tab has the breakdown open, naming its current event stream. */
@@ -388,6 +393,8 @@ export function createHttpClient(): LookoutClient {
     refreshJev: async () => {
       await call(() => send('POST', '/api/usage/jev'), 'Checking Jev');
     },
+    tools: () => call<ToolsSnapshot>(() => fetch('/api/tools'), 'Checking the Tools'),
+    refreshTools: () => call<ToolsSnapshot>(() => send('POST', '/api/tools/refresh'), 'Checking the Tools'),
     library: ({ query, page, readId, headless, types, project, hideGone }) => call<LibraryPage>(() => fetch(`/api/library?${new URLSearchParams({ q: query, page: String(page), headless: headless ? '1' : '0', types: types.join(','), project, hideGone: hideGone ? '1' : '0', ...(readId ? { readId } : {}) })}`), 'Reading Library'),
     libraryStatus: () => call<{ indexing: boolean }>(() => fetch('/api/library/status'), 'Reading Library status'),
     history: ({ query, page, headless, harness }) =>
