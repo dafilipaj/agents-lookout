@@ -150,7 +150,7 @@ Answered by Dario on 2026-10-30, all as recommended:
 ## Known gaps
 
 - A Fleet built with uncommitted changes prints the revision it started from, so it reads as that revision.
-- A Fleet built before the fork commit `2b23eda` (the pin since 2026-10-30) prints no revision, and a `cargo build` leaves no cargo record, so its row reads `unknown`.
+- A Fleet built before the fork commit `2b23eda` (pinned 2026-10-30) prints no revision, and a `cargo build` leaves no cargo record, so its row reads `unknown`.
 - tb-prod's latest release (1.1.1) is older than the build from `main` Work needs (1.2.0); its `--version` says `(latest)`, which the row shows as `ok`. Right by accident: no release is newer.
 - `~/.claude/.last-update-result.json` and `~/.codex/version.json` are undocumented files; a shape change makes the row go quiet, not wrong.
 - On start and on opening Settings a version is read at most once a minute; Refresh re-reads it at once, so a Tool updated in a terminal shows after Refresh. A release published within the last minute shows after the next check.
