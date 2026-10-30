@@ -3,7 +3,7 @@ title: History
 code: HIST
 status: In Progress
 created: 2026-10-16
-updated: 2026-10-27
+updated: 2026-10-30
 ---
 
 # History
@@ -51,7 +51,7 @@ Once History is in Lookout, a stray click on a result resumes a past Session, wh
 
 ## Non-goals
 
-- Deleting, renaming, exporting or tagging past Sessions.
+- Deleting, renaming, exporting or tagging past Sessions. Adding one to a Topic (TOPIC-2.1) is a record in Lookout's own store, not a change to the Session.
 - Forking a Session (`--fork-session`), or resuming with a new first prompt (once it's live, use the composer, VIEW-3).
 - Recreating a removed Worktree so that a Session can be resumed.
 - Semantic or AI search.
@@ -227,3 +227,4 @@ None.
 - 2026-10-23: HIST-3.6 ticked: Dario checked it in the running app, from Dario's testing. He asked for more space between the buttons and the content around them, which DS-7.4 now states.
 - 2026-10-27: From Dario's report (a resume in a folder Claude Code didn't trust failed after 15 s, its Trust prompt in the terminal's last lines, with nowhere to answer it): HIST-3.4 amended to include the Trust prompt in the Starting view (LAUNCH-6) and unticked until it's seen live. Technical approach: a resume waiting at its Trust prompt is answered from its row; a `session_starting` resume whose Session host Fleet names is followed as Lookout's own (fork contract C7); "answer it there" is said only of another terminal app, never of a Session host.
 - 2026-10-30: From TOOLS-2.5: a tb-session that refuses a subcommand or flag History needs, after the 0.2 fallback (`legacy`), says "tb-session 0.1.0 is older than History needs (0.3.0)", the version from the Tools table, with the update command, instead of "tb-session failed"; only a tb-session that isn't there says it isn't installed.
+- 2026-10-30: Non-goals: tagging past Sessions stays out, and a Topic membership (TOPIC-2.1, "Add to Topic" on an expanded result) isn't one: it's a row in Lookout's own store, and the Session is untouched.

@@ -52,6 +52,8 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Process tree**: A process and every descendant of it, by parent pid, as one `ps` listing shows them at that instant. A Session's is rooted at its Harness process (Fleet's `pid`): the Harness, its MCP servers, the shells and test runners it started. Lookout's is rooted at its server. See the MEM spec.
 
+**Recommendation**: A proposed Topic membership: an item new to Lookout (a Session, PR or Task in no Topic) and the Open Topic it probably belongs to, or a new Topic, with its reason: a Link, or Jev's judgment. Nothing happens until you accept it. See TOPIC-9.
+
 **Requirement**: One capability a feature provides, ID'd `<CODE>-n`.
 
 **Review request**: An open PR on which you are a requested reviewer by name, whoever requested you. Requests sent to a team you're in don't count.
@@ -70,7 +72,7 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Tool**: A CLI Lookout runs on this Mac: Fleet, `claude`, `codex`, `tb-session`, `tb-pr`, `tb-prod`, `tb-jev`, `git` and `tmux`. Every Building block is a Tool; not every Tool is a Building block. See the TOOLS spec.
 
-**Topic**: A named bundle you make by hand of the Sessions, PRs and Tasks that belong to one piece of your work, with an optional brief and a state, Open or Archived. Its members are references to what the Building blocks know; Lookout keeps them in `~/.config/lookout/topics.json`. See the TOPIC spec.
+**Topic**: A wrapper you make by hand for one piece of your work: the Sessions, PR, Task and, later, `tb-flow` run that belong to it, all or some, with your notes and a state, Open or Archived. Its members are references to what the Building blocks know; Lookout keeps them in `~/.lookout/topics.db`. See the TOPIC spec.
 
 **Transcript**: The JSONL log a Harness writes for a Session, for example under `~/.claude/projects/` or `~/.codex/sessions/`.
 
