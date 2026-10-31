@@ -80,6 +80,8 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Topic**: A wrapper you make by hand for one piece of your work: the Sessions, PR, Task and, later, `tb-flow` run that belong to it, all or some, with your notes and a state, Open or Archived. Its members are references to what the Building blocks know; Lookout keeps them in `~/.lookout/topics.db`. See the TOPIC spec.
 
+**Topic summary**: Text a model writes about a Topic when you ask, from what Lookout knows of its members: what it is, where it stands, what's open, what happened last and what's next, each point citing members. Kept apart from the notes and rewritten whole. See TOPIC-11.
+
 **Topic view**: A Topic shown whole in the main pane at `/topics/<id>`: its notes, its members by kind with their state, its Outputs, recommendations and Edges. The Topics tab's expanded Topic is its summary. See TOPIC-10.
 
 **Transcript**: The JSONL log a Harness writes for a Session, for example under `~/.claude/projects/` or `~/.codex/sessions/`.

@@ -20,7 +20,7 @@ How specs work: `docs/README.md`. Terms: `docs/GLOSSARY.md`. What's next, in ord
 ## Constraints from accepted decisions
 
 - Sessions run in their own tmux session, and the UI never shows tmux ([0001](docs/decisions/0001-tmux-as-hidden-session-host.md)).
-- Never run `claude` or another Harness directly: start a login shell in tmux and type the command into it ([0002](docs/decisions/0002-start-sessions-through-a-login-shell.md)).
+- Never start a Session by running `claude` or another Harness directly: start a login shell in tmux and type the command into it ([0002](docs/decisions/0002-start-sessions-through-a-login-shell.md)). The one exception is a one-shot `claude -p` with no tools, no session and no settings, started by you ([0013](docs/decisions/0013-one-shot-claude-runs-for-lookouts-own-text.md)).
 - The local server binds `127.0.0.1` and checks `Origin` or a token ([0003](docs/decisions/0003-browser-first-react-stack.md)).
 - Use Fleet only through its CLI's `--json` output ([0004](docs/decisions/0004-fleet-cli-as-session-layer.md)).
 - Fleet comes from the fork `dafilipaj/fleet`, branch `lookout`. A missing Fleet capability is a commit there, not a workaround in Lookout ([0006](docs/decisions/0006-run-a-fork-of-fleet.md)).
