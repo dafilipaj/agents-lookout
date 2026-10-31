@@ -63,7 +63,7 @@ Lookout reads what the Tools' own update checks already recorded. It makes no ne
 Fleet reads Claude Code's and Codex's screens and Transcripts, and keeps Claude Code's model and Effort tables by hand (VIEW, "Levels"). A Harness past the version those were checked against deserves a look, not an alarm.
 
 - [x] TOOLS-4.1 The table (TOOLS-2.1) also holds, per Harness, the version Fleet's tables and fixtures were last checked against: Claude Code 2.1.312 (VIEW-10's question-form captures), Codex 0.163.0. A running Harness above it is `newer-than-known`, with the reason "Fleet's model and Effort lists and its prompt reading were checked up to 2.1.312; re-check them" and no fix. The two numbers move with each Fleet pin bump, in the same change. (test)
-- [ ] TOOLS-4.2 `newer-than-known` is shown in the info tone (DS-3.3), `missing` and `behind` as errors, `update-available` as a notice; the Harness rows keep working as before. (manual)
+- [x] TOOLS-4.2 `newer-than-known` is shown in the info tone (DS-3.3), `missing` and `behind` as errors, `update-available` as a notice; the Harness rows keep working as before. (manual)
 
 ## Non-goals
 
@@ -167,3 +167,4 @@ None. The five draft questions and a sixth were answered on 2026-10-30 (Key deci
 - 2026-10-30: Review fixes. Refresh forces a fresh `harness list` read (TOOLS-1.4); a stale `install_failed` is ignored once the installed version passes `version_from` (TOOLS-3.3); tb-jev's exit 2 goes through `refusedAsTooOld` and the past-Session detail's too-old error carries tb-session's update command (TOOLS-2.5).
 - 2026-10-30: Dario's two answers. TOOLS-2.4: a missing Harness lights the Settings dot only when neither Claude Code nor Codex is installed (a behind one still does); TOOLS-1.2 and Key decisions follow. TOOLS-1.4: Refresh always re-reads installed versions, while the `gh api` release check stays at most once a minute, on Refresh too (tb's `--version` runs without `gh` and the last answer is reused).
 - 2026-10-30: Pinned Fleet `2b23eda`, the fork commit [`fleet-tools.md`](../../contracts/fleet-tools.md) asked for, after three review rounds (a shared 3 s deadline, the whole process group killed on timeout, zsh with a controlling terminal). Fleet's row reads its revision, and the Harness rows their path and version.
+- 2026-10-31: TOOLS-4.2 ticked: Dario checked Settings › Tools and its row tones work as expected. Every TOOLS criterion is ticked. No requirement changed.

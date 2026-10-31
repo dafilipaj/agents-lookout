@@ -14,11 +14,6 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
   - It costs one extra screen read per poll for every busy Session.
 - **Added:** 2026-10-17, after the first live use of the chat.
 
-## Library: everything Sessions produced, searchable (LIB)
-
-- **Specced:** [LIB](features/library/SPEC.md), Ready, grilled 2026-10-23. Its three open points are answered there: claude.ai has no Artifact list but the Transcripts (Technical approach, Source); existence is Lookout's per-page stat (LIB-2.9); scratchpad files are in while they exist and hidden once gone (Key decisions). The tb-session command it needs is a [contract](contracts/tb-session-outputs.md). Slices 2 and 3 are under its Later.
-- **Added:** 2026-10-17.
-
 ## What's loaded into a Session (CTX)
 
 - **What:** per Session, what its Harness has loaded:
@@ -41,9 +36,9 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
 - **How (proposal):** a USAGE spec change with a Changelog line first; maybe a Settings toggle per Harness rather than hiding on "not installed" alone, since a leftover `~/.codex` makes Fleet think Codex is installed.
 - **Added:** 2026-10-17, from the review of the TEST spec.
 
-## Switch a Codex Session's model and Effort (VIEW-6, VIEW-7) once Codex 0.164 ships
+## Switch a Codex Session's model and Effort (VIEW-6, VIEW-7)
 
-- **What:** the status line's model menu (VIEW-6) and Effort menu (VIEW-7) for Codex Sessions too, not only Claude Code ones. Picked up once Codex 0.164 is released as stable and installed here.
+- **What:** the status line's model menu (VIEW-6) and Effort menu (VIEW-7) for Codex Sessions too, not only Claude Code ones. Unblocked: Codex 0.166.0 is installed (2026-10-31), so the proposal below is to be checked against it (Plan item 22).
 - **Why:** VIEW-6 and VIEW-7 leave Codex out because the installed Codex, 0.163, only opens a picker on `/model` (the model, then its reasoning effort), which Fleet would have to drive by keys. Codex 0.164 adds `/model [model] --reasoning <level> --speed <tier>` with everything inline (openai/codex #54378, merged 2026-10-15; in the 0.164 alphas), so Codex's model and Effort can be switched the way Claude Code's are.
 - **How (proposal):**
   - VIEW-6.1, 6.2, 7.1 and 7.2 change wording: the menus are for Controllable Claude Code and Codex Sessions, listing the models and levels Fleet gives for the Session's Harness (Codex's levels already come from `models_cache.json`'s `supported_reasoning_levels` through `harness list`, `ultra` included where a model has it), and only a Session that isn't Controllable or has ended keeps plain text. The Technical approach's Codex Known gaps go.
@@ -54,21 +49,6 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
   - `thread_settings_applied` is written only once the rollout file exists, i.e. after the first prompt, so a switch before it has nothing to succeed on.
   - Codex accepts `/model` mid-turn (from the next turn), but VIEW-6.3 and VIEW-7.3 keep the menus to Idle Sessions for both Harnesses.
 - **Added:** 2026-10-19, from VIEW-6, where Codex is a Known gap. Effort added 2026-10-22, from VIEW-7.
-
-## The CLIs Lookout uses, and which can be updated (TOOLS)
-
-- **What:** one place, e.g. a "Tools" section in Settings, listing every CLI Lookout runs (fleet, tb-session, tb-pr, tb-prod, tb-jev, claude, codex): where it was found, its installed version, the latest release, and the command that updates it.
-- **Why:** today nothing shows which versions Lookout runs on, or that a newer one exists. Several features depend on a minimum version (tb-pr 0.3.1's `column_issues`, tb-session 0.3.0's Codex support, tb-session 0.4.0's `events` for the Library, Fleet's pin), and Fleet's screen reading is only as good as the Harness versions its fixtures were captured from.
-- **How (proposal):**
-  - Show-only: Lookout copies the update command, never runs it.
-  - The latest release is checked at most once a day, through tools that are already signed in (`gh` for cli-toolbox releases) or public registries for Claude Code and Codex.
-  - Fleet is compared with Lookout's pin (`e2e/pins.json`), not a public release; tb-prod shows as retired.
-  - A Claude Code or Codex newer than the version Fleet's screen fixtures were captured from is flagged, since prompt answering, the send guard and `fleet model` read their screens.
-- **Costs and risks:**
-  - tb-jev's version can't come from `tb-jev --version`, which must not be run; it needs another source.
-  - Checking for releases is a network call Lookout doesn't make today.
-- **Added:** 2026-10-19, from Dario's testing.
-- **Specced:** 2026-10-23 as [TOOLS](features/tools/SPEC.md) (Draft). What changed from the proposal: no network calls of Lookout's own (the Tools' own checks are read instead: tb's `--version` line and cache file, Codex's `version.json`, Claude Code's `.last-update-result.json`); tb-jev's version comes from `status --json`, which USAGE already reads; Fleet is judged by revision against the pin, which needs a fork commit (its Open question 1).
 
 ## Workflow editor: agents and the order they run in (FLOW)
 
@@ -137,11 +117,6 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
   - Small ones: "Jump to latest" gets room under the chat's last line instead of covering it; Work's filter labels fit at 300 px.
 - **Costs and risks:** two breakpoints in the shell's grid, an overlay that needs focus handling and Esc, and the dock row's resting height (SIDE-8.1) checked at each width. Screenshots at 520, 560 and 900 px are in the review.
 - **Added:** 2026-10-22, from the design review; Dario: agreed, postponed.
-
-## Memory overview: what the Sessions cost the Mac (MEM)
-
-- **Specced:** [MEM](features/memory-overview/SPEC.md), Ready, grilled 2026-10-24 (all recommendations agreed): CPU and load beside memory as MEM-5 (since the freeze was load); the browser tab's own memory is not in slice 1 (the legend says the tab is in "other"). The placement moved from a header button to the dock row under the usage strip, by Dario's decision.
-- **Added:** 2026-10-23.
 
 ## Keep the Mac awake while Sessions run (new spec)
 
