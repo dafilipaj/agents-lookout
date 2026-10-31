@@ -1,6 +1,7 @@
 import type { OutputSession } from '@shared/library.ts';
-import { type MemberKind, type NewMember, type Topic, type TopicMember, type TopicsView, memberKey, sortTopics } from '@shared/topics.ts';
-import type { HistoryItem, SessionRow, Status } from '@shared/types.ts';
+import { type MemberKind, type NewMember, type Topic, type TopicMember, type TopicsView, historyMember, memberKey, sortTopics } from '@shared/topics.ts';
+export { historyMember, prMember, rowMember, sessionMember, taskMember } from '@shared/topics.ts';
+import type { SessionRow, Status } from '@shared/types.ts';
 import type { WorkPr, WorkSnapshot, WorkTask } from '@shared/work.ts';
 import { createContext, useContext } from 'react';
 
@@ -9,19 +10,6 @@ import { createContext, useContext } from 'react';
  * Status and Work's last read, where both already are. Nothing here reads anything new.
  */
 
-/** TOPIC-2.1, TOPIC-2.2: the members "Add to Topic" sends for a row, built from what the row shows. */
-export function sessionMember(s: { harness: SessionRow['harness']; sessionId: string; title: string; directory: string | null }): NewMember {
-  return { kind: 'session', ref: { harness: s.harness, sessionId: s.sessionId }, snapshot: { harness: s.harness, title: s.title, directory: s.directory } };
-}
-export const historyMember = (item: HistoryItem): NewMember => sessionMember({ harness: item.harness, sessionId: item.sessionId, title: item.title, directory: item.projectDisplay ?? item.projectPath });
-export const prMember = (pr: WorkPr): NewMember => ({ kind: 'pr', ref: { url: pr.url }, snapshot: { repo: pr.repo, number: pr.number, title: pr.title, url: pr.url } });
-export const taskMember = (task: WorkTask): NewMember => ({ kind: 'task', ref: { id: task.id }, snapshot: { title: task.title, project: task.project, url: task.url } });
-/** A live Session's row: its session id, or none yet (`<harness>:<pid>`, TOPIC-2.2). */
-export function rowMember(row: SessionRow): NewMember | null {
-  if (row.id === `${row.harness}:${row.pid}`) return null;
-  const home = row.cwd;
-  return sessionMember({ harness: row.harness, sessionId: row.id, title: row.title, directory: home });
-}
 export const outputSessionMembers = (sessions: readonly OutputSession[]): NewMember[] => sessions.map(historyMember);
 
 export const keyOf = (m: NewMember): string => memberKey(m.kind, m.ref);

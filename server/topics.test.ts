@@ -50,7 +50,7 @@ describe('TOPIC-8 storage', () => {
     db.exec('pragma journal_mode = delete');
     db.close();
     const bytes = readFileSync(path);
-    expect(() => new TopicStore(path)).toThrow(/written by a newer Lookout \(schema 2; this one reads 1\)/);
+    expect(() => new TopicStore(path)).toThrow(new RegExp(`written by a newer Lookout \\(schema ${SCHEMA_VERSION + 1}; this one reads ${SCHEMA_VERSION}\\)`));
     // Not even its journal mode changes.
     expect(readFileSync(path).equals(bytes)).toBe(true);
     const again = new (sqlite().DatabaseSync)(path);

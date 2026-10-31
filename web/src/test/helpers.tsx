@@ -6,7 +6,7 @@ import type { UserEvent } from '@testing-library/user-event';
 import { expect, vi } from 'vitest';
 import { App } from '@/App';
 import { type ClientListener, type HistoryQuery, type LookoutClient, SaveError } from '@/lib/client';
-import { type NewMember, type Topic, type TopicMember, type TopicsView, memberKey, sortTopics } from '@shared/topics.ts';
+import { type NewMember, type Recommendation, type RecommendationAction, type Topic, type TopicMember, type TopicsView, memberKey, sortTopics } from '@shared/topics.ts';
 
 export const NOW = Date.UTC(2026, 9, 16, 12, 0, 0);
 
@@ -106,6 +106,8 @@ interface RenderOptions {
   refreshTools?: LookoutClient['refreshTools'];
   /** TOPIC: the fake server's Topics, sent with each snapshot and changed by the Topics calls, as the server does. */
   topics?: Topic[];
+  /** TOPIC-9.4: the fake server's pending recommendations; Accept, Dismiss and Other Topic… resolve them. */
+  recommendations?: Recommendation[];
 }
 
 /** Renders the whole app against a fake server the test drives. */
@@ -118,7 +120,8 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
   // TOPIC-8.3: the fake server's Topics; each change goes to the tab as a `topics` event.
   let topicSet: Topic[] = options.topics ?? [];
   let topicClock = NOW;
-  const topicsView = (): TopicsView => ({ state: 'ok', reason: null, path: '/Users/me/.lookout/topics.db', topics: sortTopics(topicSet), pruned: [], libraryReadAt: null });
+  let pendingSet: Recommendation[] = options.recommendations ?? [];
+  const topicsView = (): TopicsView => ({ state: 'ok', reason: null, path: '/Users/me/.lookout/topics.db', topics: sortTopics(topicSet), pruned: [], libraryReadAt: null, recommendations: pendingSet, jevAsksToday: 0 });
   const changeTopics = (next: Topic[]) => {
     topicSet = next;
     act(() => listener?.onEvent({ type: 'topics', topics: topicsView() }));
@@ -198,6 +201,21 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
       if (t.members.some((x) => x.key === key)) return { added: false, title: t.title };
       changeTopics(topicSet.map((x) => (x.id === id ? { ...x, updatedAt: ++topicClock, members: [...x.members, { ...m, key, addedAt: topicClock, reason: 'added by hand' } as TopicMember] } : x)));
       return { added: true, title: t.title };
+    }),
+    recommend: vi.fn(async (a: RecommendationAction) => {
+      if (a.action === 'judge-again') return { topicId: null };
+      const r = pendingSet.find((x) => x.key === a.key && x.topicId === a.topicId);
+      if (!r) throw new SaveError('That recommendation is no longer pending.', null, 404);
+      pendingSet = pendingSet.filter((x) => x !== r);
+      let to: string | null = a.action === 'move' ? a.to : a.action === 'accept' ? r.topicId : null;
+      if (a.action === 'accept' && to === null) {
+        const t: Topic = { id: `00000000-0000-4000-8000-${String(topicSet.length + 1).padStart(12, '0')}`, title: r.newTitle!, notes: '', state: 'open', createdAt: ++topicClock, updatedAt: topicClock, members: [], outputs: null };
+        topicSet = [...topicSet, t];
+        to = t.id;
+      }
+      const reason = a.action === 'move' ? 'from a recommendation, other Topic' : r.source === 'link' ? 'from a Link' : 'from Jev, accepted';
+      changeTopics(to === null ? topicSet : topicSet.map((x) => (x.id === to ? { ...x, updatedAt: ++topicClock, members: [...x.members, { ...r.member, key: r.key, addedAt: topicClock, reason } as TopicMember] } : x)));
+      return { topicId: to };
     }),
     removeMember: vi.fn(async (id: string, m: Pick<NewMember, 'kind' | 'ref'>) => {
       const key = memberKey(m.kind, m.ref);

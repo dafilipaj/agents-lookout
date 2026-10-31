@@ -1,5 +1,5 @@
 import type { OutputItem } from '@shared/library.ts';
-import { MAX_TOPIC_NOTES, MAX_TOPIC_TITLE, OUTPUTS_FRESH_MS, type Topic, type TopicMember, type TopicsView, sortTopics } from '@shared/topics.ts';
+import { MAX_TOPIC_NOTES, MAX_TOPIC_TITLE, OUTPUTS_FRESH_MS, type Recommendation, type RecommendationAction, type Topic, type TopicMember, type TopicsView, sortTopics } from '@shared/topics.ts';
 import type { SessionRow } from '@shared/types.ts';
 import type { WorkSnapshot } from '@shared/work.ts';
 import { Archive, ArchiveRestore, ExternalLink, Plus, Search, Trash2, X } from 'lucide-react';
@@ -21,6 +21,7 @@ import { cn } from '@/lib/utils';
 import { HarnessIcon } from './HarnessIcon';
 import { OUTPUT_ICON, TYPE_LABEL, openOutput } from '@/lib/outputs';
 import { Markdown } from './Markdown';
+import { Recommendations } from './Recommendations';
 import { TaskStatusDot } from './TaskStatusDot';
 import { Ci, PrIcon } from './WorkPanel';
 import { CHIP_TONE } from '@/lib/work';
@@ -58,6 +59,10 @@ export interface TopicsPanelProps {
   onReadLibrary(): void;
   /** TOPIC-4.4: why the last read `onReadLibrary` asked for failed; null when it didn't. */
   outputsError?: string | null;
+  /** TOPIC-9.4: Accept, Dismiss or Other Topic… on a recommendation. */
+  recommend(action: RecommendationAction): Promise<unknown>;
+  /** TOPIC-9.4: "Other Topic…" opens the Topic picker for this recommendation. */
+  onOtherTopic(rec: Recommendation): void;
   /** TOPIC-4.4: "+N more" opens the Library on these Sessions' Outputs. */
   onMoreOutputs(topic: Topic): void;
   keyboardEnabled: boolean;
@@ -197,6 +202,17 @@ export function TopicsPanel(props: TopicsPanelProps) {
     setProblem(null);
   };
 
+  // TOPIC-9.4: at the top, only while something is pending.
+  const pending = view?.state === 'ok' ? view.recommendations : [];
+  const recommended = pending.length > 0 && (
+    <section aria-labelledby="topics-recommended" className="flex flex-col gap-1 border-b border-border px-2.5 pt-1 pb-2 text-meta" data-field="recommended">
+      <h3 id="topics-recommended" className="font-medium text-muted-foreground">
+        Recommended
+      </h3>
+      <Recommendations recommendations={pending} topics={all} sessions={sessions} showTopic recommend={props.recommend} onOtherTopic={props.onOtherTopic} onProblem={setProblem} />
+    </section>
+  );
+
   let body: ReactNode;
   if (!view) body = <Loading label="Loading…" className="items-center px-4 py-8 text-center" />;
   else if (view.state === 'error') body = null;
@@ -294,7 +310,10 @@ export function TopicsPanel(props: TopicsPanelProps) {
         <Alert title="Topics can't be opened" detail={`${view.reason ?? ''} ${view.path}`.trim()} className="mx-2.5 mb-2" data-field="topics-error" />
       )}
       {problem && <Alert title={problem} className="mx-2.5 mb-2" data-field="topics-problem" />}
-      <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">{body}</div>
+      <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
+        {recommended}
+        {body}
+      </div>
     </div>
   );
 }
@@ -420,6 +439,16 @@ function TopicDetails({ topic, sessions, work, pruned, now, panel, onProblem }: 
           })}
         </Group>
       )}
+      {(() => {
+        // TOPIC-3.4: its own pending recommendations, repeated here.
+        const own = panel.view?.recommendations.filter((r) => r.topicId === topic.id) ?? [];
+        return own.length > 0 ? (
+          <div className="flex min-w-0 flex-col gap-1 text-muted-foreground" data-field="topic-recommended">
+            <span>Recommended</span>
+            <Recommendations label={`Recommended for ${topic.title}`} recommendations={own} topics={[topic]} sessions={sessions} showTopic={false} recommend={panel.recommend} onOtherTopic={panel.onOtherTopic} onProblem={onProblem} />
+          </div>
+        ) : null;
+      })()}
       {sessionMembers.length > 0 && <Outputs topic={topic} now={now} readAt={panel.view?.libraryReadAt ?? null} error={panel.outputsError ?? null} onRead={panel.onReadLibrary} onMore={() => panel.onMoreOutputs(topic)} />}
       <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2" data-field="actions">
         <button type="button" className={labelledButtonLook()} data-action="archive" onClick={() => act(panel.updateTopic(topic.id, { state: topic.state === 'open' ? 'archived' : 'open' }), "Couldn't change it.")}>

@@ -1,11 +1,12 @@
 import type { OutputItem } from '@shared/library.ts';
-import { type NewMember, type Topic, type TopicMember, memberKey } from '@shared/topics.ts';
+import { type NewMember, type Recommendation, type Topic, type TopicMember, memberKey } from '@shared/topics.ts';
+import type { UsageSnapshot } from '@shared/usage.ts';
 import type { HistoryItem } from '@shared/types.ts';
 import type { PrSection, TaskSection, WorkPr, WorkSnapshot, WorkTask } from '@shared/work.ts';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { NOW, pressRowAction, renderApp, row } from '@/test/helpers';
+import { NOW, pressRowAction, renderApp, row, settings } from '@/test/helpers';
 
 /** Synthetic Topics, Tasks and PRs only: invented titles, repos and ids. */
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -91,10 +92,10 @@ describe('the Topics tab (TOPIC-3)', () => {
     app.snapshot([]);
     expect(within(panel()).getByText('No Topics yet')).toBeInTheDocument();
     expect(within(panel()).getAllByRole('button', { name: /New Topic/ })).toHaveLength(2);
-    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1)], pruned: [], libraryReadAt: null } });
+    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1)], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 0 } });
     await user.type(screen.getByRole('searchbox', { name: 'Filter Topics' }), 'zzz');
     expect(within(panel()).getByText('Nothing matches')).toBeInTheDocument();
-    app.emit({ type: 'topics', topics: { state: 'error', reason: 'Lookout couldn’t open its Topics database: permission denied.', path: '/Users/me/.lookout/topics.db', topics: [], pruned: [], libraryReadAt: null } });
+    app.emit({ type: 'topics', topics: { state: 'error', reason: 'Lookout couldn’t open its Topics database: permission denied.', path: '/Users/me/.lookout/topics.db', topics: [], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 0 } });
     const alert = within(panel()).getByRole('alert');
     expect(alert).toHaveTextContent('Topics can\'t be opened');
     expect(alert).toHaveTextContent('permission denied. /Users/me/.lookout/topics.db');
@@ -432,7 +433,7 @@ describe('what a member is doing now (TOPIC-4)', () => {
     expect(chips[0]).toHaveAttribute('title', 'Work lists open items only, so this may be merged, closed or not read yet.');
     expect(details().querySelector('[data-field="pr"]')).toHaveTextContent('Sharpen the anvil corners');
     expect(within(details()).getByRole('button', { name: 'Resume old fix, past' })).toBeInTheDocument();
-    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Rates', members: [member({ ...SESSION, ref: { harness: 'claude', sessionId: 'gone-one' }, snapshot: { harness: 'claude', title: 'old fix', directory: null } })] })], pruned: ['claude:gone-one'], libraryReadAt: null } });
+    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Rates', members: [member({ ...SESSION, ref: { harness: 'claude', sessionId: 'gone-one' }, snapshot: { harness: 'claude', title: 'old fix', directory: null } })] })], pruned: ['claude:gone-one'], libraryReadAt: null, recommendations: [], jevAsksToday: 0 } });
     expect(details().querySelector('[data-field="session"]')).toHaveTextContent('old fix· removed from the index');
     expect(within(details()).queryByRole('button', { name: /^(Open|Resume) old fix/ })).toBeNull();
   });
@@ -456,14 +457,14 @@ describe('what a member is doing now (TOPIC-4)', () => {
     await user.click(header('Rates'));
     expect(within(item('Rates')).getByText('Reading the Library…')).toBeInTheDocument();
     await waitFor(() => expect(app.client.library).toHaveBeenCalledWith(expect.objectContaining({ page: 1, query: '' })));
-    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Rates', members: [member(SESSION)], outputs: { items: [output(1), output(2)], total: 12 } })], pruned: [], libraryReadAt: Date.now() } });
+    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Rates', members: [member(SESSION)], outputs: { items: [output(1), output(2)], total: 12 } })], pruned: [], libraryReadAt: Date.now(), recommendations: [], jevAsksToday: 0 } });
     // Expanded again within a minute of the last read: nothing is read again.
     const reads = vi.mocked(app.client.library).mock.calls.length;
     await user.keyboard('{Escape}');
     await user.click(header('Rates'));
     expect(app.client.library).toHaveBeenCalledTimes(reads);
     // A minute or more after it: expanding it reads the Library again, for Outputs written since.
-    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Rates', members: [member(SESSION)], outputs: { items: [output(1), output(2)], total: 12 } })], pruned: [], libraryReadAt: Date.now() - 61_000 } });
+    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Rates', members: [member(SESSION)], outputs: { items: [output(1), output(2)], total: 12 } })], pruned: [], libraryReadAt: Date.now() - 61_000, recommendations: [], jevAsksToday: 0 } });
     await user.keyboard('{Escape}');
     await user.click(header('Rates'));
     await waitFor(() => expect(app.client.library).toHaveBeenCalledTimes(reads + 1));
@@ -504,4 +505,82 @@ it('TOPIC-8.1: the browser keeps only which Topic is selected', async () => {
   expect(kept).not.toContain('Proposals rates');
   expect(kept).not.toContain('secret-ish');
   expect(kept).not.toContain('anvil');
+});
+
+describe('recommendations (TOPIC-9)', () => {
+  const FIX: NewMember = { kind: 'session', ref: { harness: 'claude', sessionId: SESSION_ID }, snapshot: { harness: 'claude', title: 'rates-port', directory: '~/Projects/work' } };
+  const fromLink: Recommendation = { key: memberKey('session', FIX.ref), member: FIX, topicId: id(1), newTitle: null, source: 'link', confidence: null, reason: 'started on PR #812', createdAt: NOW - 1_000 };
+  const fromJev: Recommendation = { key: memberKey('pr', PR_MEMBER.ref), member: PR_MEMBER, topicId: null, newTitle: 'Sharpen the anvil corners', source: 'jev', confidence: 0.71, reason: 'Jev, 71%', createdAt: NOW - 500 };
+  const usage = (jev: Partial<UsageSnapshot['jev']> = {}): UsageSnapshot => ({ providers: [], checkedAt: NOW, jev: { state: 'ready', version: '0.2.0', keySource: 'env TYPESAFE_API_KEY', baseUrl: 'https://api.typesafe.ai', configPath: null, reason: null, ...jev } });
+  const recommended = () => within(panel()).getByRole('list', { name: 'Recommended' });
+  const rec = (name: RegExp) => within(recommended()).getByRole('listitem', { name });
+
+  it('TOPIC-9.4: "Recommended" at the top, newest first, each with the item, its Topic or "New Topic: <title>" and the reason; the rail and the tab show how many, a neutral count', async () => {
+    openApp([topic(1, { title: 'Proposals rates' })], work(), { recommendations: [fromJev, fromLink] });
+    expect(screen.getByRole('button', { name: 'Topics, 2 recommended' })).toBeInTheDocument();
+    await openTopics();
+    expect(screen.getByRole('tab', { name: /Topics/ }).querySelector('[data-field="count"]')).toHaveTextContent('2');
+    const rows = within(recommended()).getAllByRole('listitem');
+    expect(rows.map((r) => [r.querySelector('[data-field="item"]')!.textContent, r.querySelector('[data-field="target"]')!.textContent, r.querySelector('[data-field="reason"]')!.textContent])).toEqual([
+      ['anvil #2101 Sharpen the anvil corners', 'New Topic: Sharpen the anvil corners', 'Jev, 71%'],
+      ['rates-port', 'Proposals rates', 'started on PR #812'],
+    ]);
+    expect(within(rows[1]!).getAllByRole('button').map((b) => b.textContent)).toEqual(['Accept', 'Other Topic…', 'Dismiss']);
+  });
+
+  it('TOPIC-9.4, TOPIC-9.5: Accept adds it with where it came from; Dismiss adds nothing; "Recommended" goes once nothing is pending; the expanded Topic repeats its own', async () => {
+    const app = openApp([topic(1, { title: 'Proposals rates' })], work(), { recommendations: [fromJev, fromLink] });
+    const user = await openTopics();
+    await user.click(header('Proposals rates'));
+    expect(within(item('Proposals rates').querySelector<HTMLElement>('[data-field="topic-recommended"]')!).getByRole('listitem', { name: /rates-port/ })).toBeInTheDocument();
+    await user.click(within(rec(/^rates-port/)).getByRole('button', { name: 'Accept' }));
+    expect(app.client.recommend).toHaveBeenCalledWith({ action: 'accept', key: fromLink.key, topicId: id(1) });
+    await waitFor(() => expect(item('Proposals rates').querySelector('[data-field="topic-recommended"]')).toBeNull());
+    expect(item('Proposals rates').querySelector('[data-field="sessions"]')).toHaveTextContent('rates-port');
+    await user.click(within(rec(/^anvil/)).getByRole('button', { name: 'Dismiss' }));
+    expect(app.client.recommend).toHaveBeenLastCalledWith({ action: 'dismiss', key: fromJev.key, topicId: null });
+    await waitFor(() => expect(within(panel()).queryByRole('list', { name: 'Recommended' })).toBeNull());
+    expect(screen.getByRole('tab', { name: /Topics/ }).querySelector('[data-field="count"]')).toBeNull();
+  });
+
+  it('TOPIC-9.4: "Other Topic…" opens the Topic picker; a pick moves the item there', async () => {
+    const app = openApp([topic(1, { title: 'Proposals rates' }), topic(2, { title: 'Anvil care' })], work(), { recommendations: [fromLink] });
+    const user = await openTopics();
+    await user.click(within(rec(/^rates-port/)).getByRole('button', { name: 'Other Topic…' }));
+    const dialog = screen.getByRole('dialog', { name: 'Other Topic' });
+    await user.click(within(dialog).getByRole('option', { name: 'Anvil care' }));
+    expect(app.client.recommend).toHaveBeenCalledWith({ action: 'move', key: fromLink.key, topicId: id(1), to: id(2) });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
+  it('TOPIC-9.3: Settings has "Recommend Topics with Jev", off by default, saying each judgment is billed, at most 30 an hour, and how many ran today; with Jev not set up it says so with the fix', async () => {
+    const app = renderApp('/settings');
+    app.snapshot([row({ id: 'alpha' })]);
+    app.emit({ type: 'usage', usage: usage({ state: 'not-set-up', reason: 'no key', fix: 'tb-jev config init' }) });
+    const user = userEvent.setup();
+    const sw = screen.getByRole('switch', { name: 'Recommend Topics with Jev' });
+    expect(sw).not.toBeChecked();
+    expect(screen.getByText(/Each judgment is a billed Jev call; at most 30 an hour\. 0 ran today\./)).toBeInTheDocument();
+    expect(screen.getByText("Jev isn't ready (no key), so nothing is asked.")).toBeInTheDocument();
+    expect(screen.getByText('tb-jev config init')).toBeInTheDocument();
+    await user.click(sw);
+    expect(app.client.saveSettings).toHaveBeenCalledWith({ recommendWithJev: true });
+  });
+
+  it('TOPIC-9.1: while Jev can be asked, the Topic picker offers "Ask Jev which Topic" ("Judge again") for the row it was opened on', async () => {
+    const app = openApp([topic(1, { title: 'Rates' })], work());
+    const user = userEvent.setup();
+    await user.keyboard('w');
+    const option = () => screen.getByTestId('work-panel').querySelector<HTMLElement>(`[data-task="${LIGHT.id}"]`)!;
+    fireEvent.click(option());
+    await pressRowAction(user, option().querySelector<HTMLElement>('[data-action="add-to-topic"]')!);
+    expect(within(screen.getByRole('dialog')).queryByRole('option', { name: /Ask Jev/ })).toBeNull();
+    await user.keyboard('{Escape}');
+    app.snapshot([row({ id: 'alpha' }), row({ id: SESSION_ID, title: 'rates-port', status: 'needs-you' })], { state: 'ok' }, settings({ recommendWithJev: true }));
+    app.emit({ type: 'usage', usage: usage() });
+    await pressRowAction(user, option().querySelector<HTMLElement>('[data-action="add-to-topic"]')!);
+    await user.click(within(screen.getByRole('dialog')).getByRole('option', { name: /Ask Jev which Topic/ }));
+    expect(app.client.recommend).toHaveBeenCalledWith({ action: 'judge-again', member: TASK_MEMBER });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
 });

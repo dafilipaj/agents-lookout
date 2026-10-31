@@ -1,9 +1,13 @@
 import { PRODUCTIVE_EMAIL_ERROR, type Settings, type SettingsView, parseProductiveEmail } from '@shared/settings.ts';
 import type { ToolsSnapshot } from '@shared/tools.ts';
+import { JEV_ASKS_PER_HOUR } from '@shared/topics.ts';
+import type { JevStatus } from '@shared/usage.ts';
 import { ArrowLeft, Folder, X } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { CommandBlock } from '@/components/ui/command-block';
 import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,10 +23,14 @@ interface Props {
   now: number;
   loadTools(): Promise<unknown>;
   refreshTools(): Promise<unknown>;
+  /** TOPIC-9.3: Jev's readiness from USAGE's last read, never a new `status` call; null before one. */
+  jev?: JevStatus | null;
+  /** TOPIC-9.3: Jev asks since midnight. */
+  jevAsksToday?: number;
 }
 
 /** SIDE-7.1: the Settings page. Values come from the server, so every tab shows the same. */
-export function SettingsPage({ settings, save, onBack, tools, now, loadTools, refreshTools }: Props) {
+export function SettingsPage({ settings, save, onBack, tools, now, loadTools, refreshTools, jev = null, jevAsksToday = 0 }: Props) {
   // What's typed; null while it matches the server's value, so changes from other tabs show.
   const [draft, setDraft] = useState<string | null>(null);
   const [state, setState] = useState<{ kind: 'idle' | 'saving' | 'saved' } | { kind: 'error'; message: string }>({
@@ -97,6 +105,8 @@ export function SettingsPage({ settings, save, onBack, tools, now, loadTools, re
         </form>
 
         <ProductiveEmail settings={settings} save={save} />
+
+        <RecommendWithJev settings={settings} save={save} jev={jev} asksToday={jevAsksToday} />
 
         <StartDirectories settings={settings} save={save} />
 
@@ -181,6 +191,48 @@ function ProductiveEmail({ settings, save }: Pick<Props, 'settings' | 'save'>) {
       )}
       {state.kind === 'error' && <Alert layout="inline" title={state.message} className="mt-2" />}
     </form>
+  );
+}
+
+/**
+ * TOPIC-9.3: Jev judges new items Links can't tie to a Topic. Off by default, as each ask is billed;
+ * the line under it says so and how many ran today, and USAGE's fix when Jev isn't set up.
+ */
+function RecommendWithJev({ settings, save, jev, asksToday }: Pick<Props, 'settings' | 'save'> & { jev: JevStatus | null; asksToday: number }) {
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const ready = jev?.state === 'ready';
+  const toggle = async (on: boolean) => {
+    setSaving(true);
+    setError(null);
+    try {
+      await save({ recommendWithJev: on });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Saving failed.');
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <section aria-labelledby="recommend-jev-title" className="mt-4 rounded-lg border border-border bg-card p-4" data-field="recommend-with-jev">
+      <label className="flex items-center gap-2">
+        <Checkbox role="switch" aria-describedby="recommend-jev-help" checked={settings.recommendWithJev} disabled={saving} onChange={(e) => void toggle(e.target.checked)} />
+        <span id="recommend-jev-title" className="text-body font-medium">
+          Recommend Topics with Jev
+        </span>
+      </label>
+      <p id="recommend-jev-help" className="mt-1 text-meta text-muted-foreground">
+        Jev suggests a Topic for new Sessions, PRs and Tasks that Links can't place. Each judgment is a billed Jev call; at most {JEV_ASKS_PER_HOUR} an hour. {asksToday} ran
+        today.
+      </p>
+      {jev && !ready && (
+        <div className="mt-2 text-meta text-muted-foreground" data-field="jev-not-ready">
+          <p>Jev isn't ready ({jev.reason ?? jev.state}), so nothing is asked.</p>
+          {jev.fix && <CommandBlock className="mt-1.5">{jev.fix}</CommandBlock>}
+        </div>
+      )}
+      {error && <Alert layout="inline" title={error} className="mt-2" />}
+    </section>
   );
 }
 

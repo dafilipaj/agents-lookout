@@ -2,7 +2,7 @@ import type { LibraryPage, LibraryQuery } from '@shared/library.ts';
 import type { PathAnswer } from '@shared/files.ts';
 import type { Settings, SettingsView } from '@shared/settings.ts';
 import type { ToolsSnapshot } from '@shared/tools.ts';
-import type { NewMember, Topic, TopicState } from '@shared/topics.ts';
+import type { NewMember, RecommendationAction, Topic, TopicState } from '@shared/topics.ts';
 import type { WorkRefreshResult } from '@shared/work.ts';
 import { HELD_REASONS, type AnswerRequest, type AnswerResult, type ChatPage, type EffortSwitchRequest, type EffortSwitchResult, type EndResult, type EndTarget, type Harness, type HarnessOption, type HeldReason, type HistoryDetail, type HistoryPage, type HistoryPeek, type LaunchRequest, type LaunchView, type TrustRequest, type ModelSwitchRequest, type ModelSwitchResult, type RenameResult, type ResumeResult, type ServerEvent } from '@shared/types.ts';
 
@@ -89,6 +89,8 @@ export interface LookoutClient {
   addMember(topicId: string, member: NewMember): Promise<{ added: boolean; title: string }>;
   /** TOPIC-2.4. */
   removeMember(topicId: string, member: Pick<NewMember, 'kind' | 'ref'>): Promise<void>;
+  /** TOPIC-9.4: Accept, Dismiss, Other Topic… or Judge again; `topicId` is where the item went, if anywhere. */
+  recommend(action: RecommendationAction): Promise<{ topicId: string | null }>;
 }
 
 export interface HistoryQuery {
@@ -454,6 +456,7 @@ export function createHttpClient(): LookoutClient {
       await call(() => send('DELETE', `/api/topics/${encodeURIComponent(id)}`), 'Deleting the Topic');
     },
     addMember: (topicId, member) => call<{ added: boolean; title: string }>(() => send('POST', `/api/topics/${encodeURIComponent(topicId)}/members`, member), 'Adding to the Topic'),
+    recommend: (action) => call<{ topicId: string | null }>(() => send('POST', '/api/topics/recommendations', action), action.action === 'judge-again' ? 'Asking Jev' : 'Saving that'),
     removeMember: async (topicId, member) => {
       await call(() => send('DELETE', `/api/topics/${encodeURIComponent(topicId)}/members`, { kind: member.kind, ref: member.ref }), 'Removing from the Topic');
     },

@@ -27,6 +27,17 @@ export interface RightSidebarProps {
   panels: Record<RightTab, ReactNode>;
   /** Each panel's rows, for ↑/↓ and j/k on the tab strip (WORK-1.7). */
   nav: Record<RightTab, RefObject<PanelNav | null>>;
+  /** TOPIC-9.4: a neutral count beside a tab's title (Topics' pending recommendations); none at 0. */
+  counts?: Partial<Record<RightTab, number>>;
+}
+
+/** TOPIC-9.4: a neutral count, never Needs you's amber (UX, Markers). */
+function Count({ n, className }: { n: number; className?: string }) {
+  return (
+    <span data-field="count" className={cn('rounded-full bg-muted px-1.5 text-meta leading-4 font-medium text-muted-foreground tabular-nums', className)}>
+      {n}
+    </span>
+  );
 }
 
 const tabId = (t: RightTab) => `right-tab-${t}`;
@@ -41,7 +52,7 @@ const PANEL_KEYS: Record<string, 1 | -1> = { j: 1, ArrowDown: 1, k: -1, ArrowUp:
  * own controls below it. On the header, j/k and ↑/↓ go to the open panel, never to the Session
  * sidebar, and ←/→ move between the tabs, as a tablist does (WORK-1.7).
  */
-export function RightSidebar({ width, onResize, tab, onTab, onClose, refresh, onRefresh, now, panels, nav }: RightSidebarProps) {
+export function RightSidebar({ width, onResize, tab, onTab, onClose, refresh, onRefresh, now, panels, nav, counts }: RightSidebarProps) {
   // A hidden panel stays mounted, so History keeps its query while you look at Work.
   const [shown, setShown] = useState<ReadonlySet<RightTab>>(() => new Set([tab]));
   if (!shown.has(tab)) setShown(new Set(shown).add(tab));
@@ -146,6 +157,7 @@ export function RightSidebar({ width, onResize, tab, onTab, onClose, refresh, on
               >
                 <Icon className="size-4 shrink-0" />
                 <span className="truncate">{TAB_LABEL[t]}</span>
+                {!!counts?.[t] && <Count n={counts[t]!} />}
               </button>
             );
           })}
@@ -191,12 +203,14 @@ export function RightSidebar({ width, onResize, tab, onTab, onClose, refresh, on
 }
 
 /** HIST-1.1, WORK-1.1: closed, the right sidebar is a narrow rail with a button per tab; its header cell carries the top line on. */
-export function RightRail({ onOpen }: { onOpen(tab: RightTab): void }) {
+export function RightRail({ onOpen, counts }: { onOpen(tab: RightTab): void; counts?: Partial<Record<RightTab, number>> }) {
   const button = (t: RightTab) => {
     const Icon = TAB_ICON[t];
+    const n = counts?.[t] ?? 0;
     return (
-      <IconButton size="md" label={TAB_LABEL[t]} shortcut={TAB_KEY[t]} onClick={() => onOpen(t)}>
+      <IconButton size="md" label={n ? `${TAB_LABEL[t]}, ${n} recommended` : TAB_LABEL[t]} shortcut={TAB_KEY[t]} onClick={() => onOpen(t)} className="relative">
         <Icon />
+        {n > 0 && <Count n={n} className="absolute -top-1 -right-1 px-1" />}
       </IconButton>
     );
   };

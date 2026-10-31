@@ -137,3 +137,24 @@ it('TOPIC-8.3: a method /api/topics has no route for is refused', async () => {
   await r.done;
   expect(r.res.statusCode).toBe(405);
 });
+
+it('TOPIC-9.4: Accept and Dismiss go through POST /api/topics/recommendations, token and Origin checked; a stale one says why', async () => {
+  const { exchange, topics } = setup();
+  const call = async (body: unknown, headers: Record<string, string> = {}) => {
+    const r = exchange('POST', '/api/topics/recommendations', body, headers);
+    await r.done;
+    return { status: r.res.statusCode, body: JSON.parse(r.text()) as Record<string, unknown> };
+  };
+  const t = topics.create('Rates');
+  topics.addMember(t.id, PR as never);
+  const session = { kind: 'session', ref: { harness: 'claude', sessionId: 'a1b2c3d4-0000-4000-8000-000000000001' }, snapshot: { harness: 'claude', title: 'fix-ci', directory: null } } as const;
+  topics.seen([session], 'off');
+  topics.linkTies([{ member: session, topicId: t.id, reason: 'started on PR #812' }]);
+  const key = topics.view().recommendations[0]!.key;
+  expect((await call({ action: 'accept', key, topicId: t.id }, { 'x-lookout-token': 'wrong' })).status).toBe(403);
+  expect(await call({ action: 'accept', key, topicId: t.id })).toEqual({ status: 200, body: { topicId: t.id } });
+  expect(topics.view().topics[0]!.members.map((m) => m.reason)).toEqual(['added by hand', 'from a Link']);
+  expect(await call({ action: 'dismiss', key, topicId: t.id })).toEqual({ status: 404, body: { error: 'That recommendation is no longer pending.' } });
+  expect(await call({ action: 'judge-again', member: session })).toEqual({ status: 409, body: { error: "Jev can't be asked here." } });
+  expect((await call({ action: 'explode' })).status).toBe(400);
+});

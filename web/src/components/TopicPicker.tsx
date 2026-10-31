@@ -11,6 +11,12 @@ import { keyOf } from '@/lib/topics';
 export interface PickTarget {
   members: readonly NewMember[];
   label: string;
+  /** The dialog's title; "Add to Topic" when unset. */
+  title?: string;
+  /** TOPIC-9.4, "Other Topic…": what a pick does instead of adding the members. */
+  pick?(topicId: string): Promise<{ added: boolean; title: string }>;
+  /** TOPIC-9.1: "Ask Jev which Topic" ("Judge again"), offered only while Jev can be asked. */
+  judge?(): Promise<unknown>;
 }
 
 export interface TopicPickerProps {
@@ -24,6 +30,7 @@ export interface TopicPickerProps {
 }
 
 const NEW = 'new-topic';
+const JUDGE = 'ask-jev';
 
 /**
  * TOPIC-2.1: the Topic picker. Open Topics, most recently changed first, then "New Topic…"; picking
@@ -61,6 +68,10 @@ function PickerBody({ target, onClose, topics, createTopic, addMember }: TopicPi
   const already = (t: Topic) => keys.length > 0 && keys.every((k) => t.members.some((m) => m.key === k));
 
   const add = async (topicId: string) => {
+    if (target.pick) {
+      const r = await target.pick(topicId);
+      return { added: r.added, name: r.title };
+    }
     let added = false;
     let name = '';
     for (const m of target.members) {
@@ -84,6 +95,12 @@ function PickerBody({ target, onClose, topics, createTopic, addMember }: TopicPi
   };
   const pick = (id: string) => {
     if (id === NEW) return setCreating(true);
+    if (id === JUDGE) {
+      return void run(async () => {
+        await target.judge?.();
+        onClose();
+      });
+    }
     void run(async () => {
       const { added, name } = await add(id);
       if (added) onClose();
@@ -102,7 +119,7 @@ function PickerBody({ target, onClose, topics, createTopic, addMember }: TopicPi
 
   return (
     <>
-      <DialogTitle className="text-title">{creating ? 'New Topic' : 'Add to Topic'}</DialogTitle>
+      <DialogTitle className="text-title">{creating ? 'New Topic' : (target.title ?? 'Add to Topic')}</DialogTitle>
       <DialogDescription className="truncate text-meta" title={target.label}>
         {target.label}
       </DialogDescription>
@@ -121,8 +138,12 @@ function PickerBody({ target, onClose, topics, createTopic, addMember }: TopicPi
       ) : (
         <PickerList
           filterLabel="Filter Topics"
-          items={[...open.map((t) => ({ id: t.id, label: t.title, ...(already(t) ? { hint: 'already in' } : {}) })), { id: NEW, label: 'New Topic…' }]}
-          keep={(item) => item.id === NEW}
+          items={[
+            ...open.map((t) => ({ id: t.id, label: t.title, ...(already(t) ? { hint: 'already in' } : {}) })),
+            { id: NEW, label: 'New Topic…' },
+            ...(target.judge ? [{ id: JUDGE, label: 'Ask Jev which Topic', hint: 'billed' }] : []),
+          ]}
+          keep={(item) => item.id === NEW || item.id === JUDGE}
           onPick={pick}
         />
       )}

@@ -1,5 +1,6 @@
 import type { OutputItem } from './library.ts';
-import type { Harness } from './types.ts';
+import type { Harness, HistoryItem, SessionRow } from './types.ts';
+import type { WorkPr, WorkTask } from './work.ts';
 
 /**
  * TOPIC: a Topic, its members and its notes, as Lookout's store keeps them and the server sends
@@ -92,7 +93,48 @@ export interface TopicsView {
   pruned: string[];
   /** TOPIC-4.4: when the Library's last read ended, ms since epoch; null before one. */
   libraryReadAt: number | null;
+  /** TOPIC-9.4: pending recommendations, newest first. */
+  recommendations: Recommendation[];
+  /** TOPIC-9.3: Jev asks since local midnight, for the Settings switch's line. */
+  jevAsksToday: number;
 }
+
+/** TOPIC-9: where a recommendation came from. */
+export type RecommendationSource = 'link' | 'jev';
+
+/**
+ * TOPIC-9.4: a pending recommendation: the item (as it looked when first seen), and the Open Topic
+ * it probably belongs to (`topicId`) or a new Topic (`newTitle`), with the reason shown.
+ */
+export interface Recommendation {
+  /** The item's member key (`memberKey`). */
+  key: string;
+  member: NewMember;
+  topicId: string | null;
+  newTitle: string | null;
+  source: RecommendationSource;
+  /** Jev's confidence, 0 to 1; null for a Link. */
+  confidence: number | null;
+  /** The Link's words ("started on PR #812"), or "Jev, 82%". */
+  reason: string;
+  createdAt: number;
+}
+
+/** TOPIC-9.4: what a recommendation's buttons send (`POST /api/topics/recommendations`). */
+export type RecommendationAction =
+  | { action: 'accept' | 'dismiss'; key: string; topicId: string | null }
+  /** "Other Topic…": the item goes to `to`, and this recommendation counts as dismissed. */
+  | { action: 'move'; key: string; topicId: string | null; to: string }
+  /** TOPIC-9.1: the one way back for an item already judged, accepted or dismissed. */
+  | { action: 'judge-again'; member: NewMember };
+
+/** TOPIC-9.3: a pick below this confidence leaves nothing. */
+export const JEV_MIN_CONFIDENCE = 0.6;
+/** TOPIC-9.3: at most this many asks an hour, per server process. */
+export const JEV_ASKS_PER_HOUR = 30;
+
+/** TOPIC-9.4: the reason recorded on a member a recommendation added. */
+export const acceptedReason = (source: RecommendationSource): string => (source === 'link' ? 'from a Link' : 'from Jev, accepted');
 
 /** TOPIC-4.4: expanding a Topic asks for a Library read when the last one is at least this old, as the Library tab rereads (LIB-2.7). */
 export const OUTPUTS_FRESH_MS = 60_000;
@@ -119,4 +161,18 @@ export const memberKey = (kind: MemberKind, ref: SessionRef | PrRef | TaskRef): 
 /** TOPIC-3.2, TOPIC-1.3: Open Topics (or Archived ones), most recently changed first. */
 export function sortTopics(topics: readonly Topic[]): Topic[] {
   return [...topics].sort((a, b) => b.updatedAt - a.updatedAt || a.title.localeCompare(b.title));
+}
+
+/** TOPIC-2.1, TOPIC-2.2: the members "Add to Topic" sends for a row, built from what the row shows. */
+export function sessionMember(s: { harness: Harness; sessionId: string; title: string; directory: string | null }): NewMember {
+  return { kind: 'session', ref: { harness: s.harness, sessionId: s.sessionId }, snapshot: { harness: s.harness, title: s.title, directory: s.directory } };
+}
+export const historyMember = (item: HistoryItem): NewMember => sessionMember({ harness: item.harness, sessionId: item.sessionId, title: item.title, directory: item.projectDisplay ?? item.projectPath });
+export const prMember = (pr: WorkPr): NewMember => ({ kind: 'pr', ref: { url: pr.url }, snapshot: { repo: pr.repo, number: pr.number, title: pr.title, url: pr.url } });
+export const taskMember = (task: WorkTask): NewMember => ({ kind: 'task', ref: { id: task.id }, snapshot: { title: task.title, project: task.project, url: task.url } });
+/** A live Session's row: its session id, or none yet (`<harness>:<pid>`, TOPIC-2.2). */
+export function rowMember(row: SessionRow): NewMember | null {
+  if (row.id === `${row.harness}:${row.pid}`) return null;
+  const home = row.cwd;
+  return sessionMember({ harness: row.harness, sessionId: row.id, title: row.title, directory: home });
 }

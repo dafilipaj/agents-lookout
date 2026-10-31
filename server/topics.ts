@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { chmodSync, mkdirSync } from 'node:fs';
+import { chmodSync, mkdirSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
@@ -11,6 +11,10 @@ import {
   MEMBER_KINDS,
   type MemberKind,
   type NewMember,
+  type Recommendation,
+  type RecommendationAction,
+  type RecommendationSource,
+  acceptedReason,
   type Topic,
   type TopicMember,
   type TopicOutputs,
@@ -30,7 +34,7 @@ import { SESSION_ID } from './history.ts';
  */
 
 /** TOPIC-8.1: the schema this server writes and reads; a newer one is refused, never overwritten. */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 /** TOPIC-2.3: snapshots are bounded on write. */
 const MAX_SNAPSHOT_TITLE = 300;
@@ -47,6 +51,14 @@ export class TopicsError extends Error {
   }
 }
 
+/**
+ * TOPIC-8.1: each step takes the schema one version up, inside the migration's transaction. Version 2:
+ * a candidate keeps what Lookout knew of it when first seen, for the "Recommended" row (TOPIC-9.4).
+ */
+const MIGRATIONS: Record<number, string> = {
+  2: "alter table candidates add column snapshot text not null default '{}';",
+};
+
 const SCHEMA = `
 create table schema_version (v integer not null);
 create table topics (id text primary key, title text not null, notes text not null default '',
@@ -62,7 +74,8 @@ create table edges (from_id text not null references topics(id) on delete cascad
 create unique index edges_pair on edges (min(from_id, to_id), max(from_id, to_id));
 create table candidates (kind text not null, ref text not null, first_seen integer not null,
   jev text not null check (jev in ('waiting','asked','off')), judged_at integer,
-  outcome text check (outcome in ('link','jev','none')), primary key (kind, ref));
+  outcome text check (outcome in ('link','jev','none')), snapshot text not null default '{}',
+  primary key (kind, ref));
 create table recommendations (kind text not null, ref text not null,
   topic_id text references topics(id) on delete cascade, new_title text,
   source text not null check (source in ('link','jev')), confidence real, reason text not null,
@@ -177,6 +190,35 @@ export function parseMemberRef(body: unknown): { kind: MemberKind; ref: string }
   return { kind, ref: refText(kind, { id: String(ref.id) }) };
 }
 
+/** A member key (`<kind>:<ref as stored>`) back to its kind and canonical ref. */
+export function parseKey(key: unknown): { kind: MemberKind; ref: string } {
+  if (typeof key !== 'string' || key.length > 4096) throw new TopicsError(400, 'Unknown item.');
+  const at = key.indexOf(':');
+  let ref: unknown;
+  try {
+    ref = JSON.parse(key.slice(at + 1));
+  } catch {
+    throw new TopicsError(400, 'Unknown item.');
+  }
+  return parseMemberRef({ kind: key.slice(0, at), ref });
+}
+
+const TOPIC_ID = /^[0-9a-f-]{36}$/;
+
+/** TOPIC-9.4: what `POST /api/topics/recommendations` may ask. */
+export function parseRecommendationAction(body: unknown): RecommendationAction {
+  const b = object(body);
+  if (b.action === 'judge-again') return { action: 'judge-again', member: parseMember(b.member) };
+  if (b.action !== 'accept' && b.action !== 'dismiss' && b.action !== 'move') throw new TopicsError(400, 'Accept, Dismiss, Other Topic or Judge again.');
+  const key = parseKey(b.key);
+  const topicId = b.topicId === null ? null : typeof b.topicId === 'string' && TOPIC_ID.test(b.topicId) ? b.topicId : undefined;
+  if (topicId === undefined) throw new TopicsError(400, 'Which recommendation?');
+  const k = `${key.kind}:${key.ref}`;
+  if (b.action !== 'move') return { action: b.action, key: k, topicId };
+  if (typeof b.to !== 'string' || !TOPIC_ID.test(b.to)) throw new TopicsError(400, 'Pick a Topic.');
+  return { action: 'move', key: k, topicId, to: b.to };
+}
+
 /** TOPIC-1.2, TOPIC-1.3: what `PUT /api/topics/<id>` may change. */
 export interface TopicPatch {
   title?: string;
@@ -208,6 +250,27 @@ interface TopicRow {
   state: TopicState;
   created_at: number;
   updated_at: number;
+}
+export interface CandidateRow {
+  kind: MemberKind;
+  ref: string;
+  first_seen: number;
+  jev: 'waiting' | 'asked' | 'off';
+  judged_at: number | null;
+  outcome: 'link' | 'jev' | 'none' | null;
+  snapshot: string;
+}
+const CANDIDATE_COLUMNS = 'kind, ref, first_seen, jev, judged_at, outcome, snapshot';
+interface RecommendationRow {
+  kind: MemberKind;
+  ref: string;
+  topic_id: string | null;
+  new_title: string | null;
+  source: RecommendationSource;
+  confidence: number | null;
+  reason: string;
+  created_at: number;
+  snapshot: string;
 }
 interface MemberRow {
   topic_id: string;
@@ -252,6 +315,28 @@ export class TopicStore {
         this.db.exec(SCHEMA);
         this.db.prepare('insert into schema_version (v) values (?)').run(SCHEMA_VERSION);
       });
+    } else if (version < SCHEMA_VERSION) {
+      this.migrate(version);
+    }
+  }
+
+  /** TOPIC-8.1: an older database is copied to `topics.db.bak-<version>` first, then migrated forward in one transaction. */
+  private migrate(from: number): void {
+    const backup = `${this.path}.bak-${from}`;
+    try {
+      rmSync(backup, { force: true });
+      // A consistent copy of a WAL database, unlike copying the file.
+      this.db.prepare('vacuum into ?').run(backup);
+      chmodSync(backup, 0o600);
+      this.transaction(() => {
+        for (let v = from + 1; v <= SCHEMA_VERSION; v++) {
+          this.db.exec(MIGRATIONS[v]!);
+          this.db.prepare('insert into schema_version (v) values (?)').run(v);
+        }
+      });
+    } catch (err) {
+      this.db.close();
+      throw new TopicsError(503, `Lookout couldn't update its Topics database from schema ${from}: ${plain(err)} The file is left as it was.`);
     }
   }
 
@@ -342,6 +427,8 @@ export class TopicStore {
         .run(id, member.kind, refText(member.kind, member.ref), JSON.stringify(member.snapshot), at, reason);
       if (Number(r.changes) === 0) return false;
       this.db.prepare('update topics set updated_at = ? where id = ?').run(at, id);
+      // TOPIC-9.4: added by hand to the Topic it was recommended for, the recommendation was right.
+      this.db.prepare("update recommendations set status = 'accepted' where kind = ? and ref = ? and topic_id = ? and status = 'pending'").run(member.kind, refText(member.kind, member.ref), id);
       return true;
     });
   }
@@ -359,6 +446,115 @@ export class TopicStore {
 
   title(id: string): string {
     return this.require(id).title;
+  }
+
+  /** Whether the item is a member of any Topic, or of this one. */
+  isMember(kind: MemberKind, ref: string, topicId?: string): boolean {
+    const row = topicId === undefined
+      ? this.db.prepare('select 1 from members where kind = ? and ref = ? limit 1').get(kind, ref)
+      : this.db.prepare('select 1 from members where kind = ? and ref = ? and topic_id = ?').get(kind, ref, topicId);
+    return row !== undefined;
+  }
+
+  /**
+   * TOPIC-9.1: the item becomes a candidate once, with what Lookout knows of it now; false when it
+   * already was one. `jev` is `waiting` while "Recommend Topics with Jev" is on, `off` while it isn't.
+   */
+  addCandidate(member: NewMember, jev: 'waiting' | 'off'): boolean {
+    return this.transaction(() => {
+      const r = this.db
+        .prepare('insert or ignore into candidates (kind, ref, first_seen, jev, snapshot) values (?, ?, ?, ?, ?)')
+        .run(member.kind, refText(member.kind, member.ref), this.now(), jev, JSON.stringify(member.snapshot));
+      return Number(r.changes) > 0;
+    });
+  }
+
+  candidate(kind: MemberKind, ref: string): CandidateRow | null {
+    return (this.db.prepare(`select ${CANDIDATE_COLUMNS} from candidates where kind = ? and ref = ?`).get(kind, ref) as unknown as CandidateRow | undefined) ?? null;
+  }
+
+  /** TOPIC-9.3: candidates Links haven't tied that wait for Jev, oldest first. */
+  waitingForJev(): CandidateRow[] {
+    // An item that joined a Topic meanwhile is no longer "in no Topic" (TOPIC-9.1): never a billed ask.
+    return this.db
+      .prepare(`select ${CANDIDATE_COLUMNS} from candidates c where jev = 'waiting' and judged_at is null and not exists (select 1 from members m where m.kind = c.kind and m.ref = c.ref) order by first_seen, kind, ref`)
+      .all() as unknown as CandidateRow[];
+  }
+
+  /**
+   * TOPIC-9.2, TOPIC-9.3: a proposal for the candidate; false when the item already has one for that
+   * Topic (or a "New Topic" one), whatever its status, so a dismissed one never comes back.
+   */
+  recommend(r: { kind: MemberKind; ref: string; topicId: string | null; newTitle: string | null; source: RecommendationSource; confidence: number | null; reason: string }): boolean {
+    return this.transaction(() => {
+      const out = this.db
+        .prepare("insert or ignore into recommendations (kind, ref, topic_id, new_title, source, confidence, reason, created_at, status) values (?, ?, ?, ?, ?, ?, ?, ?, 'pending')")
+        .run(r.kind, r.ref, r.topicId, r.topicId === null ? r.newTitle : null, r.source, r.confidence, r.reason, this.now());
+      return Number(out.changes) > 0;
+    });
+  }
+
+  /** TOPIC-9.1: judged by a Link or by Jev (`asked`), once. */
+  judged(kind: MemberKind, ref: string, outcome: 'link' | 'jev' | 'none', asked: boolean): void {
+    this.transaction(() => {
+      this.db
+        // A Link that ties an item Jev already judged keeps when Jev was asked ("ran today" counts asks).
+        .prepare(`update candidates set judged_at = case when ? = 0 and jev = 'asked' then judged_at else ? end, outcome = ?, jev = case when ? then 'asked' else jev end where kind = ? and ref = ?`)
+        .run(asked ? 1 : 0, this.now(), outcome, asked ? 1 : 0, kind, ref);
+    });
+  }
+
+  /** TOPIC-9.1: "Judge again": the item waits for Jev again; what was accepted or dismissed stays. */
+  judgeAgain(member: NewMember): void {
+    this.transaction(() => {
+      this.addCandidate(member, 'waiting');
+      this.db.prepare("update candidates set jev = 'waiting', judged_at = null, outcome = null where kind = ? and ref = ?").run(member.kind, refText(member.kind, member.ref));
+    });
+  }
+
+  /** TOPIC-9.3: Jev asks since then (the Settings line's "ran today"). */
+  asksSince(at: number): number {
+    const row = this.db.prepare("select count(*) as n from candidates where jev = 'asked' and judged_at >= ?").get(at) as { n: number };
+    return row.n;
+  }
+
+  /**
+   * TOPIC-9.4: pending recommendations, newest first, without the ones for an archived Topic or one
+   * the item has joined since.
+   */
+  pending(): Recommendation[] {
+    const rows = this.db
+      .prepare(
+        `select r.kind, r.ref, r.topic_id, r.new_title, r.source, r.confidence, r.reason, r.created_at, c.snapshot
+         from recommendations r join candidates c on c.kind = r.kind and c.ref = r.ref
+         left join topics t on t.id = r.topic_id
+         where r.status = 'pending' and (r.topic_id is null or t.state = 'open')
+           and not exists (select 1 from members m where m.kind = r.kind and m.ref = r.ref and m.topic_id = r.topic_id)
+         order by r.created_at desc, r.kind, r.ref`,
+      )
+      .all() as unknown as RecommendationRow[];
+    return rows.flatMap((r) => {
+      const member = toMember({ topic_id: '', kind: r.kind, ref: r.ref, snapshot: r.snapshot, added_at: 0, reason: '' });
+      if (!member) return [];
+      const { key, addedAt: _a, reason: _r, ...item } = member;
+      return [{ key, member: item as NewMember, topicId: r.topic_id, newTitle: r.new_title, source: r.source, confidence: r.confidence, reason: r.reason, createdAt: r.created_at }];
+    });
+  }
+
+  /** TOPIC-9.4, TOPIC-9.5: one recommendation's row, or null when there's none pending. */
+  pendingOne(kind: MemberKind, ref: string, topicId: string | null): RecommendationRow | null {
+    const row = topicId === null
+      ? this.db.prepare("select r.*, c.snapshot from recommendations r join candidates c using (kind, ref) where r.kind = ? and r.ref = ? and r.topic_id is null and r.status = 'pending'").get(kind, ref)
+      : this.db.prepare("select r.*, c.snapshot from recommendations r join candidates c using (kind, ref) where r.kind = ? and r.ref = ? and r.topic_id = ? and r.status = 'pending'").get(kind, ref, topicId);
+    return (row as unknown as RecommendationRow | undefined) ?? null;
+  }
+
+  /** TOPIC-9.4, TOPIC-9.5: Accept or Dismiss records what you did with it. */
+  resolve(kind: MemberKind, ref: string, topicId: string | null, status: 'accepted' | 'dismissed'): void {
+    this.transaction(() => {
+      if (topicId === null) this.db.prepare("update recommendations set status = ? where kind = ? and ref = ? and topic_id is null and status = 'pending'").run(status, kind, ref);
+      else this.db.prepare("update recommendations set status = ? where kind = ? and ref = ? and topic_id = ? and status = 'pending'").run(status, kind, ref, topicId);
+    });
   }
 
   private require(id: string): TopicRow {
@@ -466,6 +662,115 @@ export class Topics {
     this.write((s) => s.removeMember(id, kind, ref));
   }
 
+  /**
+   * TOPIC-9.1: the items in no Topic become candidates, once each; returns the ones new now. Nothing
+   * is recorded before the store exists (no Topic, nothing to recommend into, nothing made on disk).
+   */
+  seen(members: readonly NewMember[], jev: 'waiting' | 'off'): NewMember[] {
+    if (!this.store || !members.length) return [];
+    return this.write(
+      (s) => s.transaction(() => members.filter((m) => !s.isMember(m.kind, refText(m.kind, m.ref)) && s.addCandidate(m, jev))),
+      false,
+    );
+  }
+
+  /**
+   * TOPIC-9.2: Links that tie a candidate to a member of an Open Topic become recommendations for it,
+   * each once; the candidate counts as judged by a Link. Returns how many are new.
+   */
+  linkTies(ties: readonly { member: NewMember; topicId: string; reason: string }[]): number {
+    if (!this.store || !ties.length) return 0;
+    const open = new Set(this.last.topics.filter((t) => t.state === 'open').map((t) => t.id));
+    const added = this.write((s) =>
+      s.transaction(() => {
+        let n = 0;
+        for (const t of ties) {
+          const ref = refText(t.member.kind, t.member.ref);
+          if (!open.has(t.topicId) || !s.candidate(t.member.kind, ref) || s.isMember(t.member.kind, ref, t.topicId)) continue;
+          if (!s.recommend({ kind: t.member.kind, ref, topicId: t.topicId, newTitle: null, source: 'link', confidence: null, reason: t.reason })) continue;
+          s.judged(t.member.kind, ref, 'link', false);
+          n++;
+        }
+        return n;
+      }),
+    );
+    return added;
+  }
+
+  /** TOPIC-9.3: candidates waiting for Jev, oldest first; none before the store exists. */
+  waitingForJev(): { member: NewMember; firstSeen: number }[] {
+    if (!this.store) return [];
+    return this.write((s) => s.waitingForJev(), false).flatMap((c) => {
+      const m = toMember({ topic_id: '', kind: c.kind, ref: c.ref, snapshot: c.snapshot, added_at: 0, reason: '' });
+      if (!m) return [];
+      const { key: _k, addedAt: _a, reason: _r, ...member } = m;
+      return [{ member: member as NewMember, firstSeen: c.first_seen }];
+    });
+  }
+
+  /**
+   * TOPIC-9.3: Jev's answer for a candidate: an Open Topic, or `new` with the title it proposes, or
+   * nothing (`none`, too unsure, failed). Either way the candidate is judged, once.
+   */
+  jevJudged(member: NewMember, pick: { topicId: string | null; newTitle: string | null; confidence: number } | null): void {
+    const ref = refText(member.kind, member.ref);
+    this.write((s) =>
+      s.transaction(() => {
+        const open = pick?.topicId ? this.last.topics.some((t) => t.id === pick.topicId && t.state === 'open') : true;
+        const made = pick && open && !(pick.topicId && s.isMember(member.kind, ref, pick.topicId))
+          ? s.recommend({ kind: member.kind, ref, topicId: pick.topicId, newTitle: pick.newTitle, source: 'jev', confidence: pick.confidence, reason: `Jev, ${Math.round(pick.confidence * 100)}%` })
+          : false;
+        s.judged(member.kind, ref, made ? 'jev' : 'none', true);
+      }),
+    );
+  }
+
+  /** TOPIC-9.1: set by the server: "Judge again" goes through the Recommender, which can refuse it. */
+  judgeAgainWith: ((member: NewMember) => void) | null = null;
+
+  /** TOPIC-9.4: `POST /api/topics/recommendations`. */
+  recommend(action: RecommendationAction): { topicId: string | null } {
+    if (action.action !== 'judge-again') return this.recommendation(action);
+    if (!this.judgeAgainWith) throw new TopicsError(409, "Jev can't be asked here.");
+    this.judgeAgainWith(action.member);
+    return { topicId: null };
+  }
+
+  /** TOPIC-9.1: "Judge again": the item waits for Jev again. */
+  judgeAgain(member: NewMember): void {
+    this.write((s) => s.judgeAgain(member));
+  }
+
+  /**
+   * TOPIC-9.4, TOPIC-9.5: Accept adds the member (or makes the Topic and adds it) with where it came
+   * from; Dismiss records it; "Other Topic…" adds it to the Topic you picked and dismisses this one.
+   */
+  recommendation(action: Exclude<RecommendationAction, { action: 'judge-again' }>): { topicId: string | null } {
+    const { kind, ref } = parseKey(action.key);
+    return this.write((s) =>
+      s.transaction(() => {
+        const row = s.pendingOne(kind, ref, action.topicId);
+        if (!row) throw new TopicsError(404, 'That recommendation is no longer pending.');
+        const m = toMember({ topic_id: '', kind, ref, snapshot: row.snapshot, added_at: 0, reason: '' });
+        if (!m) throw new TopicsError(400, "That item can't be added.");
+        const { key: _k, addedAt: _a, reason: _r, ...member } = m;
+        if (action.action === 'dismiss') {
+          s.resolve(kind, ref, action.topicId, 'dismissed');
+          return { topicId: null };
+        }
+        if (action.action === 'move') {
+          s.addMember(action.to, member as NewMember, 'from a recommendation, other Topic');
+          s.resolve(kind, ref, action.topicId, 'dismissed');
+          return { topicId: action.to };
+        }
+        const topicId = row.topic_id ?? s.create(row.new_title ?? (member as NewMember).snapshot.title);
+        s.addMember(topicId, member as NewMember, acceptedReason(row.source));
+        s.resolve(kind, ref, action.topicId, 'accepted');
+        return { topicId };
+      }),
+    );
+  }
+
   close(): void {
     this.store?.close();
   }
@@ -494,17 +799,24 @@ export class Topics {
   }
 
   private build(): TopicsView {
-    if (!this.store && !this.failure) return { state: 'ok', reason: null, path: this.opts.path, topics: [], pruned: [], libraryReadAt: this.readAt };
-    if (!this.store) return { state: 'error', reason: this.failure, path: this.opts.path, topics: [], pruned: [], libraryReadAt: this.readAt };
+    const none = { topics: [], pruned: [], libraryReadAt: this.readAt, recommendations: [], jevAsksToday: 0 };
+    if (!this.store && !this.failure) return { state: 'ok', reason: null, path: this.opts.path, ...none };
+    if (!this.store) return { state: 'error', reason: this.failure, path: this.opts.path, ...none };
     let stored: Omit<Topic, 'outputs'>[];
+    let recommendations: Recommendation[];
+    let jevAsksToday: number;
     try {
       stored = this.store.list();
+      recommendations = this.store.pending();
+      const midnight = new Date();
+      midnight.setHours(0, 0, 0, 0);
+      jevAsksToday = this.store.asksSince(midnight.getTime());
     } catch (err) {
-      return { state: 'error', reason: `Lookout couldn't read its Topics database: ${plain(err)}`, path: this.opts.path, topics: [], pruned: [], libraryReadAt: this.readAt };
+      return { state: 'error', reason: `Lookout couldn't read its Topics database: ${plain(err)}`, path: this.opts.path, ...none };
     }
     const items = this.outputs;
     const topics = stored.map((t) => ({ ...t, outputs: items ? outputsOf(t.members, items) : null }));
-    return { state: 'ok', reason: null, path: this.opts.path, topics, pruned: this.pruned, libraryReadAt: this.readAt };
+    return { state: 'ok', reason: null, path: this.opts.path, topics, pruned: this.pruned, libraryReadAt: this.readAt, recommendations, jevAsksToday };
   }
 }
 

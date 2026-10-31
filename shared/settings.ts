@@ -13,6 +13,8 @@ export interface Settings {
   lastLaunch: LastLaunch | null;
   /** WORK-2: whose Tasks Work reads; null until one is saved (WORK-2.6). */
   productiveEmail: string | null;
+  /** TOPIC-9.3: Jev judges new items Links can't tie to a Topic; each ask is billed, so off by default. */
+  recommendWithJev: boolean;
 }
 
 /**
@@ -144,6 +146,13 @@ const fields: { [K in keyof Settings]: Field<Settings[K]> } = {
   productiveEmail: {
     default: null,
     parse: parseProductiveEmail,
+  },
+  recommendWithJev: {
+    default: false,
+    parse(value, field) {
+      if (typeof value !== 'boolean') throw new SettingsError(field, 'Recommend Topics with Jev is on or off.');
+      return value;
+    },
   },
 };
 

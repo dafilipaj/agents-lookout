@@ -26,7 +26,8 @@ import { trackStartDirectories } from './start-repos.ts';
 import { Changes } from './changes.ts';
 import { ToolsMonitor } from './tools.ts';
 import { TopicStore, Topics, defaultTopicsPath } from './topics.ts';
-import { UsageMonitor } from './usage.ts';
+import { UsageMonitor, resolveJevBin } from './usage.ts';
+import { Recommender } from './recommender.ts';
 import { Viewer } from './viewer.ts';
 import { WorkMonitor, resolveWorkBin } from './work.ts';
 
@@ -64,7 +65,11 @@ const work = new WorkMonitor({
   tbProdBin: () => resolveWorkBin('tb-prod', env),
   tbSessionBin: () => resolveTbSessionBin(env),
   productiveEmail: settings.get().productiveEmail,
-  onChange: (w) => app.broadcast({ type: 'work', work: w }),
+  onChange: (w) => {
+    app.broadcast({ type: 'work', work: w });
+    // TOPIC-9.1, TOPIC-9.2: its PRs and Tasks are candidates once; its Links tie what they can.
+    recommender.observeWork(w);
+  },
   // TOOLS-2.5: a Tool too old for Work says which version it is.
   toolVersion: (tool) => tools.version(tool),
 });
@@ -87,6 +92,8 @@ const monitor: SessionMonitor = new SessionMonitor({
     memory.prune();
     launcher.observe(rows);
     work.setLiveSessions(rows.flatMap((row) => (row.session_id ? [row.session_id] : [])));
+    // TOPIC-9.1: a Session with a session id is a candidate once.
+    recommender.observeSessions(monitor.snapshot().sessions);
   },
 });
 
@@ -137,7 +144,10 @@ const isLive = async (id: string, harness: string) => {
 const usage = new UsageMonitor({
   runner: run,
   fleetBin: () => resolveFleetBin(env),
-  onChange: (u) => app.broadcast({ type: 'usage', usage: u }),
+  onChange: (u) => {
+    app.broadcast({ type: 'usage', usage: u });
+    recommender.kick();
+  },
 });
 
 // TOOLS: every Tool, read on start (TOOLS-1.4) and when Settings opens; Harnesses from LAUNCH's
@@ -167,6 +177,22 @@ const topics = new Topics({
   exists: () => existsSync(topicsPath),
   onChange: (t) => app.broadcast({ type: 'topics', topics: t }),
 });
+
+// TOPIC-9: recommendations, Links first and Jev second; nothing is added without Accept.
+const recommender = new Recommender({
+  topics,
+  runner: run,
+  jevBin: () => resolveJevBin(env),
+  jevReady: () => usage.snapshot()?.jev.state === 'ready',
+  enabled: () => settings.get().recommendWithJev,
+  firstPrompt: async (id, harness) => (await history.peek(id, harness)).firstPrompt,
+  work: () => work.snapshot(),
+  questionsDir: join(homedir(), '.lookout', 'jev', 'questions'),
+  env,
+  onNotReady: () => void usage.refreshJev().catch(() => {}),
+});
+topics.judgeAgainWith = (member) => recommender.judgeAgain(member);
+settings.onChange(() => recommender.kick());
 
 // WORK-2.8: a saved Productive email drops the Tasks kept for the previous one, and reads its own.
 // Registered before the app's own listener, so tabs hear the list dropped before the new email.
@@ -254,6 +280,7 @@ const shutdown = async () => {
   app.server.close();
   app.server.closeAllConnections();
   // Cancel the pollers and wait until their processes have exited, so none is orphaned.
+  await recommender.close();
   topics.close();
   await Promise.all([usage.close().catch(() => {}), memory.close().catch(() => {}), work.close().catch(() => {}), tools.close().catch(() => {})]);
   process.exit(0);

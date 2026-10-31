@@ -18,7 +18,7 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }));
 describe('SettingsStore', () => {
   it('starts from defaults when there is no file', async () => {
     const store = new SettingsStore(file);
-    expect(await store.load()).toEqual({ idleThresholdHours: 4, startDirectories: ['~/Projects/work'], lastLaunch: null, productiveEmail: null });
+    expect(await store.load()).toEqual({ idleThresholdHours: 4, startDirectories: ['~/Projects/work'], lastLaunch: null, productiveEmail: null, recommendWithJev: false });
   });
 
   it('SIDE-7.2: a saved value is written to the file and survives a restart', async () => {

@@ -47,7 +47,7 @@ import { pruneHeights } from '@/lib/terminal-height';
 import { ClockContext, useNow } from '@/lib/time';
 import { reviewPrompt } from '@/lib/work';
 import { type TopicsApi, TopicsContext, sessionTopicTitles, topicsByMember } from '@/lib/topics';
-import type { NewMember, Topic, TopicMember } from '@shared/topics.ts';
+import type { NewMember, Recommendation, Topic, TopicMember } from '@shared/topics.ts';
 import { DEFAULT_LIBRARY_TYPES, LIBRARY_TYPES } from '@shared/library.ts';
 
 /**
@@ -595,19 +595,39 @@ export function App({ client }: { client: LookoutClient }) {
   // TOPIC-2.5: a Topic chip opens the Topics tab on that Topic.
   const [reveal, setReveal] = useState<{ id: string; at: number } | null>(null);
   const byMember = useMemo(() => topicsByMember(state.topics), [state.topics]);
+  const jevCanAsk = !!state.settings?.recommendWithJev && state.usage?.jev.state === 'ready';
+  // TOPIC-9.4: "Other Topic…": the picker, whose pick moves the recommendation's item there.
+  const otherTopic = useCallback(
+    (rec: Recommendation) => {
+      pickOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      const label = rec.member.kind === 'pr' ? `${rec.member.snapshot.repo} #${rec.member.snapshot.number}` : rec.member.snapshot.title;
+      setPickTarget({
+        members: [rec.member],
+        label,
+        title: 'Other Topic',
+        pick: async (to) => {
+          await client.recommend({ action: 'move', key: rec.key, topicId: rec.topicId, to });
+          return { added: true, title: '' };
+        },
+      });
+    },
+    [client],
+  );
   const topicsApi = useMemo<TopicsApi>(
     () => ({
       byMember,
       addTo: (members: readonly NewMember[], label: string) => {
         pickOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-        setPickTarget({ members, label });
+        // TOPIC-9.1: "Judge again", offered while Jev can be asked.
+        const judge = jevCanAsk ? () => Promise.all(members.map((member) => client.recommend({ action: 'judge-again', member }))) : undefined;
+        setPickTarget({ members, label, ...(judge ? { judge } : {}) });
       },
       open: (id: string) => {
         updateLayout({ open: true, tab: 'topics', topic: id });
         setReveal({ id, at: Date.now() });
       },
     }),
-    [byMember, updateLayout],
+    [byMember, updateLayout, jevCanAsk, client],
   );
   // TOPIC-3.5: the Session sidebar's filter also matches the titles of a live Session's Topics.
   const topicTitles = useCallback((row: SessionRow) => sessionTopicTitles(byMember, row), [byMember]);
@@ -942,6 +962,8 @@ export function App({ client }: { client: LookoutClient }) {
               now={now}
               loadTools={loadTools}
               refreshTools={refreshTools}
+              jev={state.usage?.jev ?? null}
+              jevAsksToday={state.topics?.jevAsksToday ?? 0}
             />
           ) : route.name === 'past' ? (
             <PastSessionView harness={route.harness} sessionId={route.id} now={now} load={loadPast} />
@@ -1033,6 +1055,8 @@ export function App({ client }: { client: LookoutClient }) {
                   onReadLibrary={readLibrary}
                   outputsError={outputsError}
                   onMoreOutputs={moreOutputs}
+                  recommend={(action) => client.recommend(action)}
+                  onOtherTopic={otherTopic}
                   keyboardEnabled={!modalOpen}
                   navRef={topicsNav}
                 />
@@ -1056,9 +1080,10 @@ export function App({ client }: { client: LookoutClient }) {
               ),
             }}
             nav={{ history: historyNav, work: workNav, library: libraryNav, topics: topicsNav }}
+            counts={{ topics: state.topics?.recommendations.length ?? 0 }}
           />
         ) : (
-          <RightRail onOpen={toggleRight} />
+          <RightRail onOpen={toggleRight} counts={{ topics: state.topics?.recommendations.length ?? 0 }} />
         )}
         <Launcher
           open={launcherOpen}
