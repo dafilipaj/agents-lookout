@@ -4,11 +4,11 @@ import { DEFAULT_LIBRARY_TYPES, LIBRARY_TYPES, type LibraryFilter } from '@share
  * open, its width, the tab and Work's filter are kept in this browser (HIST-1.3, WORK-1.2, WORK-1.5).
  */
 
-export type RightTab = 'history' | 'work' | 'library';
-export const RIGHT_TABS: readonly RightTab[] = ['history', 'work', 'library'];
-export const TAB_LABEL: Record<RightTab, string> = { history: 'History', work: 'Work', library: 'Library' };
-/** The key that opens each tab, or closes the sidebar when that tab is already showing (WORK-1.1). */
-export const TAB_KEY: Record<RightTab, string> = { history: 'H', work: 'W', library: 'L' };
+export type RightTab = 'history' | 'work' | 'library' | 'topics';
+export const RIGHT_TABS: readonly RightTab[] = ['history', 'work', 'library', 'topics'];
+export const TAB_LABEL: Record<RightTab, string> = { history: 'History', work: 'Work', library: 'Library', topics: 'Topics' };
+/** The key that opens each tab, or closes the sidebar when that tab is already showing (WORK-1.1, TOPIC-3.1). */
+export const TAB_KEY: Record<RightTab, string> = { history: 'H', work: 'W', library: 'L', topics: 'T' };
 
 /**
  * What the tab strip asks of the open panel (HIST-2.7, WORK-1.7): with focus on a tab, Refresh or
@@ -37,13 +37,15 @@ export interface RightLayout {
   workFilter: WorkFilter;
   libraryFilter: LibraryFilter;
   headless: boolean;
+  /** TOPIC-8.1: the selected Topic, the one thing about Topics kept in the browser. */
+  topic: string | null;
 }
 
 const KEY = 'lookout.right';
 /** Where HIST kept `{ open, width }` before Work was a tab: read when the new key is absent. */
 const HISTORY_KEY = 'lookout.history';
 
-export const DEFAULT_LAYOUT: RightLayout = { open: false, width: RIGHT_DEFAULT_WIDTH, tab: 'history', workFilter: 'all', libraryFilter: { types: [...DEFAULT_LIBRARY_TYPES], project: '', hideGone: true }, headless: false };
+export const DEFAULT_LAYOUT: RightLayout = { open: false, width: RIGHT_DEFAULT_WIDTH, tab: 'history', workFilter: 'all', libraryFilter: { types: [...DEFAULT_LIBRARY_TYPES], project: '', hideGone: true }, headless: false, topic: null };
 
 export const clampWidth = (w: number) => Math.round(Math.min(RIGHT_MAX_WIDTH, Math.max(RIGHT_MIN_WIDTH, w)));
 
@@ -64,6 +66,7 @@ export function loadLayout(): RightLayout {
   return {
     libraryFilter: readLibraryFilter(r.libraryFilter),
     headless: r.headless === true,
+    topic: typeof r.topic === 'string' && /^[0-9a-f-]{36}$/.test(r.topic) ? r.topic : null,
     open: r.open === true,
     width: typeof r.width === 'number' && Number.isFinite(r.width) ? clampWidth(r.width) : RIGHT_DEFAULT_WIDTH,
     tab: RIGHT_TABS.includes(r.tab as RightTab) ? (r.tab as RightTab) : 'history',

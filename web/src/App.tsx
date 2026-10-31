@@ -15,6 +15,8 @@ import { SHELL_COLUMN, SHELL_GRID } from '@/components/Shell';
 import { Sidebar } from '@/components/Sidebar';
 import { StartingView } from '@/components/StartingView';
 import { WorkPanel } from '@/components/WorkPanel';
+import { type PickTarget, TopicPicker } from '@/components/TopicPicker';
+import { TopicsPanel } from '@/components/TopicsPanel';
 import { type LookoutClient, SaveError } from '@/lib/client';
 import { ComposerAttachments, preventDropNavigation } from '@/lib/attachments';
 import { tidySentAt } from '@/lib/activity';
@@ -44,6 +46,9 @@ import { listKnown, shownLaunches, useLookout } from '@/lib/store';
 import { pruneHeights } from '@/lib/terminal-height';
 import { ClockContext, useNow } from '@/lib/time';
 import { reviewPrompt } from '@/lib/work';
+import { type TopicsApi, TopicsContext, sessionTopicTitles, topicsByMember } from '@/lib/topics';
+import type { NewMember, Topic, TopicMember } from '@shared/topics.ts';
+import { DEFAULT_LIBRARY_TYPES, LIBRARY_TYPES } from '@shared/library.ts';
 
 /**
  * VIEW-6.8, VIEW-7.8: the model and the Effort a Session's status line shows, and whether each is
@@ -405,7 +410,7 @@ export function App({ client }: { client: LookoutClient }) {
   // this browser (HIST-1.3, WORK-1.2, WORK-1.5).
   const [layout, setLayout] = useState<RightLayout>(loadLayout);
   /** Bumped to move focus into the panel just opened or switched to (HIST-1.1). */
-  const [rightFocus, setRightFocus] = useState<Record<RightTab, number>>({ history: 0, work: 0, library: 0 });
+  const [rightFocus, setRightFocus] = useState<Record<RightTab, number>>({ history: 0, work: 0, library: 0, topics: 0 });
   const updateLayout = useCallback((patch: Partial<RightLayout>) => {
     setLayout((l) => {
       const next = { ...l, ...patch };
@@ -436,10 +441,11 @@ export function App({ client }: { client: LookoutClient }) {
     const onKey = (e: KeyboardEvent) => {
       if (e.isComposing || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
       const key = e.key.toLowerCase();
-      if (key !== 'h' && key !== 'w' && key !== 'l') return;
+      const tab = ({ h: 'history', w: 'work', l: 'library', t: 'topics' } as const)[key as 'h' | 'w' | 'l' | 't'];
+      if (!tab) return;
       if (modalOpen || isTextField(e.target)) return;
       e.preventDefault();
-      toggleRight(key === 'h' ? 'history' : key === 'w' ? 'work' : 'library');
+      toggleRight(tab);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -477,7 +483,8 @@ export function App({ client }: { client: LookoutClient }) {
   }, [client, state.clientId, changesOpen]);
   const onChangesOpen = useCallback((sessionId: string, open: boolean) => setChangesOpen((cur) => (open ? sessionId : cur === sessionId ? null : cur)), []);
   const openChange = useCallback((sessionId: string, root: string, path: string) => client.openChange(sessionId, root, path), [client]);
-  const workOpen = layout.open && layout.tab === 'work';
+  // TOPIC-4.3: Topics open counts as Work open, so its PR and Task members are as fresh as Work's rows.
+  const workOpen = layout.open && (layout.tab === 'work' || layout.tab === 'topics');
   useEffect(() => {
     if (state.clientId) void client.watchWork(state.clientId, workOpen);
   }, [client, state.clientId, workOpen]);
@@ -497,6 +504,7 @@ export function App({ client }: { client: LookoutClient }) {
   const libraryNav = useRef<PanelNav>(null);
   const historyNav = useRef<PanelNav>(null);
   const workNav = useRef<PanelNav>(null);
+  const topicsNav = useRef<PanelNav>(null);
   // A launcher opened from Work gives focus back to Work when it closes without a start, to the list
   // holding the selected row, rather than to the page, where j/k would move the Session sidebar
   // (WORK UX, Focus).
@@ -578,6 +586,76 @@ export function App({ client }: { client: LookoutClient }) {
       return openPast(item, session.live);
     },
     [openPast],
+  );
+
+  // TOPIC-2.1: the Topic picker, for the members of the row it was opened on.
+  const [pickTarget, setPickTarget] = useState<PickTarget | null>(null);
+  // Focus goes back to what opened the picker, so A and j/k act on that panel again.
+  const pickOpener = useRef<HTMLElement | null>(null);
+  // TOPIC-2.5: a Topic chip opens the Topics tab on that Topic.
+  const [reveal, setReveal] = useState<{ id: string; at: number } | null>(null);
+  const byMember = useMemo(() => topicsByMember(state.topics), [state.topics]);
+  const topicsApi = useMemo<TopicsApi>(
+    () => ({
+      byMember,
+      addTo: (members: readonly NewMember[], label: string) => {
+        pickOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        setPickTarget({ members, label });
+      },
+      open: (id: string) => {
+        updateLayout({ open: true, tab: 'topics', topic: id });
+        setReveal({ id, at: Date.now() });
+      },
+    }),
+    [byMember, updateLayout],
+  );
+  // TOPIC-3.5: the Session sidebar's filter also matches the titles of a live Session's Topics.
+  const topicTitles = useCallback((row: SessionRow) => sessionTopicTitles(byMember, row), [byMember]);
+  // TOPIC-3.4: a Session member's chip opens it when live, else resumes it (HIST-3).
+  const openTopicSession = useCallback(
+    (m: Extract<TopicMember, { kind: 'session' }>, live: boolean) => {
+      const item: HistoryItem = {
+        sessionId: m.ref.sessionId,
+        harness: m.ref.harness,
+        headless: null,
+        title: m.snapshot.title,
+        projectPath: null,
+        repo: null,
+        branch: null,
+        lastActiveAt: null,
+        snippet: null,
+        firstPrompt: null,
+        projectDisplay: m.snapshot.directory,
+        blocked: null,
+      };
+      return openPast(item, live);
+    },
+    [openPast],
+  );
+  // TOPIC-4.4: no Library read yet: one, as opening the Library starts (LIB-2.7); its Outputs reach every tab as a `topics` event.
+  // A read that fails says why where the Outputs would be, instead of reading forever.
+  const [outputsError, setOutputsError] = useState<string | null>(null);
+  const readLibrary = useCallback(() => {
+    setOutputsError(null);
+    client
+      .library({ query: '', page: 1, headless: false, types: [...DEFAULT_LIBRARY_TYPES], project: '', hideGone: true })
+      .then((page) => {
+        if (page.state === 'not-installed') setOutputsError("The Library can't be read: tb-session isn't installed.");
+        else if (page.state === 'too-old') setOutputsError(`The Library can't be read: ${page.reason}`);
+      })
+      .catch((err: unknown) => setOutputsError(`The Library couldn't be read: ${err instanceof Error ? err.message : String(err)}`));
+  }, [client]);
+  // TOPIC-4.4: "+N more" opens the Library on the Topic's Sessions.
+  const [librarySessions, setLibrarySessions] = useState<{ label: string; keys: string[] } | null>(null);
+  const moreOutputs = useCallback(
+    (topic: Topic) => {
+      const keys = topic.members.flatMap((m) => (m.kind === 'session' ? [`${m.ref.harness}:${m.ref.sessionId}`] : []));
+      setLibrarySessions({ label: topic.title, keys });
+      // Every type, repo and gone file, as the Topic counted them; the Library's text filter clears too.
+      updateLayout({ open: true, tab: 'library', libraryFilter: { types: [...LIBRARY_TYPES], project: '', hideGone: false } });
+      setRightFocus((f) => ({ ...f, library: f.library + 1 }));
+    },
+    [updateLayout],
   );
 
   // VIEW-2.2: the drawer is open while the Session Needs you, unless you toggled it during the
@@ -824,6 +902,7 @@ export function App({ client }: { client: LookoutClient }) {
   return (
     // DS-6.1: Loading ticks on this one-second clock rather than a timer of its own.
     <ClockContext.Provider value={now}>
+      <TopicsContext.Provider value={topicsApi}>
       {/* SIDE-8.1: one grid, rows header / content / dock, shared by every column (see Shell). */}
       <div className={SHELL_GRID} data-shell="">
         <Sidebar
@@ -850,6 +929,7 @@ export function App({ client }: { client: LookoutClient }) {
           memory={state.memory}
           onMemoryOpenChange={setMemoryOpen}
           onUsageOpen={() => void client.refreshJev().catch(() => {})}
+          topicTitles={topicTitles}
         />
         {/* tabIndex -1: focus lands here after the selected start is dismissed (LAUNCH UX). */}
         <main className={cn(SHELL_COLUMN, 'outline-none')} data-shell-column="main" tabIndex={-1}>
@@ -933,7 +1013,30 @@ export function App({ client }: { client: LookoutClient }) {
             onRefresh={refreshWork}
             now={now}
             panels={{
-              library: <LibraryPanel focusKey={rightFocus.library} visible={layout.tab === 'library'} sessions={state.sessions} now={now} search={searchLibrary} status={libraryStatus} filter={layout.libraryFilter} onFilter={(libraryFilter) => updateLayout({ libraryFilter })} headless={layout.headless} onHeadless={(headless) => updateLayout({ headless })} onSession={openPast} keyboardEnabled={!modalOpen} navRef={libraryNav} />,
+              library: <LibraryPanel focusKey={rightFocus.library} visible={layout.tab === 'library'} sessions={state.sessions} now={now} search={searchLibrary} status={libraryStatus} filter={layout.libraryFilter} onFilter={(libraryFilter) => updateLayout({ libraryFilter })} headless={layout.headless} onHeadless={(headless) => updateLayout({ headless })} onSession={openPast} keyboardEnabled={!modalOpen} navRef={libraryNav} sessionFilter={librarySessions} onClearSessionFilter={() => setLibrarySessions(null)} />,
+              topics: (
+                <TopicsPanel
+                  view={state.topics}
+                  sessions={state.sessions}
+                  work={state.work}
+                  now={now}
+                  focusKey={rightFocus.topics}
+                  selected={layout.topic}
+                  onSelect={(topic) => updateLayout({ topic })}
+                  reveal={reveal}
+                  onRevealed={() => setReveal(null)}
+                  createTopic={(title) => client.createTopic(title)}
+                  updateTopic={(id, patch) => client.updateTopic(id, patch)}
+                  deleteTopic={(id) => client.deleteTopic(id)}
+                  removeMember={(id, m) => client.removeMember(id, m)}
+                  onOpenSession={openTopicSession}
+                  onReadLibrary={readLibrary}
+                  outputsError={outputsError}
+                  onMoreOutputs={moreOutputs}
+                  keyboardEnabled={!modalOpen}
+                  navRef={topicsNav}
+                />
+              ),
               history: <HistoryPanel headless={layout.headless} onHeadless={(headless) => updateLayout({ headless })} focusKey={rightFocus.history} sessions={state.sessions} now={now} search={searchHistory} peek={peekPast} onOpen={openPast} navRef={historyNav} />,
               work: (
                 <WorkPanel
@@ -952,7 +1055,7 @@ export function App({ client }: { client: LookoutClient }) {
                 />
               ),
             }}
-            nav={{ history: historyNav, work: workNav, library: libraryNav }}
+            nav={{ history: historyNav, work: workNav, library: libraryNav, topics: topicsNav }}
           />
         ) : (
           <RightRail onOpen={toggleRight} />
@@ -970,7 +1073,9 @@ export function App({ client }: { client: LookoutClient }) {
           onCloseAutoFocus={launcherClosed}
         />
         <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} returnFocus={shortcutsOpener} />
+        <TopicPicker target={pickTarget} onClose={() => setPickTarget(null)} returnFocus={pickOpener} topics={state.topics?.topics ?? []} createTopic={(title) => client.createTopic(title)} addMember={(id, m) => client.addMember(id, m)} />
       </div>
+      </TopicsContext.Provider>
     </ClockContext.Provider>
   );
 }

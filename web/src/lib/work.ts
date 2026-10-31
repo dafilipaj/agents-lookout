@@ -1,5 +1,8 @@
 import { CHIP_OF, type ColumnMark, type PrSection, type TaskSection, type WorkPr, type WorkSessionLink, type WorkSnapshot, type WorkTask } from '@shared/work.ts';
+import type { NewMember } from '@shared/topics.ts';
+import type { ChipTone } from '@/components/ui/chip';
 import type { WorkFilter } from './right-sidebar.ts';
+import { prMember, taskMember } from './topics.ts';
 import { CONTEXT_LEVEL_CLASS } from './sessions.ts';
 import { formatAge } from './time.ts';
 
@@ -15,7 +18,14 @@ export const taskKey = (task: WorkTask) => `task:${task.id}`;
 export const prKey = (pr: WorkPr) => `pr:${pr.url}`;
 
 /** WORK-6: where a row opens in the browser: a Task in Fantastic (WORK-6.2), a PR on GitHub (WORK-6.3). */
+/** WORK-3.2: Mine's state chip's tone. */
+export const CHIP_TONE: Record<NonNullable<WorkPr['chip']>, ChipTone> = { draft: 'muted', ready: 'neutral', approved: 'ok' };
+
 export const rowUrl = (row: WorkRow) => (row.kind === 'task' ? row.task.url : row.pr.url);
+
+/** TOPIC-2.1: what "Add to Topic" adds for a row, and how the picker names it. */
+export const rowMembers = (row: WorkRow): NewMember[] => [row.kind === 'task' ? taskMember(row.task) : prMember(row.pr)];
+export const rowLabel = (row: WorkRow) => (row.kind === 'task' ? row.task.title : `${row.pr.repo} #${row.pr.number} ${row.pr.title}`);
 
 /**
  * WORK-2.4, WORK-4.10: Linked Sessions in WORK-2.4's order: live ones first, then the latest activity

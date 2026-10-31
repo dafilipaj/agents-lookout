@@ -1,0 +1,507 @@
+import type { OutputItem } from '@shared/library.ts';
+import { type NewMember, type Topic, type TopicMember, memberKey } from '@shared/topics.ts';
+import type { HistoryItem } from '@shared/types.ts';
+import type { PrSection, TaskSection, WorkPr, WorkSnapshot, WorkTask } from '@shared/work.ts';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { NOW, pressRowAction, renderApp, row } from '@/test/helpers';
+
+/** Synthetic Topics, Tasks and PRs only: invented titles, repos and ids. */
+const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+const member = (m: NewMember, addedAt = NOW - 60_000): TopicMember => ({ ...m, key: memberKey(m.kind, m.ref), addedAt, reason: 'added by hand' }) as TopicMember;
+const topic = (n: number, over: Partial<Topic> = {}): Topic => ({ id: id(n), title: `Topic ${n}`, notes: '', state: 'open', createdAt: NOW - 1e6, updatedAt: NOW - n * 1000, members: [], outputs: { items: [], total: 0 }, ...over });
+
+const pr = (over: Partial<WorkPr> & { repo: string; number: number }): WorkPr => ({
+  title: `${over.repo} change ${over.number}`,
+  url: `https://github.com/productiveio/${over.repo}/pull/${over.number}`,
+  author: null, createdAt: NOW - 2 * 86_400_000, ageDays: 2, rotting: 'fresh', ci: 'passing', chip: 'draft', column: 'draft_mine', taskIds: [], links: null,
+  ...over,
+});
+const task = (over: Partial<WorkTask> & { id: string; title: string }): WorkTask => ({
+  project: 'Lantern Works', status: 'In progress', statusCategory: 'started', statusColor: null, dueDate: null, lastActivityAt: NOW - 3_600_000, milestone: false, description: null,
+  url: `https://app.fantastic.productive.io/109-productive/tasks/${over.id}`, links: null,
+  ...over,
+});
+const ANVIL = pr({ repo: 'anvil', number: 2101, title: 'Sharpen the anvil corners' });
+const LIGHT = task({ id: '41000101', title: 'Light the harbor lanterns' });
+const prSection = (over: Partial<PrSection> = {}): PrSection => ({ state: 'ok', reason: null, fix: null, stale: false, fetchedAt: NOW - 60_000, mine: [ANVIL], reviewRequests: [], marks: { mine: [], reviewRequests: [] }, taskIds: true, ...over });
+const taskSection = (over: Partial<TaskSection> = {}): TaskSection => ({ state: 'ok', reason: null, fix: null, stale: false, fetchedAt: NOW - 60_000, tasks: [LIGHT], ...over });
+const work = (p: Partial<PrSection> = {}, t: Partial<TaskSection> = {}): WorkSnapshot => ({ prs: prSection(p), tasks: taskSection(t), sessionLinks: { state: 'ok', reason: null, fix: null }, refresh: { cooldownUntil: null, githubBlockedUntil: null } });
+const LOADING: WorkSnapshot = work({ state: 'loading', mine: [], fetchedAt: null }, { state: 'loading', tasks: [], fetchedAt: null });
+
+const SESSION_ID = 'a1b2c3d4-0000-4000-8000-000000000001';
+const SESSION: NewMember = { kind: 'session', ref: { harness: 'claude', sessionId: SESSION_ID }, snapshot: { harness: 'claude', title: 'rates-port', directory: '~/Projects/work' } };
+const PR_MEMBER: NewMember = { kind: 'pr', ref: { url: ANVIL.url }, snapshot: { repo: 'anvil', number: 2101, title: 'Sharpen the anvil corners', url: ANVIL.url } };
+const TASK_MEMBER: NewMember = { kind: 'task', ref: { id: LIGHT.id }, snapshot: { title: LIGHT.title, project: 'Lantern Works', url: LIGHT.url } };
+
+const panel = () => screen.getByTestId('topics-panel');
+const header = (title: string) => within(panel()).getByRole('button', { name: new RegExp(`^${title},`) });
+const item = (title: string) => header(title).closest<HTMLElement>('[role="listitem"]')!;
+const titles = () => within(panel()).queryAllByRole('button', { expanded: false }).concat(within(panel()).queryAllByRole('button', { expanded: true })).filter((b) => b.id.startsWith('topic-')).sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1)).map((b) => b.querySelector('[data-field="title"]')!.textContent);
+
+function openApp(topics: Topic[] = [], w: WorkSnapshot | null = work(), options: Parameters<typeof renderApp>[1] = {}) {
+  const app = renderApp('/s/alpha', { topics, ...options });
+  app.snapshot([row({ id: 'alpha' }), row({ id: SESSION_ID, title: 'rates-port', status: 'needs-you' })]);
+  if (w) app.emit({ type: 'work', work: w });
+  return app;
+}
+async function openTopics() {
+  const user = userEvent.setup();
+  await user.keyboard('t');
+  return user;
+}
+
+beforeEach(() => window.localStorage.clear());
+afterEach(() => vi.useRealTimers());
+
+describe('the Topics tab (TOPIC-3)', () => {
+  it('TOPIC-3.1: T opens the sidebar on Topics, switches to it from another tab and closes it when Topics shows; the closed rail has its button under Library’s, and the tab is remembered', async () => {
+    openApp();
+    const user = userEvent.setup();
+    await user.keyboard('t');
+    expect(screen.getByRole('tab', { name: 'Topics' })).toHaveAttribute('aria-selected', 'true');
+    expect(JSON.parse(window.localStorage.getItem('lookout.right')!)).toMatchObject({ open: true, tab: 'topics' });
+    // With no Topic, opening Topics focuses its filter, which keeps its letters: leave it.
+    expect(screen.getByRole('searchbox', { name: 'Filter Topics' })).toHaveFocus();
+    act(() => (document.activeElement as HTMLElement).blur());
+    await user.keyboard('w');
+    act(() => (document.activeElement as HTMLElement).blur());
+    await user.keyboard('t');
+    expect(screen.getByRole('tab', { name: 'Topics' })).toHaveAttribute('aria-selected', 'true');
+    act(() => (document.activeElement as HTMLElement).blur());
+    await user.keyboard('t');
+    expect(screen.queryByTestId('topics-panel')).toBeNull();
+    const rail = screen.getByRole('button', { name: 'Library' }).parentElement!;
+    const buttons = within(rail).getAllByRole('button').map((b) => b.getAttribute('aria-label'));
+    expect(buttons.slice(-2)).toEqual(['Library', 'Topics']);
+    await user.click(screen.getByRole('button', { name: 'Topics' }));
+    expect(screen.getByTestId('topics-panel')).toBeVisible();
+    // A text field keeps its T.
+    await user.click(screen.getByRole('searchbox', { name: 'Filter Topics' }));
+    await user.keyboard('t');
+    expect(screen.getByRole('searchbox', { name: 'Filter Topics' })).toHaveValue('t');
+  });
+
+  it('TOPIC-3.6: Loading before the server sends Topics, "No Topics yet" with New Topic, "Nothing matches" under a filter, and a store that can’t be opened as an error Alert with its reason and file', async () => {
+    const app = renderApp('/');
+    const user = userEvent.setup();
+    await user.keyboard('t');
+    expect(within(panel()).getByText('Loading…')).toBeInTheDocument();
+    app.snapshot([]);
+    expect(within(panel()).getByText('No Topics yet')).toBeInTheDocument();
+    expect(within(panel()).getAllByRole('button', { name: /New Topic/ })).toHaveLength(2);
+    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1)], pruned: [], libraryReadAt: null } });
+    await user.type(screen.getByRole('searchbox', { name: 'Filter Topics' }), 'zzz');
+    expect(within(panel()).getByText('Nothing matches')).toBeInTheDocument();
+    app.emit({ type: 'topics', topics: { state: 'error', reason: 'Lookout couldn’t open its Topics database: permission denied.', path: '/Users/me/.lookout/topics.db', topics: [], pruned: [], libraryReadAt: null } });
+    const alert = within(panel()).getByRole('alert');
+    expect(alert).toHaveTextContent('Topics can\'t be opened');
+    expect(alert).toHaveTextContent('permission denied. /Users/me/.lookout/topics.db');
+  });
+
+  it('TOPIC-3.2: Open Topics, most recently changed first, each with its member counts and the most urgent live member Session’s marker; the filter matches titles and notes', async () => {
+    openApp([
+      topic(1, { title: 'Older', updatedAt: NOW - 50_000, members: [member(PR_MEMBER)] }),
+      topic(2, { title: 'Newest', updatedAt: NOW - 1_000, notes: 'rounding half up', members: [member(SESSION), member(PR_MEMBER), member(TASK_MEMBER)] }),
+      topic(3, { title: 'Past only', updatedAt: NOW - 20_000, members: [member({ ...SESSION, ref: { harness: 'codex', sessionId: SESSION_ID } })] }),
+      topic(4, { title: 'Put away', state: 'archived', updatedAt: NOW }),
+    ]);
+    const user = await openTopics();
+    expect(titles()).toEqual(['Newest', 'Past only', 'Older']);
+    expect(item('Newest').querySelector('[data-field="counts"]')).toHaveTextContent('1 Session · 1 PR · 1 Task');
+    expect(item('Newest').querySelector('[data-session-marker]')).toHaveAttribute('data-status', 'needs-you');
+    // The same id under the other Harness isn't that Session: past.
+    expect(item('Past only').querySelector('[data-session-marker]')).toHaveAttribute('data-state', 'past');
+    expect(item('Older').querySelector('[data-session-marker]')).toBeNull();
+    await user.type(screen.getByRole('searchbox', { name: 'Filter Topics' }), 'HALF UP');
+    expect(titles()).toEqual(['Newest']);
+  });
+
+  it('TOPIC-3.3: a click or Enter selects and expands one Topic in place, Esc collapses it, ↑/↓ and j/k move without acting, and a click opens nothing', async () => {
+    const app = openApp([topic(1, { title: 'First', members: [member(SESSION)] }), topic(2, { title: 'Second' })]);
+    const user = await openTopics();
+    await user.click(header('Second'));
+    expect(header('Second')).toHaveAttribute('aria-expanded', 'true');
+    expect(header('Second')).toHaveAttribute('aria-current', 'true');
+    expect(header('First')).toHaveAttribute('aria-expanded', 'false');
+    await user.keyboard('{Escape}');
+    expect(header('Second')).toHaveAttribute('aria-expanded', 'false');
+    await user.keyboard('k');
+    expect(header('First')).toHaveAttribute('aria-current', 'true');
+    expect(header('First')).toHaveFocus();
+    expect(header('First')).toHaveAttribute('aria-expanded', 'false');
+    await user.keyboard('{ArrowDown}');
+    expect(header('Second')).toHaveAttribute('aria-current', 'true');
+    await user.keyboard('{ArrowUp}{Enter}');
+    expect(header('First')).toHaveAttribute('aria-expanded', 'true');
+    // The Session sidebar's selection stayed, and nothing was resumed or opened.
+    expect(window.location.pathname).toBe('/s/alpha');
+    expect(app.client.resume).not.toHaveBeenCalled();
+  });
+
+  it('TOPIC-3.4: an expanded Topic shows its notes (six lines, then more), its members grouped Sessions, PRs, Tasks with their buttons, and Archive', async () => {
+    const notes = ['**Port** the rates table', 'two', 'three', 'four', 'five', 'six', 'seventh line'].join('\n');
+    const app = openApp([topic(1, { title: 'Proposals rates', notes, members: [member(TASK_MEMBER), member(PR_MEMBER), member(SESSION), member({ ...SESSION, ref: { harness: 'claude', sessionId: 'past-one' }, snapshot: { harness: 'claude', title: 'spec', directory: null } })] })]);
+    const user = await openTopics();
+    await user.click(header('Proposals rates'));
+    const details = item('Proposals rates').querySelector<HTMLElement>('[data-field="details"]')!;
+    const rendered = details.querySelector('[data-field="notes-text"]')!;
+    expect(rendered.querySelector('strong')).toHaveTextContent('Port');
+    expect(rendered).not.toHaveTextContent('seventh line');
+    await user.click(within(details).getByRole('button', { name: 'more' }));
+    expect(details.querySelector('[data-field="notes-text"]')).toHaveTextContent('seventh line');
+    expect([...details.querySelectorAll('[data-field="sessions"], [data-field="prs"], [data-field="tasks"]')].map((g) => g.getAttribute('data-field'))).toEqual(['sessions', 'prs', 'tasks']);
+    expect(within(details).getByRole('button', { name: 'Open rates-port, Needs you' })).toBeInTheDocument();
+    expect(within(details).getByRole('button', { name: 'Resume spec, past' })).toBeInTheDocument();
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    await user.click(within(details.querySelector<HTMLElement>('[data-field="prs"]')!).getByRole('button', { name: /Open on GitHub/ }));
+    expect(open).toHaveBeenCalledWith(ANVIL.url, '_blank', 'noopener,noreferrer');
+    await user.click(within(details.querySelector<HTMLElement>('[data-field="tasks"]')!).getByRole('button', { name: /Open in Fantastic/ }));
+    expect(open).toHaveBeenLastCalledWith(LIGHT.url, '_blank', 'noopener,noreferrer');
+    expect([...details.querySelectorAll('[data-field="actions"] [data-action]')].map((b) => b.textContent)).toEqual(['Archive', 'Delete']);
+    // A Session chip opens a live Session.
+    await user.click(within(details).getByRole('button', { name: 'Open rates-port, Needs you' }));
+    expect(window.location.pathname).toBe(`/s/${SESSION_ID}`);
+    expect(app.client.resume).not.toHaveBeenCalled();
+  });
+
+  it('TOPIC-3.5: the Session sidebar’s filter also matches the titles of the Topics a live Session is in', async () => {
+    openApp([topic(1, { title: 'Proposals rates', members: [member(SESSION)] })]);
+    const user = userEvent.setup();
+    await user.keyboard('/');
+    await user.keyboard('proposals');
+    const list = screen.getByRole('listbox', { name: /Sessions/ });
+    expect(within(list).getAllByRole('option').map((o) => o.getAttribute('data-session-id'))).toEqual([SESSION_ID]);
+  });
+});
+
+describe('a Topic (TOPIC-1)', () => {
+  it('TOPIC-1.1: New Topic asks for a title and makes an Open Topic with no members, selected and expanded; an empty title is refused', async () => {
+    const app = openApp();
+    const user = await openTopics();
+    await user.click(within(panel()).getAllByRole('button', { name: /New Topic/ })[0]!);
+    const title = screen.getByRole('textbox', { name: 'New Topic title' });
+    await user.keyboard('{Enter}');
+    expect(within(panel()).getByRole('alert')).toHaveTextContent('A Topic needs a title.');
+    expect(app.client.createTopic).not.toHaveBeenCalled();
+    await user.type(title, 'Proposals rates{Enter}');
+    expect(app.client.createTopic).toHaveBeenCalledWith('Proposals rates');
+    await waitFor(() => expect(header('Proposals rates')).toHaveAttribute('aria-expanded', 'true'));
+    expect(item('Proposals rates').querySelector('[data-field="counts"]')).toHaveTextContent('No members');
+  });
+
+  it('TOPIC-1.2: the title is edited in place, and the notes in a text area saved on ⌘Enter or leaving it, with "Saved" for 2 s; Esc cancels; empty notes clear them', async () => {
+    const app = openApp([topic(1, { title: 'Proposals rates', notes: 'old notes' })]);
+    const user = await openTopics();
+    await user.click(header('Proposals rates'));
+    const title = screen.getByRole('textbox', { name: 'Topic title' });
+    await user.clear(title);
+    await user.type(title, 'Rates port{Enter}');
+    expect(app.client.updateTopic).toHaveBeenCalledWith(id(1), { title: 'Rates port' });
+    await user.click(screen.getByRole('button', { name: 'Edit' }));
+    const notes = screen.getByRole('textbox', { name: 'Notes' });
+    await user.type(notes, ' and more');
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('textbox', { name: 'Notes' })).toBeNull();
+    expect(app.client.updateTopic).toHaveBeenCalledTimes(1);
+    // Leaving the text area from the keyboard puts focus on Edit, so the panel's keys still work.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Edit' })).toHaveFocus());
+    await user.click(screen.getByRole('button', { name: 'Edit' }));
+    await user.clear(screen.getByRole('textbox', { name: 'Notes' }));
+    await user.type(screen.getByRole('textbox', { name: 'Notes' }), 'Rounding: **half up**');
+    await user.keyboard('{Meta>}{Enter}{/Meta}');
+    expect(app.client.updateTopic).toHaveBeenLastCalledWith(id(1), { notes: 'Rounding: **half up**' });
+    expect(await screen.findByText('Saved')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Edit' })).toHaveFocus());
+    expect(item('Rates port').querySelector('[data-field="notes-text"] strong')).toHaveTextContent('half up');
+    await waitFor(() => expect(screen.queryByText('Saved')).toBeNull(), { timeout: 3000 });
+    await user.click(screen.getByRole('button', { name: 'Edit' }));
+    await user.clear(screen.getByRole('textbox', { name: 'Notes' }));
+    act(() => screen.getByRole('textbox', { name: 'Notes' }).blur());
+    expect(app.client.updateTopic).toHaveBeenLastCalledWith(id(1), { notes: '' });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Add notes' })).toBeInTheDocument());
+  });
+
+  it('TOPIC-1.3: Archive moves a Topic out of the default list and keeps its members; the Archived toggle shows it, and Unarchive brings it back', async () => {
+    const app = openApp([topic(1, { title: 'Proposals rates', members: [member(PR_MEMBER)] }), topic(2, { title: 'Other' })]);
+    const user = await openTopics();
+    await user.click(header('Proposals rates'));
+    await user.click(within(item('Proposals rates')).getByRole('button', { name: 'Archive' }));
+    expect(app.client.updateTopic).toHaveBeenCalledWith(id(1), { state: 'archived' });
+    expect(titles()).toEqual(['Other']);
+    await user.click(screen.getByRole('checkbox', { name: 'Archived' }));
+    expect(titles()).toEqual(['Proposals rates', 'Other']);
+    expect(item('Proposals rates').querySelector('[data-field="counts"]')).toHaveTextContent('1 PR');
+    await user.click(header('Proposals rates'));
+    await user.click(within(item('Proposals rates')).getByRole('button', { name: 'Unarchive' }));
+    expect(app.client.updateTopic).toHaveBeenLastCalledWith(id(1), { state: 'open' });
+    await user.click(screen.getByRole('checkbox', { name: 'Archived' }));
+    expect(titles()).toEqual(['Proposals rates', 'Other']);
+  });
+
+  it('TOPIC-1.4: Delete asks first, naming the Topic, then removes the Topic and nothing else', async () => {
+    const app = openApp([topic(1, { title: 'Proposals rates', members: [member(SESSION), member(PR_MEMBER)] })]);
+    const user = await openTopics();
+    await user.click(header('Proposals rates'));
+    await user.click(within(item('Proposals rates')).getByRole('button', { name: 'Delete' }));
+    const dialog = screen.getByRole('dialog', { name: 'Delete “Proposals rates”?' });
+    expect(dialog).toHaveTextContent('No Session, PR, Task or Output is changed, closed or deleted.');
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(app.client.deleteTopic).not.toHaveBeenCalled();
+    await user.click(within(item('Proposals rates')).getByRole('button', { name: 'Delete' }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete Topic' }));
+    expect(app.client.deleteTopic).toHaveBeenCalledWith(id(1));
+    expect(app.client.removeMember).not.toHaveBeenCalled();
+    expect(app.client.endSession).not.toHaveBeenCalled();
+    await waitFor(() => expect(within(panel()).getByText('No Topics yet')).toBeInTheDocument());
+  });
+
+  it('TOPIC-1.5: a Topic whose every PR and Task left Work shows "looks done", never before Work has read, and is never archived on its own', async () => {
+    const gone = [topic(1, { title: 'Shipped', members: [member(PR_MEMBER), member(TASK_MEMBER)] }), topic(2, { title: 'Research', members: [member(SESSION)] }), topic(3, { title: 'Half', members: [member(PR_MEMBER), member({ ...TASK_MEMBER, ref: { id: '1' } })] })];
+    const app = openApp(gone, LOADING);
+    await openTopics();
+    expect(panel().querySelector('[data-field="looks-done"]')).toBeNull();
+    app.emit({ type: 'work', work: work({ mine: [] }, { tasks: [LIGHT] }) });
+    expect(item('Shipped').querySelector('[data-field="looks-done"]')).toBeNull();
+    app.emit({ type: 'work', work: work({ mine: [] }, { tasks: [] }) });
+    expect(item('Shipped').querySelector('[data-field="looks-done"]')).toHaveTextContent('looks done');
+    expect(item('Shipped').querySelector('[data-field="looks-done"]')).toHaveAttribute('data-tone', 'info');
+    expect(item('Research').querySelector('[data-field="looks-done"]')).toBeNull();
+    expect(item('Half').querySelector('[data-field="looks-done"]')).toHaveTextContent('looks done');
+    expect(app.client.updateTopic).not.toHaveBeenCalled();
+  });
+});
+
+describe('members (TOPIC-2)', () => {
+  /** Work's Task row, expanded, and its Add to Topic. */
+  async function addFromWork(user: ReturnType<typeof userEvent.setup>) {
+    await user.keyboard('w');
+    const option = screen.getByTestId('work-panel').querySelector<HTMLElement>(`[data-task="${LIGHT.id}"]`)!;
+    fireEvent.click(option);
+    await pressRowAction(user, option.querySelector<HTMLElement>('[data-action="add-to-topic"]')!);
+    return screen.getByRole('dialog', { name: 'Add to Topic' });
+  }
+
+  it('TOPIC-2.1: Add to Topic on an expanded Work row opens the picker, Open Topics most recently changed first then New Topic…; a pick adds the row’s item and closes it; A opens it for the selected row', async () => {
+    const app = openApp([topic(1, { title: 'Older', updatedAt: NOW - 9_000 }), topic(2, { title: 'Newer', updatedAt: NOW - 1_000 }), topic(3, { title: 'Archived one', state: 'archived' })]);
+    const user = userEvent.setup();
+    const dialog = await addFromWork(user);
+    expect(within(dialog).getAllByRole('option').map((o) => o.textContent)).toEqual(['Newer', 'Older', 'New Topic…']);
+    await user.keyboard('{ArrowDown}{Enter}');
+    expect(app.client.addMember).toHaveBeenCalledWith(id(1), TASK_MEMBER);
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    // Focus goes back to what opened it, in Work.
+    await waitFor(() => expect(screen.getByTestId('work-panel')).toContainElement(document.activeElement as HTMLElement));
+    // A, from the list, for the selected row.
+    const list = screen.getByTestId('work-panel').querySelector<HTMLElement>('[role="listbox"]')!;
+    list.focus();
+    await user.keyboard('a');
+    const again = screen.getByRole('dialog', { name: 'Add to Topic' });
+    await user.type(within(again).getByRole('combobox', { name: 'Filter Topics' }), 'newer');
+    expect(within(again).getAllByRole('option').map((o) => o.textContent)).toEqual(['Newer', 'New Topic…']);
+    await user.click(within(again).getByRole('option', { name: 'New Topic…' }));
+    await user.type(screen.getByRole('textbox', { name: 'Topic title' }), 'Harbor work{Enter}');
+    expect(app.client.createTopic).toHaveBeenCalledWith('Harbor work');
+    await waitFor(() => expect(app.client.addMember).toHaveBeenLastCalledWith(id(4), TASK_MEMBER));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(() => expect(list).toHaveFocus());
+    await user.keyboard('a');
+    expect(screen.getByRole('dialog', { name: 'Add to Topic' })).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(list).toHaveFocus());
+  });
+
+  it('TOPIC-2.1 (support): a History result adds its Session, and a Library row its Sessions', async () => {
+    const past: HistoryItem = { sessionId: 'past-one', harness: 'codex', headless: false, title: 'spec the rates', projectPath: '/Users/me/Projects/work', projectDisplay: '~/Projects/work', repo: 'work', branch: 'main', lastActiveAt: NOW - 3_600_000, snippet: null, firstPrompt: 'spec it', blocked: null };
+    const output: OutputItem = {
+      kind: 'file', key: '/Users/me/out.md', type: 'markdown', title: 'Rates doc', path: '/Users/me/out.md', url: null, display: '~/out.md', projectPath: null, repo: null, createdAt: NOW, updatedAt: NOW, events: 1, exists: true,
+      source: null, sourcePath: null, sourceDisplay: null, version: null,
+      sessions: [{ ...past, event: 'write', pruned: false }, { ...past, sessionId: 'gone-one', event: 'edit', pruned: true }],
+    };
+    const app = openApp([topic(1, { title: 'Rates' })], work(), {
+      history: async () => ({ state: 'ok', items: [past], page: 1, hasMore: false }),
+      library: async () => ({ state: 'ok', items: [output], readId: 'r', total: 1, nextPage: 2, hasMore: false, hiddenGone: 0, unfilteredEmpty: false, projects: [] }),
+    });
+    const user = userEvent.setup();
+    await user.keyboard('h');
+    const result = await within(screen.getByTestId('history-panel')).findByText('spec the rates', { selector: '[data-field="title"]' });
+    await user.click(result);
+    await pressRowAction(user, result.closest<HTMLElement>('[role="option"]')!.querySelector<HTMLElement>('[data-action="add-to-topic"]')!);
+    await user.click(within(screen.getByRole('dialog')).getByRole('option', { name: 'Rates' }));
+    expect(app.client.addMember).toHaveBeenCalledWith(id(1), { kind: 'session', ref: { harness: 'codex', sessionId: 'past-one' }, snapshot: { harness: 'codex', title: 'spec the rates', directory: '~/Projects/work' } });
+    await user.keyboard('l');
+    const out = await within(screen.getByTestId('library-panel')).findByText('Rates doc');
+    await user.click(out);
+    await pressRowAction(user, out.closest<HTMLElement>('[role="option"]')!.querySelector<HTMLElement>('[data-action="add-to-topic"]')!);
+    await user.click(within(screen.getByRole('dialog')).getByRole('option', { name: /Rates/ }));
+    // Both of its Sessions, the pruned one too: a member keeps its snapshot (TOPIC-4.2).
+    expect(app.client.addMember).toHaveBeenCalledWith(id(1), { kind: 'session', ref: { harness: 'codex', sessionId: 'gone-one' }, snapshot: { harness: 'codex', title: 'spec the rates', directory: '~/Projects/work' } });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
+  it('TOPIC-2.2: the Session header has Add to Topic; a Session without a session id has it disabled, saying why; a past Session opened read-only has it too', async () => {
+    const past: HistoryItem = { sessionId: 'past-one', harness: 'claude', headless: false, title: 'old spec', projectPath: null, projectDisplay: null, repo: null, branch: null, lastActiveAt: null, snippet: null, firstPrompt: null, blocked: 'folder-gone' };
+    const app = renderApp(`/s/${SESSION_ID}`, { topics: [topic(1, { title: 'Rates' })], pastSession: async () => ({ item: past, entries: [], tailed: true, previewNote: null }) as never });
+    app.snapshot([row({ id: SESSION_ID, title: 'rates-port' }), row({ id: 'codex:4242', harness: 'codex', pid: 4242, title: 'fresh codex' })]);
+    const user = userEvent.setup();
+    const header = () => screen.getByRole('banner', { name: 'Session' });
+    await user.click(within(header()).getByRole('button', { name: 'Add to Topic' }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('option', { name: 'Rates' }));
+    expect(app.client.addMember).toHaveBeenCalledWith(id(1), expect.objectContaining({ kind: 'session', ref: { harness: 'claude', sessionId: SESSION_ID } }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await user.click(screen.getByText('fresh codex'));
+    const disabled = within(header()).getByRole('button', { name: 'Add to Topic' });
+    expect(disabled).toHaveAttribute('aria-disabled', 'true');
+    expect(disabled.getAttribute('title')).toMatch(/no session id until its first prompt/);
+    await user.click(disabled);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    act(() => {
+      window.history.pushState(null, '', '/h/claude/past-one');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+    const pastHeader = await screen.findByRole('banner', { name: 'Past Session' });
+    expect(within(pastHeader).getByRole('button', { name: 'Add to Topic' })).not.toHaveAttribute('aria-disabled');
+  });
+
+  it('TOPIC-2.3: adding an item that is already a member changes nothing and says "Already in <Topic>"', async () => {
+    const app = openApp([topic(1, { title: 'Rates', members: [member(TASK_MEMBER)] })]);
+    const user = userEvent.setup();
+    const dialog = await addFromWork(user);
+    expect(within(dialog).getByRole('option', { name: /Rates/ })).toHaveTextContent('already in');
+    await user.click(within(dialog).getByRole('option', { name: /Rates/ }));
+    expect(await within(dialog).findByText('Already in Rates')).toBeInTheDocument();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(app.client.addMember).toHaveBeenCalledTimes(1);
+  });
+
+  it('TOPIC-2.4: an item can be in any number of Topics, and Remove takes away that membership only', async () => {
+    const app = openApp([topic(1, { title: 'Rates', members: [member(PR_MEMBER), member(TASK_MEMBER)] }), topic(2, { title: 'Other', members: [member(PR_MEMBER)] })]);
+    const user = await openTopics();
+    await user.click(header('Rates'));
+    await user.click(within(item('Rates')).getByRole('button', { name: 'Remove #2101 from Rates' }));
+    expect(app.client.removeMember).toHaveBeenCalledWith(id(1), expect.objectContaining({ kind: 'pr', ref: PR_MEMBER.ref }));
+    await waitFor(() => expect(item('Rates').querySelector('[data-field="counts"]')).toHaveTextContent(/^1 Task$/));
+    expect(item('Other').querySelector('[data-field="counts"]')).toHaveTextContent('1 PR');
+  });
+
+  it('TOPIC-2.5: an expanded Work row shows each Topic its item is in as a chip, a collapsed one none, and a chip opens the Topics tab on that Topic', async () => {
+    openApp([topic(1, { title: 'Rates', members: [member(TASK_MEMBER)] }), topic(2, { title: 'Archived', state: 'archived', members: [member(TASK_MEMBER)] }), topic(3, { title: 'Unrelated' })]);
+    const user = userEvent.setup();
+    await user.keyboard('w');
+    const option = screen.getByTestId('work-panel').querySelector<HTMLElement>(`[data-task="${LIGHT.id}"]`)!;
+    expect(option.querySelector('[data-field="topic-chips"]')).toBeNull();
+    fireEvent.click(option);
+    const chips = option.querySelector<HTMLElement>('[data-field="topic-chips"]')!;
+    expect([...chips.querySelectorAll('[data-topic-id]')].map((c) => c.textContent)).toEqual(['Rates', 'Archived']);
+    await waitFor(() => expect(chips.querySelector('[data-topic-id]')).toBeInTheDocument());
+    await new Promise((r) => setTimeout(r, 450)); // the row's settle (ROW_SETTLE_MS)
+    await user.click(within(chips).getByText('Archived'));
+    expect(screen.getByRole('tab', { name: 'Topics' })).toHaveAttribute('aria-selected', 'true');
+    await waitFor(() => expect(header('Archived')).toHaveAttribute('aria-expanded', 'true'));
+    expect(screen.getByRole('checkbox', { name: 'Archived' })).toBeChecked();
+  });
+});
+
+describe('what a member is doing now (TOPIC-4)', () => {
+  it('TOPIC-4.1: a Session member follows the Session list’s Status; a PR or Task member shows Work’s state and CI', async () => {
+    const app = openApp([topic(1, { title: 'Rates', members: [member(SESSION), member(PR_MEMBER), member(TASK_MEMBER)] })]);
+    const user = await openTopics();
+    await user.click(header('Rates'));
+    const details = () => item('Rates').querySelector<HTMLElement>('[data-field="details"]')!;
+    expect(within(details()).getByRole('button', { name: 'Open rates-port, Needs you' })).toBeInTheDocument();
+    app.emit({ type: 'sessions', upsert: [row({ id: SESSION_ID, title: 'rates-port', status: 'busy' })], remove: [] });
+    expect(within(details()).getByRole('button', { name: 'Open rates-port, Busy' })).toBeInTheDocument();
+    const prLine = details().querySelector<HTMLElement>('[data-field="pr"]')!;
+    expect(prLine).toHaveTextContent('anvil#2101draft');
+    expect(prLine.querySelector('[data-field="ci"]')).toHaveAttribute('data-ci', 'passing');
+    expect(details().querySelector('[data-field="task"]')).toHaveTextContent('Light the harbor lanterns· In progress');
+    app.emit({ type: 'sessions', upsert: [], remove: [SESSION_ID] });
+    expect(within(details()).getByRole('button', { name: 'Resume rates-port, past' })).toBeInTheDocument();
+  });
+
+  it('TOPIC-4.2: a member Work doesn’t list shows its snapshot with "not in Work"; before Work has read, "Loading"; a Session pruned from the index shows its snapshot and no button', async () => {
+    const app = openApp([topic(1, { title: 'Rates', members: [member({ ...SESSION, ref: { harness: 'claude', sessionId: 'gone-one' }, snapshot: { harness: 'claude', title: 'old fix', directory: null } }), member(PR_MEMBER), member(TASK_MEMBER)] })], LOADING);
+    const user = await openTopics();
+    await user.click(header('Rates'));
+    const details = () => item('Rates').querySelector<HTMLElement>('[data-field="details"]')!;
+    expect(details().querySelectorAll('[data-field="member-loading"]')).toHaveLength(2);
+    app.emit({ type: 'work', work: work({ mine: [] }, { tasks: [] }) });
+    const chips = details().querySelectorAll('[data-field="not-in-work"]');
+    expect(chips).toHaveLength(2);
+    expect(chips[0]).toHaveAttribute('title', 'Work lists open items only, so this may be merged, closed or not read yet.');
+    expect(details().querySelector('[data-field="pr"]')).toHaveTextContent('Sharpen the anvil corners');
+    expect(within(details()).getByRole('button', { name: 'Resume old fix, past' })).toBeInTheDocument();
+    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Rates', members: [member({ ...SESSION, ref: { harness: 'claude', sessionId: 'gone-one' }, snapshot: { harness: 'claude', title: 'old fix', directory: null } })] })], pruned: ['claude:gone-one'], libraryReadAt: null } });
+    expect(details().querySelector('[data-field="session"]')).toHaveTextContent('old fix· removed from the index');
+    expect(within(details()).queryByRole('button', { name: /^(Open|Resume) old fix/ })).toBeNull();
+  });
+
+  it('TOPIC-4.3 (support): a tab with Topics open tells the server it has Work open, and closing it says it hasn’t', async () => {
+    const app = openApp();
+    const user = await openTopics();
+    await waitFor(() => expect(app.client.watchWork).toHaveBeenLastCalledWith('tab-1', true));
+    act(() => (document.activeElement as HTMLElement).blur());
+    await user.keyboard('t');
+    await waitFor(() => expect(app.client.watchWork).toHaveBeenLastCalledWith('tab-1', false));
+  });
+
+  it('TOPIC-4.4: an expanded Topic lists its Sessions’ Outputs with an Open button, "+N more" opening the Library on those Sessions; expanding it asks for a Library read when none ran in the last minute', async () => {
+    const output = (n: number): OutputItem => ({
+      kind: 'file', key: `/o/${n}.md`, type: 'markdown', title: `Doc ${n}`, path: `/o/${n}.md`, url: null, display: `~/o/${n}.md`, projectPath: null, repo: null, createdAt: NOW, updatedAt: Date.now() - n * 3_600_000 - 60_000, events: 1, exists: true,
+      source: null, sourcePath: null, sourceDisplay: null, version: null, sessions: [],
+    });
+    const app = openApp([topic(1, { title: 'Rates', members: [member(SESSION)], outputs: null })]);
+    const user = await openTopics();
+    await user.click(header('Rates'));
+    expect(within(item('Rates')).getByText('Reading the Library…')).toBeInTheDocument();
+    await waitFor(() => expect(app.client.library).toHaveBeenCalledWith(expect.objectContaining({ page: 1, query: '' })));
+    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Rates', members: [member(SESSION)], outputs: { items: [output(1), output(2)], total: 12 } })], pruned: [], libraryReadAt: Date.now() } });
+    // Expanded again within a minute of the last read: nothing is read again.
+    const reads = vi.mocked(app.client.library).mock.calls.length;
+    await user.keyboard('{Escape}');
+    await user.click(header('Rates'));
+    expect(app.client.library).toHaveBeenCalledTimes(reads);
+    // A minute or more after it: expanding it reads the Library again, for Outputs written since.
+    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Rates', members: [member(SESSION)], outputs: { items: [output(1), output(2)], total: 12 } })], pruned: [], libraryReadAt: Date.now() - 61_000 } });
+    await user.keyboard('{Escape}');
+    await user.click(header('Rates'));
+    await waitFor(() => expect(app.client.library).toHaveBeenCalledTimes(reads + 1));
+    const outputs = item('Rates').querySelector<HTMLElement>('[data-field="outputs"]')!;
+    expect([...outputs.querySelectorAll('[data-field="output"]')].map((o) => o.textContent)).toEqual(["Doc 11hOpen", "Doc 22hOpen"]);
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    await user.click(within(outputs).getByRole('button', { name: 'Open Doc 1, Markdown' }));
+    expect(open).toHaveBeenCalledWith(expect.stringMatching(/^vscode:/), '_self');
+    // A text filter left in the Library, and its default types, would hide them: both give way.
+    await user.keyboard('l');
+    await user.type(screen.getByRole('searchbox', { name: 'Filter Outputs' }), 'zzz');
+    act(() => (document.activeElement as HTMLElement).blur());
+    await user.keyboard('t');
+    await user.click(within(item('Rates').querySelector<HTMLElement>('[data-field="outputs"]')!).getByRole('button', { name: '+10 more' }));
+    expect(screen.getByRole('tab', { name: 'Library' })).toHaveAttribute('aria-selected', 'true');
+    await waitFor(() => expect(app.client.library).toHaveBeenLastCalledWith(expect.objectContaining({ sessions: [`claude:${SESSION_ID}`], query: '', types: ['pages', 'pdf', 'markdown', 'image', 'share'], project: '', hideGone: false })));
+    expect(screen.getByRole('searchbox', { name: 'Filter Outputs' })).toHaveValue('');
+    expect(screen.getByTestId('library-panel').querySelector('[data-field="session-filter"]')).toHaveTextContent('Sessions of Rates');
+    await user.click(screen.getByRole('button', { name: "Show every Output, not only Rates's" }));
+    await waitFor(() => expect(app.client.library).toHaveBeenLastCalledWith(expect.not.objectContaining({ sessions: expect.anything() })));
+  });
+
+  it('TOPIC-4.4: a Library read that fails says why where the Outputs would be, instead of reading forever', async () => {
+    openApp([topic(1, { title: 'Rates', members: [member(SESSION)], outputs: null })], work(), { library: async () => ({ state: 'not-installed', installCommand: 'cargo install tb-session' }) });
+    const user = await openTopics();
+    await user.click(header('Rates'));
+    expect(await within(item('Rates')).findByText("The Library can't be read: tb-session isn't installed.")).toBeInTheDocument();
+    expect(within(item('Rates')).queryByText('Reading the Library…')).toBeNull();
+  });
+});
+
+it('TOPIC-8.1: the browser keeps only which Topic is selected', async () => {
+  openApp([topic(1, { title: 'Proposals rates', notes: 'secret-ish notes', members: [member(PR_MEMBER)] })]);
+  const user = await openTopics();
+  await user.click(header('Proposals rates'));
+  const kept = Object.keys(window.localStorage).map((k) => window.localStorage.getItem(k)).join('\n');
+  expect(JSON.parse(window.localStorage.getItem('lookout.right')!).topic).toBe(id(1));
+  expect(kept).not.toContain('Proposals rates');
+  expect(kept).not.toContain('secret-ish');
+  expect(kept).not.toContain('anvil');
+});

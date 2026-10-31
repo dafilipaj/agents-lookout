@@ -20,7 +20,7 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Design system**: Lookout's shared look: the type scale and colour tokens in `web/src/index.css`, the components in `web/src/components/ui/`, and the rules for using them, written down in the DS spec and guarded by tests ([0009](decisions/0009-one-design-system-guarded-by-tests.md)).
 
-**Edge**: A connection you draw between two Topics: undirected, with an optional label. Shown on both Topics in the Topics tab and as a line in the graph. See TOPIC-6.
+**Edge**: A connection you draw from one Topic to another, with a direction and an optional label that reads from the first to the second. Shown on both Topics in the Topics tab and as a line in the graph. See TOPIC-6.
 
 **Effort**: The reasoning effort a Session's model runs at, such as `medium`, `high` or `xhigh`. Changed with `/effort` in Claude Code, or in Codex's `/model` picker. Comes from Fleet, read from the Transcript.
 

@@ -47,6 +47,8 @@ import { StatusMarker } from './StatusMarker';
 import { StatusMenu } from './StatusMenu';
 import { ChangesButton, type ChangesButtonProps } from './ChangesButton';
 import { changesTip } from '@/lib/changes';
+import { AddToTopicButton } from './TopicLinks';
+import { rowMember } from '@/lib/topics';
 
 export interface SessionViewProps {
   attachments: ComposerAttachments;
@@ -480,6 +482,8 @@ function Header({
         {/* ITERM's "Open in iTerm2" goes here too. */}
         <div data-slot="header-actions" className="flex shrink-0 items-center gap-1.5 empty:hidden">
           {key && <EscKey {...key} errorId={stopErrorId} />}
+          {/* TOPIC-2.2: disabled, saying why, for a Session with no session id yet. */}
+          <AddToTopicButton member={rowMember(row)} label={row.title} />
           <EndSession row={row} eligible={!ended && row.controllable && row.ownHost} onEnd={onEnd} fallbackFocus={title} />
           {/* VIEW-5.10: last, so it keeps its place whether Stop, Esc or End Session show. A
               Session without a session_id has `<harness>:<pid>` for its id: no button then. */}

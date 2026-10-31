@@ -5,7 +5,8 @@ import { act, render, screen, waitFor, within } from '@testing-library/react';
 import type { UserEvent } from '@testing-library/user-event';
 import { expect, vi } from 'vitest';
 import { App } from '@/App';
-import type { ClientListener, HistoryQuery, LookoutClient } from '@/lib/client';
+import { type ClientListener, type HistoryQuery, type LookoutClient, SaveError } from '@/lib/client';
+import { type NewMember, type Topic, type TopicMember, type TopicsView, memberKey, sortTopics } from '@shared/topics.ts';
 
 export const NOW = Date.UTC(2026, 9, 16, 12, 0, 0);
 
@@ -103,6 +104,8 @@ interface RenderOptions {
   saveSettings?: LookoutClient['saveSettings'];
   tools?: LookoutClient['tools'];
   refreshTools?: LookoutClient['refreshTools'];
+  /** TOPIC: the fake server's Topics, sent with each snapshot and changed by the Topics calls, as the server does. */
+  topics?: Topic[];
 }
 
 /** Renders the whole app against a fake server the test drives. */
@@ -112,6 +115,19 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
   // The fake server's settings: the last ones the test sent, which a save patches and answers with, as the server does.
   let served = settings();
   const saveSettings = vi.fn(options.saveSettings ?? (async (patch: Partial<Settings>): Promise<SettingsView> => (served = { ...served, ...patch })));
+  // TOPIC-8.3: the fake server's Topics; each change goes to the tab as a `topics` event.
+  let topicSet: Topic[] = options.topics ?? [];
+  let topicClock = NOW;
+  const topicsView = (): TopicsView => ({ state: 'ok', reason: null, path: '/Users/me/.lookout/topics.db', topics: sortTopics(topicSet), pruned: [], libraryReadAt: null });
+  const changeTopics = (next: Topic[]) => {
+    topicSet = next;
+    act(() => listener?.onEvent({ type: 'topics', topics: topicsView() }));
+  };
+  const topic = (id: string) => {
+    const t = topicSet.find((x) => x.id === id);
+    if (!t) throw new SaveError('That Topic no longer exists.', null, 404);
+    return t;
+  };
   const client: LookoutClient = {
     attach: vi.fn(options.attach ?? (async (_file, name) => `/attachments/${name}`)),
     subscribe(l) {
@@ -162,6 +178,31 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
           throw new Error('no resume');
         }),
     ),
+    createTopic: vi.fn(async (title: string) => {
+      const t: Topic = { id: `00000000-0000-4000-8000-${String(topicSet.length + 1).padStart(12, '0')}`, title: title.trim().slice(0, 120), notes: '', state: 'open', createdAt: ++topicClock, updatedAt: topicClock, members: [], outputs: null };
+      changeTopics([...topicSet, t]);
+      return t;
+    }),
+    updateTopic: vi.fn(async (id: string, patch: { title?: string; notes?: string; state?: Topic['state'] }) => {
+      const t = { ...topic(id), ...patch, ...(patch.title !== undefined || patch.notes !== undefined ? { updatedAt: ++topicClock } : {}) };
+      changeTopics(topicSet.map((x) => (x.id === id ? t : x)));
+      return t;
+    }),
+    deleteTopic: vi.fn(async (id: string) => {
+      topic(id);
+      changeTopics(topicSet.filter((x) => x.id !== id));
+    }),
+    addMember: vi.fn(async (id: string, m: NewMember) => {
+      const t = topic(id);
+      const key = memberKey(m.kind, m.ref);
+      if (t.members.some((x) => x.key === key)) return { added: false, title: t.title };
+      changeTopics(topicSet.map((x) => (x.id === id ? { ...x, updatedAt: ++topicClock, members: [...x.members, { ...m, key, addedAt: topicClock, reason: 'added by hand' } as TopicMember] } : x)));
+      return { added: true, title: t.title };
+    }),
+    removeMember: vi.fn(async (id: string, m: Pick<NewMember, 'kind' | 'ref'>) => {
+      const key = memberKey(m.kind, m.ref);
+      changeTopics(topicSet.map((x) => (x.id === id ? { ...x, updatedAt: ++topicClock, members: x.members.filter((y) => y.key !== key) } : x)));
+    }),
   };
   const utils = render(<App client={client} />);
   const emit = (event: ServerEvent) =>
@@ -170,7 +211,7 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
       listener!.onEvent(event);
     });
   const snapshot = (sessions: SessionRow[], fleet: FleetHealth = { state: 'ok' }, current: SettingsView = settings()) =>
-    emit({ type: 'snapshot', sessions, fleet, settings: current, launches: [], started: [], clientId: 'tab-1', usage: null, memory: null });
+    emit({ type: 'snapshot', sessions, fleet, settings: current, launches: [], started: [], clientId: 'tab-1', usage: null, memory: null, topics: topicsView() });
   const connection = (connected: boolean) =>
     act(() => {
       listener!.onConnection(connected);

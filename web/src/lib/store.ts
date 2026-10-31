@@ -2,6 +2,7 @@ import { type SettingsView, defaultSettings } from '@shared/settings.ts';
 import type { ChangesView, ChatPage, FleetHealth, LaunchView, ServerEvent, SessionRow } from '@shared/types.ts';
 import type { MemorySnapshot } from '@shared/memory.ts';
 import type { ToolsSnapshot } from '@shared/tools.ts';
+import type { TopicsView } from '@shared/topics.ts';
 import type { UsageSnapshot } from '@shared/usage.ts';
 import type { WorkSnapshot } from '@shared/work.ts';
 import { type Dispatch, useEffect, useReducer } from 'react';
@@ -56,6 +57,8 @@ export interface LookoutState {
   work: WorkSnapshot | null;
   /** TOOLS: the last read of every Tool, or null before the server sent one. */
   tools: ToolsSnapshot | null;
+  /** TOPIC-8.3: every Topic, as the server last sent them; null before it did (TOPIC-3.6's Loading). */
+  topics: TopicsView | null;
   /** DIFF-3: the changed files of the Session whose list this tab has open, as the server last sent them. */
   changes: ReadonlyMap<string, ChangesView | null>;
   /**
@@ -121,6 +124,7 @@ export const initialState: LookoutState = {
   memory: null,
   work: null,
   tools: null,
+  topics: null,
   changes: new Map(),
   chats: new Map(),
   chatOrder: [],
@@ -191,6 +195,7 @@ export function reducer(state: LookoutState, action: Action): LookoutState {
         memory: e.memory,
         work: e.work ?? state.work,
         tools: e.tools ?? state.tools,
+        topics: e.topics ?? state.topics,
       };
     }
     case 'sessions': {
@@ -223,6 +228,8 @@ export function reducer(state: LookoutState, action: Action): LookoutState {
       return { ...state, work: e.work };
     case 'tools':
       return { ...state, tools: newerTools(state.tools, e.tools) };
+    case 'topics':
+      return { ...state, topics: e.topics };
     case 'chat': {
       if (e.sessionId !== state.chatViewing) return state; // a late update for a Session left behind
       const chat = state.chats.get(e.sessionId) ?? emptyChat;

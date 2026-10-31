@@ -1,6 +1,7 @@
 import { Library } from './library.ts';
 import { randomBytes } from 'node:crypto';
 import { homedir } from 'node:os';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { fileURLToPath } from 'node:url';
@@ -24,6 +25,7 @@ import { SettingsStore, defaultSettingsPath } from './settings.ts';
 import { trackStartDirectories } from './start-repos.ts';
 import { Changes } from './changes.ts';
 import { ToolsMonitor } from './tools.ts';
+import { TopicStore, Topics, defaultTopicsPath } from './topics.ts';
 import { UsageMonitor } from './usage.ts';
 import { Viewer } from './viewer.ts';
 import { WorkMonitor, resolveWorkBin } from './work.ts';
@@ -157,6 +159,15 @@ const memory = new MemoryMonitor({
   },
 });
 
+// TOPIC-8: Lookout's own store of Topics; one that can't be opened leaves the Topics tab saying why.
+const topicsPath = defaultTopicsPath(env);
+const topics = new Topics({
+  path: topicsPath,
+  open: () => new TopicStore(topicsPath),
+  exists: () => existsSync(topicsPath),
+  onChange: (t) => app.broadcast({ type: 'topics', topics: t }),
+});
+
 // WORK-2.8: a saved Productive email drops the Tasks kept for the previous one, and reads its own.
 // Registered before the app's own listener, so tabs hear the list dropped before the new email.
 settings.onChange((s) => work.setProductiveEmail(s.productiveEmail));
@@ -207,7 +218,7 @@ const app = createApp({
   },
   // VIEW-1.18: a Session's file links, resolved against the cwd of its last listed row.
   files: { check: (id, body) => checkSessionPaths({ lookup: (sid) => monitor.get(sid) }, id, body) },
-  library: new Library({ runner: run, bin: () => resolveTbSessionBin(env), env, toolVersion: () => tools.version('tb-session') }),
+  library: new Library({ runner: run, bin: () => resolveTbSessionBin(env), env, toolVersion: () => tools.version('tb-session'), onRead: (items, pruned) => topics.libraryRead(items, pruned) }),
   history: {
     find: (q) => history.find(q),
     detail: (id, harness) => history.detail(id, harness),
@@ -215,6 +226,7 @@ const app = createApp({
     resume: (input) => resumePast({ history, launcher, isLive }, input),
   },
   tools,
+  topics,
   staticDir: production ? fileURLToPath(new URL('../dist/web', import.meta.url)) : null,
 });
 
@@ -242,6 +254,7 @@ const shutdown = async () => {
   app.server.close();
   app.server.closeAllConnections();
   // Cancel the pollers and wait until their processes have exited, so none is orphaned.
+  topics.close();
   await Promise.all([usage.close().catch(() => {}), memory.close().catch(() => {}), work.close().catch(() => {}), tools.close().catch(() => {})]);
   process.exit(0);
 };

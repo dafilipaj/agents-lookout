@@ -2,6 +2,7 @@ import type { LibraryPage, LibraryQuery } from '@shared/library.ts';
 import type { PathAnswer } from '@shared/files.ts';
 import type { Settings, SettingsView } from '@shared/settings.ts';
 import type { ToolsSnapshot } from '@shared/tools.ts';
+import type { NewMember, Topic, TopicState } from '@shared/topics.ts';
 import type { WorkRefreshResult } from '@shared/work.ts';
 import { HELD_REASONS, type AnswerRequest, type AnswerResult, type ChatPage, type EffortSwitchRequest, type EffortSwitchResult, type EndResult, type EndTarget, type Harness, type HarnessOption, type HeldReason, type HistoryDetail, type HistoryPage, type HistoryPeek, type LaunchRequest, type LaunchView, type TrustRequest, type ModelSwitchRequest, type ModelSwitchResult, type RenameResult, type ResumeResult, type ServerEvent } from '@shared/types.ts';
 
@@ -78,6 +79,16 @@ export interface LookoutClient {
   pastPeek(harness: Harness, sessionId: string): Promise<HistoryPeek>;
   /** HIST-3.1/3.2: resume a past Session, or learn it's live. */
   resume(harness: Harness, sessionId: string, launchId: string): Promise<ResumeResult>;
+  /** TOPIC-1.1: a new Open Topic with no members. Every Topics change also reaches every tab as a `topics` event. */
+  createTopic(title: string): Promise<Topic>;
+  /** TOPIC-1.2, TOPIC-1.3: its title, notes or state. */
+  updateTopic(id: string, patch: { title?: string; notes?: string; state?: TopicState }): Promise<Topic>;
+  /** TOPIC-1.4. */
+  deleteTopic(id: string): Promise<void>;
+  /** TOPIC-2.3: `added` false when it was already a member, with the Topic's title. */
+  addMember(topicId: string, member: NewMember): Promise<{ added: boolean; title: string }>;
+  /** TOPIC-2.4. */
+  removeMember(topicId: string, member: Pick<NewMember, 'kind' | 'ref'>): Promise<void>;
 }
 
 export interface HistoryQuery {
@@ -399,7 +410,7 @@ export function createHttpClient(): LookoutClient {
     },
     tools: () => call<ToolsSnapshot>(() => fetch('/api/tools'), 'Checking the Tools'),
     refreshTools: () => call<ToolsSnapshot>(() => send('POST', '/api/tools/refresh'), 'Checking the Tools'),
-    library: ({ query, page, readId, headless, types, project, hideGone }) => call<LibraryPage>(() => fetch(`/api/library?${new URLSearchParams({ q: query, page: String(page), headless: headless ? '1' : '0', types: types.join(','), project, hideGone: hideGone ? '1' : '0', ...(readId ? { readId } : {}) })}`), 'Reading Library'),
+    library: ({ query, page, readId, headless, types, project, hideGone, sessions }) => call<LibraryPage>(() => fetch(`/api/library?${new URLSearchParams({ q: query, page: String(page), headless: headless ? '1' : '0', types: types.join(','), project, hideGone: hideGone ? '1' : '0', ...(readId ? { readId } : {}), ...(sessions ? { sessions: sessions.join(',') } : {}) })}`), 'Reading Library'),
     libraryStatus: () => call<{ indexing: boolean }>(() => fetch('/api/library/status'), 'Reading Library status'),
     history: ({ query, page, headless, harness }) =>
       call<HistoryPage>(
@@ -437,6 +448,15 @@ export function createHttpClient(): LookoutClient {
     },
     checkPaths: async (sessionId, paths) =>
       (await call<{ paths: PathAnswer[] }>(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/paths`, { paths }), 'Checking paths')).paths,
+    createTopic: async (title) => (await call<{ topic: Topic }>(() => send('POST', '/api/topics', { title }), 'Making the Topic')).topic,
+    updateTopic: async (id, patch) => (await call<{ topic: Topic }>(() => send('PUT', `/api/topics/${encodeURIComponent(id)}`, patch), 'Saving the Topic')).topic,
+    deleteTopic: async (id) => {
+      await call(() => send('DELETE', `/api/topics/${encodeURIComponent(id)}`), 'Deleting the Topic');
+    },
+    addMember: (topicId, member) => call<{ added: boolean; title: string }>(() => send('POST', `/api/topics/${encodeURIComponent(topicId)}/members`, member), 'Adding to the Topic'),
+    removeMember: async (topicId, member) => {
+      await call(() => send('DELETE', `/api/topics/${encodeURIComponent(topicId)}/members`, { kind: member.kind, ref: member.ref }), 'Removing from the Topic');
+    },
     sendMessage: async (sessionId, text) => {
       await call(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/send`, { text }), 'Sending');
     },

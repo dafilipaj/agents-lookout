@@ -71,7 +71,7 @@ const PROBES: Record<string, (user: UserEvent, press: Press) => Promise<void>> =
   async panels(user, press) {
     fresh('/');
     await pressKey(user, press);
-    const name = { h: 'History', w: 'Work', l: 'Library' }[press.key]!;
+    const name = { h: 'History', w: 'Work', l: 'Library', t: 'Topics' }[press.key]!;
     expect(tab(name)).toHaveAttribute('aria-selected', 'true');
   },
   async tabs(user, press) {
@@ -80,7 +80,7 @@ const PROBES: Record<string, (user: UserEvent, press: Press) => Promise<void>> =
     await user.click(tab('History'));
     tab('History').focus();
     await pressKey(user, press);
-    expect(tab(press.key === 'ArrowRight' ? 'Work' : 'Library')).toHaveAttribute('aria-selected', 'true');
+    expect(tab(press.key === 'ArrowRight' ? 'Work' : 'Topics')).toHaveAttribute('aria-selected', 'true');
   },
   async send(user, press) {
     const app = fresh('/s/a');
@@ -136,6 +136,7 @@ const ELSEWHERE: Record<string, { file: string; criteria: string[] }[]> = {
     { file: 'LibraryPanel.test.tsx', criteria: ['LIB-3.7'] },
   ],
   'panel-review': [{ file: 'WorkPanel.test.tsx', criteria: ['WORK-5.2'] }],
+  'panel-add': [{ file: 'Topics.test.tsx', criteria: ['TOPIC-2.1'] }],
   'panel-start': [
     { file: 'WorkPanel.test.tsx', criteria: ['WORK-5.1'] },
     { file: 'LibraryPanel.test.tsx', criteria: ['LIB-3.7'] },

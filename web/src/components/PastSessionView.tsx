@@ -8,6 +8,8 @@ import type { Chat as ChatState } from '@/lib/store';
 import { HARNESS_NAME } from '@/lib/sessions';
 import { formatAge } from '@/lib/time';
 import { Chat } from './Chat';
+import { AddToTopicButton } from './TopicLinks';
+import { historyMember } from '@/lib/topics';
 import { HarnessIcon } from './HarnessIcon';
 import { DockNote, StatusBar } from './SessionView';
 import { PaneHeader, PlainView, ShellCell, ShellView } from './Shell';
@@ -80,7 +82,10 @@ export function PastSessionView({ harness, sessionId, now, load }: Props) {
           <HarnessIcon harness={item.harness} tone="brand" className="size-4" />
           {HARNESS_NAME[item.harness]}
         </span>
-        <span className="ml-auto shrink-0 rounded-full bg-muted px-2 py-0.5 text-meta font-medium text-muted-foreground">
+        <span className="@container ml-auto flex shrink-0 items-center">
+          <AddToTopicButton member={historyMember(item)} label={item.title} />
+        </span>
+        <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-meta font-medium text-muted-foreground">
           Read-only{item.lastActiveAt !== null && <span className="font-normal opacity-70"> · {formatAge(now - item.lastActiveAt)}</span>}
         </span>
       </PaneHeader>

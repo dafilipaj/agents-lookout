@@ -54,10 +54,12 @@ export interface SidebarProps {
   onMemoryOpenChange?(open: boolean): void;
   /** USAGE-2.1: its details opened. */
   onUsageOpen?(): void;
+  /** TOPIC-3.5: the titles of the Topics a live Session is in, which the filter also matches. */
+  topicTitles?(row: SessionRow): string[];
 }
 
 export function Sidebar(props: SidebarProps) {
-  const { sessions, fleet, loaded, connected, idleThresholdHours, selectedId, now, onSelect, launches, selectedLaunchId, onSelectLaunch } = props;
+  const { sessions, fleet, loaded, connected, idleThresholdHours, selectedId, now, onSelect, launches, selectedLaunchId, onSelectLaunch, topicTitles } = props;
   const [filter, setFilter] = useState('');
   const attention = toolsAttention(props.tools ?? null);
   const [dockPopover, setDockPopover] = useState<'usage' | 'memory' | null>(null);
@@ -83,12 +85,12 @@ export function Sidebar(props: SidebarProps) {
 
   const byId = useMemo(() => new Map(sessions.map((s) => [s.id, s])), [sessions]);
   const { controllable, viewOnly, visible } = useMemo(() => {
-    const rows = orderedIds.map((id) => byId.get(id)).filter((r): r is SessionRow => !!r && matchesFilter(r, filter));
+    const rows = orderedIds.map((id) => byId.get(id)).filter((r): r is SessionRow => !!r && matchesFilter(r, filter, topicTitles?.(r)));
     const controllable = rows.filter((r) => r.controllable);
     const viewOnly = rows.filter((r) => !r.controllable);
     // Keyboard order follows what's on screen: the first section, then the second.
     return { controllable, viewOnly, visible: [...controllable, ...viewOnly] };
-  }, [orderedIds, byId, filter]);
+  }, [orderedIds, byId, filter, topicTitles]);
   // DS-12.6: the "Needs you" header's count, live. Whether it takes room is held with the order
   // during a hover (SIDE-3.4), so its coming or going doesn't move the rows under the pointer.
   const needsYouCount = controllable.filter((r) => r.status === 'needs-you').length;

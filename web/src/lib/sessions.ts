@@ -76,10 +76,11 @@ export function isLongIdle(row: SessionRow, now: number, thresholdHours: number)
 }
 
 /** SIDE-5.4: the filter matches title, repo, Worktree or branch. */
-export function matchesFilter(row: SessionRow, query: string): boolean {
+/** SIDE-2.13: the filter matches a row's title, repo, worktree and branch, and (TOPIC-3.5) its Topics' titles. */
+export function matchesFilter(row: SessionRow, query: string, topics: readonly string[] = []): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
-  return [row.title, row.git?.repo, row.git?.worktree, row.git?.branch].some((f) => f?.toLowerCase().includes(q));
+  return [row.title, row.git?.repo, row.git?.worktree, row.git?.branch, ...topics].some((f) => f?.toLowerCase().includes(q));
 }
 
 /** DS-9.1: a sidebar row's option id, which the Session listbox's `aria-activedescendant` names. Stable for the Session. */

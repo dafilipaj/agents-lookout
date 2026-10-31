@@ -5,7 +5,7 @@ import { CircleCheck, CircleDashed, CircleQuestionMark, CircleX, ExternalLink, G
 import { type FocusEvent, type KeyboardEvent, type MouseEvent, type ReactNode, type Ref, type RefObject, createContext, useCallback, useContext, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Avatar } from '@/components/ui/avatar';
-import { Chip, type ChipTone } from '@/components/ui/chip';
+import { Chip } from '@/components/ui/chip';
 import { CommandBlock } from '@/components/ui/command-block';
 import { RowAction, RowActions, RowSettling, useRowSettle } from '@/components/ui/icon-button';
 import { Loading } from '@/components/ui/loading';
@@ -33,6 +33,9 @@ import {
   keepSelection,
   prKey,
   rowActions,
+  CHIP_TONE,
+  rowLabel,
+  rowMembers,
   rowUrl,
   showsPrs,
   showsTasks,
@@ -41,6 +44,8 @@ import {
 } from '@/lib/work';
 import { HarnessIcon } from './HarnessIcon';
 import { TaskStatusDot } from './TaskStatusDot';
+import { AddToTopicAction, TopicChips } from './TopicLinks';
+import { useTopics } from '@/lib/topics';
 
 export interface WorkPanelProps {
   work: WorkSnapshot | null;
@@ -119,6 +124,7 @@ function openInBrowser(url: string) {
  */
 export function WorkPanel({ work, sessions, filter, onFilter, now, focusKey, onStart, onReview, onOpenSession, onOpenSettings, keyboardEnabled, navRef }: WorkPanelProps) {
   const rootRef = useRef<HTMLDivElement>(null);
+  const topics = useTopics();
   const tasksList = useRef<HTMLDivElement | null>(null);
   const prsList = useRef<HTMLDivElement | null>(null);
 
@@ -278,6 +284,10 @@ export function WorkPanel({ work, sessions, filter, onFilter, now, focusKey, onS
     } else if (letter === 's' && row?.kind === 'task') {
       e.preventDefault();
       if (!e.repeat) start(row);
+    } else if (letter === 'a' && row && topics) {
+      // TOPIC-2.1: A opens the Topic picker for the selected row, expanded or not.
+      e.preventDefault();
+      if (!e.repeat) topics.addTo(rowMembers(row), rowLabel(row));
     }
   };
   // Everything an expanded row needs from here.
@@ -690,6 +700,7 @@ function Details({ id, row, actions, sessions, state, children }: DetailsProps) 
             <SessionChips sessions={sessions} enabled={state.resuming === null} onOpen={(session) => state.onSession(row, session)} />
           </DetailLine>
         )}
+        <TopicChips members={rowMembers(row)} labelClass="w-14" />
         <RowActions>
           {actions.map((action) => {
             const { label, tip } = actionLabel(action, row);
@@ -706,6 +717,7 @@ function Details({ id, row, actions, sessions, state, children }: DetailsProps) 
               />
             );
           })}
+          <AddToTopicAction members={rowMembers(row)} label={rowLabel(row)} />
         </RowActions>
       </div>
       {failure && <Alert title={failure} className="mt-1" />}
@@ -895,7 +907,6 @@ function PrGroupView({ group, prs, marks, now, selected, rowState }: PrGroupProp
 }
 
 /** DS-3.6: "ready" is the neutral chip, not Busy's blue; "draft" stays muted; "approved" keeps `ok` green, which isn't a Status. */
-const CHIP_TONE: Record<NonNullable<WorkPr['chip']>, ChipTone> = { draft: 'muted', ready: 'neutral', approved: 'ok' };
 
 interface PrRowProps {
   row: WorkRow;
@@ -1000,7 +1011,7 @@ function RowIcon({ children }: { children: ReactNode }) {
 /** WORK-3.7: Mine's PRs in their state chip's tone; a Review request with no login for an author, muted. Hidden: the chip says it in words. */
 const PR_ICON_CLASS: Record<NonNullable<WorkPr['chip']>, string> = { draft: 'text-muted-foreground', ready: 'text-foreground', approved: 'text-ok' };
 
-function PrIcon({ chip }: { chip: WorkPr['chip'] }) {
+export function PrIcon({ chip }: { chip: WorkPr['chip'] }) {
   const Icon = chip === 'draft' ? GitPullRequestDraft : GitPullRequest;
   return <Icon aria-hidden data-slot="pr-icon" data-chip={chip ?? 'none'} className={cn('size-3.5', chip ? PR_ICON_CLASS[chip] : 'text-muted-foreground')} />;
 }
@@ -1016,7 +1027,7 @@ const CI_LABEL: Record<WorkPr['ci'], string> = {
 const CI_TITLE: Record<WorkPr['ci'], string> = { ...CI_LABEL, unknown: 'tb-pr couldn’t read this PR’s CI', none: 'No CI state from tb-pr' };
 
 /** WORK-3.2, WORK-3.3: CI as an icon; "no CI" and "CI unknown" are spelled out and grey, so they never read as passing. */
-function Ci({ ci }: { ci: WorkPr['ci'] }) {
+export function Ci({ ci }: { ci: WorkPr['ci'] }) {
   const spelled = ci === 'unknown' || ci === 'none';
   const icon =
     ci === 'passing' ? (

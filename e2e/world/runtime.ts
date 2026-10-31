@@ -12,6 +12,7 @@ import { FakeControl, readViolations } from '../fakes/control.ts';
 import type { FakeViolation } from '../fakes/index.ts';
 import { BrowserGuard } from './browser.ts';
 import type { FleetRow } from '../../server/fleet.ts';
+import { TopicStore } from '../../server/topics.ts';
 import { type MemoryDecl, checkMemory, type GitIdentityDecl, type TbPrDecl, type TbProdDecl, type WorldSpec, checkTbPr, checkTbProd } from './builder.ts';
 import { type Budget, WaitTimedOut, type Waiting, Waits } from './budget.ts';
 import { REPO_ROOT, checkPins } from './pins.ts';
@@ -641,6 +642,19 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
 
     // Lookout's own settings file (TEST-1.1).
     await writeFile(settingsPath, JSON.stringify({ version: 1, ...spec.settings }, null, 2) + '\n', { mode: 0o600 });
+    // TOPIC: the declared Topics, written through Lookout's own store, as the server would.
+    if (spec.topics.length) {
+      const store = new TopicStore(join(home, '.lookout', 'topics.db'));
+      try {
+        for (const t of spec.topics) {
+          const id = store.create(t.title);
+          if (t.notes) store.update(id, { notes: t.notes });
+          for (const m of t.members ?? []) store.addMember(id, m);
+        }
+      } finally {
+        store.close();
+      }
+    }
 
     // Built from nothing, so none of the runner's variables leak in (Fleet's UNSET list included).
     Object.assign(env, {

@@ -241,7 +241,7 @@ scenario(
     // WORK-2.9: its description as plain text, from the same tb-prod read.
     await expect(row.locator('[data-field="description"]')).toHaveText('Every wick in the east wing first. - Trim to 6 mm - Check the oil Then the west wing.');
     expect(world.tbProd.calls().every((argv) => argv[0] === 'query' && argv[1] === 'tasks')).toBe(true);
-    expect(await buttonWords(row)).toEqual(['Open Session', 'Start Session', 'Open in Fantastic']);
+    expect(await buttonWords(row)).toEqual(['Open Session', 'Start Session', 'Open in Fantastic', 'Add to Topic']);
     await row.getByTitle('Start Session (S)').click();
     const dialog = page.getByRole('dialog', { name: 'New Session' });
     await expect(dialog.getByLabel('Prompt')).toHaveValue(WICKS);
@@ -269,7 +269,7 @@ scenario(
     // Enter expands the selected row; a second Enter runs its first button (WORK-1.13).
     await row.click();
     await expect(row).toHaveAttribute('aria-expanded', 'true');
-    expect(await buttonWords(row)).toEqual(['Resume', 'Start Session', 'Open in Fantastic']);
+    expect(await buttonWords(row)).toEqual(['Resume', 'Start Session', 'Open in Fantastic', 'Add to Topic']);
     await page.keyboard.press('Escape');
     await expect(row).toHaveAttribute('aria-expanded', 'false');
     await page.keyboard.press('Enter');
@@ -333,7 +333,7 @@ scenario(
         )),
       );
     }
-    expect(measured.map((m) => m.word)).toEqual(['wick trim', 'wick notes', 'Open Session', 'Start Session', 'Open in Fantastic', 'Open on GitHub', 'Review', 'Open on GitHub']);
+    expect(measured.map((m) => m.word)).toEqual(['wick trim', 'wick notes', 'Open Session', 'Start Session', 'Open in Fantastic', 'Add to Topic', 'Open on GitHub', 'Add to Topic', 'Review', 'Open on GitHub', 'Add to Topic']);
     for (const m of measured) {
       expect(m.height, m.word).toBe(28);
       expect(m.icon, m.word).toEqual([20, 20]);

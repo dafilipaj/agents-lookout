@@ -25,6 +25,7 @@ import type { SessionMonitor } from './monitor.ts';
 import { type GuardConfig, guardRequest } from './security.ts';
 import type { SettingsStore } from './settings.ts';
 import { serveStatic } from './static.ts';
+import { type Topics, TopicsError, parseMember, parseMemberRef, parsePatch, parseTitle } from './topics.ts';
 import { MAX_MESSAGE, ViewError } from './viewer.ts';
 import type { RefreshAnswer } from './work.ts';
 
@@ -110,6 +111,8 @@ export interface AppOptions {
     snapshot(): ToolsSnapshot;
     read(opts?: { force?: boolean }): Promise<ToolsSnapshot>;
   };
+  /** TOPIC: Lookout's own store of Topics; optional, so a server without it has no `/api/topics` (404). */
+  topics?: Pick<Topics, 'view' | 'create' | 'update' | 'delete' | 'addMember' | 'removeMember'>;
   /** Directory of the built UI; null in `pnpm dev`, where Vite serves it. */
   staticDir: string | null;
   keepAliveMs?: number;
@@ -142,6 +145,8 @@ const MAX_MODEL_BODY = 1024;
 const MAX_OPEN_CHANGE_BODY = 64 * 1024;
 /** VIEW-1.18: up to 100 paths of up to 1,024 characters, JSON-escaped. */
 const MAX_PATHS_BODY = 64 * 1024;
+/** TOPIC-1.2: notes of up to 20,000 characters, JSON-escaped (`\uXXXX` is six bytes). */
+const MAX_TOPIC_BODY = 160 * 1024;
 
 const SECURITY_HEADERS = {
   'x-content-type-options': 'nosniff',
@@ -191,6 +196,7 @@ export function createApp(opts: AppOptions): LookoutApp {
       memory: opts.memory.snapshot(),
       work: opts.work.snapshot(),
       ...(opts.tools ? { tools: opts.tools.snapshot() } : {}),
+      ...(opts.topics ? { topics: opts.topics.view() } : {}),
     });
     clients.set(clientId, res);
     const unwatch = opts.monitor.watch();
@@ -546,6 +552,11 @@ export function createApp(opts: AppOptions): LookoutApp {
         throw err;
       }
     }
+    // TOPIC-8.3: the view is a read; every change is a mutation, so the token and Origin (0003).
+    if (url.pathname === '/api/topics' || url.pathname.startsWith('/api/topics/')) {
+      if (!opts.topics) return json(res, 404, { error: 'not found' });
+      return topicsCall(req, res, url.pathname, opts.topics);
+    }
     const trust = /^\/api\/launches\/([0-9a-f-]{36})\/trust$/.exec(url.pathname);
     if (trust && req.method === 'POST') {
       const body = await readJson(req, res, 1024, null);
@@ -595,6 +606,53 @@ export function createApp(opts: AppOptions): LookoutApp {
   });
   server.once('close', () => clearInterval(pruneTimer));
   return { server, broadcast, sendTo };
+}
+
+/**
+ * TOPIC: `GET /api/topics`; `POST /api/topics`; `PUT` and `DELETE /api/topics/<id>`; `POST` and
+ * `DELETE /api/topics/<id>/members`. A refusal answers with its plain reason (TOPIC-8.4).
+ */
+async function topicsCall(req: IncomingMessage, res: ServerResponse, path: string, topics: NonNullable<AppOptions['topics']>): Promise<void> {
+  const match = /^\/api\/topics(?:\/([0-9a-f-]{36})(\/members)?)?$/.exec(path);
+  if (!match) return json(res, 404, { error: 'not found' });
+  const [, id, members] = match;
+  const route = `${req.method} ${id ? (members ? 'members' : 'topic') : 'topics'}`;
+  const body = async () => readJson(req, res, MAX_TOPIC_BODY, { error: 'The notes are too long.', field: 'notes' });
+  try {
+    switch (route) {
+      case 'GET topics':
+        return json(res, 200, topics.view());
+      case 'POST topics': {
+        const b = await body();
+        if (b === NO_BODY) return;
+        return json(res, 201, { topic: topics.create(parseTitle((b as Record<string, unknown> | null)?.title)) });
+      }
+      case 'PUT topic': {
+        const b = await body();
+        if (b === NO_BODY) return;
+        return json(res, 200, { topic: topics.update(id!, parsePatch(b)) });
+      }
+      case 'DELETE topic':
+        topics.delete(id!);
+        return json(res, 200, { ok: true });
+      case 'POST members': {
+        const b = await body();
+        if (b === NO_BODY) return;
+        return json(res, 200, topics.addMember(id!, parseMember(b)));
+      }
+      case 'DELETE members': {
+        const b = await body();
+        if (b === NO_BODY) return;
+        const { kind, ref } = parseMemberRef(b);
+        topics.removeMember(id!, kind, ref);
+        return json(res, 200, { ok: true });
+      }
+    }
+  } catch (err) {
+    if (err instanceof TopicsError) return json(res, err.status, { error: err.message });
+    throw err;
+  }
+  return json(res, 405, { error: 'method not allowed' });
 }
 
 /** Answers with the result, or with a HistoryError's or LaunchError's status and message. */

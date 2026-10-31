@@ -1,19 +1,18 @@
 import { BLOCK_REASON } from '@shared/history.ts';
 import { libraryMatches } from '@shared/library-search.ts';
-import { LIBRARY_TYPES, type LibraryFilter, type LibraryPage, type LibraryQuery, type LibraryType, type OutputItem, type OutputSession, type OutputType } from '@shared/library.ts';
+import { LIBRARY_TYPES, type LibraryFilter, type LibraryPage, type LibraryQuery, type LibraryType, type OutputItem, type OutputSession } from '@shared/library.ts';
 import type { HistoryItem, SessionRow } from '@shared/types.ts';
-import { Copy, ExternalLink, File, FileCode, FileText, Globe, Image, CircleSlash, Search, Share2 } from 'lucide-react';
-import { type ComponentType, type KeyboardEvent, type Ref, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
+import { Copy, ExternalLink, CircleSlash, Search, X } from 'lucide-react';
+import { type KeyboardEvent, type Ref, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Chip } from '@/components/ui/chip';
 import { CommandBlock } from '@/components/ui/command-block';
 import { EmptyState } from '@/components/ui/empty-state';
-import { RowAction, RowActions, RowSettling, useRowSettle } from '@/components/ui/icon-button';
+import { IconButton, RowAction, RowActions, RowSettling, useRowSettle } from '@/components/ui/icon-button';
 import { Loading } from '@/components/ui/loading';
 import { SessionMarker } from '@/components/ui/session-marker';
 import { useCopy } from '@/lib/copy';
-import { vscodeHref } from '@/lib/files';
 import { isLive } from '@/lib/history';
 import type { PanelNav } from '@/lib/right-sidebar';
 import { STATUS_LABEL } from '@/lib/sessions';
@@ -21,9 +20,10 @@ import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { SEARCH_DEBOUNCE_MS } from './HistoryPanel';
 import { HarnessIcon } from './HarnessIcon';
+import { AddToTopicAction, TopicChips } from './TopicLinks';
+import { outputSessionMembers, useTopics } from '@/lib/topics';
+import { OUTPUT_ICON, TYPE_LABEL, openFile, openOutput } from '@/lib/outputs';
 
-const TYPE_LABEL: Record<OutputType | 'artifact' | 'share', string> = { markdown: 'Markdown', html: 'HTML', pdf: 'PDF', image: 'Image', artifact: 'Artifact', share: 'Share' };
-const ICON: Record<keyof typeof TYPE_LABEL, ComponentType<{ className?: string; 'aria-hidden'?: boolean }>> = { markdown: FileText, html: FileCode, pdf: File, image: Image, artifact: Globe, share: Share2 };
 const FILTER_LABEL: Record<LibraryType, string> = { pages: 'Pages', pdf: 'PDF', markdown: 'Markdown', image: 'Image', share: 'Share' };
 const EVENT: Record<OutputSession['event'], string> = { write: 'wrote it', edit: 'edited it', publish: 'published it', upload: 'uploaded it' };
 const key = (i: OutputItem) => `${i.kind}:${i.key}`;
@@ -32,14 +32,6 @@ function day(at: number, now: number): string {
   const date = new Date(at), today = new Date(now), yesterday = new Date(now);
   yesterday.setDate(today.getDate() - 1);
   return date.toDateString() === today.toDateString() ? 'Today' : date.toDateString() === yesterday.toDateString() ? 'Yesterday' : date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-}
-function openFile(path: string, type: OutputType) {
-  if (type === 'markdown') window.open(vscodeHref(path, null, null), '_self');
-  else window.open(`/api/library/file?${new URLSearchParams({ path })}`, '_blank', 'noopener,noreferrer');
-}
-function openOutput(item: OutputItem) {
-  if (item.kind === 'file') { if (item.exists && item.path && item.type) openFile(item.path, item.type); }
-  else if (item.url) window.open(item.url, '_blank', 'noopener,noreferrer');
 }
 
 /** LIB-2.7: starts, ends, replacement processes and Subagent completions can add Outputs.
@@ -72,6 +64,9 @@ export interface LibraryPanelProps {
   onSession(item: HistoryItem, live: boolean): Promise<void>;
   keyboardEnabled: boolean;
   navRef?: Ref<PanelNav>;
+  /** TOPIC-4.4: only the Outputs of a Topic's Sessions, named by the Topic, until cleared. */
+  sessionFilter?: { label: string; keys: string[] } | null;
+  onClearSessionFilter?(): void;
 }
 type Page = Extract<LibraryPage, { state: 'ok' }>;
 interface Results { pages: Page[]; gen: number; limit?: number }
@@ -88,8 +83,9 @@ function installHint(page: Extract<LibraryPage, { state: 'not-installed' | 'too-
 }
 
 /** LIB: the tab renders the server's held read. It never mines a Transcript or fetches an external URL. */
-export function LibraryPanel({ focusKey, visible, sessions, now, search, status, filter, onFilter, headless, onHeadless, onSession, keyboardEnabled, navRef }: LibraryPanelProps) {
+export function LibraryPanel({ focusKey, visible, sessions, now, search, status, filter, onFilter, headless, onHeadless, onSession, keyboardEnabled, navRef, sessionFilter = null, onClearSessionFilter }: LibraryPanelProps) {
   const [query, setQuery] = useState('');
+  const topics = useTopics();
   const [results, setResults] = useState<Results | null>(null);
   const [busy, setBusy] = useState(true), [moreBusy, setMoreBusy] = useState(false), [indexing, setIndexing] = useState(false);
   const [error, setError] = useState<string | null>(null), [install, setInstall] = useState<Install | null>(null);
@@ -109,9 +105,16 @@ export function LibraryPanel({ focusKey, visible, sessions, now, search, status,
   const actions = useRef(new Map<string, Actions>());
   const { settling, settle } = useRowSettle();
   const q = query.trim(), types = filter.types.join(',');
-  const request = useRef({ search, status, q, filter, headless });
-  useLayoutEffect(() => { request.current = { search, status, q, filter, headless }; });
-  const ask = (page: number, readId?: string) => { const r = request.current; return r.search({ ...r.filter, query: r.q, page, ...(readId ? { readId } : {}), headless: r.headless }); };
+  const only = sessionFilter?.keys.join(',') ?? null;
+  // TOPIC-4.4: a Topic's "+N more" shows all its Sessions' Outputs, so a text filter left from before clears.
+  const [previousOnly, setPreviousOnly] = useState(only);
+  if (previousOnly !== only) {
+    setPreviousOnly(only);
+    if (only) setQuery('');
+  }
+  const request = useRef({ search, status, q, filter, headless, sessionFilter });
+  useLayoutEffect(() => { request.current = { search, status, q, filter, headless, sessionFilter }; });
+  const ask = (page: number, readId?: string) => { const r = request.current; return r.search({ ...r.filter, query: r.q, page, ...(readId ? { readId } : {}), headless: r.headless, ...(r.sessionFilter ? { sessions: r.sessionFilter.keys } : {}) }); };
   const apply = (next: Results) => {
     if (next.gen !== seq.current) return;
     if (frozen.current) pending.current = next;
@@ -156,7 +159,7 @@ export function LibraryPanel({ focusKey, visible, sessions, now, search, status,
     });
   };
   useLayoutEffect(() => { refresh.current = refreshNow; });
-  const signature = JSON.stringify([q, types, filter.project, filter.hideGone, headless, visible]);
+  const signature = JSON.stringify([q, types, filter.project, filter.hideGone, headless, visible, only]);
   const [previousFilter, setPreviousFilter] = useState(signature);
   if (previousFilter !== signature) {
     setPreviousFilter(signature); setResults(null); setExpanded(null); setHovered(null); setActive(null); setBusy(true); setMoreBusy(false); setError(null); setInstall(null);
@@ -172,7 +175,7 @@ export function LibraryPanel({ focusKey, visible, sessions, now, search, status,
     const timer = setTimeout(() => refresh.current(readId), q ? SEARCH_DEBOUNCE_MS : 0);
     const invalidate = () => { seq.current++; };
     return () => { clearTimeout(timer); invalidate(); };
-  }, [q, types, filter.project, filter.hideGone, headless, visible]);
+  }, [q, types, filter.project, filter.hideGone, headless, visible, only]);
   // Comparing whole rows would index growing Transcripts on every two-second activity update.
   const previousFleet = useRef(sessions);
   useEffect(() => {
@@ -242,6 +245,9 @@ export function LibraryPanel({ focusKey, visible, sessions, now, search, status,
     else if (e.key === 'Escape') { if (collapse()) e.preventDefault(); }
     else if (e.key === 'Enter' && (e.target === input.current || e.target === list.current) && items[index] && !e.repeat) {
       e.preventDefault(); const id = key(items[index]!); setActive(id); if (expanded !== id) setExpanded(id); else actions.current.get(id)?.open();
+    } else if (!text && !e.repeat && items[index] && k === 'a' && topics) {
+      // TOPIC-2.1: A opens the Topic picker for the selected row's Sessions.
+      e.preventDefault(); const members = outputSessionMembers(items[index]!.sessions); if (members.length) topics.addTo(members, items[index]!.title);
     } else if (!text && !e.repeat && items[index] && ['o', 'c', 's'].includes(k)) {
       e.preventDefault(); const a = actions.current.get(key(items[index]!)); if (k === 'o') a?.open(); else if (k === 'c') a?.copy(); else a?.session();
     }
@@ -263,6 +269,12 @@ export function LibraryPanel({ focusKey, visible, sessions, now, search, status,
         <Search aria-hidden className="pointer-events-none absolute left-2 size-3.5 text-muted-foreground" />
         <input ref={input} type="search" aria-label="Filter Outputs" placeholder="Filter Outputs" value={query} onChange={(e) => setQuery(e.target.value)} className="h-7 w-full min-w-0 rounded-md border border-input bg-background/60 pr-2 pl-7 text-body outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/30" />
       </label>
+      {sessionFilter && <div className="flex min-w-0 items-center gap-1 text-meta text-muted-foreground" data-field="session-filter">
+        <span className="min-w-0 truncate">Sessions of {sessionFilter.label}</span>
+        <IconButton label={`Show every Output, not only ${sessionFilter.label}'s`} tip="Show every Output" onClick={() => onClearSessionFilter?.()}>
+          <X />
+        </IconButton>
+      </div>}
       <div role="group" aria-label="Output Types" className="flex flex-wrap gap-1">
         {LIBRARY_TYPES.map((t) => <Button key={t} variant="ghost" size="xs" className="px-1" type="button" aria-pressed={filter.types.includes(t)} title={t === 'pages' ? 'HTML files and Artifacts' : FILTER_LABEL[t]} onClick={(e) => typeToggle(t, e.altKey)}>
           <Chip tone={filter.types.includes(t) ? 'neutral' : 'muted'}>
@@ -332,7 +344,7 @@ function OutputRow({ item, now, query, active, expanded, sessions, enabled, onSe
   const sorted = [...item.sessions].sort((a, b) => (b.lastActiveAt ?? 0) - (a.lastActiveAt ?? 0));
   const open = () => { if (enabled) openOutput(item); }, openSession = () => { if (enabled && sorted[0] && !sorted[0].pruned) onSession(sorted[0]); };
   useEffect(() => { register({ open, copy: () => { if (enabled) void copy.copy(); }, session: openSession }); return () => register(null); });
-  const t = item.kind === 'file' ? item.type! : item.kind, Icon = ICON[t], id = `library-${encodeURIComponent(key(item))}`;
+  const t = item.kind === 'file' ? item.type! : item.kind, Icon = OUTPUT_ICON[t], id = `library-${encodeURIComponent(key(item))}`;
   const gone = item.kind === 'file' && !item.exists, live = sorted.some((s) => isLive(s, sessions));
   const age = formatAge(now - item.updatedAt);
   return <div id={id} role="option" aria-selected={active} aria-expanded={expanded} aria-label={[item.title, TYPE_LABEL[t], item.repo, age, item.display, gone && 'gone', live && 'live'].filter(Boolean).join(' ')} aria-describedby={`${id}-keys${expanded ? ` ${id}-details` : ''}`} onClick={onRow} onMouseEnter={() => onHover(true)} onMouseLeave={() => onHover(false)} className={cn('flex min-w-0 cursor-default flex-col gap-0.5 rounded-md px-2 py-1.5 text-body hover:bg-sidebar-accent/60', active && 'bg-sidebar-accent')}>
@@ -368,7 +380,9 @@ function OutputRow({ item, now, query, active, expanded, sessions, enabled, onSe
         {!gone && <RowAction label="Open" icon={<ExternalLink />} tip="Open (O)" enabled={enabled} onPress={open} />}
         {item.kind === 'artifact' && item.source?.exists && <RowAction label="Open file" icon={<ExternalLink />} tip="Open file" enabled={enabled} onPress={() => openFile(item.source!.path, item.source!.type)} />}
         <RowAction label={copy.said || 'Copy link'} icon={<Copy />} tip="Copy link (C)" enabled={enabled} onPress={() => void copy.copy()} />
+        <AddToTopicAction members={outputSessionMembers(item.sessions)} label={item.title} enabled={enabled} />
       </RowActions>
+      <TopicChips members={outputSessionMembers(item.sessions)} />
       <div className="flex min-w-0 flex-wrap gap-1.5">
         {sorted.slice(0, 8).map((s, n) => {
           if (s.pruned) return <span key={`${s.harness}:${s.sessionId}`} title="removed from tb-session's index">

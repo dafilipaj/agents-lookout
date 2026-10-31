@@ -1,3 +1,4 @@
+import type { NewMember } from '../../shared/topics.ts';
 import { checkOutputs } from '../fakes/outputs.ts';
 
 import { GB, type Pressure } from '../../shared/memory.ts';
@@ -259,6 +260,15 @@ export interface WorldSpec {
   usage: DockUsageDecl | null;
   /** `lastLaunch`: what the launcher remembers as started last (WORK-5.2). */
   settings: Partial<Pick<Settings, 'idleThresholdHours' | 'startDirectories' | 'lastLaunch' | 'productiveEmail'>>;
+  /** TOPIC: Topics in `~/.lookout/topics.db` before Lookout starts, in this order, each with its members. */
+  topics: TopicDecl[];
+}
+
+/** TOPIC-8: one Topic the World's store holds; invented titles and refs only. */
+export interface TopicDecl {
+  title: string;
+  notes?: string;
+  members?: NewMember[];
 }
 
 /** A declaration this slice can't build yet: the World refuses it instead of ignoring it. */
@@ -385,6 +395,11 @@ export class WorldBuilder {
     return this.next({ settings: { ...this.spec.settings, ...settings } });
   }
 
+  /** TOPIC: Topics in Lookout's store before it starts, added to any declared before. */
+  topics(topics: TopicDecl[]): WorldBuilder {
+    return this.next({ topics: [...this.spec.topics, ...structuredClone(topics)] });
+  }
+
   /** The World's declaration, as it goes into a failure report (TEST-2.4). */
   declaration(): WorldSpec {
     return structuredClone(this.spec) as WorldSpec;
@@ -409,6 +424,7 @@ export function world(): WorldBuilder {
     memory: structuredClone(DEFAULT_MEMORY),
     usage: null,
     settings: {},
+    topics: [],
   });
 }
 

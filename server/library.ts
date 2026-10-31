@@ -39,6 +39,7 @@ export function parseLibraryQuery(params: URLSearchParams): LibraryQuery {
     query: (params.get('q') ?? '').replace(/[\0\r\n\t]+/g, ' ').trim().slice(0, 500),
     page: Number.isInteger(n) ? Math.min(100_000, Math.max(1, n)) : 1,
     ...(params.has('readId') ? { readId: (params.get('readId') ?? '').slice(0, 128) } : {}),
+    ...(params.has('sessions') ? { sessions: (params.get('sessions') ?? '').split(',').filter((k) => /^(claude|codex):[A-Za-z0-9][A-Za-z0-9-]{0,127}$/.test(k)).slice(0, 500) } : {}),
     types: types.length ? types : [...DEFAULT_LIBRARY_TYPES], project: path(params.get('project')) ?? '',
     headless: params.get('headless') === '1', hideGone: params.get('hideGone') !== '0',
   };
@@ -57,6 +58,8 @@ interface LibraryOptions {
   log?: (line: string) => void;
   /** TOOLS-2.5: tb-session's version as Settings › Tools last read it, for the "too old" line; null when unknown. */
   toolVersion?: () => string | null;
+  /** TOPIC-4.4, TOPIC-4.2: each finished read's Outputs, and every Session its events say was pruned (`<harness>:<sessionId>`). */
+  onRead?: (items: OutputItem[], pruned: string[]) => void;
 }
 interface Read { id: string; at: number; headless: boolean; items: OutputItem[]; projects: string[] }
 /** Why there's no read: tb-session isn't there, or is too old for `events` (TOOLS-2.5). */
@@ -100,7 +103,9 @@ export class Library {
       read = result;
     }
     const query = q.query;
+    const only = q.sessions ? new Set(q.sessions) : null;
     const matching = read.items.filter((i) => {
+      if (only && !i.sessions.some((s) => only.has(`${s.harness}:${s.sessionId}`))) return false;
       const chip = i.kind === 'artifact' || i.type === 'html' ? 'pages' : i.kind === 'share' ? 'share' : i.type;
       return q.types.includes(chip as LibraryQuery['types'][number]) && (!q.project || i.projectPath === q.project) &&
         (!query || [i.title, i.path, i.url, i.sourcePath].some((s) => s !== null && libraryIncludes(s, query)));
@@ -190,6 +195,7 @@ export class Library {
       items.sort((a, b) => b.updatedAt - a.updatedAt || a.kind.localeCompare(b.kind) || a.key.localeCompare(b.key));
       const read = { id: randomUUID(), at: Date.now(), headless, items, projects: [...new Set(actions.flatMap((a) => a.session.projectPath ? [a.session.projectPath] : []))].sort() };
       this.reads.push(read); if (this.reads.length > 3) this.reads.shift();
+      this.opts.onRead?.(items, [...new Set(actions.flatMap((a) => a.session.pruned ? [`${a.session.harness}:${a.session.sessionId}`] : []))]);
       return read;
     } finally { if (first) this.activeIndex--; }
   }

@@ -2,6 +2,7 @@ import type { LaunchHarness, SettingsView } from './settings.ts';
 import type { MemorySnapshot } from './memory.ts';
 import type { UsageSnapshot } from './usage.ts';
 import type { ToolsSnapshot } from './tools.ts';
+import type { TopicsView } from './topics.ts';
 import type { WorkSnapshot } from './work.ts';
 
 /** The agent CLI a Session runs (Glossary: Harness). pi is a non-goal and is filtered out. */
@@ -247,7 +248,11 @@ export type ServerEvent =
       work?: WorkSnapshot;
       /** TOOLS: the last read of every Tool; optional so that UI tests and a server without it can leave it out. */
       tools?: ToolsSnapshot;
+      /** TOPIC-8.3: every Topic; optional so that UI tests and a server without it can leave it out. */
+      topics?: TopicsView;
     }
+  /** TOPIC-8.3: the whole set of Topics, to every tab, when it changed. */
+  | { type: 'topics'; topics: TopicsView }
   /** TOOLS-2.4: a read of the Tools began or ended (sent to every tab, only when something changed). */
   | { type: 'tools'; tools: ToolsSnapshot }
   /** USAGE: new numbers (sent to every tab, only when they changed). */

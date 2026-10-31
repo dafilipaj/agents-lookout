@@ -16,6 +16,8 @@ export interface LibraryQuery extends LibraryFilter {
   /** The complete server-held read used for paging and local filters. */
   readId?: string;
   headless: boolean;
+  /** TOPIC-4.4: only Outputs these Sessions touched, as `<harness>:<sessionId>`; absent for all. */
+  sessions?: string[];
 }
 export interface OutputSource {
   path: string;

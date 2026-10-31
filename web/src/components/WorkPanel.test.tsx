@@ -82,7 +82,7 @@ const snap = (p: Partial<PrSection> = {}, refresh: Partial<WorkSnapshot['refresh
 const withTasks = (t: Partial<TaskSection> = {}, p: Partial<PrSection> = {}) => snap(p, {}, tasks(t));
 
 const workPanel = () => screen.getByTestId('work-panel');
-const tab = (name: 'History' | 'Work' | 'Library') => screen.getByRole('tab', { name });
+const tab = (name: 'History' | 'Work' | 'Library' | 'Topics') => screen.getByRole('tab', { name });
 const listbox = () => within(workPanel()).getByRole('listbox', { name: 'PRs', hidden: true });
 const options = () => within(workPanel()).queryAllByRole('option', { hidden: true });
 const shown = () => options().map((o) => o.getAttribute('data-pr'));
@@ -388,9 +388,11 @@ describe('the Work tab (WORK-1)', () => {
     await user.keyboard('{ArrowRight}');
     expect(tab('Library')).toHaveAttribute('aria-selected', 'true');
     await user.keyboard('{ArrowRight}');
+    expect(tab('Topics')).toHaveAttribute('aria-selected', 'true');
+    await user.keyboard('{ArrowRight}');
     expect(tab('History')).toHaveAttribute('aria-selected', 'true');
     // Work kept its selection meanwhile.
-    await user.keyboard('{ArrowLeft}{ArrowLeft}');
+    await user.keyboard('{ArrowLeft}{ArrowLeft}{ArrowLeft}');
     expect(selectedPr()).toBe('willow#2102');
     expect(window.location.pathname).toBe('/s/alpha');
   });
@@ -1154,7 +1156,7 @@ describe('Tasks (WORK-2)', () => {
     expect(bare.querySelector('[data-field="description"]')).toBeNull();
     expect(bare.querySelector('[data-field="detail-prs"]')).toBeNull();
     expect(bare.querySelector('[data-field="session-chips"]')).toBeNull();
-    expect([...bare.querySelectorAll('[data-field="actions"] [data-action]')].map((b) => b.textContent)).toEqual(['Start Session', 'Open in Fantastic']);
+    expect([...bare.querySelectorAll('[data-field="actions"] [data-action]')].map((b) => b.textContent)).toEqual(['Start Session', 'Open in Fantastic', 'Add to Topic']);
   });
 
   it('WORK-2.10 (support), WORK-3.6 (support): the buttons, in order: Open Session for a live Linked Session, else Resume, then Start Session or Review, then Open in Fantastic or Open on GitHub', async () => {
@@ -1165,10 +1167,12 @@ describe('Tasks (WORK-2)', () => {
     openApp('/s/alpha', withTasks({ tasks: [liveTask, pastTask] }, { mine: [DRAFT], reviewRequests: [reviewed] }));
     await userEvent.setup().keyboard('w');
     const words = (el: HTMLElement) => [...expandRow(el).querySelectorAll('[data-field="actions"] [data-action]')].map((b) => `${b.getAttribute('data-action')}:${b.textContent}:${b.getAttribute('title')}`);
-    expect(words(taskOption(LIGHT.id))).toEqual(['open-session:Open Session:Open Session', 'start:Start Session:Start Session (S)', 'open:Open in Fantastic:Open in Fantastic (O)']);
-    expect(words(taskOption(BELLS.id))).toEqual(['resume:Resume:Resume', 'start:Start Session:Start Session (S)', 'open:Open in Fantastic:Open in Fantastic (O)']);
-    expect(words(option('anvil#2101'))).toEqual(['open:Open on GitHub:Open on GitHub (O)']);
-    expect(words(option('willow#2106'))).toEqual(['resume:Resume:Resume', 'review:Review:Review (R)', 'open:Open on GitHub:Open on GitHub (O)']);
+    // TOPIC-2.1: Add to Topic comes last, on every row.
+    const add = 'add-to-topic:Add to Topic:Add to Topic (A)';
+    expect(words(taskOption(LIGHT.id))).toEqual(['open-session:Open Session:Open Session', 'start:Start Session:Start Session (S)', 'open:Open in Fantastic:Open in Fantastic (O)', add]);
+    expect(words(taskOption(BELLS.id))).toEqual(['resume:Resume:Resume', 'start:Start Session:Start Session (S)', 'open:Open in Fantastic:Open in Fantastic (O)', add]);
+    expect(words(option('anvil#2101'))).toEqual(['open:Open on GitHub:Open on GitHub (O)', add]);
+    expect(words(option('willow#2106'))).toEqual(['resume:Resume:Resume', 'review:Review:Review (R)', 'open:Open on GitHub:Open on GitHub (O)', add]);
   });
 
   it('WORK-3.6 (support): an expanded PR keeps its repo, number, chip, CI, age and Linked Task, the source its hover, and adds its Linked Sessions as chips; a Review request has no chip', async () => {
@@ -1185,7 +1189,7 @@ describe('Tasks (WORK-2)', () => {
     expect(row.querySelector('[data-field="linked-task"]')).toHaveAttribute('title', 'PR body');
     // Live first, then the latest past one (WORK-2.4's order).
     expect([...row.querySelectorAll('[data-field="session-chips"] [data-action="session"]')].map((c) => c.getAttribute('aria-label'))).toEqual(['Open review-anvil, Idle', 'Resume anvil-opener, past']);
-    expect([...row.querySelectorAll('[data-field="actions"] [data-action]')].map((b) => b.textContent)).toEqual(['Open Session', 'Open on GitHub']);
+    expect([...row.querySelectorAll('[data-field="actions"] [data-action]')].map((b) => b.textContent)).toEqual(['Open Session', 'Open on GitHub', 'Add to Topic']);
     expect(expandRow(option('willow#2106')).querySelector('[data-field="chip"]')).toBeNull();
   });
 

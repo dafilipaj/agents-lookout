@@ -392,3 +392,22 @@ it('LIB-2.10: two recorded folders with one physical folder make one git call an
   expect(await lib.find(query('types=markdown'))).toMatchObject({ total: 2 });
   expect(asked()).toBe(3);
 });
+
+it("TOPIC-4.4: a Topic's Sessions filter the held read to the Outputs they touched, and every read reaches the Topics", async () => {
+  const runner = fake([event('/mine.pdf'), event('/theirs.pdf', { session_id: 'other-session' }), event('/codex.pdf', { harness: 'codex' })]);
+  const reads: number[] = [];
+  const lib = new Library({ ...options(runner), onRead: (items) => reads.push(items.length) });
+  expect(query('sessions=claude:parent-session,bogus,codex:x;rm').sessions).toEqual(['claude:parent-session']);
+  const page = await lib.find(query('sessions=claude:parent-session'));
+  expect(page).toMatchObject({ total: 1, items: [{ key: '/mine.pdf' }] });
+  expect(reads).toEqual([3]);
+  expect(await lib.find(query())).toMatchObject({ total: 3 });
+});
+
+it('TOPIC-4.2 (support): every read tells the Topics which Sessions its events had pruned, Outputs it kept or not', async () => {
+  const runner = fake([event('/a.pdf', { session_id: 'pruned-kept', pruned: true }), event('/gone/b.pdf', { session_id: 'pruned-dropped', pruned: true }), event('/c.pdf')]);
+  const pruned: string[][] = [];
+  const lib = new Library({ ...options(runner), isDirectory: async (p: string) => p !== '/gone', onRead: (_items, p) => pruned.push(p) });
+  expect(await lib.find(query())).toMatchObject({ total: 2 });
+  expect(pruned.map((p) => [...p].sort())).toEqual([['claude:pruned-dropped', 'claude:pruned-kept']]);
+});

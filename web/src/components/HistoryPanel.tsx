@@ -17,6 +17,11 @@ import { HARNESS_NAME } from '@/lib/sessions';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { HarnessIcon } from './HarnessIcon';
+import { AddToTopicAction, TopicChips } from './TopicLinks';
+import { historyMember, useTopics } from '@/lib/topics';
+
+/** A field that takes typed letters (a search box, never the Headless checkbox). */
+const isTextTarget = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && !['checkbox', 'radio'].includes((t as HTMLInputElement).type)));
 
 /** HIST-2.2: typing waits this long before searching, well within the 1 s. */
 export const SEARCH_DEBOUNCE_MS = 150;
@@ -67,6 +72,7 @@ type Peek = { state: 'loading' } | { state: 'ok'; peek: HistoryPeek } | { state:
  */
 export function HistoryPanel({ focusKey, sessions, now, search, peek, onOpen, navRef, headless, onHeadless }: HistoryPanelProps) {
   const [query, setQuery] = useState('');
+  const topics = useTopics();
   // HIST-2.8: both by default; one can be switched off, never both. Remembered across reloads.
   const [harnesses, setHarnesses] = useState<HarnessFilter>(loadHarnessFilter);
   const harness = filterHarness(harnesses);
@@ -255,6 +261,10 @@ export function HistoryPanel({ focusKey, sessions, now, search, peek, onOpen, na
       if (results.state === 'ok' && results.gen !== seq.current) return;
       if (expanded !== itemKey(items[active])) expand(active);
       else if (!e.repeat) open(items[active]);
+    } else if (e.key.toLowerCase() === 'a' && !e.shiftKey && !inSearch && !isTextTarget(e.target) && items[active] && topics) {
+      // TOPIC-2.1: A opens the Topic picker for the selected result.
+      e.preventDefault();
+      if (!e.repeat) topics.addTo([historyMember(items[active])], items[active].title);
     } else if (e.key === 'Escape' && inResults && expanded !== null) {
       e.preventDefault();
       setExpanded(null);
@@ -501,8 +511,10 @@ function Result({ index, item, status, since, active, expanded, peek, opening, b
             </p>
             {!live && item.blocked && <p data-field="blocked">{BLOCK_REASON[item.blocked]}</p>}
             <Said item={item} peek={peek} />
+            <TopicChips members={[historyMember(item)]} labelClass="w-10" />
             <RowActions>
               <RowAction data-action={state === 'live' ? 'open' : state === 'blocked' ? 'show' : 'resume'} label={opening ? 'Resuming…' : button.label} icon={button.icon} tip={button.tip} enabled={!busy} onPress={onOpen} />
+              <AddToTopicAction members={[historyMember(item)]} label={item.title} />
             </RowActions>
           </div>
           {openError && <Alert title={openError} className="mt-1" />}

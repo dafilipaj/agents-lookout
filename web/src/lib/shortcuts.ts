@@ -127,12 +127,12 @@ export const SHORTCUTS: readonly Shortcut[] = [
   {
     id: 'panels',
     group: 'panels',
-    keys: ['H', 'W', 'L'],
-    label: 'Open or close History, Work, Library',
+    keys: ['H', 'W', 'L', 'T'],
+    label: 'Open or close History, Work, Library, Topics',
     note: 'Not in a text field.',
-    press: [{ key: 'h' }, { key: 'w' }, { key: 'l' }],
+    press: [{ key: 'h' }, { key: 'w' }, { key: 'l' }, { key: 't' }],
     global: true,
-    empty: { label: 'History, Work, Library', views: ['select', 'none'] },
+    empty: { label: 'History, Work, Library, Topics', views: ['select', 'none'] },
   },
   {
     id: 'tabs',
@@ -189,6 +189,14 @@ export const SHORTCUTS: readonly Shortcut[] = [
     label: 'Start a Session on the selected Task, or open the selected Session',
     note: 'Work (a Task) and Library (a Session).',
     press: [{ key: 's' }],
+  },
+  {
+    id: 'panel-add',
+    group: 'panels',
+    keys: ['A'],
+    label: 'Add the selected row to a Topic',
+    note: 'Work, History and Library.',
+    press: [{ key: 'a' }],
   },
   {
     id: 'panel-copy',
