@@ -30,8 +30,10 @@ export function ChoiceIcon({ multiSelect, chosen }: { multiSelect: boolean; chos
 /**
  * VIEW-10.1: the option under the pointer and the one with focus, for the preview box to follow.
  * `on(i)` goes on option `i`'s row: pointer events reach the row even while its button is locked
- * (`pointer-events: none`), and focus events bubble up from the button. Entering or focusing a row
- * sets it; leaving is decided on the whole options-and-box area (`area`), so the option shown stays
+ * (`pointer-events: none`), and focus events bubble up from the button. Moving the pointer over a
+ * row or focusing it sets it, not merely entering it: a row that comes to lie under a pointer that
+ * hasn't moved (the card answered under it, the chat scrolled) gets `pointerenter` from Chrome, and
+ * no move. Leaving is decided on the whole options-and-box area (`area`), so the option shown stays
  * while the pointer or focus is anywhere in it, the box included, and falls back only when it
  * leaves.
  */
@@ -40,7 +42,7 @@ function usePreviewFollow() {
   const [focus, setFocus] = useState<number | null>(null);
   const on = useCallback(
     (i: number): OptionRowProps => ({
-      onPointerEnter: () => setPointer(i),
+      onPointerMove: () => setPointer(i),
       onFocus: () => setFocus(i),
     }),
     [],
@@ -55,7 +57,7 @@ function usePreviewFollow() {
 }
 
 /** VIEW-10.1: what an option's row takes so the preview box follows the pointer and focus. */
-export type OptionRowProps = Pick<HTMLAttributes<HTMLElement>, 'onPointerEnter' | 'onFocus'>;
+export type OptionRowProps = Pick<HTMLAttributes<HTMLElement>, 'onPointerMove' | 'onFocus'>;
 
 /**
  * VIEW-10.1: a question's options with its preview box beside them, the box showing the option

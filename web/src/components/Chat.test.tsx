@@ -1180,6 +1180,17 @@ describe('questions with previews, read-only (VIEW-10.6)', () => {
     expect(box()).toHaveAccessibleName('Preview: Sidebar navigation with grouped sections (Recommended)');
   });
 
+  it('VIEW-10.6: an option that comes to lie under a pointer that hasn’t moved (the card answered under it, the chat scrolled) doesn’t take the box; moving the pointer does', () => {
+    const { reset } = open('a', { status: 'idle' });
+    reset([layout({ status: 'answered', answer: { answers: ['Top tabs'], picked: [[1]] } })]);
+    // What Chrome sends then (seen live, 2026-10-31): boundary events, no move.
+    fireEvent.pointerOver(items()[0]!);
+    fireEvent.pointerEnter(items()[0]!);
+    expect(box()).toHaveAccessibleName('Preview: Top tabs');
+    fireEvent.pointerMove(items()[0]!);
+    expect(box()).toHaveAccessibleName('Preview: Sidebar navigation with grouped sections (Recommended)');
+  });
+
   it('VIEW-10.6: an ended Session’s chat, and a past Session’s, show it too', async () => {
     const { app, reset } = open('a', { status: 'idle' });
     reset([layout({ status: 'answered', answer: { answers: ['Top tabs'], picked: [[1]] } })]);
