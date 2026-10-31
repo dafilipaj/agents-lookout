@@ -1,4 +1,4 @@
-import type { AnswerRequest, ChatPage, EndTarget, RenameResult, SessionRow } from '@shared/types.ts';
+import type { AnswerRequest, ChangesView, ChatPage, EndTarget, RenameResult, SessionRow } from '@shared/types.ts';
 import { Check, ChevronDown, CircleSlash, CircleStop, Copy, FolderGit2, GitBranch, Info, OctagonX, Paperclip, Power, SendHorizontal, TerminalSquare } from 'lucide-react';
 import { type ComponentPropsWithRef, type ComponentPropsWithoutRef, type KeyboardEvent, type PointerEvent, type ReactNode, type RefObject, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Alert } from '@/components/ui/alert';
@@ -45,6 +45,8 @@ import { useSessionTitle } from './SessionTitle';
 import { PaneHeader, ShellCell, ShellView } from './Shell';
 import { StatusMarker } from './StatusMarker';
 import { StatusMenu } from './StatusMenu';
+import { ChangesButton, type ChangesButtonProps } from './ChangesButton';
+import { changesTip } from '@/lib/changes';
 
 export interface SessionViewProps {
   attachments: ComposerAttachments;
@@ -95,6 +97,12 @@ export interface SessionViewProps {
   onSwitch(what: SwitchWhat, row: SessionRow, value: string, opened: ModelTarget): void;
   /** VIEW-6.3/6.7/6.8, VIEW-7.3/7.7/7.8: the Session process's switch, model or Effort, as App keeps it. */
   statusSwitch: SwitchState | undefined;
+  /** DIFF-3: the changed files of the Session whose list is open, as the server last sent them. */
+  changes?: ReadonlyMap<string, ChangesView | null>;
+  /** DIFF-3.6: the Session's list of changed files opened or closed. */
+  onChangesOpen?(sessionId: string, open: boolean): void;
+  /** DIFF-4: opens a changed file's Changes in VS Code; rejects with the reason to show. */
+  onOpenChange?(sessionId: string, root: string, path: string): Promise<void>;
   /** VIEW-4.2: the prompt on the Session's terminal, as the server last read it. */
   screen: ScreenState | undefined;
   /** VIEW-4: the latest answer sent to this Session, and what came of it. */
@@ -134,6 +142,9 @@ export function SessionView({
   onLoadModels,
   onSwitch,
   statusSwitch,
+  changes,
+  onChangesOpen,
+  onOpenChange,
   screen,
   attempt,
   onAnswer,
@@ -370,10 +381,31 @@ export function SessionView({
           onLoadModels={onLoadModels}
           onSwitch={onSwitch}
           statusSwitch={statusSwitch}
+          changes={
+            !ended && onChangesOpen && onOpenChange
+              ? {
+                  changes: row.changes ?? null,
+                  list: changes?.get(row.id),
+                  onOpenChange: (open) => onChangesOpen(row.id, open),
+                  onOpenFile: (root, path) => onOpenChange(row.id, root, path),
+                  // DIFF-3.3: the count went away while its list was open.
+                  focusFallback: () => focusComposerOrChat(composerRef.current),
+                }
+              : null
+          }
         />
       </ShellCell>
     </ShellView>
   );
+}
+
+/** DIFF-3.3: the composer, or the chat when the Session is View-only and has none. */
+function focusComposerOrChat(composer: HTMLTextAreaElement | null): void {
+  if (composer) return composer.focus();
+  const chat = document.querySelector<HTMLElement>('[aria-label="Chat"]');
+  if (!chat) return;
+  if (!chat.hasAttribute('tabindex')) chat.tabIndex = -1;
+  chat.focus();
 }
 
 /**
@@ -686,6 +718,7 @@ function StatusLine({
   onLoadModels,
   onSwitch,
   statusSwitch,
+  changes,
 }: {
   row: SessionRow;
   ended: boolean;
@@ -693,6 +726,8 @@ function StatusLine({
   onLoadModels(): void;
   onSwitch: SessionViewProps['onSwitch'];
   statusSwitch: SwitchState | undefined;
+  /** DIFF-1.3: the count and its list; null for an ended Session or without the feature. */
+  changes: ChangesButtonProps | null;
 }) {
   const loc = location(row);
   const where = row.git ? row.git.repo : row.cwd;
@@ -716,7 +751,8 @@ function StatusLine({
   const running = row.subagents?.running ?? 0;
   const count = running || row.subagents?.finished || 0;
   const subagents = !ended && count > 0 ? `${count} subagent${count === 1 ? '' : 's'}${running ? '' : ' done'}` : null;
-  const parts = [where, loc?.name, modelPart, effortPart, context, shell, subagents].filter((p): p is string => !!p);
+  const changed = changes?.changes ? changesTip(changes.changes) : null;
+  const parts = [where, loc?.name, changed, modelPart, effortPart, context, shell, subagents].filter((p): p is string => !!p);
   if (!parts.length) return null;
   const dot = (
     <span aria-hidden className="shrink-0 opacity-60">
@@ -743,6 +779,9 @@ function StatusLine({
             <span className="truncate">{loc.name}</span>
           </span>
         </>
+      )}
+      {changes && (changes.changes || changes.list !== undefined) && (
+        <ChangesSlot dot={(where || loc) && dot} {...changes} />
       )}
       {model && (
         <>
@@ -815,6 +854,24 @@ function StatusLine({
         </>
       )}
     </StatusBar>
+  );
+}
+
+/** DIFF-1.3: the count, with its dot only while the button shows. */
+function ChangesSlot({ dot, ...props }: ChangesButtonProps & { dot: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  if (!props.changes && !open) return null;
+  return (
+    <>
+      {dot}
+      <ChangesButton
+        {...props}
+        onOpenChange={(next) => {
+          setOpen(next);
+          props.onOpenChange(next);
+        }}
+      />
+    </>
   );
 }
 

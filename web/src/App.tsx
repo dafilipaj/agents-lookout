@@ -55,6 +55,10 @@ function switchedShown(row: SessionRow): string {
   return `${m ? `${m.pending ? 'pending' : 'replied'}:${m.id}` : ''} ${e ? `${e.pending ? 'pending' : 'replied'}:${e.level}` : ''}`;
 }
 
+/** DIFF-3.6: a list's watch is tried this many times, this far apart, while it's still the latest. */
+const WATCH_ATTEMPTS = 3;
+const WATCH_RETRY_MS = 2000;
+
 /** A manual drawer toggle, valid while the Session keeps the Status it had then. */
 interface DrawerOverride {
   open: boolean;
@@ -446,6 +450,33 @@ export function App({ client }: { client: LookoutClient }) {
   useEffect(() => {
     if (state.clientId) void client.watchMemory(state.clientId, memoryOpen);
   }, [client, state.clientId, memoryOpen]);
+  // DIFF-3.6: the Session whose list of changed files this tab has open; the server reads it every 3 s
+  // while it's open and sends each list over the event stream. A reconnect re-sends it under the new
+  // client id. One watch at a time, so they reach the server in order; one already replaced isn't
+  // sent, and one that failed is tried again while it's still the latest.
+  const [changesOpen, setChangesOpen] = useState<string | null>(null);
+  const changesWatch = useRef(Promise.resolve());
+  useEffect(() => {
+    const clientId = state.clientId;
+    if (!clientId) return;
+    let latest = true;
+    changesWatch.current = changesWatch.current.then(async () => {
+      for (let attempt = 0; latest && attempt < WATCH_ATTEMPTS; attempt++) {
+        if (attempt > 0) await new Promise((r) => setTimeout(r, WATCH_RETRY_MS));
+        if (!latest) return;
+        try {
+          return await client.watchChanges(clientId, changesOpen);
+        } catch {
+          // tried again below
+        }
+      }
+    });
+    return () => {
+      latest = false;
+    };
+  }, [client, state.clientId, changesOpen]);
+  const onChangesOpen = useCallback((sessionId: string, open: boolean) => setChangesOpen((cur) => (open ? sessionId : cur === sessionId ? null : cur)), []);
+  const openChange = useCallback((sessionId: string, root: string, path: string) => client.openChange(sessionId, root, path), [client]);
   const workOpen = layout.open && layout.tab === 'work';
   useEffect(() => {
     if (state.clientId) void client.watchWork(state.clientId, workOpen);
@@ -878,6 +909,9 @@ export function App({ client }: { client: LookoutClient }) {
               models={harnesses}
               onLoadModels={loadHarnesses}
               onSwitch={(what, row, value, opened) => void switchSetting(what, row, value, opened)}
+              changes={state.changes}
+              onChangesOpen={onChangesOpen}
+              onOpenChange={openChange}
               switches={switches}
               prompts={state.prompts}
               attempts={attempts}

@@ -22,6 +22,7 @@ import { parsePort } from './port.ts';
 import { localAllowLists } from './security.ts';
 import { SettingsStore, defaultSettingsPath } from './settings.ts';
 import { trackStartDirectories } from './start-repos.ts';
+import { Changes } from './changes.ts';
 import { ToolsMonitor } from './tools.ts';
 import { UsageMonitor } from './usage.ts';
 import { Viewer } from './viewer.ts';
@@ -77,13 +78,27 @@ const monitor: SessionMonitor = new SessionMonitor({
   startRepos: trackStartDirectories(settings, git, () => monitor),
   models: modelSwitches,
   memoryGrowth: (row) => memory.growthFor(row),
+  changes: (row) => changes.rowChanges(row),
   onEvent: (e) => app.broadcast(e),
   onList: (rows) => {
+    changes.observe(monitor.snapshot().sessions);
     memory.prune();
     launcher.observe(rows);
     work.setLiveSessions(rows.flatMap((row) => (row.session_id ? [row.session_id] : [])));
   },
 });
+
+// DIFF: each live Session's Changes, asked of Fleet on its own schedule, one ask at a time.
+const changes = new Changes({
+  runner: run,
+  fleetBin: () => resolveFleetBin(env),
+  onRowsChanged: () => monitor.refreshDerived(),
+  sendTo: (clientId, e) => app.sendTo(clientId, e),
+  env,
+});
+// DIFF-4.3: base copies older than a day go, at start and once a day.
+void changes.prune();
+setInterval(() => void changes.prune(), 24 * 60 * 60 * 1000).unref();
 
 // VIEW-6, VIEW-7: the status line's switches share one gate, one switch per Session process at a time.
 const switcher: ModelSwitcherOptions = {
@@ -159,6 +174,7 @@ const app = createApp({
   usage,
   memory,
   work,
+  changes,
   sessions: {
     answer: (id, req) => viewer.answer(id, req),
     stop: (id, status) => viewer.stopSession(id, status),

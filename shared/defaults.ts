@@ -6,7 +6,7 @@ export const DEFAULT_DEV_PORT = 4748;
 
 /** The Fleet fork and revision Lookout is tested against (decisions 0004, 0006): the pin in `e2e/pins.json`. */
 export const FLEET_INSTALL_COMMAND =
-  'cargo install --git https://github.com/dafilipaj/fleet --rev 17183f9 --locked fleet';
+  'cargo install --git https://github.com/dafilipaj/fleet --rev 9b6e4bf --locked fleet';
 
 /** How cli-toolbox installs tb-session (HIST); it lands in ~/.local/bin. */
 export const TB_SESSION_INSTALL_COMMAND =

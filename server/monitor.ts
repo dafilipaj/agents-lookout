@@ -1,5 +1,5 @@
 import { FLEET_INSTALL_COMMAND } from '../shared/defaults.ts';
-import type { FleetHealth, PendingEffort, PendingModel, SessionRow, Status } from '../shared/types.ts';
+import type { FleetHealth, PendingEffort, PendingModel, RowChanges, SessionRow, Status } from '../shared/types.ts';
 import type { FleetListResult, FleetRow } from './fleet.ts';
 import type { GitCache } from './git.ts';
 import { normalizeRows } from './normalize.ts';
@@ -23,6 +23,8 @@ export interface MonitorOptions {
     pendingEffortFor(row: SessionRow): PendingEffort | null;
   };
   memoryGrowth?(row: SessionRow): number | null;
+  /** DIFF-1: the Session's Changes, carried with its row. */
+  changes?(row: SessionRow): RowChanges | null;
   intervalMs?: number;
   now?: () => number;
 }
@@ -160,6 +162,7 @@ export class SessionMonitor {
     }
 
     for (const row of next) row.memoryGrowthBytes = this.opts.memoryGrowth?.(row) ?? null;
+    if (this.opts.changes) for (const row of next) row.changes = this.opts.changes(row);
 
     const upsert: SessionRow[] = [];
     const nextRows = new Map<string, SessionRow>();

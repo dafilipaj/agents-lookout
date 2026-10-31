@@ -46,6 +46,9 @@
   /* Small text in ok and destructive colours, 4.5:1 or more on the sidebar's accent (WORK-3.5) */
   --ok-text: oklch(0.48 0.12 150);
   --destructive-text: oklch(0.5 0.21 27.325);
+  /* DS-2.5: lines added and removed (DIFF), green and red as a diff colours them */
+  --diff-added-text: oklch(0.47 0.13 150);
+  --diff-removed-text: oklch(0.5 0.2 27);
   /* DS-2: a level heading toward a limit (amber, like Needs you, but its own family) */
   --warning: oklch(0.7 0.17 60);
   --warning-text: oklch(0.491 0.13 55);
@@ -115,6 +118,8 @@
     --ok: oklch(0.74 0.14 150);
     --ok-text: oklch(0.74 0.14 150);
     --destructive-text: oklch(0.78 0.15 22.216);
+    --diff-added-text: oklch(0.78 0.15 150);
+    --diff-removed-text: oklch(0.76 0.15 22);
     --warning: oklch(0.8 0.15 75);
     --warning-text: oklch(0.85 0.12 80);
     --destructive-soft: oklch(0.704 0.191 22.216 / 20%);
@@ -184,6 +189,8 @@
   --color-palette-16: var(--palette-16);
   --color-destructive-text: var(--destructive-text);
   --color-destructive-soft: var(--destructive-soft);
+  --color-diff-added-text: var(--diff-added-text);
+  --color-diff-removed-text: var(--diff-removed-text);
   --color-warning: var(--warning);
   --color-warning-text: var(--warning-text);
   --color-info-soft: var(--info-soft);

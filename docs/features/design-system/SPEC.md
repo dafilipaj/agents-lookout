@@ -3,7 +3,7 @@ title: "Design system"
 code: "DS"
 status: "Done"
 created: "2026-10-22"
-updated: "2026-10-27"
+updated: "2026-10-31"
 ---
 
 # Design system
@@ -46,6 +46,7 @@ New tokens, each with a light and a dark value, and one meaning per family.
 - [x] DS-2.2 `info-text` on `info-soft`, on the background and on the sidebar; `warning-text` on the background and the sidebar; and the foreground on `highlight` over the background and the sidebar keep 4.5:1 or more, in light and dark mode. (test)
 - [x] DS-2.3 Each colour family is used only for its meaning (UX, "Colour by meaning"). A guard test fails when a family's token is used in a file its row doesn't list, or in a listed file in a class the row doesn't name, and on a raw colour: a Tailwind palette class (`text-amber-600`), an arbitrary colour (`bg-[#f59e0b]`, `text-[oklch(…)]`) or a hex, `rgb(` or `oklch(` in a TS string or style. The one exception is `HarnessIcon.tsx`'s brand hex. (test)
 - [x] DS-2.4 `index.css` defines Productive's palette, `palette-0` to `palette-16`, Productive's 17 colours as Fantastic has them (Canary `#ffe500` to White `#ffffff`), the same in light and dark: they're the colours a status was given in Productive, not Lookout's. It's a family of its own, used only by `TaskStatusDot` (WORK-2.12, [0012](../../decisions/0012-task-status-dots-and-author-avatars.md)), written as `oklch()` like every other token, each Fantastic's hex once converted back. (test)
+- [x] DS-2.5 `index.css` defines `diff-added-text`, a green, and `diff-removed-text`, a red (lines added and removed, DIFF-1.1, as a diff colours them), in light and dark mode, as `oklch()` values mapped to `--color-*`. Each keeps 4.5:1 or more on the background, on the sidebar and on every sidebar row state (SIDE-3.11), in both modes. It's a family of its own, used only by the Changes count on a row and in the status line and by the changed-files list (DIFF), and the DS-2.3 guard has its row. (test)
 
 ### DS-3 Colour means Status
 
@@ -432,3 +433,5 @@ None.
 - 2026-10-30: DS-6.4 amended from Dario's request: "No Sessions running" lists the shortcuts that matter with no Session (`N`, `H`) from the one shortcuts list, with an "All shortcuts" button for the dialog (SIDE-7.4).
 - 2026-10-30: DS-6.4 reworded to match the view: the hint lists `N` and the panels `H` `W` `L` (what `NoSessions()` renders), not `N` and `H`.
 - 2026-10-30: Added DS-2.4 (Productive's palette as a colour family, used only by a Task's status dot) and DS-8.5 (`Avatar`, the one `<img>`), for WORK-2.12 and WORK-3.8, decided in [0012](../../decisions/0012-task-status-dots-and-author-avatars.md). Built the same day: both ticked, the spec Done again.
+- 2026-10-31: Added DS-2.5 (`diff-added-text` and `diff-removed-text`, a colour family used only by the DIFF spec's Changes count and list). The spec is In Progress again until it's built.
+- 2026-10-31: DS-2.5 built and ticked (contrast on the background, the sidebar, every row state, the status line and the popover, in both modes); Done again.

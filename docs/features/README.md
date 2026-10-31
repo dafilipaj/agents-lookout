@@ -18,3 +18,4 @@ One row per feature. Update the status here and in the spec's frontmatter togeth
 | Memory overview: what the Sessions cost the Mac, under the usage strip, with a breakdown per Session | MEM | In Progress | [SPEC](memory-overview/SPEC.md) |
 | Tools: the CLIs Lookout runs, their versions, what's missing or behind, and the command that fixes it | TOOLS | In Progress | [SPEC](tools/SPEC.md) |
 | Topics: a Session, its PR, its Task and its run as one Topic with notes, recommended by Links and Jev, Topics linked into a graph | TOPIC | Ready | [SPEC](topics/SPEC.md) |
+| Changed files: a Session's changed lines on its row and status line, its changed files listed, each opening its Changes in VS Code | DIFF | In Progress | [SPEC](changed-files/SPEC.md) |

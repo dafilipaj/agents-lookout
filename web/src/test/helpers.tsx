@@ -98,6 +98,8 @@ interface RenderOptions {
   resume?: LookoutClient['resume'];
   refreshWork?: LookoutClient['refreshWork'];
   checkPaths?: LookoutClient['checkPaths'];
+  watchChanges?: LookoutClient['watchChanges'];
+  openChange?: LookoutClient['openChange'];
   saveSettings?: LookoutClient['saveSettings'];
   tools?: LookoutClient['tools'];
   refreshTools?: LookoutClient['refreshTools'];
@@ -130,6 +132,8 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
     refreshTools: vi.fn(options.refreshTools ?? (async () => ({ rows: [], checkedAt: null, reading: false }))),
     refreshUsage: vi.fn(async () => {}),
     watchMemory: vi.fn(async () => {}),
+    watchChanges: vi.fn(options.watchChanges ?? (async () => {})),
+    openChange: vi.fn(options.openChange ?? (async () => {})),
     watchWork: vi.fn(async () => {}),
     refreshWork: vi.fn(options.refreshWork ?? (async () => ({ ok: true as const }))),
     sendMessage: vi.fn(options.sendMessage ?? (async () => {})),

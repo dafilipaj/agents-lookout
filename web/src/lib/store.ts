@@ -1,5 +1,5 @@
 import { type SettingsView, defaultSettings } from '@shared/settings.ts';
-import type { ChatPage, FleetHealth, LaunchView, ServerEvent, SessionRow } from '@shared/types.ts';
+import type { ChangesView, ChatPage, FleetHealth, LaunchView, ServerEvent, SessionRow } from '@shared/types.ts';
 import type { MemorySnapshot } from '@shared/memory.ts';
 import type { ToolsSnapshot } from '@shared/tools.ts';
 import type { UsageSnapshot } from '@shared/usage.ts';
@@ -56,6 +56,8 @@ export interface LookoutState {
   work: WorkSnapshot | null;
   /** TOOLS: the last read of every Tool, or null before the server sent one. */
   tools: ToolsSnapshot | null;
+  /** DIFF-3: the changed files of the Session whose list this tab has open, as the server last sent them. */
+  changes: ReadonlyMap<string, ChangesView | null>;
   /**
    * VIEW-1: the chat of the Session in view, plus a few recently viewed ones (cut to their latest
    * entries) for switching back. Kept across reconnects, and after the Session ends.
@@ -119,6 +121,7 @@ export const initialState: LookoutState = {
   memory: null,
   work: null,
   tools: null,
+  changes: new Map(),
   chats: new Map(),
   chatOrder: [],
   chatViewing: null,
@@ -212,6 +215,8 @@ export function reducer(state: LookoutState, action: Action): LookoutState {
       return { ...state, settings: e.settings };
     case 'memory':
       return { ...state, memory: e.memory };
+    case 'changes':
+      return { ...state, changes: new Map(state.changes).set(e.sessionId, e.changes) };
     case 'usage':
       return { ...state, usage: e.usage };
     case 'work':

@@ -3,7 +3,7 @@ title: Session sidebar
 code: SIDE
 status: In Progress
 created: 2026-10-16
-updated: 2026-10-26
+updated: 2026-10-31
 ---
 
 # Session sidebar
@@ -347,3 +347,4 @@ None.
 - 2026-10-30: Live check 6 run: Fleet paired a Codex TUI Session with its `spawn_agent` child's rollout while the child ran (`list --json` gave it the child's id). Fixed in fork `789c745`, which skips child rollouts (`session_meta.source.subagent`) when pairing by cwd and time, and Lookout pins it. A child's turn opens with a zero-length `task_started` → `turn_aborted` pair, recorded for the Codex count.
 - 2026-10-30: The Fleet fork rebased onto upstream reports Claude Code's `shell` as `idle`, with the shell in a new `background` field, so the row's background shell (SIDE-2.6) is now read from `background.shells`; a fork commit counts at least one whenever Claude Code says `shell`. A Session whose turn ended with only background Subagents running now comes from Fleet as `idle`, as SIDE-9 already decided. Technical approach updated; no requirement changed.
 - 2026-10-31: Plan item 8's live checks run (Technical approach, "Checked live"); SIDE-9.4 ticked. Two Fleet fixes on the way: a Subagent revived with `SendMessage` counted as finished while it ran (fork `c036b5a`), and Codex Sessions always reported `subagents: null`, since the Codex half of the contract was never built (fork `17183f9`). Known gaps updated: no `revivedAt` on Claude Code 2.1.316, the 1–6 s flick before an interim notification, `/tasks` holding notifications, Codex children of an earlier process, a grandchild under an idle older child. No requirement changed.
+- 2026-10-31: The DIFF spec (Draft) adds a Session's changed lines to the row's numbers, after the Subagent count and before the age (DIFF-1.1), so SIDE-9.1's order stands; DIFF's criteria cover it.

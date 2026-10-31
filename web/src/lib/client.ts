@@ -57,6 +57,10 @@ export interface LookoutClient {
   refreshUsage(): Promise<void>;
   /** MEM-3.1: whether this tab has the breakdown open, naming its current event stream. */
   watchMemory(clientId: string, open: boolean): Promise<void>;
+  /** DIFF-3.6: which Session's changed files this tab has open (null: none); answers the list as it is now. */
+  watchChanges(clientId: string, sessionId: string | null): Promise<void>;
+  /** DIFF-4: opens a listed file's Changes in VS Code; rejects with a SaveError saying why it didn't. */
+  openChange(sessionId: string, root: string, path: string): Promise<void>;
   /** WORK-8.1: whether this tab has Work open, so the server reads only while some tab does. */
   watchWork(clientId: string, open: boolean): Promise<void>;
   /**
@@ -424,6 +428,12 @@ export function createHttpClient(): LookoutClient {
     // VIEW-4.5: Stop's route, for a Session that Needs you: the server presses only while it still does.
     escSession: async (sessionId) => {
       await call(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/stop`, { status: 'needs-you' }), 'Pressing Esc');
+    },
+    watchChanges: async (clientId, sessionId) => {
+      await call(() => send('PUT', '/api/changes/watch', { clientId, sessionId }), 'Watching changes');
+    },
+    openChange: async (sessionId, root, path) => {
+      await call(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/changes/open`, { root, path }), 'Opening');
     },
     checkPaths: async (sessionId, paths) =>
       (await call<{ paths: PathAnswer[] }>(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/paths`, { paths }), 'Checking paths')).paths,

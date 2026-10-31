@@ -272,6 +272,12 @@ const FAMILIES: Record<string, Family> = {
       'web/src/components/SessionView.tsx': { why: "VIEW-5.16's background shell and VIEW-8's finished Subagents in the status line", uses: ['text-idle-text'] },
     },
   },
+  diff: {
+    tokens: ['diff-added-text', 'diff-removed-text'],
+    files: {
+      'web/src/components/ChangesCount.tsx': { why: "a Session's lines added and removed, on its row, in the status line and in its list of changed files (DIFF-1.1, DS-2.5)", uses: ['text-diff-added-text', 'text-diff-removed-text'] },
+    },
+  },
   warning: {
     tokens: ['warning', 'warning-text'],
     files: {
@@ -285,6 +291,7 @@ const FAMILIES: Record<string, Family> = {
   destructive: {
     tokens: ['destructive', 'destructive-soft', 'destructive-text'],
     files: {
+      'web/src/components/ChangesButton.tsx': { why: "why a changed file didn't open in VS Code, on its row for 5 s (DIFF-4.5, 4.6)", uses: ['text-destructive-text'] },
       'web/src/lib/memory.ts': { why: 'memory and load critical levels (MEM-1.3, MEM-5.2)', uses: ['bg-destructive', 'text-destructive-text'] },
       'web/src/components/ui/button.tsx': { why: 'the destructive Button variant, and an invalid field', uses: ['bg-destructive', 'bg-destructive/60', 'bg-destructive/90', 'border-destructive', 'ring-destructive/20', 'ring-destructive/40'] },
       'web/src/components/ui/input.tsx': { why: 'an invalid field', uses: ['border-destructive', 'ring-destructive/20', 'ring-destructive/40'] },
@@ -346,6 +353,7 @@ const FAMILIES: Record<string, Family> = {
       'web/src/components/SessionView.tsx': { why: 'keyboard focus, the focused composer, the resize handle while dragged and the attachment drop target (VIEW-9.2)', uses: ['bg-primary-soft', 'bg-ring', 'border-primary', 'border-ring', 'ring-ring', 'ring-ring/25', 'text-primary'] },
       'web/src/components/Sidebar.tsx': { why: 'keyboard focus and the focused filter', uses: ['border-ring', 'ring-ring/30', 'ring-ring/50'] },
       'web/src/components/StatusMenu.tsx': { why: 'keyboard focus on the menu', uses: ['ring-ring'] },
+      'web/src/components/ChangesButton.tsx': { why: "keyboard focus on the status line's count of changed files (DIFF-1.3)", uses: ['ring-ring'] },
       'web/src/components/ui/checkbox.tsx': { why: 'keyboard focus on the checkbox', uses: ['outline-ring'] },
       'web/src/components/ui/dialog.tsx': { why: 'keyboard focus on Close', uses: ['ring-ring'] },
       'web/src/components/ui/input.tsx': { why: 'keyboard focus and a focused field', uses: ['border-ring', 'ring-ring/50'] },

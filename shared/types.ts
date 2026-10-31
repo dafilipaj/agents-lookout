@@ -67,6 +67,11 @@ export interface SessionRow {
   effort: string | null;
   /** SIDE-9, VIEW-8: running now and finished in this Turn; null when Fleet can't tell. */
   subagents: { running: number; finished: number } | null;
+  /**
+   * DIFF-1: the Session's Changes summed over the Checkouts that count (DIFF-2.1, 2.2); null with no
+   * changed file, outside git, or when Fleet can't tell (DIFF-5). Missing before the first answer.
+   */
+  changes?: RowChanges | null;
   /** SIDE-2.11: what a Busy Session is doing now, one line, at most 120 characters; null otherwise. */
   activity: string | null;
   /**
@@ -182,6 +187,45 @@ export interface TrustRequest {
 }
 
 /** Events the server pushes over SSE (`/api/events`). */
+/** DIFF-1: what a row and the status line show of a Session's Changes. */
+export interface RowChanges {
+  additions: number;
+  deletions: number;
+  files: number;
+}
+
+/** DIFF-2.5: what changed in one file, as `fleet diff` reports it. */
+export type ChangeKind = 'added' | 'modified' | 'deleted' | 'renamed' | 'type_changed' | 'mode_changed' | 'submodule';
+
+export interface ChangedFile {
+  path: string;
+  oldPath: string | null;
+  kind: ChangeKind;
+  additions: number;
+  deletions: number;
+  binary: boolean;
+  uncommitted: boolean;
+}
+
+/** DIFF-3.2: one Checkout that counts, with its heading and its files (at most 500, DIFF-2.7). */
+export interface ChangedCheckout {
+  root: string;
+  /** The repo's name (`server/git.ts` `repoName`). */
+  repo: string;
+  /** The Worktree's folder name for a linked Worktree, else the branch, else the short commit. */
+  where: string | null;
+  additions: number;
+  deletions: number;
+  files: ChangedFile[];
+  moreFiles: number;
+}
+
+/** DIFF-3: a Session's changed files, sent to the tabs that have its list open. */
+export interface ChangesView {
+  sessionId: string;
+  checkouts: ChangedCheckout[];
+}
+
 export type ServerEvent =
   | {
       type: 'snapshot';
@@ -209,6 +253,8 @@ export type ServerEvent =
   /** USAGE: new numbers (sent to every tab, only when they changed). */
   | { type: 'usage'; usage: UsageSnapshot }
   | { type: 'memory'; memory: MemorySnapshot }
+  /** DIFF-3.6: a Session's changed files, sent to the tabs that have its list open; null when none count. */
+  | { type: 'changes'; sessionId: string; changes: ChangesView | null }
   /** WORK: the latest PRs, Tasks and Refresh state (sent to every tab, only when something changed). */
   | { type: 'work'; work: WorkSnapshot }
   /** VIEW-2: what the Session's terminal shows, as plain text; sent only to tabs previewing it. */

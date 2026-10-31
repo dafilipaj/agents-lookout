@@ -8,6 +8,8 @@ import { formatBytes } from '@/lib/memory';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { HarnessIcon } from './HarnessIcon';
+import { ChangesCount } from './ChangesCount';
+import { changesTip, hasLines, linesLabel } from '@/lib/changes';
 
 interface Props {
   row: SessionRow;
@@ -137,6 +139,12 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
             <span data-field="subagents" role="img" aria-label={subagentLabel} title={subagentLabel} className="flex items-center gap-0.5">
               <Bot aria-hidden className="size-2.5" />
               {running}
+            </span>
+          )}
+          {/* DIFF-1.1: the Session's changed lines, after the Subagent count (SIDE-9.1 stays first). */}
+          {hasLines(row.changes) && (
+            <span data-field="changes" role="img" aria-label={linesLabel(row.changes)} title={changesTip(row.changes)} className="flex items-center">
+              <ChangesCount additions={row.changes.additions} deletions={row.changes.deletions} />
             </span>
           )}
           {/* SIDE-2.6: Idle, with a background shell command still running; a mark, not a Status. */}

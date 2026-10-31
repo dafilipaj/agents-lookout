@@ -12,6 +12,8 @@ export interface RunOptions {
   signal?: AbortSignal;
   /** How long the group gets after SIGTERM before SIGKILL; KILL_GRACE_MS unless a test shortens it. */
   killGraceMs?: number;
+  /** How stdout is decoded; `latin1` keeps every byte, for file contents that may not be UTF-8. */
+  encoding?: 'utf8' | 'latin1';
 }
 
 /** Runs a program with an argv array (never a shell string) and resolves its stdout. */
@@ -56,7 +58,7 @@ export const run: Runner = (file, args, opts) =>
     // chunks survives.
     const out: Buffer[] = [];
     const err: Buffer[] = [];
-    const stdout = () => Buffer.concat(out).toString('utf8');
+    const stdout = () => Buffer.concat(out).toString(opts.encoding ?? 'utf8');
     const stderr = () => Buffer.concat(err).toString('utf8');
     let size = 0;
     let settled = false;

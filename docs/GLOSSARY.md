@@ -8,7 +8,13 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Behaviour test**: An end-to-end test of one Acceptance criterion: Playwright drives the built Lookout inside a World. Its title starts with the criterion's ID. See the TEST spec.
 
+**Branch point**: Where a Checkout's branch left its repo's default branch: the merge-base of HEAD with `origin/HEAD`'s branch, else a local `main` or `master`. On the default branch itself, or in a repo without one, it's HEAD. Changes are counted from it. See the DIFF spec.
+
 **Building block**: A CLI with a stable `--json` contract that Lookout consumes and other people's UIs could consume too: Fleet, `tb-session`, the ports CLI. Building blocks live outside this repo.
+
+**Changes**: What differs in a Checkout's working tree (tracked edits and untracked files, not ignored ones) from its Branch point: committed-but-unpushed and uncommitted work alike. A Session's Changes are those of its Checkouts, whoever made them. See the DIFF spec.
+
+**Checkout**: A git working tree: a repo's main one or a Worktree. A Claude Code Session's Checkouts are those it edited files in, and its working directory's when it edited there or it isn't on its default branch (DIFF-2.1); a Codex Session's is its working directory's (DIFF-2.2).
 
 **Controllable**: A Session Lookout can bring to the front and type into, because Fleet knows its terminal (backend `tmux` or `iterm`). Sessions in other apps, such as Claude Desktop or IDE terminals, aren't.
 

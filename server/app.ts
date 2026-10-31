@@ -9,6 +9,7 @@ import type { UsageSnapshot } from '../shared/usage.ts';
 import type { WorkSnapshot } from '../shared/work.ts';
 import { AnswerError, parseAnswerRequest, parseEscStatus } from './answerer.ts';
 import { AttachmentError, Attachments, DAY_MS } from './attachments.ts';
+import { ChangesError } from './changes.ts';
 import { EndError, parseEndTarget } from './closer.ts';
 import { type Library } from './library.ts';
 import { LibraryError, parseLibraryQuery } from './library.ts';
@@ -73,6 +74,12 @@ export interface AppOptions {
     /** VIEW-7: `fleet effort`, through the model switch's gate; `req` is already checked. */
     switchEffort(sessionId: string, req: EffortSwitchRequest): Promise<EffortSwitchResult>;
   };
+  /** DIFF: a Session's Changes; optional, so a server without it has no `/api/changes/watch` (404). */
+  changes?: {
+    watch(clientId: string, sessionId: string | null): void;
+    drop(clientId: string): void;
+    open(sessionId: string, body: unknown): Promise<void>;
+  };
   /** VIEW-1.18: which of a batch of paths are files, for one Session's file links (VIEW-1.17). */
   files: {
     check(sessionId: string, body: unknown): Promise<PathAnswer[]>;
@@ -131,6 +138,8 @@ const MAX_STOP_BODY = 1024;
 const MAX_RENAME_BODY = 4 * 1024;
 /** VIEW-6, VIEW-7: `{ model, pid, procStart }` or `{ effort, pid, procStart }`. */
 const MAX_MODEL_BODY = 1024;
+/** DIFF-4: `{ root, path }`, each at most 4,096 characters, JSON-escaped. */
+const MAX_OPEN_CHANGE_BODY = 64 * 1024;
 /** VIEW-1.18: up to 100 paths of up to 1,024 characters, JSON-escaped. */
 const MAX_PATHS_BODY = 64 * 1024;
 
@@ -197,6 +206,7 @@ export function createApp(opts: AppOptions): LookoutApp {
       workOpen.get(clientId)?.();
       workOpen.delete(clientId);
       opts.viewer.drop(clientId); // a tab that's gone stops what it was following
+      opts.changes?.drop(clientId); // DIFF-3.6: and its open list
       unwatch();
     });
   };
@@ -356,6 +366,37 @@ export function createApp(opts: AppOptions): LookoutApp {
       }
       opts.viewer.watch(w.clientId, w.sessionId, w.preview === true);
       return json(res, 200, { ok: true });
+    }
+    // DIFF-3.6: the tab's event stream owns its open list of changed files, as it owns Memory's breakdown.
+    if (route === 'PUT /api/changes/watch' && opts.changes) {
+      const body = await readJson(req, res, MAX_BODY, null);
+      if (body === NO_BODY) return;
+      const w = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
+      if (typeof w.clientId !== 'string' || !clients.has(w.clientId)) return json(res, 404, { error: 'unknown event stream' });
+      if (w.sessionId !== null && (typeof w.sessionId !== 'string' || w.sessionId.length > 200)) {
+        return json(res, 400, { error: 'invalid sessionId' });
+      }
+      opts.changes.watch(w.clientId, w.sessionId);
+      return json(res, 200, { ok: true });
+    }
+    // DIFF-4: opening a file's Changes runs `git` and VS Code: a mutation, so every check a POST gets.
+    const openMatch = /^\/api\/sessions\/([^/]{1,200})\/changes\/open$/.exec(url.pathname);
+    if (openMatch && req.method === 'POST' && opts.changes) {
+      let sessionId: string;
+      try {
+        sessionId = decodeURIComponent(openMatch[1]!);
+      } catch {
+        return json(res, 400, { error: 'invalid session id' });
+      }
+      const body = await readJson(req, res, MAX_OPEN_CHANGE_BODY, null);
+      if (body === NO_BODY) return;
+      try {
+        await opts.changes.open(sessionId, body);
+        return json(res, 200, { ok: true });
+      } catch (err) {
+        if (err instanceof ChangesError) return json(res, err.status, { error: err.message });
+        throw err;
+      }
     }
     const sendMatch = /^\/api\/sessions\/([^/]{1,200})\/send$/.exec(url.pathname);
     if (sendMatch && req.method === 'POST') {

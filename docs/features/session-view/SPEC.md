@@ -3,7 +3,7 @@ title: Session view
 code: VIEW
 status: In Progress
 created: 2026-10-16
-updated: 2026-10-28
+updated: 2026-10-31
 ---
 
 # Session view
@@ -94,7 +94,7 @@ VIEW-4.1, 4.2 and 4.4 are covered by unit and route tests against the fake `flee
 - [x] VIEW-5.2 For a Session that isn't Controllable, the chat is read-only, with a note saying why there's no composer, preview or buttons. (test)
 - [x] VIEW-5.3 When the selected Session ends (SIDE-4.3), its chat stays readable, and the composer, preview and buttons are replaced by "This Session ended". (test)
 - [x] VIEW-5.4 With nothing selected among the Sessions there are, the "Select a Session" hint lists the shortcuts that matter there, taken from the one shortcuts list (`web/src/lib/shortcuts.ts`, SIDE-7.4): ↑/↓ or j/k, ⌘1–9, ⌘J, `/`, `N` and `H` `W` `L` for the panels. Under the list an "All shortcuts" button opens the Keyboard shortcuts dialog (SIDE-7.4). (test)
-- [x] VIEW-5.5 A status line directly below the composer, like a terminal's, shows the repo, Worktree or branch, model and context usage, all updating live. Without a composer (a Session that isn't Controllable, or has ended) it sits at the bottom of the pane. It stays one line at any width: parts that don't fit are truncated, and its tooltip shows the whole line. (test)
+- [x] VIEW-5.5 A status line directly below the composer, like a terminal's, shows the repo, Worktree or branch, the Session's Changes when it has any (DIFF-1.3), model and context usage, all updating live. Without a composer (a Session that isn't Controllable, or has ended) it sits at the bottom of the pane. It stays one line at any width: parts that don't fit are truncated, and its tooltip shows the whole line. (test)
 - [x] VIEW-5.6 An "End Session" action in the header ends a Controllable Session whose Session host is its own, after an in-app confirmation dialog (never `window.confirm`). Sessions that share their Session host, run in iTerm2 or run in another app don't get it. (test)
 - [x] VIEW-5.7 Once ended, the Session shows as ended (VIEW-5.3) with its chat still readable, and History can resume it (HIST-3.1). (test)
 - [x] VIEW-5.8 When it can't be ended, the dialog stays open and says why, going by Fleet's reason when it gives one: "Fleet is typing into it; try again" while Fleet holds the Session; for an editor open in the Session, to close it in the terminal and try again; for a shared Session host, a program in front of the Session or stopped in its terminal, or a terminal Fleet can't close, why and to close it in the terminal instead. (test)
@@ -627,3 +627,4 @@ VIEW-10's `(test)` criteria are covered by component tests of the question card 
 - 2026-10-31: VIEW-8.5 ticked. Seen live on Fleet `17183f9`. Codex: a `spawn_agent` child showed as `1 subagent` in blue while it ran and `1 subagent done` in grey once it ended, staying while Idle. Claude Code: a prompt sent with a Subagent still running cleared `done` and showed `1 subagent` within 2 s (SIDE spec, "Checked live"). No requirement changed.
 - 2026-10-31: VIEW-10.8 ticked. Seen live on Claude Code 2.1.316 and Fleet `17183f9`: a one-question form with three previews (one 120 characters wide) and a form with one question without previews and one with, each answered from Lookout. The Session got the answers, and the chat read them back with the picked options and previews. In an 820 px window the box sat under the options; the wide preview scrolled inside its box and the page never scrolled sideways. Found on the way (Plan item 21): right after Submit, with the pointer still over the card, the answered box showed the first option's preview instead of the picked one until a reload. VIEW-9.20: Dario saw a file dropped from Finder put its path in the composer; the rest of the check is still open. No requirement changed.
 - 2026-10-31: Fixed Plan item 21, found in VIEW-10.8's live check: the preview box follows the pointer on `pointermove` over an option, never on `pointerenter` alone. When the answered card replaced the live one under a pointer that hadn't moved, Chrome sent `pointerover` and `pointerenter` (no move) to the option now beneath it, which took the box from the picked one and kept it while the pointer stayed in the area. A component test sends those events without a move. No requirement changed.
+- 2026-10-31: VIEW-5.5 names the Session's Changes, which the DIFF spec (Draft) adds to the status line after the location (DIFF-1.3) and verifies there; VIEW-5.5 stays ticked, as the parts it already showed don't change.
