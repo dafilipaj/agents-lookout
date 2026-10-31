@@ -1206,6 +1206,7 @@ export function App({ client }: { client: LookoutClient }) {
           onStart={start}
           onCloseAutoFocus={launcherClosed}
           topics={state.topics?.topics}
+          keepsInput={!workDraft}
         />
         <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} returnFocus={shortcutsOpener} />
         <TopicPicker target={pickTarget} onClose={() => setPickTarget(null)} returnFocus={pickOpener} topics={state.topics?.topics ?? []} createTopic={(title) => client.createTopic(title)} addMember={(id, m) => client.addMember(id, m)} />

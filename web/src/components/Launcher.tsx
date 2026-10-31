@@ -33,12 +33,14 @@ interface Props {
   onCloseAutoFocus?(e: Event): void;
   /** TOPIC-5.3: the Topics a Session can be started in; the field shows only while there's one to pick. */
   topics?: readonly Topic[];
+  /** LAUNCH-1.3: false for a launcher opened from Work or a Topic view, whose draft goes when it closes. */
+  keepsInput?: boolean;
 }
 
 const FALLBACK_LABEL: Record<LaunchHarness, string> = { claude: 'Claude Code', codex: 'Codex' };
 
 /** The launcher (LAUNCH-1 … LAUNCH-4). */
-export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, harnesses, usage, now, onStart, onCloseAutoFocus, topics = [] }: Props) {
+export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, harnesses, usage, now, onStart, onCloseAutoFocus, topics = [], keepsInput = true }: Props) {
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<{ message: string; field: string | null } | null>(null);
@@ -296,7 +298,7 @@ export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, h
           <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
             {/* DS-8.4: a sentence is never a key; only Esc is. */}
             <span className="mr-auto text-meta text-muted-foreground">
-              <Kbd>Esc</Kbd> to close · your input is kept
+              <Kbd>Esc</Kbd> to close · {keepsInput ? 'your input is kept' : 'your input is discarded'}
             </span>
             <Button type="button" variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
               Cancel

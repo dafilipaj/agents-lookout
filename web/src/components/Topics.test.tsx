@@ -1282,6 +1282,26 @@ describe('starting a Session in a Topic (TOPIC-5)', () => {
     expect(app.client.launch).toHaveBeenCalledWith(expect.not.objectContaining({ topic: expect.anything() }), expect.any(String));
   });
 
+  it('LAUNCH-1.3 (support): the footer says the input is kept in the N launcher, and discarded in one opened from a Topic view or a Task', async () => {
+    openApp([topic(1, { title: 'Anvil' })]);
+    const user = await openTopics();
+    const footer = () => within(dialog()).getByText(/^to close · /);
+    await user.keyboard('n');
+    expect(footer()).toHaveTextContent('to close · your input is kept');
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await openView(user, 'Anvil');
+    await user.click(startButton());
+    expect(footer()).toHaveTextContent('to close · your input is discarded');
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await user.keyboard('w');
+    const option = screen.getByTestId('work-panel').querySelector<HTMLElement>(`[data-task="${LIGHT.id}"]`)!;
+    fireEvent.click(option);
+    await pressRowAction(user, option.querySelector<HTMLElement>('[data-action="start"]')!);
+    expect(footer()).toHaveTextContent('to close · your input is discarded');
+  });
+
   it('TOPIC-5.3: with no Open Topic the launcher has no Topic field', async () => {
     openApp([topic(1, { title: 'Old', state: 'archived' })]);
     const user = userEvent.setup();
