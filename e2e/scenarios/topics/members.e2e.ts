@@ -32,7 +32,9 @@ scenario(
     await expect(page.getByRole('tab', { name: 'Topics' })).toHaveAttribute('aria-selected', 'true');
     expect(await world.step('Topics to ask for a Work read', () => world.tbPr.held())).toEqual(['list', '--json']);
     await topicsPanel(page).getByRole('button', { name: /^Proposals rates,/ }).click();
-    const prs = topicsPanel(page).locator('[data-field="pr"]');
+    // Its members are in its view (TOPIC-10).
+    await topicsPanel(page).getByRole('button', { name: 'Open', exact: true }).click();
+    const prs = page.getByTestId('topic-view').locator('[data-field="pr"]');
     await expect(prs).toHaveCount(2);
     await expect(prs.getByText('Loading…')).toHaveCount(2);
     world.tbPr.release();
