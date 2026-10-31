@@ -12,7 +12,7 @@ import { FakeControl, readViolations } from '../fakes/control.ts';
 import type { FakeViolation } from '../fakes/index.ts';
 import { BrowserGuard } from './browser.ts';
 import type { FleetRow } from '../../server/fleet.ts';
-import { TopicStore } from '../../server/topics.ts';
+import { TopicStore, summaryFingerprint } from '../../server/topics.ts';
 import { type MemoryDecl, checkMemory, type GitIdentityDecl, type TbPrDecl, type TbProdDecl, type WorldSpec, checkTbPr, checkTbProd } from './builder.ts';
 import { type Budget, WaitTimedOut, type Waiting, Waits } from './budget.ts';
 import { REPO_ROOT, checkPins } from './pins.ts';
@@ -650,6 +650,7 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
           const id = store.create(t.title);
           if (t.notes) store.update(id, { notes: t.notes });
           for (const m of t.members ?? []) store.addMember(id, m);
+          if (t.summary) store.saveSummary(id, t.summary, summaryFingerprint(store.list().find((x) => x.id === id)!));
         }
       } finally {
         store.close();

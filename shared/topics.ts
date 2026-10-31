@@ -1,5 +1,5 @@
 import type { OutputItem } from './library.ts';
-import type { Harness, HistoryItem, SessionRow } from './types.ts';
+import type { Harness, HistoryItem, LaunchTopic, SessionRow } from './types.ts';
 import type { WorkPr, WorkTask } from './work.ts';
 
 /**
@@ -222,6 +222,38 @@ export const JEV_ASKS_PER_HOUR = 30;
 
 /** TOPIC-9.4: the reason recorded on a member a recommendation added. */
 export const acceptedReason = (source: RecommendationSource): string => (source === 'link' ? 'from a Link' : 'from Jev, accepted');
+
+/** TOPIC-5.2: the reason recorded on a Session Lookout added because it started it. */
+export const STARTED_REASON: Record<LaunchTopic['via'], string> = { topic: 'started from this Topic', task: 'started on its Task' };
+
+/**
+ * TOPIC-5.1: the launcher's prompt for a Session started from a Topic: its summary's `what`, `state`
+ * with `why`, `open` and `next` when it has one that isn't out of date, else the notes' first
+ * paragraph; then each Task member's URL; then `Topic: <id> <title>` as its own last line.
+ */
+export function topicPrompt(topic: Topic): string {
+  const parts: string[] = [];
+  const summary = topic.summary && !topic.summaryStale ? topic.summary.answer : null;
+  if (summary) {
+    const points = (label: string, list: readonly SummaryPoint[]) =>
+      list.length ? [`${label}:\n${list.map((p) => `- ${p.text}${p.cites.length ? ` (${p.cites.map((c) => c.name).join(', ')})` : ''}`).join('\n')}`] : [];
+    parts.push(summary.what, `State: ${summary.state}. ${summary.why}`, ...points('Open', summary.open), ...points('Next', summary.next));
+  } else {
+    const first = topic.notes.trim().split(/\n\s*\n/)[0]?.trim();
+    if (first) parts.push(first);
+  }
+  const tasks = topic.members.flatMap((m) => (m.kind === 'task' ? [m.snapshot.url] : []));
+  if (tasks.length) parts.push(tasks.join('\n'));
+  parts.push(`Topic: ${topic.id} ${topic.title}`);
+  return parts.join('\n\n');
+}
+
+/** TOPIC-5.2: the one Open Topic a Task is in, which a Session started on it joins; null for none or several. */
+export function taskTopic(topics: readonly Topic[], taskId: string): Topic | null {
+  const key = memberKey('task', { id: taskId });
+  const open = topics.filter((t) => t.state === 'open' && t.members.some((m) => m.key === key));
+  return open.length === 1 ? open[0]! : null;
+}
 
 /** TOPIC-4.4: expanding a Topic asks for a Library read when the last one is at least this old, as the Library tab rereads (LIB-2.7). */
 export const OUTPUTS_FRESH_MS = 60_000;

@@ -2,8 +2,8 @@ import type { OutputItem } from '@shared/library.ts';
 import { MAX_TOPIC_NOTES, MAX_TOPIC_TITLE, OUTPUTS_FRESH_MS, type Recommendation, type RecommendationAction, type SummaryCite, type SummaryPoint, type Topic, type TopicMember, type TopicSummary, type TopicsView, formatCost, modelName } from '@shared/topics.ts';
 import type { SessionRow } from '@shared/types.ts';
 import type { WorkSnapshot } from '@shared/work.ts';
-import { Archive, ArchiveRestore, ArrowLeft, ArrowLeftRight, ArrowRight, ExternalLink, Link2, Maximize2, Network, RefreshCw, Repeat2, Sparkles, Trash2, Unlink, X } from 'lucide-react';
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { Archive, ArchiveRestore, ArrowLeft, ArrowLeftRight, ArrowRight, ExternalLink, Link2, Maximize2, Network, Play, RefreshCw, Repeat2, Sparkles, Trash2, Unlink, X } from 'lucide-react';
+import { type MouseEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Chip } from '@/components/ui/chip';
@@ -70,6 +70,8 @@ export interface TopicViewProps {
   summarize(topicId: string): Promise<void>;
   /** TOPIC-11.6: "Cancel". */
   cancelSummary(topicId: string): Promise<void>;
+  /** TOPIC-5.1: "Start Session": the launcher, pre-filled from the Topic; `opener` gets focus back when it closes. */
+  onStartSession?(topic: Topic, opener: HTMLElement | null): void;
 }
 
 const openInBrowser = (url: string) => window.open(url, '_blank', 'noopener,noreferrer');
@@ -140,7 +142,7 @@ export function TopicView(props: TopicViewProps) {
               {memberCounts(topic.members)}
             </span>
           </div>
-          <TopicActions topic={topic} look="header" onOpenGraph={props.onOpenGraph} onLinkTo={props.onLinkTo} updateTopic={props.updateTopic} deleteTopic={props.deleteTopic} onDeleted={props.onOpenGraph} onProblem={setProblem} />
+          <TopicActions topic={topic} look="header" onStartSession={props.onStartSession && ((opener) => props.onStartSession!(topic, opener))} onOpenGraph={props.onOpenGraph} onLinkTo={props.onLinkTo} updateTopic={props.updateTopic} deleteTopic={props.deleteTopic} onDeleted={props.onOpenGraph} onProblem={setProblem} />
         </>
       }
     >
@@ -388,6 +390,7 @@ export function TopicActions({
   topic,
   look,
   onOpen,
+  onStartSession,
   onOpenGraph,
   onLinkTo,
   updateTopic,
@@ -399,6 +402,8 @@ export function TopicActions({
   /** `header`: the view's header buttons; `row`: the tab's labelled buttons. */
   look: 'header' | 'row';
   onOpen?(): void;
+  /** TOPIC-10.2: "Start Session" goes first (TOPIC-5.1). */
+  onStartSession?(opener: HTMLElement | null): void;
   onOpenGraph(): void;
   onLinkTo(topic: Topic): void;
   updateTopic(id: string, patch: { state: Topic['state'] }): Promise<unknown>;
@@ -408,7 +413,7 @@ export function TopicActions({
 }) {
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const button = (action: string, onClick: () => void, children: ReactNode) =>
+  const button = (action: string, onClick: (e: MouseEvent<HTMLButtonElement>) => void, children: ReactNode) =>
     look === 'header' ? (
       <Button key={action} variant="outline" size="sm" className="h-7" data-action={action} onClick={onClick}>
         {children}
@@ -424,6 +429,15 @@ export function TopicActions({
   };
   return (
     <div className={cn('flex min-w-0 flex-wrap items-center gap-2', look === 'header' ? 'ml-auto justify-end' : 'mt-1')} data-field="actions">
+      {onStartSession &&
+        button(
+          'start',
+          (e) => onStartSession(e.currentTarget),
+          <>
+            <Play />
+            Start Session
+          </>,
+        )}
       {onOpen &&
         button(
           'open',

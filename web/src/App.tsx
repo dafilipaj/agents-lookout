@@ -50,7 +50,7 @@ import { pruneHeights } from '@/lib/terminal-height';
 import { ClockContext, useNow } from '@/lib/time';
 import { reviewPrompt } from '@/lib/work';
 import { type TopicsApi, TopicsContext, sessionTopicTitles, topicsByMember } from '@/lib/topics';
-import type { NewMember, Recommendation, Topic, TopicMember } from '@shared/topics.ts';
+import { type NewMember, type Recommendation, type Topic, type TopicMember, taskTopic, topicPrompt } from '@shared/topics.ts';
 import { DEFAULT_LIBRARY_TYPES, LIBRARY_TYPES } from '@shared/library.ts';
 
 /**
@@ -295,6 +295,9 @@ export function App({ client }: { client: LookoutClient }) {
   const [launcherOpen, setLauncherOpen] = useState(false);
   // Opened from Work (Review, Start Session): closing it without a start gives focus back to Work.
   const launchedFromWork = useRef(false);
+  // TOPIC-5.1: opened from a Topic view's "Start Session": that button, which gets focus back when it
+  // closes without a start. Its draft is Work's kind, kept apart from LAUNCH-1.3's.
+  const launchedFromTopic = useRef<HTMLElement | null>(null);
   // Background shortcuts stand down while any modal (the launcher, End Session) is open.
   const modalOpen = useAnyModalOpen();
   // SIDE-7.4, SIDE-7.5: the Keyboard shortcuts dialog, and the button that opened it, which gets focus back.
@@ -333,7 +336,10 @@ export function App({ client }: { client: LookoutClient }) {
   // LAUNCH-1.1: N, ⌘N and "+" open the launcher on its own draft; Work's draft goes. Opening it over
   // an open launcher changes nothing.
   const openOwnLauncher = useCallback(() => {
-    if (!launcherOpen) setWorkDraft(null);
+    if (!launcherOpen) {
+      setWorkDraft(null);
+      launchedFromTopic.current = null;
+    }
     openLauncher();
   }, [launcherOpen, openLauncher]);
 
@@ -387,7 +393,7 @@ export function App({ client }: { client: LookoutClient }) {
     async (req: LaunchRequest) => {
       const id = crypto.randomUUID();
       // Which launcher this start came from, read now: Esc may close it, and reset the ref, before the answer.
-      const fromWork = launchedFromWork.current;
+      const fromWork = launchedFromWork.current || launchedFromTopic.current !== null;
       const pending = requestLaunch(ownLaunch(id, startTitle(req), req.harness, req.directory));
       let launch: LaunchView;
       try {
@@ -404,6 +410,7 @@ export function App({ client }: { client: LookoutClient }) {
       // A start from Work leaves LAUNCH-1.3's draft alone, as it never read it.
       if (!fromWork) setDraft(null);
       launchedFromWork.current = false; // the new Session's row is selected now
+      launchedFromTopic.current = null;
       setLauncherOpen(false);
     },
     [client, requestLaunch, navigate],
@@ -513,6 +520,15 @@ export function App({ client }: { client: LookoutClient }) {
   // holding the selected row, rather than to the page, where j/k would move the Session sidebar
   // (WORK UX, Focus).
   const launcherClosed = useCallback((e: Event) => {
+    const opener = launchedFromTopic.current;
+    if (opener) {
+      launchedFromTopic.current = null;
+      e.preventDefault();
+      // A failed start goes back to a Topic view drawn afresh: its Start Session, not the old button.
+      const target = opener.isConnected ? opener : document.querySelector<HTMLElement>('[data-testid="topic-view"] [data-action="start"]');
+      target?.focus();
+      return;
+    }
     if (!launchedFromWork.current) return;
     launchedFromWork.current = false;
     e.preventDefault();
@@ -534,8 +550,22 @@ export function App({ client }: { client: LookoutClient }) {
   // else, on the last start's Harness, model and directory; you press Start.
   const startOnTask = useCallback(
     (task: WorkTask) => {
-      setWorkDraft({ ...initialDraft(state.settings), prompt: task.url });
+      // TOPIC-5.2: a Task in exactly one Open Topic: the Session joins that Topic too, shown in the
+      // launcher's Topic field, where it can be changed.
+      const topic = taskTopic(state.topics?.topics ?? [], task.id);
+      setWorkDraft({ ...initialDraft(state.settings), prompt: task.url, ...(topic ? { topic: { id: topic.id, via: 'task' as const } } : {}) });
       launchedFromWork.current = true;
+      openLauncher();
+    },
+    [state.settings, state.topics, openLauncher],
+  );
+  // TOPIC-5.1: "Start Session" in a Topic view: the launcher pre-filled from the Topic, as WORK-5.1's
+  // is from a Task; nothing starts until Start.
+  const startInTopic = useCallback(
+    (topic: Topic, opener: HTMLElement | null) => {
+      setWorkDraft({ ...initialDraft(state.settings), prompt: topicPrompt(topic), topic: { id: topic.id, via: 'topic' }, fromTopicView: true });
+      launchedFromWork.current = false;
+      launchedFromTopic.current = opener;
       openLauncher();
     },
     [state.settings, openLauncher],
@@ -1040,6 +1070,7 @@ export function App({ client }: { client: LookoutClient }) {
                 unlinkTopics={(id, other) => client.unlinkTopics(id, other)}
                 summarize={(id) => client.summarize(id)}
                 cancelSummary={(id) => client.cancelSummary(id)}
+                onStartSession={startInTopic}
               />
             ) : route.name === 'past' ? (
               <PastSessionView harness={route.harness} sessionId={route.id} now={now} load={loadPast} />
@@ -1174,6 +1205,7 @@ export function App({ client }: { client: LookoutClient }) {
           now={now}
           onStart={start}
           onCloseAutoFocus={launcherClosed}
+          topics={state.topics?.topics}
         />
         <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} returnFocus={shortcutsOpener} />
         <TopicPicker target={pickTarget} onClose={() => setPickTarget(null)} returnFocus={pickOpener} topics={state.topics?.topics ?? []} createTopic={(title) => client.createTopic(title)} addMember={(id, m) => client.addMember(id, m)} />

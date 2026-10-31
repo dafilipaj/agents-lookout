@@ -20,6 +20,7 @@ import { ModelSwitchError, parseEffortRequest, parseModelRequest } from './model
 import { RenameError, parseRenameRequest } from './renamer.ts';
 import { type FindQuery, HistoryError, parseFindQuery } from './history.ts';
 import { LaunchError, TrustError } from './launcher.ts';
+import type { TopicLaunches } from './topic-launches.ts';
 import type { MemoryMonitor } from './memory.ts';
 import type { SessionMonitor } from './monitor.ts';
 import { type GuardConfig, guardRequest } from './security.ts';
@@ -112,6 +113,8 @@ export interface AppOptions {
     snapshot(): ToolsSnapshot;
     read(opts?: { force?: boolean }): Promise<ToolsSnapshot>;
   };
+  /** TOPIC-5.2: Sessions started for a Topic join it once Fleet reports them; optional, so a server without it refuses a start with a Topic. */
+  topicLaunches?: Pick<TopicLaunches, 'check' | 'expect' | 'forget'>;
   /** TOPIC: Lookout's own store of Topics; optional, so a server without it has no `/api/topics` (404). */
   topics?: Pick<Topics, 'view' | 'create' | 'update' | 'delete' | 'addMember' | 'removeMember' | 'link' | 'editEdge' | 'unlink' | 'place'> & {
     /** TOPIC-9.4: Accept, Dismiss, Other Topic… or Judge again on a recommendation. */
@@ -288,9 +291,29 @@ export function createApp(opts: AppOptions): LookoutApp {
       case 'POST /api/launch': {
         const body = await readJson(req, res, MAX_LAUNCH_BODY, { error: 'The prompt is too long.', field: 'prompt' });
         if (body === NO_BODY) return;
+        // TOPIC-5.2: the Topic the Session joins, checked first and expected before the start is
+        // sent, so a Fleet report that comes before this answer still finds it.
+        const v = typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : {};
+        let launchId: string | null = null;
+        if (v.topic !== undefined && v.topic !== null) {
+          if (!opts.topicLaunches) return json(res, 400, { error: 'Topics are off on this server.', field: 'topic' });
+          let topic;
+          try {
+            topic = opts.topicLaunches.check(v.topic);
+          } catch (err) {
+            if (err instanceof TopicsError) return json(res, err.status, { error: err.message, field: 'topic' });
+            throw err;
+          }
+          if (topic) {
+            if (typeof v.launchId !== 'string') return json(res, 400, { error: 'A start for a Topic needs its launch id.', field: 'topic' });
+            if (!opts.topicLaunches.expect(v.launchId, topic)) return json(res, 409, { error: 'That launch id is taken.' });
+            launchId = v.launchId;
+          }
+        }
         try {
           return json(res, 200, { launch: await opts.launcher.start(body) });
         } catch (err) {
+          if (launchId) opts.topicLaunches?.forget(launchId);
           if (err instanceof LaunchError) return json(res, err.status, { error: err.message, field: err.field });
           throw err;
         }

@@ -155,6 +155,17 @@ export interface LaunchRequest {
   model: string;
   name: string;
   prompt: string;
+  /** TOPIC-5.2, TOPIC-5.3: the Topic the Session is added to once Fleet reports it; absent for none. */
+  topic?: LaunchTopic;
+}
+
+/**
+ * TOPIC-5.2: `topic`, started from the Topic (its view's "Start Session", or picked in the launcher);
+ * `task`, started from a Task's "Start Session" while that Task is in exactly one Open Topic.
+ */
+export interface LaunchTopic {
+  id: string;
+  via: 'topic' | 'task';
 }
 
 /** A start in flight: a "Starting…" row until Fleet reports the Session (LAUNCH-4). */

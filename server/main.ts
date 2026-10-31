@@ -28,6 +28,7 @@ import { ToolsMonitor } from './tools.ts';
 import { TopicStore, Topics, defaultTopicsPath } from './topics.ts';
 import { UsageMonitor, resolveJevBin } from './usage.ts';
 import { Recommender } from './recommender.ts';
+import { TopicLaunches } from './topic-launches.ts';
 import { Summarizer } from './summarizer.ts';
 import { Viewer } from './viewer.ts';
 import { WorkMonitor, resolveWorkBin } from './work.ts';
@@ -57,7 +58,11 @@ const launcher = new Launcher({
   runner: run,
   fleetBin: () => resolveFleetBin(env),
   settings,
-  onChange: (launches, started) => app.broadcast({ type: 'launches', launches, started }),
+  onChange: (launches, started) => {
+    // TOPIC-5.2: a start for a Topic is followed by its Session's row from here on.
+    if (started.length) topicLaunches.started(started, monitor.snapshot().sessions);
+    app.broadcast({ type: 'launches', launches, started });
+  },
 });
 
 const work = new WorkMonitor({
@@ -93,6 +98,8 @@ const monitor: SessionMonitor = new SessionMonitor({
     memory.prune();
     launcher.observe(rows);
     work.setLiveSessions(rows.flatMap((row) => (row.session_id ? [row.session_id] : [])));
+    // TOPIC-5.2: a Session Lookout started for a Topic joins it first, so it's never a candidate.
+    topicLaunches.observe(monitor.snapshot().sessions);
     // TOPIC-9.1: a Session with a session id is a candidate once.
     recommender.observeSessions(monitor.snapshot().sessions);
   },
@@ -179,6 +186,9 @@ const topics = new Topics({
   onChange: (t) => app.broadcast({ type: 'topics', topics: t }),
 });
 
+// TOPIC-5.2: a Session started for a Topic is added to it once Fleet reports it.
+const topicLaunches = new TopicLaunches({ topics });
+
 // TOPIC-9: recommendations, Links first and Jev second; nothing is added without Accept.
 const recommender = new Recommender({
   topics,
@@ -221,6 +231,7 @@ const app = createApp({
   settings,
   productiveEmailSuggestion,
   launcher,
+  topicLaunches,
   viewer,
   usage,
   memory,

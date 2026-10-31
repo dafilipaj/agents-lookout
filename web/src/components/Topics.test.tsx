@@ -919,7 +919,7 @@ describe('the Topic view (TOPIC-10)', () => {
     expect(within(banner).getByRole('textbox', { name: 'Topic title' })).toHaveValue('Shipped');
     expect(banner.querySelector('[data-field="looks-done"]')).toHaveTextContent('looks done');
     expect(banner.querySelector('[data-field="counts"]')).toHaveTextContent('1 Session · 1 PR');
-    expect([...banner.querySelectorAll('[data-field="actions"] [data-action]')].map((b) => b.textContent)).toEqual(['Open graph', 'Link to Topic…', 'Archive', 'Delete']);
+    expect([...banner.querySelectorAll('[data-field="actions"] [data-action]')].map((b) => b.textContent)).toEqual(['Start Session', 'Open graph', 'Link to Topic…', 'Archive', 'Delete']);
     await user.click(within(banner).getByRole('button', { name: 'Archive' }));
     expect(app.client.updateTopic).toHaveBeenCalledWith(id(1), { state: 'archived' });
     await waitFor(() => expect(within(topicView()).getByRole('banner').querySelector('[data-tone="muted"]')).toHaveTextContent('archived'));
@@ -1119,5 +1119,174 @@ describe('a summary of the Topic (TOPIC-11)', () => {
     // None yet: nothing is shown for it.
     app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Anvil', notes: 'Sharp corners.' })], edges: [], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 0, summarizing: [], summaryErrors: {} } });
     expect(item('Anvil').querySelector('[data-field="summary"]')).toBeNull();
+  });
+});
+
+describe('starting a Session in a Topic (TOPIC-5)', () => {
+  const SUMMARY: TopicSummary = {
+    answer: {
+      what: 'Sharpen the anvil and light the lanterns, part by part.',
+      state: 'in progress',
+      why: 'The anvil PR is a draft.',
+      open: [{ text: 'The corners are still blunt.', cites: [{ key: memberKey('pr', PR_MEMBER.ref), name: 'anvil #2101' }, { key: memberKey('session', SESSION.ref), name: 'rates-port' }] }],
+      recent: [{ text: 'The port began.', cites: [] }],
+      next: [{ text: 'Light the lanterns.', cites: [] }],
+    },
+    writtenAt: NOW - 3_600_000,
+    model: 'claude-sonnet-5-5',
+    costUsd: 0.04,
+  };
+  const dialog = () => screen.getByRole('dialog', { name: 'New Session' });
+  const startButton = () => within(topicView()).getByRole('button', { name: 'Start Session' });
+
+  it('TOPIC-5.1: "Start Session" in the view opens the launcher with the current summary’s what, state, open and next, each Task’s URL and the Topic line last; nothing starts until Start, which sends what was edited with the Topic', async () => {
+    const app = openApp([topic(1, { title: 'Anvil', notes: 'Not used while the summary is current.', members: [member(PR_MEMBER), member(TASK_MEMBER), member(SESSION)], summary: SUMMARY })]);
+    const user = await openTopics();
+    await openView(user, 'Anvil');
+    await user.click(startButton());
+    const prompt = [
+      'Sharpen the anvil and light the lanterns, part by part.',
+      'State: in progress. The anvil PR is a draft.',
+      'Open:\n- The corners are still blunt. (anvil #2101, rates-port)',
+      'Next:\n- Light the lanterns.',
+      LIGHT.url,
+      `Topic: ${id(1)} Anvil`,
+    ].join('\n\n');
+    expect(within(dialog()).getByLabelText('Prompt')).toHaveValue(prompt);
+    expect(within(dialog()).getByLabelText('Topic')).toHaveValue(id(1));
+    expect(app.client.launch).not.toHaveBeenCalled();
+    await user.type(within(dialog()).getByLabelText('Prompt'), '\nStart with the corners.');
+    await waitFor(() => expect(within(dialog()).getByRole('button', { name: /Start/ })).toBeEnabled());
+    await user.click(within(dialog()).getByRole('button', { name: /Start/ }));
+    expect(app.client.launch).toHaveBeenCalledWith(expect.objectContaining({ prompt: `${prompt}\nStart with the corners.`, topic: { id: id(1), via: 'topic' } }), expect.any(String));
+  });
+
+  it('TOPIC-5.1: with no summary, or one out of date, the prompt is the notes’ first paragraph, then the Topic line; Esc gives focus back to Start Session and leaves N’s draft alone', async () => {
+    openApp([
+      topic(1, { title: 'Anvil', notes: 'Sharpen the corners\nbefore the lanterns.\n\nRounding: half up.', members: [member(PR_MEMBER)], summary: SUMMARY, summaryStale: true }),
+      topic(2, { title: 'Bare' }),
+    ]);
+    const user = await openTopics();
+    await user.keyboard('n');
+    await user.type(await screen.findByLabelText('Prompt'), 'my own draft');
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+
+    await openView(user, 'Anvil');
+    await user.click(startButton());
+    expect(within(dialog()).getByLabelText('Prompt')).toHaveValue(`Sharpen the corners\nbefore the lanterns.\n\nTopic: ${id(1)} Anvil`);
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(() => expect(startButton()).toHaveFocus());
+    await user.keyboard('n');
+    expect(await screen.findByLabelText('Prompt')).toHaveValue('my own draft');
+    expect(screen.getByLabelText('Topic')).toHaveValue('');
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+
+    // No notes and no summary: the Topic line alone.
+    await openView(user, 'Bare');
+    await user.click(startButton());
+    expect(within(dialog()).getByLabelText('Prompt')).toHaveValue(`Topic: ${id(2)} Bare`);
+  });
+
+  it('TOPIC-5.2 (support): Start Session on a Task that is in exactly one Open Topic starts it in that Topic, shown in the launcher; in two, or only in an Archived one, in none', async () => {
+    const app = openApp([topic(1, { title: 'Anvil', members: [member(TASK_MEMBER)] }), topic(2, { title: 'Old', state: 'archived', members: [member(TASK_MEMBER)] })]);
+    const user = userEvent.setup();
+    await user.keyboard('w');
+    const start = async () => {
+      const option = screen.getByTestId('work-panel').querySelector<HTMLElement>(`[data-task="${LIGHT.id}"]`)!;
+      if (option.getAttribute('aria-expanded') !== 'true') fireEvent.click(option);
+      await pressRowAction(user, option.querySelector<HTMLElement>('[data-action="start"]')!);
+      return dialog();
+    };
+    let d = await start();
+    expect(within(d).getByLabelText('Prompt')).toHaveValue(LIGHT.url);
+    expect(within(d).getByLabelText('Topic')).toHaveValue(id(1));
+    await waitFor(() => expect(within(d).getByRole('button', { name: /Start/ })).toBeEnabled());
+    await user.click(within(d).getByRole('button', { name: /Start/ }));
+    expect(app.client.launch).toHaveBeenLastCalledWith(expect.objectContaining({ prompt: LIGHT.url, topic: { id: id(1), via: 'task' } }), expect.any(String));
+
+    // In two Open Topics: no Topic.
+    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Anvil', members: [member(TASK_MEMBER)] }), topic(3, { title: 'Lanterns', members: [member(TASK_MEMBER)] })], edges: [], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 0, summarizing: [], summaryErrors: {} } });
+    d = await start();
+    expect(within(d).getByLabelText('Topic')).toHaveValue('');
+    await waitFor(() => expect(within(d).getByRole('button', { name: /Start/ })).toBeEnabled());
+    await user.click(within(d).getByRole('button', { name: /Start/ }));
+    expect(app.client.launch).toHaveBeenLastCalledWith(expect.not.objectContaining({ topic: expect.anything() }), expect.any(String));
+  });
+
+  it('TOPIC-5.3: the launcher opened with N has an optional Topic field of Open Topics, most recently changed first; a pick is kept with the draft and sent with the start', async () => {
+    const app = openApp([topic(1, { title: 'Anvil' }), topic(2, { title: 'Lanterns' }), topic(3, { title: 'Old', state: 'archived' })]);
+    const user = userEvent.setup();
+    await user.keyboard('n');
+    const field = await screen.findByLabelText('Topic');
+    expect(field).toHaveValue('');
+    expect([...field.querySelectorAll('option')].map((o) => o.textContent)).toEqual(['None', 'Anvil', 'Lanterns']);
+    await user.selectOptions(field, id(2));
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await user.keyboard('n');
+    expect(await screen.findByLabelText('Topic')).toHaveValue(id(2));
+    await waitFor(() => expect(within(dialog()).getByRole('button', { name: /Start/ })).toBeEnabled());
+    await user.click(within(dialog()).getByRole('button', { name: /Start/ }));
+    expect(app.client.launch).toHaveBeenCalledWith(expect.objectContaining({ topic: { id: id(2), via: 'topic' } }), expect.any(String));
+  });
+
+  it('TOPIC-5.1: a Topic deleted in another tab before Start stays picked as "A deleted Topic" and is sent, so the server refuses the start; one archived stays listed in its view’s launcher', async () => {
+    const app = openApp([topic(1, { title: 'Anvil' })]);
+    const user = await openTopics();
+    await openView(user, 'Anvil');
+    await user.click(startButton());
+    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Anvil', state: 'archived' })], edges: [], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 0, summarizing: [], summaryErrors: {} } });
+    expect(within(dialog()).getByLabelText('Topic')).toHaveValue(id(1));
+    expect(within(dialog()).getByLabelText('Topic')).toHaveDisplayValue('Anvil');
+    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [], edges: [], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 0, summarizing: [], summaryErrors: {} } });
+    expect(within(dialog()).getByLabelText('Topic')).toHaveDisplayValue('A deleted Topic');
+    await waitFor(() => expect(within(dialog()).getByRole('button', { name: /Start/ })).toBeEnabled());
+    await user.click(within(dialog()).getByRole('button', { name: /Start/ }));
+    expect(app.client.launch).toHaveBeenCalledWith(expect.objectContaining({ topic: { id: id(1), via: 'topic' } }), expect.any(String));
+  });
+
+  it('TOPIC-5.1: after a start that failed, Esc gives focus back to the Topic view’s Start Session', async () => {
+    openApp([topic(1, { title: 'Anvil' })], work(), {
+      launch: async () => {
+        throw new Error('That Topic is gone: pick another, or none.');
+      },
+    });
+    const user = await openTopics();
+    await openView(user, 'Anvil');
+    await user.click(startButton());
+    await waitFor(() => expect(within(dialog()).getByRole('button', { name: /Start/ })).toBeEnabled());
+    await user.click(within(dialog()).getByRole('button', { name: /Start/ }));
+    expect(await within(dialog()).findByRole('alert')).toHaveTextContent('That Topic is gone');
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(() => expect(startButton()).toHaveFocus());
+  });
+
+  it('TOPIC-5.3: a Topic picked in the N launcher and archived since is no longer listed or sent', async () => {
+    const app = openApp([topic(1, { title: 'Anvil' }), topic(2, { title: 'Lanterns' })]);
+    const user = userEvent.setup();
+    await user.keyboard('n');
+    await user.selectOptions(await screen.findByLabelText('Topic'), id(1));
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Anvil', state: 'archived' }), topic(2, { title: 'Lanterns' })], edges: [], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 0, summarizing: [], summaryErrors: {} } });
+    await user.keyboard('n');
+    const field = await screen.findByLabelText('Topic');
+    expect(field).toHaveValue('');
+    expect([...field.querySelectorAll('option')].map((o) => o.textContent)).toEqual(['None', 'Lanterns']);
+    await waitFor(() => expect(within(dialog()).getByRole('button', { name: /Start/ })).toBeEnabled());
+    await user.click(within(dialog()).getByRole('button', { name: /Start/ }));
+    expect(app.client.launch).toHaveBeenCalledWith(expect.not.objectContaining({ topic: expect.anything() }), expect.any(String));
+  });
+
+  it('TOPIC-5.3: with no Open Topic the launcher has no Topic field', async () => {
+    openApp([topic(1, { title: 'Old', state: 'archived' })]);
+    const user = userEvent.setup();
+    await user.keyboard('n');
+    expect(await screen.findByLabelText('Prompt')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Topic')).toBeNull();
   });
 });

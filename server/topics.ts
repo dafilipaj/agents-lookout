@@ -611,6 +611,17 @@ export class TopicStore {
     });
   }
 
+  /**
+   * TOPIC-5.2: a Session Lookout started for a Topic was never a candidate (TOPIC-9.1). Fleet can list
+   * it before the start answers, so it may have been recorded as one meanwhile: that row and its
+   * recommendations go.
+   */
+  forgetCandidate(kind: MemberKind, ref: string): void {
+    this.transaction(() => {
+      this.db.prepare('delete from candidates where kind = ? and ref = ?').run(kind, ref);
+    });
+  }
+
   /** Whether the item is a member of any Topic, or of this one. */
   isMember(kind: MemberKind, ref: string, topicId?: string): boolean {
     const row = topicId === undefined
@@ -887,6 +898,22 @@ export class Topics {
 
   removeMember(id: string, kind: MemberKind, ref: string): void {
     this.write((s) => s.removeMember(id, kind, ref));
+  }
+
+  /** TOPIC-5.2: whether a Topic of that id exists, Open or Archived. */
+  has(id: string): boolean {
+    return this.last.topics.some((t) => t.id === id);
+  }
+
+  /** TOPIC-5.2: a Session Lookout started for this Topic, with the reason it was added; false when it already was a member. */
+  addStarted(id: string, member: NewMember, reason: string): boolean {
+    return this.write((s) =>
+      s.transaction(() => {
+        const added = s.addMember(id, member, reason);
+        s.forgetCandidate(member.kind, refText(member.kind, member.ref));
+        return added;
+      }),
+    );
   }
 
   /** TOPIC-6.1. */

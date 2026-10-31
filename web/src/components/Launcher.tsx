@@ -1,5 +1,6 @@
 import type { LaunchChoices, LaunchHarness, Settings } from '@shared/settings.ts';
 import type { LaunchRequest } from '@shared/types.ts';
+import { type Topic, sortTopics } from '@shared/topics.ts';
 import type { UsageSnapshot } from '@shared/usage.ts';
 import { type FormEvent, type KeyboardEvent, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
@@ -30,12 +31,14 @@ interface Props {
   onStart(req: LaunchRequest): Promise<void>;
   /** Where focus goes when it closes: prevent the event to place it yourself. It has no Trigger to return to. */
   onCloseAutoFocus?(e: Event): void;
+  /** TOPIC-5.3: the Topics a Session can be started in; the field shows only while there's one to pick. */
+  topics?: readonly Topic[];
 }
 
 const FALLBACK_LABEL: Record<LaunchHarness, string> = { claude: 'Claude Code', codex: 'Codex' };
 
 /** The launcher (LAUNCH-1 … LAUNCH-4). */
-export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, harnesses, usage, now, onStart, onCloseAutoFocus }: Props) {
+export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, harnesses, usage, now, onStart, onCloseAutoFocus, topics = [] }: Props) {
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<{ message: string; field: string | null } | null>(null);
@@ -55,6 +58,11 @@ export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, h
   const effort = level && levels.includes(level) ? level : levels.includes('high') ? 'high' : (chosen?.defaultEffort ?? null);
   const skipPermissions = remembered(harness)?.skipPermissions ?? harness === 'claude';
   const directory = settings.startDirectories.includes(draft.directory) ? draft.directory : (settings.startDirectories[0] ?? '');
+  // TOPIC-5.3: Open Topics, most recently changed first; a Topic view's own Topic stays listed if it
+  // was archived since. One deleted since stays picked and is sent, so the start is refused with why.
+  const topicChoices = sortTopics(topics.filter((t) => t.state === 'open' || (draft.fromTopicView && t.id === draft.topic?.id)));
+  const topicGone = draft.topic !== undefined && !topics.some((t) => t.id === draft.topic!.id);
+  const topic = draft.topic && (topicGone || topicChoices.some((t) => t.id === draft.topic!.id)) ? draft.topic : undefined;
   const canStart = !submitting && harnesses.state === 'ready' && installed(harness) && directory !== '';
 
   const set = (patch: Partial<LaunchDraft>) => {
@@ -83,7 +91,7 @@ export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, h
     setSubmitting(true);
     setError(null);
     try {
-      await onStart({ directory, harness, model, name: draft.name, prompt: draft.prompt, ...(levels.length && effort ? { effort } : {}), skipPermissions });
+      await onStart({ directory, harness, model, name: draft.name, prompt: draft.prompt, ...(levels.length && effort ? { effort } : {}), skipPermissions, ...(topic ? { topic } : {}) });
     } catch (err) {
       // LAUNCH-4.4: stay open, show why, keep everything.
       setError({
@@ -241,6 +249,31 @@ export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, h
               onChange={(e) => set({ name: e.target.value })}
               className="h-8 text-body"
             />
+
+            {(topicChoices.length > 0 || topicGone) && (
+              <>
+                <label htmlFor="launch-topic" className="text-muted-foreground">
+                  Topic
+                </label>
+                <select
+                  id="launch-topic"
+                  value={topic?.id ?? ''}
+                  // A Topic picked here is "started from this Topic" (TOPIC-5.2), whichever launcher it is.
+                  onChange={(e) => set({ topic: e.target.value ? { id: e.target.value, via: e.target.value === draft.topic?.id ? draft.topic.via : 'topic' } : undefined })}
+                  aria-invalid={error?.field === 'topic' || undefined}
+                  title="The Session is added to this Topic once it starts."
+                  className="h-8 w-full min-w-0 rounded-md border border-input bg-transparent px-2 text-body outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 dark:bg-input/30"
+                >
+                  <option value="">None</option>
+                  {topicGone && <option value={draft.topic!.id}>A deleted Topic</option>}
+                  {topicChoices.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.title}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
 
             <label htmlFor="launch-prompt" className="self-start pt-1.5 text-muted-foreground">
               Prompt

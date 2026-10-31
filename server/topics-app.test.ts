@@ -6,8 +6,10 @@ import { join } from 'node:path';
 import { Socket } from 'node:net';
 import { afterEach, expect, it } from 'vitest';
 import { defaultSettings } from '../shared/settings.ts';
-import type { ServerEvent } from '../shared/types.ts';
+import type { LaunchView, ServerEvent, SessionRow } from '../shared/types.ts';
 import { createApp } from './app.ts';
+import { LaunchError } from './launcher.ts';
+import { TopicLaunches } from './topic-launches.ts';
 import { TopicStore, Topics, TopicsError } from './topics.ts';
 import { WorkMonitor } from './work.ts';
 import { Library } from './library.ts';
@@ -18,7 +20,7 @@ afterEach(() => {
 });
 
 /** Real HTTP handlers over in-memory sockets, with a real Topics store in a temporary directory. */
-function setup() {
+function setup(opts: { start?: (body: unknown) => Promise<LaunchView> } = {}) {
   const unused = async (): Promise<never> => {
     throw new Error('unused');
   };
@@ -27,12 +29,13 @@ function setup() {
   const path = join(dir, 'topics.db');
   const late: { app?: ReturnType<typeof createApp> } = {};
   const topics = new Topics({ path, open: () => new TopicStore(path), onChange: (t) => late.app?.broadcast({ type: 'topics', topics: t }) });
+  const topicLaunches = new TopicLaunches({ topics });
   const app = (late.app = createApp({
     attachmentsDir: join(tmpdir(), `lookout-unused-attachments-${randomUUID()}`),
     guard: { allowedHosts: new Set(['localhost']), allowedOrigins: new Set(['http://localhost']), token: 'test' },
     monitor: { snapshot: () => ({ sessions: [], fleet: { state: 'ok' } }), watch: () => () => {} },
     settings: { get: defaultSettings, update: unused, onChange: () => () => {} },
-    launcher: { list: () => [], recentStarts: () => [], harnesses: unused, start: unused, answerTrust: async () => null, trustDisconnected: () => {}, dismiss: () => false },
+    launcher: { list: () => [], recentStarts: () => [], harnesses: unused, start: opts.start ?? unused, answerTrust: async () => null, trustDisconnected: () => {}, dismiss: () => false },
     usage: { snapshot: () => null, watch: () => () => {}, refresh: unused, refreshJev: unused },
     memory: { snapshot: () => null, watch: () => () => {}, setOpen: () => {}, drop: () => {} },
     library: new Library({ runner: unused, bin: () => 'tb-session' }),
@@ -40,6 +43,7 @@ function setup() {
     viewer: { watch: () => {}, drop: () => {}, send: unused, earlier: unused },
     sessions: { end: unused, answer: unused, stop: unused, rename: unused, switchModel: unused, switchEffort: unused },
     topics,
+    topicLaunches,
     files: { check: unused },
     history: { find: unused, detail: unused, peek: unused, resume: unused },
     staticDir: null,
@@ -69,7 +73,7 @@ function setup() {
     req.emit('end');
     return { req, res, done, text: () => text, events: () => text.split('\n').filter((l) => l.startsWith('data: ')).map((l) => JSON.parse(l.slice(6)) as ServerEvent) };
   };
-  return { topics, exchange };
+  return { topics, topicLaunches, exchange };
 }
 
 const PR = { kind: 'pr', ref: { url: 'https://github.com/productiveio/fantastic/pull/812' }, snapshot: { repo: 'fantastic', number: 812, title: 'Port the rates table', url: 'https://github.com/productiveio/fantastic/pull/812' } };
@@ -208,4 +212,49 @@ it('TOPIC-6.1, TOPIC-6.2, TOPIC-7.2: Edges and positions through the API, token 
   expect(await call('PUT', '/api/topics/positions', { positions: [{ id: a, x: 10, y: 20 }, { id: b, x: 200, y: 20 }] })).toEqual({ status: 200, body: { ok: true } });
   expect(Object.fromEntries(topics.view().topics.map((t) => [t.id, t.pos]))).toEqual({ [a]: { x: 10, y: 20 }, [b]: { x: 200, y: 20 } });
   expect((await call('POST', '/api/topics/positions', {})).status).toBe(405);
+});
+
+it('TOPIC-5.2 (support): POST /api/launch with a Topic expects the Session before the start is sent, forgets it when the start fails, and refuses a Topic that is gone', async () => {
+  const launchId = '00000000-0000-4000-8000-0000000000aa';
+  const sessionId = 'a1b2c3d4-0000-4000-8000-000000000001';
+  const rows = [{ id: sessionId, pid: 41, harness: 'claude', title: 'rates-port', cwd: '~/Projects/work' } as SessionRow];
+  let fail = false;
+  const { topics, topicLaunches, exchange } = setup({
+    start: async () => {
+      if (fail) throw new LaunchError(400, 'Pick one of the start directories from Settings.', 'directory');
+      // Fleet reports the Session before the start answers: it's already expected.
+      topicLaunches.started([{ launchId, sessionId }], rows);
+      topicLaunches.observe(rows);
+      return { id: launchId } as LaunchView;
+    },
+  });
+  const topic = topics.create('Proposals rates');
+  const body = { directory: '~/Projects/work', harness: 'claude', model: '', name: '', prompt: 'x', launchId };
+  const started = exchange('POST', '/api/launch', { ...body, topic: { id: topic.id, via: 'topic' } });
+  await started.done;
+  expect(started.res.statusCode).toBe(200);
+  expect(topics.view().topics[0]!.members).toEqual([expect.objectContaining({ kind: 'session', reason: 'started from this Topic' })]);
+
+  topics.removeMember(topic.id, 'session', topics.view().topics[0]!.members[0]!.key.slice('session:'.length));
+  fail = true;
+  const failed = exchange('POST', '/api/launch', { ...body, topic: { id: topic.id, via: 'topic' } });
+  await failed.done;
+  expect(failed.res.statusCode).toBe(400);
+  // Forgotten: a report under that launch id adds nothing.
+  topicLaunches.started([{ launchId, sessionId }], rows);
+  topicLaunches.observe(rows);
+  expect(topics.view().topics[0]!.members).toEqual([]);
+  const gone = exchange('POST', '/api/launch', { ...body, topic: { id: '00000000-0000-4000-8000-000000000999', via: 'topic' } });
+  await gone.done;
+  expect(gone.res.statusCode).toBe(400);
+  expect(JSON.parse(gone.text())).toEqual({ error: 'That Topic is gone: pick another, or none.', field: 'topic' });
+  // A launch id already expected: refused before the start, the first one kept.
+  fail = false;
+  topicLaunches.expect('00000000-0000-4000-8000-0000000000cc', { id: topic.id, via: 'topic' });
+  const taken = exchange('POST', '/api/launch', { ...body, launchId: '00000000-0000-4000-8000-0000000000cc', topic: { id: topic.id, via: 'task' } });
+  await taken.done;
+  expect(taken.res.statusCode).toBe(409);
+  const noId = exchange('POST', '/api/launch', { ...body, launchId: undefined, topic: { id: topic.id, via: 'topic' } });
+  await noId.done;
+  expect(noId.res.statusCode).toBe(400);
 });

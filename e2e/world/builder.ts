@@ -1,4 +1,4 @@
-import type { NewMember } from '../../shared/topics.ts';
+import type { NewMember, TopicSummary } from '../../shared/topics.ts';
 import { checkOutputs } from '../fakes/outputs.ts';
 
 import { GB, type Pressure } from '../../shared/memory.ts';
@@ -269,6 +269,8 @@ export interface TopicDecl {
   title: string;
   notes?: string;
   members?: NewMember[];
+  /** TOPIC-11.5: a summary already written, current for its members and notes. */
+  summary?: TopicSummary;
 }
 
 /** A declaration this slice can't build yet: the World refuses it instead of ignoring it. */
