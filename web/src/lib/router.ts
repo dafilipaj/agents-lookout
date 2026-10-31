@@ -8,6 +8,8 @@ export type Route =
   | { name: 'settings' }
   /** TOPIC-7: the Topics graph, in place of the Session view. */
   | { name: 'topics' }
+  /** TOPIC-10: one Topic's view. */
+  | { name: 'topic'; id: string }
   /** HIST-3.3: a past Session that can't be resumed, read-only. */
   | { name: 'past'; harness: Harness; id: string }
   /** LAUNCH-4.2 / 4.6: a "Starting…" row, selected until its Session takes over. */
@@ -16,6 +18,14 @@ export type Route =
 export function parseRoute(pathname: string): Route {
   if (pathname === '/settings') return { name: 'settings' };
   if (pathname === '/topics' || pathname === '/topics/') return { name: 'topics' };
+  const topic = /^\/topics\/([^/]+)\/?$/.exec(pathname);
+  if (topic?.[1]) {
+    try {
+      return { name: 'topic', id: decodeURIComponent(topic[1]) };
+    } catch {
+      return { name: 'home' };
+    }
+  }
   const past = /^\/h\/(claude|codex)\/([^/]+)\/?$/.exec(pathname);
   if (past?.[2]) {
     try {
@@ -51,6 +61,8 @@ export function routePath(route: Route): string {
       return '/settings';
     case 'topics':
       return '/topics';
+    case 'topic':
+      return `/topics/${encodeURIComponent(route.id)}`;
     case 'session':
       return `/s/${encodeURIComponent(route.id)}`;
     case 'past':

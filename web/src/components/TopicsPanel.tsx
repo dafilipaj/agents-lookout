@@ -1,37 +1,23 @@
-import type { OutputItem } from '@shared/library.ts';
-import { MAX_TOPIC_NOTES, MAX_TOPIC_TITLE, OUTPUTS_FRESH_MS, type Recommendation, type RecommendationAction, type Topic, type TopicMember, type TopicsView, sortTopics } from '@shared/topics.ts';
+import { MAX_TOPIC_TITLE, type Recommendation, type RecommendationAction, type Topic, type TopicsView, sortTopics } from '@shared/topics.ts';
 import type { SessionRow } from '@shared/types.ts';
 import type { WorkSnapshot } from '@shared/work.ts';
-import { Archive, ArchiveRestore, ArrowLeft, ArrowLeftRight, ArrowRight, ExternalLink, Link2, Network, Plus, Repeat2, Search, Trash2, Unlink, X } from 'lucide-react';
+import { Network, Plus, Search } from 'lucide-react';
 import { type FormEvent, type KeyboardEvent, type ReactNode, type Ref, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Chip } from '@/components/ui/chip';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
-import { IconButton, labelledButtonLook } from '@/components/ui/icon-button';
 import { Loading } from '@/components/ui/loading';
 import { SessionMarker } from '@/components/ui/session-marker';
-import { Textarea } from '@/components/ui/textarea';
 import type { PanelNav } from '@/lib/right-sidebar';
-import { STATUS_LABEL } from '@/lib/sessions';
-import { edgesOf, liveRow, looksDone, matchesTopic, memberCounts, prState, sharedLabel, sharedPairs, taskState, topicMarker } from '@/lib/topics';
-import { formatAge } from '@/lib/time';
+import { liveRow, looksDone, matchesTopic, memberCounts, orderSessions, topicMarker } from '@/lib/topics';
 import { cn } from '@/lib/utils';
-import { HarnessIcon } from './HarnessIcon';
-import { OUTPUT_ICON, TYPE_LABEL, openOutput } from '@/lib/outputs';
 import { Markdown } from './Markdown';
 import { Recommendations } from './Recommendations';
-import { TaskStatusDot } from './TaskStatusDot';
-import { Ci, PrIcon } from './WorkPanel';
-import { CHIP_TONE } from '@/lib/work';
+import { type SessionMember, SessionChip, TopicActions } from './TopicView';
 
-/** TOPIC-1.2: "Saved" shows this long after notes are saved. */
-export const SAVED_MS = 2000;
-/** TOPIC-3.4: rendered notes show this many lines until "more". */
-const NOTES_LINES = 6;
-
-type SessionMember = Extract<TopicMember, { kind: 'session' }>;
+/** TOPIC-3.4: the expanded Topic shows this many lines of its notes. */
+const NOTES_LINES = 3;
 
 export interface TopicsPanelProps {
   /** TOPIC-8.3: as the server last sent it; null before it did (TOPIC-3.6's Loading). */
@@ -40,7 +26,6 @@ export interface TopicsPanelProps {
   sessions: ReadonlyMap<string, SessionRow>;
   /** Work's last read (TOPIC-4.1, TOPIC-4.2, TOPIC-1.5). */
   work: WorkSnapshot | null;
-  now: number;
   /** Bumped to move focus into Topics (opening it with `T` or its tab). */
   focusKey: number;
   /** TOPIC-8.1: the one thing the browser keeps: which Topic is selected. */
@@ -52,34 +37,24 @@ export interface TopicsPanelProps {
   reveal: { id: string; at: number } | null;
   onRevealed(): void;
   createTopic(title: string): Promise<Topic>;
-  updateTopic(id: string, patch: { title?: string; notes?: string; state?: Topic['state'] }): Promise<Topic>;
+  /** TOPIC-1.3: Archive and Unarchive. */
+  updateTopic(id: string, patch: { state: Topic['state'] }): Promise<unknown>;
   deleteTopic(id: string): Promise<void>;
-  removeMember(topicId: string, member: TopicMember): Promise<void>;
   /** TOPIC-3.4: a Session chip opens a live Session, or resumes a past one (LIB-3.5). */
   onOpenSession(member: SessionMember, live: boolean): Promise<void>;
-  /** TOPIC-4.4: no Library read yet: ask for one, as opening the Library does (LIB-2.7). */
-  onReadLibrary(): void;
-  /** TOPIC-4.4: why the last read `onReadLibrary` asked for failed; null when it didn't. */
-  outputsError?: string | null;
   /** TOPIC-9.4: Accept, Dismiss or Other Topic… on a recommendation. */
   recommend(action: RecommendationAction): Promise<unknown>;
   /** TOPIC-9.4: "Other Topic…" opens the Topic picker for this recommendation. */
   onOtherTopic(rec: Recommendation): void;
-  /** TOPIC-4.4: "+N more" opens the Library on these Sessions' Outputs. */
-  onMoreOutputs(topic: Topic): void;
   /** TOPIC-1.3, TOPIC-7.1: the "Archived" toggle, shared with the graph. */
   archived: boolean;
   onArchived(archived: boolean): void;
-  /** TOPIC-7.1: "Open graph", `G`, or Enter on an expanded Topic. */
+  /** TOPIC-7.1: "Open graph" or `G`. */
   onOpenGraph(): void;
+  /** TOPIC-10.1: "Open", or Enter on an expanded Topic: its view. */
+  onOpenTopic(id: string): void;
   /** TOPIC-6.1: "Link to Topic…" opens the Topic picker for this Topic. */
   onLinkTo(topic: Topic): void;
-  /** TOPIC-6.3: "Link" on a shared-member line. */
-  linkTopics(from: string, to: string, label: string | null): Promise<void>;
-  /** TOPIC-6.2: "Reverse". */
-  editEdge(topicId: string, edit: { other: string; reverse: true }): Promise<void>;
-  /** TOPIC-6.2: "Unlink". */
-  unlinkTopics(topicId: string, other: string): Promise<void>;
   keyboardEnabled: boolean;
   navRef?: Ref<PanelNav>;
 }
@@ -98,7 +73,7 @@ const openInBrowser = (url: string) => window.open(url, '_blank', 'noopener,nore
  * controls (the title, the notes, the members' buttons), so they're reached with Tab as well.
  */
 export function TopicsPanel(props: TopicsPanelProps) {
-  const { view, sessions, work, now, focusKey, selected, onSelect, reveal, keyboardEnabled, navRef, archived, onArchived: setArchived } = props;
+  const { view, sessions, work, focusKey, selected, onSelect, reveal, keyboardEnabled, navRef, archived, onArchived: setArchived } = props;
   const [query, setQuery] = useState('');
   const [expanded, setExpanded] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -200,8 +175,9 @@ export function TopicsPanel(props: TopicsPanelProps) {
       e.preventDefault();
       props.onOpenGraph();
     } else if (!text && !e.repeat && topic && letter === 's') {
-      // …and S its first Session chip, as the chip does.
-      const first = topic.members.find((m): m is SessionMember => m.kind === 'session' && !(view?.pruned ?? []).includes(`${m.ref.harness}:${m.ref.sessionId}`));
+      // …and S its first Session chip, as the chip does: the summary's first live one (TOPIC-3.4), else the newest past one.
+      const pruned = view?.pruned ?? [];
+      const first = orderSessions(topic.members.filter((m): m is SessionMember => m.kind === 'session' && !pruned.includes(`${m.ref.harness}:${m.ref.sessionId}`)), sessions)[0];
       if (!first) return;
       e.preventDefault();
       void props.onOpenSession(first, liveRow(first, sessions) !== null).catch((err: unknown) => setProblem(err instanceof Error ? err.message : "Couldn't open its Session."));
@@ -269,11 +245,9 @@ export function TopicsPanel(props: TopicsPanelProps) {
             expanded={t.id === open}
             sessions={sessions}
             work={work}
-            pruned={view.pruned}
-            now={now}
             onHeader={(keyboard) => {
-              // TOPIC-3.4: Enter on an expanded Topic runs its first button, "Open graph"; a click only selects.
-              if (keyboard && t.id === open) return props.onOpenGraph();
+              // TOPIC-3.4: Enter on an expanded Topic runs its first button, "Open"; a click only selects.
+              if (keyboard && t.id === open) return props.onOpenTopic(t.id);
               select(t.id, false);
               setExpanded(t.id);
             }}
@@ -357,8 +331,6 @@ interface TopicItemProps {
   expanded: boolean;
   sessions: ReadonlyMap<string, SessionRow>;
   work: WorkSnapshot | null;
-  pruned: readonly string[];
-  now: number;
   /** `keyboard`: pressed with Enter or Space, not clicked. */
   onHeader(keyboard: boolean): void;
   panel: TopicsPanelProps;
@@ -369,7 +341,7 @@ interface TopicItemProps {
  * TOPIC-3.2: one Topic: its marker, title and member counts, and "looks done" (TOPIC-1.5). Expanded
  * (TOPIC-3.4), its title and notes to edit, its members grouped by kind, its Outputs and its buttons.
  */
-function TopicItem({ topic, selected, expanded, sessions, work, pruned, now, onHeader, panel, onProblem }: TopicItemProps) {
+function TopicItem({ topic, selected, expanded, sessions, work, onHeader, panel, onProblem }: TopicItemProps) {
   const marker = topicMarker(topic, sessions);
   const done = looksDone(topic, work);
   const counts = memberCounts(topic.members);
@@ -403,471 +375,40 @@ function TopicItem({ topic, selected, expanded, sessions, work, pruned, now, onH
           {counts}
         </span>
       </button>
-      {expanded && <TopicDetails topic={topic} sessions={sessions} work={work} pruned={pruned} now={now} panel={panel} onProblem={onProblem} />}
+      {expanded && <TopicSummary topic={topic} sessions={sessions} panel={panel} onProblem={onProblem} />}
     </div>
   );
 }
 
-function TopicDetails({ topic, sessions, work, pruned, now, panel, onProblem }: Omit<TopicItemProps, 'selected' | 'expanded' | 'onHeader'>) {
-  const [confirming, setConfirming] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+/**
+ * TOPIC-3.4: an expanded Topic is a summary; the whole Topic is its view (TOPIC-10). The notes' first
+ * lines, its live Sessions as chips and how many past ones, then its buttons, "Open" first.
+ */
+function TopicSummary({ topic, sessions, panel, onProblem }: Omit<TopicItemProps, 'selected' | 'expanded' | 'onHeader' | 'work'>) {
   const sessionMembers = topic.members.filter((m): m is SessionMember => m.kind === 'session');
-  const prs = topic.members.filter((m) => m.kind === 'pr');
-  const tasks = topic.members.filter((m) => m.kind === 'task');
-  const act = (p: Promise<unknown>, fallback: string) => {
+  const live = orderSessions(sessionMembers, sessions).filter((m) => liveRow(m, sessions) !== null);
+  const past = sessionMembers.length - live.length;
+  const openSession = (m: SessionMember) => {
     onProblem(null);
-    p.catch((err: unknown) => onProblem(err instanceof Error ? err.message : fallback));
+    panel.onOpenSession(m, true).catch((err: unknown) => onProblem(err instanceof Error ? err.message : "Couldn't open its Session."));
   };
-  const remove = (m: TopicMember) => act(panel.removeMember(topic.id, m), "Couldn't remove it.");
-  const removeLabel = (title: string) => `Remove ${title} from ${topic.title}`;
+  const notes = topic.notes.split('\n').slice(0, NOTES_LINES).join('\n').trim();
   return (
     <div className="flex min-w-0 flex-col gap-2 px-2 pt-0.5 pb-2 pl-7 text-meta" data-field="details">
-      <TitleField topic={topic} save={(title) => panel.updateTopic(topic.id, { title })} onProblem={onProblem} />
-      <Notes topic={topic} save={(notes) => panel.updateTopic(topic.id, { notes })} onProblem={onProblem} />
-      {sessionMembers.length > 0 && (
-        <Group label="Sessions" field="sessions">
-          {sessionMembers.map((m) => (
-            <SessionChip key={m.key} member={m} row={liveRow(m, sessions)} pruned={pruned.includes(`${m.ref.harness}:${m.ref.sessionId}`)} onOpen={(live) => act(panel.onOpenSession(m, live), "Couldn't open its Session.")} onRemove={() => remove(m)} removeLabel={removeLabel(m.snapshot.title)} />
-          ))}
-        </Group>
-      )}
-      {prs.length > 0 && (
-        <Group label="PRs" field="prs" column>
-          {prs.map((m) => {
-            if (m.kind !== 'pr') return null;
-            const s = prState(m.ref.url, work);
-            const pr = s.state === 'listed' ? s.pr : null;
-            const title = pr?.title ?? m.snapshot.title;
-            return (
-              <MemberLine key={m.key} field="pr" removeLabel={removeLabel(`#${m.snapshot.number}`)} onRemove={() => remove(m)} open={{ label: 'Open on GitHub', onPress: () => openInBrowser(m.ref.url) }}>
-                <PrIcon chip={pr?.chip ?? null} />
-                <span className="shrink-0">{pr?.repo ?? m.snapshot.repo}</span>
-                <span className="shrink-0 font-medium text-foreground tabular-nums">#{pr?.number ?? m.snapshot.number}</span>
-                {pr?.chip && <Chip tone={CHIP_TONE[pr.chip]}>{pr.chip}</Chip>}
-                {pr && <Ci ci={pr.ci} />}
-                <State state={s.state} />
-                <span className="min-w-0 truncate" title={title}>
-                  {title}
-                </span>
-              </MemberLine>
-            );
-          })}
-        </Group>
-      )}
-      {tasks.length > 0 && (
-        <Group label="Tasks" field="tasks" column>
-          {tasks.map((m) => {
-            if (m.kind !== 'task') return null;
-            const s = taskState(m.ref.id, work);
-            const task = s.state === 'listed' ? s.task : null;
-            const title = task?.title ?? m.snapshot.title;
-            return (
-              <MemberLine key={m.key} field="task" removeLabel={removeLabel(title)} onRemove={() => remove(m)} open={m.snapshot.url ? { label: 'Open in Fantastic', onPress: () => openInBrowser(task?.url ?? m.snapshot.url) } : null}>
-                <TaskStatusDot color={task?.statusColor ?? null} milestone={task?.milestone ?? false} />
-                <span className="min-w-0 truncate text-foreground" title={title}>
-                  {title}
-                </span>
-                {task?.status && <span className="shrink-0">· {task.status}</span>}
-                <State state={s.state} />
-              </MemberLine>
-            );
-          })}
-        </Group>
-      )}
-      {(() => {
-        // TOPIC-3.4: its own pending recommendations, repeated here.
-        const own = panel.view?.recommendations.filter((r) => r.topicId === topic.id) ?? [];
-        return own.length > 0 ? (
-          <div className="flex min-w-0 flex-col gap-1 text-muted-foreground" data-field="topic-recommended">
-            <span>Recommended</span>
-            <Recommendations label={`Recommended for ${topic.title}`} recommendations={own} topics={[topic]} sessions={sessions} showTopic={false} recommend={panel.recommend} onOtherTopic={panel.onOtherTopic} onProblem={onProblem} />
-          </div>
-        ) : null;
-      })()}
-      {sessionMembers.length > 0 && <Outputs topic={topic} now={now} readAt={panel.view?.libraryReadAt ?? null} error={panel.outputsError ?? null} onRead={panel.onReadLibrary} onMore={() => panel.onMoreOutputs(topic)} />}
-      <Edges topic={topic} view={panel.view} act={act} panel={panel} />
-      <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2" data-field="actions">
-        <button type="button" className={labelledButtonLook()} data-action="open-graph" onClick={panel.onOpenGraph}>
-          <Network />
-          Open graph
-        </button>
-        <button type="button" className={labelledButtonLook()} data-action="link" onClick={() => panel.onLinkTo(topic)}>
-          <ArrowLeftRight />
-          Link to Topic…
-        </button>
-        <button type="button" className={labelledButtonLook()} data-action="archive" onClick={() => act(panel.updateTopic(topic.id, { state: topic.state === 'open' ? 'archived' : 'open' }), "Couldn't change it.")}>
-          {topic.state === 'open' ? <Archive /> : <ArchiveRestore />}
-          {topic.state === 'open' ? 'Archive' : 'Unarchive'}
-        </button>
-        <button type="button" className={labelledButtonLook()} data-action="delete" onClick={() => setConfirming(true)}>
-          <Trash2 />
-          Delete
-        </button>
-      </div>
-      <Dialog open={confirming} onOpenChange={(next) => !deleting && setConfirming(next)}>
-        <DialogContent className="sm:max-w-md" showCloseButton={false}>
-          <DialogTitle className="text-title">Delete “{topic.title}”?</DialogTitle>
-          <DialogDescription className="text-body leading-5">Its notes and the list of what's in it go. No Session, PR, Task or Output is changed, closed or deleted.</DialogDescription>
-          <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setConfirming(false)} disabled={deleting}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              disabled={deleting}
-              onClick={() => {
-                setDeleting(true);
-                onProblem(null);
-                panel
-                  .deleteTopic(topic.id)
-                  .catch((err: unknown) => onProblem(err instanceof Error ? err.message : "Couldn't delete it."))
-                  .finally(() => {
-                    setDeleting(false);
-                    setConfirming(false);
-                  });
-              }}
-            >
-              {deleting ? 'Deleting…' : 'Delete Topic'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-}
-
-/** TOPIC-1.2: the title, edited in place: Enter or leaving saves it, Esc puts it back. */
-function TitleField({ topic, save, onProblem }: { topic: Topic; save(title: string): Promise<unknown>; onProblem(m: string | null): void }) {
-  const [value, setValue] = useState(topic.title);
-  const [editing, setEditing] = useState(false);
-  if (!editing && value !== topic.title) setValue(topic.title);
-  const commit = () => {
-    setEditing(false);
-    const next = value.trim();
-    if (!next) {
-      setValue(topic.title);
-      return onProblem('A Topic needs a title.');
-    }
-    if (next === topic.title) return;
-    onProblem(null);
-    save(next).catch((err: unknown) => {
-      setValue(topic.title);
-      onProblem(err instanceof Error ? err.message : "Couldn't rename it.");
-    });
-  };
-  return (
-    <input
-      aria-label="Topic title"
-      value={value}
-      maxLength={MAX_TOPIC_TITLE}
-      onFocus={() => setEditing(true)}
-      onChange={(e) => setValue(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          e.currentTarget.blur();
-        } else if (e.key === 'Escape') {
-          e.preventDefault();
-          e.stopPropagation();
-          setValue(topic.title);
-          setEditing(false);
-          const input = e.currentTarget;
-          setTimeout(() => input.blur(), 0);
-        }
-      }}
-      className="h-7 w-full min-w-0 rounded-md border border-transparent bg-transparent px-1.5 -ml-1.5 text-body font-medium text-foreground outline-none hover:border-input focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
-      data-field="title-input"
-    />
-  );
-}
-
-/**
- * TOPIC-1.2, TOPIC-3.4: the notes, rendered with the chat's Markdown (the first six lines, then
- * "more"); "Edit" switches to a text area, saved on leaving it or ⌘Enter, "Saved" for 2 s; Esc cancels.
- */
-function Notes({ topic, save, onProblem }: { topic: Topic; save(notes: string): Promise<unknown>; onProblem(m: string | null): void }) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(topic.notes);
-  const [more, setMore] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const cancelled = useRef(false);
-  // ⌘Enter and Esc leave the text area from the keyboard: focus goes to Edit, not the page, so the
-  // panel's keys keep working.
-  const editButton = useRef<HTMLButtonElement>(null);
-  const refocus = useRef(false);
-  useEffect(() => {
-    if (editing || !refocus.current) return;
-    refocus.current = false;
-    editButton.current?.focus();
-  }, [editing]);
-  useEffect(() => {
-    if (!saved) return;
-    const timer = setTimeout(() => setSaved(false), SAVED_MS);
-    return () => clearTimeout(timer);
-  }, [saved]);
-  const commit = () => {
-    if (cancelled.current) {
-      cancelled.current = false;
-      return;
-    }
-    setEditing(false);
-    if (draft === topic.notes) return;
-    onProblem(null);
-    save(draft).then(
-      () => setSaved(true),
-      (err: unknown) => {
-        setEditing(true);
-        onProblem(err instanceof Error ? err.message : "Couldn't save the notes.");
-      },
-    );
-  };
-  const lines = topic.notes.split('\n');
-  const long = lines.length > NOTES_LINES;
-  return (
-    <div className="flex min-w-0 flex-col gap-1" data-field="notes">
-      {editing ? (
-        <Textarea
-          autoFocus
-          aria-label="Notes"
-          value={draft}
-          maxLength={MAX_TOPIC_NOTES}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={commit}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && e.metaKey) {
-              e.preventDefault();
-              refocus.current = true;
-              e.currentTarget.blur();
-            } else if (e.key === 'Escape') {
-              e.preventDefault();
-              e.stopPropagation();
-              refocus.current = true;
-              cancelled.current = true;
-              setDraft(topic.notes);
-              setEditing(false);
-            }
-          }}
-          className="max-h-80 min-h-20 px-2 py-1.5 text-body"
-        />
-      ) : topic.notes ? (
+      {notes && (
         <div className="min-w-0 text-body text-foreground" data-field="notes-text">
-          <Markdown text={more || !long ? topic.notes : lines.slice(0, NOTES_LINES).join('\n')} />
-        </div>
-      ) : null}
-      {!editing && (
-        <div className="flex items-center gap-2 text-muted-foreground">
-          {long && (
-            <button type="button" className="underline-offset-2 hover:underline" onClick={() => setMore(!more)}>
-              {more ? 'less' : 'more'}
-            </button>
-          )}
-          <button
-            ref={editButton}
-            type="button"
-            className="underline-offset-2 hover:underline"
-            onClick={() => {
-              // An Esc that unmounted the text area left no blur behind to clear it.
-              cancelled.current = false;
-              setDraft(topic.notes);
-              setEditing(true);
-            }}
-          >
-            {topic.notes ? 'Edit' : 'Add notes'}
-          </button>
-          {saved && (
-            <span role="status" data-field="saved">
-              Saved
-            </span>
-          )}
+          <Markdown text={notes} />
         </div>
       )}
-    </div>
-  );
-}
-
-/**
- * TOPIC-6.2: the Topic's Edges, "→ <other> (<label>)" from it and "← <other> (<label>)" to it, each
- * with Reverse and Unlink; TOPIC-6.3: an Open Topic sharing a member with it and not linked shows a
- * dashed "shared: <item>" line with Link, which makes an Edge from this Topic.
- */
-function Edges({ topic, view, act, panel }: { topic: Topic; view: TopicsView | null; act(p: Promise<unknown>, fallback: string): void; panel: TopicsPanelProps }) {
-  const topics = view?.topics ?? [];
-  const edges = view?.edges ?? [];
-  const title = (id: string) => topics.find((t) => t.id === id)?.title ?? 'a Topic';
-  const own = edgesOf(topic.id, edges);
-  const others = topics.filter((t) => t.id !== topic.id && t.state === 'open');
-  const shared = sharedPairs([topic, ...others], edges).filter((p) => p.a === topic.id);
-  if (!own.length && !shared.length) return null;
-  return (
-    <Group label="Edges" field="edges" column>
-      {own.map(({ edge, other, dir }) => {
-        // "→ <other> (<label>)" from this Topic, "← <other> (<label>)" to it.
-        const text = `${title(other)}${edge.label ? ` (${edge.label})` : ''}`;
-        const Arrow = dir === 'out' ? ArrowRight : ArrowLeft;
-        return (
-          <div key={`${edge.from}>${edge.to}`} role="group" aria-label={`${dir === 'out' ? 'Edge to' : 'Edge from'} ${text}`} className="flex min-w-0 items-center gap-1" data-field="edge" data-dir={dir}>
-            <Arrow aria-hidden className="size-3.5 shrink-0" />
-            <span className="min-w-0 flex-1 truncate text-foreground" title={text}>
-              {text}
-            </span>
-            <IconButton label={`Reverse the Edge with ${title(other)}`} tip="Reverse" onClick={() => act(panel.editEdge(topic.id, { other, reverse: true }), "Couldn't reverse it.")}>
-              <Repeat2 />
-            </IconButton>
-            <IconButton label={`Unlink ${title(other)}`} tip="Unlink" onClick={() => act(panel.unlinkTopics(topic.id, other), "Couldn't unlink it.")}>
-              <Unlink />
-            </IconButton>
-          </div>
-        );
-      })}
-      {shared.map((p) => (
-        <div key={p.b} className="flex min-w-0 items-center gap-1 rounded-md border border-dashed border-border px-1.5 py-0.5" data-field="shared">
-          <span className="min-w-0 flex-1 truncate" title={`${title(p.b)}, ${sharedLabel(p)}`}>
-            {title(p.b)} · {sharedLabel(p)}
-          </span>
-          <button type="button" className={cn(labelledButtonLook(), 'h-6 text-meta [&>svg]:size-3.5')} aria-label={`Link to ${title(p.b)}`} onClick={() => act(panel.linkTopics(topic.id, p.b, null), "Couldn't link them.")}>
-            <Link2 />
-            Link
-          </button>
+      {sessionMembers.length > 0 && (
+        <div className="flex min-w-0 flex-wrap items-center gap-1 text-muted-foreground" data-field="sessions">
+          {live.map((m) => (
+            <SessionChip key={m.key} member={m} row={liveRow(m, sessions)} pruned={false} onOpen={() => openSession(m)} />
+          ))}
+          {past > 0 && <span data-field="past-sessions">{live.length ? `+${past} past` : `${past} past ${past === 1 ? 'Session' : 'Sessions'}`}</span>}
         </div>
-      ))}
-    </Group>
-  );
-}
-
-function Group({ label, field, column, children }: { label: string; field: string; column?: boolean; children: ReactNode }) {
-  return (
-    <div className="flex min-w-0 items-start gap-2 text-muted-foreground" data-field={field}>
-      <span className="w-14 shrink-0 pt-1">{label}</span>
-      <div className={cn('flex min-w-0 flex-1 gap-1', column ? 'flex-col' : 'flex-wrap items-center')}>{children}</div>
-    </div>
-  );
-}
-
-/** TOPIC-4.1, TOPIC-4.2: Work's state for a PR or Task member, or why it isn't there. */
-function State({ state }: { state: 'loading' | 'gone' | 'listed' }) {
-  if (state === 'loading') return <span className="shrink-0" data-field="member-loading">Loading…</span>;
-  if (state === 'gone') {
-    return (
-      <Chip tone="info" title="Work lists open items only, so this may be merged, closed or not read yet." data-field="not-in-work">
-        not in Work
-      </Chip>
-    );
-  }
-  return null;
-}
-
-/** A PR or Task member: its line, then its button and Remove. */
-function MemberLine({ field, children, open, onRemove, removeLabel }: { field: string; children: ReactNode; open: { label: string; onPress(): void } | null; onRemove(): void; removeLabel: string }) {
-  return (
-    <div className="flex min-w-0 flex-col gap-1 py-0.5" data-field={field}>
-      <div className="flex min-w-0 items-center gap-1">{children}</div>
-      <div className="flex items-center gap-1.5">
-        {open && (
-          <button type="button" className={cn(labelledButtonLook(), 'h-6 text-meta [&>svg]:size-3.5')} onClick={open.onPress}>
-            <ExternalLink />
-            {open.label}
-          </button>
-        )}
-        <IconButton label={removeLabel} tip="Remove from this Topic" onClick={onRemove}>
-          <X />
-        </IconButton>
-      </div>
-    </div>
-  );
-}
-
-/**
- * TOPIC-3.4: a Session member as WORK-4.10's chip: its Harness, title and Status marker; Open, Resume
- * by what it is (LIB-3.5). TOPIC-4.2: one tb-session no longer has shows its snapshot and no button.
- */
-function SessionChip({ member, row, pruned, onOpen, onRemove, removeLabel }: { member: SessionMember; row: SessionRow | null; pruned: boolean; onOpen(live: boolean): void; onRemove(): void; removeLabel: string }) {
-  const title = row?.title ?? member.snapshot.title;
-  return (
-    <span className="inline-flex max-w-full min-w-0 items-center gap-0.5" data-field="session" data-session-id={member.ref.sessionId}>
-      {pruned && !row ? (
-        <span className="inline-flex min-w-0 items-center gap-1 px-1" title={member.snapshot.directory ?? undefined}>
-          <HarnessIcon harness={member.ref.harness} className="size-3.5" />
-          <span className="truncate">{title}</span>
-          <span className="shrink-0">· removed from the index</span>
-        </span>
-      ) : (
-        <button
-          type="button"
-          aria-label={`${row ? 'Open' : 'Resume'} ${title}, ${row ? STATUS_LABEL[row.status] : 'past'}`}
-          title={member.snapshot.directory ?? undefined}
-          onClick={() => onOpen(row !== null)}
-          className={cn(labelledButtonLook(), 'max-w-full font-normal')}
-        >
-          <HarnessIcon harness={member.ref.harness} />
-          <span className="min-w-0 truncate">{title}</span>
-          <SessionMarker aria-hidden state={row ? 'live' : 'past'} status={row?.status} since={row?.statusSince ?? null} />
-        </button>
       )}
-      <IconButton label={removeLabel} tip="Remove from this Topic" onClick={onRemove}>
-        <X />
-      </IconButton>
-    </span>
-  );
-}
-
-/**
- * TOPIC-4.4: the Outputs the Topic's Sessions touched, from the Library's last read, newest first, at
- * most 10, then "+N more". Before any read, it asks for one, as opening the Library does.
- */
-function Outputs({ topic, now, readAt, error, onRead, onMore }: { topic: Topic; now: number; readAt: number | null; error: string | null; onRead(): void; onMore(): void }) {
-  // Once per expansion: a Topic expanded asks for a read when the Library hasn't read in the last
-  // minute, so Outputs its Sessions wrote since show without opening the Library.
-  const asked = useRef(false);
-  useEffect(() => {
-    if (asked.current) return;
-    asked.current = true;
-    if (readAt === null || Date.now() - readAt >= OUTPUTS_FRESH_MS) onRead();
-  }, [readAt, onRead]);
-  if (topic.outputs === null) {
-    return (
-      <Group label="Outputs" field="outputs">
-        {error ? <span data-field="outputs-error">{error}</span> : <Loading label="Reading the Library…" />}
-      </Group>
-    );
-  }
-  if (topic.outputs.total === 0) return null;
-  const more = topic.outputs.total - topic.outputs.items.length;
-  return (
-    <Group label="Outputs" field="outputs" column>
-      {topic.outputs.items.map((item) => (
-        <OutputLine key={`${item.kind}:${item.key}`} item={item} now={now} />
-      ))}
-      {more > 0 && (
-        <button type="button" className="self-start underline-offset-2 hover:underline" onClick={onMore} data-field="more-outputs">
-          +{more} more
-        </button>
-      )}
-    </Group>
-  );
-}
-
-/** A Library row's first line with its Open button (LIB-3.3). */
-function OutputLine({ item, now }: { item: OutputItem; now: number }) {
-  const t = item.kind === 'file' ? item.type! : item.kind;
-  const Icon = OUTPUT_ICON[t];
-  const gone = item.kind === 'file' && !item.exists;
-  return (
-    <div className="flex min-w-0 items-center gap-1.5" data-field="output">
-      <Icon aria-hidden className="size-3.5 shrink-0" />
-      <span className="min-w-0 flex-1 truncate text-foreground" title={item.display}>
-        {item.title}
-      </span>
-      <span className="shrink-0">{formatAge(now - item.updatedAt)}</span>
-      {gone ? (
-        <Chip>gone</Chip>
-      ) : (
-        <button type="button" className={cn(labelledButtonLook(), 'h-6 text-meta [&>svg]:size-3.5')} aria-label={`Open ${item.title}, ${TYPE_LABEL[t]}`} onClick={() => openOutput(item)}>
-          <ExternalLink />
-          Open
-        </button>
-      )}
+      <TopicActions topic={topic} look="row" onOpen={() => panel.onOpenTopic(topic.id)} onOpenGraph={panel.onOpenGraph} onLinkTo={panel.onLinkTo} updateTopic={panel.updateTopic} deleteTopic={panel.deleteTopic} onProblem={onProblem} />
     </div>
   );
 }

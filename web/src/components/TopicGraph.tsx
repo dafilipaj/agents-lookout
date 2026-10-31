@@ -35,6 +35,8 @@ export interface TopicGraphProps {
   placeTopics(positions: readonly ({ id: string } & TopicPosition)[]): Promise<void>;
   /** TOPIC-7.3: a Session member node does what its chip does: open it live, else resume it. */
   onOpenSession(member: SessionMember, live: boolean): Promise<void>;
+  /** TOPIC-10.1: a double-click on a node, or Enter on an expanded one: its Topic's view. */
+  onOpen(id: string): void;
   keyboardEnabled: boolean;
 }
 
@@ -450,6 +452,7 @@ function Canvas({ topics, edges, pruned, sessions, selected, onSelect, archived,
             onUp={() => onNodeUp(t)}
             onHandleDown={(e) => onHandleDown(e, t)}
             onPress={() => press(t)}
+            onOpen={() => api.onOpen(t.id)}
           />
         ))}
         {/* TOPIC-7.3: the expanded node's members, small, around it. */}
@@ -496,10 +499,11 @@ interface NodeProps {
   onUp(): void;
   onHandleDown(e: PointerEvent<SVGCircleElement>): void;
   onPress(): void;
+  onOpen(): void;
 }
 
 /** TOPIC-7.1: a Topic's node: its Session marker, title and member counts; a handle to draw an Edge from (TOPIC-7.4). */
-function Node({ topic, at, selected, expanded, target, sessions, onDown, onUp, onHandleDown, onPress }: NodeProps) {
+function Node({ topic, at, selected, expanded, target, sessions, onDown, onUp, onHandleDown, onPress, onOpen }: NodeProps) {
   const marker = topicMarker(topic, sessions);
   const counts = memberCounts(topic.members);
   return (
@@ -518,10 +522,13 @@ function Node({ topic, at, selected, expanded, target, sessions, onDown, onUp, o
       onPointerDown={onDown}
       onPointerUp={onUp}
       onClick={onPress}
+      onDoubleClick={onOpen}
       onKeyDown={(e) => {
         if (e.key !== 'Enter' && e.key !== ' ') return;
         e.preventDefault();
-        onPress();
+        // TOPIC-10.1: Enter on an expanded node opens its Topic; otherwise it acts as a click.
+        if (e.key === 'Enter' && expanded) onOpen();
+        else onPress();
       }}
     >
       <foreignObject width={NODE_W} height={NODE_H} className="overflow-visible">

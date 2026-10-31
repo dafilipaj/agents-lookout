@@ -80,6 +80,8 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Topic**: A wrapper you make by hand for one piece of your work: the Sessions, PR, Task and, later, `tb-flow` run that belong to it, all or some, with your notes and a state, Open or Archived. Its members are references to what the Building blocks know; Lookout keeps them in `~/.lookout/topics.db`. See the TOPIC spec.
 
+**Topic view**: A Topic shown whole in the main pane at `/topics/<id>`: its notes, its members by kind with their state, its Outputs, recommendations and Edges. The Topics tab's expanded Topic is its summary. See TOPIC-10.
+
 **Transcript**: The JSONL log a Harness writes for a Session, for example under `~/.claude/projects/` or `~/.codex/sessions/`.
 
 **Trust prompt**: The question a Harness asks before it runs in a folder it hasn't been told to trust: Claude Code's "Yes, I trust this folder" or "No, exit", listing what the folder's settings pre-approve; Codex's "Trust this folder?". Claude Code registers with Fleet only once it's answered, so a start waiting on it isn't a Session yet. Lookout answers it only when you click (LAUNCH-6), and the Harness remembers the answer per folder.

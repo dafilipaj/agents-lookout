@@ -41,6 +41,14 @@ const header = (title: string) => within(panel()).getByRole('button', { name: ne
 const item = (title: string) => header(title).closest<HTMLElement>('[role="listitem"]')!;
 const titles = () => within(panel()).queryAllByRole('button', { expanded: false }).concat(within(panel()).queryAllByRole('button', { expanded: true })).filter((b) => b.id.startsWith('topic-')).sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1)).map((b) => b.querySelector('[data-field="title"]')!.textContent);
 
+const topicView = () => screen.getByTestId('topic-view');
+/** TOPIC-10.1: a Topic's view, from "Open" on its expanded row in the tab. */
+async function openView(user: ReturnType<typeof userEvent.setup>, title: string) {
+  if (header(title).getAttribute('aria-expanded') !== 'true') await user.click(header(title));
+  await user.click(within(item(title)).getByRole('button', { name: 'Open' }));
+  return topicView();
+}
+
 function openApp(topics: Topic[] = [], w: WorkSnapshot | null = work(), options: Parameters<typeof renderApp>[1] = {}) {
   const app = renderApp('/s/alpha', { topics, ...options });
   app.snapshot([row({ id: 'alpha' }), row({ id: SESSION_ID, title: 'rates-port', status: 'needs-you' })]);
@@ -141,33 +149,31 @@ describe('the Topics tab (TOPIC-3)', () => {
     expect(app.client.resume).not.toHaveBeenCalled();
   });
 
-  it('TOPIC-3.4: an expanded Topic shows its notes (six lines, then more), its members grouped Sessions, PRs, Tasks with their buttons, then Open graph, Link to Topic…, Archive and Delete; Enter on it opens the graph', async () => {
-    const notes = ['**Port** the rates table', 'two', 'three', 'four', 'five', 'six', 'seventh line'].join('\n');
+  it('TOPIC-3.4: an expanded Topic is a summary: its notes’ first three lines, its live Sessions as chips and how many past, then Open, Open graph, Link to Topic…, Archive and Delete; Enter on it opens its view', async () => {
+    const notes = ['**Port** the rates table', 'two', 'three', 'fourth line'].join('\n');
     const app = openApp([topic(1, { title: 'Proposals rates', notes, members: [member(TASK_MEMBER), member(PR_MEMBER), member(SESSION), member({ ...SESSION, ref: { harness: 'claude', sessionId: 'past-one' }, snapshot: { harness: 'claude', title: 'spec', directory: null } })] })]);
     const user = await openTopics();
     await user.click(header('Proposals rates'));
     const details = item('Proposals rates').querySelector<HTMLElement>('[data-field="details"]')!;
     const rendered = details.querySelector('[data-field="notes-text"]')!;
     expect(rendered.querySelector('strong')).toHaveTextContent('Port');
-    expect(rendered).not.toHaveTextContent('seventh line');
-    await user.click(within(details).getByRole('button', { name: 'more' }));
-    expect(details.querySelector('[data-field="notes-text"]')).toHaveTextContent('seventh line');
-    expect([...details.querySelectorAll('[data-field="sessions"], [data-field="prs"], [data-field="tasks"]')].map((g) => g.getAttribute('data-field'))).toEqual(['sessions', 'prs', 'tasks']);
+    expect(rendered).toHaveTextContent('three');
+    expect(rendered).not.toHaveTextContent('fourth line');
+    expect(within(details).queryByRole('button', { name: /^(more|Edit)$/ })).toBeNull();
+    // Live Sessions as chips, the past ones counted; PRs, Tasks and Edges are in the view.
     expect(within(details).getByRole('button', { name: 'Open rates-port, Needs you' })).toBeInTheDocument();
-    expect(within(details).getByRole('button', { name: 'Resume spec, past' })).toBeInTheDocument();
-    const open = vi.spyOn(window, 'open').mockReturnValue(null);
-    await user.click(within(details.querySelector<HTMLElement>('[data-field="prs"]')!).getByRole('button', { name: /Open on GitHub/ }));
-    expect(open).toHaveBeenCalledWith(ANVIL.url, '_blank', 'noopener,noreferrer');
-    await user.click(within(details.querySelector<HTMLElement>('[data-field="tasks"]')!).getByRole('button', { name: /Open in Fantastic/ }));
-    expect(open).toHaveBeenLastCalledWith(LIGHT.url, '_blank', 'noopener,noreferrer');
-    expect([...details.querySelectorAll('[data-field="actions"] [data-action]')].map((b) => b.textContent)).toEqual(['Open graph', 'Link to Topic…', 'Archive', 'Delete']);
-    // Enter on the expanded Topic runs its first button, Open graph; a click on it only keeps it selected.
+    expect(within(details).queryByRole('button', { name: /spec/ })).toBeNull();
+    expect(details.querySelector('[data-field="past-sessions"]')).toHaveTextContent('+1 past');
+    expect(details.querySelector('[data-field="prs"], [data-field="tasks"], [data-field="outputs"], [data-field="edges"]')).toBeNull();
+    expect(within(details).queryByRole('textbox')).toBeNull();
+    expect([...details.querySelectorAll('[data-field="actions"] [data-action]')].map((b) => b.textContent)).toEqual(['Open', 'Open graph', 'Link to Topic…', 'Archive', 'Delete']);
+    // Enter on the expanded Topic runs its first button, Open; a click on it only keeps it selected.
     await user.click(header('Proposals rates'));
     expect(window.location.pathname).toBe('/s/alpha');
     header('Proposals rates').focus();
     await user.keyboard('{Enter}');
-    expect(window.location.pathname).toBe('/topics');
-    expect(screen.getByTestId('topic-graph')).toBeInTheDocument();
+    expect(window.location.pathname).toBe(`/topics/${id(1)}`);
+    expect(topicView()).toBeInTheDocument();
     // A Session chip opens a live Session.
     await user.click(within(details).getByRole('button', { name: 'Open rates-port, Needs you' }));
     expect(window.location.pathname).toBe(`/s/${SESSION_ID}`);
@@ -202,8 +208,8 @@ describe('a Topic (TOPIC-1)', () => {
   it('TOPIC-1.2: the title is edited in place, and the notes in a text area saved on ⌘Enter or leaving it, with "Saved" for 2 s; Esc cancels; empty notes clear them', async () => {
     const app = openApp([topic(1, { title: 'Proposals rates', notes: 'old notes' })]);
     const user = await openTopics();
-    await user.click(header('Proposals rates'));
-    const title = screen.getByRole('textbox', { name: 'Topic title' });
+    await openView(user, 'Proposals rates');
+    const title = within(topicView()).getByRole('textbox', { name: 'Topic title' });
     await user.clear(title);
     await user.type(title, 'Rates port{Enter}');
     expect(app.client.updateTopic).toHaveBeenCalledWith(id(1), { title: 'Rates port' });
@@ -222,7 +228,7 @@ describe('a Topic (TOPIC-1)', () => {
     expect(app.client.updateTopic).toHaveBeenLastCalledWith(id(1), { notes: 'Rounding: **half up**' });
     expect(await screen.findByText('Saved')).toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole('button', { name: 'Edit' })).toHaveFocus());
-    expect(item('Rates port').querySelector('[data-field="notes-text"] strong')).toHaveTextContent('half up');
+    expect(topicView().querySelector('[data-field="notes-text"] strong')).toHaveTextContent('half up');
     await waitFor(() => expect(screen.queryByText('Saved')).toBeNull(), { timeout: 3000 });
     await user.click(screen.getByRole('button', { name: 'Edit' }));
     await user.clear(screen.getByRole('textbox', { name: 'Notes' }));
@@ -386,8 +392,8 @@ describe('members (TOPIC-2)', () => {
   it('TOPIC-2.4: an item can be in any number of Topics, and Remove takes away that membership only', async () => {
     const app = openApp([topic(1, { title: 'Rates', members: [member(PR_MEMBER), member(TASK_MEMBER)] }), topic(2, { title: 'Other', members: [member(PR_MEMBER)] })]);
     const user = await openTopics();
-    await user.click(header('Rates'));
-    await user.click(within(item('Rates')).getByRole('button', { name: 'Remove #2101 from Rates' }));
+    await openView(user, 'Rates');
+    await user.click(within(topicView()).getByRole('button', { name: 'Remove #2101 from Rates' }));
     expect(app.client.removeMember).toHaveBeenCalledWith(id(1), expect.objectContaining({ kind: 'pr', ref: PR_MEMBER.ref }));
     await waitFor(() => expect(item('Rates').querySelector('[data-field="counts"]')).toHaveTextContent(/^1 Task$/));
     expect(item('Other').querySelector('[data-field="counts"]')).toHaveTextContent('1 PR');
@@ -415,15 +421,15 @@ describe('what a member is doing now (TOPIC-4)', () => {
   it('TOPIC-4.1: a Session member follows the Session list’s Status; a PR or Task member shows Work’s state and CI', async () => {
     const app = openApp([topic(1, { title: 'Rates', members: [member(SESSION), member(PR_MEMBER), member(TASK_MEMBER)] })]);
     const user = await openTopics();
-    await user.click(header('Rates'));
-    const details = () => item('Rates').querySelector<HTMLElement>('[data-field="details"]')!;
+    await openView(user, 'Rates');
+    const details = topicView;
     expect(within(details()).getByRole('button', { name: 'Open rates-port, Needs you' })).toBeInTheDocument();
     app.emit({ type: 'sessions', upsert: [row({ id: SESSION_ID, title: 'rates-port', status: 'busy' })], remove: [] });
     expect(within(details()).getByRole('button', { name: 'Open rates-port, Busy' })).toBeInTheDocument();
     const prLine = details().querySelector<HTMLElement>('[data-field="pr"]')!;
-    expect(prLine).toHaveTextContent('anvil#2101draft');
+    expect(prLine).toHaveTextContent(/^anvil#2101draft/);
     expect(prLine.querySelector('[data-field="ci"]')).toHaveAttribute('data-ci', 'passing');
-    expect(details().querySelector('[data-field="task"]')).toHaveTextContent('Light the harbor lanterns· In progress');
+    expect(details().querySelector('[data-field="task"]')).toHaveTextContent(/^Light the harbor lanterns· In progress/);
     app.emit({ type: 'sessions', upsert: [], remove: [SESSION_ID] });
     expect(within(details()).getByRole('button', { name: 'Resume rates-port, past' })).toBeInTheDocument();
   });
@@ -431,8 +437,8 @@ describe('what a member is doing now (TOPIC-4)', () => {
   it('TOPIC-4.2: a member Work doesn’t list shows its snapshot with "not in Work"; before Work has read, "Loading"; a Session pruned from the index shows its snapshot and no button', async () => {
     const app = openApp([topic(1, { title: 'Rates', members: [member({ ...SESSION, ref: { harness: 'claude', sessionId: 'gone-one' }, snapshot: { harness: 'claude', title: 'old fix', directory: null } }), member(PR_MEMBER), member(TASK_MEMBER)] })], LOADING);
     const user = await openTopics();
-    await user.click(header('Rates'));
-    const details = () => item('Rates').querySelector<HTMLElement>('[data-field="details"]')!;
+    await openView(user, 'Rates');
+    const details = topicView;
     expect(details().querySelectorAll('[data-field="member-loading"]')).toHaveLength(2);
     app.emit({ type: 'work', work: work({ mine: [] }, { tasks: [] }) });
     const chips = details().querySelectorAll('[data-field="not-in-work"]');
@@ -454,28 +460,31 @@ describe('what a member is doing now (TOPIC-4)', () => {
     await waitFor(() => expect(app.client.watchWork).toHaveBeenLastCalledWith('tab-1', false));
   });
 
-  it('TOPIC-4.4: an expanded Topic lists its Sessions’ Outputs with an Open button, "+N more" opening the Library on those Sessions; expanding it asks for a Library read when none ran in the last minute', async () => {
+  it('TOPIC-4.4: the Topic view lists its Sessions’ Outputs with an Open button, "+N more" opening the Library on those Sessions; opening it asks for a Library read when none ran in the last minute', async () => {
     const output = (n: number): OutputItem => ({
       kind: 'file', key: `/o/${n}.md`, type: 'markdown', title: `Doc ${n}`, path: `/o/${n}.md`, url: null, display: `~/o/${n}.md`, projectPath: null, repo: null, createdAt: NOW, updatedAt: Date.now() - n * 3_600_000 - 60_000, events: 1, exists: true,
       source: null, sourcePath: null, sourceDisplay: null, version: null, sessions: [],
     });
-    const app = openApp([topic(1, { title: 'Rates', members: [member(SESSION)], outputs: null })]);
+    const app = openApp([topic(1, { title: 'Rates', members: [member(SESSION)], outputs: null }), topic(2, { title: 'Other' })]);
     const user = await openTopics();
-    await user.click(header('Rates'));
-    expect(within(item('Rates')).getByText('Reading the Library…')).toBeInTheDocument();
+    await openView(user, 'Rates');
+    expect(within(topicView()).getByText('Reading the Library…')).toBeInTheDocument();
     await waitFor(() => expect(app.client.library).toHaveBeenCalledWith(expect.objectContaining({ page: 1, query: '' })));
-    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Rates', members: [member(SESSION)], outputs: { items: [output(1), output(2)], total: 12 } })], edges: [], pruned: [], libraryReadAt: Date.now(), recommendations: [], jevAsksToday: 0 } });
-    // Expanded again within a minute of the last read: nothing is read again.
+    /** Leaves the view for another Topic's, then opens it again. */
+    const reopen = async () => {
+      await openView(user, 'Other');
+      await openView(user, 'Rates');
+    };
+    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Rates', members: [member(SESSION)], outputs: { items: [output(1), output(2)], total: 12 } }), topic(2, { title: 'Other' })], edges: [], pruned: [], libraryReadAt: Date.now(), recommendations: [], jevAsksToday: 0 } });
+    // Opened again within a minute of the last read: nothing is read again.
     const reads = vi.mocked(app.client.library).mock.calls.length;
-    await user.keyboard('{Escape}');
-    await user.click(header('Rates'));
+    await reopen();
     expect(app.client.library).toHaveBeenCalledTimes(reads);
-    // A minute or more after it: expanding it reads the Library again, for Outputs written since.
-    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Rates', members: [member(SESSION)], outputs: { items: [output(1), output(2)], total: 12 } })], edges: [], pruned: [], libraryReadAt: Date.now() - 61_000, recommendations: [], jevAsksToday: 0 } });
-    await user.keyboard('{Escape}');
-    await user.click(header('Rates'));
+    // A minute or more after it: opening it reads the Library again, for Outputs written since.
+    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Rates', members: [member(SESSION)], outputs: { items: [output(1), output(2)], total: 12 } }), topic(2, { title: 'Other' })], edges: [], pruned: [], libraryReadAt: Date.now() - 61_000, recommendations: [], jevAsksToday: 0 } });
+    await reopen();
     await waitFor(() => expect(app.client.library).toHaveBeenCalledTimes(reads + 1));
-    const outputs = item('Rates').querySelector<HTMLElement>('[data-field="outputs"]')!;
+    const outputs = topicView().querySelector<HTMLElement>('[data-field="outputs"]')!;
     expect([...outputs.querySelectorAll('[data-field="output"]')].map((o) => o.textContent)).toEqual(["Doc 11hOpen", "Doc 22hOpen"]);
     const open = vi.spyOn(window, 'open').mockReturnValue(null);
     await user.click(within(outputs).getByRole('button', { name: 'Open Doc 1, Markdown' }));
@@ -484,8 +493,7 @@ describe('what a member is doing now (TOPIC-4)', () => {
     await user.keyboard('l');
     await user.type(screen.getByRole('searchbox', { name: 'Filter Outputs' }), 'zzz');
     act(() => (document.activeElement as HTMLElement).blur());
-    await user.keyboard('t');
-    await user.click(within(item('Rates').querySelector<HTMLElement>('[data-field="outputs"]')!).getByRole('button', { name: '+10 more' }));
+    await user.click(within(topicView().querySelector<HTMLElement>('[data-field="outputs"]')!).getByRole('button', { name: '+10 more' }));
     expect(screen.getByRole('tab', { name: 'Library' })).toHaveAttribute('aria-selected', 'true');
     await waitFor(() => expect(app.client.library).toHaveBeenLastCalledWith(expect.objectContaining({ sessions: [`claude:${SESSION_ID}`], query: '', types: ['pages', 'pdf', 'markdown', 'image', 'share'], project: '', hideGone: false })));
     expect(screen.getByRole('searchbox', { name: 'Filter Outputs' })).toHaveValue('');
@@ -497,9 +505,9 @@ describe('what a member is doing now (TOPIC-4)', () => {
   it('TOPIC-4.4: a Library read that fails says why where the Outputs would be, instead of reading forever', async () => {
     openApp([topic(1, { title: 'Rates', members: [member(SESSION)], outputs: null })], work(), { library: async () => ({ state: 'not-installed', installCommand: 'cargo install tb-session' }) });
     const user = await openTopics();
-    await user.click(header('Rates'));
-    expect(await within(item('Rates')).findByText("The Library can't be read: tb-session isn't installed.")).toBeInTheDocument();
-    expect(within(item('Rates')).queryByText('Reading the Library…')).toBeNull();
+    await openView(user, 'Rates');
+    expect(await within(topicView()).findByText("The Library can't be read: tb-session isn't installed.")).toBeInTheDocument();
+    expect(within(topicView()).queryByText('Reading the Library…')).toBeNull();
   });
 });
 
@@ -535,15 +543,15 @@ describe('recommendations (TOPIC-9)', () => {
     expect(within(rows[1]!).getAllByRole('button').map((b) => b.textContent)).toEqual(['Accept', 'Other Topic…', 'Dismiss']);
   });
 
-  it('TOPIC-9.4, TOPIC-9.5: Accept adds it with where it came from; Dismiss adds nothing; "Recommended" goes once nothing is pending; the expanded Topic repeats its own', async () => {
+  it('TOPIC-9.4, TOPIC-9.5: Accept adds it with where it came from; Dismiss adds nothing; "Recommended" goes once nothing is pending; the Topic view repeats its own', async () => {
     const app = openApp([topic(1, { title: 'Proposals rates' })], work(), { recommendations: [fromJev, fromLink] });
     const user = await openTopics();
-    await user.click(header('Proposals rates'));
-    expect(within(item('Proposals rates').querySelector<HTMLElement>('[data-field="topic-recommended"]')!).getByRole('listitem', { name: /rates-port/ })).toBeInTheDocument();
+    await openView(user, 'Proposals rates');
+    expect(within(topicView().querySelector<HTMLElement>('[data-field="topic-recommended"]')!).getByRole('listitem', { name: /rates-port/ })).toBeInTheDocument();
     await user.click(within(rec(/^rates-port/)).getByRole('button', { name: 'Accept' }));
     expect(app.client.recommend).toHaveBeenCalledWith({ action: 'accept', key: fromLink.key, topicId: id(1) });
-    await waitFor(() => expect(item('Proposals rates').querySelector('[data-field="topic-recommended"]')).toBeNull());
-    expect(item('Proposals rates').querySelector('[data-field="sessions"]')).toHaveTextContent('rates-port');
+    await waitFor(() => expect(topicView().querySelector('[data-field="topic-recommended"]')).toBeNull());
+    expect(topicView().querySelector('[data-field="sessions"]')).toHaveTextContent('rates-port');
     await user.click(within(rec(/^anvil/)).getByRole('button', { name: 'Dismiss' }));
     expect(app.client.recommend).toHaveBeenLastCalledWith({ action: 'dismiss', key: fromJev.key, topicId: null });
     await waitFor(() => expect(within(panel()).queryByRole('list', { name: 'Recommended' })).toBeNull());
@@ -625,14 +633,14 @@ describe('Edges (TOPIC-6)', () => {
     expect(app.client.linkTopics).toHaveBeenLastCalledWith(id(2), id(3), null);
   });
 
-  it('TOPIC-6.2: an Edge shows on both Topics, "→ <other> (<label>)" where it starts and "← <other> (<label>)" on the other; Reverse turns it around and Unlink removes it, from either', async () => {
+  it('TOPIC-6.2: an Edge shows in both Topics’ views, "→ <other> (<label>)" where it starts and "← <other> (<label>)" on the other; Reverse turns it around and Unlink removes it, from either', async () => {
     const app = openApp([topic(1, { title: 'Rates table' }), topic(2, { title: 'Proposals v2' })], work(), { edges: [{ from: id(1), to: id(2), label: 'part of', createdAt: NOW }] });
     const user = await openTopics();
-    await user.click(header('Rates table'));
-    const edge = () => within(panel()).getByRole('group', { name: /^Edge (to|from)/ });
+    await openView(user, 'Rates table');
+    const edge = () => within(topicView()).getByRole('group', { name: /^Edge (to|from)/ });
     expect(edge()).toHaveAccessibleName('Edge to Proposals v2 (part of)');
     expect(edge()).toHaveAttribute('data-dir', 'out');
-    await user.click(header('Proposals v2'));
+    await openView(user, 'Proposals v2');
     expect(edge()).toHaveAccessibleName('Edge from Rates table (part of)');
     expect(edge()).toHaveAttribute('data-dir', 'in');
     await user.click(within(edge()).getByRole('button', { name: 'Reverse the Edge with Rates table' }));
@@ -640,26 +648,26 @@ describe('Edges (TOPIC-6)', () => {
     await waitFor(() => expect(edge()).toHaveAccessibleName('Edge to Rates table (part of)'));
     await user.click(within(edge()).getByRole('button', { name: 'Unlink Rates table' }));
     expect(app.client.unlinkTopics).toHaveBeenCalledWith(id(2), id(1));
-    await waitFor(() => expect(within(panel()).queryByRole('group', { name: /^Edge/ })).toBeNull());
+    await waitFor(() => expect(within(topicView()).queryByRole('group', { name: /^Edge/ })).toBeNull());
   });
 
-  it('TOPIC-6.3: two Open Topics that share a member show a dashed "shared: <item>" line on each, never stored; Link makes an Edge from the Topic it is clicked on, and the line goes', async () => {
+  it('TOPIC-6.3: two Open Topics that share a member show, in their views, a dashed "shared: <item>" line on each, never stored; Link makes an Edge from the Topic it is clicked on, and the line goes', async () => {
     const app = openApp([topic(1, { title: 'Rates table', members: [member(PR_MEMBER), member(TASK_MEMBER)] }), topic(2, { title: 'Proposals v2', members: [member(PR_MEMBER), member(TASK_MEMBER)] }), topic(3, { title: 'CRM backlog' }), topic(4, { title: 'Old audit', state: 'archived', members: [member(PR_MEMBER)] })]);
     const user = await openTopics();
     // An Archived Topic shares nothing, shown or not.
     await user.click(within(panel()).getByRole('checkbox', { name: 'Archived' }));
-    await user.click(header('Old audit'));
-    expect(item('Old audit').querySelector('[data-field="shared"]')).toBeNull();
-    await user.click(header('Proposals v2'));
-    const line = item('Proposals v2').querySelector<HTMLElement>('[data-field="shared"]')!;
+    await openView(user, 'Old audit');
+    expect(topicView().querySelector('[data-field="shared"]')).toBeNull();
+    await openView(user, 'Proposals v2');
+    const line = topicView().querySelector<HTMLElement>('[data-field="shared"]')!;
     expect(line).toHaveTextContent('Rates table · shared: anvil #2101 and 1 more');
     expect(line.className).toContain('border-dashed');
-    expect(item('Proposals v2').querySelectorAll('[data-field="shared"]')).toHaveLength(1);
+    expect(topicView().querySelectorAll('[data-field="shared"]')).toHaveLength(1);
     expect(line).not.toHaveTextContent('Old audit');
     await user.click(within(line).getByRole('button', { name: 'Link to Rates table' }));
     expect(app.client.linkTopics).toHaveBeenCalledWith(id(2), id(1), null);
-    await waitFor(() => expect(item('Proposals v2').querySelector('[data-field="shared"]')).toBeNull());
-    expect(within(panel()).getByRole('group', { name: 'Edge to Rates table' })).toBeInTheDocument();
+    await waitFor(() => expect(topicView().querySelector('[data-field="shared"]')).toBeNull());
+    expect(within(topicView()).getByRole('group', { name: 'Edge to Rates table' })).toBeInTheDocument();
   });
 });
 
@@ -825,5 +833,154 @@ describe('the graph (TOPIC-7)', () => {
     await user.type(within(screen.getByRole('dialog', { name: 'New Topic' })).getByRole('textbox', { name: 'Topic title' }), 'Rates table{Enter}');
     expect(app.client.createTopic).toHaveBeenCalledWith('Rates table');
     expect(await within(graph()).findByRole('button', { name: /^Rates table,/ })).toHaveAttribute('aria-pressed', 'true');
+  });
+});
+
+describe('the Topic view (TOPIC-10)', () => {
+  it('TOPIC-10.1: Open, Enter on an expanded Topic, a double-click on a graph node or Enter on an expanded one opens the Topic’s view and selects it in the tab; a reload keeps it; an unknown id says the Topic is gone', async () => {
+    const app = openApp([topic(1, { title: 'Rates table', pos: { x: 300, y: 200 } }), topic(2, { title: 'Proposals v2', pos: { x: 600, y: 200 } })]);
+    const user = await openTopics();
+    await openView(user, 'Rates table');
+    expect(window.location.pathname).toBe(`/topics/${id(1)}`);
+    expect(within(topicView()).getByRole('textbox', { name: 'Topic title' })).toHaveValue('Rates table');
+    expect(header('Rates table')).toHaveAttribute('aria-current', 'true');
+    // From the graph: a double-click on a node, or Enter on an expanded one.
+    await user.click(within(topicView()).getByRole('button', { name: 'Open graph' }));
+    await user.dblClick(node('Proposals v2'));
+    expect(window.location.pathname).toBe(`/topics/${id(2)}`);
+    expect(header('Proposals v2')).toHaveAttribute('aria-current', 'true');
+    await user.click(within(topicView()).getByRole('button', { name: 'Open graph' }));
+    node('Rates table').focus();
+    await user.keyboard('{Enter}');
+    expect(node('Rates table')).toHaveAttribute('aria-expanded', 'true');
+    expect(window.location.pathname).toBe('/topics');
+    await user.keyboard('{Enter}');
+    expect(window.location.pathname).toBe(`/topics/${id(1)}`);
+    app.unmount();
+    // A reload keeps the view.
+    const reloaded = renderApp(`/topics/${id(2)}`, { topics: [topic(2, { title: 'Proposals v2' })] });
+    reloaded.snapshot([row({ id: 'alpha' })]);
+    expect(within(topicView()).getByRole('textbox', { name: 'Topic title' })).toHaveValue('Proposals v2');
+    reloaded.unmount();
+    // An id no Topic has.
+    const gone = renderApp(`/topics/${id(9)}`, { topics: [topic(2, { title: 'Proposals v2' })] });
+    gone.snapshot([row({ id: 'alpha' })]);
+    expect(screen.getByText('This Topic is gone')).toBeInTheDocument();
+    const u = userEvent.setup();
+    await u.click(within(screen.getByText('This Topic is gone').closest<HTMLElement>('[role="status"]')!).getByRole('button', { name: 'Open graph' }));
+    expect(window.location.pathname).toBe('/topics');
+  });
+
+  it('TOPIC-10.1: Back and Forward between two Topic views select each Topic in the tab, and a notes draft never saves into the other Topic', async () => {
+    const app = openApp([topic(1, { title: 'Rates', notes: 'rates notes' }), topic(2, { title: 'Other', notes: 'other notes' })]);
+    const user = await openTopics();
+    await openView(user, 'Rates');
+    await openView(user, 'Other');
+    await user.click(within(topicView()).getByRole('button', { name: 'Edit' }));
+    await user.type(within(topicView()).getByRole('textbox', { name: 'Notes' }), ' draft');
+    act(() => window.history.back());
+    await waitFor(() => expect(window.location.pathname).toBe(`/topics/${id(1)}`));
+    await waitFor(() => expect(within(topicView()).getByRole('textbox', { name: 'Topic title' })).toHaveValue('Rates'));
+    expect(header('Rates')).toHaveAttribute('aria-current', 'true');
+    expect(within(topicView()).queryByRole('textbox', { name: 'Notes' })).toBeNull();
+    act(() => (document.activeElement as HTMLElement | null)?.blur());
+    expect(app.client.updateTopic).not.toHaveBeenCalledWith(id(1), expect.objectContaining({ notes: expect.anything() }));
+    act(() => window.history.forward());
+    await waitFor(() => expect(header('Other')).toHaveAttribute('aria-current', 'true'));
+  });
+
+  it('TOPIC-4.4: opening another Topic’s view asks for a Library read when the last one is a minute old', async () => {
+    const view = (readAt: number) => ({ state: 'ok' as const, reason: null, path: '/p', topics: [topic(1, { title: 'Rates', members: [member(SESSION)] }), topic(2, { title: 'Other', members: [member({ ...SESSION, ref: { harness: 'claude', sessionId: 'other-one' } })] })], edges: [], pruned: [], libraryReadAt: readAt, recommendations: [], jevAsksToday: 0 });
+    const app = openApp([]);
+    app.emit({ type: 'topics', topics: view(Date.now()) });
+    const user = await openTopics();
+    await openView(user, 'Rates');
+    expect(app.client.library).not.toHaveBeenCalled();
+    app.emit({ type: 'topics', topics: view(Date.now() - 61_000) });
+    await openView(user, 'Other');
+    await waitFor(() => expect(app.client.library).toHaveBeenCalledTimes(1));
+  });
+
+  it('TOPIC-3.4 (support): S opens the summary’s first chip, a live Session, even when a past member was added first', async () => {
+    const app = openApp([topic(1, { title: 'Rates', members: [member({ ...SESSION, ref: { harness: 'claude', sessionId: 'past-one' }, snapshot: { harness: 'claude', title: 'spec', directory: null } }, NOW - 9_000), member(SESSION, NOW - 1_000)] })]);
+    const user = await openTopics();
+    await user.click(header('Rates'));
+    await user.keyboard('s');
+    expect(window.location.pathname).toBe(`/s/${SESSION_ID}`);
+    expect(app.client.resume).not.toHaveBeenCalled();
+  });
+
+  it('TOPIC-10.2: the header has the Topic’s marker, title, chips and counts, then Open graph, Link to Topic…, Archive and Delete; Delete asks, then shows the graph', async () => {
+    const app = openApp([topic(1, { title: 'Shipped', members: [member(SESSION), member(PR_MEMBER)] }), topic(2, { title: 'Other' })], work({ mine: [] }));
+    const user = await openTopics();
+    const view = await openView(user, 'Shipped');
+    const banner = within(view).getByRole('banner');
+    expect(banner.querySelector('[data-session-marker]')).toHaveAttribute('data-status', 'needs-you');
+    expect(within(banner).getByRole('textbox', { name: 'Topic title' })).toHaveValue('Shipped');
+    expect(banner.querySelector('[data-field="looks-done"]')).toHaveTextContent('looks done');
+    expect(banner.querySelector('[data-field="counts"]')).toHaveTextContent('1 Session · 1 PR');
+    expect([...banner.querySelectorAll('[data-field="actions"] [data-action]')].map((b) => b.textContent)).toEqual(['Open graph', 'Link to Topic…', 'Archive', 'Delete']);
+    await user.click(within(banner).getByRole('button', { name: 'Archive' }));
+    expect(app.client.updateTopic).toHaveBeenCalledWith(id(1), { state: 'archived' });
+    await waitFor(() => expect(within(topicView()).getByRole('banner').querySelector('[data-tone="muted"]')).toHaveTextContent('archived'));
+    await user.click(within(topicView()).getByRole('button', { name: 'Link to Topic…' }));
+    expect(screen.getByRole('dialog', { name: 'Link to Topic' })).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    await user.click(within(topicView()).getByRole('button', { name: 'Delete' }));
+    await user.click(within(screen.getByRole('dialog', { name: 'Delete “Shipped”?' })).getByRole('button', { name: 'Delete Topic' }));
+    expect(app.client.deleteTopic).toHaveBeenCalledWith(id(1));
+    await waitFor(() => expect(window.location.pathname).toBe('/topics'));
+  });
+
+  it('TOPIC-10.3: the notes show in full, with no six-line cut, and Edit edits them', async () => {
+    const notes = ['**Port** the rates table', 'two', 'three', 'four', 'five', 'six', 'seven', 'the eighth line'].join('\n');
+    const app = openApp([topic(1, { title: 'Rates', notes })]);
+    const user = await openTopics();
+    const view = await openView(user, 'Rates');
+    expect(view.querySelector('[data-field="notes-text"]')).toHaveTextContent('the eighth line');
+    expect(within(view).queryByRole('button', { name: 'more' })).toBeNull();
+    await user.click(within(view).getByRole('button', { name: 'Edit' }));
+    await user.type(within(view).getByRole('textbox', { name: 'Notes' }), '!');
+    await user.keyboard('{Meta>}{Enter}{/Meta}');
+    expect(app.client.updateTopic).toHaveBeenCalledWith(id(1), { notes: `${notes}!` });
+  });
+
+  it('TOPIC-10.4: members in Sessions, PRs and Tasks, each headed with its count; live Sessions first by Status, then past ones; PRs and Tasks in Work first; newest added first within each', async () => {
+    const live2 = 'a1b2c3d4-0000-4000-8000-000000000002';
+    const sessionMember = (sessionId: string, title: string, addedAt: number) => member({ kind: 'session', ref: { harness: 'claude', sessionId }, snapshot: { harness: 'claude', title, directory: null } }, addedAt);
+    const goneTask = (n: number, addedAt: number) => member({ kind: 'task', ref: { id: `9${n}` }, snapshot: { title: `Closed ${n}`, project: 'Lantern Works', url: `https://example.test/${n}` } }, addedAt);
+    const gonePr = member({ kind: 'pr', ref: { url: 'https://github.com/productiveio/anvil/pull/1' }, snapshot: { repo: 'anvil', number: 1, title: 'Old anvil', url: 'https://github.com/productiveio/anvil/pull/1' } }, NOW - 1_000);
+    const app = openApp([
+      topic(1, {
+        title: 'Rates',
+        members: [sessionMember('past-new', 'past new', NOW - 1_000), sessionMember(live2, 'idle one', NOW - 2_000), sessionMember('past-old', 'past old', NOW - 9_000), member(SESSION, NOW - 8_000), gonePr, member(PR_MEMBER, NOW - 5_000), goneTask(1, NOW - 9_000), member(TASK_MEMBER, NOW - 7_000), goneTask(2, NOW - 1_000)],
+      }),
+    ]);
+    app.snapshot([row({ id: 'alpha' }), row({ id: SESSION_ID, title: 'rates-port', status: 'needs-you' }), row({ id: live2, title: 'idle one', status: 'idle' })]);
+    const user = await openTopics();
+    const view = await openView(user, 'Rates');
+    const sections = [...view.querySelectorAll<HTMLElement>('section')];
+    expect(sections.map((s) => s.querySelector('h2')!.textContent)).toEqual(['Sessions4', 'PRs2', 'Tasks3']);
+    expect([...view.querySelectorAll('[data-field="session"] button[aria-label^="Open"], [data-field="session"] button[aria-label^="Resume"]')].map((c) => c.getAttribute('aria-label'))).toEqual(['Open rates-port, Needs you', 'Open idle one, Idle', 'Resume past new, past', 'Resume past old, past']);
+    expect([...view.querySelectorAll('[data-field="pr"]')].map((l) => l.querySelector('[data-field="member-title"]')!.textContent)).toEqual([ANVIL.title, 'Old anvil']);
+    expect([...view.querySelectorAll('[data-field="task"]')].map((l) => l.querySelector('[data-field="member-title"]')!.textContent)).toEqual([LIGHT.title, 'Closed 2', 'Closed 1']);
+    expect(within(view).getAllByRole('button', { name: /^Remove .* from Rates$/ })).toHaveLength(9);
+  });
+
+  it('TOPIC-10.5: under the members, its recommendations, Outputs and Edges; while the view shows, Work is watched', async () => {
+    const app = openApp([topic(1, { title: 'Rates', members: [member(SESSION)], outputs: null }), topic(2, { title: 'Proposals v2' })], work(), {
+      edges: [{ from: id(1), to: id(2), label: 'part of', createdAt: NOW }],
+      recommendations: [{ key: memberKey('pr', PR_MEMBER.ref), member: PR_MEMBER, topicId: id(1), newTitle: null, source: 'link', confidence: null, reason: 'Linked', createdAt: NOW }],
+    });
+    const user = await openTopics();
+    const view = await openView(user, 'Rates');
+    expect([...view.querySelectorAll('section')].map((s) => s.getAttribute('data-field'))).toEqual(['sessions', 'topic-recommended', 'outputs', 'edges']);
+    // With the sidebar closed, the view still keeps Work read.
+    act(() => (document.activeElement as HTMLElement).blur());
+    await user.keyboard('t');
+    expect(screen.queryByTestId('topics-panel')).toBeNull();
+    await waitFor(() => expect(app.client.watchWork).toHaveBeenLastCalledWith('tab-1', true));
+    await user.click(within(topicView()).getByRole('button', { name: 'Open graph' }));
+    await waitFor(() => expect(app.client.watchWork).toHaveBeenLastCalledWith('tab-1', false));
   });
 });

@@ -80,6 +80,21 @@ export function taskState(id: string, work: WorkSnapshot | null): { state: 'load
   return task ? { state: 'listed', task } : { state: 'gone' };
 }
 
+/** TOPIC-10.4: live Sessions first, most urgent Status first (DS-5.3), then the rest; newest added first within each. */
+export function orderSessions<M extends Extract<TopicMember, { kind: 'session' }>>(members: readonly M[], sessions: ReadonlyMap<string, SessionRow>): M[] {
+  const rank = (m: M) => {
+    const row = liveRow(m, sessions);
+    return row ? URGENCY.indexOf(row.status) : URGENCY.length;
+  };
+  return [...members].sort((a, b) => rank(a) - rank(b) || b.addedAt - a.addedAt);
+}
+
+/** TOPIC-10.4: PRs and Tasks in Work's last read first, then the rest; newest added first within each. */
+export function orderWorkMembers<M extends TopicMember>(members: readonly M[], work: WorkSnapshot | null): M[] {
+  const rank = (m: M) => ((m.kind === 'pr' ? prState(m.ref.url, work) : m.kind === 'task' ? taskState(m.ref.id, work) : null)?.state === 'listed' ? 0 : 1);
+  return [...members].sort((a, b) => rank(a) - rank(b) || b.addedAt - a.addedAt);
+}
+
 /**
  * TOPIC-1.5: every PR member is off tb-pr's board and every Task member is out of Tasks, with at least
  * one of either. Only once Work has read each list (Known gaps): never before.

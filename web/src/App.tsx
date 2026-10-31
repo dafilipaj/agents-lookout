@@ -17,6 +17,7 @@ import { StartingView } from '@/components/StartingView';
 import { WorkPanel } from '@/components/WorkPanel';
 import { type PickTarget, TopicPicker } from '@/components/TopicPicker';
 import { TopicGraph } from '@/components/TopicGraph';
+import { TopicView } from '@/components/TopicView';
 import { ViewErrorBoundary } from '@/components/ViewErrorBoundary';
 import { TopicsPanel } from '@/components/TopicsPanel';
 import { type LookoutClient, SaveError } from '@/lib/client';
@@ -486,7 +487,8 @@ export function App({ client }: { client: LookoutClient }) {
   const onChangesOpen = useCallback((sessionId: string, open: boolean) => setChangesOpen((cur) => (open ? sessionId : cur === sessionId ? null : cur)), []);
   const openChange = useCallback((sessionId: string, root: string, path: string) => client.openChange(sessionId, root, path), [client]);
   // TOPIC-4.3: Topics open counts as Work open, so its PR and Task members are as fresh as Work's rows.
-  const workOpen = layout.open && (layout.tab === 'work' || layout.tab === 'topics');
+  // TOPIC-10.5: so does a Topic's view.
+  const workOpen = (layout.open && (layout.tab === 'work' || layout.tab === 'topics')) || route.name === 'topic';
   useEffect(() => {
     if (state.clientId) void client.watchWork(state.clientId, workOpen);
   }, [client, state.clientId, workOpen]);
@@ -621,6 +623,15 @@ export function App({ client }: { client: LookoutClient }) {
   const [graphPick, setGraphPick] = useState<{ id: string } | null>(null);
   // TOPIC-7.1: "Open graph" and G: the graph in the main pane.
   const openGraph = useCallback(() => navigate({ name: 'topics' }), [navigate]);
+  // TOPIC-10.1: "Open", Enter on an expanded Topic, or a graph node: its view, and the tab selects it.
+  const openTopic = useCallback((id: string) => navigate({ name: 'topic', id }), [navigate]);
+  // …and however the view was reached (Back, Forward, a URL), the tab selects its Topic, past its filter.
+  const viewedTopic = route.name === 'topic' ? route.id : null;
+  useEffect(() => {
+    if (!viewedTopic) return;
+    updateLayout({ topic: viewedTopic });
+    setGraphPick({ id: viewedTopic });
+  }, [viewedTopic, updateLayout]);
   // TOPIC-6.1: "Link to Topic…": the picker, without "New Topic…", for an Edge from this Topic.
   const linkTo = useCallback(
     (topic: Topic) => {
@@ -1001,7 +1012,32 @@ export function App({ client }: { client: LookoutClient }) {
                 unlinkTopics={(id, other) => client.unlinkTopics(id, other)}
                 placeTopics={(positions) => client.placeTopics(positions)}
                 onOpenSession={openTopicSession}
+                onOpen={openTopic}
                 keyboardEnabled={!modalOpen}
+              />
+            ) : route.name === 'topic' ? (
+              <TopicView
+                // One Topic's drafts, focus and Library read never carry over to another's (TOPIC-1.2, TOPIC-4.4).
+                key={route.id}
+                id={route.id}
+                view={state.topics}
+                sessions={state.sessions}
+                work={state.work}
+                now={now}
+                updateTopic={(id, patch) => client.updateTopic(id, patch)}
+                deleteTopic={(id) => client.deleteTopic(id)}
+                removeMember={(id, m) => client.removeMember(id, m)}
+                onOpenSession={openTopicSession}
+                onReadLibrary={readLibrary}
+                outputsError={outputsError}
+                onMoreOutputs={moreOutputs}
+                recommend={(action) => client.recommend(action)}
+                onOtherTopic={otherTopic}
+                onOpenGraph={openGraph}
+                onLinkTo={linkTo}
+                linkTopics={(from, to, label) => client.linkTopics(from, to, label)}
+                editEdge={(id, edit) => client.editEdge(id, edit)}
+                unlinkTopics={(id, other) => client.unlinkTopics(id, other)}
               />
             ) : route.name === 'past' ? (
               <PastSessionView harness={route.harness} sessionId={route.id} now={now} load={loadPast} />
@@ -1080,7 +1116,6 @@ export function App({ client }: { client: LookoutClient }) {
                   view={state.topics}
                   sessions={state.sessions}
                   work={state.work}
-                  now={now}
                   focusKey={rightFocus.topics}
                   selected={layout.topic}
                   onSelect={(topic) => updateLayout({ topic })}
@@ -1089,21 +1124,15 @@ export function App({ client }: { client: LookoutClient }) {
                   createTopic={(title) => client.createTopic(title)}
                   updateTopic={(id, patch) => client.updateTopic(id, patch)}
                   deleteTopic={(id) => client.deleteTopic(id)}
-                  removeMember={(id, m) => client.removeMember(id, m)}
                   onOpenSession={openTopicSession}
-                  onReadLibrary={readLibrary}
-                  outputsError={outputsError}
-                  onMoreOutputs={moreOutputs}
                   recommend={(action) => client.recommend(action)}
                   onOtherTopic={otherTopic}
                   archived={showArchived}
                   onArchived={setShowArchived}
                   picked={graphPick}
                   onOpenGraph={openGraph}
+                  onOpenTopic={openTopic}
                   onLinkTo={linkTo}
-                  linkTopics={(from, to, label) => client.linkTopics(from, to, label)}
-                  editEdge={(id, edit) => client.editEdge(id, edit)}
-                  unlinkTopics={(id, other) => client.unlinkTopics(id, other)}
                   keyboardEnabled={!modalOpen}
                   navRef={topicsNav}
                 />
