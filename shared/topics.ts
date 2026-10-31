@@ -77,6 +77,10 @@ export interface Topic {
   outputs: TopicOutputs | null;
   /** TOPIC-7.2: its node's place in the graph; null until it's placed. */
   pos: TopicPosition | null;
+  /** TOPIC-11.5: its last summary; null until one is written. */
+  summary: TopicSummary | null;
+  /** TOPIC-11.5: a member was added or removed, or the notes changed, since the summary was written. */
+  summaryStale: boolean;
 }
 
 /** TOPIC-7.2: a node's centre, in the graph's own units (CSS pixels at scale 1). */
@@ -118,6 +122,68 @@ export interface TopicsView {
   recommendations: Recommendation[];
   /** TOPIC-9.3: Jev asks since local midnight, for the Settings switch's line. */
   jevAsksToday: number;
+  /** TOPIC-11.6: the Topics a summary is being written for. */
+  summarizing: string[];
+  /** TOPIC-11.6: why each Topic's last summary run failed, by Topic id, until its next run. */
+  summaryErrors: Record<string, SummaryError>;
+}
+
+/** TOPIC-11.4: where the work stands, as the summary says. */
+export const SUMMARY_STATES = ['not started', 'in progress', 'blocked', 'waiting', 'done'] as const;
+export type SummaryState = (typeof SUMMARY_STATES)[number];
+
+/** TOPIC-11.4: a member a point cites: its member key, and its name when the summary was written. */
+export interface SummaryCite {
+  key: string;
+  name: string;
+}
+
+/** TOPIC-11.4: one point of `open`, `recent` or `next`, with the members it comes from. */
+export interface SummaryPoint {
+  text: string;
+  cites: SummaryCite[];
+}
+
+/** TOPIC-11.4: the answer's fixed shape, its cited keys (`S1`, `PR1`, `T1`) turned into member keys. */
+export interface SummaryAnswer {
+  what: string;
+  state: SummaryState;
+  /** One sentence saying why `state`. */
+  why: string;
+  open: SummaryPoint[];
+  recent: SummaryPoint[];
+  next: SummaryPoint[];
+}
+
+/** TOPIC-11.5, TOPIC-11.7: a stored summary, who wrote it and what it cost. */
+export interface TopicSummary {
+  answer: SummaryAnswer;
+  writtenAt: number;
+  /** The model as `claude -p` reports it (`claude-sonnet-5-5`). */
+  model: string;
+  /** `total_cost_usd`; null when it didn't say. */
+  costUsd: number | null;
+}
+
+/** TOPIC-11.6: why a run left the stored summary as it was, in plain words, with a fix when there is one. */
+export interface SummaryError {
+  reason: string;
+  fix: string | null;
+}
+
+/** TOPIC-11.6: at most this many summaries are written at once. */
+export const MAX_SUMMARY_RUNS = 2;
+
+/** TOPIC-11.7: `claude-sonnet-5-5` as "Sonnet 5.5"; an id Lookout can't read as it is. */
+export function modelName(id: string): string {
+  const m = /^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?$/.exec(id);
+  if (!m) return id;
+  return `${m[1]![0]!.toUpperCase()}${m[1]!.slice(1)} ${m[2]}${m[3] ? `.${m[3]}` : ''}`;
+}
+
+/** TOPIC-11.7: "$0.04"; under a cent, "<$0.01". */
+export function formatCost(usd: number): string {
+  return usd < 0.005 ? '<$0.01' : `$${usd.toFixed(2)}`;
 }
 
 /** TOPIC-9: where a recommendation came from. */

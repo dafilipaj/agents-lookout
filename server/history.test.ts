@@ -406,6 +406,22 @@ describe('an expanded result (HIST-2.9, HIST-2.10)', () => {
     expect((await history({ FAKE_TB_SESSION_FILE: file }).peek(ASKED, 'claude')).last).toEqual({ role: 'user', text: 'Now tune them.' });
   });
 
+  it('TOPIC-11.3: a summary reads each Session with one `show --tail 2`: its summary, branch, message count, last active time, first prompt (600) and last reply (1,200); none for one tb-session no longer has', async () => {
+    const SHOWN = 'abababab-0000-4000-8000-000000000905';
+    const file = join(dir, 'brief.json');
+    writeFileSync(file, JSON.stringify([
+      { session_id: SHOWN, harness: 'claude', headless: false, summary: 'Port rates', git_branch: 'feature/rates', modified_at: '2026-10-31T10:00:00Z', first_prompt: `Port it.\n${'p'.repeat(700)}`, project_path: '@root/work', messages: [
+        { role: 'assistant', content: 'r'.repeat(1300) },
+        { role: 'user', content: 'Thanks.' },
+      ] },
+    ]));
+    const brief = await history({ FAKE_TB_SESSION_FILE: file }).brief(SHOWN, 'claude');
+    expect(calls(tbLog)).toEqual([['show', '--json', '--harness', 'claude', '--tail', '2', '--', SHOWN]]);
+    // The fake's `message_count` counts the messages it holds.
+    expect(brief).toEqual({ summary: 'Port rates', branch: 'feature/rates', messageCount: 2, lastActiveAt: Date.parse('2026-10-31T10:00:00Z'), firstPrompt: `Port it.\n${'p'.repeat(591)}`, lastAssistant: 'r'.repeat(1200) });
+    expect(await history().brief(CODEX, 'claude')).toBeNull();
+  });
+
   it('HIST-2.10: with tb-session 0.2, which can’t tail, the last message is left out and the first prompt still shows', async () => {
     const peek = await history({ FAKE_TB_SESSION_VERSION: '0.2.0' }).peek(GONE, 'claude');
     expect(peek).toEqual({ firstPrompt: 'Review PR 641.', last: null, tailed: false });

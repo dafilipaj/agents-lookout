@@ -8,7 +8,7 @@ import { afterEach, expect, it } from 'vitest';
 import { defaultSettings } from '../shared/settings.ts';
 import type { ServerEvent } from '../shared/types.ts';
 import { createApp } from './app.ts';
-import { TopicStore, Topics } from './topics.ts';
+import { TopicStore, Topics, TopicsError } from './topics.ts';
 import { WorkMonitor } from './work.ts';
 import { Library } from './library.ts';
 
@@ -97,6 +97,33 @@ it('TOPIC-8.3: the snapshot carries every Topic, and a change made through the A
   await read.done;
   expect(JSON.parse(read.text())).toMatchObject({ state: 'ok', topics: [{ id: topic.id }] });
   stream.req.emit('close');
+});
+
+it('TOPIC-11.1, TOPIC-11.6: POST /api/topics/<id>/summary starts a summary (202, or 409 while one runs), DELETE cancels it; both check the token', async () => {
+  const { topics, exchange } = setup();
+  const started: string[] = [];
+  const cancelled: string[] = [];
+  topics.summarizer = {
+    start: (id) => {
+      if (started.includes(id)) throw new TopicsError(409, 'A summary of this Topic is already being written.');
+      started.push(id);
+    },
+    cancel: (id) => cancelled.push(id),
+    deleted: () => {},
+  };
+  const id = topics.create('A').id;
+  const call = async (method: string, url: string, headers?: Record<string, string>) => {
+    const r = exchange(method, url, undefined, headers);
+    await r.done;
+    return { status: r.res.statusCode, body: JSON.parse(r.text()) as Record<string, unknown> };
+  };
+  expect(await call('POST', `/api/topics/${id}/summary`)).toEqual({ status: 202, body: { ok: true } });
+  expect(await call('POST', `/api/topics/${id}/summary`)).toEqual({ status: 409, body: { error: 'A summary of this Topic is already being written.' } });
+  expect(await call('DELETE', `/api/topics/${id}/summary`)).toEqual({ status: 200, body: { ok: true } });
+  expect(await call('POST', `/api/topics/${id}/summary`, { 'x-lookout-token': 'wrong' })).toMatchObject({ status: 403 });
+  expect(await call('PUT', `/api/topics/${id}/summary`)).toEqual({ status: 405, body: { error: 'method not allowed' } });
+  expect(started).toEqual([id]);
+  expect(cancelled).toEqual([id]);
 });
 
 it('TOPIC-8.3: mutations under /api/topics check the token and Origin', async () => {

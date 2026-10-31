@@ -1038,6 +1038,8 @@ export function App({ client }: { client: LookoutClient }) {
                 linkTopics={(from, to, label) => client.linkTopics(from, to, label)}
                 editEdge={(id, edit) => client.editEdge(id, edit)}
                 unlinkTopics={(id, other) => client.unlinkTopics(id, other)}
+                summarize={(id) => client.summarize(id)}
+                cancelSummary={(id) => client.cancelSummary(id)}
               />
             ) : route.name === 'past' ? (
               <PastSessionView harness={route.harness} sessionId={route.id} now={now} load={loadPast} />

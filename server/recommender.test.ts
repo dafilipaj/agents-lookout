@@ -101,7 +101,8 @@ describe('TOPIC-8.1 and TOPIC-9.6 the store', () => {
     const id = store.create('Kept');
     store.close();
     const db = new (sqlite().DatabaseSync)(path);
-    db.exec('alter table candidates drop column snapshot; update schema_version set v = 1');
+    // What schema 1 had: no candidate snapshot (2), no summaries (3).
+    db.exec('alter table candidates drop column snapshot; drop table summaries; update schema_version set v = 1');
     db.close();
     const migrated = new TopicStore(path);
     expect(migrated.list().map((t) => t.id)).toEqual([id]);
@@ -160,7 +161,7 @@ describe('TOPIC-9.1 candidates', () => {
 
 describe('TOPIC-9.2 Links first', () => {
   it('TOPIC-9.2: Links read both ways, with the Link’s reason; tied to members of two Topics, one per Topic', () => {
-    const a = { id: 'a', title: 'A', notes: '', state: 'open' as const, createdAt: 0, updatedAt: 0, outputs: null, pos: null, members: [{ ...PR(812), key: key(PR(812)), addedAt: 0, reason: '' }] };
+    const a = { id: 'a', title: 'A', notes: '', state: 'open' as const, createdAt: 0, updatedAt: 0, outputs: null, pos: null, summary: null, summaryStale: false, members: [{ ...PR(812), key: key(PR(812)), addedAt: 0, reason: '' }] };
     const b = { ...a, id: 'b', members: [{ ...PR(812), key: key(PR(812)), addedAt: 0, reason: '' }, { ...SESSION(9), key: key(SESSION(9)), addedAt: 0, reason: '' }] };
     const archived = { ...a, id: 'c', state: 'archived' as const };
     const w = work(

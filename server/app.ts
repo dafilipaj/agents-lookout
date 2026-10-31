@@ -116,6 +116,9 @@ export interface AppOptions {
   topics?: Pick<Topics, 'view' | 'create' | 'update' | 'delete' | 'addMember' | 'removeMember' | 'link' | 'editEdge' | 'unlink' | 'place'> & {
     /** TOPIC-9.4: Accept, Dismiss, Other Topic… or Judge again on a recommendation. */
     recommend?(action: RecommendationAction): { topicId: string | null };
+    /** TOPIC-11.1, TOPIC-11.6: start a summary of the Topic, or cancel the one being written. */
+    summarize?(id: string): void;
+    cancelSummary?(id: string): void;
   };
   /** Directory of the built UI; null in `pnpm dev`, where Vite serves it. */
   staticDir: string | null;
@@ -615,8 +618,8 @@ export function createApp(opts: AppOptions): LookoutApp {
 /**
  * TOPIC: `GET /api/topics`; `POST /api/topics`; `PUT` and `DELETE /api/topics/<id>`; `POST` and
  * `DELETE /api/topics/<id>/members`; `POST`, `PUT` and `DELETE /api/topics/<id>/edges` (TOPIC-6);
- * `PUT /api/topics/positions` (TOPIC-7.2); `POST /api/topics/recommendations` (TOPIC-9.4). A refusal
- * answers with its plain reason (TOPIC-8.4).
+ * `PUT /api/topics/positions` (TOPIC-7.2); `POST /api/topics/recommendations` (TOPIC-9.4); `POST`
+ * and `DELETE /api/topics/<id>/summary` (TOPIC-11). A refusal answers with its plain reason (TOPIC-8.4).
  */
 async function topicsCall(req: IncomingMessage, res: ServerResponse, path: string, topics: NonNullable<AppOptions['topics']>): Promise<void> {
   if (path === '/api/topics/recommendations') {
@@ -642,7 +645,7 @@ async function topicsCall(req: IncomingMessage, res: ServerResponse, path: strin
       throw err;
     }
   }
-  const match = /^\/api\/topics(?:\/([0-9a-f-]{36})(?:\/(members|edges))?)?$/.exec(path);
+  const match = /^\/api\/topics(?:\/([0-9a-f-]{36})(?:\/(members|edges|summary))?)?$/.exec(path);
   if (!match) return json(res, 404, { error: 'not found' });
   const [, id, sub] = match;
   const route = `${req.method} ${id ? (sub ?? 'topic') : 'topics'}`;
@@ -695,6 +698,15 @@ async function topicsCall(req: IncomingMessage, res: ServerResponse, path: strin
         topics.unlink(id!, parseUnlink(b).other);
         return json(res, 200, { ok: true });
       }
+      // TOPIC-11.1: the run goes on after the answer; every tab hears how it went through `topics`.
+      case 'POST summary':
+        if (!topics.summarize) return json(res, 404, { error: 'not found' });
+        topics.summarize(id!);
+        return json(res, 202, { ok: true });
+      case 'DELETE summary':
+        if (!topics.cancelSummary) return json(res, 404, { error: 'not found' });
+        topics.cancelSummary(id!);
+        return json(res, 200, { ok: true });
     }
   } catch (err) {
     if (err instanceof TopicsError) return json(res, err.status, { error: err.message });

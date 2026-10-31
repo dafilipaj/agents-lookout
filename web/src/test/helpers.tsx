@@ -6,7 +6,7 @@ import type { UserEvent } from '@testing-library/user-event';
 import { expect, vi } from 'vitest';
 import { App } from '@/App';
 import { type ClientListener, type HistoryQuery, type LookoutClient, SaveError } from '@/lib/client';
-import { type NewMember, type Recommendation, type RecommendationAction, type Topic, type TopicEdge, type TopicMember, type TopicsView, memberKey, sortTopics } from '@shared/topics.ts';
+import { type NewMember, type Recommendation, type RecommendationAction, type SummaryError, type Topic, type TopicEdge, type TopicMember, type TopicSummary, type TopicsView, memberKey, sortTopics } from '@shared/topics.ts';
 
 export const NOW = Date.UTC(2026, 9, 16, 12, 0, 0);
 
@@ -124,7 +124,10 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
   let topicClock = NOW;
   let pendingSet: Recommendation[] = options.recommendations ?? [];
   let edgeSet: TopicEdge[] = options.edges ?? [];
-  const topicsView = (): TopicsView => ({ state: 'ok', reason: null, path: '/Users/me/.lookout/topics.db', topics: sortTopics(topicSet), edges: edgeSet, pruned: [], libraryReadAt: null, recommendations: pendingSet, jevAsksToday: 0 });
+  // TOPIC-11.6: the fake server's summary runs and their errors; `finishSummary` ends a run.
+  let summarizingSet: string[] = [];
+  let summaryErrorSet: Record<string, SummaryError> = {};
+  const topicsView = (): TopicsView => ({ state: 'ok', reason: null, path: '/Users/me/.lookout/topics.db', topics: sortTopics(topicSet), edges: edgeSet, pruned: [], libraryReadAt: null, recommendations: pendingSet, jevAsksToday: 0, summarizing: summarizingSet, summaryErrors: summaryErrorSet });
   const changeTopics = (next: Topic[]) => {
     topicSet = next;
     act(() => listener?.onEvent({ type: 'topics', topics: topicsView() }));
@@ -185,7 +188,7 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
         }),
     ),
     createTopic: vi.fn(async (title: string) => {
-      const t: Topic = { id: `00000000-0000-4000-8000-${String(topicSet.length + 1).padStart(12, '0')}`, title: title.trim().slice(0, 120), notes: '', state: 'open', createdAt: ++topicClock, updatedAt: topicClock, members: [], outputs: null, pos: null };
+      const t: Topic = { id: `00000000-0000-4000-8000-${String(topicSet.length + 1).padStart(12, '0')}`, title: title.trim().slice(0, 120), notes: '', state: 'open', createdAt: ++topicClock, updatedAt: topicClock, members: [], outputs: null, pos: null, summary: null, summaryStale: false };
       changeTopics([...topicSet, t]);
       return t;
     }),
@@ -212,7 +215,7 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
       pendingSet = pendingSet.filter((x) => x !== r);
       let to: string | null = a.action === 'move' ? a.to : a.action === 'accept' ? r.topicId : null;
       if (a.action === 'accept' && to === null) {
-        const t: Topic = { id: `00000000-0000-4000-8000-${String(topicSet.length + 1).padStart(12, '0')}`, title: r.newTitle!, notes: '', state: 'open', createdAt: ++topicClock, updatedAt: topicClock, members: [], outputs: null, pos: null };
+        const t: Topic = { id: `00000000-0000-4000-8000-${String(topicSet.length + 1).padStart(12, '0')}`, title: r.newTitle!, notes: '', state: 'open', createdAt: ++topicClock, updatedAt: topicClock, members: [], outputs: null, pos: null, summary: null, summaryStale: false };
         topicSet = [...topicSet, t];
         to = t.id;
       }
@@ -246,6 +249,22 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
       edgeSet = edgeSet.filter((x) => x !== e);
       changeTopics(topicSet.map((x) => (x.id === e.from || x.id === e.to ? { ...x, updatedAt: ++topicClock } : x)));
     }),
+    // TOPIC-11.6: one run per Topic, at most two at once; Cancel ends it with the server's reason.
+    summarize: vi.fn(async (id: string) => {
+      topic(id);
+      if (summarizingSet.includes(id)) throw new SaveError('A summary of this Topic is already being written.', null, 409);
+      if (summarizingSet.length >= 2) throw new SaveError('2 summaries are being written; try again when one is done.', null, 409);
+      summarizingSet = [...summarizingSet, id];
+      const { [id]: _, ...rest } = summaryErrorSet;
+      summaryErrorSet = rest;
+      changeTopics(topicSet);
+    }),
+    cancelSummary: vi.fn(async (id: string) => {
+      if (!summarizingSet.includes(id)) return;
+      summarizingSet = summarizingSet.filter((x) => x !== id);
+      summaryErrorSet = { ...summaryErrorSet, [id]: { reason: 'Cancelled. The summary before it is kept.', fix: null } };
+      changeTopics(topicSet);
+    }),
     // TOPIC-7.2: positions aren't a change to the Topic.
     placeTopics: vi.fn(async (positions: readonly { id: string; x: number; y: number }[]) => {
       for (const p of positions) topic(p.id);
@@ -267,7 +286,13 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
     act(() => {
       listener!.onConnection(connected);
     });
-  return { ...utils, emit, snapshot, connection, saveSettings, client };
+  /** TOPIC-11: the fake server ends a summary run: a new summary written, or why it failed. */
+  const finishSummary = (id: string, outcome: { summary: TopicSummary } | { error: SummaryError }) => {
+    summarizingSet = summarizingSet.filter((x) => x !== id);
+    if ('error' in outcome) summaryErrorSet = { ...summaryErrorSet, [id]: outcome.error };
+    changeTopics(topicSet.map((t) => (t.id === id && 'summary' in outcome ? { ...t, summary: outcome.summary, summaryStale: false } : t)));
+  };
+  return { ...utils, emit, snapshot, connection, saveSettings, client, finishSummary };
 }
 
 /**

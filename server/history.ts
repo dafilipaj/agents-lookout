@@ -41,6 +41,18 @@ const MAX_TEXT = 200_000;
 export const SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9-]{0,127}$/;
 const HARNESSES: readonly string[] = ['claude', 'codex'] satisfies Harness[];
 
+/** TOPIC-11.3: a Session as a summary reads it (`History.brief`). */
+export interface SessionBrief {
+  summary: string | null;
+  branch: string | null;
+  messageCount: number | null;
+  lastActiveAt: number | null;
+  firstPrompt: string | null;
+  lastAssistant: string | null;
+}
+const BRIEF_PROMPT = 600;
+const BRIEF_REPLY = 1200;
+
 export class HistoryError extends Error {
   readonly status: number;
   constructor(status: number, message: string) {
@@ -189,6 +201,34 @@ export class History {
     return { firstPrompt: row.item.firstPrompt, last: said ? { role: last!.role as 'user' | 'assistant', text: said } : null, tailed: !legacy };
   }
 
+  /**
+   * TOPIC-11.3: what a summary reads of a Session, from one `show --tail 2`: tb-session's summary,
+   * branch, message count, last active time, its first prompt's first 600 characters and its last
+   * assistant message's first 1,200. Null when tb-session no longer has it.
+   */
+  async brief(sessionId: string, harness: Harness): Promise<SessionBrief | null> {
+    let shown: Awaited<ReturnType<History['show']>>;
+    try {
+      shown = await this.show(sessionId, harness, 2);
+    } catch (err) {
+      if (err instanceof HistoryError && err.status === 404) return null;
+      throw err;
+    }
+    const { raw, row, messages, total, legacy } = shown;
+    // A tb-session 0.2 `show` gives the first messages: its last is none of them.
+    const last = legacy ? undefined : [...messages].reverse().find((m): m is Record<string, unknown> => typeof m === 'object' && m !== null && (m as Record<string, unknown>).role === 'assistant' && typeof (m as Record<string, unknown>).content === 'string' && !!((m as Record<string, unknown>).content as string).trim());
+    const count = typeof raw.message_count === 'number' && Number.isInteger(raw.message_count) && raw.message_count >= 0 ? raw.message_count : total;
+    const prompt = typeof raw.first_prompt === 'string' ? unwrapPasted(raw.first_prompt).trim() : '';
+    return {
+      summary: text(raw.summary, MAX_TITLE),
+      branch: row.item.branch,
+      messageCount: count,
+      lastActiveAt: row.item.lastActiveAt,
+      firstPrompt: prompt ? prompt.slice(0, BRIEF_PROMPT) : null,
+      lastAssistant: last ? (last.content as string).trim().slice(0, BRIEF_REPLY) : null,
+    };
+  }
+
   /** HIST-3.1: what a resume needs, read again from tb-session. */
   async lookup(sessionId: string, harness: Harness): Promise<HistoryItem> {
     const { row } = await this.show(sessionId, harness, 1);
@@ -224,7 +264,7 @@ export class History {
     const source: 'transcript' | 'index' = parsed!.messages_source === 'index' ? 'index' : 'transcript';
     const t = parsed!.total_messages;
     const total = typeof t === 'number' && Number.isInteger(t) && t >= 0 ? t : null;
-    return { row, messages, source, total, legacy: asked.legacy };
+    return { raw: parsed!, row, messages, source, total, legacy: asked.legacy };
   }
 
   /** Can it be resumed: its Transcript is there and its start directory exists. */

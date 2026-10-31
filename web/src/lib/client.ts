@@ -99,6 +99,10 @@ export interface LookoutClient {
   unlinkTopics(topicId: string, other: string): Promise<void>;
   /** TOPIC-7.2: nodes placed, dragged or arranged. */
   placeTopics(positions: readonly ({ id: string } & TopicPosition)[]): Promise<void>;
+  /** TOPIC-11.1: start a summary of the Topic; how it goes comes with `topics`. */
+  summarize(topicId: string): Promise<void>;
+  /** TOPIC-11.6: Cancel. */
+  cancelSummary(topicId: string): Promise<void>;
 }
 
 export interface HistoryQuery {
@@ -479,6 +483,12 @@ export function createHttpClient(): LookoutClient {
     },
     placeTopics: async (positions) => {
       await call(() => send('PUT', '/api/topics/positions', { positions }), 'Saving where the nodes are');
+    },
+    summarize: async (topicId) => {
+      await call(() => send('POST', `/api/topics/${encodeURIComponent(topicId)}/summary`), 'Starting the summary');
+    },
+    cancelSummary: async (topicId) => {
+      await call(() => send('DELETE', `/api/topics/${encodeURIComponent(topicId)}/summary`), 'Cancelling the summary');
     },
     sendMessage: async (sessionId, text) => {
       await call(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/send`, { text }), 'Sending');

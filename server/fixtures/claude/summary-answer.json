@@ -1,0 +1,159 @@
+{
+  "duration_api_ms": 3840,
+  "stop_reason": "tool_use",
+  "session_id": "d0c9abe8-2ba7-4095-afae-2893b0c314f6",
+  "total_cost_usd": 0.014655999999999999,
+  "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 2383,
+    "cache_read_input_tokens": 0,
+    "output_tokens": 512,
+    "output_tokens_details": {
+      "thinking_tokens": 0
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 2383,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 512,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 2383,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2383
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "modelUsage": {
+    "claude-sonnet-5-5": {
+      "inputTokens": 2,
+      "outputTokens": 512,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 2383,
+      "webSearchRequests": 0,
+      "costUSD": 0.014655999999999999,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 0,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 2383,
+      "canonicalModel": "claude-sonnet-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "safety_stops": 0,
+  "is_error": false,
+  "num_turns": 2,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "{\"what\":\"Port the Rates table screen from the Ember app to the Fantastic React app, keeping half-up rounding as the invoice does.\",\"state\":\"in progress\",\"why\":\"The table renders and sorts, but the PR is a draft with failing CI and a known totals rounding mismatch.\",\"open\":[{\"text\":\"Totals row rounding differs from Ember by a cent on mixed currencies.\",\"cites\":[\"S1\"]},{\"text\":\"A failing test and a TODO for the rounding issue remain in the branch.\",\"cites\":[\"S1\"]},{\"text\":\"PR #812 is still a draft and CI is failing.\",\"cites\":[\"PR1\"]}],\"recent\":[{\"text\":\"The session got the table rendering and sorting in React.\",\"cites\":[\"S1\"]},{\"text\":\"Draft PR #812 was opened for the Rates table.\",\"cites\":[\"S1\",\"PR1\"]},{\"text\":\"A Rates port doc was written.\",\"cites\":[]}],\"next\":[{\"text\":\"Fix the mixed-currency totals rounding to match Ember's half-up behavior.\",\"cites\":[\"S1\"]},{\"text\":\"Get CI green and take PR #812 out of draft.\",\"cites\":[\"PR1\"]}]}",
+  "structured_output": {
+    "what": "Port the Rates table screen from the Ember app to the Fantastic React app, keeping half-up rounding as the invoice does.",
+    "state": "in progress",
+    "why": "The table renders and sorts, but the PR is a draft with failing CI and a known totals rounding mismatch.",
+    "open": [
+      {
+        "text": "Totals row rounding differs from Ember by a cent on mixed currencies.",
+        "cites": [
+          "S1"
+        ]
+      },
+      {
+        "text": "A failing test and a TODO for the rounding issue remain in the branch.",
+        "cites": [
+          "S1"
+        ]
+      },
+      {
+        "text": "PR #812 is still a draft and CI is failing.",
+        "cites": [
+          "PR1"
+        ]
+      }
+    ],
+    "recent": [
+      {
+        "text": "The session got the table rendering and sorting in React.",
+        "cites": [
+          "S1"
+        ]
+      },
+      {
+        "text": "Draft PR #812 was opened for the Rates table.",
+        "cites": [
+          "S1",
+          "PR1"
+        ]
+      },
+      {
+        "text": "A Rates port doc was written.",
+        "cites": []
+      }
+    ],
+    "next": [
+      {
+        "text": "Fix the mixed-currency totals rounding to match Ember's half-up behavior.",
+        "cites": [
+          "S1"
+        ]
+      },
+      {
+        "text": "Get CI green and take PR #812 out of draft.",
+        "cites": [
+          "PR1"
+        ]
+      }
+    ]
+  },
+  "ttft_ms": 4121,
+  "type": "result",
+  "duration_ms": 4145,
+  "uuid": "9888fbda-6ab2-4a89-951e-5286d101ba8a",
+  "ttft_stream_ms": 1370,
+  "time_to_request_ms": 303,
+  "first_content_frame_ms": 1370,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

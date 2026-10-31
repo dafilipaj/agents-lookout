@@ -10,7 +10,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Loading } from '@/components/ui/loading';
 import { SessionMarker } from '@/components/ui/session-marker';
 import type { PanelNav } from '@/lib/right-sidebar';
-import { liveRow, looksDone, matchesTopic, memberCounts, orderSessions, topicMarker } from '@/lib/topics';
+import { SUMMARY_STATE_WORD, liveRow, looksDone, matchesTopic, memberCounts, orderSessions, topicMarker } from '@/lib/topics';
 import { cn } from '@/lib/utils';
 import { Markdown } from './Markdown';
 import { Recommendations } from './Recommendations';
@@ -393,8 +393,23 @@ function TopicSummary({ topic, sessions, panel, onProblem }: Omit<TopicItemProps
     panel.onOpenSession(m, true).catch((err: unknown) => onProblem(err instanceof Error ? err.message : "Couldn't open its Session."));
   };
   const notes = topic.notes.split('\n').slice(0, NOTES_LINES).join('\n').trim();
+  const summary = topic.summary?.answer;
   return (
     <div className="flex min-w-0 flex-col gap-2 px-2 pt-0.5 pb-2 pl-7 text-meta" data-field="details">
+      {summary && (
+        // TOPIC-11.8: the summary's `what` and `state`, above the notes.
+        <div className="flex min-w-0 flex-col gap-0.5 text-body text-foreground" data-field="summary">
+          <p className="min-w-0">{summary.what}</p>
+          <p className="flex min-w-0 flex-wrap items-center gap-1.5 text-meta text-muted-foreground">
+            <span>{SUMMARY_STATE_WORD[summary.state]}</span>
+            {topic.summaryStale && (
+              <Chip tone="info" title="A member was added or removed, or the notes changed, since it was written." data-field="summary-stale">
+                Out of date
+              </Chip>
+            )}
+          </p>
+        </div>
+      )}
       {notes && (
         <div className="min-w-0 text-body text-foreground" data-field="notes-text">
           <Markdown text={notes} />

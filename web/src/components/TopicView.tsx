@@ -1,12 +1,13 @@
 import type { OutputItem } from '@shared/library.ts';
-import { MAX_TOPIC_NOTES, MAX_TOPIC_TITLE, OUTPUTS_FRESH_MS, type Recommendation, type RecommendationAction, type Topic, type TopicMember, type TopicsView } from '@shared/topics.ts';
+import { MAX_TOPIC_NOTES, MAX_TOPIC_TITLE, OUTPUTS_FRESH_MS, type Recommendation, type RecommendationAction, type SummaryCite, type SummaryPoint, type Topic, type TopicMember, type TopicSummary, type TopicsView, formatCost, modelName } from '@shared/topics.ts';
 import type { SessionRow } from '@shared/types.ts';
 import type { WorkSnapshot } from '@shared/work.ts';
-import { Archive, ArchiveRestore, ArrowLeft, ArrowLeftRight, ArrowRight, ExternalLink, Link2, Maximize2, Network, Repeat2, Trash2, Unlink, X } from 'lucide-react';
+import { Archive, ArchiveRestore, ArrowLeft, ArrowLeftRight, ArrowRight, ExternalLink, Link2, Maximize2, Network, RefreshCw, Repeat2, Sparkles, Trash2, Unlink, X } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Chip } from '@/components/ui/chip';
+import { CommandBlock } from '@/components/ui/command-block';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { IconButton, labelledButtonLook } from '@/components/ui/icon-button';
@@ -14,7 +15,7 @@ import { Loading } from '@/components/ui/loading';
 import { SessionMarker } from '@/components/ui/session-marker';
 import { Textarea } from '@/components/ui/textarea';
 import { STATUS_LABEL } from '@/lib/sessions';
-import { edgesOf, liveRow, looksDone, memberCounts, orderSessions, orderWorkMembers, prState, sharedLabel, sharedPairs, taskState, topicMarker } from '@/lib/topics';
+import { SUMMARY_STATE_WORD, edgesOf, liveRow, looksDone, memberCounts, orderSessions, orderWorkMembers, prState, sharedLabel, sharedPairs, taskState, topicMarker } from '@/lib/topics';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { HarnessIcon } from './HarnessIcon';
@@ -65,6 +66,10 @@ export interface TopicViewProps {
   editEdge(topicId: string, edit: { other: string; reverse: true }): Promise<void>;
   /** TOPIC-6.2: "Unlink". */
   unlinkTopics(topicId: string, other: string): Promise<void>;
+  /** TOPIC-11.1: "Summarize" and "Summarize again". */
+  summarize(topicId: string): Promise<void>;
+  /** TOPIC-11.6: "Cancel". */
+  cancelSummary(topicId: string): Promise<void>;
 }
 
 const openInBrowser = (url: string) => window.open(url, '_blank', 'noopener,noreferrer');
@@ -141,6 +146,7 @@ export function TopicView(props: TopicViewProps) {
     >
       <div className="mx-auto flex w-full max-w-4xl min-w-0 flex-col gap-5 px-8 py-6 text-body">
         {problem && <Alert title={problem} data-field="topic-problem" />}
+        <Summary topic={topic} {...props} act={act} />
         <Notes topic={topic} save={(notes) => props.updateTopic(topic.id, { notes })} onProblem={setProblem} />
         <Members topic={topic} {...props} act={act} />
         <Extras topic={topic} {...props} act={act} onProblem={setProblem} />
@@ -214,6 +220,134 @@ function Members({ topic, sessions, work, view, act, ...props }: TopicViewProps 
         </Section>
       )}
     </>
+  );
+}
+
+/**
+ * TOPIC-11: the Topic's summary, between the header and the notes: written only when asked, "Out of
+ * date" once a member or the notes changed, "Summarizing…" with Cancel while a run writes it, and why
+ * the last run failed. Each point's cited members show by name, and a click does what their chip or
+ * line does.
+ */
+function Summary({ topic, view, sessions, now, act, ...props }: TopicViewProps & { topic: Topic; act: Act }) {
+  const running = view?.summarizing.includes(topic.id) ?? false;
+  const error = view?.summaryErrors[topic.id] ?? null;
+  const summary = topic.summary;
+  return (
+    <section className="flex min-w-0 flex-col gap-1.5" data-field="summary" aria-label="Summary">
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <h2 className="text-meta font-medium text-muted-foreground">Summary</h2>
+        {summary && topic.summaryStale && (
+          <Chip tone="info" title="A member was added or removed, or the notes changed, since it was written." data-field="summary-stale">
+            Out of date
+          </Chip>
+        )}
+        <div className="ml-auto flex min-w-0 items-center gap-2">
+          {running ? (
+            <>
+              <Loading label="Summarizing…" />
+              <Button variant="outline" size="sm" className="h-7" data-action="cancel-summary" onClick={() => act(props.cancelSummary(topic.id), "Couldn't cancel it.")}>
+                <X />
+                Cancel
+              </Button>
+            </>
+          ) : (
+            <Button variant="outline" size="sm" className="h-7" data-action="summarize" onClick={() => act(props.summarize(topic.id), "Couldn't start the summary.")}>
+              {summary ? <RefreshCw /> : <Sparkles />}
+              {summary ? 'Summarize again' : 'Summarize'}
+            </Button>
+          )}
+        </div>
+      </div>
+      {error && !running && (
+        <Alert title="The summary wasn't written" detail={error.reason} data-field="summary-error">
+          {error.fix && <CommandBlock>{error.fix}</CommandBlock>}
+        </Alert>
+      )}
+      {summary && <SummaryBody topic={topic} summary={summary} sessions={sessions} pruned={view?.pruned ?? []} now={now} act={act} onOpenSession={props.onOpenSession} />}
+    </section>
+  );
+}
+
+function SummaryBody({ topic, summary, sessions, pruned, now, act, onOpenSession }: { topic: Topic; summary: TopicSummary; sessions: ReadonlyMap<string, SessionRow>; pruned: readonly string[]; now: number; act: Act; onOpenSession: TopicViewProps['onOpenSession'] }) {
+  const { answer } = summary;
+  const lists: [string, string, SummaryPoint[]][] = [
+    ['Open', 'summary-open', answer.open],
+    ['Recent', 'summary-recent', answer.recent],
+    ['Next', 'summary-next', answer.next],
+  ];
+  return (
+    <div className="flex min-w-0 flex-col gap-1.5 text-body">
+      <p className="min-w-0" data-field="summary-what">
+        {answer.what}
+      </p>
+      <p className="min-w-0" data-field="summary-state">
+        <span className="font-medium">{SUMMARY_STATE_WORD[answer.state]}</span>
+        {answer.why && `: ${answer.why}`}
+      </p>
+      {lists.map(([label, field, points]) =>
+        points.length ? (
+          <div key={field} className="flex min-w-0 gap-3" data-field={field}>
+            <span className="w-14 shrink-0 text-meta leading-5 text-muted-foreground">{label}</span>
+            <ul className="flex min-w-0 flex-1 flex-col gap-1">
+              {points.map((p, i) => (
+                <li key={i} className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1" data-field="summary-point">
+                  <span className="min-w-0">{p.text}</span>
+                  {p.cites.map((c) => (
+                    <Cite key={c.key} cite={c} topic={topic} sessions={sessions} pruned={pruned} act={act} onOpenSession={onOpenSession} />
+                  ))}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null,
+      )}
+      <p className="text-meta text-muted-foreground" data-field="summary-by">
+        {[modelName(summary.model), summary.costUsd === null ? null : formatCost(summary.costUsd), `${formatAge(now - summary.writtenAt)} ago`].filter(Boolean).join(' · ')}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * TOPIC-11.4: a cited member by its chip's or line's name; a click opens its Session, or its PR or
+ * Task, as that chip or line does. A member since removed, or a past Session tb-session no longer
+ * has (its chip has no button either, TOPIC-4.2), is its name alone.
+ */
+function Cite({ cite, topic, sessions, pruned, act, onOpenSession }: { cite: SummaryCite; topic: Topic; sessions: ReadonlyMap<string, SessionRow>; pruned: readonly string[]; act: Act; onOpenSession: TopicViewProps['onOpenSession'] }) {
+  const m = topic.members.find((x) => x.key === cite.key);
+  const look = cn(labelledButtonLook(), 'h-6 max-w-full text-meta font-normal [&>svg]:size-3.5');
+  if (!m) {
+    return (
+      <span className="text-meta text-muted-foreground" title="No longer in this Topic" data-field="summary-cite">
+        {cite.name}
+      </span>
+    );
+  }
+  if (m.kind === 'session') {
+    const row = liveRow(m, sessions);
+    const name = row?.title ?? cite.name;
+    if (!row && pruned.includes(`${m.ref.harness}:${m.ref.sessionId}`)) {
+      return (
+        <span className="text-meta text-muted-foreground" title="Removed from the index" data-field="summary-cite">
+          {name}
+        </span>
+      );
+    }
+    return (
+      <button type="button" className={look} aria-label={`${row ? 'Open' : 'Resume'} ${name}`} data-field="summary-cite" onClick={() => act(onOpenSession(m, row !== null), "Couldn't open its Session.")}>
+        <HarnessIcon harness={m.ref.harness} />
+        <span className="min-w-0 truncate">{name}</span>
+      </button>
+    );
+  }
+  const url = m.kind === 'pr' ? m.ref.url : m.kind === 'task' ? m.snapshot.url : '';
+  if (!url) return <span className="text-meta text-muted-foreground" data-field="summary-cite">{cite.name}</span>;
+  return (
+    <button type="button" className={look} aria-label={`${m.kind === 'pr' ? 'Open on GitHub' : 'Open in Fantastic'}: ${cite.name}`} data-field="summary-cite" onClick={() => openInBrowser(url)}>
+      {m.kind === 'pr' ? <PrIcon chip={null} /> : <ExternalLink />}
+      <span className="min-w-0 truncate">{cite.name}</span>
+    </button>
   );
 }
 

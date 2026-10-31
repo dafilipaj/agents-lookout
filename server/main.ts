@@ -28,6 +28,7 @@ import { ToolsMonitor } from './tools.ts';
 import { TopicStore, Topics, defaultTopicsPath } from './topics.ts';
 import { UsageMonitor, resolveJevBin } from './usage.ts';
 import { Recommender } from './recommender.ts';
+import { Summarizer } from './summarizer.ts';
 import { Viewer } from './viewer.ts';
 import { WorkMonitor, resolveWorkBin } from './work.ts';
 
@@ -192,6 +193,19 @@ const recommender = new Recommender({
   onNotReady: () => void usage.refreshJev().catch(() => {}),
 });
 topics.judgeAgainWith = (member) => recommender.judgeAgain(member);
+
+// TOPIC-11: a summary of a Topic, one `claude -p` run when asked (decision 0013).
+const summarizer = new Summarizer({
+  topics,
+  runner: run,
+  claudeBin: async () => (await launcher.harnessFacts()).find((f) => f.id === 'claude' && f.installed)?.path ?? null,
+  brief: (id, harness) => history.brief(id, harness),
+  sessions: () => monitor.snapshot().sessions,
+  work: () => work.snapshot(),
+  runDir: join(homedir(), '.lookout', 'claude-run'),
+  env,
+});
+topics.summarizer = summarizer;
 settings.onChange(() => recommender.kick());
 
 // WORK-2.8: a saved Productive email drops the Tasks kept for the previous one, and reads its own.
@@ -280,7 +294,7 @@ const shutdown = async () => {
   app.server.close();
   app.server.closeAllConnections();
   // Cancel the pollers and wait until their processes have exited, so none is orphaned.
-  await recommender.close();
+  await Promise.all([recommender.close(), summarizer.close()]);
   topics.close();
   await Promise.all([usage.close().catch(() => {}), memory.close().catch(() => {}), work.close().catch(() => {}), tools.close().catch(() => {})]);
   process.exit(0);

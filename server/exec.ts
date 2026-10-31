@@ -14,6 +14,8 @@ export interface RunOptions {
   killGraceMs?: number;
   /** How stdout is decoded; `latin1` keeps every byte, for file contents that may not be UTF-8. */
   encoding?: 'utf8' | 'latin1';
+  /** The working directory; the server's own when unset. */
+  cwd?: string;
 }
 
 /** Runs a program with an argv array (never a shell string) and resolves its stdout. */
@@ -47,6 +49,7 @@ export const run: Runner = (file, args, opts) =>
     }
     const child = spawn(file, [...args], {
       env: opts.env ?? process.env,
+      ...(opts.cwd ? { cwd: opts.cwd } : {}),
       stdio: ['pipe', 'pipe', 'pipe'],
       detached: true, // own process group: `-pid` addresses all of it
     });

@@ -426,12 +426,12 @@ describe('a view that throws stays in the main pane (DS-4.5)', () => {
   it('DS-4.5: a main-pane view that throws shows an error Alert with Try again, the sidebar keeps working, and another view starts clean', async () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     // Placed already, so no placement is saved (and answered) while the test runs.
-    const topic = { id: '00000000-0000-4000-8000-000000000001', title: 'Rates table', notes: '', state: 'open' as const, createdAt: NOW - 1e6, updatedAt: NOW - 1000, members: [], outputs: { items: [], total: 0 }, pos: { x: 200, y: 100 } };
+    const topic = { id: '00000000-0000-4000-8000-000000000001', title: 'Rates table', notes: '', state: 'open' as const, createdAt: NOW - 1e6, updatedAt: NOW - 1000, members: [], outputs: { items: [], total: 0 }, pos: { x: 200, y: 100 }, summary: null, summaryStale: false };
     const app = renderApp('/topics', { topics: [topic] });
     app.snapshot([row({ id: 'a' })]);
     expect(screen.getByTestId('topic-graph')).toBeInTheDocument();
     // A server from before Edges sends a view without them, which the graph can't draw.
-    const view = { state: 'ok' as const, reason: null, path: '/Users/me/.lookout/topics.db', topics: [topic], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 0 };
+    const view = { state: 'ok' as const, reason: null, path: '/Users/me/.lookout/topics.db', topics: [topic], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 0, summarizing: [], summaryErrors: {} };
     app.emit({ type: 'topics', topics: view as never });
     const alert = screen.getByRole('alert');
     expect(alert).toHaveTextContent("This view couldn't be drawn");

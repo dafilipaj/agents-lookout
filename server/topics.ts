@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { chmodSync, mkdirSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -15,6 +15,8 @@ import {
   type Recommendation,
   type RecommendationAction,
   type RecommendationSource,
+  type SummaryAnswer,
+  type SummaryError,
   acceptedReason,
   type Topic,
   type TopicEdge,
@@ -22,6 +24,7 @@ import {
   type TopicPosition,
   type TopicOutputs,
   type TopicState,
+  type TopicSummary,
   type TopicsView,
   refText,
   sortTopics,
@@ -37,7 +40,7 @@ import { SESSION_ID } from './history.ts';
  */
 
 /** TOPIC-8.1: the schema this server writes and reads; a newer one is refused, never overwritten. */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 /** TOPIC-2.3: snapshots are bounded on write. */
 const MAX_SNAPSHOT_TITLE = 300;
@@ -54,12 +57,18 @@ export class TopicsError extends Error {
   }
 }
 
+const SUMMARIES = `create table summaries (topic_id text primary key references topics(id) on delete cascade,
+  answer text not null, written_at integer not null, model text not null, cost_usd real,
+  fingerprint text not null);`;
+
 /**
  * TOPIC-8.1: each step takes the schema one version up, inside the migration's transaction. Version 2:
  * a candidate keeps what Lookout knew of it when first seen, for the "Recommended" row (TOPIC-9.4).
+ * Version 3: a Topic's summary (TOPIC-11.5).
  */
 const MIGRATIONS: Record<number, string> = {
   2: "alter table candidates add column snapshot text not null default '{}';",
+  3: SUMMARIES,
 };
 
 const SCHEMA = `
@@ -87,6 +96,7 @@ create table recommendations (kind text not null, ref text not null,
   foreign key (kind, ref) references candidates(kind, ref) on delete cascade);
 create unique index recommendations_topic on recommendations (kind, ref, topic_id) where topic_id is not null;
 create unique index recommendations_new on recommendations (kind, ref) where topic_id is null;
+${SUMMARIES}
 `;
 
 /**
@@ -338,6 +348,14 @@ interface RecommendationRow {
   created_at: number;
   snapshot: string;
 }
+interface SummaryRow {
+  topic_id: string;
+  answer: string;
+  written_at: number;
+  model: string;
+  cost_usd: number | null;
+  fingerprint: string;
+}
 interface MemberRow {
   topic_id: string;
   kind: MemberKind;
@@ -436,7 +454,7 @@ export class TopicStore {
   }
 
   /** Every Topic with its members and place, most recently changed first (TOPIC-3.2). Outputs are joined by `Topics`. */
-  list(): Omit<Topic, 'outputs'>[] {
+  list(): Omit<Topic, 'outputs' | 'summary' | 'summaryStale'>[] {
     const topics = this.db.prepare('select id, title, notes, state, created_at, updated_at, pos_x, pos_y from topics').all() as unknown as TopicRow[];
     const members = this.db.prepare('select topic_id, kind, ref, snapshot, added_at, reason from members order by added_at, kind, ref').all() as unknown as MemberRow[];
     const byTopic = new Map<string, TopicMember[]>();
@@ -458,8 +476,10 @@ export class TopicStore {
         members: byTopic.get(t.id) ?? [],
         outputs: null,
         pos: t.pos_x === null || t.pos_y === null ? null : { x: t.pos_x, y: t.pos_y },
+        summary: null,
+        summaryStale: false,
       })),
-    ).map(({ outputs: _, ...t }) => t);
+    ).map(({ outputs: _o, summary: _s, summaryStale: _st, ...t }) => t);
   }
 
   /** TOPIC-1.1: an Open Topic with no members, under a new random id, never reused. */
@@ -482,7 +502,7 @@ export class TopicStore {
     });
   }
 
-  /** TOPIC-1.4: the Topic and its own rows (members, Edges, recommendations, by cascade); nothing else. */
+  /** TOPIC-1.4: the Topic and its own rows (members, Edges, recommendations, its summary, by cascade); nothing else. */
   delete(id: string): void {
     this.transaction(() => {
       this.require(id);
@@ -700,6 +720,32 @@ export class TopicStore {
     });
   }
 
+  /** TOPIC-11.5: the summary just written replaces the one before, whole. */
+  saveSummary(id: string, summary: TopicSummary, fingerprint: string): void {
+    this.transaction(() => {
+      this.require(id);
+      this.db
+        .prepare('insert or replace into summaries (topic_id, answer, written_at, model, cost_usd, fingerprint) values (?, ?, ?, ?, ?, ?)')
+        .run(id, JSON.stringify(summary.answer), summary.writtenAt, summary.model, summary.costUsd, fingerprint);
+    });
+  }
+
+  /** TOPIC-11.5: every stored summary, by Topic id, with the fingerprint it was written at. */
+  summaries(): Map<string, { summary: TopicSummary; fingerprint: string }> {
+    const rows = this.db.prepare('select topic_id, answer, written_at, model, cost_usd, fingerprint from summaries').all() as unknown as SummaryRow[];
+    const out = new Map<string, { summary: TopicSummary; fingerprint: string }>();
+    for (const r of rows) {
+      let answer: SummaryAnswer;
+      try {
+        answer = JSON.parse(r.answer) as SummaryAnswer;
+      } catch {
+        continue;
+      }
+      out.set(r.topic_id, { summary: { answer, writtenAt: r.written_at, model: r.model, costUsd: r.cost_usd }, fingerprint: r.fingerprint });
+    }
+    return out;
+  }
+
   private require(id: string): TopicRow {
     const row = this.db.prepare('select id, title, notes, state, created_at, updated_at, pos_x, pos_y from topics where id = ?').get(id) as unknown as TopicRow | undefined;
     if (!row) throw new TopicsError(404, 'That Topic no longer exists.');
@@ -719,6 +765,14 @@ function toMember(m: MemberRow): TopicMember | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * TOPIC-11.5: what a summary was written from: the Topic's member keys, sorted, and its notes. A
+ * member's Status, CI or Task status isn't in it, so a change there leaves the summary current.
+ */
+export function summaryFingerprint(topic: { members: readonly { key: string }[]; notes: string }): string {
+  return createHash('sha256').update(JSON.stringify([topic.members.map((m) => m.key).sort(), topic.notes])).digest('hex');
 }
 
 /** An error's message without paths beyond the one Lookout names itself. */
@@ -750,6 +804,9 @@ export class Topics {
   private readAt: number | null = null;
   /** TOPIC-4.2: Sessions the last read's events say tb-session pruned, as `<harness>:<sessionId>`. */
   private pruned: string[] = [];
+  /** TOPIC-11.6: the Topics a summary is being written for, and why each one's last run failed. */
+  private summarizing: string[] = [];
+  private summaryErrors: Record<string, SummaryError> = {};
   private last: TopicsView;
 
   constructor(opts: TopicsOptions) {
@@ -793,6 +850,33 @@ export class Topics {
 
   delete(id: string): void {
     this.write((s) => s.delete(id));
+    this.summarizer?.deleted(id);
+  }
+
+  /** TOPIC-11: set by the server: summaries are written by the Summarizer, and a deleted Topic's run stops. */
+  summarizer: { start(id: string): void; cancel(id: string): void; deleted(id: string): void } | null = null;
+
+  /** TOPIC-11.1. */
+  summarize(id: string): void {
+    if (!this.summarizer) throw new TopicsError(404, 'Summaries are off here.');
+    this.summarizer.start(id);
+  }
+
+  /** TOPIC-11.6. */
+  cancelSummary(id: string): void {
+    this.summarizer?.cancel(id);
+  }
+
+  /** TOPIC-11.6: the Summarizer's runs and errors, for every tab. */
+  summaryRuns(summarizing: readonly string[], errors: Readonly<Record<string, SummaryError>>): void {
+    this.summarizing = [...summarizing];
+    this.summaryErrors = { ...errors };
+    this.changed();
+  }
+
+  /** TOPIC-11.5: a summary just written, with the fingerprint of what it was written from. */
+  saveSummary(id: string, summary: TopicSummary, fingerprint: string): void {
+    this.write((s) => s.saveSummary(id, summary, fingerprint));
   }
 
   /** TOPIC-2.3: `added` false, and the Topic's title, when it was already a member. */
@@ -962,13 +1046,14 @@ export class Topics {
   }
 
   private build(): TopicsView {
-    const none = { topics: [], edges: [], pruned: [], libraryReadAt: this.readAt, recommendations: [], jevAsksToday: 0 };
+    const none = { topics: [], edges: [], pruned: [], libraryReadAt: this.readAt, recommendations: [], jevAsksToday: 0, summarizing: this.summarizing, summaryErrors: this.summaryErrors };
     if (!this.store && !this.failure) return { state: 'ok', reason: null, path: this.opts.path, ...none };
     if (!this.store) return { state: 'error', reason: this.failure, path: this.opts.path, ...none };
-    let stored: Omit<Topic, 'outputs'>[];
+    let stored: Omit<Topic, 'outputs' | 'summary' | 'summaryStale'>[];
     let edges: TopicEdge[];
     let recommendations: Recommendation[];
     let jevAsksToday: number;
+    let summaries: Map<string, { summary: TopicSummary; fingerprint: string }>;
     try {
       stored = this.store.list();
       edges = this.store.edges();
@@ -976,12 +1061,18 @@ export class Topics {
       const midnight = new Date();
       midnight.setHours(0, 0, 0, 0);
       jevAsksToday = this.store.asksSince(midnight.getTime());
+      summaries = this.store.summaries();
     } catch (err) {
       return { state: 'error', reason: `Lookout couldn't read its Topics database: ${plain(err)}`, path: this.opts.path, ...none };
     }
     const items = this.outputs;
-    const topics = stored.map((t) => ({ ...t, outputs: items ? outputsOf(t.members, items) : null }));
-    return { state: 'ok', reason: null, path: this.opts.path, topics, edges, pruned: this.pruned, libraryReadAt: this.readAt, recommendations, jevAsksToday };
+    const topics = stored.map((t) => {
+      const s = summaries.get(t.id);
+      return { ...t, outputs: items ? outputsOf(t.members, items) : null, summary: s?.summary ?? null, summaryStale: s ? s.fingerprint !== summaryFingerprint(t) : false };
+    });
+    const ids = new Set(topics.map((t) => t.id));
+    const summaryErrors = Object.fromEntries(Object.entries(this.summaryErrors).filter(([id]) => ids.has(id)));
+    return { state: 'ok', reason: null, path: this.opts.path, topics, edges, pruned: this.pruned, libraryReadAt: this.readAt, recommendations, jevAsksToday, summarizing: this.summarizing, summaryErrors };
   }
 }
 

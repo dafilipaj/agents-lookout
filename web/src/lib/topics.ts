@@ -1,5 +1,5 @@
 import type { OutputSession } from '@shared/library.ts';
-import { type MemberKind, type NewMember, type Topic, type TopicEdge, type TopicMember, type TopicsView, historyMember, memberKey, sortTopics } from '@shared/topics.ts';
+import { type MemberKind, type NewMember, type SummaryState, type Topic, type TopicEdge, type TopicMember, type TopicsView, historyMember, memberKey, sortTopics } from '@shared/topics.ts';
 export { historyMember, prMember, rowMember, sessionMember, taskMember } from '@shared/topics.ts';
 import type { SessionRow, Status } from '@shared/types.ts';
 import type { WorkPr, WorkSnapshot, WorkTask } from '@shared/work.ts';
@@ -35,6 +35,9 @@ export function topicsOf(byMember: ReadonlyMap<string, Topic[]>, members: readon
 }
 
 const KIND_WORD: Record<MemberKind, [string, string]> = { session: ['Session', 'Sessions'], pr: ['PR', 'PRs'], task: ['Task', 'Tasks'], run: ['Run', 'Runs'] };
+
+/** TOPIC-11.4, TOPIC-11.8: a summary's state as a word. */
+export const SUMMARY_STATE_WORD: Record<SummaryState, string> = { 'not started': 'Not started', 'in progress': 'In progress', blocked: 'Blocked', waiting: 'Waiting', done: 'Done' };
 
 /** TOPIC-3.2: "2 Sessions · 1 PR · 1 Task"; "No members" for none. */
 export function memberCounts(members: readonly TopicMember[]): string {

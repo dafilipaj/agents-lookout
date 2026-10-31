@@ -71,11 +71,12 @@ describe('TOPIC-8 storage', () => {
     store.close();
     const db = new (sqlite().DatabaseSync)(path);
     const tables = (db.prepare("select name from sqlite_master where type = 'table' order by name").all() as { name: string }[]).map((t) => t.name);
-    expect(tables).toEqual(['candidates', 'edges', 'members', 'recommendations', 'schema_version', 'topics']);
+    expect(tables).toEqual(['candidates', 'edges', 'members', 'recommendations', 'schema_version', 'summaries', 'topics']);
     const columns = (t: string) => (db.prepare(`pragma table_info(${t})`).all() as { name: string }[]).map((c) => c.name);
     expect(columns('topics')).toEqual(['id', 'title', 'notes', 'state', 'created_at', 'updated_at', 'pos_x', 'pos_y']);
     expect(columns('members')).toEqual(['topic_id', 'kind', 'ref', 'snapshot', 'added_at', 'reason']);
     expect(columns('edges')).toEqual(['from_id', 'to_id', 'label', 'created_at']);
+    expect(columns('summaries')).toEqual(['topic_id', 'answer', 'written_at', 'model', 'cost_usd', 'fingerprint']);
     expect(db.prepare('select ref from members').all()).toEqual([{ ref: `{"harness":"claude","sessionId":"${SESSION.ref.sessionId}"}` }]);
     db.exec(`insert into edges (from_id, to_id, created_at) values ('${a}', '${b}', 1)`);
     expect(() => db.exec(`insert into edges (from_id, to_id, created_at) values ('${b}', '${a}', 1)`)).toThrow(/UNIQUE/);
@@ -115,6 +116,28 @@ describe('TOPIC-8 storage', () => {
 });
 
 describe('TOPIC-1 a Topic', () => {
+  it('TOPIC-8.1, TOPIC-11.5: a schema 2 database is copied to topics.db.bak-2, then gains the summaries table, keeping what it held', () => {
+    const path = tempPath();
+    const store = new TopicStore(path);
+    const id = store.create('Kept');
+    store.close();
+    const db = new (sqlite().DatabaseSync)(path);
+    db.exec('drop table summaries; update schema_version set v = 2');
+    db.close();
+    const migrated = new TopicStore(path);
+    expect(migrated.list().map((t) => t.id)).toEqual([id]);
+    migrated.saveSummary(id, { answer: { what: 'w', state: 'done', why: '', open: [], recent: [], next: [] }, writtenAt: 1, model: 'claude-sonnet-5-5', costUsd: null }, 'f');
+    migrated.close();
+    const bak = new (sqlite().DatabaseSync)(`${path}.bak-2`);
+    expect(bak.prepare('select max(v) as v from schema_version').get()).toEqual({ v: 2 });
+    expect(bak.prepare("select name from sqlite_master where name = 'summaries'").get()).toBeUndefined();
+    bak.close();
+    const now = new (sqlite().DatabaseSync)(path);
+    expect(now.prepare('select max(v) as v from schema_version').get()).toEqual({ v: 3 });
+    expect(now.prepare('select topic_id, model from summaries').all()).toEqual([{ topic_id: id, model: 'claude-sonnet-5-5' }]);
+    now.close();
+  });
+
   it('TOPIC-1.1: a title is trimmed, must not be empty and is cut to 120 characters; the Topic is Open with no members and a random id', () => {
     expect(parseTitle('  Proposals rates  ')).toBe('Proposals rates');
     expect(parseTitle('x'.repeat(130))).toHaveLength(120);
