@@ -1,6 +1,6 @@
 import type { Recommendation, RecommendationAction, Topic } from '@shared/topics.ts';
 import type { SessionRow } from '@shared/types.ts';
-import { Check, FolderInput, X } from 'lucide-react';
+import { ArrowRight, Check, FolderInput, X } from 'lucide-react';
 import { useState } from 'react';
 import { labelledButtonLook } from '@/components/ui/icon-button';
 import { SessionMarker } from '@/components/ui/session-marker';
@@ -54,9 +54,7 @@ export function Recommendations({ recommendations, topics, sessions, showTopic, 
               </span>
               {showTopic && (
                 <>
-                  <span aria-hidden className="shrink-0 text-muted-foreground">
-                    →
-                  </span>
+                  <ArrowRight aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
                   <span className="min-w-0 truncate font-medium text-foreground" title={target} data-field="target">
                     {target}
                   </span>

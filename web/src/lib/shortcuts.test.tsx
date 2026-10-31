@@ -137,6 +137,7 @@ const ELSEWHERE: Record<string, { file: string; criteria: string[] }[]> = {
   ],
   'panel-review': [{ file: 'WorkPanel.test.tsx', criteria: ['WORK-5.2'] }],
   'panel-add': [{ file: 'Topics.test.tsx', criteria: ['TOPIC-2.1'] }],
+  'panel-graph': [{ file: 'Topics.test.tsx', criteria: ['TOPIC-7.1'] }],
   'panel-start': [
     { file: 'WorkPanel.test.tsx', criteria: ['WORK-5.1'] },
     { file: 'LibraryPanel.test.tsx', criteria: ['LIB-3.7'] },

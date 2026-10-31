@@ -75,7 +75,26 @@ export interface Topic {
   members: TopicMember[];
   /** TOPIC-4.4: null until the Library has been read since the server started. */
   outputs: TopicOutputs | null;
+  /** TOPIC-7.2: its node's place in the graph; null until it's placed. */
+  pos: TopicPosition | null;
 }
+
+/** TOPIC-7.2: a node's centre, in the graph's own units (CSS pixels at scale 1). */
+export interface TopicPosition {
+  x: number;
+  y: number;
+}
+
+/** TOPIC-6: an Edge from one Topic to another, with an optional label that reads from the first to the second. */
+export interface TopicEdge {
+  from: string;
+  to: string;
+  label: string | null;
+  createdAt: number;
+}
+
+/** TOPIC-6.1: an Edge's label is at most this many characters. */
+export const MAX_EDGE_LABEL = 60;
 
 /**
  * TOPIC-8.3: the whole set, as every tab gets it. `error` (TOPIC-8.4): the store couldn't be opened,
@@ -86,6 +105,8 @@ export interface TopicsView {
   reason: string | null;
   path: string;
   topics: Topic[];
+  /** TOPIC-6: every Edge, oldest first. */
+  edges: TopicEdge[];
   /**
    * TOPIC-4.2: Sessions the Library's last read says tb-session no longer has, as
    * `<harness>:<sessionId>`; empty before a read.

@@ -24,12 +24,13 @@ const SOURCES = Object.fromEntries(
 /**
  * Files that draw with `<svg>`: the Harness logos and the Status shapes (both 0008 exceptions), and
  * the Session row's context gauge (`ContextRing`), a tiny chart of a number rather than an icon.
- * MEM's sparkline is a chart too. The chat rail's Marks are CSS shapes and need no entry.
+ * MEM's sparkline is a chart too, and so is the Topics graph (TOPIC-7), a diagram of nodes and Edges.
+ * The chat rail's Marks are CSS shapes and need no entry.
  */
 /** DS-8.5 (0012): the one component that renders an `<img>`: a person's avatar, never an icon. */
 const IMG_FILES = new Set(['web/src/components/ui/avatar.tsx']);
 
-const SVG_FILES = new Set(['web/src/components/HarnessIcon.tsx', 'web/src/components/StatusMarker.tsx', 'web/src/components/SessionItem.tsx', 'web/src/components/MemoryLine.tsx']);
+const SVG_FILES = new Set(['web/src/components/HarnessIcon.tsx', 'web/src/components/StatusMarker.tsx', 'web/src/components/SessionItem.tsx', 'web/src/components/MemoryLine.tsx', 'web/src/components/TopicGraph.tsx']);
 
 /**
  * The packages UI source may import. Any other package fails the guard until someone checks it isn't
@@ -106,22 +107,36 @@ function iconSymbols(source: string, path = 'x.tsx'): string[] {
   if (path.endsWith('.css')) return cssSymbols(source);
   const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, path.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
   const found: string[] = [];
-  const check = (node: ts.Node, text: string, start: number, whole = true) => {
+  /** `ends`: a template substitution sits before or after this part (`${a} → ${b}`). */
+  const check = (node: ts.Node, text: string, start: number, whole = true, ends = { before: false, after: false }) => {
     if (whole && LONE_TIMES.test(text)) found.push(`${where(file, start)} ×`);
     for (const m of text.matchAll(PICTOGRAPH)) {
       const c = m[0];
-      if (MODIFIERS.has(c) || TYPOGRAPHIC.has(c) || (KEYS.has(c) && inShortcutHint(node, path))) continue;
+      if (MODIFIERS.has(c) || TYPOGRAPHIC.has(c) || (KEYS.has(c) && inShortcutHint(node, path)) || betweenWords(text, m.index, ends)) continue;
       found.push(`${where(file, start + m.index)} ${c}`);
     }
   };
   const visit = (node: ts.Node) => {
     if (ts.isJsxText(node)) check(node, node.text, node.pos); // getStart() would skip its leading spaces
     else if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) check(node, node.text, node.getStart() + 1);
-    else if (ts.isTemplateHead(node) || ts.isTemplateMiddle(node) || ts.isTemplateTail(node)) check(node, node.text, node.getStart() + 1, false); // a part of a template, like `×${n}`
+    else if (ts.isTemplateHead(node) || ts.isTemplateMiddle(node) || ts.isTemplateTail(node)) {
+      // A part of a template, like `×${n}`.
+      check(node, node.text, node.getStart() + 1, false, { before: !ts.isTemplateHead(node), after: !ts.isTemplateTail(node) });
+    }
     ts.forEachChild(node, visit);
   };
   visit(file);
   return found;
+}
+
+/**
+ * An arrow written between two things, spaced, is notation ("old.rb → new.rb", DIFF-3.1), not an
+ * icon; one at either end of the text ("Open →") or on its own still is.
+ */
+function betweenWords(text: string, i: number, ends: { before: boolean; after: boolean }): boolean {
+  if (text[i] !== '→' && text[i] !== '←') return false;
+  if (text[i - 1] !== ' ' || text[i + 1] !== ' ') return false;
+  return (ends.before || text.slice(0, i - 1).trim() !== '') && (ends.after || text.slice(i + 2).trim() !== '');
 }
 
 /** CSS has only block comments, so a regex strips them; anything left (e.g. `content: '⚠'`) counts. */
@@ -164,8 +179,8 @@ describe('icons', () => {
     expect(iconSymbols(entry, SHORTCUTS_FILE).map((s) => s.split(' ')[1])).toEqual(['↑']);
     // ...but only in that file: an `alt:` or `keys:` anywhere else is not a hint.
     expect(symbols(entry)).toEqual(['↑', '↓', '←', '↑']);
-    // An arrow beside text is an icon, not a shortcut hint.
-    expect(symbols(`<Button>Jump to latest ↓</Button>; 'Open →'`)).toEqual(['↓', '→']);
+    // An arrow beside text is an icon, not a shortcut hint; so is one on its own, or at the start.
+    expect(symbols(`<Button>Jump to latest ↓</Button>; 'Open →'; <span>→</span>; \`→ \${t}\`; '→ Rates'`)).toEqual(['↓', '→', '→', '→', '→']);
     // `/*` and `//` outside comments don't hide what follows (a regex comment stripper would).
     expect(symbols(`<input accept="image/*" />;\n<Button>⛔ Stop</Button>;\n/** doc */`)).toEqual(['⛔']);
     expect(symbols(`// matches web/src/*\n<span>⚠</span>`)).toEqual(['⚠']);
@@ -175,7 +190,7 @@ describe('icons', () => {
   it('0008: the guard lets comments, typography, modifier keys and shortcut hints through', () => {
     expect(
       iconSymbols(
-        `// ● in a comment\n/* ⛔ */ const url = 'http://x';\n<kbd>⌘↵</kbd>; <Kbd>⌘↵</Kbd>; <Hint keys={['↑', '↓']} text="New Session (⌘N in the installed app)" />;\n<b title="Next (↓)">'Read ×3 · 2m…' © 2026 ™</b>`,
+        `// ● in a comment\n/* ⛔ */ const url = 'http://x'; const r = \`\${a} → \${b}\`; const s = 'old.rb → new.rb';\n<kbd>⌘↵</kbd>; <Kbd>⌘↵</Kbd>; <Hint keys={['↑', '↓']} text="New Session (⌘N in the installed app)" />;\n<b title="Next (↓)">'Read ×3 · 2m…' © 2026 ™</b>`,
       ),
     ).toEqual([]);
   });

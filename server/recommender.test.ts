@@ -160,7 +160,7 @@ describe('TOPIC-9.1 candidates', () => {
 
 describe('TOPIC-9.2 Links first', () => {
   it('TOPIC-9.2: Links read both ways, with the Link’s reason; tied to members of two Topics, one per Topic', () => {
-    const a = { id: 'a', title: 'A', notes: '', state: 'open' as const, createdAt: 0, updatedAt: 0, outputs: null, members: [{ ...PR(812), key: key(PR(812)), addedAt: 0, reason: '' }] };
+    const a = { id: 'a', title: 'A', notes: '', state: 'open' as const, createdAt: 0, updatedAt: 0, outputs: null, pos: null, members: [{ ...PR(812), key: key(PR(812)), addedAt: 0, reason: '' }] };
     const b = { ...a, id: 'b', members: [{ ...PR(812), key: key(PR(812)), addedAt: 0, reason: '' }, { ...SESSION(9), key: key(SESSION(9)), addedAt: 0, reason: '' }] };
     const archived = { ...a, id: 'c', state: 'archived' as const };
     const w = work(

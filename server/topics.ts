@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import type { OutputItem } from '../shared/library.ts';
 import {
+  MAX_EDGE_LABEL,
   MAX_TOPIC_NOTES,
   MAX_TOPIC_OUTPUTS,
   MAX_TOPIC_TITLE,
@@ -16,7 +17,9 @@ import {
   type RecommendationSource,
   acceptedReason,
   type Topic,
+  type TopicEdge,
   type TopicMember,
+  type TopicPosition,
   type TopicOutputs,
   type TopicState,
   type TopicsView,
@@ -243,6 +246,61 @@ export function parsePatch(body: unknown): TopicPatch {
   return patch;
 }
 
+/** The other Topic a request names, by id. */
+function topicId(v: unknown, message: string): string {
+  if (typeof v !== 'string' || !TOPIC_ID.test(v)) throw new TopicsError(400, message);
+  return v;
+}
+
+/** TOPIC-6.1: an Edge's label: one line, at most 60 characters; empty is none. */
+function edgeLabel(v: unknown): string | null {
+  if (v === null || v === undefined) return null;
+  if (typeof v !== 'string') throw new TopicsError(400, 'A label is text.');
+  return line(v, MAX_EDGE_LABEL);
+}
+
+/** TOPIC-6.1: `POST /api/topics/<id>/edges`: the Topic it goes to, and its label. */
+export function parseLink(body: unknown): { to: string; label: string | null } {
+  const b = object(body);
+  return { to: topicId(b.to, 'Pick a Topic to link to.'), label: edgeLabel(b.label) };
+}
+
+/** TOPIC-6.2, TOPIC-7.4: `PUT /api/topics/<id>/edges`: the Edge with that Topic, a new label, or turned around. */
+export interface EdgeEdit {
+  other: string;
+  label?: string | null;
+  reverse?: true;
+}
+export function parseEdgeEdit(body: unknown): EdgeEdit {
+  const b = object(body);
+  const edit: EdgeEdit = { other: topicId(b.other, 'Which Edge?') };
+  if ('label' in b) edit.label = edgeLabel(b.label);
+  if (b.reverse === true) edit.reverse = true;
+  if (!('label' in edit) && !edit.reverse) throw new TopicsError(400, 'Nothing to change.');
+  return edit;
+}
+
+/** TOPIC-6.2: `DELETE /api/topics/<id>/edges`: the Edge with that Topic. */
+export function parseUnlink(body: unknown): { other: string } {
+  return { other: topicId(object(body).other, 'Which Edge?') };
+}
+
+/** TOPIC-7.2: how far from the origin a node may be placed. */
+const MAX_POSITION = 100_000;
+const MAX_POSITIONS = 500;
+
+/** TOPIC-7.2: `PUT /api/topics/positions`: nodes placed, dragged or arranged, one or many. */
+export function parsePositions(body: unknown): { id: string; pos: TopicPosition }[] {
+  const list = object(body).positions;
+  if (!Array.isArray(list) || !list.length || list.length > MAX_POSITIONS) throw new TopicsError(400, 'Which nodes?');
+  return list.map((v) => {
+    const p = object(v);
+    const ok = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n) && Math.abs(n) <= MAX_POSITION;
+    if (!ok(p.x) || !ok(p.y)) throw new TopicsError(400, 'A position is two numbers.');
+    return { id: topicId(p.id, 'Which node?'), pos: { x: Math.round(p.x * 10) / 10, y: Math.round(p.y * 10) / 10 } };
+  });
+}
+
 interface TopicRow {
   id: string;
   title: string;
@@ -250,6 +308,14 @@ interface TopicRow {
   state: TopicState;
   created_at: number;
   updated_at: number;
+  pos_x: number | null;
+  pos_y: number | null;
+}
+interface EdgeRow {
+  from_id: string;
+  to_id: string;
+  label: string | null;
+  created_at: number;
 }
 export interface CandidateRow {
   kind: MemberKind;
@@ -369,9 +435,9 @@ export class TopicStore {
     }
   }
 
-  /** Every Topic with its members, most recently changed first (TOPIC-3.2). Outputs are joined by `Topics`. */
+  /** Every Topic with its members and place, most recently changed first (TOPIC-3.2). Outputs are joined by `Topics`. */
   list(): Omit<Topic, 'outputs'>[] {
-    const topics = this.db.prepare('select id, title, notes, state, created_at, updated_at from topics').all() as unknown as TopicRow[];
+    const topics = this.db.prepare('select id, title, notes, state, created_at, updated_at, pos_x, pos_y from topics').all() as unknown as TopicRow[];
     const members = this.db.prepare('select topic_id, kind, ref, snapshot, added_at, reason from members order by added_at, kind, ref').all() as unknown as MemberRow[];
     const byTopic = new Map<string, TopicMember[]>();
     for (const m of members) {
@@ -382,7 +448,17 @@ export class TopicStore {
       byTopic.set(m.topic_id, list);
     }
     return sortTopics(
-      topics.map((t) => ({ id: t.id, title: t.title, notes: t.notes, state: t.state, createdAt: t.created_at, updatedAt: t.updated_at, members: byTopic.get(t.id) ?? [], outputs: null })),
+      topics.map((t) => ({
+        id: t.id,
+        title: t.title,
+        notes: t.notes,
+        state: t.state,
+        createdAt: t.created_at,
+        updatedAt: t.updated_at,
+        members: byTopic.get(t.id) ?? [],
+        outputs: null,
+        pos: t.pos_x === null || t.pos_y === null ? null : { x: t.pos_x, y: t.pos_y },
+      })),
     ).map(({ outputs: _, ...t }) => t);
   }
 
@@ -446,6 +522,73 @@ export class TopicStore {
 
   title(id: string): string {
     return this.require(id).title;
+  }
+
+  /** TOPIC-6: every Edge, oldest first. */
+  edges(): TopicEdge[] {
+    const rows = this.db.prepare('select from_id, to_id, label, created_at from edges order by created_at, from_id, to_id').all() as unknown as EdgeRow[];
+    return rows.map((e) => ({ from: e.from_id, to: e.to_id, label: e.label, createdAt: e.created_at }));
+  }
+
+  /** The Edge between two Topics, whichever way it goes, or null. */
+  private edge(a: string, b: string): EdgeRow | null {
+    const row = this.db.prepare('select from_id, to_id, label, created_at from edges where (from_id = ? and to_id = ?) or (from_id = ? and to_id = ?)').get(a, b, b, a);
+    return (row as unknown as EdgeRow | undefined) ?? null;
+  }
+
+  /** TOPIC-3.2: an Edge change is a change to both its Topics. */
+  private touch(...ids: string[]): void {
+    const at = this.now();
+    for (const id of ids) this.db.prepare('update topics set updated_at = ? where id = ?').run(at, id);
+  }
+
+  /**
+   * TOPIC-6.1: an Edge from one Topic to another. Two Topics have at most one, whichever way it goes,
+   * and a Topic can't be linked to itself.
+   */
+  link(from: string, to: string, label: string | null): void {
+    if (from === to) throw new TopicsError(400, "A Topic can't be linked to itself.");
+    this.transaction(() => {
+      this.require(from);
+      this.require(to);
+      if (this.edge(from, to)) throw new TopicsError(409, 'Already linked.');
+      this.db.prepare('insert into edges (from_id, to_id, label, created_at) values (?, ?, ?, ?)').run(from, to, label, this.now());
+      this.touch(from, to);
+    });
+  }
+
+  /** TOPIC-6.2, TOPIC-7.4: a new label, or the Edge turned around ("Reverse"), on either of its Topics. */
+  editEdge(id: string, edit: EdgeEdit): void {
+    this.transaction(() => {
+      this.require(id);
+      const e = this.edge(id, edit.other);
+      if (!e) throw new TopicsError(404, 'Those Topics are no longer linked.');
+      if (edit.label !== undefined) this.db.prepare('update edges set label = ? where from_id = ? and to_id = ?').run(edit.label, e.from_id, e.to_id);
+      // One update swaps both columns: SQLite reads the old values on the right.
+      if (edit.reverse) this.db.prepare('update edges set from_id = to_id, to_id = from_id where from_id = ? and to_id = ?').run(e.from_id, e.to_id);
+      this.touch(e.from_id, e.to_id);
+    });
+  }
+
+  /** TOPIC-6.2: "Unlink" on either Topic removes the Edge. */
+  unlink(id: string, other: string): void {
+    this.transaction(() => {
+      this.require(id);
+      const e = this.edge(id, other);
+      if (!e) throw new TopicsError(404, 'Those Topics are no longer linked.');
+      this.db.prepare('delete from edges where from_id = ? and to_id = ?').run(e.from_id, e.to_id);
+      this.touch(e.from_id, e.to_id);
+    });
+  }
+
+  /** TOPIC-7.2: nodes placed, all or none; moving a node isn't a change to its Topic (TOPIC-3.2). */
+  place(positions: readonly { id: string; pos: TopicPosition }[]): void {
+    this.transaction(() => {
+      for (const { id, pos } of positions) {
+        this.require(id);
+        this.db.prepare('update topics set pos_x = ?, pos_y = ? where id = ?').run(pos.x, pos.y, id);
+      }
+    });
   }
 
   /** Whether the item is a member of any Topic, or of this one. */
@@ -558,7 +701,7 @@ export class TopicStore {
   }
 
   private require(id: string): TopicRow {
-    const row = this.db.prepare('select id, title, notes, state, created_at, updated_at from topics where id = ?').get(id) as unknown as TopicRow | undefined;
+    const row = this.db.prepare('select id, title, notes, state, created_at, updated_at, pos_x, pos_y from topics where id = ?').get(id) as unknown as TopicRow | undefined;
     if (!row) throw new TopicsError(404, 'That Topic no longer exists.');
     return row;
   }
@@ -660,6 +803,26 @@ export class Topics {
 
   removeMember(id: string, kind: MemberKind, ref: string): void {
     this.write((s) => s.removeMember(id, kind, ref));
+  }
+
+  /** TOPIC-6.1. */
+  link(from: string, to: string, label: string | null): void {
+    this.write((s) => s.link(from, to, label));
+  }
+
+  /** TOPIC-6.2, TOPIC-7.4. */
+  editEdge(id: string, edit: EdgeEdit): void {
+    this.write((s) => s.editEdge(id, edit));
+  }
+
+  /** TOPIC-6.2. */
+  unlink(id: string, other: string): void {
+    this.write((s) => s.unlink(id, other));
+  }
+
+  /** TOPIC-7.2. */
+  place(positions: readonly { id: string; pos: TopicPosition }[]): void {
+    this.write((s) => s.place(positions));
   }
 
   /**
@@ -799,14 +962,16 @@ export class Topics {
   }
 
   private build(): TopicsView {
-    const none = { topics: [], pruned: [], libraryReadAt: this.readAt, recommendations: [], jevAsksToday: 0 };
+    const none = { topics: [], edges: [], pruned: [], libraryReadAt: this.readAt, recommendations: [], jevAsksToday: 0 };
     if (!this.store && !this.failure) return { state: 'ok', reason: null, path: this.opts.path, ...none };
     if (!this.store) return { state: 'error', reason: this.failure, path: this.opts.path, ...none };
     let stored: Omit<Topic, 'outputs'>[];
+    let edges: TopicEdge[];
     let recommendations: Recommendation[];
     let jevAsksToday: number;
     try {
       stored = this.store.list();
+      edges = this.store.edges();
       recommendations = this.store.pending();
       const midnight = new Date();
       midnight.setHours(0, 0, 0, 0);
@@ -816,7 +981,7 @@ export class Topics {
     }
     const items = this.outputs;
     const topics = stored.map((t) => ({ ...t, outputs: items ? outputsOf(t.members, items) : null }));
-    return { state: 'ok', reason: null, path: this.opts.path, topics, pruned: this.pruned, libraryReadAt: this.readAt, recommendations, jevAsksToday };
+    return { state: 'ok', reason: null, path: this.opts.path, topics, edges, pruned: this.pruned, libraryReadAt: this.readAt, recommendations, jevAsksToday };
   }
 }
 

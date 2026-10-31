@@ -2,7 +2,7 @@ import type { LibraryPage, LibraryQuery } from '@shared/library.ts';
 import type { PathAnswer } from '@shared/files.ts';
 import type { Settings, SettingsView } from '@shared/settings.ts';
 import type { ToolsSnapshot } from '@shared/tools.ts';
-import type { NewMember, RecommendationAction, Topic, TopicState } from '@shared/topics.ts';
+import type { NewMember, RecommendationAction, Topic, TopicPosition, TopicState } from '@shared/topics.ts';
 import type { WorkRefreshResult } from '@shared/work.ts';
 import { HELD_REASONS, type AnswerRequest, type AnswerResult, type ChatPage, type EffortSwitchRequest, type EffortSwitchResult, type EndResult, type EndTarget, type Harness, type HarnessOption, type HeldReason, type HistoryDetail, type HistoryPage, type HistoryPeek, type LaunchRequest, type LaunchView, type TrustRequest, type ModelSwitchRequest, type ModelSwitchResult, type RenameResult, type ResumeResult, type ServerEvent } from '@shared/types.ts';
 
@@ -91,6 +91,14 @@ export interface LookoutClient {
   removeMember(topicId: string, member: Pick<NewMember, 'kind' | 'ref'>): Promise<void>;
   /** TOPIC-9.4: Accept, Dismiss, Other Topic… or Judge again; `topicId` is where the item went, if anywhere. */
   recommend(action: RecommendationAction): Promise<{ topicId: string | null }>;
+  /** TOPIC-6.1: an Edge from one Topic to another; "Already linked." when the pair has one. */
+  linkTopics(from: string, to: string, label: string | null): Promise<void>;
+  /** TOPIC-6.2, TOPIC-7.4: the Edge between two Topics, relabelled or turned around. */
+  editEdge(topicId: string, edit: { other: string; label?: string | null; reverse?: true }): Promise<void>;
+  /** TOPIC-6.2. */
+  unlinkTopics(topicId: string, other: string): Promise<void>;
+  /** TOPIC-7.2: nodes placed, dragged or arranged. */
+  placeTopics(positions: readonly ({ id: string } & TopicPosition)[]): Promise<void>;
 }
 
 export interface HistoryQuery {
@@ -459,6 +467,18 @@ export function createHttpClient(): LookoutClient {
     recommend: (action) => call<{ topicId: string | null }>(() => send('POST', '/api/topics/recommendations', action), action.action === 'judge-again' ? 'Asking Jev' : 'Saving that'),
     removeMember: async (topicId, member) => {
       await call(() => send('DELETE', `/api/topics/${encodeURIComponent(topicId)}/members`, { kind: member.kind, ref: member.ref }), 'Removing from the Topic');
+    },
+    linkTopics: async (from, to, label) => {
+      await call(() => send('POST', `/api/topics/${encodeURIComponent(from)}/edges`, { to, label }), 'Linking the Topics');
+    },
+    editEdge: async (topicId, edit) => {
+      await call(() => send('PUT', `/api/topics/${encodeURIComponent(topicId)}/edges`, edit), 'Saving the Edge');
+    },
+    unlinkTopics: async (topicId, other) => {
+      await call(() => send('DELETE', `/api/topics/${encodeURIComponent(topicId)}/edges`, { other }), 'Unlinking the Topics');
+    },
+    placeTopics: async (positions) => {
+      await call(() => send('PUT', '/api/topics/positions', { positions }), 'Saving where the nodes are');
     },
     sendMessage: async (sessionId, text) => {
       await call(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/send`, { text }), 'Sending');

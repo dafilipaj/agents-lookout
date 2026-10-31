@@ -2,7 +2,7 @@ import type { OutputItem } from '@shared/library.ts';
 import { MAX_TOPIC_NOTES, MAX_TOPIC_TITLE, OUTPUTS_FRESH_MS, type Recommendation, type RecommendationAction, type Topic, type TopicMember, type TopicsView, sortTopics } from '@shared/topics.ts';
 import type { SessionRow } from '@shared/types.ts';
 import type { WorkSnapshot } from '@shared/work.ts';
-import { Archive, ArchiveRestore, ExternalLink, Plus, Search, Trash2, X } from 'lucide-react';
+import { Archive, ArchiveRestore, ArrowLeft, ArrowLeftRight, ArrowRight, ExternalLink, Link2, Network, Plus, Repeat2, Search, Trash2, Unlink, X } from 'lucide-react';
 import { type FormEvent, type KeyboardEvent, type ReactNode, type Ref, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -15,7 +15,7 @@ import { SessionMarker } from '@/components/ui/session-marker';
 import { Textarea } from '@/components/ui/textarea';
 import type { PanelNav } from '@/lib/right-sidebar';
 import { STATUS_LABEL } from '@/lib/sessions';
-import { liveRow, looksDone, matchesTopic, memberCounts, prState, taskState, topicMarker } from '@/lib/topics';
+import { edgesOf, liveRow, looksDone, matchesTopic, memberCounts, prState, sharedLabel, sharedPairs, taskState, topicMarker } from '@/lib/topics';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { HarnessIcon } from './HarnessIcon';
@@ -46,6 +46,8 @@ export interface TopicsPanelProps {
   /** TOPIC-8.1: the one thing the browser keeps: which Topic is selected. */
   selected: string | null;
   onSelect(id: string | null): void;
+  /** TOPIC-7.1: the Topic last picked in the graph; a new object per pick, even of the same Topic. */
+  picked?: { id: string } | null;
   /** TOPIC-2.5: a chip asked for this Topic: it's selected and expanded, then `onRevealed` clears the ask. */
   reveal: { id: string; at: number } | null;
   onRevealed(): void;
@@ -65,6 +67,19 @@ export interface TopicsPanelProps {
   onOtherTopic(rec: Recommendation): void;
   /** TOPIC-4.4: "+N more" opens the Library on these Sessions' Outputs. */
   onMoreOutputs(topic: Topic): void;
+  /** TOPIC-1.3, TOPIC-7.1: the "Archived" toggle, shared with the graph. */
+  archived: boolean;
+  onArchived(archived: boolean): void;
+  /** TOPIC-7.1: "Open graph", `G`, or Enter on an expanded Topic. */
+  onOpenGraph(): void;
+  /** TOPIC-6.1: "Link to Topic…" opens the Topic picker for this Topic. */
+  onLinkTo(topic: Topic): void;
+  /** TOPIC-6.3: "Link" on a shared-member line. */
+  linkTopics(from: string, to: string, label: string | null): Promise<void>;
+  /** TOPIC-6.2: "Reverse". */
+  editEdge(topicId: string, edit: { other: string; reverse: true }): Promise<void>;
+  /** TOPIC-6.2: "Unlink". */
+  unlinkTopics(topicId: string, other: string): Promise<void>;
   keyboardEnabled: boolean;
   navRef?: Ref<PanelNav>;
 }
@@ -83,9 +98,8 @@ const openInBrowser = (url: string) => window.open(url, '_blank', 'noopener,nore
  * controls (the title, the notes, the members' buttons), so they're reached with Tab as well.
  */
 export function TopicsPanel(props: TopicsPanelProps) {
-  const { view, sessions, work, now, focusKey, selected, onSelect, reveal, keyboardEnabled, navRef } = props;
+  const { view, sessions, work, now, focusKey, selected, onSelect, reveal, keyboardEnabled, navRef, archived, onArchived: setArchived } = props;
   const [query, setQuery] = useState('');
-  const [archived, setArchived] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [newTitle, setNewTitle] = useState('');
@@ -97,6 +111,14 @@ export function TopicsPanel(props: TopicsPanelProps) {
   const shown = all.filter((t) => (archived || t.state === 'open') && matchesTopic(t, query));
   const current = shown.some((t) => t.id === selected) ? selected : (shown[0]?.id ?? null);
   const open = expanded !== null && shown.some((t) => t.id === expanded) ? expanded : null;
+  // TOPIC-7.1: a Topic picked in the graph that the filter hides clears the filter, so the tab marks
+  // that one and not the first it shows: adjusted while rendering, once per pick.
+  const [seenPick, setSeenPick] = useState(props.picked);
+  if (props.picked !== seenPick) {
+    setSeenPick(props.picked);
+    const t = props.picked ? all.find((x) => x.id === props.picked!.id) : undefined;
+    if (t && (archived || t.state === 'open') && !matchesTopic(t, query)) setQuery('');
+  }
 
   // Opening Topics focuses the selected Topic, else the filter.
   useEffect(() => {
@@ -112,13 +134,14 @@ export function TopicsPanel(props: TopicsPanelProps) {
     setRevealed(reveal);
     const t = reveal ? (view?.topics ?? []).find((x) => x.id === reveal.id) : undefined;
     if (t) {
-      if (t.state === 'archived') setArchived(true);
       if (!matchesTopic(t, query)) setQuery('');
       setExpanded(t.id);
     }
   }
   useEffect(() => {
     if (!reveal) return;
+    // The toggle is the graph's too (TOPIC-7.1), so it's set here rather than while rendering.
+    if ((view?.topics ?? []).find((x) => x.id === reveal.id)?.state === 'archived') setArchived(true);
     setTimeout(() => document.getElementById(headerId(reveal.id))?.focus(), 0);
     props.onRevealed();
     // Once per ask.
@@ -172,6 +195,10 @@ export function TopicsPanel(props: TopicsPanelProps) {
       if (!first) return;
       e.preventDefault();
       openInBrowser(first.kind === 'pr' ? first.ref.url : first.kind === 'task' ? first.snapshot.url : '');
+    } else if (!text && !e.repeat && letter === 'g' && view?.state === 'ok') {
+      // TOPIC-7.1: G, with focus in Topics, the graph.
+      e.preventDefault();
+      props.onOpenGraph();
     } else if (!text && !e.repeat && topic && letter === 's') {
       // …and S its first Session chip, as the chip does.
       const first = topic.members.find((m): m is SessionMember => m.kind === 'session' && !(view?.pruned ?? []).includes(`${m.ref.harness}:${m.ref.sessionId}`));
@@ -244,7 +271,9 @@ export function TopicsPanel(props: TopicsPanelProps) {
             work={work}
             pruned={view.pruned}
             now={now}
-            onHeader={() => {
+            onHeader={(keyboard) => {
+              // TOPIC-3.4: Enter on an expanded Topic runs its first button, "Open graph"; a click only selects.
+              if (keyboard && t.id === open) return props.onOpenGraph();
               select(t.id, false);
               setExpanded(t.id);
             }}
@@ -275,6 +304,10 @@ export function TopicsPanel(props: TopicsPanelProps) {
           <Button variant="outline" size="xs" className="h-7 gap-1.5 px-2 text-meta" onClick={newTopic} disabled={view?.state !== 'ok'}>
             <Plus className="size-3.5" />
             New Topic
+          </Button>
+          <Button variant="outline" size="xs" className="h-7 gap-1.5 px-2 text-meta" onClick={props.onOpenGraph} disabled={view?.state !== 'ok'} data-action="open-graph">
+            <Network className="size-3.5" />
+            Open graph
           </Button>
           <label className="ml-auto flex shrink-0 items-center gap-1.5 text-meta text-muted-foreground">
             <input type="checkbox" checked={archived} onChange={(e) => setArchived(e.target.checked)} className="size-3.5" />
@@ -326,7 +359,8 @@ interface TopicItemProps {
   work: WorkSnapshot | null;
   pruned: readonly string[];
   now: number;
-  onHeader(): void;
+  /** `keyboard`: pressed with Enter or Space, not clicked. */
+  onHeader(keyboard: boolean): void;
   panel: TopicsPanelProps;
   onProblem(message: string | null): void;
 }
@@ -347,7 +381,8 @@ function TopicItem({ topic, selected, expanded, sessions, work, pruned, now, onH
         aria-expanded={expanded}
         aria-current={selected || undefined}
         aria-label={[topic.title, counts, topic.state === 'archived' && 'archived', done && 'looks done'].filter(Boolean).join(', ')}
-        onClick={onHeader}
+        // A click from the keyboard has no pointer, so `detail` is 0.
+        onClick={(e) => onHeader(e.detail === 0)}
         className="flex min-w-0 cursor-default flex-col gap-0.5 rounded-md px-2 py-1.5 text-left text-body outline-none hover:bg-sidebar-accent/60 focus-visible:ring-2 focus-visible:ring-ring/50"
       >
         <span className="flex w-full min-w-0 items-center gap-1.5">
@@ -450,7 +485,16 @@ function TopicDetails({ topic, sessions, work, pruned, now, panel, onProblem }: 
         ) : null;
       })()}
       {sessionMembers.length > 0 && <Outputs topic={topic} now={now} readAt={panel.view?.libraryReadAt ?? null} error={panel.outputsError ?? null} onRead={panel.onReadLibrary} onMore={() => panel.onMoreOutputs(topic)} />}
+      <Edges topic={topic} view={panel.view} act={act} panel={panel} />
       <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2" data-field="actions">
+        <button type="button" className={labelledButtonLook()} data-action="open-graph" onClick={panel.onOpenGraph}>
+          <Network />
+          Open graph
+        </button>
+        <button type="button" className={labelledButtonLook()} data-action="link" onClick={() => panel.onLinkTo(topic)}>
+          <ArrowLeftRight />
+          Link to Topic…
+        </button>
         <button type="button" className={labelledButtonLook()} data-action="archive" onClick={() => act(panel.updateTopic(topic.id, { state: topic.state === 'open' ? 'archived' : 'open' }), "Couldn't change it.")}>
           {topic.state === 'open' ? <Archive /> : <ArchiveRestore />}
           {topic.state === 'open' ? 'Archive' : 'Unarchive'}
@@ -640,6 +684,55 @@ function Notes({ topic, save, onProblem }: { topic: Topic; save(notes: string): 
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * TOPIC-6.2: the Topic's Edges, "→ <other> (<label>)" from it and "← <other> (<label>)" to it, each
+ * with Reverse and Unlink; TOPIC-6.3: an Open Topic sharing a member with it and not linked shows a
+ * dashed "shared: <item>" line with Link, which makes an Edge from this Topic.
+ */
+function Edges({ topic, view, act, panel }: { topic: Topic; view: TopicsView | null; act(p: Promise<unknown>, fallback: string): void; panel: TopicsPanelProps }) {
+  const topics = view?.topics ?? [];
+  const edges = view?.edges ?? [];
+  const title = (id: string) => topics.find((t) => t.id === id)?.title ?? 'a Topic';
+  const own = edgesOf(topic.id, edges);
+  const others = topics.filter((t) => t.id !== topic.id && t.state === 'open');
+  const shared = sharedPairs([topic, ...others], edges).filter((p) => p.a === topic.id);
+  if (!own.length && !shared.length) return null;
+  return (
+    <Group label="Edges" field="edges" column>
+      {own.map(({ edge, other, dir }) => {
+        // "→ <other> (<label>)" from this Topic, "← <other> (<label>)" to it.
+        const text = `${title(other)}${edge.label ? ` (${edge.label})` : ''}`;
+        const Arrow = dir === 'out' ? ArrowRight : ArrowLeft;
+        return (
+          <div key={`${edge.from}>${edge.to}`} role="group" aria-label={`${dir === 'out' ? 'Edge to' : 'Edge from'} ${text}`} className="flex min-w-0 items-center gap-1" data-field="edge" data-dir={dir}>
+            <Arrow aria-hidden className="size-3.5 shrink-0" />
+            <span className="min-w-0 flex-1 truncate text-foreground" title={text}>
+              {text}
+            </span>
+            <IconButton label={`Reverse the Edge with ${title(other)}`} tip="Reverse" onClick={() => act(panel.editEdge(topic.id, { other, reverse: true }), "Couldn't reverse it.")}>
+              <Repeat2 />
+            </IconButton>
+            <IconButton label={`Unlink ${title(other)}`} tip="Unlink" onClick={() => act(panel.unlinkTopics(topic.id, other), "Couldn't unlink it.")}>
+              <Unlink />
+            </IconButton>
+          </div>
+        );
+      })}
+      {shared.map((p) => (
+        <div key={p.b} className="flex min-w-0 items-center gap-1 rounded-md border border-dashed border-border px-1.5 py-0.5" data-field="shared">
+          <span className="min-w-0 flex-1 truncate" title={`${title(p.b)}, ${sharedLabel(p)}`}>
+            {title(p.b)} · {sharedLabel(p)}
+          </span>
+          <button type="button" className={cn(labelledButtonLook(), 'h-6 text-meta [&>svg]:size-3.5')} aria-label={`Link to ${title(p.b)}`} onClick={() => act(panel.linkTopics(topic.id, p.b, null), "Couldn't link them.")}>
+            <Link2 />
+            Link
+          </button>
+        </div>
+      ))}
+    </Group>
   );
 }
 

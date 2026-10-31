@@ -158,3 +158,27 @@ it('TOPIC-9.4: Accept and Dismiss go through POST /api/topics/recommendations, t
   expect(await call({ action: 'judge-again', member: session })).toEqual({ status: 409, body: { error: "Jev can't be asked here." } });
   expect((await call({ action: 'explode' })).status).toBe(400);
 });
+
+it('TOPIC-6.1, TOPIC-6.2, TOPIC-7.2: Edges and positions through the API, token and Origin checked; a refusal says why', async () => {
+  const { exchange, topics } = setup();
+  const call = async (method: string, url: string, body?: unknown, headers: Record<string, string> = {}) => {
+    const r = exchange(method, url, body, headers);
+    await r.done;
+    return { status: r.res.statusCode, body: JSON.parse(r.text()) as Record<string, unknown> };
+  };
+  const a = topics.create('Rates table').id;
+  const b = topics.create('Proposals v2').id;
+  expect((await call('POST', `/api/topics/${a}/edges`, { to: b, label: 'part of' }, { 'x-lookout-token': 'wrong' })).status).toBe(403);
+  expect(await call('POST', `/api/topics/${a}/edges`, { to: b, label: 'part of' })).toEqual({ status: 201, body: { ok: true } });
+  expect(await call('POST', `/api/topics/${b}/edges`, { to: a })).toEqual({ status: 409, body: { error: 'Already linked.' } });
+  expect(await call('POST', `/api/topics/${a}/edges`, { to: a })).toEqual({ status: 400, body: { error: "A Topic can't be linked to itself." } });
+  expect((await call('PUT', `/api/topics/${b}/edges`, { other: a, reverse: true })).status).toBe(200);
+  expect(topics.view().edges.map((e) => [e.from, e.to, e.label])).toEqual([[b, a, 'part of']]);
+  expect((await call('DELETE', `/api/topics/${a}/edges`, { other: b })).status).toBe(200);
+  expect(topics.view().edges).toEqual([]);
+  expect(await call('DELETE', `/api/topics/${a}/edges`, { other: b })).toEqual({ status: 404, body: { error: 'Those Topics are no longer linked.' } });
+  expect((await call('PUT', '/api/topics/positions', { positions: [{ id: a, x: 10, y: 20 }] }, { origin: 'http://evil.example' })).status).toBe(403);
+  expect(await call('PUT', '/api/topics/positions', { positions: [{ id: a, x: 10, y: 20 }, { id: b, x: 200, y: 20 }] })).toEqual({ status: 200, body: { ok: true } });
+  expect(Object.fromEntries(topics.view().topics.map((t) => [t.id, t.pos]))).toEqual({ [a]: { x: 10, y: 20 }, [b]: { x: 200, y: 20 } });
+  expect((await call('POST', '/api/topics/positions', {})).status).toBe(405);
+});

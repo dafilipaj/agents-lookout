@@ -1,5 +1,5 @@
 import type { OutputSession } from '@shared/library.ts';
-import { type MemberKind, type NewMember, type Topic, type TopicMember, type TopicsView, historyMember, memberKey, sortTopics } from '@shared/topics.ts';
+import { type MemberKind, type NewMember, type Topic, type TopicEdge, type TopicMember, type TopicsView, historyMember, memberKey, sortTopics } from '@shared/topics.ts';
 export { historyMember, prMember, rowMember, sessionMember, taskMember } from '@shared/topics.ts';
 import type { SessionRow, Status } from '@shared/types.ts';
 import type { WorkPr, WorkSnapshot, WorkTask } from '@shared/work.ts';
@@ -103,6 +103,40 @@ export function matchesTopic(topic: Topic, query: string): boolean {
 export function sessionTopicTitles(byMember: ReadonlyMap<string, Topic[]>, row: SessionRow): string[] {
   return (byMember.get(memberKey('session', { harness: row.harness, sessionId: row.id })) ?? []).map((t) => t.title);
 }
+
+/** A member as a line names it: a PR by its repo and number, a Session or Task by its title. */
+export const memberName = (m: NewMember): string => (m.kind === 'pr' ? `${m.snapshot.repo} #${m.snapshot.number}` : m.snapshot.title);
+
+/** TOPIC-6.2: a Topic's Edges, as seen from it: `out` when it starts there ("→"), else `in` ("←"). */
+export function edgesOf(topicId: string, edges: readonly TopicEdge[]): { edge: TopicEdge; other: string; dir: 'out' | 'in' }[] {
+  return edges.flatMap((e): { edge: TopicEdge; other: string; dir: 'out' | 'in' }[] => (e.from === topicId ? [{ edge: e, other: e.to, dir: 'out' }] : e.to === topicId ? [{ edge: e, other: e.from, dir: 'in' }] : []));
+}
+
+/** Whether two Topics have an Edge, whichever way it goes. */
+export const linked = (a: string, b: string, edges: readonly TopicEdge[]): boolean => edges.some((e) => (e.from === a && e.to === b) || (e.from === b && e.to === a));
+
+/**
+ * TOPIC-6.3: pairs of these Topics, both Open, that share a member and have no Edge yet, with the
+ * first shared member's name and how many more there are. A suggestion only: never stored, no direction.
+ */
+export function sharedPairs(all: readonly Topic[], edges: readonly TopicEdge[]): { a: string; b: string; item: string; more: number }[] {
+  const out: { a: string; b: string; item: string; more: number }[] = [];
+  const topics = all.filter((t) => t.state === 'open');
+  for (let i = 0; i < topics.length; i++) {
+    for (let j = i + 1; j < topics.length; j++) {
+      const a = topics[i]!;
+      const b = topics[j]!;
+      const keys = new Set(b.members.map((m) => m.key));
+      const shared = a.members.filter((m) => keys.has(m.key));
+      if (!shared.length || linked(a.id, b.id, edges)) continue;
+      out.push({ a: a.id, b: b.id, item: memberName(shared[0]!), more: shared.length - 1 });
+    }
+  }
+  return out;
+}
+
+/** "shared: api #4410", "shared: api #4410 and 2 more". */
+export const sharedLabel = (p: { item: string; more: number }): string => `shared: ${p.item}${p.more ? ` and ${p.more} more` : ''}`;
 
 /** What the panels ask of Topics (TOPIC-2.1, TOPIC-2.5): the picker for some members, and opening one Topic. */
 export interface TopicsApi {

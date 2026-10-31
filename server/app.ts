@@ -25,7 +25,7 @@ import type { SessionMonitor } from './monitor.ts';
 import { type GuardConfig, guardRequest } from './security.ts';
 import type { SettingsStore } from './settings.ts';
 import { serveStatic } from './static.ts';
-import { type Topics, TopicsError, parseMember, parseMemberRef, parsePatch, parseRecommendationAction, parseTitle } from './topics.ts';
+import { type Topics, TopicsError, parseEdgeEdit, parseLink, parseMember, parseMemberRef, parsePatch, parsePositions, parseRecommendationAction, parseTitle, parseUnlink } from './topics.ts';
 import type { RecommendationAction } from '../shared/topics.ts';
 import { MAX_MESSAGE, ViewError } from './viewer.ts';
 import type { RefreshAnswer } from './work.ts';
@@ -113,7 +113,7 @@ export interface AppOptions {
     read(opts?: { force?: boolean }): Promise<ToolsSnapshot>;
   };
   /** TOPIC: Lookout's own store of Topics; optional, so a server without it has no `/api/topics` (404). */
-  topics?: Pick<Topics, 'view' | 'create' | 'update' | 'delete' | 'addMember' | 'removeMember'> & {
+  topics?: Pick<Topics, 'view' | 'create' | 'update' | 'delete' | 'addMember' | 'removeMember' | 'link' | 'editEdge' | 'unlink' | 'place'> & {
     /** TOPIC-9.4: Accept, Dismiss, Other Topic… or Judge again on a recommendation. */
     recommend?(action: RecommendationAction): { topicId: string | null };
   };
@@ -614,7 +614,9 @@ export function createApp(opts: AppOptions): LookoutApp {
 
 /**
  * TOPIC: `GET /api/topics`; `POST /api/topics`; `PUT` and `DELETE /api/topics/<id>`; `POST` and
- * `DELETE /api/topics/<id>/members`; `POST /api/topics/recommendations` (TOPIC-9.4). A refusal answers with its plain reason (TOPIC-8.4).
+ * `DELETE /api/topics/<id>/members`; `POST`, `PUT` and `DELETE /api/topics/<id>/edges` (TOPIC-6);
+ * `PUT /api/topics/positions` (TOPIC-7.2); `POST /api/topics/recommendations` (TOPIC-9.4). A refusal
+ * answers with its plain reason (TOPIC-8.4).
  */
 async function topicsCall(req: IncomingMessage, res: ServerResponse, path: string, topics: NonNullable<AppOptions['topics']>): Promise<void> {
   if (path === '/api/topics/recommendations') {
@@ -628,10 +630,22 @@ async function topicsCall(req: IncomingMessage, res: ServerResponse, path: strin
       throw err;
     }
   }
-  const match = /^\/api\/topics(?:\/([0-9a-f-]{36})(\/members)?)?$/.exec(path);
+  if (path === '/api/topics/positions') {
+    if (req.method !== 'PUT') return json(res, 405, { error: 'method not allowed' });
+    const b = await readJson(req, res, MAX_TOPIC_BODY, null);
+    if (b === NO_BODY) return;
+    try {
+      topics.place(parsePositions(b));
+      return json(res, 200, { ok: true });
+    } catch (err) {
+      if (err instanceof TopicsError) return json(res, err.status, { error: err.message });
+      throw err;
+    }
+  }
+  const match = /^\/api\/topics(?:\/([0-9a-f-]{36})(?:\/(members|edges))?)?$/.exec(path);
   if (!match) return json(res, 404, { error: 'not found' });
-  const [, id, members] = match;
-  const route = `${req.method} ${id ? (members ? 'members' : 'topic') : 'topics'}`;
+  const [, id, sub] = match;
+  const route = `${req.method} ${id ? (sub ?? 'topic') : 'topics'}`;
   const body = async () => readJson(req, res, MAX_TOPIC_BODY, { error: 'The notes are too long.', field: 'notes' });
   try {
     switch (route) {
@@ -660,6 +674,25 @@ async function topicsCall(req: IncomingMessage, res: ServerResponse, path: strin
         if (b === NO_BODY) return;
         const { kind, ref } = parseMemberRef(b);
         topics.removeMember(id!, kind, ref);
+        return json(res, 200, { ok: true });
+      }
+      case 'POST edges': {
+        const b = await body();
+        if (b === NO_BODY) return;
+        const { to, label } = parseLink(b);
+        topics.link(id!, to, label);
+        return json(res, 201, { ok: true });
+      }
+      case 'PUT edges': {
+        const b = await body();
+        if (b === NO_BODY) return;
+        topics.editEdge(id!, parseEdgeEdit(b));
+        return json(res, 200, { ok: true });
+      }
+      case 'DELETE edges': {
+        const b = await body();
+        if (b === NO_BODY) return;
+        topics.unlink(id!, parseUnlink(b).other);
         return json(res, 200, { ok: true });
       }
     }

@@ -16,6 +16,8 @@ import { Sidebar } from '@/components/Sidebar';
 import { StartingView } from '@/components/StartingView';
 import { WorkPanel } from '@/components/WorkPanel';
 import { type PickTarget, TopicPicker } from '@/components/TopicPicker';
+import { TopicGraph } from '@/components/TopicGraph';
+import { ViewErrorBoundary } from '@/components/ViewErrorBoundary';
 import { TopicsPanel } from '@/components/TopicsPanel';
 import { type LookoutClient, SaveError } from '@/lib/client';
 import { ComposerAttachments, preventDropNavigation } from '@/lib/attachments';
@@ -613,6 +615,21 @@ export function App({ client }: { client: LookoutClient }) {
     },
     [client],
   );
+  // TOPIC-1.3, TOPIC-7.1: one "Archived" toggle for the tab and the graph.
+  const [showArchived, setShowArchived] = useState(false);
+  // TOPIC-7.1: a node picked in the graph, for the tab to show it past its filter.
+  const [graphPick, setGraphPick] = useState<{ id: string } | null>(null);
+  // TOPIC-7.1: "Open graph" and G: the graph in the main pane.
+  const openGraph = useCallback(() => navigate({ name: 'topics' }), [navigate]);
+  // TOPIC-6.1: "Link to Topic…": the picker, without "New Topic…", for an Edge from this Topic.
+  const linkTo = useCallback(
+    (topic: Topic) => {
+      pickOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      const linked = new Set((state.topics?.edges ?? []).flatMap((e) => (e.from === topic.id ? [e.to] : e.to === topic.id ? [e.from] : [])));
+      setPickTarget({ members: [], label: topic.title, title: 'Link to Topic', link: { from: topic.id, linked, onLink: (to, label) => client.linkTopics(topic.id, to, label) } });
+    },
+    [client, state.topics],
+  );
   const topicsApi = useMemo<TopicsApi>(
     () => ({
       byMember,
@@ -953,76 +970,98 @@ export function App({ client }: { client: LookoutClient }) {
         />
         {/* tabIndex -1: focus lands here after the selected start is dismissed (LAUNCH UX). */}
         <main className={cn(SHELL_COLUMN, 'outline-none')} data-shell-column="main" tabIndex={-1}>
-          {route.name === 'settings' ? (
-            <SettingsPage
-              settings={state.settings}
-              save={save}
-              onBack={() => navigate({ name: 'home' })}
-              tools={state.tools}
-              now={now}
-              loadTools={loadTools}
-              refreshTools={refreshTools}
-              jev={state.usage?.jev ?? null}
-              jevAsksToday={state.topics?.jevAsksToday ?? 0}
-            />
-          ) : route.name === 'past' ? (
-            <PastSessionView harness={route.harness} sessionId={route.id} now={now} load={loadPast} />
-          ) : route.name === 'launch' ? (
-            // Its Session is taking over the selection (the layout effect above): show nothing meanwhile.
-            takeOver ? null : (
-              <StartingView launch={launches.find((l) => l.id === route.id) ?? null} loaded={state.loaded} now={now} onTrust={(answer, prompt) => void answerTrust(route.id, answer, prompt)} />
-            )
-          ) : (
-            <MainPane
-              selectedId={selectedId}
-              running={state.sessions.size > 0 || launches.length > 0}
-              onNewSession={openOwnLauncher}
-              onShowShortcuts={showShortcuts}
-              aliases={state.aliases}
-              live={(selectedId && state.sessions.get(selectedId)) || null}
-              lastKnown={(selectedId && state.lastKnown.get(selectedId)) || null}
-              list={
-                listKnown(state)
-                  ? 'known'
-                  : !state.loaded || state.fleet.state === 'starting'
-                    ? 'loading'
-                    : 'unavailable'
-              }
-              now={now}
-              preview={(selectedId && state.previews.get(selectedId)) || null}
-              drawerOpen={drawerOpen}
-              onToggleDrawer={toggleDrawer}
-              drafts={drafts}
-              attachments={attachments}
-              questionDrafts={questionDrafts}
-              sending={sending}
-              sendErrors={sendErrors}
-              onEdit={clearSendError}
-              onSend={sendMessage}
-              chat={(selectedId && state.chats.get(selectedId)) || null}
-              onEarlier={loadEarlier}
-              fileLinks={fileLinks}
-              onPage={addPage}
-              onFollowing={onFollowing}
-              sentAt={sentAt}
-              onSentAt={updateSentAt}
-              onEnd={endSession}
-              onRename={renameSession}
-              models={harnesses}
-              onLoadModels={loadHarnesses}
-              onSwitch={(what, row, value, opened) => void switchSetting(what, row, value, opened)}
-              changes={state.changes}
-              onChangesOpen={onChangesOpen}
-              onOpenChange={openChange}
-              switches={switches}
-              prompts={state.prompts}
-              attempts={attempts}
-              onAnswer={(row, req) => void answerPrompt(row, req)}
-              stops={stops}
-              onStop={(row) => void stopSession(row, 'busy')}
-              onEsc={(row) => void stopSession(row, 'needs-you')}
-            />
-          )}
+          {/* DS-4.5: a view that throws shows an error here, not a blank app; a new route starts clean. */}
+          <ViewErrorBoundary resetKey={JSON.stringify(route)}>
+            {route.name === 'settings' ? (
+              <SettingsPage
+                settings={state.settings}
+                save={save}
+                onBack={() => navigate({ name: 'home' })}
+                tools={state.tools}
+                now={now}
+                loadTools={loadTools}
+                refreshTools={refreshTools}
+                jev={state.usage?.jev ?? null}
+                jevAsksToday={state.topics?.jevAsksToday ?? 0}
+              />
+            ) : route.name === 'topics' ? (
+              <TopicGraph
+                view={state.topics}
+                sessions={state.sessions}
+                selected={layout.topic}
+                onSelect={(topic) => {
+                  updateLayout({ topic });
+                  setGraphPick({ id: topic });
+                }}
+                archived={showArchived}
+                onArchived={setShowArchived}
+                createTopic={(title) => client.createTopic(title)}
+                linkTopics={(from, to, label) => client.linkTopics(from, to, label)}
+                editEdge={(id, edit) => client.editEdge(id, edit)}
+                unlinkTopics={(id, other) => client.unlinkTopics(id, other)}
+                placeTopics={(positions) => client.placeTopics(positions)}
+                onOpenSession={openTopicSession}
+                keyboardEnabled={!modalOpen}
+              />
+            ) : route.name === 'past' ? (
+              <PastSessionView harness={route.harness} sessionId={route.id} now={now} load={loadPast} />
+            ) : route.name === 'launch' ? (
+              // Its Session is taking over the selection (the layout effect above): show nothing meanwhile.
+              takeOver ? null : (
+                <StartingView launch={launches.find((l) => l.id === route.id) ?? null} loaded={state.loaded} now={now} onTrust={(answer, prompt) => void answerTrust(route.id, answer, prompt)} />
+              )
+            ) : (
+              <MainPane
+                selectedId={selectedId}
+                running={state.sessions.size > 0 || launches.length > 0}
+                onNewSession={openOwnLauncher}
+                onShowShortcuts={showShortcuts}
+                aliases={state.aliases}
+                live={(selectedId && state.sessions.get(selectedId)) || null}
+                lastKnown={(selectedId && state.lastKnown.get(selectedId)) || null}
+                list={
+                  listKnown(state)
+                    ? 'known'
+                    : !state.loaded || state.fleet.state === 'starting'
+                      ? 'loading'
+                      : 'unavailable'
+                }
+                now={now}
+                preview={(selectedId && state.previews.get(selectedId)) || null}
+                drawerOpen={drawerOpen}
+                onToggleDrawer={toggleDrawer}
+                drafts={drafts}
+                attachments={attachments}
+                questionDrafts={questionDrafts}
+                sending={sending}
+                sendErrors={sendErrors}
+                onEdit={clearSendError}
+                onSend={sendMessage}
+                chat={(selectedId && state.chats.get(selectedId)) || null}
+                onEarlier={loadEarlier}
+                fileLinks={fileLinks}
+                onPage={addPage}
+                onFollowing={onFollowing}
+                sentAt={sentAt}
+                onSentAt={updateSentAt}
+                onEnd={endSession}
+                onRename={renameSession}
+                models={harnesses}
+                onLoadModels={loadHarnesses}
+                onSwitch={(what, row, value, opened) => void switchSetting(what, row, value, opened)}
+                changes={state.changes}
+                onChangesOpen={onChangesOpen}
+                onOpenChange={openChange}
+                switches={switches}
+                prompts={state.prompts}
+                attempts={attempts}
+                onAnswer={(row, req) => void answerPrompt(row, req)}
+                stops={stops}
+                onStop={(row) => void stopSession(row, 'busy')}
+                onEsc={(row) => void stopSession(row, 'needs-you')}
+              />
+            )}
+          </ViewErrorBoundary>
         </main>
         {layout.open ? (
           <RightSidebar
@@ -1057,6 +1096,14 @@ export function App({ client }: { client: LookoutClient }) {
                   onMoreOutputs={moreOutputs}
                   recommend={(action) => client.recommend(action)}
                   onOtherTopic={otherTopic}
+                  archived={showArchived}
+                  onArchived={setShowArchived}
+                  picked={graphPick}
+                  onOpenGraph={openGraph}
+                  onLinkTo={linkTo}
+                  linkTopics={(from, to, label) => client.linkTopics(from, to, label)}
+                  editEdge={(id, edit) => client.editEdge(id, edit)}
+                  unlinkTopics={(id, other) => client.unlinkTopics(id, other)}
                   keyboardEnabled={!modalOpen}
                   navRef={topicsNav}
                 />

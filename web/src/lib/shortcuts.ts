@@ -199,6 +199,14 @@ export const SHORTCUTS: readonly Shortcut[] = [
     press: [{ key: 'a' }],
   },
   {
+    id: 'panel-graph',
+    group: 'panels',
+    keys: ['G'],
+    label: 'Open the Topics graph',
+    note: 'Topics.',
+    press: [{ key: 'g' }],
+  },
+  {
     id: 'panel-copy',
     group: 'panels',
     keys: ['C'],

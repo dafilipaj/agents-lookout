@@ -6,7 +6,7 @@ import type { UserEvent } from '@testing-library/user-event';
 import { expect, vi } from 'vitest';
 import { App } from '@/App';
 import { type ClientListener, type HistoryQuery, type LookoutClient, SaveError } from '@/lib/client';
-import { type NewMember, type Recommendation, type RecommendationAction, type Topic, type TopicMember, type TopicsView, memberKey, sortTopics } from '@shared/topics.ts';
+import { type NewMember, type Recommendation, type RecommendationAction, type Topic, type TopicEdge, type TopicMember, type TopicsView, memberKey, sortTopics } from '@shared/topics.ts';
 
 export const NOW = Date.UTC(2026, 9, 16, 12, 0, 0);
 
@@ -108,6 +108,8 @@ interface RenderOptions {
   topics?: Topic[];
   /** TOPIC-9.4: the fake server's pending recommendations; Accept, Dismiss and Other Topic… resolve them. */
   recommendations?: Recommendation[];
+  /** TOPIC-6: the fake server's Edges, changed by the Edge calls. */
+  edges?: TopicEdge[];
 }
 
 /** Renders the whole app against a fake server the test drives. */
@@ -121,7 +123,8 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
   let topicSet: Topic[] = options.topics ?? [];
   let topicClock = NOW;
   let pendingSet: Recommendation[] = options.recommendations ?? [];
-  const topicsView = (): TopicsView => ({ state: 'ok', reason: null, path: '/Users/me/.lookout/topics.db', topics: sortTopics(topicSet), pruned: [], libraryReadAt: null, recommendations: pendingSet, jevAsksToday: 0 });
+  let edgeSet: TopicEdge[] = options.edges ?? [];
+  const topicsView = (): TopicsView => ({ state: 'ok', reason: null, path: '/Users/me/.lookout/topics.db', topics: sortTopics(topicSet), edges: edgeSet, pruned: [], libraryReadAt: null, recommendations: pendingSet, jevAsksToday: 0 });
   const changeTopics = (next: Topic[]) => {
     topicSet = next;
     act(() => listener?.onEvent({ type: 'topics', topics: topicsView() }));
@@ -182,7 +185,7 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
         }),
     ),
     createTopic: vi.fn(async (title: string) => {
-      const t: Topic = { id: `00000000-0000-4000-8000-${String(topicSet.length + 1).padStart(12, '0')}`, title: title.trim().slice(0, 120), notes: '', state: 'open', createdAt: ++topicClock, updatedAt: topicClock, members: [], outputs: null };
+      const t: Topic = { id: `00000000-0000-4000-8000-${String(topicSet.length + 1).padStart(12, '0')}`, title: title.trim().slice(0, 120), notes: '', state: 'open', createdAt: ++topicClock, updatedAt: topicClock, members: [], outputs: null, pos: null };
       changeTopics([...topicSet, t]);
       return t;
     }),
@@ -209,7 +212,7 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
       pendingSet = pendingSet.filter((x) => x !== r);
       let to: string | null = a.action === 'move' ? a.to : a.action === 'accept' ? r.topicId : null;
       if (a.action === 'accept' && to === null) {
-        const t: Topic = { id: `00000000-0000-4000-8000-${String(topicSet.length + 1).padStart(12, '0')}`, title: r.newTitle!, notes: '', state: 'open', createdAt: ++topicClock, updatedAt: topicClock, members: [], outputs: null };
+        const t: Topic = { id: `00000000-0000-4000-8000-${String(topicSet.length + 1).padStart(12, '0')}`, title: r.newTitle!, notes: '', state: 'open', createdAt: ++topicClock, updatedAt: topicClock, members: [], outputs: null, pos: null };
         topicSet = [...topicSet, t];
         to = t.id;
       }
@@ -220,6 +223,36 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
     removeMember: vi.fn(async (id: string, m: Pick<NewMember, 'kind' | 'ref'>) => {
       const key = memberKey(m.kind, m.ref);
       changeTopics(topicSet.map((x) => (x.id === id ? { ...x, updatedAt: ++topicClock, members: x.members.filter((y) => y.key !== key) } : x)));
+    }),
+    // TOPIC-6: one Edge per pair, whichever way; each change is a change to both Topics.
+    linkTopics: vi.fn(async (from: string, to: string, label: string | null) => {
+      topic(from);
+      topic(to);
+      if (from === to) throw new SaveError("A Topic can't be linked to itself.", null, 400);
+      if (edgeSet.some((e) => (e.from === from && e.to === to) || (e.from === to && e.to === from))) throw new SaveError('Already linked.', null, 409);
+      edgeSet = [...edgeSet, { from, to, label, createdAt: ++topicClock }];
+      changeTopics(topicSet.map((x) => (x.id === from || x.id === to ? { ...x, updatedAt: topicClock } : x)));
+    }),
+    editEdge: vi.fn(async (id: string, edit: { other: string; label?: string | null; reverse?: true }) => {
+      const e = edgeSet.find((x) => (x.from === id && x.to === edit.other) || (x.from === edit.other && x.to === id));
+      if (!e) throw new SaveError('Those Topics are no longer linked.', null, 404);
+      const next = { ...e, ...(edit.label !== undefined ? { label: edit.label } : {}), ...(edit.reverse ? { from: e.to, to: e.from } : {}) };
+      edgeSet = edgeSet.map((x) => (x === e ? next : x));
+      changeTopics(topicSet.map((x) => (x.id === e.from || x.id === e.to ? { ...x, updatedAt: ++topicClock } : x)));
+    }),
+    unlinkTopics: vi.fn(async (id: string, other: string) => {
+      const e = edgeSet.find((x) => (x.from === id && x.to === other) || (x.from === other && x.to === id));
+      if (!e) throw new SaveError('Those Topics are no longer linked.', null, 404);
+      edgeSet = edgeSet.filter((x) => x !== e);
+      changeTopics(topicSet.map((x) => (x.id === e.from || x.id === e.to ? { ...x, updatedAt: ++topicClock } : x)));
+    }),
+    // TOPIC-7.2: positions aren't a change to the Topic.
+    placeTopics: vi.fn(async (positions: readonly { id: string; x: number; y: number }[]) => {
+      for (const p of positions) topic(p.id);
+      changeTopics(topicSet.map((x) => {
+        const p = positions.find((q) => q.id === x.id);
+        return p ? { ...x, pos: { x: Math.round(p.x * 10) / 10, y: Math.round(p.y * 10) / 10 } } : x;
+      }));
     }),
   };
   const utils = render(<App client={client} />);

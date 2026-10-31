@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { OutputItem, OutputSession } from '../shared/library.ts';
 import type { NewMember, TopicsView } from '../shared/topics.ts';
-import { SCHEMA_VERSION, TopicStore, Topics, TopicsError, parseMember, parsePatch, parseTitle } from './topics.ts';
+import { SCHEMA_VERSION, TopicStore, Topics, TopicsError, parseEdgeEdit, parseLink, parseMember, parsePatch, parsePositions, parseTitle } from './topics.ts';
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -181,6 +181,103 @@ describe('TOPIC-1 a Topic', () => {
     expect(check.prepare('select count(*) as n from recommendations').get()).toEqual({ n: 0 });
     expect(check.prepare('select count(*) as n from candidates').get()).toEqual({ n: 1 });
     check.close();
+  });
+});
+
+describe('TOPIC-6 Edges', () => {
+  it('TOPIC-6.1: an Edge goes from one Topic to another with an optional label of at most 60 characters; one per pair, whichever way, never to itself', () => {
+    const c = clock();
+    const store = new TopicStore(tempPath(), { now: c.now });
+    const a = store.create('Rates table');
+    const b = store.create('Proposals v2');
+    const x = store.create('CRM backlog');
+    c.tick();
+    store.link(a, b, 'part of');
+    // Both Topics changed (TOPIC-3.2).
+    expect(store.list().filter((t) => t.updatedAt === c.now()).map((t) => t.title).sort()).toEqual(['Proposals v2', 'Rates table']);
+    expect(store.edges()).toEqual([{ from: a, to: b, label: 'part of', createdAt: c.now() }]);
+    expect(() => store.link(a, b, null)).toThrow(new TopicsError(409, 'Already linked.'));
+    expect(() => store.link(b, a, 'contains')).toThrow(new TopicsError(409, 'Already linked.'));
+    expect(() => store.link(a, a, null)).toThrow(new TopicsError(400, "A Topic can't be linked to itself."));
+    expect(() => store.link(a, '00000000-0000-4000-8000-000000000000', null)).toThrow(new TopicsError(404, 'That Topic no longer exists.'));
+    c.tick();
+    store.link(x, a, null);
+    expect(store.edges().map((e) => [e.from, e.to, e.label])).toEqual([
+      [a, b, 'part of'],
+      [x, a, null],
+    ]);
+    // The label: one line, trimmed, cut to 60; empty is none.
+    expect(parseLink({ to: b, label: `  ${'a'.repeat(70)}\n` }).label).toBe('a'.repeat(60));
+    expect(parseLink({ to: b, label: '   ' }).label).toBeNull();
+    expect(() => parseLink({ to: 'x' })).toThrow('Pick a Topic to link to.');
+    store.close();
+  });
+
+  it('TOPIC-6.2: on either Topic, "Reverse" turns the Edge around and "Unlink" removes it; a new label is kept; each is a change to both', () => {
+    const c = clock();
+    const store = new TopicStore(tempPath(), { now: c.now });
+    const a = store.create('Rates table');
+    const b = store.create('Proposals v2');
+    store.link(a, b, 'part of');
+    c.tick();
+    store.editEdge(b, { other: a, reverse: true });
+    expect(store.edges().map((e) => [e.from, e.to, e.label])).toEqual([[b, a, 'part of']]);
+    expect(store.list().every((t) => t.updatedAt === c.now())).toBe(true);
+    store.editEdge(a, { other: b, label: 'contains' });
+    store.editEdge(a, { other: b, label: null, reverse: true });
+    expect(store.edges().map((e) => [e.from, e.to, e.label])).toEqual([[a, b, null]]);
+    expect(parseEdgeEdit({ other: a, label: 'blocks' })).toEqual({ other: a, label: 'blocks' });
+    expect(() => parseEdgeEdit({ other: a })).toThrow('Nothing to change.');
+    c.tick();
+    store.unlink(b, a);
+    expect(store.edges()).toEqual([]);
+    expect(store.list().every((t) => t.updatedAt === c.now())).toBe(true);
+    expect(() => store.unlink(a, b)).toThrow(new TopicsError(404, 'Those Topics are no longer linked.'));
+    expect(() => store.editEdge(a, { other: b, reverse: true })).toThrow(new TopicsError(404, 'Those Topics are no longer linked.'));
+    store.close();
+  });
+
+  it('TOPIC-6.2: the view carries every Edge, and an Edge change sends it once', () => {
+    const path = tempPath();
+    const sent: TopicsView[] = [];
+    const topics = new Topics({ path, open: () => new TopicStore(path), onChange: (v) => sent.push(v) });
+    const a = topics.create('A').id;
+    const b = topics.create('B').id;
+    topics.link(a, b, 'follows');
+    expect(sent).toHaveLength(3);
+    expect(sent.at(-1)!.edges).toEqual([expect.objectContaining({ from: a, to: b, label: 'follows' })]);
+    topics.delete(b);
+    expect(sent.at(-1)!.edges).toEqual([]);
+    topics.close();
+  });
+});
+
+describe('TOPIC-7.2 positions', () => {
+  it('TOPIC-7.2: a node’s position is stored with its Topic and kept across reloads; placing nodes is all or none and isn’t a change to the Topic', () => {
+    const path = tempPath();
+    const c = clock();
+    const store = new TopicStore(path, { now: c.now });
+    const a = store.create('A');
+    const b = store.create('B');
+    expect(store.list().map((t) => t.pos)).toEqual([null, null]);
+    c.tick();
+    store.place([
+      { id: a, pos: { x: 120.5, y: -40 } },
+      { id: b, pos: { x: 300, y: 80 } },
+    ]);
+    expect(store.list().map((t) => [t.title, t.pos, t.updatedAt])).toEqual([
+      ['A', { x: 120.5, y: -40 }, 1_000],
+      ['B', { x: 300, y: 80 }, 1_000],
+    ]);
+    expect(() => store.place([{ id: a, pos: { x: 0, y: 0 } }, { id: '00000000-0000-4000-8000-000000000000', pos: { x: 1, y: 1 } }])).toThrow('That Topic no longer exists.');
+    store.close();
+    const again = new TopicStore(path);
+    expect(again.list().find((t) => t.id === a)!.pos).toEqual({ x: 120.5, y: -40 });
+    again.close();
+    expect(parsePositions({ positions: [{ id: a, x: 1.234, y: 2 }] })).toEqual([{ id: a, pos: { x: 1.2, y: 2 } }]);
+    for (const bad of [{}, { positions: [] }, { positions: [{ id: a, x: Infinity, y: 0 }] }, { positions: [{ id: a, x: 1e9, y: 0 }] }, { positions: [{ id: 'x', x: 0, y: 0 }] }]) {
+      expect(() => parsePositions(bad)).toThrow(TopicsError);
+    }
   });
 });
 

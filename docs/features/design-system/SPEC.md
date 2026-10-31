@@ -68,6 +68,7 @@ One component for "something went wrong" and "something to know", instead of fou
 - [x] DS-4.2 Every error and notice in the migration list (Technical approach) is an `Alert`. A guard test fails when `role="alert"` is written outside `alert.tsx` and the listed functions (Technical approach), when an `Alert` goes quiet (`quiet`, `role="presentation"`) outside the listed ones, or when an element outside it draws a box in `destructive` or `info` colours (a `border-destructive…`, `bg-destructive/…`, `bg-destructive-soft`, `border-info-border` or `bg-info-soft` class). A failure is never an `EmptyState`: History's search error and the chat's missing or unreadable Transcript are error boxes at the top of their panel or pane. (test)
 - [x] DS-4.3 The words don't change: each Alert says what it said before, and Work's problem keeps its title, reason, what to do and its command (WORK-7.1 to 7.3). (test)
 - [x] DS-4.4 Seen in both modes: every box Alert has the same padding, radius, border, icon size and type step, wherever it sits; every inline one the same type step and icon. (manual)
+- [x] DS-4.5 A main-pane view that throws while drawing shows an error box Alert in its place, "This view couldn't be drawn" with the error's message and "Try again", instead of a blank app: the sidebar keeps working, and going to another view starts it clean. (test)
 
 ### DS-5 One Session marker
 
@@ -402,6 +403,7 @@ None.
 
 ## Changelog
 
+- 2026-10-31: DS-4.5 added: a view in the main pane that throws (TOPIC-7's graph, reading a server without Edges) blanked the whole app; `ViewErrorBoundary` holds the failure to the main pane and clears it on a route change, without remounting the pane (a `key` would lose a Codex Session's open dialogs when its id arrives, VIEW-5.6).
 - 2026-10-27: DS-12.4 includes VIEW-9.2's composer drop target in Primary; its allowed classes are pinned in the colour guard.
 
 - 2026-10-22: Created, from the design review of 2026-10-22 and Dario's answers to its 12 suggestions: 3, 4, 5, 7, 9, 10, 11 and 12 here; 1 and 8 in the Plan; 2 and 6 in the Backlog.

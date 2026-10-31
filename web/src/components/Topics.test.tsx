@@ -11,7 +11,7 @@ import { NOW, pressRowAction, renderApp, row, settings } from '@/test/helpers';
 /** Synthetic Topics, Tasks and PRs only: invented titles, repos and ids. */
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const member = (m: NewMember, addedAt = NOW - 60_000): TopicMember => ({ ...m, key: memberKey(m.kind, m.ref), addedAt, reason: 'added by hand' }) as TopicMember;
-const topic = (n: number, over: Partial<Topic> = {}): Topic => ({ id: id(n), title: `Topic ${n}`, notes: '', state: 'open', createdAt: NOW - 1e6, updatedAt: NOW - n * 1000, members: [], outputs: { items: [], total: 0 }, ...over });
+const topic = (n: number, over: Partial<Topic> = {}): Topic => ({ id: id(n), title: `Topic ${n}`, notes: '', state: 'open', createdAt: NOW - 1e6, updatedAt: NOW - n * 1000, members: [], outputs: { items: [], total: 0 }, pos: null, ...over });
 
 const pr = (over: Partial<WorkPr> & { repo: string; number: number }): WorkPr => ({
   title: `${over.repo} change ${over.number}`,
@@ -92,10 +92,10 @@ describe('the Topics tab (TOPIC-3)', () => {
     app.snapshot([]);
     expect(within(panel()).getByText('No Topics yet')).toBeInTheDocument();
     expect(within(panel()).getAllByRole('button', { name: /New Topic/ })).toHaveLength(2);
-    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1)], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 0 } });
+    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1)], edges: [], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 0 } });
     await user.type(screen.getByRole('searchbox', { name: 'Filter Topics' }), 'zzz');
     expect(within(panel()).getByText('Nothing matches')).toBeInTheDocument();
-    app.emit({ type: 'topics', topics: { state: 'error', reason: 'Lookout couldn’t open its Topics database: permission denied.', path: '/Users/me/.lookout/topics.db', topics: [], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 0 } });
+    app.emit({ type: 'topics', topics: { state: 'error', reason: 'Lookout couldn’t open its Topics database: permission denied.', path: '/Users/me/.lookout/topics.db', topics: [], edges: [], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 0 } });
     const alert = within(panel()).getByRole('alert');
     expect(alert).toHaveTextContent('Topics can\'t be opened');
     expect(alert).toHaveTextContent('permission denied. /Users/me/.lookout/topics.db');
@@ -141,7 +141,7 @@ describe('the Topics tab (TOPIC-3)', () => {
     expect(app.client.resume).not.toHaveBeenCalled();
   });
 
-  it('TOPIC-3.4: an expanded Topic shows its notes (six lines, then more), its members grouped Sessions, PRs, Tasks with their buttons, and Archive', async () => {
+  it('TOPIC-3.4: an expanded Topic shows its notes (six lines, then more), its members grouped Sessions, PRs, Tasks with their buttons, then Open graph, Link to Topic…, Archive and Delete; Enter on it opens the graph', async () => {
     const notes = ['**Port** the rates table', 'two', 'three', 'four', 'five', 'six', 'seventh line'].join('\n');
     const app = openApp([topic(1, { title: 'Proposals rates', notes, members: [member(TASK_MEMBER), member(PR_MEMBER), member(SESSION), member({ ...SESSION, ref: { harness: 'claude', sessionId: 'past-one' }, snapshot: { harness: 'claude', title: 'spec', directory: null } })] })]);
     const user = await openTopics();
@@ -160,7 +160,14 @@ describe('the Topics tab (TOPIC-3)', () => {
     expect(open).toHaveBeenCalledWith(ANVIL.url, '_blank', 'noopener,noreferrer');
     await user.click(within(details.querySelector<HTMLElement>('[data-field="tasks"]')!).getByRole('button', { name: /Open in Fantastic/ }));
     expect(open).toHaveBeenLastCalledWith(LIGHT.url, '_blank', 'noopener,noreferrer');
-    expect([...details.querySelectorAll('[data-field="actions"] [data-action]')].map((b) => b.textContent)).toEqual(['Archive', 'Delete']);
+    expect([...details.querySelectorAll('[data-field="actions"] [data-action]')].map((b) => b.textContent)).toEqual(['Open graph', 'Link to Topic…', 'Archive', 'Delete']);
+    // Enter on the expanded Topic runs its first button, Open graph; a click on it only keeps it selected.
+    await user.click(header('Proposals rates'));
+    expect(window.location.pathname).toBe('/s/alpha');
+    header('Proposals rates').focus();
+    await user.keyboard('{Enter}');
+    expect(window.location.pathname).toBe('/topics');
+    expect(screen.getByTestId('topic-graph')).toBeInTheDocument();
     // A Session chip opens a live Session.
     await user.click(within(details).getByRole('button', { name: 'Open rates-port, Needs you' }));
     expect(window.location.pathname).toBe(`/s/${SESSION_ID}`);
@@ -433,7 +440,7 @@ describe('what a member is doing now (TOPIC-4)', () => {
     expect(chips[0]).toHaveAttribute('title', 'Work lists open items only, so this may be merged, closed or not read yet.');
     expect(details().querySelector('[data-field="pr"]')).toHaveTextContent('Sharpen the anvil corners');
     expect(within(details()).getByRole('button', { name: 'Resume old fix, past' })).toBeInTheDocument();
-    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Rates', members: [member({ ...SESSION, ref: { harness: 'claude', sessionId: 'gone-one' }, snapshot: { harness: 'claude', title: 'old fix', directory: null } })] })], pruned: ['claude:gone-one'], libraryReadAt: null, recommendations: [], jevAsksToday: 0 } });
+    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Rates', members: [member({ ...SESSION, ref: { harness: 'claude', sessionId: 'gone-one' }, snapshot: { harness: 'claude', title: 'old fix', directory: null } })] })], edges: [], pruned: ['claude:gone-one'], libraryReadAt: null, recommendations: [], jevAsksToday: 0 } });
     expect(details().querySelector('[data-field="session"]')).toHaveTextContent('old fix· removed from the index');
     expect(within(details()).queryByRole('button', { name: /^(Open|Resume) old fix/ })).toBeNull();
   });
@@ -457,14 +464,14 @@ describe('what a member is doing now (TOPIC-4)', () => {
     await user.click(header('Rates'));
     expect(within(item('Rates')).getByText('Reading the Library…')).toBeInTheDocument();
     await waitFor(() => expect(app.client.library).toHaveBeenCalledWith(expect.objectContaining({ page: 1, query: '' })));
-    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Rates', members: [member(SESSION)], outputs: { items: [output(1), output(2)], total: 12 } })], pruned: [], libraryReadAt: Date.now(), recommendations: [], jevAsksToday: 0 } });
+    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Rates', members: [member(SESSION)], outputs: { items: [output(1), output(2)], total: 12 } })], edges: [], pruned: [], libraryReadAt: Date.now(), recommendations: [], jevAsksToday: 0 } });
     // Expanded again within a minute of the last read: nothing is read again.
     const reads = vi.mocked(app.client.library).mock.calls.length;
     await user.keyboard('{Escape}');
     await user.click(header('Rates'));
     expect(app.client.library).toHaveBeenCalledTimes(reads);
     // A minute or more after it: expanding it reads the Library again, for Outputs written since.
-    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Rates', members: [member(SESSION)], outputs: { items: [output(1), output(2)], total: 12 } })], pruned: [], libraryReadAt: Date.now() - 61_000, recommendations: [], jevAsksToday: 0 } });
+    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Rates', members: [member(SESSION)], outputs: { items: [output(1), output(2)], total: 12 } })], edges: [], pruned: [], libraryReadAt: Date.now() - 61_000, recommendations: [], jevAsksToday: 0 } });
     await user.keyboard('{Escape}');
     await user.click(header('Rates'));
     await waitFor(() => expect(app.client.library).toHaveBeenCalledTimes(reads + 1));
@@ -582,5 +589,241 @@ describe('recommendations (TOPIC-9)', () => {
     await user.click(within(screen.getByRole('dialog')).getByRole('option', { name: /Ask Jev which Topic/ }));
     expect(app.client.recommend).toHaveBeenCalledWith({ action: 'judge-again', member: TASK_MEMBER });
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+});
+
+const graph = () => screen.getByTestId('topic-graph');
+const node = (title: string) => within(graph()).getByRole('button', { name: new RegExp(`^${title},`) });
+const at = (el: Element) => ({ x: Number(el.getAttribute('data-x')), y: Number(el.getAttribute('data-y')) });
+
+describe('Edges (TOPIC-6)', () => {
+  it('TOPIC-6.1: "Link to Topic…" opens the Topic picker without "New Topic…" or the Topic itself; a pick asks for an optional label, then links from it; linking again says "Already linked"', async () => {
+    const app = openApp([topic(1, { title: 'Rates table' }), topic(2, { title: 'Proposals v2' }), topic(3, { title: 'CRM backlog' }), topic(4, { title: 'Old one', state: 'archived' })]);
+    const user = await openTopics();
+    await user.click(header('Rates table'));
+    await user.click(within(item('Rates table')).getByRole('button', { name: 'Link to Topic…' }));
+    const dialog = screen.getByRole('dialog', { name: 'Link to Topic' });
+    expect(within(dialog).getAllByRole('option').map((o) => o.textContent)).toEqual(['Proposals v2', 'CRM backlog']);
+    await user.click(within(dialog).getByRole('option', { name: 'Proposals v2' }));
+    const label = within(screen.getByRole('dialog', { name: 'Link to Proposals v2' })).getByRole('textbox', { name: 'Label' });
+    expect(label).toHaveFocus();
+    expect(label).toHaveAttribute('maxLength', '60');
+    await user.type(label, 'part of{Enter}');
+    expect(app.client.linkTopics).toHaveBeenCalledWith(id(1), id(2), 'part of');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    // Again, from the other end: already linked, whichever way it goes; nothing is sent.
+    await user.click(header('Proposals v2'));
+    await user.click(within(item('Proposals v2')).getByRole('button', { name: 'Link to Topic…' }));
+    const again = screen.getByRole('dialog', { name: 'Link to Topic' });
+    expect(within(again).getByRole('option', { name: /Rates table/ })).toHaveTextContent('linked');
+    await user.click(within(again).getByRole('option', { name: /Rates table/ }));
+    expect(within(again).getByText('Already linked')).toBeInTheDocument();
+    expect(app.client.linkTopics).toHaveBeenCalledTimes(1);
+    // No label is no label.
+    await user.click(within(again).getByRole('option', { name: 'CRM backlog' }));
+    await user.click(screen.getByRole('button', { name: 'Link' }));
+    expect(app.client.linkTopics).toHaveBeenLastCalledWith(id(2), id(3), null);
+  });
+
+  it('TOPIC-6.2: an Edge shows on both Topics, "→ <other> (<label>)" where it starts and "← <other> (<label>)" on the other; Reverse turns it around and Unlink removes it, from either', async () => {
+    const app = openApp([topic(1, { title: 'Rates table' }), topic(2, { title: 'Proposals v2' })], work(), { edges: [{ from: id(1), to: id(2), label: 'part of', createdAt: NOW }] });
+    const user = await openTopics();
+    await user.click(header('Rates table'));
+    const edge = () => within(panel()).getByRole('group', { name: /^Edge (to|from)/ });
+    expect(edge()).toHaveAccessibleName('Edge to Proposals v2 (part of)');
+    expect(edge()).toHaveAttribute('data-dir', 'out');
+    await user.click(header('Proposals v2'));
+    expect(edge()).toHaveAccessibleName('Edge from Rates table (part of)');
+    expect(edge()).toHaveAttribute('data-dir', 'in');
+    await user.click(within(edge()).getByRole('button', { name: 'Reverse the Edge with Rates table' }));
+    expect(app.client.editEdge).toHaveBeenCalledWith(id(2), { other: id(1), reverse: true });
+    await waitFor(() => expect(edge()).toHaveAccessibleName('Edge to Rates table (part of)'));
+    await user.click(within(edge()).getByRole('button', { name: 'Unlink Rates table' }));
+    expect(app.client.unlinkTopics).toHaveBeenCalledWith(id(2), id(1));
+    await waitFor(() => expect(within(panel()).queryByRole('group', { name: /^Edge/ })).toBeNull());
+  });
+
+  it('TOPIC-6.3: two Open Topics that share a member show a dashed "shared: <item>" line on each, never stored; Link makes an Edge from the Topic it is clicked on, and the line goes', async () => {
+    const app = openApp([topic(1, { title: 'Rates table', members: [member(PR_MEMBER), member(TASK_MEMBER)] }), topic(2, { title: 'Proposals v2', members: [member(PR_MEMBER), member(TASK_MEMBER)] }), topic(3, { title: 'CRM backlog' }), topic(4, { title: 'Old audit', state: 'archived', members: [member(PR_MEMBER)] })]);
+    const user = await openTopics();
+    // An Archived Topic shares nothing, shown or not.
+    await user.click(within(panel()).getByRole('checkbox', { name: 'Archived' }));
+    await user.click(header('Old audit'));
+    expect(item('Old audit').querySelector('[data-field="shared"]')).toBeNull();
+    await user.click(header('Proposals v2'));
+    const line = item('Proposals v2').querySelector<HTMLElement>('[data-field="shared"]')!;
+    expect(line).toHaveTextContent('Rates table · shared: anvil #2101 and 1 more');
+    expect(line.className).toContain('border-dashed');
+    expect(item('Proposals v2').querySelectorAll('[data-field="shared"]')).toHaveLength(1);
+    expect(line).not.toHaveTextContent('Old audit');
+    await user.click(within(line).getByRole('button', { name: 'Link to Rates table' }));
+    expect(app.client.linkTopics).toHaveBeenCalledWith(id(2), id(1), null);
+    await waitFor(() => expect(item('Proposals v2').querySelector('[data-field="shared"]')).toBeNull());
+    expect(within(panel()).getByRole('group', { name: 'Edge to Rates table' })).toBeInTheDocument();
+  });
+});
+
+describe('the graph (TOPIC-7)', () => {
+  it('TOPIC-7.1: Open graph or G in Topics shows the graph: a node per Open Topic with its marker, Archived ones behind the same toggle, an arrow per Edge with its label; the selected Topic is marked and a node selects it in the tab; a reload keeps the view', async () => {
+    const edges = [{ from: id(1), to: id(2), label: 'part of', createdAt: NOW }, { from: id(3), to: id(1), label: null, createdAt: NOW }];
+    const app = openApp([topic(1, { title: 'Rates table', members: [member(SESSION)] }), topic(2, { title: 'Proposals v2' }), topic(3, { title: 'Old audit', state: 'archived' })], work(), { edges });
+    const user = await openTopics();
+    await user.click(within(panel()).getAllByRole('button', { name: 'Open graph' })[0]!);
+    expect(window.location.pathname).toBe('/topics');
+    expect(within(graph()).getAllByRole('button', { name: /, (No members|\d)/ }).map((n) => n.getAttribute('aria-label'))).toEqual(['Rates table, 1 Session', 'Proposals v2, No members']);
+    expect(node('Rates table').querySelector('[data-session-marker]')).toHaveAttribute('data-status', 'needs-you');
+    expect(graph().querySelectorAll('[data-field="edge"]')).toHaveLength(1);
+    expect(within(graph()).getByRole('button', { name: 'Edge from Rates table to Proposals v2, part of' })).toHaveTextContent('part of');
+    expect(graph().querySelector('[data-field="edge"] line')).toHaveAttribute('marker-end', 'url(#topic-arrow)');
+    // The same Archived toggle as the tab's.
+    await user.click(within(screen.getByRole('banner')).getByRole('checkbox', { name: 'Archived' }));
+    expect(node('Old audit')).toBeInTheDocument();
+    expect(graph().querySelectorAll('[data-field="edge"]')).toHaveLength(2);
+    expect(within(panel()).getByRole('checkbox', { name: 'Archived' })).toBeChecked();
+    // Selecting a node selects the Topic in the tab; its node is marked.
+    await user.click(node('Proposals v2'));
+    expect(node('Proposals v2')).toHaveAttribute('aria-pressed', 'true');
+    expect(header('Proposals v2')).toHaveAttribute('aria-current', 'true');
+    expect(JSON.parse(window.localStorage.getItem('lookout.right')!)).toMatchObject({ topic: id(2) });
+    // A node the tab's filter hides clears the filter, so the tab marks that Topic.
+    await user.type(within(panel()).getByRole('searchbox', { name: 'Filter Topics' }), 'Rates');
+    await user.click(node('Proposals v2'));
+    expect(within(panel()).getByRole('searchbox', { name: 'Filter Topics' })).toHaveValue('');
+    expect(header('Proposals v2')).toHaveAttribute('aria-current', 'true');
+    // G, with focus in Topics.
+    app.unmount();
+    window.localStorage.clear();
+    const again = openApp([topic(1, { title: 'Rates table' })]);
+    expect(window.location.pathname).toBe('/s/alpha');
+    const u = await openTopics();
+    await u.keyboard('g');
+    expect(window.location.pathname).toBe('/topics');
+    again.unmount();
+    // A reload keeps the view.
+    const reloaded = renderApp('/topics', { topics: [topic(1, { title: 'Rates table' })] });
+    reloaded.snapshot([row({ id: 'alpha' })]);
+    expect(within(graph()).getByRole('button', { name: /^Rates table,/ })).toBeInTheDocument();
+  });
+
+  it('TOPIC-7.2: a node with no position is placed clear of the others and stored; a dragged node is stored where it is dropped; Arrange asks, then lays every node out again', async () => {
+    const app = renderApp('/topics', { topics: [topic(1, { title: 'Rates table', pos: { x: 400, y: 280 } }), topic(2, { title: 'Proposals v2' }), topic(3, { title: 'CRM backlog' })] });
+    app.snapshot([row({ id: 'alpha' })]);
+    // Placed once, both together, clear of the placed one and of each other.
+    await waitFor(() => expect(app.client.placeTopics).toHaveBeenCalledTimes(1));
+    const placed = vi.mocked(app.client.placeTopics).mock.calls[0]![0];
+    expect(placed.map((p) => p.id).sort()).toEqual([id(2), id(3)]);
+    const all = [{ x: 400, y: 280 }, ...placed];
+    for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) expect(Math.abs(all[i]!.x - all[j]!.x) >= 216 || Math.abs(all[i]!.y - all[j]!.y) >= 88).toBe(true);
+    await waitFor(() => expect(at(node('Proposals v2'))).toEqual({ x: placed.find((p) => p.id === id(2))!.x, y: placed.find((p) => p.id === id(2))!.y }));
+    // Drag: down, move, up; stored where it lies; it isn't a click.
+    const svg = graph().querySelector('svg')!;
+    fireEvent.pointerDown(node('Rates table'), { button: 0, pointerId: 1, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(svg, { pointerId: 1, clientX: 160, clientY: 130 });
+    fireEvent.pointerUp(svg, { pointerId: 1, clientX: 160, clientY: 130 });
+    fireEvent.click(node('Rates table'));
+    expect(app.client.placeTopics).toHaveBeenLastCalledWith([{ id: id(1), x: 460, y: 310 }]);
+    expect(node('Rates table')).toHaveAttribute('aria-expanded', 'false');
+    await waitFor(() => expect(at(node('Rates table'))).toEqual({ x: 460, y: 310 }));
+    // A drag the browser cancels stores nothing, and the node goes back.
+    fireEvent.pointerDown(node('Rates table'), { button: 0, pointerId: 1, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(svg, { pointerId: 1, clientX: 300, clientY: 300 });
+    expect(at(node('Rates table'))).toEqual({ x: 660, y: 510 });
+    fireEvent.pointerCancel(svg, { pointerId: 1 });
+    expect(at(node('Rates table'))).toEqual({ x: 460, y: 310 });
+    expect(app.client.placeTopics).toHaveBeenCalledTimes(2);
+    // A press that barely moves is a click, and stores nothing.
+    fireEvent.pointerDown(node('Rates table'), { button: 0, pointerId: 1, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(svg, { pointerId: 1, clientX: 102, clientY: 101 });
+    fireEvent.pointerUp(svg, { pointerId: 1 });
+    expect(app.client.placeTopics).toHaveBeenCalledTimes(2);
+    // Arrange, after its confirmation; Cancel moves nothing.
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Arrange' }));
+    await user.click(within(screen.getByRole('dialog', { name: 'Arrange every node?' })).getByRole('button', { name: 'Cancel' }));
+    expect(app.client.placeTopics).toHaveBeenCalledTimes(2);
+    await user.click(screen.getByRole('button', { name: 'Arrange' }));
+    await user.click(within(screen.getByRole('dialog', { name: 'Arrange every node?' })).getByRole('button', { name: 'Arrange' }));
+    expect(app.client.placeTopics).toHaveBeenCalledTimes(3);
+    expect(vi.mocked(app.client.placeTopics).mock.calls[2]![0].map((p) => p.id).sort()).toEqual([id(1), id(2), id(3)]);
+  });
+
+  it('TOPIC-7.2: a new node is placed clear of hidden Archived ones too; a save that fails puts the nodes back where the server has them', async () => {
+    const app = renderApp('/topics', { topics: [topic(1, { title: 'Rates table', pos: { x: 400, y: 280 } }), topic(2, { title: 'Old audit', state: 'archived', pos: { x: 400, y: 380 } }), topic(3, { title: 'Proposals v2' })] });
+    app.snapshot([row({ id: 'alpha' })]);
+    await waitFor(() => expect(app.client.placeTopics).toHaveBeenCalledTimes(1));
+    const [p] = vi.mocked(app.client.placeTopics).mock.calls[0]![0];
+    for (const q of [{ x: 400, y: 280 }, { x: 400, y: 380 }]) expect(Math.abs(p!.x - q.x) >= 216 || Math.abs(p!.y - q.y) >= 88).toBe(true);
+    // Arrange whose save fails: an error, and the nodes back where they were.
+    vi.mocked(app.client.placeTopics).mockRejectedValueOnce(new Error('Topics are read-only right now.'));
+    const before = at(node('Rates table'));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Arrange' }));
+    await user.click(within(screen.getByRole('dialog', { name: 'Arrange every node?' })).getByRole('button', { name: 'Arrange' }));
+    expect(await screen.findByText('Topics are read-only right now.')).toBeInTheDocument();
+    expect(at(node('Rates table'))).toEqual(before);
+  });
+
+  it('TOPIC-7.3: a click on a node expands it to its members as small nodes, each with its kind’s icon and a Session’s Status marker; a member node does what its chip does; Esc collapses it', async () => {
+    const app = renderApp('/topics', { topics: [topic(1, { title: 'Rates table', pos: { x: 300, y: 200 }, members: [member(SESSION), member(PR_MEMBER), member(TASK_MEMBER)] })] });
+    app.snapshot([row({ id: 'alpha' }), row({ id: SESSION_ID, title: 'rates-port', status: 'busy' })]);
+    const user = userEvent.setup();
+    await user.click(node('Rates table'));
+    expect(node('Rates table')).toHaveAttribute('aria-expanded', 'true');
+    const members = [...graph().querySelectorAll<HTMLElement>('[data-field="member"]')];
+    expect(members.map((m) => m.getAttribute('data-kind'))).toEqual(['session', 'pr', 'task']);
+    expect(members[0]!.querySelector('[data-session-marker]')).toHaveAttribute('data-status', 'busy');
+    expect(members[1]!.querySelector('[data-slot="pr-icon"]')).toBeInTheDocument();
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    await user.click(within(graph()).getByRole('button', { name: 'Open anvil #2101 on GitHub' }));
+    expect(open).toHaveBeenCalledWith(ANVIL.url, '_blank', 'noopener,noreferrer');
+    await user.click(within(graph()).getByRole('button', { name: `Open ${LIGHT.title} in Fantastic` }));
+    expect(open).toHaveBeenLastCalledWith(LIGHT.url, '_blank', 'noopener,noreferrer');
+    await user.keyboard('{Escape}');
+    expect(graph().querySelectorAll('[data-field="member"]')).toHaveLength(0);
+    expect(node('Rates table')).toHaveFocus();
+    // Enter expands it again; a live Session's node opens it.
+    await user.keyboard('{Enter}');
+    await user.click(within(graph()).getByRole('button', { name: 'Open rates-port' }));
+    expect(window.location.pathname).toBe(`/s/${SESSION_ID}`);
+  });
+
+  it('TOPIC-7.4: an Edge drawn from a node’s handle onto another node goes from the first to the second; a click on its label edits the label, reverses it or unlinks it', async () => {
+    const app = renderApp('/topics', { topics: [topic(1, { title: 'Rates table', pos: { x: 200, y: 200 } }), topic(2, { title: 'Proposals v2', pos: { x: 600, y: 200 } })] });
+    app.snapshot([row({ id: 'alpha' })]);
+    const handle = node('Rates table').querySelector('[data-field="handle"]')!;
+    fireEvent.pointerDown(handle, { button: 0, pointerId: 1, clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(graph().querySelector('svg')!, { pointerId: 1, clientX: 300, clientY: 10 });
+    expect(node('Proposals v2').querySelector('[data-field="node"]')!.className).toContain('border-dashed');
+    fireEvent.pointerUp(node('Proposals v2'), { pointerId: 1 });
+    expect(app.client.linkTopics).toHaveBeenCalledWith(id(1), id(2), null);
+    const user = userEvent.setup();
+    await user.click(await within(graph()).findByRole('button', { name: 'Edge from Rates table to Proposals v2' }));
+    const dialog = screen.getByRole('dialog', { name: 'Edge' });
+    await user.type(within(dialog).getByRole('textbox', { name: 'Label' }), 'part of{Enter}');
+    expect(app.client.editEdge).toHaveBeenCalledWith(id(1), { other: id(2), label: 'part of' });
+    await user.click(await within(graph()).findByRole('button', { name: 'Edge from Rates table to Proposals v2, part of' }));
+    await user.click(within(screen.getByRole('dialog', { name: 'Edge' })).getByRole('button', { name: 'Reverse' }));
+    expect(app.client.editEdge).toHaveBeenLastCalledWith(id(1), { other: id(2), reverse: true });
+    await user.click(await within(graph()).findByRole('button', { name: 'Edge from Proposals v2 to Rates table, part of' }));
+    await user.click(within(screen.getByRole('dialog', { name: 'Edge' })).getByRole('button', { name: 'Unlink' }));
+    expect(app.client.unlinkTopics).toHaveBeenCalledWith(id(2), id(1));
+    await waitFor(() => expect(graph().querySelectorAll('[data-field="edge"]')).toHaveLength(0));
+    // A handle dropped on its own node, or on nothing, links nothing.
+    fireEvent.pointerDown(handle, { button: 0, pointerId: 1 });
+    fireEvent.pointerUp(node('Rates table'), { pointerId: 1 });
+    fireEvent.pointerDown(handle, { button: 0, pointerId: 1 });
+    fireEvent.pointerUp(graph().querySelector('svg')!, { pointerId: 1 });
+    expect(app.client.linkTopics).toHaveBeenCalledTimes(1);
+  });
+
+  it('TOPIC-7.6: with no Topic, the graph says "No Topics yet" with New Topic, which makes one and shows its node', async () => {
+    const app = renderApp('/topics');
+    app.snapshot([row({ id: 'alpha' })]);
+    expect(screen.getByText('No Topics yet')).toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.click(within(screen.getByText('No Topics yet').closest<HTMLElement>('[role="status"]')!).getByRole('button', { name: 'New Topic' }));
+    await user.type(within(screen.getByRole('dialog', { name: 'New Topic' })).getByRole('textbox', { name: 'Topic title' }), 'Rates table{Enter}');
+    expect(app.client.createTopic).toHaveBeenCalledWith('Rates table');
+    expect(await within(graph()).findByRole('button', { name: /^Rates table,/ })).toHaveAttribute('aria-pressed', 'true');
   });
 });
