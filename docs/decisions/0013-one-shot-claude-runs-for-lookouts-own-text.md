@@ -28,10 +28,12 @@ The binary is the one Fleet's `harness list` finds (TOOLS-1.2). Sessions still s
 ## Alternatives rejected
 
 - **A Lookout Session on a cheap model**: no new code path, but every summary is a Session in the list and in History, and its answer has to be read back out of a Transcript.
-- **A Building block (`tb-session summarize`, or a Fleet fork command)**: right if a second app needs it (0005); today Lookout is the one consumer (0010).
+- **A Building block now**: right once a second app needs it (0005); today Lookout is the one consumer (0010). Not inside `tb-session` even then: it's a fast tool that reads files the same way every time, and a model call would bring it seconds of latency, a cost, a login, the network, different answers per run and Claude Code's flag changes, for every caller (Dario, 2026-10-31).
 - **Through a login shell (`zsh -lc`)**: the telemetry function only acts in `productiveio/*` repos, and a run from Lookout's own directory is in none, so it would add a shell and the profile's load time for nothing.
 
 ## Consequences
+
+- **When a second app needs a summary** (Fleet, a colleague's UI, brief generation in Plan item 23), it moves to a new CLI in cli-toolbox that reads `tb-session show --json` and runs `claude -p` as this decision says, printing `--json`; Lookout then calls that CLI. To keep the move small, a feature using this decision keeps the run (the flags, the call, checking the answer) apart from building its input from Lookout's data.
 
 - No telemetry for these runs, as for any run outside a `productiveio/*` repo.
 - They count against your Claude usage like Sessions do; each feature shows its run's cost.
