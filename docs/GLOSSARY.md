@@ -40,7 +40,7 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Link**: A connection between a Task, a PR and a Session, found by id: a task id in a PR's branch or body (from `tb-pr`), the Session inferred to have opened a PR, or a Session started on a PR or Task (its URL in the first prompt). Each Link records why it exists. See the WORK spec.
 
-**Local server**: A process listening on a TCP port on this machine. It belongs to a Worktree, and through it to a Session, when its working directory is inside that Worktree.
+**Local server**: A process listening on a TCP port on this machine. It belongs to a Session when tb-devctl names that Session as its owner, when it's in the Session's Process tree, or when its working directory is inside that Session's working directory alone (PORTS-1.3).
 
 **Mark**: A bookmark on the rail beside the chat's scroll bar for a prompt you sent, a Subagent result or a question; clicking it scrolls the chat to that entry.
 

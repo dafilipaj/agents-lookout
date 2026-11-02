@@ -1,5 +1,5 @@
 import type { WorkSnapshot } from '@shared/work.ts';
-import { BookOpen, BriefcaseBusiness, History as HistoryIcon, Layers, RefreshCw, X } from 'lucide-react';
+import { BookOpen, BriefcaseBusiness, History as HistoryIcon, Layers, RefreshCw, Server, X } from 'lucide-react';
 import { type ComponentType, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject, useEffect, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { IconButton } from '@/components/ui/icon-button';
@@ -8,7 +8,10 @@ import { cn } from '@/lib/utils';
 import { refreshState } from '@/lib/work';
 import { SHELL_COLUMN, ShellCell } from './Shell';
 
-const TAB_ICON: Record<RightTab, ComponentType<{ className?: string }>> = { history: HistoryIcon, work: BriefcaseBusiness, library: BookOpen, topics: Layers };
+const TAB_ICON: Record<RightTab, ComponentType<{ className?: string }>> = { history: HistoryIcon, work: BriefcaseBusiness, library: BookOpen, topics: Layers, servers: Server };
+
+/** PORTS-3.1: a tab's title, with the shown Local servers counted on Servers'. */
+const tabTitle = (t: RightTab, servers: number | undefined) => (t === 'servers' && servers !== undefined ? `${TAB_LABEL[t]}, ${servers} running` : TAB_LABEL[t]);
 
 export interface RightSidebarProps {
   width: number;
@@ -29,6 +32,8 @@ export interface RightSidebarProps {
   nav: Record<RightTab, RefObject<PanelNav | null>>;
   /** TOPIC-9.4: a neutral count beside a tab's title (Topics' pending recommendations); none at 0. */
   counts?: Partial<Record<RightTab, number>>;
+  /** PORTS-3.1: the shown Local servers, counted in the Servers tab's tooltip. */
+  servers?: number;
 }
 
 /** TOPIC-9.4: a neutral count, never Needs you's amber (UX, Markers). */
@@ -52,7 +57,7 @@ const PANEL_KEYS: Record<string, 1 | -1> = { j: 1, ArrowDown: 1, k: -1, ArrowUp:
  * own controls below it. On the header, j/k and ↑/↓ go to the open panel, never to the Session
  * sidebar, and ←/→ move between the tabs, as a tablist does (WORK-1.7).
  */
-export function RightSidebar({ width, onResize, tab, onTab, onClose, refresh, onRefresh, now, panels, nav, counts }: RightSidebarProps) {
+export function RightSidebar({ width, onResize, tab, onTab, onClose, refresh, onRefresh, now, panels, nav, counts, servers }: RightSidebarProps) {
   // A hidden panel stays mounted, so History keeps its query while you look at Work.
   const [shown, setShown] = useState<ReadonlySet<RightTab>>(() => new Set([tab]));
   if (!shown.has(tab)) setShown(new Set(shown).add(tab));
@@ -148,7 +153,7 @@ export function RightSidebar({ width, onResize, tab, onTab, onClose, refresh, on
                 aria-selected={active}
                 aria-controls={panelId(t)}
                 tabIndex={active ? 0 : -1}
-                title={`${TAB_LABEL[t]} (${TAB_KEY[t]})`}
+                title={`${tabTitle(t, servers)} (${TAB_KEY[t]})`}
                 onClick={() => onTab(t, true)}
                 className={cn(
                   'flex h-7 min-w-0 items-center gap-1.5 rounded-md px-2 text-body transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
@@ -156,7 +161,8 @@ export function RightSidebar({ width, onResize, tab, onTab, onClose, refresh, on
                 )}
               >
                 <Icon className="size-4 shrink-0" />
-                <span className="truncate">{TAB_LABEL[t]}</span>
+                {/* PORTS-3.1: five names don't fit; the others show their icon, their name in the tooltip. */}
+                <span className={cn('truncate', !active && 'sr-only')} data-slot="tab-name">{TAB_LABEL[t]}</span>
                 {!!counts?.[t] && <Count n={counts[t]!} />}
               </button>
             );
@@ -203,12 +209,12 @@ export function RightSidebar({ width, onResize, tab, onTab, onClose, refresh, on
 }
 
 /** HIST-1.1, WORK-1.1: closed, the right sidebar is a narrow rail with a button per tab; its header cell carries the top line on. */
-export function RightRail({ onOpen, counts }: { onOpen(tab: RightTab): void; counts?: Partial<Record<RightTab, number>> }) {
+export function RightRail({ onOpen, counts, servers }: { onOpen(tab: RightTab): void; counts?: Partial<Record<RightTab, number>>; servers?: number }) {
   const button = (t: RightTab) => {
     const Icon = TAB_ICON[t];
     const n = counts?.[t] ?? 0;
     return (
-      <IconButton size="md" label={n ? `${TAB_LABEL[t]}, ${n} recommended` : TAB_LABEL[t]} shortcut={TAB_KEY[t]} onClick={() => onOpen(t)} className="relative">
+      <IconButton size="md" label={n ? `${TAB_LABEL[t]}, ${n} recommended` : tabTitle(t, servers)} shortcut={TAB_KEY[t]} onClick={() => onOpen(t)} className="relative">
         <Icon />
         {n > 0 && <Count n={n} className="absolute -top-1 -right-1 px-1" />}
       </IconButton>
@@ -223,6 +229,7 @@ export function RightRail({ onOpen, counts }: { onOpen(tab: RightTab): void; cou
         {button('work')}
         {button('library')}
         {button('topics')}
+        {button('servers')}
       </ShellCell>
     </div>
   );

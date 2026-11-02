@@ -22,6 +22,7 @@ import { type FindQuery, HistoryError, parseFindQuery } from './history.ts';
 import { LaunchError, TrustError } from './launcher.ts';
 import type { TopicLaunches } from './topic-launches.ts';
 import type { MemoryMonitor } from './memory.ts';
+import type { PortsMonitor } from './ports.ts';
 import type { SessionMonitor } from './monitor.ts';
 import { type GuardConfig, guardRequest } from './security.ts';
 import type { SettingsStore } from './settings.ts';
@@ -51,6 +52,8 @@ export interface AppOptions {
     trustDisconnected(id: string, prompt: string): void;
   };
   memory: Pick<MemoryMonitor, 'snapshot' | 'watch' | 'setOpen' | 'drop'>;
+  /** PORTS-1.2: the Local servers, read while any tab is connected; optional, so handler tests can leave it out. */
+  ports?: Pick<PortsMonitor, 'snapshot' | 'watch'>;
   usage: {
     snapshot(): UsageSnapshot | null;
     watch(): () => void;
@@ -211,10 +214,12 @@ export function createApp(opts: AppOptions): LookoutApp {
       work: opts.work.snapshot(),
       ...(opts.tools ? { tools: opts.tools.snapshot() } : {}),
       ...(opts.topics ? { topics: opts.topics.view() } : {}),
+      ...(opts.ports ? { ports: opts.ports.snapshot() } : {}),
     });
     clients.set(clientId, res);
     const unwatch = opts.monitor.watch();
     const unwatchMemory = opts.memory.watch();
+    const unwatchPorts = opts.ports?.watch();
     const unwatchUsage = opts.usage.watch(); // one usage poller for every open tab
     const keepAlive = setInterval(() => res.write(': keep-alive\n\n'), opts.keepAliveMs ?? 15_000);
     req.on('close', () => {
@@ -222,6 +227,7 @@ export function createApp(opts: AppOptions): LookoutApp {
       clients.delete(clientId);
       unwatchUsage();
       unwatchMemory();
+      unwatchPorts?.();
       opts.memory.drop(clientId);
       workOpen.get(clientId)?.();
       workOpen.delete(clientId);

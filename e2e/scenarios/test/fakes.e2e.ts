@@ -667,6 +667,7 @@ scenario(
       const at = expect.stringMatching(/^\d\d:\d\d:\d\d$/);
       expect(JSON.parse(stopped.report?.fakes ?? 'null')).toEqual({
         memory: [{ at, answer: inner.declaration.memory }],
+        ports: [{ at, answer: inner.declaration.ports }],
         'tb-prod': [
           { at, answer: { tasks: { [ME]: [] } } },
           { at, answer: { failure: 403 } },

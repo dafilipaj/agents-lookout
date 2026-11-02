@@ -228,6 +228,24 @@ export interface MemoryDecl {
 }
 export const DEFAULT_MEMORY: MemoryDecl = { processes: [], ramBytes: 24 * GB, pressure: 'normal' };
 
+/**
+ * PORTS: what the World's `lsof`, `ps` and `tb-devctl` answer Lookout's reads of the Local servers,
+ * independent of the runner's machine. `'lookout'` is the World's Lookout server, as a pid or a parent.
+ */
+export interface PortsDecl {
+  /** Each listener: its process and the addresses it listens on (`*:5173`, `127.0.0.1:4747`, `[::1]:3000`). */
+  listeners: { pid: number | 'lookout'; ppid: number | 'lookout'; command: string; addresses: string[] }[];
+  /** Working directories by pid; a listener without one is left out, as `lsof` does for a pid that's gone. */
+  cwds: Record<string, string>;
+  /** `ps` rows beyond the server's own: parent, process group (its own pid when unset) and `etime`. */
+  processes: { pid: number; ppid: number | 'lookout'; pgid?: number; etime: string }[];
+  /** `tb-devctl ps --json`'s rows, as printed. */
+  devctl: Record<string, unknown>[];
+  /** A read that fails: refused (exit 2) or never answers. */
+  fail?: Partial<Record<'listen' | 'cwds' | 'ps' | 'devctl', 'refused' | 'timeout'>>;
+}
+export const DEFAULT_PORTS: PortsDecl = { listeners: [], cwds: {}, processes: [], devctl: [] };
+
 /** Populated dock usage for layout checks, served through Fleet and tb-jev's CLI contracts. */
 export interface DockUsageDecl {
   claude: { session: number; weekly_all: number };
@@ -256,6 +274,8 @@ export interface WorldSpec {
   /** The fake `tb-pr` on PATH and what it answers; absent unless declared. */
   tbPr: TbPrDecl | null;
   memory: MemoryDecl;
+  /** PORTS: what the Local server reads answer; no listeners and no stacks unless declared. */
+  ports: PortsDecl;
   /** Null unless declared: Fleet's usage override and the Jev probe, for dock layout checks. */
   usage: DockUsageDecl | null;
   /** `lastLaunch`: what the launcher remembers as started last (WORK-5.2). */
@@ -392,6 +412,11 @@ export class WorldBuilder {
     return this.next({ memory: checkMemory(decl) });
   }
 
+  /** PORTS: the Local server reads' answers, replaceable through world.ports during a test. */
+  ports(decl: PortsDecl): WorldBuilder {
+    return this.next({ ports: checkPorts(decl) });
+  }
+
   /** Lookout's settings file, merged over the defaults. */
   settings(settings: WorldSpec['settings']): WorldBuilder {
     return this.next({ settings: { ...this.spec.settings, ...settings } });
@@ -424,6 +449,7 @@ export function world(): WorldBuilder {
     tbProd: null,
     tbPr: null,
     memory: structuredClone(DEFAULT_MEMORY),
+    ports: structuredClone(DEFAULT_PORTS),
     usage: null,
     settings: {},
     topics: [],
@@ -561,5 +587,25 @@ export function checkMemory(decl: MemoryDecl): MemoryDecl {
     if (!Number.isFinite(p.bytes) || p.bytes < 0 || !Number.isFinite(p.cpuPct) || p.cpuPct < 0) refuse('.memory()', 'bytes and CPU must be nonnegative');
     if (!oneLine(p.name) || p.name.includes('/')) refuse('.memory()', 'name must be an executable basename');
   }
+  return structuredClone(decl);
+}
+
+export function checkPorts(decl: PortsDecl): PortsDecl {
+  const what = '.ports()';
+  const pid = (p: unknown) => p === 'lookout' || (Number.isSafeInteger(p) && (p as number) > 0);
+  const pids = new Set<unknown>();
+  for (const l of decl.listeners) {
+    if (!pid(l.pid) || pids.has(l.pid)) refuse(what, 'listener pids must be unique positive integers or "lookout"');
+    pids.add(l.pid);
+    if (!pid(l.ppid)) refuse(what, 'a listener\'s parent must be a positive integer or "lookout"');
+    if (!oneLine(l.command) || !l.command) refuse(what, 'a command is one line');
+    if (!l.addresses.length || !l.addresses.every((a) => /^(\*|[\d.]+|\[[\da-f:]+\]):\d+$/.test(a))) refuse(what, 'addresses are host:port, as lsof prints them');
+  }
+  for (const [k, v] of Object.entries(decl.cwds)) if (!/^(?:\d+|lookout)$/.test(k) || !v.startsWith('/')) refuse(what, 'cwds map a pid to an absolute path');
+  for (const p of decl.processes) {
+    if (!pid(p.pid) || p.pid === ('lookout' as unknown) || !pid(p.ppid)) refuse(what, 'process pids must be positive integers');
+    if (!/^(?:(?:\d+-)?\d+:)?\d+:\d+$/.test(p.etime)) refuse(what, 'etime is [[dd-]hh:]mm:ss');
+  }
+  for (const f of Object.values(decl.fail ?? {})) if (!['refused', 'timeout'].includes(f)) refuse(what, 'a failure is refused or timeout');
   return structuredClone(decl);
 }

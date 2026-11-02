@@ -13,7 +13,7 @@ import type { FakeViolation } from '../fakes/index.ts';
 import { BrowserGuard } from './browser.ts';
 import type { FleetRow } from '../../server/fleet.ts';
 import { TopicStore, summaryFingerprint } from '../../server/topics.ts';
-import { type MemoryDecl, checkMemory, type GitIdentityDecl, type TbPrDecl, type TbProdDecl, type WorldSpec, checkTbPr, checkTbProd } from './builder.ts';
+import { type MemoryDecl, type PortsDecl, checkMemory, checkPorts, type GitIdentityDecl, type TbPrDecl, type TbProdDecl, type WorldSpec, checkTbPr, checkTbProd } from './builder.ts';
 import { type Budget, WaitTimedOut, type Waiting, Waits } from './budget.ts';
 import { REPO_ROOT, checkPins } from './pins.ts';
 import {
@@ -67,13 +67,12 @@ const LISTENING = /^Lookout server on http:\/\/127\.0\.0\.1:(\d+)/m;
 
 /**
  * TEST-1.2, real: the plain system tools Lookout, Fleet and a login shell need, linked into the
- * World's `bin/`. Fleet and tb-session come in as logged wrappers, tmux and ps as shims. Nothing
+ * World's `bin/`. Fleet and tb-session come in as logged wrappers, tmux, ps and lsof as shims. Nothing
  * else is on PATH: never security, gh, ssh or osascript, and the fakes (claude, codex, tb-jev, curl,
  * tb-prod and tb-pr) only when declared.
  */
 export const REAL_TOOLS: Readonly<Record<string, string>> = {
   git: '/usr/bin/git',
-  lsof: '/usr/sbin/lsof',
   sh: '/bin/sh',
   bash: '/bin/bash',
   node: process.execPath,
@@ -197,6 +196,8 @@ export interface RunningWorld extends Waiting {
   readonly tbPr: FakeControl<TbPrDecl>;
   readonly tbOutputs: FakeControl<TbSessionAnswer>;
   readonly memory: FakeControl<MemoryDecl>;
+  /** PORTS: what the Local server reads (`lsof`, `ps`, `tb-devctl`) answer; every World has them. */
+  readonly ports: FakeControl<PortsDecl>;
   /** Test controls that add CLI JSON rows without bypassing Fleet or tb-session's command boundary. */
   readonly fleet: { gainSession(row: FleetRow): void };
   readonly tbSession: {
@@ -365,6 +366,7 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
   const outputDeclarations = structuredClone(spec.outputs?.items ?? []);
   let outputFixtures: Awaited<ReturnType<typeof materializeOutputs>> | null = null;
   const memory = new FakeControl<MemoryDecl>('ps', fakeDir('ps'), checkMemory, waitUntil);
+  const ports = new FakeControl<PortsDecl>('lsof', fakeDir('lsof'), checkPorts, waitUntil);
   const tbPr = new FakeControl<TbPrDecl>('tb-pr', spec.tbPr ? fakeDir('tb-pr') : null, checkTbPr, waitUntil);
   let worldPort: number;
   let worldUrl: string;
@@ -437,7 +439,7 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
 
   /** TEST-2.4: what each fake answered, as the test changed it, not only what it was declared with. */
   const fakesReport = (): string | null => {
-    const fakes = Object.fromEntries([['memory', memory.history()], ...(spec.tbProd ? [[tbProd.name, tbProd.history()]] : []), ...(spec.tbPr ? [[tbPr.name, tbPr.history()]] : []), ...(spec.outputs?.unsupported ? [[tbOutputs.name, tbOutputs.history()]] : [])]);
+    const fakes = Object.fromEntries([['memory', memory.history()], ['ports', ports.history()], ...(spec.tbProd ? [[tbProd.name, tbProd.history()]] : []), ...(spec.tbPr ? [[tbPr.name, tbPr.history()]] : []), ...(spec.outputs?.unsupported ? [[tbOutputs.name, tbOutputs.history()]] : [])]);
     return Object.keys(fakes).length ? JSON.stringify(fakes, null, 2) : null;
   };
 
@@ -582,7 +584,10 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
     // bin/: real tools, shims, logged wrappers. Nothing else.
     await step(Promise.all(Object.entries(REAL_TOOLS).map(([name, target]) => symlink(target, join(bin, name)))));
     await writeExecutable(join(bin, 'tmux'), fillTemplate('tmux', { TMUX_TMPDIR: tmuxTmpdir, REAL_TMUX: tmuxBin, SOCKET: socket }));
-    await writeExecutable(join(bin, 'ps'), fillTemplate('ps', { NODE: process.execPath, SCRIPT: join(FAKES, 'ps.ts'), STATE: fakeDir('ps'), VIOLATIONS: violationsLog, LOG: callsLog }));
+    await writeExecutable(join(bin, 'ps'), fillTemplate('ps', { NODE: process.execPath, SCRIPT: join(FAKES, 'ps.ts'), STATE: fakeDir('ps'), PORTS_SCRIPT: join(FAKES, 'ports-ps.ts'), PORTS_STATE: fakeDir('lsof'), VIOLATIONS: violationsLog, LOG: callsLog }));
+    // PORTS: every World answers the Local server reads, so none ever reads the runner's own ports.
+    await writeExecutable(join(bin, 'lsof'), fillTemplate('lsof', { REAL_LSOF: '/usr/sbin/lsof', NODE: process.execPath, SCRIPT: join(FAKES, 'lsof.ts'), STATE: fakeDir('lsof'), VIOLATIONS: violationsLog, LOG: callsLog }));
+    await writeExecutable(join(bin, 'tb-devctl'), fillTemplate('fake', { NAME: 'tb-devctl', LOG: callsLog, NODE: process.execPath, SCRIPT: join(FAKES, 'tb-devctl.ts'), STATE: fakeDir('lsof'), VIOLATIONS: violationsLog }));
     for (const [name, real] of [['fleet', bins.fleet], ['tb-session', bins.tbSession]] as const) {
       if (!real || (name === 'tb-session' && spec.outputs?.unsupported)) continue;
       const extras = name === 'fleet' ? fleetExtrasPath : tbSessionExtrasPath;
@@ -615,6 +620,8 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
     else if (spec.outputs) outputFixtures = await materializeOutputs(home, outputDeclarations);
     await mkdir(fakeDir('ps'), { recursive: true });
     memory.answer(spec.memory);
+    await mkdir(fakeDir('lsof'), { recursive: true });
+    ports.answer(spec.ports);
     await writeExecutable(join(bin, 'sysctl'), fillTemplate('sysctl', { REAL_SYSCTL: '/usr/sbin/sysctl', NAME: 'sysctl', LOG: callsLog, NODE: process.execPath, SCRIPT: join(FAKES, 'sysctl.ts'), STATE: fakeDir('ps'), VIOLATIONS: violationsLog }));
     if (spec.usage) {
       await mkdir(usageDir, { recursive: true });
@@ -792,6 +799,7 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
     tbPr,
     tbOutputs,
     memory,
+    ports,
     fleet: {
       gainSession: (row) => writeWorldJson(fleetExtrasPath, [...readJsonArray<FleetRow>(fleetExtrasPath).filter((existing) => existing.session_id !== row.session_id), row]),
     },

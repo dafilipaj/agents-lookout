@@ -1,5 +1,5 @@
 #!/bin/sh
-# Sampling is always declared, including in an empty World. Fleet's discovery keeps its shim.
+# Sampling and the Local server read are always declared, including in an empty World. Fleet's discovery keeps its shim.
 case "$*" in
   *rss*)
     printf '%s\n' 'ps sampling' >> '@LOG@'
@@ -7,6 +7,13 @@ case "$*" in
     LOOKOUT_FAKE_VIOLATIONS='@VIOLATIONS@'
     export LOOKOUT_FAKE_STATE LOOKOUT_FAKE_VIOLATIONS
     exec '@NODE@' '@SCRIPT@' "$@"
+    ;;
+  '-axo pid=,ppid=,pgid=,etime=')
+    printf '%s\n' 'ps ports' >> '@LOG@'
+    LOOKOUT_FAKE_STATE='@PORTS_STATE@'
+    LOOKOUT_FAKE_VIOLATIONS='@VIOLATIONS@'
+    export LOOKOUT_FAKE_STATE LOOKOUT_FAKE_VIOLATIONS
+    exec '@NODE@' '@PORTS_SCRIPT@' "$@"
     ;;
 esac
 # TODO(TEST-1.10): filter Fleet's machine-wide discovery to this World's panes before Codex Worlds.

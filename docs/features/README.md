@@ -9,7 +9,7 @@ One row per feature. Update the status here and in the spec's frontmatter togeth
 | Start Claude Code and Codex Sessions | LAUNCH | In Progress | [SPEC](launch-session/SPEC.md) |
 | Open a Session in iTerm2 | ITERM | Ready | [SPEC](open-in-iterm/SPEC.md) |
 | History: search past Sessions, select one, resume with a button | HIST | In Progress | [SPEC](history/SPEC.md) |
-| Local servers: overview, kill on click | PORTS | Parked | [SPEC](local-servers/SPEC.md) |
+| Local servers: overview, kill on click | PORTS | In Progress | [SPEC](local-servers/SPEC.md) |
 | Usage at a glance: Claude, Codex and Jev limits | USAGE | Done | [SPEC](usage/SPEC.md) |
 | Tasks and PRs: your Productive Tasks, PRs and Review requests, Linked to their Sessions | WORK | In Progress | [SPEC](tasks-and-prs/SPEC.md) |
 | Behaviour tests: every requirement checked end to end ([0007](../decisions/0007-behaviour-tests-from-spec-requirements.md)) | TEST | In Progress | [SPEC](behaviour-tests/SPEC.md) |

@@ -351,3 +351,4 @@ None.
 - 2026-11-02: Added SIDE-7.6 from the Backlog's "Settings in sections": two sub-pages, General and Tools, in the design system's new side nav (DS-13.1), Dario's choice over a tab row and over more sections (one per feature would leave three of one field each). SIDE-7.4 amended: "Switch tab" names both tab strips, with Home and End on a Topic view's (DS-13.2); the right sidebar's keeps ←/→ only (WORK-1.7). Fixed from an Opus spec review (high): what a switch does to a typed, unsaved field (dropped, DS-13.1).
 - 2026-10-31: The DIFF spec (Draft) adds a Session's changed lines to the row's numbers, after the Subagent count and before the age (DIFF-1.1), so SIDE-9.1's order stands; DIFF's criteria cover it.
 - 2026-11-02: SIDE-7.4 and 7.6 built and ticked: `SettingsPage` in General and Tools through `SideNav` (DS-13.1), the router's `settings` route with its `section`.
+- 2026-11-02: The shortcuts list's panels entry gains `P`, the Servers tab (PORTS-3.1).

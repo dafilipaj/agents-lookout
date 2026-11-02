@@ -1,5 +1,5 @@
 import type { MemorySnapshot } from '@shared/memory.ts';
-import { sortSessions } from '@shared/order.ts';
+import { sidebarOrder } from '@shared/order.ts';
 import type { FleetHealth, LaunchView, SessionRow } from '@shared/types.ts';
 import { type ToolsSnapshot, toolsAttention } from '@shared/tools.ts';
 import type { UsageSnapshot } from '@shared/usage.ts';
@@ -74,10 +74,7 @@ export function Sidebar(props: SidebarProps) {
   const [frozenOrder, setFrozenOrder] = useState<string[] | null>(null);
   // SIDE-1.5 / SIDE-3.1: Controllable Sessions first, then the "View only" section; each in
   // Status order.
-  const sortedIds = useMemo(
-    () => [...sortSessions(sessions.filter((s) => s.controllable)), ...sortSessions(sessions.filter((s) => !s.controllable))].map((s) => s.id),
-    [sessions],
-  );
+  const sortedIds = useMemo(() => sidebarOrder(sessions).map((s) => s.id), [sessions]);
   const orderedIds = useMemo(() => (frozenOrder ? keepOrder(frozenOrder, sortedIds) : sortedIds), [frozenOrder, sortedIds]);
   // Rows that arrived (or left) during the hover join the frozen order, so they don't move among
   // themselves either. Adjusting state while rendering, as React documents for derived state.

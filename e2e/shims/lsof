@@ -1,0 +1,14 @@
+#!/bin/bash
+# A system tool as well as PORTS' fake: Fleet reads its Sessions' working directories with the real
+# one. Lookout's Local server reads (their exact argvs, `-nP` first) go to the strict fake.
+case "$*" in
+  '-nP -iTCP -sTCP:LISTEN -FpcRn'|'-nP -a -d cwd -Fpn -p '*) ;;
+  *) exec '@REAL_LSOF@' "$@" ;;
+esac
+line="$(/bin/date +%H:%M:%S) lsof"
+for a in "$@"; do printf -v q '%q' "$a"; line="$line $q"; done
+printf '%s\n' "$line" >> '@LOG@'
+LOOKOUT_FAKE_STATE='@STATE@'
+LOOKOUT_FAKE_VIOLATIONS='@VIOLATIONS@'
+export LOOKOUT_FAKE_STATE LOOKOUT_FAKE_VIOLATIONS
+exec '@NODE@' '@SCRIPT@' "$@"

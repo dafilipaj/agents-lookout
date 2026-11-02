@@ -20,6 +20,7 @@ import { TopicGraph } from '@/components/TopicGraph';
 import { TopicView } from '@/components/TopicView';
 import { ViewErrorBoundary } from '@/components/ViewErrorBoundary';
 import { TopicsPanel } from '@/components/TopicsPanel';
+import { ServersPanel } from '@/components/ServersPanel';
 import { type LookoutClient, SaveError } from '@/lib/client';
 import { ComposerAttachments, preventDropNavigation } from '@/lib/attachments';
 import { tidySentAt } from '@/lib/activity';
@@ -36,6 +37,7 @@ import {
   tidyQuestionDrafts,
 } from '@/lib/answers';
 import { FileLinks } from '@/lib/files';
+import { shownCount } from '@/lib/ports';
 import { type PanelNav, type RightLayout, type RightTab, loadLayout, saveLayout, toggleTab } from '@/lib/right-sidebar';
 import { useAnyModalOpen } from '@/lib/modal';
 import { type HarnessState, type LaunchDraft, initialDraft } from '@/lib/launch';
@@ -420,7 +422,7 @@ export function App({ client }: { client: LookoutClient }) {
   // this browser (HIST-1.3, WORK-1.2, WORK-1.5).
   const [layout, setLayout] = useState<RightLayout>(loadLayout);
   /** Bumped to move focus into the panel just opened or switched to (HIST-1.1). */
-  const [rightFocus, setRightFocus] = useState<Record<RightTab, number>>({ history: 0, work: 0, library: 0, topics: 0 });
+  const [rightFocus, setRightFocus] = useState<Record<RightTab, number>>({ history: 0, work: 0, library: 0, topics: 0, servers: 0 });
   const updateLayout = useCallback((patch: Partial<RightLayout>) => {
     setLayout((l) => {
       const next = { ...l, ...patch };
@@ -451,7 +453,7 @@ export function App({ client }: { client: LookoutClient }) {
     const onKey = (e: KeyboardEvent) => {
       if (e.isComposing || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
       const key = e.key.toLowerCase();
-      const tab = ({ h: 'history', w: 'work', l: 'library', t: 'topics' } as const)[key as 'h' | 'w' | 'l' | 't'];
+      const tab = ({ h: 'history', w: 'work', l: 'library', t: 'topics', p: 'servers' } as const)[key as 'h' | 'w' | 'l' | 't' | 'p'];
       if (!tab) return;
       if (modalOpen || isTextField(e.target)) return;
       e.preventDefault();
@@ -516,6 +518,14 @@ export function App({ client }: { client: LookoutClient }) {
   const historyNav = useRef<PanelNav>(null);
   const workNav = useRef<PanelNav>(null);
   const topicsNav = useRef<PanelNav>(null);
+  const serversNav = useRef<PanelNav>(null);
+  // PORTS-2.2: the Session whose group the Servers tab scrolls to, once.
+  const [serversReveal, setServersReveal] = useState<string | null>(null);
+  const showServers = useCallback((sessionId: string) => {
+    updateLayout({ open: true, tab: 'servers' });
+    setServersReveal(sessionId);
+    setRightFocus((f) => ({ ...f, servers: f.servers + 1 }));
+  }, [updateLayout]);
   // A launcher opened from Work gives focus back to Work when it closes without a start, to the list
   // holding the selected row, rather than to the page, where j/k would move the Session sidebar
   // (WORK UX, Focus).
@@ -1133,6 +1143,8 @@ export function App({ client }: { client: LookoutClient }) {
                 changes={state.changes}
                 onChangesOpen={onChangesOpen}
                 onOpenChange={openChange}
+                ports={state.ports}
+                onShowServers={showServers}
                 switches={switches}
                 prompts={state.prompts}
                 attempts={attempts}
@@ -1184,6 +1196,20 @@ export function App({ client }: { client: LookoutClient }) {
                   navRef={topicsNav}
                 />
               ),
+              servers: (
+                <ServersPanel
+                  ports={state.ports}
+                  sessions={sessions}
+                  now={now}
+                  showAll={layout.showAllServers}
+                  onShowAll={(showAllServers) => updateLayout({ showAllServers })}
+                  focusKey={rightFocus.servers}
+                  reveal={serversReveal}
+                  onRevealed={() => setServersReveal(null)}
+                  onSelectSession={(id) => onSelect(id, 'push')}
+                  navRef={serversNav}
+                />
+              ),
               history: <HistoryPanel headless={layout.headless} onHeadless={(headless) => updateLayout({ headless })} focusKey={rightFocus.history} sessions={state.sessions} now={now} search={searchHistory} peek={peekPast} onOpen={openPast} navRef={historyNav} />,
               work: (
                 <WorkPanel
@@ -1202,11 +1228,12 @@ export function App({ client }: { client: LookoutClient }) {
                 />
               ),
             }}
-            nav={{ history: historyNav, work: workNav, library: libraryNav, topics: topicsNav }}
+            nav={{ history: historyNav, work: workNav, library: libraryNav, topics: topicsNav, servers: serversNav }}
             counts={{ topics: state.topics?.recommendations.length ?? 0 }}
+            servers={state.ports ? shownCount(state.ports) : undefined}
           />
         ) : (
-          <RightRail onOpen={toggleRight} counts={{ topics: state.topics?.recommendations.length ?? 0 }} />
+          <RightRail onOpen={toggleRight} counts={{ topics: state.topics?.recommendations.length ?? 0 }} servers={state.ports ? shownCount(state.ports) : undefined} />
         )}
         <Launcher
           open={launcherOpen}

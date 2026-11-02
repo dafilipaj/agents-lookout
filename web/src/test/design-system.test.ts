@@ -368,6 +368,8 @@ const FAMILIES: Record<string, Family> = {
       'web/src/components/TopicsPanel.tsx': { why: 'keyboard focus and the focused filter', uses: ['border-ring', 'ring-ring/30', 'ring-ring/50'] },
       'web/src/components/TopicView.tsx': { why: 'the focused title field', uses: ['border-ring', 'ring-ring/30'] },
       'web/src/components/SubagentsButton.tsx': { why: "keyboard focus on the status line's Subagents", uses: ['ring-ring'] },
+      'web/src/components/PortsChip.tsx': { why: "keyboard focus on the status line's Local servers (PORTS-2.2)", uses: ['ring-ring'] },
+      'web/src/components/ServersPanel.tsx': { why: 'keyboard focus on the list of Local servers (PORTS-3.2)', uses: ['ring-ring/30'] },
       'web/src/components/TopicGraph.tsx': { why: 'keyboard focus, and drawing an Edge: its line, the dashed target and the handle (DS-12.4, TOPIC-6.1)', uses: ['border-primary', 'ring-ring/50', 'stroke-primary', 'text-primary'] },
     },
   },

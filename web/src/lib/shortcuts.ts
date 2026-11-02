@@ -127,12 +127,12 @@ export const SHORTCUTS: readonly Shortcut[] = [
   {
     id: 'panels',
     group: 'panels',
-    keys: ['H', 'W', 'L', 'T'],
-    label: 'Open or close History, Work, Library, Topics',
+    keys: ['H', 'W', 'L', 'T', 'P'],
+    label: 'Open or close History, Work, Library, Topics, Servers',
     note: 'Not in a text field.',
-    press: [{ key: 'h' }, { key: 'w' }, { key: 'l' }, { key: 't' }],
+    press: [{ key: 'h' }, { key: 'w' }, { key: 'l' }, { key: 't' }, { key: 'p' }],
     global: true,
-    empty: { label: 'History, Work, Library, Topics', views: ['select', 'none'] },
+    empty: { label: 'History, Work, Library, Topics, Servers', views: ['select', 'none'] },
   },
   {
     id: 'tabs',

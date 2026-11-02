@@ -71,7 +71,7 @@ const PROBES: Record<string, (user: UserEvent, press: Press) => Promise<void>> =
   async panels(user, press) {
     fresh('/');
     await pressKey(user, press);
-    const name = { h: 'History', w: 'Work', l: 'Library', t: 'Topics' }[press.key]!;
+    const name = { h: 'History', w: 'Work', l: 'Library', t: 'Topics', p: 'Servers' }[press.key]!;
     expect(tab(name)).toHaveAttribute('aria-selected', 'true');
   },
   async tabs(user, press) {
@@ -80,7 +80,7 @@ const PROBES: Record<string, (user: UserEvent, press: Press) => Promise<void>> =
     await user.click(tab('History'));
     tab('History').focus();
     await pressKey(user, press);
-    expect(tab(press.key === 'ArrowRight' ? 'Work' : 'Topics')).toHaveAttribute('aria-selected', 'true');
+    expect(tab(press.key === 'ArrowRight' ? 'Work' : 'Servers')).toHaveAttribute('aria-selected', 'true');
   },
   async send(user, press) {
     const app = fresh('/s/a');

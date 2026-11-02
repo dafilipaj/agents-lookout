@@ -21,7 +21,7 @@ import type { FakeCommand, FakeViolation } from './index.ts';
  */
 
 /** The fakes a test steers this way. */
-export type FakeName = Extract<FakeCommand, 'tb-prod' | 'tb-pr' | 'tb-session' | 'ps' | 'sysctl'>;
+export type FakeName = Extract<FakeCommand, 'tb-prod' | 'tb-pr' | 'tb-session' | 'ps' | 'sysctl' | 'lsof'>;
 
 /** Set by the fake's `bin/` wrapper: its directory, and the World's violations log. */
 export const STATE_ENV = 'LOOKOUT_FAKE_STATE';
@@ -163,7 +163,7 @@ export class FakeControl<A> {
 
   private need(): string {
     if (this.dir === null) {
-      const method = this.name === 'tb-prod' ? 'tbProd' : this.name === 'tb-pr' ? 'tbPr' : this.name === 'tb-session' ? 'outputs' : 'memory';
+      const method = this.name === 'tb-prod' ? 'tbProd' : this.name === 'tb-pr' ? 'tbPr' : this.name === 'tb-session' ? 'outputs' : this.name === 'lsof' ? 'ports' : 'memory';
       throw new Error(`This World has no ${this.name}: declare it with world().${method}(…).`);
     }
     return this.dir;

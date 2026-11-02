@@ -4,7 +4,7 @@ import type { ClaudeUsageDecl, HarnessId, SessionDecl } from '../world/builder.t
  * The World's fake commands: claude, codex, tb-jev, curl, tb-prod and tb-pr (TEST-1.2), each on
  * the World's PATH only when declared.
  *
- * Built: WORK's tb-prod/tb-pr, MEM's ps/sysctl, and Fleet usage/tb-jev for populated dock checks.
+ * Built: WORK's tb-prod/tb-pr, MEM's ps/sysctl, PORTS' lsof/ps/tb-devctl, and Fleet usage/tb-jev for populated dock checks.
  * Each is a script node runs from a
  * `bin/` wrapper (e2e/shims/fake) that logs its argv to the World's calls log (TEST-2.4). They read
  * their answer when a call starts, and a test can change it or hold a call in flight (TEST-1.6,
@@ -32,7 +32,7 @@ import type { ClaudeUsageDecl, HarnessId, SessionDecl } from '../world/builder.t
  */
 
 /** A declared fake command or Fleet usage override, run from e2e/fakes/<name>.ts. */
-export type FakeCommand = 'claude' | 'codex' | 'tb-jev' | 'curl' | 'tb-prod' | 'tb-pr' | 'tb-session' | 'ps' | 'sysctl' | 'fleet-usage';
+export type FakeCommand = 'claude' | 'codex' | 'tb-jev' | 'curl' | 'tb-prod' | 'tb-pr' | 'tb-session' | 'ps' | 'sysctl' | 'lsof' | 'tb-devctl' | 'fleet-usage';
 
 /** What a Fake Harness reads from the World when it starts. */
 export interface FakeHarnessConfig {

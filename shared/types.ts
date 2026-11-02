@@ -1,5 +1,6 @@
 import type { LaunchHarness, SettingsView } from './settings.ts';
 import type { MemorySnapshot } from './memory.ts';
+import type { PortsSnapshot } from './ports.ts';
 import type { UsageSnapshot } from './usage.ts';
 import type { ToolsSnapshot } from './tools.ts';
 import type { TopicsView } from './topics.ts';
@@ -287,6 +288,8 @@ export type ServerEvent =
       tools?: ToolsSnapshot;
       /** TOPIC-8.3: every Topic; optional so that UI tests and a server without it can leave it out. */
       topics?: TopicsView;
+      /** PORTS-1.2: the Local servers, null before the first read; optional so that UI tests and a server without it can leave it out. */
+      ports?: PortsSnapshot | null;
     }
   /** TOPIC-8.3: the whole set of Topics, to every tab, when it changed. */
   | { type: 'topics'; topics: TopicsView }
@@ -295,6 +298,8 @@ export type ServerEvent =
   /** USAGE: new numbers (sent to every tab, only when they changed). */
   | { type: 'usage'; usage: UsageSnapshot }
   | { type: 'memory'; memory: MemorySnapshot }
+  /** PORTS-1.2: the Local servers (sent to every tab, only when something changed). */
+  | { type: 'ports'; ports: PortsSnapshot }
   /** DIFF-3.6: a Session's changed files, sent to the tabs that have its list open; null when none count. */
   | { type: 'changes'; sessionId: string; changes: ChangesView | null }
   /** WORK: the latest PRs, Tasks and Refresh state (sent to every tab, only when something changed). */

@@ -12,7 +12,7 @@ const OPEN_INTERVAL_MS = 5000;
 const OPEN_MIN_MS = 2000;
 
 /** A launchd PATH can lack the system directories; tests and Worlds put their fakes first. */
-export function resolveMemoryBin(name: 'ps' | 'sysctl', env: NodeJS.ProcessEnv = process.env): string {
+export function resolveMemoryBin(name: 'ps' | 'sysctl' | 'lsof', env: NodeJS.ProcessEnv = process.env): string {
   const fallback = name === 'ps' ? '/bin' : '/usr/sbin';
   for (const dir of [...(env.PATH ?? '').split(delimiter).filter(Boolean), fallback]) {
     const candidate = join(dir, name);

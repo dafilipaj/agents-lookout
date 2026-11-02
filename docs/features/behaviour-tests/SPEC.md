@@ -27,7 +27,7 @@ What a Behaviour test runs in. A World is built fresh for each Behaviour test an
 
 - [x] TEST-1.1 When a Behaviour test starts, its World has its own temporary HOME, its own settings file, a private tmux server and a Lookout server on a free port. That port is never 4747 or 4748. Nothing from the user's HOME, tmux server, keychain or settings is visible to Lookout, Fleet, tb-session or the Fake Harnesses. (test)
 - [ ] TEST-1.2 PATH holds only what the World declares:
-  - **real:** Fleet, tb-session, tmux (through a shim to the private `-L` server), git, ps for discovery (through the shim of TEST-1.10; memory sampling is faked, MEM-2.1), lsof, sh, node, and the plain system tools these need;
+  - **real:** Fleet, tb-session, tmux (through a shim to the private `-L` server), git, ps for discovery (through the shim of TEST-1.10; memory sampling is faked, MEM-2.1), lsof (through a shim: the Local server reads are faked, PORTS-1.1), sh, node, and the plain system tools these need;
   - **fake:** claude, codex, tb-jev, curl, tb-prod and tb-pr, each only when declared; the memory sampler’s `ps` and `sysctl`, always injected with deterministic defaults or a `.memory()` declaration (MEM);
   - **absent:** security, gh, ssh and osascript.
 
@@ -227,7 +227,7 @@ scripts/req-check.mjs
    - `TMUX_TMPDIR` at `/tmp/lw-<id>`;
    - `home/Projects/work`, which is the default Start directory.
 2. **`bin/`:**
-   - **Real tools:** symlinks to git, lsof, sh, node and the plain system tools they need: `bash`, `env`, `hostname`, `sleep`, `cat`, `date`, `echo`, `uname` and `id` (`REAL_TOOLS` in `e2e/world/runtime.ts`).
+   - **Real tools:** symlinks to git, sh, node and the plain system tools they need: `bash`, `env`, `hostname`, `sleep`, `cat`, `date`, `echo`, `uname` and `id` (`REAL_TOOLS` in `e2e/world/runtime.ts`).
    - **Fleet and tb-session:** a `logged` wrapper each, which appends its argv to `logs/calls.log` (TEST-2.4) and runs the pinned binary from `.cache/` under the wrapper's own path. The wrapper sets `FLEET_PATH_ONLY=1` itself, so a caller that drops it still gets a PATH-only Fleet. `LOOKOUT_FLEET_BIN` and `LOOKOUT_TB_SESSION_BIN` point at the wrappers; `.without('fleet')` leaves out both the wrapper and the variable.
    - **tmux shim:** `exec <real tmux> -L lookout-world-<rand> -f /dev/null "$@"`. Lookout and Fleet both reach the private server through it.
    - **ps shim:** passes every call through to `/bin/ps`, except that a machine-wide listing (`-ax`, `-e`) keeps only processes whose tty belongs to a pane of the World's tmux server, and their descendants. This keeps the user's own Codex TUIs out of Fleet's discovery (TEST-1.10).
@@ -439,3 +439,4 @@ None.
 - 2026-10-25: MEM dock regression coverage adds a `.usage()` declaration for populated Claude/Codex windows and Jev readiness. The CLI fixtures go through Lookout’s real usage parser and Jev probe. Memory release Behaviour checks span a full fast interval; fake-clock API tests additionally check 30 seconds exactly, within TEST-2.6’s unchanged 30-second Behaviour budget.
 - 2026-10-29: tb-session re-pinned to `tb-session-v0.4.0` (`3e15e58`), which adds `events` for LIB. A World with `.outputs([...])` now writes Transcript fixtures that the real pinned tb-session mines, instead of a contract fake; the `logged` wrapper passes `list` and `events` through as well as `search`, never adding to `events`. `.fleetResume(id)` and `world.tbSession.produce()` added for LIB's Behaviour tests.
 - 2026-10-30: TEST-4.4 added (Dario): a push that changes only `docs/`, `AGENTS.md` or `CLAUDE.md` runs req-check alone, skipping the unit and Behaviour tests, which read nothing there. `scripts/pre-push.test.mjs` now pushes a real commit through the hook's stdin, and tests TEST-4.4 both ways.
+- 2026-11-02: lsof moves from a symlink to a shim, and every World gets a fake `tb-devctl`: Lookout's Local server reads (PORTS-1.1) are answered from `.ports()`, Fleet's lsof calls still reach the real one.

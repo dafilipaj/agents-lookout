@@ -1,3 +1,4 @@
+import type { LocalServer, PortsSnapshot } from '@shared/ports.ts';
 import type { AnswerRequest, ChangesView, ChatPage, EndTarget, RenameResult, SessionRow } from '@shared/types.ts';
 import { Check, ChevronDown, CircleSlash, CircleStop, Copy, FolderGit2, GitBranch, Info, OctagonX, Paperclip, Power, SendHorizontal, TerminalSquare } from 'lucide-react';
 import { type ComponentPropsWithRef, type ComponentPropsWithoutRef, type KeyboardEvent, type PointerEvent, type ReactNode, type RefObject, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
@@ -33,6 +34,7 @@ import { canSwitchEffort, checkedEffort, effortFootnote, effortOptions, effortUn
 import { type ModelTarget, canSwitchModel, checkedModel, modelFootnote, modelOptions, shownModel } from '@/lib/model-switch';
 import { FROM_NEXT_REPLY, type MenuOptions, type SwitchState, type SwitchWhat, plainWhy, switchWhy } from '@/lib/status-switch';
 import type { Chat as ChatState, Preview } from '@/lib/store';
+import { chipText, sessionServers } from '@/lib/ports';
 import { BACKGROUND_SHELL_TIP, CONTEXT_LEVEL_CLASS, HARNESS_NAME, STATUS_LABEL, STATUS_TAG_CLASS, contextLevel, location } from '@/lib/sessions';
 import { HEIGHT_STEP, clampHeight, drawerHeight, heightBounds, keepHeight, parseHeights, readHeightsRaw, subscribeHeights } from '@/lib/terminal-height';
 import { formatAge } from '@/lib/time';
@@ -46,6 +48,7 @@ import { PaneHeader, ShellCell, ShellView } from './Shell';
 import { StatusMarker } from './StatusMarker';
 import { StatusMenu } from './StatusMenu';
 import { ChangesButton, type ChangesButtonProps } from './ChangesButton';
+import { PortsChip } from './PortsChip';
 import { SubagentsButton, type SubagentsButtonProps } from './SubagentsButton';
 import { changesTip } from '@/lib/changes';
 import { AddToTopicButton } from './TopicLinks';
@@ -106,6 +109,10 @@ export interface SessionViewProps {
   onChangesOpen?(sessionId: string, open: boolean): void;
   /** DIFF-4: opens a changed file's Changes in VS Code; rejects with the reason to show. */
   onOpenChange?(sessionId: string, root: string, path: string): Promise<void>;
+  /** PORTS-2: the Local servers, as the server last sent them; the chip shows this Session's. */
+  ports?: PortsSnapshot | null;
+  /** PORTS-2.2: opens the Servers tab at a Session's group. */
+  onShowServers?(sessionId: string): void;
   /** VIEW-4.2: the prompt on the Session's terminal, as the server last read it. */
   screen: ScreenState | undefined;
   /** VIEW-4: the latest answer sent to this Session, and what came of it. */
@@ -148,6 +155,8 @@ export function SessionView({
   changes,
   onChangesOpen,
   onOpenChange,
+  ports,
+  onShowServers,
   screen,
   attempt,
   onAnswer,
@@ -385,6 +394,8 @@ export function SessionView({
           onSwitch={onSwitch}
           statusSwitch={statusSwitch}
           focusFallback={() => focusComposerOrChat(composerRef.current)}
+          servers={!ended && onShowServers ? sessionServers(ports ?? null, row.id) : []}
+          onShowServers={() => onShowServers?.(row.id)}
           changes={
             !ended && onChangesOpen && onOpenChange
               ? {
@@ -725,6 +736,8 @@ function StatusLine({
   onSwitch,
   statusSwitch,
   changes,
+  servers,
+  onShowServers,
   focusFallback,
 }: {
   row: SessionRow;
@@ -735,6 +748,9 @@ function StatusLine({
   statusSwitch: SwitchState | undefined;
   /** DIFF-1.3: the count and its list; null for an ended Session or without the feature. */
   changes: ChangesButtonProps | null;
+  /** PORTS-2.1: the Session's Local servers; none for an ended Session or without the feature. */
+  servers: readonly LocalServer[];
+  onShowServers(): void;
   /** VIEW-8.10: where focus goes when a list closes because its part went away. */
   focusFallback(): void;
 }) {
@@ -761,7 +777,8 @@ function StatusLine({
   const count = running || row.subagents?.finished || 0;
   const subagents = !ended && count > 0 ? `${count} subagent${count === 1 ? '' : 's'}${running ? '' : ' done'}` : null;
   const changed = changes?.changes ? changesTip(changes.changes) : null;
-  const parts = [where, loc?.name, changed, modelPart, effortPart, context, shell, subagents].filter((p): p is string => !!p);
+  const serversPart = servers.length ? chipText(servers) : null;
+  const parts = [where, loc?.name, changed, serversPart, modelPart, effortPart, context, shell, subagents].filter((p): p is string => !!p);
   if (!parts.length) return null;
   const dot = (
     <span aria-hidden className="shrink-0 opacity-60">
@@ -792,6 +809,7 @@ function StatusLine({
       {changes && (changes.changes || changes.list !== undefined) && (
         <ChangesSlot dot={(where || loc) && dot} {...changes} />
       )}
+      <PortsChip servers={servers} onShowAll={onShowServers} focusFallback={focusFallback} dot={(where || loc || changed) && dot} />
       {model && (
         <>
           {(where || loc) && dot}

@@ -20,6 +20,7 @@ import { Launcher } from './launcher.ts';
 import { MemoryMonitor } from './memory.ts';
 import { SessionMonitor } from './monitor.ts';
 import { parsePort } from './port.ts';
+import { PortsMonitor } from './ports.ts';
 import { localAllowLists } from './security.ts';
 import { SettingsStore, defaultSettingsPath } from './settings.ts';
 import { trackStartDirectories } from './start-repos.ts';
@@ -181,6 +182,13 @@ const memory = new MemoryMonitor({
   },
 });
 
+// PORTS: the Local servers, read while any tab is connected and tied to the Sessions in Fleet's list.
+const ports = new PortsMonitor({
+  runner: run,
+  sessions: () => monitor.snapshot().sessions.map((s) => ({ id: s.id, harness: s.harness, pid: s.pid, cwd: s.cwd })),
+  onChange: (p) => app.broadcast({ type: 'ports', ports: p }),
+});
+
 /** TOPIC-12.2, TOPIC-8.4: a Topics store that fails while recording activity is one log line; Lookout keeps running. */
 function observeTopics(fn: () => void): void {
   try {
@@ -248,6 +256,7 @@ const app = createApp({
   viewer,
   usage,
   memory,
+  ports,
   work,
   changes,
   sessions: {
@@ -320,7 +329,7 @@ const shutdown = async () => {
   // Cancel the pollers and wait until their processes have exited, so none is orphaned.
   await Promise.all([recommender.close(), summarizer.close()]);
   topics.close();
-  await Promise.all([usage.close().catch(() => {}), memory.close().catch(() => {}), work.close().catch(() => {}), tools.close().catch(() => {})]);
+  await Promise.all([usage.close().catch(() => {}), memory.close().catch(() => {}), ports.close().catch(() => {}), work.close().catch(() => {}), tools.close().catch(() => {})]);
   process.exit(0);
 };
 process.on('SIGINT', shutdown);

@@ -16,3 +16,8 @@ export function compareSessions(a: SessionRow, b: SessionRow): number {
 export function sortSessions(rows: readonly SessionRow[]): SessionRow[] {
   return [...rows].sort(compareSessions);
 }
+
+/** SIDE-1.5, SIDE-3.1: the sidebar's order: Controllable Sessions first, then View only; each in Status order. */
+export function sidebarOrder(rows: readonly SessionRow[]): SessionRow[] {
+  return [...sortSessions(rows.filter((s) => s.controllable)), ...sortSessions(rows.filter((s) => !s.controllable))];
+}
