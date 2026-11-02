@@ -81,6 +81,145 @@ export interface Topic {
   summary: TopicSummary | null;
   /** TOPIC-11.5: a member was added or removed, or the notes changed, since the summary was written. */
   summaryStale: boolean;
+  /** TOPIC-1.6: how it ended, while it's archived; null when open, or archived before slice 7. */
+  outcome: TopicOutcome | null;
+  /** TOPIC-1.6: its closing line; null when none. */
+  closing: string | null;
+  /** TOPIC-1.6: the Topic that superseded it, with its title at that moment. */
+  supersededBy: { id: string; title: string } | null;
+  /** TOPIC-3.8: its latest activity Lookout recorded itself; null when none. */
+  lastActivity: ActivityEntry | null;
+  /** TOPIC-12.3: its newest entry's id, 0 when none: the view reads the log again when it moves. */
+  lastEntryId: number;
+  /** TOPIC-13.1: the newest entry seen, and how many entries by Lookout came after it. */
+  seenUpto: number;
+  newCount: number;
+  /** TOPIC-11.10: activity since the summary's input, other than summaries; and how many earlier summaries are kept. */
+  changesSinceSummary: number;
+  earlierSummaries: number;
+}
+
+/** TOPIC-1.6: how a Topic ended. */
+export const TOPIC_OUTCOMES = ['done', 'parked', 'dropped', 'superseded'] as const;
+export type TopicOutcome = (typeof TOPIC_OUTCOMES)[number];
+/** TOPIC-1.6: a closing line is at most this many characters. */
+export const MAX_CLOSING = 300;
+/** TOPIC-1.6: the label of the Edge "Superseded by…" draws. */
+export const SUPERSEDED_LABEL = 'superseded by';
+
+/** TOPIC-12.1: what an activity entry records. */
+export type ActivityKind =
+  | 'made'
+  | 'title'
+  | 'notes'
+  | 'archived'
+  | 'unarchived'
+  | 'edge-drawn'
+  | 'edge-label'
+  | 'edge-reversed'
+  | 'edge-unlinked'
+  | 'summary'
+  | 'added'
+  | 'removed'
+  | 'gone'
+  | 'back'
+  | 'ci-failing'
+  | 'ci-passing'
+  | 'chip'
+  | 'task-status'
+  | 'live'
+  | 'ended';
+
+/**
+ * TOPIC-12.1: an entry's details, as it was written: the member's name and the other Topic's title
+ * at that moment, so it reads after a Remove or a Delete.
+ */
+export interface ActivityData {
+  name?: string;
+  reason?: string;
+  outcome?: TopicOutcome;
+  closing?: string;
+  /** The other Topic of an Edge or a supersede: its id and title. */
+  otherId?: string;
+  other?: string;
+  /** An Edge's direction from this Topic: `to` the other, or `from` it. */
+  dir?: 'to' | 'from';
+  label?: string | null;
+  /** A title's, chip's or Task status's new value. */
+  to?: string | null;
+}
+
+/** TOPIC-12: one entry of a Topic's activity. `member` is its member's key, kept after a Remove. */
+export interface ActivityEntry {
+  id: number;
+  at: number;
+  kind: ActivityKind;
+  member: string | null;
+  by: 'you' | 'lookout';
+  data: ActivityData;
+}
+
+/** TOPIC-12.3: Activity is read this many entries at a time. */
+export const ACTIVITY_PAGE = 50;
+/** TOPIC-13.2: "Since you last looked" shows at most this many. */
+export const MAX_NEW_SHOWN = 10;
+
+const CHIP_WORDS: Record<string, string> = { draft: 'is a draft', ready: 'ready for review', approved: 'approved' };
+
+/** TOPIC-12.3: an entry's words: "#2711 CI failing", "Added Rates port, from a Link". */
+export function activityWords(e: ActivityEntry): string {
+  const d = e.data;
+  const name = d.name ?? 'A member';
+  const other = d.other ?? 'a Topic';
+  const label = d.label ? ` (${d.label})` : '';
+  switch (e.kind) {
+    case 'made':
+      return 'Made';
+    case 'title':
+      return `Renamed to "${d.to ?? ''}"`;
+    case 'notes':
+      return 'Notes saved';
+    case 'archived':
+      return `Archived: ${d.outcome === 'superseded' && d.other ? `superseded by ${d.other}` : (d.outcome ?? 'no outcome')}`;
+    case 'unarchived':
+      return 'Unarchived';
+    case 'edge-drawn':
+      return `Linked ${d.dir === 'from' ? 'from' : 'to'} ${other}${label}`;
+    case 'edge-label':
+      return d.label ? `Edge with ${other} labelled "${d.label}"` : `Edge with ${other} unlabelled`;
+    case 'edge-reversed':
+      return `Edge with ${other} reversed`;
+    case 'edge-unlinked':
+      return `Unlinked ${other}`;
+    case 'summary':
+      return 'Summary written';
+    case 'added':
+      return d.reason ? `Added ${name}, ${d.reason}` : `Added ${name}`;
+    case 'removed':
+      return `Removed ${name}`;
+    case 'gone':
+      return `${name} gone from Work`;
+    case 'back':
+      return `${name} back in Work`;
+    case 'ci-failing':
+      return `${name} CI failing`;
+    case 'ci-passing':
+      return `${name} CI passing`;
+    case 'chip':
+      return `${name} ${CHIP_WORDS[d.to ?? ''] ?? d.to ?? ''}`;
+    case 'task-status':
+      return `${name}: ${d.to ?? 'no status'}`;
+    case 'live':
+      return `${name} running`;
+    case 'ended':
+      return `${name} ended`;
+  }
+}
+
+/** TOPIC-12.1: a member's name as an entry keeps it. */
+export function memberName(m: NewMember): string {
+  if (m.kind === 'pr') return m.snapshot.repo && m.snapshot.number ? `${m.snapshot.repo} #${m.snapshot.number}` : m.snapshot.title;
+  return m.snapshot.title;
 }
 
 /** TOPIC-7.2: a node's centre, in the graph's own units (CSS pixels at scale 1). */
@@ -138,10 +277,15 @@ export interface SummaryCite {
   name: string;
 }
 
-/** TOPIC-11.4: one point of `open`, `recent` or `next`, with the members it comes from. */
+/**
+ * TOPIC-11.4: one point of `open`, `recent`, `next` or `watch`, with the members it comes from. `at`
+ * (`recent`): when it happened, `YYYY-MM-DD HH:MM` local; `when` (`next`): what has to happen first.
+ */
 export interface SummaryPoint {
   text: string;
   cites: SummaryCite[];
+  at?: string | null;
+  when?: string | null;
 }
 
 /** TOPIC-11.4: the answer's fixed shape, its cited keys (`S1`, `PR1`, `T1`) turned into member keys. */
@@ -153,7 +297,15 @@ export interface SummaryAnswer {
   open: SummaryPoint[];
   recent: SummaryPoint[];
   next: SummaryPoint[];
+  /** TOPIC-11.4: open threads left out of `open`; absent in a summary from before slice 7. */
+  openMore?: number;
+  /** TOPIC-11.4: known traps, at most three; absent in a summary from before slice 7. */
+  watch?: SummaryPoint[];
 }
+
+/** TOPIC-11.4: `open` shows at most this many; the rest go to `openMore`. `watch` holds at most three. */
+export const MAX_OPEN_POINTS = 4;
+export const MAX_WATCH_POINTS = 3;
 
 /** TOPIC-11.5, TOPIC-11.7: a stored summary, who wrote it and what it cost. */
 export interface TopicSummary {
@@ -227,17 +379,27 @@ export const acceptedReason = (source: RecommendationSource): string => (source 
 export const STARTED_REASON: Record<LaunchTopic['via'], string> = { topic: 'started from this Topic', task: 'started on its Task' };
 
 /**
- * TOPIC-5.1: the launcher's prompt for a Session started from a Topic: its summary's `what`, `state`
- * with `why`, `open` and `next` when it has one that isn't out of date, else the notes' first
- * paragraph; then each Task member's URL; then `Topic: <id> <title>` as its own last line.
+ * TOPIC-5.1: the launcher's prompt for a Session started from a Topic, a handover: when it has a
+ * summary that isn't out of date, its `what`, `state` with `why`, the three newest `recent` points
+ * with their dates, `open`, `next` with each one's trigger, and `watch`; else the notes' first
+ * paragraph. Then each Task member's URL, `Topic: <id> <title>`, and the line asking the agent to
+ * restate before it changes anything.
  */
 export function topicPrompt(topic: Topic): string {
   const parts: string[] = [];
   const summary = topic.summary && !topic.summaryStale ? topic.summary.answer : null;
   if (summary) {
-    const points = (label: string, list: readonly SummaryPoint[]) =>
-      list.length ? [`${label}:\n${list.map((p) => `- ${p.text}${p.cites.length ? ` (${p.cites.map((c) => c.name).join(', ')})` : ''}`).join('\n')}`] : [];
-    parts.push(summary.what, `State: ${summary.state}. ${summary.why}`, ...points('Open', summary.open), ...points('Next', summary.next));
+    const cites = (p: SummaryPoint) => (p.cites.length ? ` (${p.cites.map((c) => c.name).join(', ')})` : '');
+    const points = (label: string, list: readonly SummaryPoint[] | undefined, line: (p: SummaryPoint) => string) =>
+      list?.length ? [`${label}:\n${list.map((p) => `- ${line(p)}${cites(p)}`).join('\n')}`] : [];
+    parts.push(
+      summary.what,
+      `State: ${summary.state}. ${summary.why}`,
+      ...points('Recent', summary.recent.slice(0, 3), (p) => (p.at ? `${p.at}: ${p.text}` : p.text)),
+      ...points('Open', summary.open, (p) => p.text),
+      ...points('Next', summary.next, (p) => (p.when ? `When ${p.when.replace(/^when\s+/i, '')}: ${p.text}` : p.text)),
+      ...points('Watch out', summary.watch, (p) => p.text),
+    );
   } else {
     const first = topic.notes.trim().split(/\n\s*\n/)[0]?.trim();
     if (first) parts.push(first);
@@ -245,8 +407,13 @@ export function topicPrompt(topic: Topic): string {
   const tasks = topic.members.flatMap((m) => (m.kind === 'task' ? [m.snapshot.url] : []));
   if (tasks.length) parts.push(tasks.join('\n'));
   parts.push(`Topic: ${topic.id} ${topic.title}`);
+  parts.push(RESTATE_LINE);
   return parts.join('\n\n');
 }
+
+/** TOPIC-5.1: the handover's last line: the receiver restates, then carries on. */
+export const RESTATE_LINE =
+  "In your first reply, before you change anything, restate in a few lines what this Topic is, where it stands and what you'll do first; then carry on.";
 
 /** TOPIC-5.2: the one Open Topic a Task is in, which a Session started on it joins; null for none or several. */
 export function taskTopic(topics: readonly Topic[], taskId: string): Topic | null {
@@ -295,3 +462,16 @@ export function rowMember(row: SessionRow): NewMember | null {
   const home = row.cwd;
   return sessionMember({ harness: row.harness, sessionId: row.id, title: row.title, directory: home });
 }
+
+/** A Topic's slice 7 fields with nothing in them: a Topic made in a test or a World's fixture. */
+export const NO_ACTIVITY = {
+  outcome: null,
+  closing: null,
+  supersededBy: null,
+  lastActivity: null,
+  lastEntryId: 0,
+  seenUpto: 0,
+  newCount: 0,
+  changesSinceSummary: 0,
+  earlierSummaries: 0,
+} as const satisfies Partial<Topic>;

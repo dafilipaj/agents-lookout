@@ -1,9 +1,9 @@
 import type { OutputItem } from '@shared/library.ts';
-import { MAX_TOPIC_NOTES, MAX_TOPIC_TITLE, OUTPUTS_FRESH_MS, type Recommendation, type RecommendationAction, type SummaryCite, type SummaryPoint, type Topic, type TopicMember, type TopicSummary, type TopicsView, formatCost, modelName } from '@shared/topics.ts';
+import { ACTIVITY_PAGE, type ActivityEntry, MAX_NEW_SHOWN, MAX_TOPIC_NOTES, MAX_TOPIC_TITLE, OUTPUTS_FRESH_MS, type Recommendation, type RecommendationAction, type SummaryCite, type SummaryPoint, type Topic, type TopicMember, type TopicSummary, type TopicsView, activityWords, formatCost, modelName } from '@shared/topics.ts';
 import type { SessionRow } from '@shared/types.ts';
 import type { WorkSnapshot } from '@shared/work.ts';
 import { Archive, ArchiveRestore, ArrowLeft, ArrowLeftRight, ArrowRight, ExternalLink, Link2, Maximize2, Network, Play, RefreshCw, Repeat2, Sparkles, Trash2, Unlink, X } from 'lucide-react';
-import { type MouseEvent, type ReactNode, useEffect, useRef, useState } from 'react';
+import { type MouseEvent, type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Chip } from '@/components/ui/chip';
@@ -15,11 +15,12 @@ import { Loading } from '@/components/ui/loading';
 import { SessionMarker } from '@/components/ui/session-marker';
 import { Textarea } from '@/components/ui/textarea';
 import { STATUS_LABEL } from '@/lib/sessions';
-import { SUMMARY_STATE_WORD, edgesOf, liveRow, looksDone, memberCounts, orderSessions, orderWorkMembers, prState, sharedLabel, sharedPairs, taskState, topicMarker } from '@/lib/topics';
+import { OUTCOME_WORD, SUMMARY_STATE_WORD, edgesOf, liveRow, looksDone, memberCounts, orderSessions, orderWorkMembers, prState, sharedLabel, sharedPairs, taskState, topicMarker } from '@/lib/topics';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { HarnessIcon } from './HarnessIcon';
 import { OUTPUT_ICON, TYPE_LABEL, openOutput } from '@/lib/outputs';
+import { type ArchivePatch, ArchiveDialog } from './ArchiveDialog';
 import { Markdown } from './Markdown';
 import { Recommendations } from './Recommendations';
 import { PlainView } from './Shell';
@@ -42,9 +43,17 @@ export interface TopicViewProps {
   /** Work's last read (TOPIC-4.1, TOPIC-4.2, TOPIC-1.5). */
   work: WorkSnapshot | null;
   now: number;
-  updateTopic(id: string, patch: { title?: string; notes?: string; state?: Topic['state'] }): Promise<Topic>;
+  updateTopic(id: string, patch: { title?: string; notes?: string } | { state: 'open' } | ArchivePatch): Promise<Topic>;
   deleteTopic(id: string): Promise<void>;
   removeMember(topicId: string, member: TopicMember): Promise<void>;
+  /** TOPIC-12.3: the activity, newest first, before an entry id. */
+  topicActivity(topicId: string, before: number | null): Promise<ActivityEntry[]>;
+  /** TOPIC-11.10: the earlier summaries, newest first. */
+  earlierSummaries(topicId: string): Promise<TopicSummary[]>;
+  /** TOPIC-13.1: seen up to that entry; `keepalive` when the page goes away. */
+  seenTopic(topicId: string, upto: number, keepalive?: boolean): Promise<void>;
+  /** TOPIC-1.6: "superseded by <title>" opens that Topic. */
+  onOpenTopic?(id: string): void;
   /** TOPIC-3.4: a Session chip opens a live Session, or resumes a past one (LIB-3.5). */
   onOpenSession(member: SessionMember, live: boolean): Promise<void>;
   /** TOPIC-4.4: ask for a Library read, as opening the Library does (LIB-2.7). */
@@ -83,7 +92,7 @@ const message = (err: unknown, fallback: string) => (err instanceof Error ? err.
  * Outputs and Edges. Drawn from the `topics` event and the browser's joins; it reads nothing new.
  */
 export function TopicView(props: TopicViewProps) {
-  const { id, view, sessions, work } = props;
+  const { id, view } = props;
   const [problem, setProblem] = useState<string | null>(null);
   const topic = view?.state === 'ok' ? view.topics.find((t) => t.id === id) : undefined;
 
@@ -113,12 +122,21 @@ export function TopicView(props: TopicViewProps) {
     );
   }
 
+  return <OneTopic {...props} topic={topic} problem={problem} setProblem={setProblem} />;
+}
+
+/** TOPIC-10, with its activity (TOPIC-12) and what's new since it was last seen (TOPIC-13). */
+function OneTopic({ topic, problem, setProblem, ...props }: TopicViewProps & { topic: Topic; problem: string | null; setProblem(m: string | null): void }) {
+  const { view, sessions, work } = props;
+  const activity = useActivity(topic, props);
   const marker = topicMarker(topic, sessions);
   const done = looksDone(topic, work);
   const act = (p: Promise<unknown>, fallback: string) => {
     setProblem(null);
     p.catch((err: unknown) => setProblem(message(err, fallback)));
   };
+  const fresh = new Set(activity.fresh.flatMap((e) => (e.member ? [e.member] : [])));
+  const all = view?.state === 'ok' ? view.topics : [];
   return (
     <PlainView
       aria-label={`Topic ${topic.title}`}
@@ -132,6 +150,11 @@ export function TopicView(props: TopicViewProps) {
               </span>
               <TitleField topic={topic} save={(title) => props.updateTopic(topic.id, { title })} onProblem={setProblem} />
               {topic.state === 'archived' && <Chip tone="muted">archived</Chip>}
+              {topic.outcome && (
+                <Chip tone="info" data-field="outcome">
+                  {OUTCOME_WORD[topic.outcome]}
+                </Chip>
+              )}
               {done && (
                 <Chip tone="info" title="Every PR and Task in it has left Work. Archive it when you're done." data-field="looks-done">
                   looks done
@@ -141,26 +164,212 @@ export function TopicView(props: TopicViewProps) {
             <span className="truncate pl-5 text-meta text-muted-foreground" data-field="counts">
               {memberCounts(topic.members)}
             </span>
+            <Closing topic={topic} onOpenTopic={all.some((t) => t.id === topic.supersededBy?.id) ? props.onOpenTopic : undefined} />
           </div>
-          <TopicActions topic={topic} look="header" onStartSession={props.onStartSession && ((opener) => props.onStartSession!(topic, opener))} onOpenGraph={props.onOpenGraph} onLinkTo={props.onLinkTo} updateTopic={props.updateTopic} deleteTopic={props.deleteTopic} onDeleted={props.onOpenGraph} onProblem={setProblem} />
+          <TopicActions topic={topic} topics={all} looksDone={done} look="header" onStartSession={props.onStartSession && ((opener) => props.onStartSession!(topic, opener))} onOpenGraph={props.onOpenGraph} onLinkTo={props.onLinkTo} updateTopic={props.updateTopic} deleteTopic={props.deleteTopic} onDeleted={props.onOpenGraph} onProblem={setProblem} />
         </>
       }
     >
       <div className="mx-auto flex w-full max-w-4xl min-w-0 flex-col gap-5 px-8 py-6 text-body">
         {problem && <Alert title={problem} data-field="topic-problem" />}
+        {activity.fresh.length > 0 && <SinceLooked topic={topic} entries={activity.fresh} total={Math.max(topic.newCount, activity.fresh.length)} sessions={sessions} now={props.now} act={act} onOpenSession={props.onOpenSession} pruned={view?.pruned ?? []} />}
         <Summary topic={topic} {...props} act={act} />
         <Notes topic={topic} save={(notes) => props.updateTopic(topic.id, { notes })} onProblem={setProblem} />
-        <Members topic={topic} {...props} act={act} />
+        <Members topic={topic} {...props} act={act} fresh={fresh} />
         <Extras topic={topic} {...props} act={act} onProblem={setProblem} />
+        <Activity topic={topic} activity={activity} sessions={sessions} now={props.now} act={act} onOpenSession={props.onOpenSession} pruned={view?.pruned ?? []} />
       </div>
     </PlainView>
+  );
+}
+
+/** TOPIC-1.6: an archived Topic's closing line, and the Topic that superseded it. */
+function Closing({ topic, onOpenTopic }: { topic: Topic; onOpenTopic?: ((id: string) => void) | undefined }) {
+  if (topic.state !== 'archived' || (!topic.closing && !topic.supersededBy)) return null;
+  const by = topic.supersededBy;
+  return (
+    <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 pl-5 text-meta text-muted-foreground" data-field="closing">
+      {by &&
+        (onOpenTopic ? (
+          <button type="button" className={cn(labelledButtonLook(), 'h-6 text-meta font-normal')} data-field="superseded-by" onClick={() => onOpenTopic(by.id)}>
+            superseded by {by.title}
+          </button>
+        ) : (
+          <span data-field="superseded-by">superseded by {by.title}</span>
+        ))}
+      {topic.closing && <span className="min-w-0">{topic.closing}</span>}
+    </span>
+  );
+}
+
+interface ActivityState {
+  /** Newest first, as loaded: the newest pages, kept up to date, and older pages "Show more" read. */
+  entries: ActivityEntry[];
+  /** TOPIC-13.2: entries by Lookout past what was seen when the view opened, newest first. */
+  fresh: ActivityEntry[];
+  more: boolean;
+  /** The first read, and a "Show more" read. */
+  loading: boolean;
+  paging: boolean;
+  error: string | null;
+  showMore(): void;
+}
+
+/** TOPIC-13.1: the newest entry each view sent as seen, so A, B, A before the server answers doesn't show A's again. */
+const sentSeen = new Map<string, number>();
+
+/** Entries by id, newest first, each once. */
+function mergeEntries(a: readonly ActivityEntry[], b: readonly ActivityEntry[]): ActivityEntry[] {
+  const byId = new Map([...a, ...b].map((e) => [e.id, e]));
+  return [...byId.values()].sort((x, y) => y.id - x.id);
+}
+
+/**
+ * TOPIC-12.3, TOPIC-13: the Topic's activity, read when the view opens and again whenever its newest
+ * entry moves, paging back until it meets what it shows so none is skipped; what was new when it
+ * opened stays marked while it's open. Leaving marks seen everything it showed (TOPIC-13.1): when it's
+ * gone for good (not StrictMode's at-once cleanup) and on `pagehide`.
+ */
+function useActivity(topic: Topic, props: Pick<TopicViewProps, 'topicActivity' | 'seenTopic'>): ActivityState {
+  const [seenAt] = useState(() => Math.max(topic.seenUpto, sentSeen.get(topic.id) ?? 0));
+  const [entries, setEntries] = useState<ActivityEntry[]>([]);
+  const [more, setMore] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [paging, setPaging] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const newest = useRef(0);
+  const shown = useRef(0);
+  const { topicActivity, seenTopic } = props;
+  const id = topic.id;
+
+  useEffect(() => {
+    let live = true;
+    const known = newest.current;
+    const read = async () => {
+      let page = await topicActivity(id, null);
+      const got = [...page];
+      // More than a page came since the last read: page back until it meets what's shown.
+      for (let i = 0; known > 0 && page.length === ACTIVITY_PAGE && page.at(-1)!.id > known + 1 && i < 20; i++) {
+        page = await topicActivity(id, page.at(-1)!.id);
+        got.push(...page);
+      }
+      if (!live) return;
+      setEntries((old) => mergeEntries(old, got));
+      if (known === 0) setMore(page.length === ACTIVITY_PAGE);
+      setError(null);
+    };
+    read()
+      .catch((err: unknown) => live && setError(message(err, "Couldn't read the activity.")))
+      .finally(() => live && setLoading(false));
+    return () => {
+      live = false;
+    };
+  }, [id, topic.lastEntryId, topicActivity]);
+
+  // The newest entry this view has shown, for the next read and for "seen" when it goes.
+  useEffect(() => {
+    newest.current = entries[0]?.id ?? 0;
+    shown.current = Math.max(shown.current, newest.current);
+  }, [entries]);
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    const leave = (keepalive: boolean) => {
+      if (shown.current <= 0) return;
+      sentSeen.set(id, Math.max(sentSeen.get(id) ?? 0, shown.current));
+      seenTopic(id, shown.current, keepalive).catch(() => {});
+    };
+    const onHide = () => leave(true);
+    window.addEventListener('pagehide', onHide);
+    return () => {
+      window.removeEventListener('pagehide', onHide);
+      alive.current = false;
+      // StrictMode runs this at once and mounts again: only a view that stays gone marks seen.
+      setTimeout(() => {
+        if (!alive.current) leave(false);
+      }, 0);
+    };
+  }, [id, seenTopic]);
+
+  const showMore = useCallback(() => {
+    const oldest = entries.at(-1)?.id;
+    if (oldest === undefined || paging) return;
+    setPaging(true);
+    topicActivity(id, oldest)
+      .then((page) => {
+        setEntries((old) => mergeEntries(old, page));
+        setMore(page.length === ACTIVITY_PAGE);
+      })
+      .catch((err: unknown) => setError(message(err, "Couldn't read the activity.")))
+      .finally(() => setPaging(false));
+  }, [entries, id, paging, topicActivity]);
+
+  const fresh = entries.filter((e) => e.by === 'lookout' && e.id > seenAt);
+  return { entries, fresh, more, loading, paging, error, showMore };
+}
+
+type EntryProps = { sessions: ReadonlyMap<string, SessionRow>; now: number; act: Act; onOpenSession: TopicViewProps['onOpenSession']; pruned: readonly string[] };
+
+/** TOPIC-12.3: one entry: its time, its words, and its member's name, which acts as its chip does. */
+function Entry({ entry, topic, sessions, now, act, onOpenSession, pruned }: EntryProps & { entry: ActivityEntry; topic: Topic }) {
+  return (
+    <li className="flex min-w-0 items-center gap-2" data-field="activity-entry" data-kind={entry.kind}>
+      <time className="w-14 shrink-0 text-meta text-muted-foreground tabular-nums" dateTime={new Date(entry.at).toISOString()} title={new Date(entry.at).toLocaleString()}>
+        {formatAge(now - entry.at)}
+      </time>
+      <span className="min-w-0 truncate">{activityWords(entry)}</span>
+      {entry.member && <Cite cite={{ key: entry.member, name: entry.data.name ?? '' }} topic={topic} sessions={sessions} pruned={pruned} act={act} onOpenSession={onOpenSession} />}
+    </li>
+  );
+}
+
+/** TOPIC-13.2: what Lookout recorded since the Topic was last seen, between the header and the Summary. */
+function SinceLooked({ topic, entries, total, ...rest }: EntryProps & { topic: Topic; entries: ActivityEntry[]; total: number }) {
+  const shown = entries.slice(0, MAX_NEW_SHOWN);
+  return (
+    <section className="flex min-w-0 flex-col gap-1.5 rounded-md border border-border p-3" data-field="since-looked" aria-label="Since you last looked">
+      <h2 className="text-meta font-medium text-muted-foreground">Since you last looked</h2>
+      <ul className="flex min-w-0 flex-col gap-1">
+        {shown.map((e) => (
+          <Entry key={e.id} entry={e} topic={topic} {...rest} />
+        ))}
+      </ul>
+      {total > shown.length && (
+        <button type="button" className={cn(labelledButtonLook(), 'h-6 self-start text-meta')} data-field="since-more" onClick={() => document.querySelector('[data-field="activity"]')?.scrollIntoView({ block: 'start' })}>
+          +{total - shown.length} more
+        </button>
+      )}
+    </section>
+  );
+}
+
+/** TOPIC-12.3: the Topic's activity, newest first, 50 at a time. */
+function Activity({ topic, activity, ...rest }: EntryProps & { topic: Topic; activity: ActivityState }) {
+  return (
+    <Section label="Activity" field="activity">
+      {activity.error && <Alert title={activity.error} data-field="activity-error" />}
+      {activity.entries.length === 0 && activity.loading ? (
+        <Loading label="Loading…" />
+      ) : (
+        <ul className="flex min-w-0 flex-col gap-1">
+          {activity.entries.map((e) => (
+            <Entry key={e.id} entry={e} topic={topic} {...rest} />
+          ))}
+        </ul>
+      )}
+      {activity.more && (
+        <Button variant="outline" size="sm" className="h-7 self-start" data-action="activity-more" disabled={activity.paging} onClick={activity.showMore}>
+          Show more
+        </Button>
+      )}
+    </Section>
   );
 }
 
 type Act = (p: Promise<unknown>, fallback: string) => void;
 
 /** TOPIC-10.4: Sessions, PRs and Tasks, each headed with its count, live and listed ones first. */
-function Members({ topic, sessions, work, view, act, ...props }: TopicViewProps & { topic: Topic; act: Act }) {
+function Members({ topic, sessions, work, view, act, fresh, ...props }: TopicViewProps & { topic: Topic; act: Act; fresh: ReadonlySet<string> }) {
   const pruned = view?.pruned ?? [];
   const sessionMembers = orderSessions(topic.members.filter((m): m is SessionMember => m.kind === 'session'), sessions);
   const prs = orderWorkMembers(topic.members.filter((m) => m.kind === 'pr'), work);
@@ -173,7 +382,7 @@ function Members({ topic, sessions, work, view, act, ...props }: TopicViewProps 
         <Section label="Sessions" count={sessionMembers.length} field="sessions">
           <div className="flex min-w-0 flex-wrap items-center gap-1">
             {sessionMembers.map((m) => (
-              <SessionChip key={m.key} member={m} row={liveRow(m, sessions)} pruned={pruned.includes(`${m.ref.harness}:${m.ref.sessionId}`)} onOpen={(live) => act(props.onOpenSession(m, live), "Couldn't open its Session.")} onRemove={() => remove(m)} removeLabel={removeLabel(m.snapshot.title)} />
+              <SessionChip key={m.key} member={m} row={liveRow(m, sessions)} pruned={pruned.includes(`${m.ref.harness}:${m.ref.sessionId}`)} onOpen={(live) => act(props.onOpenSession(m, live), "Couldn't open its Session.")} onRemove={() => remove(m)} removeLabel={removeLabel(m.snapshot.title)} fresh={fresh.has(m.key)} />
             ))}
           </div>
         </Section>
@@ -186,7 +395,7 @@ function Members({ topic, sessions, work, view, act, ...props }: TopicViewProps 
             const pr = s.state === 'listed' ? s.pr : null;
             const title = pr?.title ?? m.snapshot.title;
             return (
-              <MemberLine key={m.key} field="pr" removeLabel={removeLabel(`#${m.snapshot.number}`)} onRemove={() => remove(m)} open={{ label: 'Open on GitHub', onPress: () => openInBrowser(m.ref.url) }}>
+              <MemberLine key={m.key} field="pr" fresh={fresh.has(m.key)} removeLabel={removeLabel(`#${m.snapshot.number}`)} onRemove={() => remove(m)} open={{ label: 'Open on GitHub', onPress: () => openInBrowser(m.ref.url) }}>
                 <PrIcon chip={pr?.chip ?? null} />
                 <span className="shrink-0 text-muted-foreground">{pr?.repo ?? m.snapshot.repo}</span>
                 <span className="shrink-0 font-medium tabular-nums">#{pr?.number ?? m.snapshot.number}</span>
@@ -209,7 +418,7 @@ function Members({ topic, sessions, work, view, act, ...props }: TopicViewProps 
             const task = s.state === 'listed' ? s.task : null;
             const title = task?.title ?? m.snapshot.title;
             return (
-              <MemberLine key={m.key} field="task" removeLabel={removeLabel(title)} onRemove={() => remove(m)} open={m.snapshot.url ? { label: 'Open in Fantastic', onPress: () => openInBrowser(task?.url ?? m.snapshot.url) } : null}>
+              <MemberLine key={m.key} field="task" fresh={fresh.has(m.key)} removeLabel={removeLabel(title)} onRemove={() => remove(m)} open={m.snapshot.url ? { label: 'Open in Fantastic', onPress: () => openInBrowser(task?.url ?? m.snapshot.url) } : null}>
                 <TaskStatusDot color={task?.statusColor ?? null} milestone={task?.milestone ?? false} />
                 <span className="min-w-0 truncate" title={title} data-field="member-title">
                   {title}
@@ -266,17 +475,61 @@ function Summary({ topic, view, sessions, now, act, ...props }: TopicViewProps &
           {error.fix && <CommandBlock>{error.fix}</CommandBlock>}
         </Alert>
       )}
-      {summary && <SummaryBody topic={topic} summary={summary} sessions={sessions} pruned={view?.pruned ?? []} now={now} act={act} onOpenSession={props.onOpenSession} />}
+      {summary && <SummaryBody topic={topic} summary={summary} sessions={sessions} pruned={view?.pruned ?? []} now={now} act={act} onOpenSession={props.onOpenSession} changes={topic.changesSinceSummary} />}
+      {topic.earlierSummaries > 0 && <EarlierSummaries topic={topic} count={topic.earlierSummaries} now={now} load={props.earlierSummaries} />}
     </section>
   );
 }
 
-function SummaryBody({ topic, summary, sessions, pruned, now, act, onOpenSession }: { topic: Topic; summary: TopicSummary; sessions: ReadonlyMap<string, SessionRow>; pruned: readonly string[]; now: number; act: Act; onOpenSession: TopicViewProps['onOpenSession'] }) {
+/** TOPIC-11.10: the earlier summaries, newest first: each its date, state and `what`, expanding in place, read-only. */
+function EarlierSummaries({ topic, count, now, load }: { topic: Topic; count: number; now: number; load: TopicViewProps['earlierSummaries'] }) {
+  const [open, setOpen] = useState(false);
+  const [list, setList] = useState<TopicSummary[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [whole, setWhole] = useState<number | null>(null);
+  const toggle = () => {
+    setOpen(!open);
+    if (open || list) return;
+    load(topic.id)
+      .then(setList)
+      .catch((err: unknown) => setError(message(err, "Couldn't read the earlier summaries.")));
+  };
+  return (
+    <div className="flex min-w-0 flex-col gap-1.5" data-field="earlier-summaries">
+      <button type="button" className={cn(labelledButtonLook(), 'h-6 self-start text-meta')} aria-expanded={open} onClick={toggle}>
+        Earlier summaries ({count})
+      </button>
+      {open && error && <Alert title={error} />}
+      {open && !list && !error && <Loading label="Loading…" />}
+      {open &&
+        list?.map((s, i) => (
+          <div key={s.writtenAt} className="flex min-w-0 flex-col gap-1 border-l-2 border-border pl-3" data-field="earlier-summary">
+            <button type="button" className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-left" aria-expanded={whole === i} onClick={() => setWhole(whole === i ? null : i)}>
+              <span className="shrink-0 text-meta text-muted-foreground" title={new Date(s.writtenAt).toLocaleString()}>
+                {formatAge(now - s.writtenAt)} ago
+              </span>
+              <span className="shrink-0 text-meta font-medium">{SUMMARY_STATE_WORD[s.answer.state]}</span>
+              <span className="min-w-0">{s.answer.what}</span>
+            </button>
+            {whole === i && <SummaryBody topic={topic} summary={s} sessions={new Map()} pruned={[]} now={now} act={() => {}} onOpenSession={async () => {}} readOnly />}
+          </div>
+        ))}
+    </div>
+  );
+}
+
+/**
+ * TOPIC-11.4: where the work stands first: `what`, `state` with `why`, then Recent with each point's
+ * date, Open with "+N more open", Next with each point's trigger, and Watch out. `readOnly`: an
+ * earlier summary (TOPIC-11.10), its citations as names without buttons.
+ */
+function SummaryBody({ topic, summary, sessions, pruned, now, act, onOpenSession, changes = 0, readOnly = false }: { topic: Topic; summary: TopicSummary; sessions: ReadonlyMap<string, SessionRow>; pruned: readonly string[]; now: number; act: Act; onOpenSession: TopicViewProps['onOpenSession']; changes?: number; readOnly?: boolean }) {
   const { answer } = summary;
-  const lists: [string, string, SummaryPoint[]][] = [
-    ['Open', 'summary-open', answer.open],
-    ['Recent', 'summary-recent', answer.recent],
-    ['Next', 'summary-next', answer.next],
+  const lists: [string, string, SummaryPoint[], ReactNode][] = [
+    ['Recent', 'summary-recent', answer.recent, null],
+    ['Open', 'summary-open', answer.open, answer.openMore ? <span className="text-meta text-muted-foreground" data-field="summary-open-more">+{answer.openMore} more open</span> : null],
+    ['Next', 'summary-next', answer.next, null],
+    ['Watch out', 'summary-watch', answer.watch ?? [], null],
   ];
   return (
     <div className="flex min-w-0 flex-col gap-1.5 text-body">
@@ -287,25 +540,47 @@ function SummaryBody({ topic, summary, sessions, pruned, now, act, onOpenSession
         <span className="font-medium">{SUMMARY_STATE_WORD[answer.state]}</span>
         {answer.why && `: ${answer.why}`}
       </p>
-      {lists.map(([label, field, points]) =>
+      {lists.map(([label, field, points, after]) =>
         points.length ? (
           <div key={field} className="flex min-w-0 gap-3" data-field={field}>
-            <span className="w-14 shrink-0 text-meta leading-5 text-muted-foreground">{label}</span>
+            <span className="w-16 shrink-0 text-meta leading-5 text-muted-foreground">{label}</span>
             <ul className="flex min-w-0 flex-1 flex-col gap-1">
               {points.map((p, i) => (
                 <li key={i} className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1" data-field="summary-point">
+                  {p.at && (
+                    <time className="shrink-0 text-meta text-muted-foreground tabular-nums" data-field="summary-at">
+                      {p.at}
+                    </time>
+                  )}
                   <span className="min-w-0">{p.text}</span>
-                  {p.cites.map((c) => (
-                    <Cite key={c.key} cite={c} topic={topic} sessions={sessions} pruned={pruned} act={act} onOpenSession={onOpenSession} />
-                  ))}
+                  {p.when && (
+                    <span className="text-meta text-muted-foreground" data-field="summary-when">
+                      {/^when\b/i.test(p.when) ? p.when : `when ${p.when}`}
+                    </span>
+                  )}
+                  {p.cites.map((c) =>
+                    readOnly ? (
+                      <span key={c.key} className="text-meta text-muted-foreground" data-field="summary-cite">
+                        {c.name}
+                      </span>
+                    ) : (
+                      <Cite key={c.key} cite={c} topic={topic} sessions={sessions} pruned={pruned} act={act} onOpenSession={onOpenSession} />
+                    ),
+                  )}
                 </li>
               ))}
+              {after && <li>{after}</li>}
             </ul>
           </div>
         ) : null,
       )}
-      <p className="text-meta text-muted-foreground" data-field="summary-by">
-        {[modelName(summary.model), summary.costUsd === null ? null : formatCost(summary.costUsd), `${formatAge(now - summary.writtenAt)} ago`].filter(Boolean).join(' · ')}
+      <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-meta text-muted-foreground" data-field="summary-by">
+        <span>{[modelName(summary.model), summary.costUsd === null ? null : formatCost(summary.costUsd), `${formatAge(now - summary.writtenAt)} ago`].filter(Boolean).join(' · ')}</span>
+        {changes > 0 && (
+          <button type="button" className={cn(labelledButtonLook(), 'h-6 text-meta font-normal')} data-field="summary-changes" onClick={() => document.querySelector('[data-field="activity"]')?.scrollIntoView({ block: 'start' })}>
+            · {changes} {changes === 1 ? 'change' : 'changes'} since
+          </button>
+        )}
       </p>
     </div>
   );
@@ -397,6 +672,8 @@ export function TopicActions({
   deleteTopic,
   onDeleted,
   onProblem,
+  topics,
+  looksDone,
 }: {
   topic: Topic;
   /** `header`: the view's header buttons; `row`: the tab's labelled buttons. */
@@ -406,12 +683,16 @@ export function TopicActions({
   onStartSession?(opener: HTMLElement | null): void;
   onOpenGraph(): void;
   onLinkTo(topic: Topic): void;
-  updateTopic(id: string, patch: { state: Topic['state'] }): Promise<unknown>;
+  updateTopic(id: string, patch: { state: 'open' } | ArchivePatch): Promise<unknown>;
   deleteTopic(id: string): Promise<void>;
   onDeleted?(): void;
   onProblem(message: string | null): void;
+  /** TOPIC-1.6: the Topics "Superseded by…" picks from, and whether this one looks done (Done is picked). */
+  topics: readonly Topic[];
+  looksDone: boolean;
 }) {
   const [confirming, setConfirming] = useState(false);
+  const [archiving, setArchiving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const button = (action: string, onClick: (e: MouseEvent<HTMLButtonElement>) => void, children: ReactNode) =>
     look === 'header' ? (
@@ -423,9 +704,11 @@ export function TopicActions({
         {children}
       </button>
     );
+  // TOPIC-1.6: Archive asks how it ended; Unarchive doesn't ask.
   const archive = () => {
     onProblem(null);
-    updateTopic(topic.id, { state: topic.state === 'open' ? 'archived' : 'open' }).catch((err: unknown) => onProblem(message(err, "Couldn't change it.")));
+    if (topic.state === 'open') return setArchiving(true);
+    updateTopic(topic.id, { state: 'open' }).catch((err: unknown) => onProblem(message(err, "Couldn't change it.")));
   };
   return (
     <div className={cn('flex min-w-0 flex-wrap items-center gap-2', look === 'header' ? 'ml-auto justify-end' : 'mt-1')} data-field="actions">
@@ -479,6 +762,7 @@ export function TopicActions({
           Delete
         </>,
       )}
+      <ArchiveDialog topic={topic} topics={topics} looksDone={looksDone} open={archiving} onOpenChange={setArchiving} archive={(patch) => updateTopic(topic.id, patch)} />
       <Dialog open={confirming} onOpenChange={(next) => !deleting && setConfirming(next)}>
         <DialogContent className="sm:max-w-md" showCloseButton={false}>
           <DialogTitle className="text-title">Delete “{topic.title}”?</DialogTitle>
@@ -721,9 +1005,15 @@ function State({ state }: { state: 'loading' | 'gone' | 'listed' }) {
 }
 
 /** A PR or Task member: its line, then its button and Remove, on one row at the view's width. */
-function MemberLine({ field, children, open, onRemove, removeLabel }: { field: string; children: ReactNode; open: { label: string; onPress(): void } | null; onRemove(): void; removeLabel: string }) {
+/** TOPIC-13.2: a member new activity is about carries a dot. */
+function FreshDot() {
+  return <span role="img" aria-label="new activity" className="size-1.5 shrink-0 rounded-full bg-primary" data-field="fresh" />;
+}
+
+function MemberLine({ field, children, open, onRemove, removeLabel, fresh = false }: { field: string; children: ReactNode; open: { label: string; onPress(): void } | null; onRemove(): void; removeLabel: string; fresh?: boolean }) {
   return (
     <div className="flex min-w-0 items-center gap-2 py-0.5" data-field={field}>
+      {fresh && <FreshDot />}
       <div className="flex min-w-0 flex-1 items-center gap-1.5">{children}</div>
       {open && (
         <button type="button" className={cn(labelledButtonLook(), 'h-6 shrink-0 text-meta [&>svg]:size-3.5')} onClick={open.onPress}>
@@ -743,10 +1033,11 @@ function MemberLine({ field, children, open, onRemove, removeLabel }: { field: s
  * by what it is (LIB-3.5). TOPIC-4.2: one tb-session no longer has shows its snapshot and no button.
  * Remove only where the view draws it.
  */
-export function SessionChip({ member, row, pruned, onOpen, onRemove, removeLabel }: { member: SessionMember; row: SessionRow | null; pruned: boolean; onOpen(live: boolean): void; onRemove?(): void; removeLabel?: string }) {
+export function SessionChip({ member, row, pruned, onOpen, onRemove, removeLabel, fresh = false }: { member: SessionMember; row: SessionRow | null; pruned: boolean; onOpen(live: boolean): void; onRemove?(): void; removeLabel?: string; fresh?: boolean }) {
   const title = row?.title ?? member.snapshot.title;
   return (
     <span className="inline-flex max-w-full min-w-0 items-center gap-0.5" data-field="session" data-session-id={member.ref.sessionId}>
+      {fresh && <FreshDot />}
       {pruned && !row ? (
         <span className="inline-flex min-w-0 items-center gap-1 px-1 text-muted-foreground" title={member.snapshot.directory ?? undefined}>
           <HarnessIcon harness={member.ref.harness} className="size-3.5" />

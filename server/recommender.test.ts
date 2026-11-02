@@ -2,12 +2,12 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { NewMember, TopicsView } from '../shared/topics.ts';
+import { type NewMember, NO_ACTIVITY, type TopicsView } from '../shared/topics.ts';
 import type { SessionRow } from '../shared/types.ts';
 import type { WorkPr, WorkSessionLink, WorkSnapshot, WorkTask } from '../shared/work.ts';
 import type { RunError, Runner } from './exec.ts';
 import { JEV_SETTLE_MS, Recommender, linkTies } from './recommender.ts';
-import { SCHEMA_VERSION, TopicStore, Topics, TopicsError, parseRecommendationAction } from './topics.ts';
+import { SCHEMA_VERSION, TopicStore, Topics, TopicsError, parseRecommendationAction, schemaSql } from './topics.ts';
 
 /** Synthetic Sessions, PRs and Tasks only: invented titles, repos and ids. */
 const dirs: string[] = [];
@@ -97,12 +97,11 @@ async function settled(r: Recommender) {
 describe('TOPIC-8.1 and TOPIC-9.6 the store', () => {
   it('TOPIC-8.1: an older database is copied to topics.db.bak-<version>, then migrated forward in a transaction, keeping what it held', () => {
     const { path } = setup();
-    const store = new TopicStore(path);
-    const id = store.create('Kept');
-    store.close();
+    // What schema 1 had: no candidate snapshot (2), no summaries (3), no activity (4).
+    const id = '00000000-0000-4000-8000-000000000001';
     const db = new (sqlite().DatabaseSync)(path);
-    // What schema 1 had: no candidate snapshot (2), no summaries (3).
-    db.exec('alter table candidates drop column snapshot; drop table summaries; update schema_version set v = 1');
+    db.exec(schemaSql(1));
+    db.exec(`insert into schema_version (v) values (1); insert into topics (id, title, notes, state, created_at, updated_at) values ('${id}', 'Kept', '', 'open', 1, 1)`);
     db.close();
     const migrated = new TopicStore(path);
     expect(migrated.list().map((t) => t.id)).toEqual([id]);
@@ -161,7 +160,7 @@ describe('TOPIC-9.1 candidates', () => {
 
 describe('TOPIC-9.2 Links first', () => {
   it('TOPIC-9.2: Links read both ways, with the Link’s reason; tied to members of two Topics, one per Topic', () => {
-    const a = { id: 'a', title: 'A', notes: '', state: 'open' as const, createdAt: 0, updatedAt: 0, outputs: null, pos: null, summary: null, summaryStale: false, members: [{ ...PR(812), key: key(PR(812)), addedAt: 0, reason: '' }] };
+    const a = { id: 'a', title: 'A', notes: '', state: 'open' as const, createdAt: 0, updatedAt: 0, outputs: null, pos: null, summary: null, summaryStale: false, ...NO_ACTIVITY, members: [{ ...PR(812), key: key(PR(812)), addedAt: 0, reason: '' }] };
     const b = { ...a, id: 'b', members: [{ ...PR(812), key: key(PR(812)), addedAt: 0, reason: '' }, { ...SESSION(9), key: key(SESSION(9)), addedAt: 0, reason: '' }] };
     const archived = { ...a, id: 'c', state: 'archived' as const };
     const w = work(

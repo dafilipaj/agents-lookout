@@ -5,6 +5,11 @@ import { dirname, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import type { OutputItem } from '../shared/library.ts';
 import {
+  ACTIVITY_PAGE,
+  type ActivityData,
+  type ActivityEntry,
+  type ActivityKind,
+  MAX_CLOSING,
   MAX_EDGE_LABEL,
   MAX_TOPIC_NOTES,
   MAX_TOPIC_OUTPUTS,
@@ -27,10 +32,18 @@ import {
   type TopicSummary,
   type TopicsView,
   refText,
+  rowMember,
   sortTopics,
+  SUPERSEDED_LABEL,
+  TOPIC_OUTCOMES,
+  type TopicOutcome,
+  memberName,
 } from '../shared/topics.ts';
 import type { Harness } from '../shared/types.ts';
 import { SESSION_ID } from './history.ts';
+import type { SessionRow } from '../shared/types.ts';
+import type { WorkSnapshot } from '../shared/work.ts';
+import { type Change, type Observed, type PrObserved, type SessionObserved, type TaskObserved, observePr, observeSession, observeTask, prSightings, taskSightings } from './topic-activity.ts';
 
 /**
  * TOPIC-8: Topics in one SQLite database the server owns, `~/.lookout/topics.db`, through Node's
@@ -40,7 +53,7 @@ import { SESSION_ID } from './history.ts';
  */
 
 /** TOPIC-8.1: the schema this server writes and reads; a newer one is refused, never overwritten. */
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 /** TOPIC-2.3: snapshots are bounded on write. */
 const MAX_SNAPSHOT_TITLE = 300;
@@ -62,15 +75,42 @@ const SUMMARIES = `create table summaries (topic_id text primary key references 
   fingerprint text not null);`;
 
 /**
+ * TOPIC-12, TOPIC-13, TOPIC-1.6, TOPIC-11.10 (slice 7): a Topic's activity, what was last seen of each
+ * member, how a Topic ended, the newest entry seen, and every summary kept with the newest entry its
+ * input held. The log starts empty, so every Topic has seen everything (`seen_upto` 0).
+ */
+const SCHEMA_4 = `
+alter table topics add column outcome text check (outcome in ('done','parked','dropped','superseded'));
+alter table topics add column closing text;
+alter table topics add column superseded_by text;
+alter table topics add column seen_upto integer not null default 0;
+alter table members add column observed text;
+create table events (id integer primary key autoincrement,
+  topic_id text not null references topics(id) on delete cascade, at integer not null,
+  kind text not null, member text, by text not null check (by in ('you','lookout')),
+  data text not null default '{}');
+create index events_topic on events (topic_id, id);
+create index events_by on events (topic_id, by, id);
+create table summaries_4 (topic_id text not null references topics(id) on delete cascade,
+  answer text not null, written_at integer not null, model text not null, cost_usd real,
+  fingerprint text not null, input_upto integer, primary key (topic_id, written_at));
+insert into summaries_4 select topic_id, answer, written_at, model, cost_usd, fingerprint, null from summaries;
+drop table summaries;
+alter table summaries_4 rename to summaries;
+`;
+
+/**
  * TOPIC-8.1: each step takes the schema one version up, inside the migration's transaction. Version 2:
  * a candidate keeps what Lookout knew of it when first seen, for the "Recommended" row (TOPIC-9.4).
- * Version 3: a Topic's summary (TOPIC-11.5).
+ * Version 3: a Topic's summary (TOPIC-11.5). Version 4: slice 7.
  */
 const MIGRATIONS: Record<number, string> = {
   2: "alter table candidates add column snapshot text not null default '{}';",
   3: SUMMARIES,
+  4: SCHEMA_4,
 };
 
+/** TOPIC-8.2: schema 1; later versions are its migrations (`schemaSql`). */
 const SCHEMA = `
 create table schema_version (v integer not null);
 create table topics (id text primary key, title text not null, notes text not null default '',
@@ -86,8 +126,7 @@ create table edges (from_id text not null references topics(id) on delete cascad
 create unique index edges_pair on edges (min(from_id, to_id), max(from_id, to_id));
 create table candidates (kind text not null, ref text not null, first_seen integer not null,
   jev text not null check (jev in ('waiting','asked','off')), judged_at integer,
-  outcome text check (outcome in ('link','jev','none')), snapshot text not null default '{}',
-  primary key (kind, ref));
+  outcome text check (outcome in ('link','jev','none')), primary key (kind, ref));
 create table recommendations (kind text not null, ref text not null,
   topic_id text references topics(id) on delete cascade, new_title text,
   source text not null check (source in ('link','jev')), confidence real, reason text not null,
@@ -96,8 +135,14 @@ create table recommendations (kind text not null, ref text not null,
   foreign key (kind, ref) references candidates(kind, ref) on delete cascade);
 create unique index recommendations_topic on recommendations (kind, ref, topic_id) where topic_id is not null;
 create unique index recommendations_new on recommendations (kind, ref) where topic_id is null;
-${SUMMARIES}
 `;
+
+/** TOPIC-8.1: the schema as version `v` had it: schema 1 and each migration up to `v`. A new database is made at `SCHEMA_VERSION`. */
+export function schemaSql(v: number): string {
+  let sql = SCHEMA;
+  for (let n = 2; n <= v; n++) sql += `\n${MIGRATIONS[n]!}`;
+  return sql;
+}
 
 /**
  * `node:sqlite` is experimental in Node 25 and says so once, on stderr, when it's first loaded
@@ -232,11 +277,15 @@ export function parseRecommendationAction(body: unknown): RecommendationAction {
   return { action: 'move', key: k, topicId, to: b.to };
 }
 
-/** TOPIC-1.2, TOPIC-1.3: what `PUT /api/topics/<id>` may change. */
+/** TOPIC-1.2, TOPIC-1.3, TOPIC-1.6: what `PUT /api/topics/<id>` may change. */
 export interface TopicPatch {
   title?: string;
   notes?: string;
   state?: TopicState;
+  /** TOPIC-1.6: with `state: 'archived'` only, and required there. */
+  outcome?: TopicOutcome;
+  closing?: string | null;
+  supersededBy?: string;
 }
 export function parsePatch(body: unknown): TopicPatch {
   const b = object(body);
@@ -251,6 +300,16 @@ export function parsePatch(body: unknown): TopicPatch {
   if ('state' in b) {
     if (b.state !== 'open' && b.state !== 'archived') throw new TopicsError(400, 'A Topic is open or archived.');
     patch.state = b.state;
+  }
+  if (patch.state === 'archived') {
+    // TOPIC-1.6: an archive says how the Topic ended.
+    if (!TOPIC_OUTCOMES.includes(b.outcome as TopicOutcome)) throw new TopicsError(400, 'Say how it ended: done, parked, dropped or superseded.');
+    patch.outcome = b.outcome as TopicOutcome;
+    if (b.closing !== undefined && b.closing !== null && typeof b.closing !== 'string') throw new TopicsError(400, 'A closing line is text.');
+    patch.closing = line(b.closing, MAX_CLOSING);
+    if (patch.outcome === 'superseded') patch.supersededBy = topicId(b.supersededBy, 'Pick the Topic that superseded it.');
+  } else if ('outcome' in b || 'closing' in b || 'supersededBy' in b) {
+    throw new TopicsError(400, 'How a Topic ended goes with archiving it.');
   }
   if (!Object.keys(patch).length) throw new TopicsError(400, 'Nothing to change.');
   return patch;
@@ -320,6 +379,28 @@ interface TopicRow {
   updated_at: number;
   pos_x: number | null;
   pos_y: number | null;
+  outcome: TopicOutcome | null;
+  closing: string | null;
+  superseded_by: string | null;
+  seen_upto: number;
+}
+const TOPIC_COLUMNS = 'id, title, notes, state, created_at, updated_at, pos_x, pos_y, outcome, closing, superseded_by, seen_upto';
+interface EventRow {
+  id: number;
+  topic_id: string;
+  at: number;
+  kind: ActivityKind;
+  member: string | null;
+  by: 'you' | 'lookout';
+  data: string;
+}
+/** TOPIC-12: per Topic, what the `topics` event carries of its activity. */
+interface ActivityCounts {
+  last: ActivityEntry | null;
+  lastId: number;
+  newCount: number;
+  sinceSummary: number;
+  earlier: number;
 }
 interface EdgeRow {
   from_id: string;
@@ -355,6 +436,7 @@ interface SummaryRow {
   model: string;
   cost_usd: number | null;
   fingerprint: string;
+  input_upto: number | null;
 }
 interface MemberRow {
   topic_id: string;
@@ -396,7 +478,7 @@ export class TopicStore {
     this.db.exec('pragma journal_mode = wal; pragma foreign_keys = on;');
     if (version === null) {
       this.transaction(() => {
-        this.db.exec(SCHEMA);
+        this.db.exec(schemaSql(SCHEMA_VERSION));
         this.db.prepare('insert into schema_version (v) values (?)').run(SCHEMA_VERSION);
       });
     } else if (version < SCHEMA_VERSION) {
@@ -454,8 +536,8 @@ export class TopicStore {
   }
 
   /** Every Topic with its members and place, most recently changed first (TOPIC-3.2). Outputs are joined by `Topics`. */
-  list(): Omit<Topic, 'outputs' | 'summary' | 'summaryStale'>[] {
-    const topics = this.db.prepare('select id, title, notes, state, created_at, updated_at, pos_x, pos_y from topics').all() as unknown as TopicRow[];
+  list(): StoredTopic[] {
+    const topics = this.db.prepare(`select ${TOPIC_COLUMNS} from topics`).all() as unknown as TopicRow[];
     const members = this.db.prepare('select topic_id, kind, ref, snapshot, added_at, reason from members order by added_at, kind, ref').all() as unknown as MemberRow[];
     const byTopic = new Map<string, TopicMember[]>();
     for (const m of members) {
@@ -478,8 +560,111 @@ export class TopicStore {
         pos: t.pos_x === null || t.pos_y === null ? null : { x: t.pos_x, y: t.pos_y },
         summary: null,
         summaryStale: false,
+        outcome: t.state === 'archived' ? t.outcome : null,
+        closing: t.state === 'archived' ? t.closing : null,
+        supersededBy: t.state === 'archived' ? parseSuperseded(t.superseded_by) : null,
+        lastActivity: null,
+        lastEntryId: 0,
+        seenUpto: t.seen_upto,
+        newCount: 0,
+        changesSinceSummary: 0,
+        earlierSummaries: 0,
       })),
     ).map(({ outputs: _o, summary: _s, summaryStale: _st, ...t }) => t);
+  }
+
+  /**
+   * TOPIC-12.1: one entry in a Topic's log, in the caller's transaction. The member's name and the
+   * other Topic's title go into `data` now, so the entry reads after a Remove or a Delete.
+   */
+  private log(topicId: string, kind: ActivityKind, member: string | null, by: 'you' | 'lookout', data: ActivityData = {}): number {
+    const r = this.db.prepare('insert into events (topic_id, at, kind, member, by, data) values (?, ?, ?, ?, ?, ?)').run(topicId, this.now(), kind, member, by, JSON.stringify(data));
+    return Number(r.lastInsertRowid);
+  }
+
+  /** TOPIC-6.2: an Edge entry on both its Topics, each saying the other. */
+  private logEdge(kind: ActivityKind, from: string, to: string, data: ActivityData = {}): void {
+    this.log(from, kind, null, 'you', { ...data, dir: 'to', otherId: to, other: this.require(to).title });
+    this.log(to, kind, null, 'you', { ...data, dir: 'from', otherId: from, other: this.require(from).title });
+  }
+
+  /** TOPIC-3.8, TOPIC-11.10, TOPIC-13.1: each Topic's latest entry by Lookout and its counts. */
+  activityCounts(): Map<string, ActivityCounts> {
+    const out = new Map<string, ActivityCounts>();
+    const rows = this.db
+      .prepare(
+        `select t.id,
+           (select max(id) from events where topic_id = t.id) as last_id,
+           (select max(id) from events where topic_id = t.id and by = 'lookout') as last_lookout,
+           (select count(*) from events where topic_id = t.id and by = 'lookout' and id > t.seen_upto) as new_count,
+           (select count(*) from summaries where topic_id = t.id) as summaries,
+           s.input_upto, s.written_at
+         from topics t left join summaries s on s.topic_id = t.id and s.written_at = (select max(written_at) from summaries where topic_id = t.id)`,
+      )
+      .all() as unknown as { id: string; last_id: number | null; last_lookout: number | null; new_count: number; summaries: number; input_upto: number | null; written_at: number | null }[];
+    const since = this.db.prepare("select count(*) as n from events where topic_id = ? and kind <> 'summary' and id > ?");
+    const sinceAt = this.db.prepare("select count(*) as n from events where topic_id = ? and kind <> 'summary' and at > ?");
+    const one = this.db.prepare('select id, topic_id, at, kind, member, by, data from events where id = ?');
+    for (const r of rows) {
+      const sinceSummary = r.written_at === null ? 0 : ((r.input_upto === null ? sinceAt.get(r.id, r.written_at) : since.get(r.id, r.input_upto)) as { n: number }).n;
+      const lastRow = r.last_lookout === null ? undefined : (one.get(r.last_lookout) as unknown as EventRow | undefined);
+      out.set(r.id, { last: lastRow ? toEntry(lastRow) : null, lastId: r.last_id ?? 0, newCount: r.new_count, sinceSummary, earlier: Math.max(0, r.summaries - 1) });
+    }
+    return out;
+  }
+
+  /** TOPIC-12.3: entries newest first, before an entry id (the next page) or from the newest. */
+  activity(id: string, before: number | null, limit = ACTIVITY_PAGE): ActivityEntry[] {
+    this.require(id);
+    const rows = (before === null
+      ? this.db.prepare('select id, topic_id, at, kind, member, by, data from events where topic_id = ? order by id desc limit ?').all(id, limit)
+      : this.db.prepare('select id, topic_id, at, kind, member, by, data from events where topic_id = ? and id < ? order by id desc limit ?').all(id, before, limit)) as unknown as EventRow[];
+    return rows.map(toEntry);
+  }
+
+  /** TOPIC-11.3: a Topic's latest entries, oldest first, for a summary's input; and the newest id it holds. */
+  recentActivity(id: string, limit: number): { entries: ActivityEntry[]; upto: number } {
+    const entries = this.activity(id, null, limit).reverse();
+    const row = this.db.prepare('select max(id) as n from events where topic_id = ?').get(id) as { n: number | null };
+    return { entries, upto: row.n ?? 0 };
+  }
+
+  /** TOPIC-13.1: seen up to that entry; only ever moved forward. */
+  seenUpTo(id: string, upto: number): void {
+    this.transaction(() => {
+      this.require(id);
+      this.db.prepare('update topics set seen_upto = max(seen_upto, ?) where id = ?').run(upto, id);
+    });
+  }
+
+  /**
+   * TOPIC-12.2: every member's `observed` compared with what Lookout sees now, by `step`, which says
+   * nothing (null) for members this sighting doesn't cover. The entries and every `observed` that
+   * changed are written in one transaction; returns how many entries.
+   */
+  observe(step: (m: { kind: MemberKind; ref: string; snapshot: string; observed: Observed | null }) => { next: Observed | null; changes: Change[]; name?: string | undefined } | null): number {
+    return this.transaction(() => {
+      const rows = this.db.prepare('select topic_id, kind, ref, snapshot, observed from members').all() as unknown as (MemberRow & { observed: string | null })[];
+      const write = this.db.prepare('update members set observed = ? where topic_id = ? and kind = ? and ref = ?');
+      let n = 0;
+      for (const r of rows) {
+        const prev = r.observed ? jsonOr<Observed | null>(r.observed, null) : null;
+        const out = step({ kind: r.kind, ref: r.ref, snapshot: r.snapshot, observed: prev });
+        if (!out) continue;
+        if (out.next !== null) {
+          const next = JSON.stringify(out.next);
+          if (next !== r.observed) write.run(next, r.topic_id, r.kind, r.ref);
+        }
+        if (!out.changes.length) continue;
+        const member = toMember(r);
+        const name = out.name ?? (member ? memberName(member) : r.ref);
+        for (const c of out.changes) {
+          this.log(r.topic_id, c.kind, `${r.kind}:${r.ref}`, 'lookout', { name, ...c.data });
+          n++;
+        }
+      }
+      return n;
+    });
   }
 
   /** TOPIC-1.1: an Open Topic with no members, under a new random id, never reused. */
@@ -488,24 +673,65 @@ export class TopicStore {
     const at = this.now();
     this.transaction(() => {
       this.db.prepare("insert into topics (id, title, notes, state, created_at, updated_at) values (?, ?, '', 'open', ?, ?)").run(id, title, at, at);
+      // TOPIC-13.1: a new Topic starts with nothing new.
+      const made = this.log(id, 'made', null, 'you');
+      this.db.prepare('update topics set seen_upto = ? where id = ?').run(made, id);
     });
     return id;
   }
 
-  /** TOPIC-1.2, TOPIC-1.3: a title or notes change counts as a change (TOPIC-3.2); archiving doesn't. */
+  /**
+   * TOPIC-1.2, TOPIC-1.3: a title or notes change counts as a change (TOPIC-3.2); archiving doesn't.
+   * TOPIC-1.6: archiving keeps how it ended, and "Superseded by…" draws its Edge unless the pair has
+   * one; unarchiving clears how it ended. TOPIC-12.1: each is an entry.
+   */
   update(id: string, patch: TopicPatch): void {
     this.transaction(() => {
-      this.require(id);
-      if (patch.title !== undefined) this.db.prepare('update topics set title = ?, updated_at = ? where id = ?').run(patch.title, this.now(), id);
-      if (patch.notes !== undefined) this.db.prepare('update topics set notes = ?, updated_at = ? where id = ?').run(patch.notes, this.now(), id);
-      if (patch.state !== undefined) this.db.prepare('update topics set state = ? where id = ?').run(patch.state, id);
+      const row = this.require(id);
+      if (patch.title !== undefined && patch.title !== row.title) {
+        this.db.prepare('update topics set title = ?, updated_at = ? where id = ?').run(patch.title, this.now(), id);
+        this.log(id, 'title', null, 'you', { to: patch.title });
+      }
+      if (patch.notes !== undefined && patch.notes !== row.notes) {
+        this.db.prepare('update topics set notes = ?, updated_at = ? where id = ?').run(patch.notes, this.now(), id);
+        this.log(id, 'notes', null, 'you');
+      }
+      // TOPIC-1.6: archived already (another tab did it): say so, so its outcome isn't silently dropped.
+      if (patch.state === 'archived' && row.state === 'archived') throw new TopicsError(409, 'That Topic is already archived.');
+      if (patch.state === 'archived') {
+        let superseded: { id: string; title: string } | null = null;
+        if (patch.supersededBy !== undefined) {
+          if (patch.supersededBy === id) throw new TopicsError(400, "A Topic can't supersede itself.");
+          superseded = { id: patch.supersededBy, title: this.require(patch.supersededBy).title };
+          if (!this.edge(id, patch.supersededBy)) {
+            this.db.prepare('insert into edges (from_id, to_id, label, created_at) values (?, ?, ?, ?)').run(id, patch.supersededBy, SUPERSEDED_LABEL, this.now());
+            this.touch(id, patch.supersededBy);
+            this.logEdge('edge-drawn', id, patch.supersededBy, { label: SUPERSEDED_LABEL });
+          }
+        }
+        this.db
+          .prepare("update topics set state = 'archived', outcome = ?, closing = ?, superseded_by = ? where id = ?")
+          .run(patch.outcome ?? null, patch.closing ?? null, superseded ? JSON.stringify(superseded) : null, id);
+        const data: ActivityData = { outcome: patch.outcome };
+        if (patch.closing) data.closing = patch.closing;
+        if (superseded) Object.assign(data, { otherId: superseded.id, other: superseded.title });
+        this.log(id, 'archived', null, 'you', data);
+      } else if (patch.state === 'open' && row.state !== 'open') {
+        this.db.prepare("update topics set state = 'open', outcome = null, closing = null, superseded_by = null where id = ?").run(id);
+        this.log(id, 'unarchived', null, 'you');
+      }
     });
   }
 
   /** TOPIC-1.4: the Topic and its own rows (members, Edges, recommendations, its summary, by cascade); nothing else. */
   delete(id: string): void {
     this.transaction(() => {
-      this.require(id);
+      const row = this.require(id);
+      // TOPIC-12.1: its Edges go with it; each other Topic's activity says so.
+      for (const e of this.db.prepare('select from_id, to_id, label, created_at from edges where from_id = ? or to_id = ?').all(id, id) as unknown as EdgeRow[]) {
+        const other = e.from_id === id ? e.to_id : e.from_id;
+        this.log(other, 'edge-unlinked', null, 'you', { dir: e.from_id === id ? 'from' : 'to', otherId: id, other: row.title });
+      }
       this.db.prepare('delete from topics where id = ?').run(id);
     });
   }
@@ -514,7 +740,7 @@ export class TopicStore {
    * TOPIC-2.3: adds the member with its snapshot; false when it's already a member, which changes
    * nothing. A membership change is a change (TOPIC-3.2).
    */
-  addMember(id: string, member: NewMember, reason = 'added by hand'): boolean {
+  addMember(id: string, member: NewMember, reason = 'added by hand', by: 'you' | 'lookout' = 'you'): boolean {
     return this.transaction(() => {
       this.require(id);
       const at = this.now();
@@ -522,6 +748,7 @@ export class TopicStore {
         .prepare('insert or ignore into members (topic_id, kind, ref, snapshot, added_at, reason) values (?, ?, ?, ?, ?, ?)')
         .run(id, member.kind, refText(member.kind, member.ref), JSON.stringify(member.snapshot), at, reason);
       if (Number(r.changes) === 0) return false;
+      this.log(id, 'added', `${member.kind}:${refText(member.kind, member.ref)}`, by, { name: memberName(member), reason });
       this.db.prepare('update topics set updated_at = ? where id = ?').run(at, id);
       // TOPIC-9.4: added by hand to the Topic it was recommended for, the recommendation was right.
       this.db.prepare("update recommendations set status = 'accepted' where kind = ? and ref = ? and topic_id = ? and status = 'pending'").run(member.kind, refText(member.kind, member.ref), id);
@@ -533,9 +760,12 @@ export class TopicStore {
   removeMember(id: string, kind: MemberKind, ref: string): boolean {
     return this.transaction(() => {
       this.require(id);
-      const r = this.db.prepare('delete from members where topic_id = ? and kind = ? and ref = ?').run(id, kind, ref);
-      if (Number(r.changes) === 0) return false;
+      const row = this.db.prepare('select topic_id, kind, ref, snapshot, added_at, reason from members where topic_id = ? and kind = ? and ref = ?').get(id, kind, ref) as unknown as MemberRow | undefined;
+      if (!row) return false;
+      this.db.prepare('delete from members where topic_id = ? and kind = ? and ref = ?').run(id, kind, ref);
       this.db.prepare('update topics set updated_at = ? where id = ?').run(this.now(), id);
+      const member = toMember(row);
+      this.log(id, 'removed', `${kind}:${ref}`, 'you', { name: member ? memberName(member) : ref });
       return true;
     });
   }
@@ -574,6 +804,7 @@ export class TopicStore {
       if (this.edge(from, to)) throw new TopicsError(409, 'Already linked.');
       this.db.prepare('insert into edges (from_id, to_id, label, created_at) values (?, ?, ?, ?)').run(from, to, label, this.now());
       this.touch(from, to);
+      this.logEdge('edge-drawn', from, to, { label });
     });
   }
 
@@ -583,9 +814,15 @@ export class TopicStore {
       this.require(id);
       const e = this.edge(id, edit.other);
       if (!e) throw new TopicsError(404, 'Those Topics are no longer linked.');
-      if (edit.label !== undefined) this.db.prepare('update edges set label = ? where from_id = ? and to_id = ?').run(edit.label, e.from_id, e.to_id);
+      if (edit.label !== undefined && edit.label !== e.label) {
+        this.db.prepare('update edges set label = ? where from_id = ? and to_id = ?').run(edit.label, e.from_id, e.to_id);
+        this.logEdge('edge-label', e.from_id, e.to_id, { label: edit.label });
+      }
       // One update swaps both columns: SQLite reads the old values on the right.
-      if (edit.reverse) this.db.prepare('update edges set from_id = to_id, to_id = from_id where from_id = ? and to_id = ?').run(e.from_id, e.to_id);
+      if (edit.reverse) {
+        this.db.prepare('update edges set from_id = to_id, to_id = from_id where from_id = ? and to_id = ?').run(e.from_id, e.to_id);
+        this.logEdge('edge-reversed', e.to_id, e.from_id);
+      }
       this.touch(e.from_id, e.to_id);
     });
   }
@@ -598,6 +835,7 @@ export class TopicStore {
       if (!e) throw new TopicsError(404, 'Those Topics are no longer linked.');
       this.db.prepare('delete from edges where from_id = ? and to_id = ?').run(e.from_id, e.to_id);
       this.touch(e.from_id, e.to_id);
+      this.logEdge('edge-unlinked', e.from_id, e.to_id);
     });
   }
 
@@ -731,37 +969,88 @@ export class TopicStore {
     });
   }
 
-  /** TOPIC-11.5: the summary just written replaces the one before, whole. */
-  saveSummary(id: string, summary: TopicSummary, fingerprint: string): void {
+  /**
+   * TOPIC-11.5: the summary just written becomes the Topic's, and the ones before it are kept
+   * (TOPIC-11.10); `inputUpto` is the newest entry its input held. A summary is an entry by you.
+   */
+  saveSummary(id: string, summary: TopicSummary, fingerprint: string, inputUpto: number | null = null): void {
     this.transaction(() => {
       this.require(id);
       this.db
-        .prepare('insert or replace into summaries (topic_id, answer, written_at, model, cost_usd, fingerprint) values (?, ?, ?, ?, ?, ?)')
-        .run(id, JSON.stringify(summary.answer), summary.writtenAt, summary.model, summary.costUsd, fingerprint);
+        .prepare('insert or replace into summaries (topic_id, answer, written_at, model, cost_usd, fingerprint, input_upto) values (?, ?, ?, ?, ?, ?, ?)')
+        .run(id, JSON.stringify(summary.answer), summary.writtenAt, summary.model, summary.costUsd, fingerprint, inputUpto);
+      this.log(id, 'summary', null, 'you');
     });
   }
 
-  /** TOPIC-11.5: every stored summary, by Topic id, with the fingerprint it was written at. */
+  /** TOPIC-11.5: each Topic's newest summary, by Topic id, with the fingerprint it was written at. */
   summaries(): Map<string, { summary: TopicSummary; fingerprint: string }> {
-    const rows = this.db.prepare('select topic_id, answer, written_at, model, cost_usd, fingerprint from summaries').all() as unknown as SummaryRow[];
+    const rows = this.db
+      .prepare('select topic_id, answer, written_at, model, cost_usd, fingerprint, input_upto from summaries s where written_at = (select max(written_at) from summaries where topic_id = s.topic_id)')
+      .all() as unknown as SummaryRow[];
     const out = new Map<string, { summary: TopicSummary; fingerprint: string }>();
     for (const r of rows) {
-      let answer: SummaryAnswer;
-      try {
-        answer = JSON.parse(r.answer) as SummaryAnswer;
-      } catch {
-        continue;
-      }
-      out.set(r.topic_id, { summary: { answer, writtenAt: r.written_at, model: r.model, costUsd: r.cost_usd }, fingerprint: r.fingerprint });
+      const summary = toSummary(r);
+      if (summary) out.set(r.topic_id, { summary, fingerprint: r.fingerprint });
     }
     return out;
   }
 
+  /** TOPIC-11.10: a Topic's earlier summaries, newest first, without its current one. */
+  earlierSummaries(id: string): TopicSummary[] {
+    this.require(id);
+    const rows = this.db
+      .prepare('select topic_id, answer, written_at, model, cost_usd, fingerprint, input_upto from summaries where topic_id = ? order by written_at desc limit -1 offset 1')
+      .all(id) as unknown as SummaryRow[];
+    return rows.flatMap((r) => toSummary(r) ?? []);
+  }
+
   private require(id: string): TopicRow {
-    const row = this.db.prepare('select id, title, notes, state, created_at, updated_at, pos_x, pos_y from topics where id = ?').get(id) as unknown as TopicRow | undefined;
+    const row = this.db.prepare(`select ${TOPIC_COLUMNS} from topics where id = ?`).get(id) as unknown as TopicRow | undefined;
     if (!row) throw new TopicsError(404, 'That Topic no longer exists.');
     return row;
   }
+}
+
+/** A Topic as the store holds it, before the Library's Outputs and its summary are joined. */
+type StoredTopic = Omit<Topic, 'outputs' | 'summary' | 'summaryStale'>;
+
+function parseSuperseded(v: string | null): { id: string; title: string } | null {
+  if (!v) return null;
+  try {
+    const o = JSON.parse(v) as { id?: unknown; title?: unknown };
+    return typeof o.id === 'string' && typeof o.title === 'string' ? { id: o.id, title: o.title } : null;
+  } catch {
+    return null;
+  }
+}
+
+const refUrl = (ref: string): string => String((JSON.parse(ref) as { url?: unknown }).url ?? '');
+const refId = (ref: string): string => String((JSON.parse(ref) as { id?: unknown }).id ?? '');
+
+/** Stored JSON, or `fallback` when it doesn't parse. */
+function jsonOr<T>(text: string, fallback: T): T {
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function toEntry(r: EventRow): ActivityEntry {
+  const data = jsonOr<ActivityData>(r.data, {});
+  return { id: r.id, at: r.at, kind: r.kind, member: r.member, by: r.by, data };
+}
+
+/** TOPIC-11.4: a stored answer; one from before slice 7 reads its new fields as empty. */
+function toSummary(r: SummaryRow): TopicSummary | null {
+  let answer: SummaryAnswer;
+  try {
+    answer = JSON.parse(r.answer) as SummaryAnswer;
+  } catch {
+    return null;
+  }
+  return { answer: { ...answer, openMore: answer.openMore ?? 0, watch: answer.watch ?? [] }, writtenAt: r.written_at, model: r.model, costUsd: r.cost_usd };
 }
 
 function toMember(m: MemberRow): TopicMember | null {
@@ -886,8 +1175,66 @@ export class Topics {
   }
 
   /** TOPIC-11.5: a summary just written, with the fingerprint of what it was written from. */
-  saveSummary(id: string, summary: TopicSummary, fingerprint: string): void {
-    this.write((s) => s.saveSummary(id, summary, fingerprint));
+  saveSummary(id: string, summary: TopicSummary, fingerprint: string, inputUpto: number | null = null): void {
+    this.write((s) => s.saveSummary(id, summary, fingerprint, inputUpto));
+  }
+
+  /** TOPIC-12.3: `GET /api/topics/<id>/activity`. */
+  activity(id: string, before: number | null): ActivityEntry[] {
+    return this.write((s) => s.activity(id, before), false);
+  }
+
+  /** TOPIC-11.3: the latest entries for a summary's input, oldest first, and the newest id held; none before the store exists. */
+  recentActivity(id: string, limit: number): { entries: ActivityEntry[]; upto: number } {
+    if (!this.store) return { entries: [], upto: 0 };
+    return this.write((s) => s.recentActivity(id, limit), false);
+  }
+
+  /** TOPIC-11.10: `GET /api/topics/<id>/summaries`. */
+  earlierSummaries(id: string): TopicSummary[] {
+    return this.write((s) => s.earlierSummaries(id), false);
+  }
+
+  /** TOPIC-13.1: `PUT /api/topics/<id>/seen`. */
+  seenUpTo(id: string, upto: number): void {
+    this.write((s) => s.seenUpTo(id, upto));
+  }
+
+  /**
+   * TOPIC-12.2: what Lookout sees now against what it last saw of each member. Nothing happens before
+   * the store exists; a failure is the caller's to log (TOPIC-8.4).
+   */
+  observe(step: Parameters<TopicStore['observe']>[0]): void {
+    if (!this.store) return;
+    const n = this.write((s) => s.observe(step), false);
+    if (n) this.changed();
+  }
+
+  /** TOPIC-12.1: Fleet's list: a member Session live again, or ended. */
+  observeSessions(rows: readonly SessionRow[]): void {
+    const live = new Map<string, string>();
+    for (const r of rows) {
+      const m = rowMember(r);
+      if (m) live.set(refText(m.kind, m.ref), m.snapshot.title);
+    }
+    this.observe((m) => {
+      if (m.kind !== 'session') return null;
+      return { ...observeSession(m.observed as SessionObserved | null, live.has(m.ref)), name: live.get(m.ref) };
+    });
+  }
+
+  /** TOPIC-12.1: a Work read: member PRs and Tasks gone, back, or changed; `email` is the one Tasks were read for. */
+  observeWork(work: WorkSnapshot, email: string | null): void {
+    const pr = prSightings(work);
+    const task = taskSightings(work, email);
+    this.observe((m) => {
+      if (m.kind === 'pr') {
+        const prev = m.observed as PrObserved | null;
+        return observePr(prev, pr(refUrl(m.ref), prev));
+      }
+      if (m.kind === 'task') return observeTask(m.observed as TaskObserved | null, task(refId(m.ref)));
+      return null;
+    });
   }
 
   /** TOPIC-2.3: `added` false, and the Topic's title, when it was already a member. */
@@ -909,7 +1256,7 @@ export class Topics {
   addStarted(id: string, member: NewMember, reason: string): boolean {
     return this.write((s) =>
       s.transaction(() => {
-        const added = s.addMember(id, member, reason);
+        const added = s.addMember(id, member, reason, 'lookout');
         s.forgetCandidate(member.kind, refText(member.kind, member.ref));
         return added;
       }),
@@ -1076,7 +1423,8 @@ export class Topics {
     const none = { topics: [], edges: [], pruned: [], libraryReadAt: this.readAt, recommendations: [], jevAsksToday: 0, summarizing: this.summarizing, summaryErrors: this.summaryErrors };
     if (!this.store && !this.failure) return { state: 'ok', reason: null, path: this.opts.path, ...none };
     if (!this.store) return { state: 'error', reason: this.failure, path: this.opts.path, ...none };
-    let stored: Omit<Topic, 'outputs' | 'summary' | 'summaryStale'>[];
+    let stored: StoredTopic[];
+    let counts: Map<string, ActivityCounts>;
     let edges: TopicEdge[];
     let recommendations: Recommendation[];
     let jevAsksToday: number;
@@ -1089,13 +1437,25 @@ export class Topics {
       midnight.setHours(0, 0, 0, 0);
       jevAsksToday = this.store.asksSince(midnight.getTime());
       summaries = this.store.summaries();
+      counts = this.store.activityCounts();
     } catch (err) {
       return { state: 'error', reason: `Lookout couldn't read its Topics database: ${plain(err)}`, path: this.opts.path, ...none };
     }
     const items = this.outputs;
     const topics = stored.map((t) => {
       const s = summaries.get(t.id);
-      return { ...t, outputs: items ? outputsOf(t.members, items) : null, summary: s?.summary ?? null, summaryStale: s ? s.fingerprint !== summaryFingerprint(t) : false };
+      const c = counts.get(t.id);
+      return {
+        ...t,
+        outputs: items ? outputsOf(t.members, items) : null,
+        summary: s?.summary ?? null,
+        summaryStale: s ? s.fingerprint !== summaryFingerprint(t) : false,
+        lastActivity: c?.last ?? null,
+        lastEntryId: c?.lastId ?? 0,
+        newCount: c?.newCount ?? 0,
+        changesSinceSummary: s ? (c?.sinceSummary ?? 0) : 0,
+        earlierSummaries: c?.earlier ?? 0,
+      };
     });
     const ids = new Set(topics.map((t) => t.id));
     const summaryErrors = Object.fromEntries(Object.entries(this.summaryErrors).filter(([id]) => ids.has(id)));

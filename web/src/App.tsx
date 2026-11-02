@@ -655,6 +655,10 @@ export function App({ client }: { client: LookoutClient }) {
   const openGraph = useCallback(() => navigate({ name: 'topics' }), [navigate]);
   // TOPIC-10.1: "Open", Enter on an expanded Topic, or a graph node: its view, and the tab selects it.
   const openTopic = useCallback((id: string) => navigate({ name: 'topic', id }), [navigate]);
+  // TOPIC-12.3, TOPIC-11.10, TOPIC-13.1: stable, so the Topic view reads its activity once per change.
+  const topicActivity = useCallback((id: string, before: number | null) => client.topicActivity(id, before), [client]);
+  const earlierSummaries = useCallback((id: string) => client.earlierSummaries(id), [client]);
+  const seenTopic = useCallback((id: string, upto: number, keepalive?: boolean) => client.seenTopic(id, upto, keepalive), [client]);
   // …and however the view was reached (Back, Forward, a URL), the tab selects its Topic, past its filter.
   const viewedTopic = route.name === 'topic' ? route.id : null;
   useEffect(() => {
@@ -1070,6 +1074,10 @@ export function App({ client }: { client: LookoutClient }) {
                 unlinkTopics={(id, other) => client.unlinkTopics(id, other)}
                 summarize={(id) => client.summarize(id)}
                 cancelSummary={(id) => client.cancelSummary(id)}
+                topicActivity={topicActivity}
+                earlierSummaries={earlierSummaries}
+                seenTopic={seenTopic}
+                onOpenTopic={openTopic}
                 onStartSession={startInTopic}
               />
             ) : route.name === 'past' ? (
@@ -1146,6 +1154,8 @@ export function App({ client }: { client: LookoutClient }) {
               library: <LibraryPanel focusKey={rightFocus.library} visible={layout.tab === 'library'} sessions={state.sessions} now={now} search={searchLibrary} status={libraryStatus} filter={layout.libraryFilter} onFilter={(libraryFilter) => updateLayout({ libraryFilter })} headless={layout.headless} onHeadless={(headless) => updateLayout({ headless })} onSession={openPast} keyboardEnabled={!modalOpen} navRef={libraryNav} sessionFilter={librarySessions} onClearSessionFilter={() => setLibrarySessions(null)} />,
               topics: (
                 <TopicsPanel
+                  viewedTopic={viewedTopic}
+                  now={now}
                   view={state.topics}
                   sessions={state.sessions}
                   work={state.work}

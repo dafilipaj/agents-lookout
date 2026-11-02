@@ -1,10 +1,10 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { OutputItem, OutputSession } from '../shared/library.ts';
 import type { NewMember, TopicsView } from '../shared/topics.ts';
-import { SCHEMA_VERSION, TopicStore, Topics, TopicsError, parseEdgeEdit, parseLink, parseMember, parsePatch, parsePositions, parseTitle } from './topics.ts';
+import { SCHEMA_VERSION, TopicStore, Topics, TopicsError, parseEdgeEdit, parseLink, parseMember, parsePatch, parsePositions, parseTitle, schemaSql } from './topics.ts';
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -71,12 +71,13 @@ describe('TOPIC-8 storage', () => {
     store.close();
     const db = new (sqlite().DatabaseSync)(path);
     const tables = (db.prepare("select name from sqlite_master where type = 'table' order by name").all() as { name: string }[]).map((t) => t.name);
-    expect(tables).toEqual(['candidates', 'edges', 'members', 'recommendations', 'schema_version', 'summaries', 'topics']);
+    expect(tables).toEqual(['candidates', 'edges', 'events', 'members', 'recommendations', 'schema_version', 'sqlite_sequence', 'summaries', 'topics']);
     const columns = (t: string) => (db.prepare(`pragma table_info(${t})`).all() as { name: string }[]).map((c) => c.name);
-    expect(columns('topics')).toEqual(['id', 'title', 'notes', 'state', 'created_at', 'updated_at', 'pos_x', 'pos_y']);
-    expect(columns('members')).toEqual(['topic_id', 'kind', 'ref', 'snapshot', 'added_at', 'reason']);
+    expect(columns('topics')).toEqual(['id', 'title', 'notes', 'state', 'created_at', 'updated_at', 'pos_x', 'pos_y', 'outcome', 'closing', 'superseded_by', 'seen_upto']);
+    expect(columns('members')).toEqual(['topic_id', 'kind', 'ref', 'snapshot', 'added_at', 'reason', 'observed']);
     expect(columns('edges')).toEqual(['from_id', 'to_id', 'label', 'created_at']);
-    expect(columns('summaries')).toEqual(['topic_id', 'answer', 'written_at', 'model', 'cost_usd', 'fingerprint']);
+    expect(columns('summaries')).toEqual(['topic_id', 'answer', 'written_at', 'model', 'cost_usd', 'fingerprint', 'input_upto']);
+    expect(columns('events')).toEqual(['id', 'topic_id', 'at', 'kind', 'member', 'by', 'data']);
     expect(db.prepare('select ref from members').all()).toEqual([{ ref: `{"harness":"claude","sessionId":"${SESSION.ref.sessionId}"}` }]);
     db.exec(`insert into edges (from_id, to_id, created_at) values ('${a}', '${b}', 1)`);
     expect(() => db.exec(`insert into edges (from_id, to_id, created_at) values ('${b}', '${a}', 1)`)).toThrow(/UNIQUE/);
@@ -118,11 +119,11 @@ describe('TOPIC-8 storage', () => {
 describe('TOPIC-1 a Topic', () => {
   it('TOPIC-8.1, TOPIC-11.5: a schema 2 database is copied to topics.db.bak-2, then gains the summaries table, keeping what it held', () => {
     const path = tempPath();
-    const store = new TopicStore(path);
-    const id = store.create('Kept');
-    store.close();
+    const id = '00000000-0000-4000-8000-000000000001';
+    mkdirSync(dirname(path), { recursive: true });
     const db = new (sqlite().DatabaseSync)(path);
-    db.exec('drop table summaries; update schema_version set v = 2');
+    db.exec(schemaSql(2));
+    db.exec(`insert into schema_version (v) values (2); insert into topics (id, title, notes, state, created_at, updated_at) values ('${id}', 'Kept', '', 'open', 1, 1)`);
     db.close();
     const migrated = new TopicStore(path);
     expect(migrated.list().map((t) => t.id)).toEqual([id]);
@@ -133,7 +134,7 @@ describe('TOPIC-1 a Topic', () => {
     expect(bak.prepare("select name from sqlite_master where name = 'summaries'").get()).toBeUndefined();
     bak.close();
     const now = new (sqlite().DatabaseSync)(path);
-    expect(now.prepare('select max(v) as v from schema_version').get()).toEqual({ v: 3 });
+    expect(now.prepare('select max(v) as v from schema_version').get()).toEqual({ v: SCHEMA_VERSION });
     expect(now.prepare('select topic_id, model from summaries').all()).toEqual([{ topic_id: id, model: 'claude-sonnet-5-5' }]);
     now.close();
   });
@@ -410,5 +411,142 @@ describe('TOPIC-4.4 and TOPIC-8.3 the view', () => {
     expect(views).toHaveLength(2);
     expect(views[1]!.topics[0]!.members).toHaveLength(1);
     expect(() => topics.update('00000000-0000-4000-8000-000000000000', { title: 'x' })).toThrow('That Topic no longer exists.');
+  });
+});
+
+describe('TOPIC slice 7: activity, how a Topic ended, what’s new, every summary', () => {
+  const answer = { what: 'w', state: 'done' as const, why: 'y', open: [], recent: [], next: [] };
+
+  it('TOPIC-12.4, TOPIC-12.1: each change you make is an entry by you, an Edge on both Topics; an entry keeps its names after a Remove or a Delete', () => {
+    const c = clock();
+    const store = new TopicStore(tempPath(), { now: c.now });
+    const a = store.create('A');
+    const b = store.create('B');
+    store.update(a, { title: 'A2' });
+    store.update(a, { title: 'A2' });
+    store.update(a, { notes: 'n' });
+    store.addMember(a, PR, 'added by hand');
+    store.removeMember(a, 'pr', JSON.stringify({ url: PR.ref.url }));
+    store.link(a, b, 'part of');
+    store.editEdge(b, { other: a, label: 'follows' });
+    store.editEdge(a, { other: b, reverse: true });
+    store.unlink(a, b);
+    const entries = store.activity(a, null).reverse();
+    expect(entries.map((e) => [e.kind, e.by, e.data])).toEqual([
+      ['made', 'you', {}],
+      ['title', 'you', { to: 'A2' }],
+      ['notes', 'you', {}],
+      ['added', 'you', { name: 'fantastic #812', reason: 'added by hand' }],
+      ['removed', 'you', { name: 'fantastic #812' }],
+      ['edge-drawn', 'you', { label: 'part of', dir: 'to', otherId: b, other: 'B' }],
+      ['edge-label', 'you', { label: 'follows', dir: 'to', otherId: b, other: 'B' }],
+      ['edge-reversed', 'you', { dir: 'from', otherId: b, other: 'B' }],
+      // Reversed, it came from B.
+      ['edge-unlinked', 'you', { dir: 'from', otherId: b, other: 'B' }],
+    ]);
+    expect(entries[4]!.member).toBe(`pr:${JSON.stringify({ url: PR.ref.url })}`);
+    expect(store.activity(b, null).map((e) => e.kind)).toEqual(['edge-unlinked', 'edge-reversed', 'edge-label', 'edge-drawn', 'made']);
+    // Paging: before an entry id.
+    expect(store.activity(a, entries[2]!.id).map((e) => e.kind)).toEqual(['title', 'made']);
+    store.link(a, b, null);
+    store.delete(b);
+    expect(store.activity(a, null)[0]!.data.other).toBe('B');
+    expect(() => store.activity(b, null)).toThrow(TopicsError);
+  });
+
+  it('TOPIC-1.6: Archive keeps how it ended and its closing line; "Superseded by" draws its Edge unless the pair has one, and keeps the Topic either way; Unarchive clears it and keeps the Edge', () => {
+    const store = new TopicStore(tempPath());
+    const a = store.create('A');
+    const b = store.create('B');
+    const c = store.create('C');
+    expect(() => parsePatch({ state: 'archived' })).toThrow('Say how it ended: done, parked, dropped or superseded.');
+    expect(() => parsePatch({ state: 'archived', outcome: 'superseded' })).toThrow('Pick the Topic that superseded it.');
+    expect(() => parsePatch({ title: 'x', outcome: 'done' })).toThrow('How a Topic ended goes with archiving it.');
+    store.update(a, parsePatch({ state: 'archived', outcome: 'superseded', supersededBy: b, closing: '  Moved to B.  ' }));
+    let t = store.list().find((x) => x.id === a)!;
+    expect(t).toMatchObject({ state: 'archived', outcome: 'superseded', closing: 'Moved to B.', supersededBy: { id: b, title: 'B' } });
+    expect(store.edges()).toEqual([expect.objectContaining({ from: a, to: b, label: 'superseded by' })]);
+    expect(store.activity(a, null)[0]!.data).toEqual({ outcome: 'superseded', closing: 'Moved to B.', otherId: b, other: 'B' });
+    // An Edge already joining the pair, either way, is kept as it is.
+    store.link(c, b, 'part of');
+    store.update(b, parsePatch({ state: 'archived', outcome: 'superseded', supersededBy: c }));
+    expect(store.edges().filter((e) => [e.from, e.to].includes(c))).toEqual([expect.objectContaining({ from: c, to: b, label: 'part of' })]);
+    expect(store.list().find((x) => x.id === b)!.supersededBy).toEqual({ id: c, title: 'C' });
+    store.update(a, { state: 'open' });
+    t = store.list().find((x) => x.id === a)!;
+    expect(t).toMatchObject({ state: 'open', outcome: null, closing: null, supersededBy: null });
+    expect(store.edges().some((e) => e.from === a && e.to === b)).toBe(true);
+    expect(store.activity(a, null)[0]!.kind).toBe('unarchived');
+  });
+
+  it('TOPIC-13.1, TOPIC-3.8: new activity is Lookout’s entries past the newest one seen; seen only moves forward; a new Topic starts with nothing new', () => {
+    const path = tempPath();
+    const topics = new Topics({ path, open: () => new TopicStore(path), onChange: () => {} });
+    const id = topics.create('A').id;
+    const view = () => topics.view().topics.find((t) => t.id === id)!;
+    expect(view()).toMatchObject({ newCount: 0, lastActivity: null });
+    topics.addMember(id, PR);
+    expect(view().newCount).toBe(0);
+    topics.observe(() => null);
+    const pr = (ci: string) => ({ prs: { state: 'ok', stale: false, mine: [{ url: PR.ref.url, ci, chip: 'ready', column: 'review_mine' }], reviewRequests: [], marks: { mine: [], reviewRequests: [] } }, tasks: { state: 'loading', stale: false, tasks: [] } }) as never;
+    topics.observeWork(pr('passing'), null);
+    topics.observeWork(pr('failing'), null);
+    topics.observeWork(pr('passing'), null);
+    expect(view()).toMatchObject({ newCount: 2, lastActivity: { kind: 'ci-passing', by: 'lookout' } });
+    const failing = topics.activity(id, null).find((e) => e.kind === 'ci-failing')!;
+    topics.seenUpTo(id, failing.id);
+    expect(view().newCount).toBe(1);
+    topics.seenUpTo(id, 1);
+    expect(view().newCount).toBe(1);
+    topics.seenUpTo(id, view().lastEntryId);
+    expect(view()).toMatchObject({ newCount: 0, seenUpto: view().lastEntryId });
+  });
+
+  it('TOPIC-11.10, TOPIC-11.5: every summary is kept, the newest is the Topic’s; changes since count from its input, summaries aside', () => {
+    const c = clock();
+    const path = tempPath();
+    const topics = new Topics({ path, open: () => new TopicStore(path, { now: c.now }), onChange: () => {} });
+    const id = topics.create('A').id;
+    const view = () => topics.view().topics.find((t) => t.id === id)!;
+    topics.saveSummary(id, { answer: { ...answer, what: 'first' }, writtenAt: 10, model: 'm', costUsd: null }, 'f', view().lastEntryId);
+    expect(view()).toMatchObject({ changesSinceSummary: 0, earlierSummaries: 0 });
+    c.tick();
+    topics.update(id, { notes: 'n' });
+    topics.addMember(id, PR);
+    expect(view().changesSinceSummary).toBe(2);
+    topics.saveSummary(id, { answer: { ...answer, what: 'second' }, writtenAt: 20, model: 'm', costUsd: null }, 'f', view().lastEntryId);
+    expect(view().summary!.answer.what).toBe('second');
+    expect(view()).toMatchObject({ changesSinceSummary: 0, earlierSummaries: 1 });
+    expect(topics.earlierSummaries(id).map((s) => s.answer.what)).toEqual(['first']);
+    expect(topics.earlierSummaries(id)[0]!.answer).toMatchObject({ openMore: 0, watch: [] });
+  });
+
+  it('TOPIC-8.1: a schema 3 database keeps its summary, which counts changes from when it was written, and nothing is new', () => {
+    const path = tempPath();
+    const id = '00000000-0000-4000-8000-000000000001';
+    mkdirSync(dirname(path), { recursive: true });
+    const db = new (sqlite().DatabaseSync)(path);
+    db.exec(schemaSql(3));
+    db.exec(`insert into schema_version (v) values (3); insert into topics (id, title, notes, state, created_at, updated_at) values ('${id}', 'Kept', '', 'archived', 1, 1);
+      insert into summaries (topic_id, answer, written_at, model, cost_usd, fingerprint) values ('${id}', '{"what":"w","state":"done","why":"y","open":[],"recent":[],"next":[]}', 5, 'm', null, 'f')`);
+    db.close();
+    const topics = new Topics({ path, open: () => new TopicStore(path), onChange: () => {} });
+    expect(topics.view().topics[0]).toMatchObject({ outcome: null, newCount: 0, seenUpto: 0, changesSinceSummary: 0, summary: { answer: { what: 'w', openMore: 0, watch: [] } } });
+    topics.update(id, { notes: 'n' });
+    expect(topics.view().topics[0]!.changesSinceSummary).toBe(1);
+  });
+});
+
+describe('TOPIC slice 7, from the code review', () => {
+  it('TOPIC-1.6: archiving a Topic another tab archived already is refused, so its outcome isn’t lost; TOPIC-12.1: deleting a Topic leaves "Unlinked" on the Topics its Edges joined', () => {
+    const store = new TopicStore(tempPath());
+    const a = store.create('A');
+    const b = store.create('B');
+    store.update(a, parsePatch({ state: 'archived', outcome: 'done' }));
+    expect(() => store.update(a, parsePatch({ state: 'archived', outcome: 'dropped' }))).toThrow(new TopicsError(409, 'That Topic is already archived.'));
+    expect(store.list().find((t) => t.id === a)!.outcome).toBe('done');
+    store.link(a, b, 'part of');
+    store.delete(a);
+    expect(store.activity(b, null)[0]).toMatchObject({ kind: 'edge-unlinked', data: { dir: 'from', otherId: a, other: 'A' } });
   });
 });

@@ -2,7 +2,7 @@ import type { LibraryPage, LibraryQuery } from '@shared/library.ts';
 import type { PathAnswer } from '@shared/files.ts';
 import type { Settings, SettingsView } from '@shared/settings.ts';
 import type { ToolsSnapshot } from '@shared/tools.ts';
-import type { NewMember, RecommendationAction, Topic, TopicPosition, TopicState } from '@shared/topics.ts';
+import type { ActivityEntry, NewMember, RecommendationAction, Topic, TopicOutcome, TopicPosition, TopicState, TopicSummary } from '@shared/topics.ts';
 import type { WorkRefreshResult } from '@shared/work.ts';
 import { HELD_REASONS, type AnswerRequest, type AnswerResult, type ChatPage, type EffortSwitchRequest, type EffortSwitchResult, type EndResult, type EndTarget, type Harness, type HarnessOption, type HeldReason, type HistoryDetail, type HistoryPage, type HistoryPeek, type LaunchRequest, type LaunchView, type TrustRequest, type ModelSwitchRequest, type ModelSwitchResult, type RenameResult, type ResumeResult, type ServerEvent } from '@shared/types.ts';
 
@@ -82,7 +82,7 @@ export interface LookoutClient {
   /** TOPIC-1.1: a new Open Topic with no members. Every Topics change also reaches every tab as a `topics` event. */
   createTopic(title: string): Promise<Topic>;
   /** TOPIC-1.2, TOPIC-1.3: its title, notes or state. */
-  updateTopic(id: string, patch: { title?: string; notes?: string; state?: TopicState }): Promise<Topic>;
+  updateTopic(id: string, patch: { title?: string; notes?: string; state?: TopicState; outcome?: TopicOutcome; closing?: string | null; supersededBy?: string }): Promise<Topic>;
   /** TOPIC-1.4. */
   deleteTopic(id: string): Promise<void>;
   /** TOPIC-2.3: `added` false when it was already a member, with the Topic's title. */
@@ -103,6 +103,12 @@ export interface LookoutClient {
   summarize(topicId: string): Promise<void>;
   /** TOPIC-11.6: Cancel. */
   cancelSummary(topicId: string): Promise<void>;
+  /** TOPIC-12.3: a Topic's activity, newest first, a page at a time before an entry id. */
+  topicActivity(topicId: string, before: number | null): Promise<ActivityEntry[]>;
+  /** TOPIC-11.10: a Topic's earlier summaries, newest first. */
+  earlierSummaries(topicId: string): Promise<TopicSummary[]>;
+  /** TOPIC-13.1: seen up to that entry; `keepalive` when the page is going away. */
+  seenTopic(topicId: string, upto: number, keepalive?: boolean): Promise<void>;
 }
 
 export interface HistoryQuery {
@@ -168,10 +174,11 @@ export function createHttpClient(): LookoutClient {
   };
 
   /** A mutating request: needs the token; the server makes a new one on each start. */
-  const send = async (method: string, path: string, body?: unknown, retry = true, signal?: AbortSignal): Promise<Response> => {
+  const send = async (method: string, path: string, body?: unknown, retry = true, signal?: AbortSignal, keepalive = false): Promise<Response> => {
     const res = await fetch(path, {
       method,
       ...(signal ? { signal } : {}),
+      ...(keepalive ? { keepalive } : {}),
       headers: {
         ...(body === undefined ? {} : { 'content-type': 'application/json' }),
         'x-lookout-token': await getToken(),
@@ -180,7 +187,7 @@ export function createHttpClient(): LookoutClient {
     });
     if (res.status === 403 && retry) {
       token = null; // the server restarted with a new token
-      return send(method, path, body, false);
+      return send(method, path, body, false, signal, keepalive);
     }
     return res;
   };
@@ -486,6 +493,12 @@ export function createHttpClient(): LookoutClient {
     },
     summarize: async (topicId) => {
       await call(() => send('POST', `/api/topics/${encodeURIComponent(topicId)}/summary`), 'Starting the summary');
+    },
+    topicActivity: async (topicId, before) =>
+      (await call<{ entries: ActivityEntry[] }>(() => fetch(`/api/topics/${encodeURIComponent(topicId)}/activity${before === null ? '' : `?before=${before}`}`), 'Reading the activity')).entries,
+    earlierSummaries: async (topicId) => (await call<{ summaries: TopicSummary[] }>(() => fetch(`/api/topics/${encodeURIComponent(topicId)}/summaries`), 'Reading earlier summaries')).summaries,
+    seenTopic: async (topicId, upto, keepalive = false) => {
+      await call(() => send('PUT', `/api/topics/${encodeURIComponent(topicId)}/seen`, { upto }, true, undefined, keepalive), 'Saving what you saw');
     },
     cancelSummary: async (topicId) => {
       await call(() => send('DELETE', `/api/topics/${encodeURIComponent(topicId)}/summary`), 'Cancelling the summary');

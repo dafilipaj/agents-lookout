@@ -6,7 +6,7 @@ import type { UserEvent } from '@testing-library/user-event';
 import { expect, vi } from 'vitest';
 import { App } from '@/App';
 import { type ClientListener, type HistoryQuery, type LookoutClient, SaveError } from '@/lib/client';
-import { type NewMember, type Recommendation, type RecommendationAction, type SummaryError, type Topic, type TopicEdge, type TopicMember, type TopicSummary, type TopicsView, memberKey, sortTopics } from '@shared/topics.ts';
+import { type ActivityEntry, type NewMember, type Recommendation, type RecommendationAction, type SummaryError, type Topic, type TopicEdge, type TopicMember, type TopicOutcome, type TopicSummary, type TopicsView, memberKey, NO_ACTIVITY, sortTopics } from '@shared/topics.ts';
 
 export const NOW = Date.UTC(2026, 9, 16, 12, 0, 0);
 
@@ -108,6 +108,10 @@ interface RenderOptions {
   topics?: Topic[];
   /** TOPIC-9.4: the fake server's pending recommendations; Accept, Dismiss and Other Topic… resolve them. */
   recommendations?: Recommendation[];
+  /** TOPIC-12: the fake server's activity, by Topic id, newest first. */
+  activity?: Record<string, ActivityEntry[]>;
+  /** TOPIC-11.10: the fake server's earlier summaries, by Topic id, newest first. */
+  earlierSummaries?: Record<string, TopicSummary[]>;
   /** TOPIC-6: the fake server's Edges, changed by the Edge calls. */
   edges?: TopicEdge[];
 }
@@ -188,12 +192,20 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
         }),
     ),
     createTopic: vi.fn(async (title: string) => {
-      const t: Topic = { id: `00000000-0000-4000-8000-${String(topicSet.length + 1).padStart(12, '0')}`, title: title.trim().slice(0, 120), notes: '', state: 'open', createdAt: ++topicClock, updatedAt: topicClock, members: [], outputs: null, pos: null, summary: null, summaryStale: false };
+      const t: Topic = { id: `00000000-0000-4000-8000-${String(topicSet.length + 1).padStart(12, '0')}`, title: title.trim().slice(0, 120), notes: '', state: 'open', createdAt: ++topicClock, updatedAt: topicClock, members: [], outputs: null, pos: null, summary: null, summaryStale: false, ...NO_ACTIVITY };
       changeTopics([...topicSet, t]);
       return t;
     }),
-    updateTopic: vi.fn(async (id: string, patch: { title?: string; notes?: string; state?: Topic['state'] }) => {
-      const t = { ...topic(id), ...patch, ...(patch.title !== undefined || patch.notes !== undefined ? { updatedAt: ++topicClock } : {}) };
+    updateTopic: vi.fn(async (id: string, patch: { title?: string; notes?: string; state?: Topic['state']; outcome?: TopicOutcome; closing?: string | null; supersededBy?: string }) => {
+      const { supersededBy, ...rest } = patch;
+      // TOPIC-1.6: archiving keeps how it ended; unarchiving clears it.
+      const ended =
+        patch.state === 'archived'
+          ? { outcome: patch.outcome ?? null, closing: patch.closing ?? null, supersededBy: supersededBy ? { id: supersededBy, title: topic(supersededBy).title } : null }
+          : patch.state === 'open'
+            ? { outcome: null, closing: null, supersededBy: null }
+            : {};
+      const t = { ...topic(id), ...rest, ...ended, ...(patch.title !== undefined || patch.notes !== undefined ? { updatedAt: ++topicClock } : {}) };
       changeTopics(topicSet.map((x) => (x.id === id ? t : x)));
       return t;
     }),
@@ -215,7 +227,7 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
       pendingSet = pendingSet.filter((x) => x !== r);
       let to: string | null = a.action === 'move' ? a.to : a.action === 'accept' ? r.topicId : null;
       if (a.action === 'accept' && to === null) {
-        const t: Topic = { id: `00000000-0000-4000-8000-${String(topicSet.length + 1).padStart(12, '0')}`, title: r.newTitle!, notes: '', state: 'open', createdAt: ++topicClock, updatedAt: topicClock, members: [], outputs: null, pos: null, summary: null, summaryStale: false };
+        const t: Topic = { id: `00000000-0000-4000-8000-${String(topicSet.length + 1).padStart(12, '0')}`, title: r.newTitle!, notes: '', state: 'open', createdAt: ++topicClock, updatedAt: topicClock, members: [], outputs: null, pos: null, summary: null, summaryStale: false, ...NO_ACTIVITY };
         topicSet = [...topicSet, t];
         to = t.id;
       }
@@ -264,6 +276,14 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
       summarizingSet = summarizingSet.filter((x) => x !== id);
       summaryErrorSet = { ...summaryErrorSet, [id]: { reason: 'Cancelled. The summary before it is kept.', fix: null } };
       changeTopics(topicSet);
+    }),
+    topicActivity: vi.fn(async (id: string, before: number | null) => (options.activity?.[id] ?? []).filter((e) => before === null || e.id < before).slice(0, 50)),
+    earlierSummaries: vi.fn(async (id: string) => options.earlierSummaries?.[id] ?? []),
+    // TOPIC-13.1: seen only moves forward.
+    seenTopic: vi.fn(async (id: string, upto: number) => {
+      const seen = Math.max(topic(id).seenUpto, upto);
+      const newCount = (options.activity?.[id] ?? []).filter((e) => e.by === 'lookout' && e.id > seen).length;
+      changeTopics(topicSet.map((x) => (x.id === id ? { ...x, seenUpto: seen, newCount } : x)));
     }),
     // TOPIC-7.2: positions aren't a change to the Topic.
     placeTopics: vi.fn(async (positions: readonly { id: string; x: number; y: number }[]) => {

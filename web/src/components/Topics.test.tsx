@@ -1,5 +1,5 @@
 import type { OutputItem } from '@shared/library.ts';
-import { type NewMember, type Recommendation, type Topic, type TopicMember, type TopicSummary, memberKey } from '@shared/topics.ts';
+import { type ActivityEntry, type NewMember, RESTATE_LINE, type Recommendation, type Topic, type TopicMember, type TopicSummary, memberKey, NO_ACTIVITY } from '@shared/topics.ts';
 import type { UsageSnapshot } from '@shared/usage.ts';
 import type { HistoryItem } from '@shared/types.ts';
 import type { PrSection, TaskSection, WorkPr, WorkSnapshot, WorkTask } from '@shared/work.ts';
@@ -11,7 +11,7 @@ import { NOW, pressRowAction, renderApp, row, settings } from '@/test/helpers';
 /** Synthetic Topics, Tasks and PRs only: invented titles, repos and ids. */
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const member = (m: NewMember, addedAt = NOW - 60_000): TopicMember => ({ ...m, key: memberKey(m.kind, m.ref), addedAt, reason: 'added by hand' }) as TopicMember;
-const topic = (n: number, over: Partial<Topic> = {}): Topic => ({ id: id(n), title: `Topic ${n}`, notes: '', state: 'open', createdAt: NOW - 1e6, updatedAt: NOW - n * 1000, members: [], outputs: { items: [], total: 0 }, pos: null, summary: null, summaryStale: false, ...over });
+const topic = (n: number, over: Partial<Topic> = {}): Topic => ({ id: id(n), title: `Topic ${n}`, notes: '', state: 'open', createdAt: NOW - 1e6, updatedAt: NOW - n * 1000, members: [], outputs: { items: [], total: 0 }, pos: null, summary: null, summaryStale: false, ...NO_ACTIVITY, ...over });
 
 const pr = (over: Partial<WorkPr> & { repo: string; number: number }): WorkPr => ({
   title: `${over.repo} change ${over.number}`,
@@ -242,7 +242,13 @@ describe('a Topic (TOPIC-1)', () => {
     const user = await openTopics();
     await user.click(header('Proposals rates'));
     await user.click(within(item('Proposals rates')).getByRole('button', { name: 'Archive' }));
-    expect(app.client.updateTopic).toHaveBeenCalledWith(id(1), { state: 'archived' });
+    // TOPIC-1.6: Archive asks how it ended, and waits for a pick.
+    const asked = screen.getByRole('dialog', { name: 'Archive “Proposals rates”' });
+    expect(within(asked).getByRole('button', { name: 'Archive' })).toBeDisabled();
+    await user.click(within(asked).getByRole('radio', { name: 'Parked' }));
+    await user.type(within(asked).getByRole('textbox', { name: 'Closing line' }), 'After the release.');
+    await user.click(within(asked).getByRole('button', { name: 'Archive' }));
+    expect(app.client.updateTopic).toHaveBeenCalledWith(id(1), { state: 'archived', outcome: 'parked', closing: 'After the release.' });
     expect(titles()).toEqual(['Other']);
     await user.click(screen.getByRole('checkbox', { name: 'Archived' }));
     expect(titles()).toEqual(['Proposals rates', 'Other']);
@@ -921,7 +927,11 @@ describe('the Topic view (TOPIC-10)', () => {
     expect(banner.querySelector('[data-field="counts"]')).toHaveTextContent('1 Session · 1 PR');
     expect([...banner.querySelectorAll('[data-field="actions"] [data-action]')].map((b) => b.textContent)).toEqual(['Start Session', 'Open graph', 'Link to Topic…', 'Archive', 'Delete']);
     await user.click(within(banner).getByRole('button', { name: 'Archive' }));
-    expect(app.client.updateTopic).toHaveBeenCalledWith(id(1), { state: 'archived' });
+    // TOPIC-1.6: it looks done, so Done is picked.
+    const asked = screen.getByRole('dialog', { name: 'Archive “Shipped”' });
+    expect(within(asked).getByRole('radio', { name: 'Done' })).toBeChecked();
+    await user.click(within(asked).getByRole('button', { name: 'Archive' }));
+    expect(app.client.updateTopic).toHaveBeenCalledWith(id(1), { state: 'archived', outcome: 'done', closing: null });
     await waitFor(() => expect(within(topicView()).getByRole('banner').querySelector('[data-tone="muted"]')).toHaveTextContent('archived'));
     await user.click(within(topicView()).getByRole('button', { name: 'Link to Topic…' }));
     expect(screen.getByRole('dialog', { name: 'Link to Topic' })).toBeInTheDocument();
@@ -960,7 +970,7 @@ describe('the Topic view (TOPIC-10)', () => {
     const user = await openTopics();
     const view = await openView(user, 'Rates');
     const sections = [...view.querySelectorAll<HTMLElement>('section')];
-    expect(sections.map((s) => s.querySelector('h2')!.textContent)).toEqual(['Summary', 'Sessions4', 'PRs2', 'Tasks3']);
+    expect(sections.map((s) => s.querySelector('h2')!.textContent)).toEqual(['Summary', 'Sessions4', 'PRs2', 'Tasks3', 'Activity']);
     expect([...view.querySelectorAll('[data-field="session"] button[aria-label^="Open"], [data-field="session"] button[aria-label^="Resume"]')].map((c) => c.getAttribute('aria-label'))).toEqual(['Open rates-port, Needs you', 'Open idle one, Idle', 'Resume past new, past', 'Resume past old, past']);
     expect([...view.querySelectorAll('[data-field="pr"]')].map((l) => l.querySelector('[data-field="member-title"]')!.textContent)).toEqual([ANVIL.title, 'Old anvil']);
     expect([...view.querySelectorAll('[data-field="task"]')].map((l) => l.querySelector('[data-field="member-title"]')!.textContent)).toEqual([LIGHT.title, 'Closed 2', 'Closed 1']);
@@ -974,7 +984,7 @@ describe('the Topic view (TOPIC-10)', () => {
     });
     const user = await openTopics();
     const view = await openView(user, 'Rates');
-    expect([...view.querySelectorAll('section')].map((s) => s.getAttribute('data-field'))).toEqual(['summary', 'sessions', 'topic-recommended', 'outputs', 'edges']);
+    expect([...view.querySelectorAll('section')].map((s) => s.getAttribute('data-field'))).toEqual(['summary', 'sessions', 'topic-recommended', 'outputs', 'edges', 'activity']);
     // With the sidebar closed, the view still keeps Work read.
     act(() => (document.activeElement as HTMLElement).blur());
     await user.keyboard('t');
@@ -1129,8 +1139,10 @@ describe('starting a Session in a Topic (TOPIC-5)', () => {
       state: 'in progress',
       why: 'The anvil PR is a draft.',
       open: [{ text: 'The corners are still blunt.', cites: [{ key: memberKey('pr', PR_MEMBER.ref), name: 'anvil #2101' }, { key: memberKey('session', SESSION.ref), name: 'rates-port' }] }],
-      recent: [{ text: 'The port began.', cites: [] }],
-      next: [{ text: 'Light the lanterns.', cites: [] }],
+      recent: [{ text: 'The port began.', cites: [], at: '2026-10-31 09:00' }],
+      next: [{ text: 'Light the lanterns.', cites: [], when: 'when the corners are sharp' }],
+      openMore: 0,
+      watch: [{ text: 'The grinder sparks.', cites: [] }],
     },
     writtenAt: NOW - 3_600_000,
     model: 'claude-sonnet-5-5',
@@ -1139,7 +1151,7 @@ describe('starting a Session in a Topic (TOPIC-5)', () => {
   const dialog = () => screen.getByRole('dialog', { name: 'New Session' });
   const startButton = () => within(topicView()).getByRole('button', { name: 'Start Session' });
 
-  it('TOPIC-5.1: "Start Session" in the view opens the launcher with the current summary’s what, state, open and next, each Task’s URL and the Topic line last; nothing starts until Start, which sends what was edited with the Topic', async () => {
+  it('TOPIC-5.1: "Start Session" in the view opens the launcher with a handover: the current summary’s what, state, dated recent, open, next with its trigger and watch out, each Task’s URL, the Topic line and the restate line; nothing starts until Start, which sends what was edited with the Topic', async () => {
     const app = openApp([topic(1, { title: 'Anvil', notes: 'Not used while the summary is current.', members: [member(PR_MEMBER), member(TASK_MEMBER), member(SESSION)], summary: SUMMARY })]);
     const user = await openTopics();
     await openView(user, 'Anvil');
@@ -1147,10 +1159,13 @@ describe('starting a Session in a Topic (TOPIC-5)', () => {
     const prompt = [
       'Sharpen the anvil and light the lanterns, part by part.',
       'State: in progress. The anvil PR is a draft.',
+      'Recent:\n- 2026-10-31 09:00: The port began.',
       'Open:\n- The corners are still blunt. (anvil #2101, rates-port)',
-      'Next:\n- Light the lanterns.',
+      'Next:\n- When the corners are sharp: Light the lanterns.',
+      'Watch out:\n- The grinder sparks.',
       LIGHT.url,
       `Topic: ${id(1)} Anvil`,
+      RESTATE_LINE,
     ].join('\n\n');
     expect(within(dialog()).getByLabelText('Prompt')).toHaveValue(prompt);
     expect(within(dialog()).getByLabelText('Topic')).toHaveValue(id(1));
@@ -1161,7 +1176,7 @@ describe('starting a Session in a Topic (TOPIC-5)', () => {
     expect(app.client.launch).toHaveBeenCalledWith(expect.objectContaining({ prompt: `${prompt}\nStart with the corners.`, topic: { id: id(1), via: 'topic' } }), expect.any(String));
   });
 
-  it('TOPIC-5.1: with no summary, or one out of date, the prompt is the notes’ first paragraph, then the Topic line; Esc gives focus back to Start Session and leaves N’s draft alone', async () => {
+  it('TOPIC-5.1: with no summary, or one out of date, the prompt is the notes’ first paragraph, then the Topic line and the restate line; Esc gives focus back to Start Session and leaves N’s draft alone', async () => {
     openApp([
       topic(1, { title: 'Anvil', notes: 'Sharpen the corners\nbefore the lanterns.\n\nRounding: half up.', members: [member(PR_MEMBER)], summary: SUMMARY, summaryStale: true }),
       topic(2, { title: 'Bare' }),
@@ -1174,7 +1189,7 @@ describe('starting a Session in a Topic (TOPIC-5)', () => {
 
     await openView(user, 'Anvil');
     await user.click(startButton());
-    expect(within(dialog()).getByLabelText('Prompt')).toHaveValue(`Sharpen the corners\nbefore the lanterns.\n\nTopic: ${id(1)} Anvil`);
+    expect(within(dialog()).getByLabelText('Prompt')).toHaveValue(`Sharpen the corners\nbefore the lanterns.\n\nTopic: ${id(1)} Anvil\n\n${RESTATE_LINE}`);
     await user.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     await waitFor(() => expect(startButton()).toHaveFocus());
@@ -1187,7 +1202,7 @@ describe('starting a Session in a Topic (TOPIC-5)', () => {
     // No notes and no summary: the Topic line alone.
     await openView(user, 'Bare');
     await user.click(startButton());
-    expect(within(dialog()).getByLabelText('Prompt')).toHaveValue(`Topic: ${id(2)} Bare`);
+    expect(within(dialog()).getByLabelText('Prompt')).toHaveValue(`Topic: ${id(2)} Bare\n\n${RESTATE_LINE}`);
   });
 
   it('TOPIC-5.2 (support): Start Session on a Task that is in exactly one Open Topic starts it in that Topic, shown in the launcher; in two, or only in an Archived one, in none', async () => {
@@ -1308,5 +1323,137 @@ describe('starting a Session in a Topic (TOPIC-5)', () => {
     await user.keyboard('n');
     expect(await screen.findByLabelText('Prompt')).toBeInTheDocument();
     expect(screen.queryByLabelText('Topic')).toBeNull();
+  });
+});
+
+describe('slice 7: finding a Topic, what happened, what’s new, how it ended', () => {
+  const entry = (n: number, over: Partial<ActivityEntry> = {}): ActivityEntry => ({ id: n, at: Date.now() - (100 - n) * 60_000, kind: 'ci-failing', member: memberKey('pr', PR_MEMBER.ref), by: 'lookout', data: { name: 'anvil #2101' }, ...over });
+
+  it('TOPIC-3.2: the filter matches what’s in a Topic: member titles, a live Session’s current title, a PR’s repo and number, a Task’s project, a Session’s folder, and closing lines', async () => {
+    openApp([
+      topic(1, { title: 'Rates', members: [member(PR_MEMBER), member(TASK_MEMBER), member(SESSION)] }),
+      topic(2, { title: 'Parked one', state: 'archived', outcome: 'parked', closing: 'Waiting on the grinder.' }),
+      topic(3, { title: 'Other' }),
+    ]);
+    const user = await openTopics();
+    await user.click(screen.getByRole('checkbox', { name: 'Archived' }));
+    const filter = within(panel()).getByRole('searchbox');
+    for (const [q, want] of [
+      ['corners', ['Rates']],
+      ['anvil #2101', ['Rates']],
+      ['#2101', ['Rates']],
+      ['lantern works', ['Rates']],
+      ['work', ['Rates']],
+      ['rates-port', ['Rates']],
+      ['grinder', ['Parked one']],
+    ] as const) {
+      await user.clear(filter);
+      await user.type(filter, q);
+      expect(titles()).toEqual(want);
+    }
+  });
+
+  describe('TOPIC-13.3 the open Topic’s row shows no "N new"', () => {
+    it('TOPIC-3.8, TOPIC-13.3: a row says what happened last and how many are new, except for the Topic open in this tab; an archived one says how it ended', async () => {
+      openApp([
+        topic(1, { title: 'Rates', members: [member(PR_MEMBER)], lastActivity: entry(5), lastEntryId: 5, newCount: 2 }),
+        topic(2, { title: 'Gone', state: 'archived', outcome: 'dropped' }),
+      ], work(), { activity: { [id(1)]: [entry(5), entry(4)] } });
+      const user = await openTopics();
+      expect(item('Rates').querySelector('[data-field="last-activity"]')).toHaveTextContent('anvil #2101 CI failing · 1h');
+      expect(item('Rates').querySelector('[data-field="new-count"]')).toHaveTextContent('2 new');
+      await openView(user, 'Rates');
+      expect(item('Rates').querySelector('[data-field="new-count"]')).toBeNull();
+      await user.click(screen.getByRole('checkbox', { name: 'Archived' }));
+      expect(header('Gone')).toHaveAccessibleName(/archived, dropped/);
+    });
+  });
+
+  it('TOPIC-13.2, TOPIC-12.3: the view shows what’s new since you last looked, dots the members it’s about, lists the activity 50 at a time, and marks it seen when you leave', async () => {
+    const entries = Array.from({ length: 60 }, (_, i) => entry(60 - i, i === 0 ? {} : { kind: 'notes', member: null, by: 'you', data: {} }));
+    const app = openApp([topic(1, { title: 'Rates', members: [member(PR_MEMBER), member(SESSION)], seenUpto: 50, newCount: 1, lastEntryId: 60 }), topic(2, { title: 'Other' })], work(), { activity: { [id(1)]: entries } });
+    const user = await openTopics();
+    const view = await openView(user, 'Rates');
+    const since = await within(view).findByRole('region', { name: 'Since you last looked' });
+    expect([...since.querySelectorAll('[data-field="activity-entry"]')].map((e) => e.textContent)).toEqual([expect.stringContaining('anvil #2101 CI failing')]);
+    expect(view.querySelector('[data-field="pr"] [data-field="fresh"]')).not.toBeNull();
+    expect(view.querySelector('[data-field="session"] [data-field="fresh"]')).toBeNull();
+    const activity = within(view).getByRole('region', { name: 'Activity' });
+    await waitFor(() => expect(activity.querySelectorAll('[data-field="activity-entry"]')).toHaveLength(50));
+    await user.click(within(activity).getByRole('button', { name: 'Show more' }));
+    await waitFor(() => expect(activity.querySelectorAll('[data-field="activity-entry"]')).toHaveLength(60));
+    expect(app.client.seenTopic).not.toHaveBeenCalled();
+    await openView(user, 'Other');
+    await waitFor(() => expect(app.client.seenTopic).toHaveBeenCalledWith(id(1), 60, false));
+  });
+
+  it('TOPIC-12.3, TOPIC-13.1: back on a Topic before its "seen" was answered, nothing shows as new again; "Show more" pressed twice reads one page once', async () => {
+    const entries = Array.from({ length: 60 }, (_, i) => entry(60 - i, i === 0 ? {} : { kind: 'notes', member: null, by: 'you', data: {} }));
+    // Ids of their own: what a view sent as seen is kept for the page's life.
+    const app = openApp([topic(7, { title: 'Rates', members: [member(PR_MEMBER)], seenUpto: 50, newCount: 1, lastEntryId: 60 }), topic(8, { title: 'Other' })], work(), { activity: { [id(7)]: entries } });
+    vi.mocked(app.client.seenTopic).mockImplementation(() => new Promise(() => {}));
+    const user = await openTopics();
+    let view = await openView(user, 'Rates');
+    await within(view).findByRole('region', { name: 'Since you last looked' });
+    const activity = within(view).getByRole('region', { name: 'Activity' });
+    await waitFor(() => expect(activity.querySelectorAll('[data-field="activity-entry"]')).toHaveLength(50));
+    const more = within(activity).getByRole('button', { name: 'Show more' });
+    await user.dblClick(more);
+    await waitFor(() => expect(activity.querySelectorAll('[data-field="activity-entry"]')).toHaveLength(60));
+    expect(app.client.topicActivity).toHaveBeenCalledTimes(2);
+    await openView(user, 'Other');
+    await waitFor(() => expect(app.client.seenTopic).toHaveBeenCalledWith(id(7), 60, false));
+    view = await openView(user, 'Rates');
+    await waitFor(() => expect(view.querySelectorAll('[data-field="activity-entry"]').length).toBeGreaterThan(0));
+    expect(within(view).queryByRole('region', { name: 'Since you last looked' })).toBeNull();
+  });
+
+  it('TOPIC-11.4, TOPIC-11.10: the summary shows dates, triggers, the open threads left out and what to watch out for; changes since it; earlier summaries, read-only', async () => {
+    const summary = (what: string, writtenAt: number): TopicSummary => ({
+      answer: {
+        what,
+        state: 'in progress',
+        why: 'Half done.',
+        recent: [{ text: 'CI went red.', cites: [], at: '2026-10-31 09:15' }],
+        open: [{ text: 'The corners.', cites: [{ key: memberKey('pr', PR_MEMBER.ref), name: 'anvil #2101' }] }],
+        openMore: 2,
+        next: [{ text: 'Merge it.', cites: [], when: 'when #2101 is approved' }],
+        watch: [{ text: 'The grinder sparks.', cites: [] }],
+      },
+      writtenAt,
+      model: 'claude-sonnet-5-5',
+      costUsd: 0.03,
+    });
+    const app = openApp([topic(1, { title: 'Rates', members: [member(PR_MEMBER)], summary: summary('Now.', Date.now() - 60_000), changesSinceSummary: 3, earlierSummaries: 1 })], work(), { earlierSummaries: { [id(1)]: [summary('Before.', Date.now() - 86_400_000)] } });
+    const user = await openTopics();
+    const view = await openView(user, 'Rates');
+    const s = within(view).getByRole('region', { name: 'Summary' });
+    expect(s.querySelector('[data-field="summary-recent"]')).toHaveTextContent('2026-10-31 09:15CI went red.');
+    expect(s.querySelector('[data-field="summary-open-more"]')).toHaveTextContent('+2 more open');
+    expect(s.querySelector('[data-field="summary-when"]')).toHaveTextContent('when #2101 is approved');
+    expect(s.querySelector('[data-field="summary-watch"]')).toHaveTextContent('Watch outThe grinder sparks.');
+    expect(s.querySelector('[data-field="summary-changes"]')).toHaveTextContent('3 changes since');
+    await user.click(within(s).getByRole('button', { name: 'Earlier summaries (1)' }));
+    expect(app.client.earlierSummaries).toHaveBeenCalledWith(id(1));
+    const earlier = await waitFor(() => s.querySelector<HTMLElement>('[data-field="earlier-summary"]')!);
+    expect(earlier).toHaveTextContent('Before.');
+    await user.click(within(earlier).getByRole('button', { name: /Before\./ }));
+    expect(within(earlier).getAllByText('anvil #2101').every((el) => el.tagName === 'SPAN')).toBe(true);
+  });
+
+  it('TOPIC-1.6: "Superseded by…" picks the Topic from the Open ones, and the view says which Topic superseded it, with a button to it', async () => {
+    const app = openApp([topic(1, { title: 'Rates' }), topic(2, { title: 'Rates v2' })]);
+    const user = await openTopics();
+    await openView(user, 'Rates');
+    await user.click(within(within(topicView()).getByRole('banner')).getByRole('button', { name: 'Archive' }));
+    const asked = screen.getByRole('dialog', { name: 'Archive “Rates”' });
+    await user.click(within(asked).getByRole('radio', { name: 'Superseded by…' }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('option', { name: 'Rates v2' }));
+    expect(within(screen.getByRole('dialog')).getByText('By Rates v2')).toBeInTheDocument();
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Archive' }));
+    expect(app.client.updateTopic).toHaveBeenCalledWith(id(1), { state: 'archived', outcome: 'superseded', closing: null, supersededBy: id(2) });
+    const by = await within(topicView()).findByRole('button', { name: 'superseded by Rates v2' });
+    await user.click(by);
+    await waitFor(() => expect(topicView()).toHaveAccessibleName('Topic Rates v2'));
   });
 });

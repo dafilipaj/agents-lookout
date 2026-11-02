@@ -27,7 +27,7 @@ import { type GuardConfig, guardRequest } from './security.ts';
 import type { SettingsStore } from './settings.ts';
 import { serveStatic } from './static.ts';
 import { type Topics, TopicsError, parseEdgeEdit, parseLink, parseMember, parseMemberRef, parsePatch, parsePositions, parseRecommendationAction, parseTitle, parseUnlink } from './topics.ts';
-import type { RecommendationAction } from '../shared/topics.ts';
+import type { ActivityEntry, RecommendationAction, TopicSummary } from '../shared/topics.ts';
 import { MAX_MESSAGE, ViewError } from './viewer.ts';
 import type { RefreshAnswer } from './work.ts';
 
@@ -122,6 +122,10 @@ export interface AppOptions {
     /** TOPIC-11.1, TOPIC-11.6: start a summary of the Topic, or cancel the one being written. */
     summarize?(id: string): void;
     cancelSummary?(id: string): void;
+    /** TOPIC-12.3, TOPIC-11.10, TOPIC-13.1: a Topic's activity, its earlier summaries, and what's been seen. */
+    activity?(id: string, before: number | null): ActivityEntry[];
+    earlierSummaries?(id: string): TopicSummary[];
+    seenUpTo?(id: string, upto: number): void;
   };
   /** Directory of the built UI; null in `pnpm dev`, where Vite serves it. */
   staticDir: string | null;
@@ -642,7 +646,9 @@ export function createApp(opts: AppOptions): LookoutApp {
  * TOPIC: `GET /api/topics`; `POST /api/topics`; `PUT` and `DELETE /api/topics/<id>`; `POST` and
  * `DELETE /api/topics/<id>/members`; `POST`, `PUT` and `DELETE /api/topics/<id>/edges` (TOPIC-6);
  * `PUT /api/topics/positions` (TOPIC-7.2); `POST /api/topics/recommendations` (TOPIC-9.4); `POST`
- * and `DELETE /api/topics/<id>/summary` (TOPIC-11). A refusal answers with its plain reason (TOPIC-8.4).
+ * and `DELETE /api/topics/<id>/summary` (TOPIC-11); `GET /api/topics/<id>/activity`, `GET
+ * /api/topics/<id>/summaries` and `PUT /api/topics/<id>/seen` (slice 7). A refusal answers with its
+ * plain reason (TOPIC-8.4).
  */
 async function topicsCall(req: IncomingMessage, res: ServerResponse, path: string, topics: NonNullable<AppOptions['topics']>): Promise<void> {
   if (path === '/api/topics/recommendations') {
@@ -668,7 +674,7 @@ async function topicsCall(req: IncomingMessage, res: ServerResponse, path: strin
       throw err;
     }
   }
-  const match = /^\/api\/topics(?:\/([0-9a-f-]{36})(?:\/(members|edges|summary))?)?$/.exec(path);
+  const match = /^\/api\/topics(?:\/([0-9a-f-]{36})(?:\/(members|edges|summary|summaries|activity|seen))?)?$/.exec(path);
   if (!match) return json(res, 404, { error: 'not found' });
   const [, id, sub] = match;
   const route = `${req.method} ${id ? (sub ?? 'topic') : 'topics'}`;
@@ -730,6 +736,27 @@ async function topicsCall(req: IncomingMessage, res: ServerResponse, path: strin
         if (!topics.cancelSummary) return json(res, 404, { error: 'not found' });
         topics.cancelSummary(id!);
         return json(res, 200, { ok: true });
+      // TOPIC-12.3: newest first, a page at a time, before an entry id.
+      case 'GET activity': {
+        if (!topics.activity) return json(res, 404, { error: 'not found' });
+        const before = new URL(req.url ?? '/', 'http://localhost').searchParams.get('before');
+        const n = before === null ? null : Number(before);
+        if (n !== null && !(Number.isSafeInteger(n) && n > 0)) return json(res, 400, { error: 'Before which entry?' });
+        return json(res, 200, { entries: topics.activity(id!, n) });
+      }
+      case 'GET summaries':
+        if (!topics.earlierSummaries) return json(res, 404, { error: 'not found' });
+        return json(res, 200, { summaries: topics.earlierSummaries(id!) });
+      // TOPIC-13.1: seen up to the newest entry the view showed.
+      case 'PUT seen': {
+        if (!topics.seenUpTo) return json(res, 404, { error: 'not found' });
+        const b = await body();
+        if (b === NO_BODY) return;
+        const upto = (b as Record<string, unknown> | null)?.upto;
+        if (typeof upto !== 'number' || !Number.isSafeInteger(upto) || upto < 0) return json(res, 400, { error: 'Seen up to which entry?' });
+        topics.seenUpTo(id!, upto);
+        return json(res, 200, { ok: true });
+      }
     }
   } catch (err) {
     if (err instanceof TopicsError) return json(res, err.status, { error: err.message });

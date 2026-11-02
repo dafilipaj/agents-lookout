@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import type { NewMember, TopicSummary } from '../../../shared/topics.ts';
+import { type NewMember, RESTATE_LINE, type TopicSummary } from '../../../shared/topics.ts';
 import { expect, scenario, world } from '../../world/index.ts';
 
 /** TOPIC slice 6: invented titles, Tasks and summaries. */
@@ -23,7 +23,7 @@ const topicsPanel = (page: Page) => page.getByRole('tabpanel', { name: 'Topics' 
 const sessionSidebar = (page: Page) => page.getByRole('complementary', { name: 'Session sidebar' });
 
 scenario(
-  'TOPIC-5.1: Start Session in a Topic view opens the launcher with the summary, the Task’s URL and the Topic line; it can be edited, and nothing starts',
+  'TOPIC-5.1: Start Session in a Topic view opens the launcher with the summary as a handover, the Task’s URL, the Topic line and the restate line; it can be edited, and nothing starts',
   world().topics([{ title: 'Harbor lanterns', notes: 'Not used while the summary is current.', members: [task], summary: SUMMARY }]),
   async ({ page, world }) => {
     await page.keyboard.press('t');
@@ -39,10 +39,12 @@ scenario(
     expect(value.split('\n\n')).toEqual([
       'Light the harbor lanterns, pier by pier.',
       'State: in progress. The north pier is lit.',
+      'Recent:\n- The north pier was lit.',
       'Open:\n- The south pier has no wicks. (Light the harbor lanterns)',
       'Next:\n- Order wicks.',
       TASK_URL,
       expect.stringMatching(/^Topic: [0-9a-f-]{36} Harbor lanterns$/),
+      RESTATE_LINE,
     ]);
     await expect(dialog.getByLabel('Topic')).toHaveValue(/^[0-9a-f-]{36}$/);
     await prompt.fill(`${value}\nStart at the south pier.`);

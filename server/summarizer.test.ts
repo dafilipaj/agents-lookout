@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { NewMember, Topic, TopicMember, TopicsView } from '../shared/topics.ts';
-import { memberKey } from '../shared/topics.ts';
+import { memberKey, NO_ACTIVITY } from '../shared/topics.ts';
 import type { SessionRow } from '../shared/types.ts';
 import type { WorkSnapshot } from '../shared/work.ts';
 import type { RunOptions } from './exec.ts';
@@ -11,6 +11,8 @@ import type { SessionBrief } from './history.ts';
 import { MAX_INPUT, NOT_INSTALLED, SUMMARY_SCHEMA, SUMMARY_SYSTEM_PROMPT, SUMMARY_TIMEOUT_MS, Summarizer, readAnswer, summaryInput } from './summarizer.ts';
 import { TopicStore, Topics, TopicsError } from './topics.ts';
 
+// Times in the input are local (TOPIC-11.4's `at`); the tests read them in UTC.
+process.env.TZ = 'UTC';
 const ANSWER = readFileSync(new URL('./fixtures/claude/summary-answer.json', import.meta.url), 'utf8');
 const BUDGET = readFileSync(new URL('./fixtures/claude/summary-budget.json', import.meta.url), 'utf8');
 const NOW = Date.parse('2026-10-31T12:00:00Z');
@@ -38,7 +40,7 @@ const WORK = {
 } as unknown as WorkSnapshot;
 
 const member = (m: NewMember, addedAt: number): TopicMember => ({ ...m, key: key(m), addedAt, reason: 'added by hand' }) as TopicMember;
-const topicOf = (members: TopicMember[], over: Partial<Topic> = {}): Topic => ({ id: 't1', title: 'Rates table port', notes: 'Port the Rates table.\nRounding: half up.', state: 'open', createdAt: 0, updatedAt: 0, members, outputs: null, pos: null, summary: null, summaryStale: false, ...over });
+const topicOf = (members: TopicMember[], over: Partial<Topic> = {}): Topic => ({ id: 't1', title: 'Rates table port', notes: 'Port the Rates table.\nRounding: half up.', state: 'open', createdAt: 0, updatedAt: 0, members, outputs: null, pos: null, summary: null, summaryStale: false, ...NO_ACTIVITY, ...over });
 
 interface Call {
   file: string;
@@ -137,16 +139,16 @@ describe('TOPIC-11 a summary of the Topic', () => {
     expect(text).toContain('# Topic: Rates table port');
     expect(text).toContain('Rounding: half up.');
     expect(text).toContain('- This Topic part of "Proposals v2"');
-    expect(text).toMatch(/### S1 · Session: rates-port\n- Added: 1970-01-01 00:00 UTC \(added by hand\)/);
-    expect(text).toContain('- Summary: Port rates table to React\n- Branch: feature/rates-table\n- Messages: 84; last active: 2026-10-31 10:00 UTC');
+    expect(text).toMatch(/### S1 · Session: rates-port\n- Added: 1970-01-01 00:00 \(added by hand\)/);
+    expect(text).toContain('- Summary: Port rates table to React\n- Branch: feature/rates-table\n- Messages: 84; last active: 2026-10-31 10:00');
     expect(text).toContain('- Last reply:\n> Rounding of the totals row still differs.');
     expect(text).toContain('### S2 · Session: spec, live');
     expect(text).toContain('- State: running, Needs you');
     // A Session tb-session no longer has: its snapshot, and that its history is gone.
     expect(text).toMatch(/### S3 · Session: old fix\n.*\n.*\n- State: ended; its history is gone\n\n/);
-    expect(text).toContain('### PR1 · PR: fantastic #812 Rates table\n- Added: 1970-01-01 00:00 UTC (added by hand)\n- State: draft, CI failing');
-    expect(text).toContain('### T1 · Task: Rates table port\n- Added: 1970-01-01 00:00 UTC (added by hand)\n- Project: Fantastic\n- Status: In progress');
-    expect(text).toContain('- Rates port doc · doc · 2026-10-31 07:00 UTC\n- and 2 more');
+    expect(text).toContain('### PR1 · PR: fantastic #812 Rates table\n- Added: 1970-01-01 00:00 (added by hand)\n- State: draft, CI failing');
+    expect(text).toContain('### T1 · Task: Rates table port\n- Added: 1970-01-01 00:00 (added by hand)\n- Project: Fantastic\n- Status: In progress');
+    expect(text).toContain('- Rates port doc · doc · 2026-10-31 07:00\n- and 2 more');
     // A member Work doesn't list.
     const gone = summaryInput({ topic, topics: [topic], edges: [], sessions: new Map(), work: { ...WORK, prs: { ...WORK.prs, mine: [] } } as WorkSnapshot, briefs, now: NOW }).text;
     expect(gone).toContain('- State: not in Work (merged, closed, or not on the board)');
@@ -219,12 +221,14 @@ describe('TOPIC-11 a summary of the Topic', () => {
     if (!read.ok) return;
     expect(read.answer.what).toMatch(/^Port the Rates table screen/);
     expect(read.answer.state).toBe('in progress');
-    expect(read.answer.why).toMatch(/draft with failing CI/);
-    expect(read.answer.open[2]).toEqual({ text: 'PR #812 is still a draft and CI is failing.', cites: [{ key: key(PR), name: 'fantastic #812' }] });
-    expect(read.answer.recent[1]!.cites.map((c) => c.name)).toEqual(['rates-port', 'fantastic #812']);
-    expect(read.answer.recent[2]!.cites).toEqual([]);
+    expect(read.answer.why).toMatch(/draft PR has failing CI/);
+    expect(read.answer.open[2]).toEqual({ text: 'PR #812 is still a draft with CI failing.', cites: [{ key: key(PR), name: 'fantastic #812' }] });
+    expect(read.answer.recent[1]).toEqual({ text: 'CI on fantastic #812 failed.', cites: [{ key: key(PR), name: 'fantastic #812' }], at: '2026-10-31 06:26' });
+    expect(read.answer.next[0]!.cites.map((c) => c.name)).toEqual(['rates-port', 'fantastic #812']);
+    expect(read.answer.next[1]!.when).toBe('when the rounding is fixed');
+    expect(read.answer.openMore).toBe(0);
     expect(read.model).toBe('claude-sonnet-5-5');
-    expect(read.costUsd).toBeCloseTo(0.014656, 6);
+    expect(read.costUsd).toBeCloseTo(0.01962, 6);
     // A key the input didn't have.
     const made = JSON.parse(ANSWER) as { structured_output: { next: { cites: string[] }[] } };
     made.structured_output.next[0]!.cites = ['S1', 'S9', 'T4'];
@@ -256,7 +260,7 @@ describe('TOPIC-11 a summary of the Topic', () => {
     claude.calls[0]!.answer(ANSWER);
     await settle();
     const stored = () => topics.view().topics.find((x) => x.id === t.id)!;
-    expect(stored().summary).toMatchObject({ writtenAt: NOW, model: 'claude-sonnet-5-5', costUsd: expect.closeTo(0.014656, 6), answer: { state: 'in progress' } });
+    expect(stored().summary).toMatchObject({ writtenAt: NOW, model: 'claude-sonnet-5-5', costUsd: expect.closeTo(0.01962, 6), answer: { state: 'in progress' } });
     expect(stored().summary!.answer.open[2]!.cites).toEqual([{ key: key(PR), name: 'fantastic #812' }]);
     expect(stored().summaryStale).toBe(false);
     topics.update(t.id, { title: 'A, renamed' });
@@ -279,7 +283,7 @@ describe('TOPIC-11 a summary of the Topic', () => {
     store.saveSummary(id, { answer: { what: 'w', state: 'done', why: 'y', open: [], recent: [], next: [] }, writtenAt: 5, model: 'claude-sonnet-5-5', costUsd: 0.02 }, 'f');
     store.close();
     const again = new TopicStore(path);
-    expect(again.summaries().get(id)).toEqual({ summary: { answer: { what: 'w', state: 'done', why: 'y', open: [], recent: [], next: [] }, writtenAt: 5, model: 'claude-sonnet-5-5', costUsd: 0.02 }, fingerprint: 'f' });
+    expect(again.summaries().get(id)).toEqual({ summary: { answer: { what: 'w', state: 'done', why: 'y', open: [], recent: [], next: [], openMore: 0, watch: [] }, writtenAt: 5, model: 'claude-sonnet-5-5', costUsd: 0.02 }, fingerprint: 'f' });
     again.delete(id);
     expect(again.summaries().size).toBe(0);
     again.close();
@@ -367,5 +371,76 @@ describe('TOPIC-11 a summary of the Topic', () => {
     expect(topics.view().summaryErrors).toEqual({});
     expect(logs).toEqual([]);
     expect(() => summarizer.start(t.id)).toThrow(new TopicsError(404, 'That Topic no longer exists.'));
+  });
+});
+
+describe('TOPIC-11 slice 7: where the work stands, from the activity', () => {
+  it('TOPIC-11.3: the activity goes in oldest first, each entry with its local time and its member’s key, a removed member by name; the run keeps the newest entry it held', async () => {
+    const { topics, summarizer, claude } = setup();
+    const t = topics.create('A');
+    topics.addMember(t.id, SESSION(1, 'one'));
+    topics.addMember(t.id, PR);
+    topics.addMember(t.id, TASK);
+    topics.removeMember(t.id, 'task', JSON.stringify({ id: '123' }));
+    summarizer.start(t.id);
+    await settle();
+    const stdin = claude.calls[0]!.opts.stdin!;
+    expect(stdin).toContain(
+      ['## Activity, oldest first', '', '- 2026-10-31 12:00 · Made', '- 2026-10-31 12:00 · S1 · Added one, added by hand', '- 2026-10-31 12:00 · PR1 · Added fantastic #812, added by hand', '- 2026-10-31 12:00 · Added Rates table port, added by hand', '- 2026-10-31 12:00 · Removed Rates table port'].join('\n'),
+    );
+    const upto = topics.view().topics[0]!.lastEntryId;
+    claude.calls[0]!.answer(ANSWER);
+    await settle();
+    // The summary's own entry doesn't count as a change since it.
+    topics.update(t.id, { title: 'B' });
+    expect(topics.view().topics[0]).toMatchObject({ changesSinceSummary: 1 });
+    expect(upto).toBeGreaterThan(0);
+  });
+
+  it('TOPIC-11.3: past the limit the oldest activity goes first, down to the latest 20, before any Session loses a message', () => {
+    const activity = Array.from({ length: 80 }, (_, i) => ({ id: i + 1, at: NOW, kind: 'notes' as const, member: null, by: 'you' as const, data: {} }));
+    const sessions = Array.from({ length: 3 }, (_, i) => member(SESSION(i + 1), i));
+    const briefs = new Map(sessions.map((s) => [s.key, brief({ lastAssistant: 'r'.repeat(1_000) })]));
+    const fits = summaryInput({ topic: topicOf(sessions), topics: [], edges: [], sessions: new Map(), work: WORK, briefs, activity, now: NOW });
+    expect(fits.text.match(/Notes saved/g)).toHaveLength(80);
+    const tight = summaryInput({ topic: topicOf(sessions, { notes: 'n'.repeat(MAX_INPUT - 5_000) }), topics: [], edges: [], sessions: new Map(), work: WORK, briefs, activity, now: NOW });
+    expect(tight.text.match(/Notes saved/g)!.length).toBeLessThan(80);
+    expect(tight.text).toContain('earlier entries left out');
+    expect(tight.text).toContain('Last reply');
+  });
+
+  it('TOPIC-11.4: `at` in another form is read as none, `open` past four goes to `openMore`, and an answer without `watch` or `openMore` is refused', () => {
+    const keys = new Map([['S1', { key: key(SESSION(1)), name: 'one' }]]);
+    const shaped = (o: Record<string, unknown>) =>
+      JSON.stringify({ ...JSON.parse(ANSWER), structured_output: { what: 'x', state: 'done', why: 'y', recent: [], open: [], openMore: 0, next: [], watch: [], ...o } });
+    const pt = (text: string, extra: Record<string, unknown> = {}) => ({ text, cites: ['S1'], ...extra });
+    const read = readAnswer(shaped({ recent: [pt('a', { at: 'yesterday' }), pt('b', { at: '2026-10-31 09:15' })], open: ['1', '2', '3', '4', '5', '6'].map((n) => pt(n)), openMore: 2, next: [pt('n', { when: 'when #812 is approved' })], watch: [pt('w')] }), keys);
+    expect(read.ok).toBe(true);
+    if (!read.ok) return;
+    expect(read.answer.recent.map((p) => p.at)).toEqual([null, '2026-10-31 09:15']);
+    expect(read.answer.open.map((p) => p.text)).toEqual(['1', '2', '3', '4']);
+    expect(read.answer.openMore).toBe(4);
+    expect(read.answer.next[0]!.when).toBe('when #812 is approved');
+    expect(read.answer.watch).toEqual([{ text: 'w', cites: [{ key: key(SESSION(1)), name: 'one' }] }]);
+    for (const missing of ['watch', 'openMore']) {
+      const o = JSON.parse(shaped({})) as { structured_output: Record<string, unknown> };
+      delete o.structured_output[missing];
+      expect(readAnswer(JSON.stringify(o), keys)).toEqual({ ok: false, reason: "Claude answered something Lookout can't read." });
+    }
+  });
+});
+
+describe('TOPIC-11.4, from the code review', () => {
+  it('TOPIC-11.4: an `at` or `when` that isn’t text is read as none; open threads past the eight kept are still counted', () => {
+    const keys = new Map<string, { key: string; name: string }>();
+    const pt = (text: string, extra: Record<string, unknown> = {}) => ({ text, cites: [], ...extra });
+    const out = JSON.stringify({ ...JSON.parse(ANSWER), structured_output: { what: 'x', state: 'done', why: 'y', recent: [pt('r', { at: 5 })], open: Array.from({ length: 10 }, (_, i) => pt(`o${i}`)), openMore: 1, next: [pt('n', { when: 7 })], watch: [] } });
+    const read = readAnswer(out, keys);
+    expect(read.ok).toBe(true);
+    if (!read.ok) return;
+    expect(read.answer.recent[0]!.at).toBeNull();
+    expect(read.answer.next[0]!.when).toBeNull();
+    expect(read.answer.open).toHaveLength(4);
+    expect(read.answer.openMore).toBe(7);
   });
 });

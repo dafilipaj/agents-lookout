@@ -1,5 +1,5 @@
 import type { OutputSession } from '@shared/library.ts';
-import { type MemberKind, type NewMember, type SummaryState, type Topic, type TopicEdge, type TopicMember, type TopicsView, historyMember, memberKey, sortTopics } from '@shared/topics.ts';
+import { type MemberKind, type NewMember, type SummaryState, type Topic, type TopicEdge, type TopicMember, type TopicOutcome, type TopicsView, historyMember, memberKey, sortTopics } from '@shared/topics.ts';
 export { historyMember, prMember, rowMember, sessionMember, taskMember } from '@shared/topics.ts';
 import type { SessionRow, Status } from '@shared/types.ts';
 import type { WorkPr, WorkSnapshot, WorkTask } from '@shared/work.ts';
@@ -111,10 +111,34 @@ export function looksDone(topic: Topic, work: WorkSnapshot | null): boolean {
   return prs.every((m) => prState(m.ref.url, work).state === 'gone') && tasks.every((m) => taskState(m.ref.id, work).state === 'gone');
 }
 
-/** TOPIC-3.2: the filter matches titles and notes, ignoring case. */
-export function matchesTopic(topic: Topic, query: string): boolean {
+/**
+ * TOPIC-3.2: the filter matches, ignoring case, titles, notes and closing lines, and what's in a
+ * Topic: its members' titles (a live Session's current one and every snapshot), its PRs' repos and
+ * numbers ("fantastic #2711", "#2711"), its Tasks' projects and the last folder of each Session's
+ * start directory. From what the browser holds; nothing is read for it.
+ */
+export function matchesTopic(topic: Topic, query: string, sessions?: ReadonlyMap<string, SessionRow>): boolean {
   const q = query.trim().toLowerCase();
-  return !q || topic.title.toLowerCase().includes(q) || topic.notes.toLowerCase().includes(q);
+  if (!q) return true;
+  return topicWords(topic, sessions).some((w) => w.toLowerCase().includes(q));
+}
+
+function topicWords(topic: Topic, sessions?: ReadonlyMap<string, SessionRow>): string[] {
+  const words = [topic.title, topic.notes, topic.closing ?? ''];
+  for (const m of topic.members) {
+    words.push(m.snapshot.title);
+    if (m.kind === 'session') {
+      const row = sessions ? liveRow(m, sessions) : null;
+      if (row) words.push(row.title);
+      const folder = m.snapshot.directory?.split('/').filter(Boolean).at(-1);
+      if (folder) words.push(folder);
+    } else if (m.kind === 'pr') {
+      words.push(`${m.snapshot.repo} #${m.snapshot.number}`);
+    } else if (m.kind === 'task' && m.snapshot.project) {
+      words.push(m.snapshot.project);
+    }
+  }
+  return words;
 }
 
 /** TOPIC-3.5: the titles of the Topics a live Session is in, for the Session sidebar's filter. */
@@ -167,3 +191,6 @@ export interface TopicsApi {
 
 export const TopicsContext = createContext<TopicsApi | null>(null);
 export const useTopics = () => useContext(TopicsContext);
+
+/** TOPIC-1.6: the outcome chip's words, on an archived Topic. */
+export const OUTCOME_WORD: Record<TopicOutcome, string> = { done: 'done', parked: 'parked', dropped: 'dropped', superseded: 'superseded' };

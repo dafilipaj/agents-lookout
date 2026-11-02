@@ -73,6 +73,8 @@ const work = new WorkMonitor({
   productiveEmail: settings.get().productiveEmail,
   onChange: (w) => {
     app.broadcast({ type: 'work', work: w });
+    // TOPIC-12: member PRs and Tasks that changed are the Topics' activity.
+    observeTopics(() => topics.observeWork(w, settings.get().productiveEmail));
     // TOPIC-9.1, TOPIC-9.2: its PRs and Tasks are candidates once; its Links tie what they can.
     recommender.observeWork(w);
   },
@@ -100,6 +102,8 @@ const monitor: SessionMonitor = new SessionMonitor({
     work.setLiveSessions(rows.flatMap((row) => (row.session_id ? [row.session_id] : [])));
     // TOPIC-5.2: a Session Lookout started for a Topic joins it first, so it's never a candidate.
     topicLaunches.observe(monitor.snapshot().sessions);
+    // TOPIC-12: member Sessions live again or ended are the Topics' activity.
+    observeTopics(() => topics.observeSessions(monitor.snapshot().sessions));
     // TOPIC-9.1: a Session with a session id is a candidate once.
     recommender.observeSessions(monitor.snapshot().sessions);
   },
@@ -176,6 +180,15 @@ const memory = new MemoryMonitor({
     app.broadcast({ type: 'memory', memory: m });
   },
 });
+
+/** TOPIC-12.2, TOPIC-8.4: a Topics store that fails while recording activity is one log line; Lookout keeps running. */
+function observeTopics(fn: () => void): void {
+  try {
+    fn();
+  } catch (err) {
+    console.warn(`lookout: topics: recording activity failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
 
 // TOPIC-8: Lookout's own store of Topics; one that can't be opened leaves the Topics tab saying why.
 const topicsPath = defaultTopicsPath(env);

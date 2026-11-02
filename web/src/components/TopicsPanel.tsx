@@ -1,4 +1,4 @@
-import { MAX_TOPIC_TITLE, type Recommendation, type RecommendationAction, type Topic, type TopicsView, sortTopics } from '@shared/topics.ts';
+import { MAX_TOPIC_TITLE, type Recommendation, type RecommendationAction, type Topic, type TopicsView, activityWords, sortTopics } from '@shared/topics.ts';
 import type { SessionRow } from '@shared/types.ts';
 import type { WorkSnapshot } from '@shared/work.ts';
 import { Network, Plus, Search } from 'lucide-react';
@@ -10,9 +10,11 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Loading } from '@/components/ui/loading';
 import { SessionMarker } from '@/components/ui/session-marker';
 import type { PanelNav } from '@/lib/right-sidebar';
-import { SUMMARY_STATE_WORD, liveRow, looksDone, matchesTopic, memberCounts, orderSessions, topicMarker } from '@/lib/topics';
+import { OUTCOME_WORD, SUMMARY_STATE_WORD, liveRow, looksDone, matchesTopic, memberCounts, orderSessions, topicMarker } from '@/lib/topics';
+import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { Markdown } from './Markdown';
+import type { ArchivePatch } from './ArchiveDialog';
 import { Recommendations } from './Recommendations';
 import { type SessionMember, SessionChip, TopicActions } from './TopicView';
 
@@ -38,7 +40,7 @@ export interface TopicsPanelProps {
   onRevealed(): void;
   createTopic(title: string): Promise<Topic>;
   /** TOPIC-1.3: Archive and Unarchive. */
-  updateTopic(id: string, patch: { state: Topic['state'] }): Promise<unknown>;
+  updateTopic(id: string, patch: { state: 'open' } | ArchivePatch): Promise<unknown>;
   deleteTopic(id: string): Promise<void>;
   /** TOPIC-3.4: a Session chip opens a live Session, or resumes a past one (LIB-3.5). */
   onOpenSession(member: SessionMember, live: boolean): Promise<void>;
@@ -55,6 +57,10 @@ export interface TopicsPanelProps {
   onOpenTopic(id: string): void;
   /** TOPIC-6.1: "Link to Topic…" opens the Topic picker for this Topic. */
   onLinkTo(topic: Topic): void;
+  /** TOPIC-13.3: the Topic whose view is open in this tab: its row shows no "N new". */
+  viewedTopic?: string | null;
+  /** TOPIC-3.8: for the latest activity's age. */
+  now: number;
   keyboardEnabled: boolean;
   navRef?: Ref<PanelNav>;
 }
@@ -83,7 +89,7 @@ export function TopicsPanel(props: TopicsPanelProps) {
   const rootRef = useRef<HTMLDivElement>(null);
 
   const all = sortTopics(view?.topics ?? []);
-  const shown = all.filter((t) => (archived || t.state === 'open') && matchesTopic(t, query));
+  const shown = all.filter((t) => (archived || t.state === 'open') && matchesTopic(t, query, sessions));
   const current = shown.some((t) => t.id === selected) ? selected : (shown[0]?.id ?? null);
   const open = expanded !== null && shown.some((t) => t.id === expanded) ? expanded : null;
   // TOPIC-7.1: a Topic picked in the graph that the filter hides clears the filter, so the tab marks
@@ -92,7 +98,7 @@ export function TopicsPanel(props: TopicsPanelProps) {
   if (props.picked !== seenPick) {
     setSeenPick(props.picked);
     const t = props.picked ? all.find((x) => x.id === props.picked!.id) : undefined;
-    if (t && (archived || t.state === 'open') && !matchesTopic(t, query)) setQuery('');
+    if (t && (archived || t.state === 'open') && !matchesTopic(t, query, sessions)) setQuery('');
   }
 
   // Opening Topics focuses the selected Topic, else the filter.
@@ -109,7 +115,7 @@ export function TopicsPanel(props: TopicsPanelProps) {
     setRevealed(reveal);
     const t = reveal ? (view?.topics ?? []).find((x) => x.id === reveal.id) : undefined;
     if (t) {
-      if (!matchesTopic(t, query)) setQuery('');
+      if (!matchesTopic(t, query, sessions)) setQuery('');
       setExpanded(t.id);
     }
   }
@@ -345,6 +351,9 @@ function TopicItem({ topic, selected, expanded, sessions, work, onHeader, panel,
   const marker = topicMarker(topic, sessions);
   const done = looksDone(topic, work);
   const counts = memberCounts(topic.members);
+  // TOPIC-3.8, TOPIC-13.3: what happened last, and what's new, except on the Topic open in this tab.
+  const last = topic.lastActivity;
+  const fresh = panel.viewedTopic === topic.id ? 0 : topic.newCount;
   return (
     <div role="listitem" data-topic-id={topic.id} className={cn('flex min-w-0 flex-col rounded-md', selected && 'bg-sidebar-accent')}>
       <button
@@ -352,7 +361,7 @@ function TopicItem({ topic, selected, expanded, sessions, work, onHeader, panel,
         type="button"
         aria-expanded={expanded}
         aria-current={selected || undefined}
-        aria-label={[topic.title, counts, topic.state === 'archived' && 'archived', done && 'looks done'].filter(Boolean).join(', ')}
+        aria-label={[topic.title, counts, topic.state === 'archived' && (topic.outcome ? `archived, ${OUTCOME_WORD[topic.outcome]}` : 'archived'), done && 'looks done', fresh > 0 && `${fresh} new`].filter(Boolean).join(', ')}
         // A click from the keyboard has no pointer, so `detail` is 0.
         onClick={(e) => onHeader(e.detail === 0)}
         className="flex min-w-0 cursor-default flex-col gap-0.5 rounded-md px-2 py-1.5 text-left text-body outline-none hover:bg-sidebar-accent/60 focus-visible:ring-2 focus-visible:ring-ring/50"
@@ -364,18 +373,28 @@ function TopicItem({ topic, selected, expanded, sessions, work, onHeader, panel,
           <span className="min-w-0 flex-1 truncate font-medium" data-field="title">
             {topic.title}
           </span>
-          {topic.state === 'archived' && <Chip tone="muted">archived</Chip>}
+          {topic.state === 'archived' && <Chip tone="muted">{topic.outcome ? `archived · ${OUTCOME_WORD[topic.outcome]}` : 'archived'}</Chip>}
           {done && (
             <Chip tone="info" title="Every PR and Task in it has left Work. Archive it when you're done." data-field="looks-done">
               looks done
+            </Chip>
+          )}
+          {fresh > 0 && (
+            <Chip tone="muted" title="Activity since you last opened it" data-field="new-count">
+              {fresh} new
             </Chip>
           )}
         </span>
         <span className="truncate pl-5 text-meta text-muted-foreground" data-field="counts">
           {counts}
         </span>
+        {last && (
+          <span className="truncate pl-5 text-meta text-muted-foreground" data-field="last-activity">
+            {activityWords(last)} · {formatAge(panel.now - last.at)}
+          </span>
+        )}
       </button>
-      {expanded && <TopicSummary topic={topic} sessions={sessions} panel={panel} onProblem={onProblem} />}
+      {expanded && <TopicSummary topic={topic} sessions={sessions} panel={panel} onProblem={onProblem} done={done} />}
     </div>
   );
 }
@@ -384,7 +403,7 @@ function TopicItem({ topic, selected, expanded, sessions, work, onHeader, panel,
  * TOPIC-3.4: an expanded Topic is a summary; the whole Topic is its view (TOPIC-10). The notes' first
  * lines, its live Sessions as chips and how many past ones, then its buttons, "Open" first.
  */
-function TopicSummary({ topic, sessions, panel, onProblem }: Omit<TopicItemProps, 'selected' | 'expanded' | 'onHeader' | 'work'>) {
+function TopicSummary({ topic, sessions, panel, onProblem, done }: Omit<TopicItemProps, 'selected' | 'expanded' | 'onHeader' | 'work'> & { done: boolean }) {
   const sessionMembers = topic.members.filter((m): m is SessionMember => m.kind === 'session');
   const live = orderSessions(sessionMembers, sessions).filter((m) => liveRow(m, sessions) !== null);
   const past = sessionMembers.length - live.length;
@@ -423,7 +442,7 @@ function TopicSummary({ topic, sessions, panel, onProblem }: Omit<TopicItemProps
           {past > 0 && <span data-field="past-sessions">{live.length ? `+${past} past` : `${past} past ${past === 1 ? 'Session' : 'Sessions'}`}</span>}
         </div>
       )}
-      <TopicActions topic={topic} look="row" onOpen={() => panel.onOpenTopic(topic.id)} onOpenGraph={panel.onOpenGraph} onLinkTo={panel.onLinkTo} updateTopic={panel.updateTopic} deleteTopic={panel.deleteTopic} onProblem={onProblem} />
+      <TopicActions topic={topic} topics={panel.view?.topics ?? []} looksDone={done} look="row" onOpen={() => panel.onOpenTopic(topic.id)} onOpenGraph={panel.onOpenGraph} onLinkTo={panel.onLinkTo} updateTopic={panel.updateTopic} deleteTopic={panel.deleteTopic} onProblem={onProblem} />
     </div>
   );
 }

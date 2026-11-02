@@ -151,7 +151,7 @@ it('TOPIC-1.2, TOPIC-1.3, TOPIC-1.4, TOPIC-2.4: notes, Archive, Remove and Delet
   };
   const { body } = await call('POST', '/api/topics', { title: 'A' });
   const id = (body.topic as { id: string }).id;
-  expect((await call('PUT', `/api/topics/${id}`, { notes: 'Rounding: half up.', state: 'archived' })).body.topic).toMatchObject({ notes: 'Rounding: half up.', state: 'archived' });
+  expect((await call('PUT', `/api/topics/${id}`, { notes: 'Rounding: half up.', state: 'archived', outcome: 'done' })).body.topic).toMatchObject({ notes: 'Rounding: half up.', state: 'archived', outcome: 'done' });
   expect(await call('PUT', `/api/topics/${id}`, { title: '  ' })).toEqual({ status: 400, body: { error: 'A Topic needs a title.' } });
   expect(await call('POST', '/api/topics', {})).toEqual({ status: 400, body: { error: 'A Topic needs a title.' } });
   await call('POST', `/api/topics/${id}/members`, PR);
@@ -257,4 +257,24 @@ it('TOPIC-5.2 (support): POST /api/launch with a Topic expects the Session befor
   const noId = exchange('POST', '/api/launch', { ...body, launchId: undefined, topic: { id: topic.id, via: 'topic' } });
   await noId.done;
   expect(noId.res.statusCode).toBe(400);
+});
+
+it('TOPIC-1.6, TOPIC-12.3, TOPIC-11.10, TOPIC-13.1: archiving needs an outcome; the activity a page at a time; earlier summaries; seen up to an entry', async () => {
+  const { exchange } = setup();
+  const call = async (method: string, url: string, body?: unknown) => {
+    const r = exchange(method, url, body);
+    await r.done;
+    return { status: r.res.statusCode, body: JSON.parse(r.text()) as Record<string, unknown> };
+  };
+  const id = ((await call('POST', '/api/topics', { title: 'A' })).body.topic as { id: string }).id;
+  expect(await call('PUT', `/api/topics/${id}`, { state: 'archived' })).toEqual({ status: 400, body: { error: 'Say how it ended: done, parked, dropped or superseded.' } });
+  expect((await call('PUT', `/api/topics/${id}`, { state: 'archived', outcome: 'parked', closing: 'Later.' })).body.topic).toMatchObject({ outcome: 'parked', closing: 'Later.' });
+  const entries = (await call('GET', `/api/topics/${id}/activity`)).body.entries as { id: number; kind: string }[];
+  expect(entries.map((e) => e.kind)).toEqual(['archived', 'made']);
+  expect(((await call('GET', `/api/topics/${id}/activity?before=${entries[0]!.id}`)).body.entries as { kind: string }[]).map((e) => e.kind)).toEqual(['made']);
+  expect((await call('GET', `/api/topics/${id}/activity?before=x`)).status).toBe(400);
+  expect(await call('GET', `/api/topics/${id}/summaries`)).toEqual({ status: 200, body: { summaries: [] } });
+  expect(await call('PUT', `/api/topics/${id}/seen`, { upto: -1 })).toEqual({ status: 400, body: { error: 'Seen up to which entry?' } });
+  expect(await call('PUT', `/api/topics/${id}/seen`, { upto: entries[0]!.id })).toEqual({ status: 200, body: { ok: true } });
+  expect(((await call('GET', '/api/topics')).body.topics as { seenUpto: number }[])[0]!.seenUpto).toBe(entries[0]!.id);
 });
