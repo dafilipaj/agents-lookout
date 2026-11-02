@@ -46,6 +46,7 @@ import { PaneHeader, ShellCell, ShellView } from './Shell';
 import { StatusMarker } from './StatusMarker';
 import { StatusMenu } from './StatusMenu';
 import { ChangesButton, type ChangesButtonProps } from './ChangesButton';
+import { SubagentsButton, type SubagentsButtonProps } from './SubagentsButton';
 import { changesTip } from '@/lib/changes';
 import { AddToTopicButton } from './TopicLinks';
 import { rowMember } from '@/lib/topics';
@@ -383,6 +384,7 @@ export function SessionView({
           onLoadModels={onLoadModels}
           onSwitch={onSwitch}
           statusSwitch={statusSwitch}
+          focusFallback={() => focusComposerOrChat(composerRef.current)}
           changes={
             !ended && onChangesOpen && onOpenChange
               ? {
@@ -723,6 +725,7 @@ function StatusLine({
   onSwitch,
   statusSwitch,
   changes,
+  focusFallback,
 }: {
   row: SessionRow;
   ended: boolean;
@@ -732,6 +735,8 @@ function StatusLine({
   statusSwitch: SwitchState | undefined;
   /** DIFF-1.3: the count and its list; null for an ended Session or without the feature. */
   changes: ChangesButtonProps | null;
+  /** VIEW-8.10: where focus goes when a list closes because its part went away. */
+  focusFallback(): void;
 }) {
   const loc = location(row);
   const where = row.git ? row.git.repo : row.cwd;
@@ -845,19 +850,43 @@ function StatusLine({
           </span>
         </>
       )}
-      {subagents && (
-        <>
-          {(where || loc || model || effort || context || shell) && dot}
-          <span
-            className={cn('min-w-0 truncate', running ? 'text-busy-text' : 'text-idle-text')}
-            data-field="subagents"
-            data-state={running ? 'running' : 'done'}
-          >
-            {subagents}
-          </span>
-        </>
+      {row.subagents?.items ? (
+        // VIEW-8.6: with Fleet's list, the part opens it; an ended Session's has no part (VIEW-8.4), which
+        // closes an open list (VIEW-8.10).
+        <SubagentsSlot
+          dot={(where || loc || model || effort || context || shell) && dot}
+          text={subagents}
+          running={running > 0}
+          subagents={row.subagents}
+          focusFallback={focusFallback}
+        />
+      ) : (
+        subagents && (
+          <>
+            {(where || loc || model || effort || context || shell) && dot}
+            <span
+              className={cn('min-w-0 truncate', running ? 'text-busy-text' : 'text-idle-text')}
+              data-field="subagents"
+              data-state={running ? 'running' : 'done'}
+            >
+              {subagents}
+            </span>
+          </>
+        )
       )}
     </StatusBar>
+  );
+}
+
+/** VIEW-8.6: the Subagents part and its list; it stays while the list is open, to close it (VIEW-8.10). */
+function SubagentsSlot({ dot, ...props }: Omit<SubagentsButtonProps, 'open' | 'onOpenChange'> & { dot: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  if (!props.text && !open) return null;
+  return (
+    <>
+      {props.text && dot}
+      <SubagentsButton {...props} open={open} onOpenChange={setOpen} />
+    </>
   );
 }
 

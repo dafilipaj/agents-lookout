@@ -1,4 +1,4 @@
-import type { Backend, GitLocation, Harness, LocationShown, SessionRow, Status } from '../shared/types.ts';
+import type { Backend, GitLocation, Harness, LocationShown, SessionRow, Status, SubagentItem } from '../shared/types.ts';
 import type { FleetListResult, FleetRow } from './fleet.ts';
 
 const HARNESSES: readonly string[] = ['claude', 'codex'] satisfies Harness[];
@@ -61,12 +61,66 @@ export function effort(value: unknown): string | null {
   return typeof value === 'string' && EFFORT.test(value) ? value : null;
 }
 
+/** VIEW-8.6: how many Subagents a list holds at most (Fleet's cap), and how long its words may be. */
+const MAX_SUBAGENTS = 20;
+const MAX_SUBAGENT_WORDS = 500;
+const SUBAGENT_STATES = new Set<string>(['running', 'completed', 'failed', 'stopped']);
+/** RFC 3339 with an offset or `Z`, as Fleet writes its times. */
+const RFC3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
+
+/** A Subagent's words: one line, bidi controls dropped, cut to 500 characters by grapheme; null when empty. */
+function subagentWords(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const text = value.replace(BIDI, '').replace(/\s+/g, ' ').trim();
+  if (!text) return null;
+  const chars = Array.from(graphemes.segment(text), (s) => s.segment);
+  return chars.length <= MAX_SUBAGENT_WORDS ? text : `${chars.slice(0, MAX_SUBAGENT_WORDS - 1).join('').trimEnd()}…`;
+}
+
+function subagentTime(value: unknown): string | null {
+  return typeof value === 'string' && value.length <= 40 && RFC3339.test(value) && Number.isFinite(Date.parse(value)) ? value : null;
+}
+
+/**
+ * VIEW-8.6, 8.13: Fleet's `subagents.items`, at most 20; an item without a string `id` or a known
+ * `state` is dropped, not the list. Undefined when Fleet gives no list (an older Fleet).
+ */
+export function subagentItems(value: unknown): SubagentItem[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const items: SubagentItem[] = [];
+  for (const v of value) {
+    if (items.length === MAX_SUBAGENTS) break;
+    if (typeof v !== 'object' || v === null) continue;
+    const r = v as Record<string, unknown>;
+    const id = subagentWords(r.id);
+    if (!id || typeof r.state !== 'string' || !SUBAGENT_STATES.has(r.state)) continue;
+    const depth = typeof r.depth === 'number' && Number.isInteger(r.depth) && r.depth >= 1 && r.depth <= 100 ? r.depth : null;
+    items.push({
+      id,
+      parent: subagentWords(r.parent),
+      depth,
+      state: r.state as SubagentItem['state'],
+      task: subagentWords(r.task),
+      type: subagentWords(r.type),
+      name: subagentWords(r.name),
+      role: subagentWords(r.role),
+      model: subagentWords(r.model),
+      startedAt: subagentTime(r.started_at),
+      endedAt: subagentTime(r.ended_at),
+      activity: subagentWords(r.activity),
+    });
+  }
+  return items;
+}
+
 /** SIDE-9.3: unknown running makes the whole count unknown; unknown finished shows no done part. */
 export function subagents(value: unknown): SessionRow['subagents'] {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
-  const { running, finished } = value as Record<string, unknown>;
+  const { running, finished, items } = value as Record<string, unknown>;
   const isCount = (n: unknown): n is number => typeof n === 'number' && Number.isInteger(n) && n >= 0 && n <= 1000;
-  return isCount(running) ? { running, finished: isCount(finished) ? finished : 0 } : null;
+  if (!isCount(running)) return null;
+  const listed = subagentItems(items);
+  return { running, finished: isCount(finished) ? finished : 0, ...(listed && { items: listed }) };
 }
 
 /** SIDE-2.6: a background shell command still runs: Fleet's `background.shells`, or an older Fleet's `shell`. */

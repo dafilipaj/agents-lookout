@@ -37,6 +37,29 @@ export interface LocationShown {
 }
 
 /** One sidebar row, as the server sends it to the UI. */
+/** VIEW-8.6: one Subagent of a Session's list, from Fleet's `subagents.items` (docs/contracts/fleet-subagents.md). */
+export interface SubagentItem {
+  id: string;
+  /** The Subagent that started it; null for one the Session started. */
+  parent: string | null;
+  /** 1 for one the Session started, 2 for one a Subagent started, …; null when unknown. */
+  depth: number | null;
+  state: 'running' | 'completed' | 'failed' | 'stopped';
+  /** What it was asked (Claude Code's description, Codex's task). */
+  task: string | null;
+  /** Claude Code's agent type. */
+  type: string | null;
+  /** Codex's nickname and role. */
+  name: string | null;
+  role: string | null;
+  model: string | null;
+  /** RFC 3339. */
+  startedAt: string | null;
+  endedAt: string | null;
+  /** Its last tool call, short. */
+  activity: string | null;
+}
+
 export interface SessionRow {
   /** `session_id` when present, otherwise `<harness>:<pid>`. */
   id: string;
@@ -66,8 +89,11 @@ export interface SessionRow {
   model: string | null;
   /** VIEW-5.11: the Session's Effort as Fleet read it (`high`, `xhigh` …); null when unknown. */
   effort: string | null;
-  /** SIDE-9, VIEW-8: running now and finished in this Turn; null when Fleet can't tell. */
-  subagents: { running: number; finished: number } | null;
+  /**
+   * SIDE-9, VIEW-8: running now and finished in this Turn; null when Fleet can't tell. `items`
+   * (VIEW-8.6): the Subagents counted, at most 20; missing from a Fleet that doesn't list them.
+   */
+  subagents: { running: number; finished: number; items?: SubagentItem[] } | null;
   /**
    * DIFF-1: the Session's Changes summed over the Checkouts that count (DIFF-2.1, 2.2); null with no
    * changed file, outside git, or when Fleet can't tell (DIFF-5). Missing before the first answer.

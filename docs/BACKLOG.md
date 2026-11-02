@@ -133,12 +133,12 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
 - **How:** read the agent files' frontmatter directly (no Harness call needed); usage and cost from the same Transcript reads LIB and the token analysis use. Open questions: a sidebar tab or a Settings page; whether picking one starts a Session with it (LAUNCH) or only shows it; whether to show plugin agents a project disables.
 - **Added:** 2026-10-30, by Dario.
 
-## What each running Subagent is doing (VIEW-8)
+## Open a Subagent's own log (VIEW)
 
-- **What:** beyond VIEW-8's count, the Session's running background Subagents and shells one by one: what each was asked, its type, model, how long it has run and its last tool call.
-- **Why:** "2 subagents" says that work goes on, not what; today you open the terminal or wait for the result row.
-- **How:** upstream Fleet's `core::background` (`ee4c0b0`, in the fork from the 2026-10-30 rebase) reads this from the main Transcript and shows it in Fleet's web app (Details → Background); `list --json` carries only the counts (`background: {agents, shells}`). A fork commit exposing the per-agent detail, then a VIEW spec change for where it shows (the status line's count as a popover is the obvious place).
-- **Added:** 2026-10-30, by Dario, from the Fleet review.
+- **What:** from a row of the Subagents list (VIEW-8.6), its own messages and tool calls, as the chat shows a Session's.
+- **Why:** the list says what a Subagent is doing now; why it did something, or what it found before its result, is only in its own log.
+- **How:** Claude Code's `subagents/agent-<id>.jsonl` beside the Transcript, Codex's child rollout; the chat's reader (VIEW-1) over a sidechain, opened from the list. Left out of VIEW-8's list (its Non-goals) on 2026-11-02.
+- **Added:** 2026-11-02, by Dario, from the VIEW-8 list's grill.
 
 ## A Session's brief as a Topic's notes (TOPIC)
 
@@ -159,6 +159,13 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
 - **Why:** Dario noticed the need; today it's a copy-paste of a summary into the Launch form.
 - **How:** Fleet's `spawn --from <target>` takes its first prompt from the Session's brief (`brief --prompt`), so it needs the brief above to exist first; `handoff` does the same with a brief you write. Also "start a Session on this Task" from Work, with the Task's link and title as context, as Fleet's `task spawn` does.
 - **Added:** 2026-10-30, by Dario, from the Fleet review.
+
+## Settings in sections (SIDE-7, DS)
+
+- **What:** the Settings page split into tabs or sub-pages (for example General, Sessions, Topics, Usage, Fleet), so each setting group has its own place instead of one long page.
+- **Why:** every feature has added its switches to the one page (idle threshold, Start directories, the Topics recommender, …), and it's getting crowded.
+- **How:** a SIDE-7 spec change; the design system has no tabs or side navigation yet, so it likely needs new DS components (a tab list or a sub-navigation, with keyboard and routes such as `/settings/<section>`).
+- **Added:** 2026-11-02, by Dario.
 
 ## Dropped
 

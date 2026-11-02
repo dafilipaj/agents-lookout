@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { GitLocation } from '../shared/types.ts';
 import type { FleetRow } from './fleet.ts';
-import { activity, effort, locationShown, normalizeRows, procStart, sessionId, subagents, toStatus } from './normalize.ts';
+import { activity, effort, locationShown, normalizeRows, procStart, sessionId, subagentItems, subagents, toStatus } from './normalize.ts';
 
 const fixture = (name: string): FleetRow[] =>
   JSON.parse(readFileSync(new URL(`./fixtures/fleet/${name}`, import.meta.url), 'utf8')).filter(
@@ -33,6 +33,27 @@ describe('fleet list → sidebar rows', () => {
     const base = rows0();
     const rows = normalizeRows([{ ...base, subagents: { running: 2, finished: 3 } }, { ...base, subagents: null }, base], deps);
     expect(rows.map((r) => r.subagents)).toEqual([{ running: 2, finished: 3 }, null, null]);
+  });
+
+  it('VIEW-8.6, 8.13: Fleet\'s list is kept, at most 20, each item cleaned; a bad item is dropped, not the list; no list is no list', () => {
+    const good = {
+      id: 'a1', parent: null, depth: 1, state: 'running', task: '  Review\n the   diff ', type: 'Explore', name: null, role: null,
+      model: 'haiku', started_at: '2026-11-02T12:01:36.806Z', ended_at: null, activity: 'Bash: run the tests',
+    };
+    expect(subagentItems([good])).toEqual([
+      { id: 'a1', parent: null, depth: 1, state: 'running', task: 'Review the diff', type: 'Explore', name: null, role: null, model: 'haiku', startedAt: '2026-11-02T12:01:36.806Z', endedAt: null, activity: 'Bash: run the tests' },
+    ]);
+    for (const none of [undefined, null, {}, 'x', 3]) expect(subagentItems(none)).toBeUndefined();
+    expect(subagentItems([])).toEqual([]);
+    const bad = [null, 3, 'x', { ...good, id: 7 }, { ...good, id: ' ' }, { ...good, state: 'paused' }, { ...good, state: undefined }];
+    expect(subagentItems([...bad, { ...good, id: 'b' }])!.map((i) => i.id)).toEqual(['b']);
+    const odd = subagentItems([{ ...good, depth: 0, parent: 4, started_at: 'yesterday', ended_at: '2026-13-45T99:00:00Z', task: 'x'.repeat(600), model: '' }])![0]!;
+    expect([odd.depth, odd.parent, odd.startedAt, odd.endedAt, odd.model]).toEqual([null, null, null, null, null]);
+    expect(odd.task).toHaveLength(500);
+    expect(odd.task!.endsWith('…')).toBe(true);
+    expect(subagentItems(Array.from({ length: 25 }, (_, i) => ({ ...good, id: `s${i}` })))).toHaveLength(20);
+    expect(subagents({ running: 1, finished: 0, items: [good] })!.items).toHaveLength(1);
+    expect(subagents({ running: 1, finished: 0 })).not.toHaveProperty('items');
   });
 
   it('SIDE-2.11: the activity is collapsed to one line and cut to 120 characters; anything else is none', () => {

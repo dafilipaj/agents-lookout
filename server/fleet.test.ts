@@ -22,15 +22,21 @@ function fakeFleet(name: string, script: string): string {
 }
 
 describe('calling fleet list', () => {
-  it('SIDE-9.3: the fake Fleet reports known, empty and unknown Subagent counts through the same list contract', async () => {
+  it('SIDE-9.3, VIEW-8.6: the fake Fleet reports known, empty and unknown Subagent counts, and a list, through the same list contract', async () => {
     const fake = new URL('./fixtures/fleet/messages/fake-fleet.mjs', import.meta.url).pathname;
     const result = await fetchFleetList(run, fake);
     expect(result.kind).toBe('ok');
     if (result.kind !== 'ok') throw new Error('fake Fleet did not list');
     const rows = normalizeRows(result.rows, { git: () => null, statusSince: () => null });
-    expect(rows.map((r) => r.subagents)).toEqual([
+    expect(rows.map((r) => r.subagents && { running: r.subagents.running, finished: r.subagents.finished })).toEqual([
       { running: 1, finished: 2 }, { running: 3, finished: 0 }, null, { running: 0, finished: 3 }, { running: 0, finished: 0 }, null,
     ]);
+    expect(rows[0]!.subagents!.items!.map((i) => [i.state, i.task, i.startedAt])).toEqual([
+      ['running', 'Review the rates diff', '2026-10-14T08:20:03.000Z'],
+      ['completed', 'Find the rate tables', '2026-10-14T08:15:00.000Z'],
+      ['stopped', 'Check the PR template', '2026-10-14T08:15:30.000Z'],
+    ]);
+    expect(rows[1]!.subagents).not.toHaveProperty('items');
   });
 
   it('runs `fleet --local list --json` with an argv array', async () => {

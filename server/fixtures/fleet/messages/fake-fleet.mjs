@@ -8,7 +8,8 @@
 //
 //   FAKE_FLEET_DIR   fixture dir: list.json, sessions/<id>.json. Without it, the committed
 //                    fixtures next to this file are read, and nothing is ever written.
-//   `list` reports each row's `subagents: { running, finished }` or null (SIDE-9, VIEW-8).
+//   `list` reports each row's `subagents: { running, finished }` or null (SIDE-9, VIEW-8), with
+//   `items` where the row lists them (VIEW-8.6, docs/contracts/fleet-subagents.md).
 //   Edit list.json to change the counts on the next poll; no real Subagent is started.
 //   `list` reports each row's `activity` as list.json has it (SIDE-2.11); real Fleet sends a string
 //   only for a Busy Claude Code row. Edit list.json to change it on the next poll.
