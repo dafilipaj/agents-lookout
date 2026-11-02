@@ -160,6 +160,13 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
 - **How:** Fleet's `spawn --from <target>` takes its first prompt from the Session's brief (`brief --prompt`), so it needs the brief above to exist first; `handoff` does the same with a brief you write. Also "start a Session on this Task" from Work, with the Task's link and title as context, as Fleet's `task spawn` does.
 - **Added:** 2026-10-30, by Dario, from the Fleet review.
 
+## A member Session's details outlive its Transcript (TOPIC)
+
+- **What:** when Lookout reads a member Session through `tb-session show` (TOPIC-11.3), it keeps what it read in the member's snapshot: tb-session's summary, the branch, the first prompt and the last assistant message, bounded as TOPIC-11.3 bounds them. A Summary written after the Transcript is gone sends that instead of the bare snapshot.
+- **Why:** Claude Code deletes Transcripts after `cleanupPeriodDays` (60 on Dario's Mac), and `tb-session index --prune` then removes the Session. The member stays (TOPIC-4.2), but its snapshot is only the Harness, title and start directory from the day it was added, so a Summary regenerated after that knows little more than the title. Stored summaries and the activity log are kept; what the Session was about isn't.
+- **How:** no new reads: the Summary's reads already fetch it, so the store updates `members.snapshot` (or a new column) after each successful read. Open: whether a Session that's never been in a Summary should be read once on its own before it ages out, and how long a snapshot may grow.
+- **Added:** 2026-11-02, by Dario, after asking what happens to a Topic's members when their Sessions are deleted from disk.
+
 ## Dropped
 
 Discussed and decided against. Each keeps why, so it isn't proposed again without something new.

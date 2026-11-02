@@ -9,7 +9,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Loading } from '@/components/ui/loading';
 import { SessionMarker } from '@/components/ui/session-marker';
-import { MEMBER_R, NODE_H, NODE_W, type Point, arrange, border, bounds, placeMissing, ring } from '@/lib/graph';
+import { MEMBER_R, NODE_SIZES, type NodeSize, type Point, type SizeStep, arrange, border, bounds, placeMissing, ring, sizeStep } from '@/lib/graph';
 import { liveRow, memberCounts, memberName, sharedLabel, sharedPairs, topicMarker } from '@/lib/topics';
 import { cn } from '@/lib/utils';
 import { HarnessIcon } from './HarnessIcon';
@@ -208,6 +208,14 @@ function Canvas({ topics, edges, pruned, sessions, selected, onSelect, archived,
   }, []);
 
   const shown = useMemo(() => sortTopics(topics).filter((t) => archived || t.state === 'open'), [topics, archived]);
+  // TOPIC-7.7: a node's size by its members and the Edges it has in the graph.
+  const steps = useMemo(() => {
+    const ids = new Set(shown.map((t) => t.id));
+    const degree = new Map<string, number>();
+    for (const e of edges) if (ids.has(e.from) && ids.has(e.to)) for (const id of [e.from, e.to]) degree.set(id, (degree.get(id) ?? 0) + 1);
+    return new Map(topics.map((t) => [t.id, sizeStep(t.members.length, degree.get(t.id) ?? 0)]));
+  }, [topics, shown, edges]);
+  const sizeOf = (id: string): NodeSize => NODE_SIZES[steps.get(id) ?? 's'];
   // TOPIC-7.2: a node with no position is placed once, clear of the others, and stored. Clear of the
   // hidden Archived ones too, so turning Archived on never shows two nodes on one spot.
   const { at, missing } = useMemo(() => {
@@ -218,11 +226,14 @@ function Canvas({ topics, edges, pruned, sessions, selected, onSelect, archived,
       if (p) m.set(t.id, p);
       else unplaced.push(t);
     }
-    const hidden = topics.flatMap((t) => (m.has(t.id) || unplaced.includes(t) ? [] : [local.get(t.id) ?? t.pos ?? []].flat()));
-    const fresh = placeMissing([...m.values(), ...hidden], unplaced.map((t) => t.id), edges, size);
+    const hidden = topics.flatMap((t) => (m.has(t.id) || unplaced.includes(t) ? [] : [local.get(t.id) ?? t.pos ?? []].flat().map((p) => ({ ...p, size: sizeOf(t.id) }))));
+    const placed = [...[...m].map(([id, p]) => ({ ...p, size: sizeOf(id) })), ...hidden];
+    const fresh = placeMissing(placed, unplaced.map((t) => t.id), edges, size, sizeOf, m);
     unplaced.forEach((t, i) => m.set(t.id, fresh[i]!));
     return { at: m, missing: unplaced.map((t, i) => ({ id: t.id, ...fresh[i]! })) };
-  }, [topics, shown, local, edges, size]);
+    // sizeOf reads steps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topics, shown, local, edges, size, steps]);
   // A position the server never took (a cancelled drag, a failed save) isn't kept: the node goes back
   // to the server's, and a later move from another tab shows.
   const forget = (ids: readonly string[]) =>
@@ -264,6 +275,7 @@ function Canvas({ topics, edges, pruned, sessions, selected, onSelect, archived,
       shown.map((t) => t.id),
       edges,
       size,
+      sizeOf,
     );
     const positions = [...laid].map(([id, p]) => ({ id, ...p }));
     setLocal(new Map(laid));
@@ -277,8 +289,9 @@ function Canvas({ topics, edges, pruned, sessions, selected, onSelect, archived,
 
   const expandedTopic = shown.find((t) => t.id === expanded) ?? null;
   const members = expandedTopic?.members ?? [];
-  const memberAt = expandedTopic ? ring(at.get(expandedTopic.id)!, members.length) : [];
-  const box = drag?.box ?? bounds([...at.values(), ...memberAt], size);
+  const memberAt = expandedTopic ? ring(at.get(expandedTopic.id)!, members.length, sizeOf(expandedTopic.id)) : [];
+  const box = drag?.box ?? bounds([...[...at].map(([id, p]) => ({ ...p, size: sizeOf(id) })), ...memberAt], size);
+  const half = (id: string) => ({ w: sizeOf(id).w / 2, h: sizeOf(id).h / 2 });
 
   // TOPIC-7.5: drawn at scale 1, a graph unit is a CSS pixel; one larger than the pane scrolls.
   const toGraph = (clientX: number, clientY: number, b: Box): Point => {
@@ -396,8 +409,8 @@ function Canvas({ topics, edges, pruned, sessions, selected, onSelect, archived,
         {shared.map((p) => {
           const a = at.get(p.a)!;
           const b = at.get(p.b)!;
-          const s = border(b, a);
-          const t = border(a, b);
+          const s = border(b, a, half(p.a));
+          const t = border(a, b, half(p.b));
           return (
             <g key={`${p.a}~${p.b}`} data-field="shared-line" className="text-muted-foreground">
               <line x1={s.x} y1={s.y} x2={t.x} y2={t.y} stroke="currentColor" strokeWidth={1} strokeDasharray="4 4" />
@@ -413,8 +426,8 @@ function Canvas({ topics, edges, pruned, sessions, selected, onSelect, archived,
         {visibleEdges.map((e) => {
           const a = at.get(e.from)!;
           const b = at.get(e.to)!;
-          const s = border(b, a);
-          const t = border(a, b);
+          const s = border(b, a, half(e.from));
+          const t = border(a, b, half(e.to));
           const name = `Edge from ${title(e.from)} to ${title(e.to)}${e.label ? `, ${e.label}` : ''}`;
           return (
             <g key={`${e.from}>${e.to}`} data-field="edge" data-from={e.from} data-to={e.to} className="text-muted-foreground">
@@ -444,6 +457,7 @@ function Canvas({ topics, edges, pruned, sessions, selected, onSelect, archived,
             key={t.id}
             topic={t}
             at={at.get(t.id)!}
+            step={steps.get(t.id) ?? 's'}
             selected={t.id === selected}
             expanded={t.id === expanded}
             target={drag?.kind === 'edge' && drag.from !== t.id}
@@ -458,7 +472,7 @@ function Canvas({ topics, edges, pruned, sessions, selected, onSelect, archived,
         {/* TOPIC-7.3: the expanded node's members, small, around it. */}
         {expandedTopic &&
           members.map((m, i) => (
-            <MemberNode key={m.key} member={m} at={memberAt[i]!} center={at.get(expandedTopic.id)!} sessions={sessions} pruned={m.kind === 'session' && pruned.includes(`${m.ref.harness}:${m.ref.sessionId}`)} onPress={() => openMember(m)} />
+            <MemberNode key={m.key} member={m} at={memberAt[i]!} center={at.get(expandedTopic.id)!} centerSize={sizeOf(expandedTopic.id)} sessions={sessions} pruned={m.kind === 'session' && pruned.includes(`${m.ref.harness}:${m.ref.sessionId}`)} onPress={() => openMember(m)} />
           ))}
       </svg>
       <EdgeDialog
@@ -487,9 +501,14 @@ function Canvas({ topics, edges, pruned, sessions, selected, onSelect, archived,
   );
 }
 
+/** TOPIC-7.7: a bigger node's title is a step up the type scale (DS-1). */
+const TITLE_STEP: Record<SizeStep, string> = { s: 'text-body', m: 'text-prose', l: 'text-title font-semibold' };
+
 interface NodeProps {
   topic: Topic;
   at: Point;
+  /** TOPIC-7.7: how big it's drawn. */
+  step: SizeStep;
   selected: boolean;
   expanded: boolean;
   /** An Edge is being drawn and could end here. */
@@ -503,9 +522,10 @@ interface NodeProps {
 }
 
 /** TOPIC-7.1: a Topic's node: its Session marker, title and member counts; a handle to draw an Edge from (TOPIC-7.4). */
-function Node({ topic, at, selected, expanded, target, sessions, onDown, onUp, onHandleDown, onPress, onOpen }: NodeProps) {
+function Node({ topic, at, step, selected, expanded, target, sessions, onDown, onUp, onHandleDown, onPress, onOpen }: NodeProps) {
   const marker = topicMarker(topic, sessions);
   const counts = memberCounts(topic.members);
+  const { w, h } = NODE_SIZES[step];
   return (
     <g
       id={nodeId(topic.id)}
@@ -517,7 +537,8 @@ function Node({ topic, at, selected, expanded, target, sessions, onDown, onUp, o
       data-topic-id={topic.id}
       data-x={at.x}
       data-y={at.y}
-      transform={`translate(${at.x - NODE_W / 2} ${at.y - NODE_H / 2})`}
+      data-size={step}
+      transform={`translate(${at.x - w / 2} ${at.y - h / 2})`}
       className={cn('group cursor-grab outline-none', topic.state === 'archived' && 'opacity-60')}
       onPointerDown={onDown}
       onPointerUp={onUp}
@@ -531,7 +552,7 @@ function Node({ topic, at, selected, expanded, target, sessions, onDown, onUp, o
         else onPress();
       }}
     >
-      <foreignObject width={NODE_W} height={NODE_H} className="overflow-visible">
+      <foreignObject width={w} height={h} className="overflow-visible">
         <div
           className={cn(
             'flex size-full min-w-0 flex-col justify-center gap-0.5 rounded-md border bg-card px-2.5 text-card-foreground shadow-xs group-focus-visible:ring-2 group-focus-visible:ring-ring/50',
@@ -543,7 +564,7 @@ function Node({ topic, at, selected, expanded, target, sessions, onDown, onUp, o
         >
           <span className="flex min-w-0 items-center gap-1.5">
             <span className="inline-flex size-3.5 shrink-0">{marker && <SessionMarker aria-hidden state={marker.state} status={marker.state === 'live' ? marker.status : undefined} since={marker.state === 'live' ? marker.since : null} />}</span>
-            <span className="min-w-0 truncate text-body font-medium" title={topic.title}>
+            <span className={cn('min-w-0 truncate font-medium', TITLE_STEP[step])} title={topic.title}>
               {topic.title}
             </span>
           </span>
@@ -551,8 +572,8 @@ function Node({ topic, at, selected, expanded, target, sessions, onDown, onUp, o
         </div>
       </foreignObject>
       <circle
-        cx={NODE_W}
-        cy={NODE_H / 2}
+        cx={w}
+        cy={h / 2}
         r={5}
         role="presentation"
         aria-label={`Draw an Edge from ${topic.title}`}
@@ -566,11 +587,11 @@ function Node({ topic, at, selected, expanded, target, sessions, onDown, onUp, o
 }
 
 /** TOPIC-7.3: a member as a small node: its kind's icon and, for a Session, its Status marker. */
-function MemberNode({ member, at, center, sessions, pruned, onPress }: { member: TopicMember; at: Point; center: Point; sessions: ReadonlyMap<string, SessionRow>; pruned: boolean; onPress(): void }) {
+function MemberNode({ member, at, center, centerSize, sessions, pruned, onPress }: { member: TopicMember; at: Point; center: Point; centerSize: NodeSize; sessions: ReadonlyMap<string, SessionRow>; pruned: boolean; onPress(): void }) {
   const row = member.kind === 'session' ? liveRow(member, sessions) : null;
   const name = memberName(member);
   const action = member.kind === 'session' ? (pruned ? `${name}, removed from the index` : `${row ? 'Open' : 'Resume'} ${name}`) : member.kind === 'pr' ? `Open ${name} on GitHub` : `Open ${name} in Fantastic`;
-  const s = border(at, center);
+  const s = border(at, center, { w: centerSize.w / 2, h: centerSize.h / 2 });
   return (
     <g data-field="member" data-kind={member.kind}>
       <line x1={s.x} y1={s.y} x2={at.x} y2={at.y} stroke="currentColor" strokeWidth={1} className="text-border" />
