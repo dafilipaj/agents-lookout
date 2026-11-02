@@ -10,7 +10,7 @@ import { CommandBlock } from '@/components/ui/command-block';
 import { EmptyState } from '@/components/ui/empty-state';
 import { IconButton } from '@/components/ui/icon-button';
 import { Kbd } from '@/components/ui/kbd';
-import { isLongIdle, matchesFilter, sessionOptionId } from '@/lib/sessions';
+import { isLongIdle, locationTip, matchesFilter, sessionOptionId } from '@/lib/sessions';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { MemoryLine } from './MemoryLine';
@@ -81,6 +81,18 @@ export function Sidebar(props: SidebarProps) {
   if (frozenOrder && !sameOrder(frozenOrder, orderedIds)) setFrozenOrder(orderedIds);
 
   const byId = useMemo(() => new Map(sessions.map((s) => [s.id, s])), [sessions]);
+  // SIDE-2.1: rows that share a title tell themselves apart by their location, else by when they started.
+  const twins = useMemo(() => {
+    const byTitle = new Map<string, SessionRow[]>();
+    for (const s of sessions) byTitle.set(s.title, [...(byTitle.get(s.title) ?? []), s]);
+    const m = new Map<string, 'location' | 'start'>();
+    for (const group of byTitle.values()) {
+      if (group.length < 2) continue;
+      const places = new Set(group.map(locationTip));
+      for (const s of group) m.set(s.id, places.size > 1 ? 'location' : 'start');
+    }
+    return m;
+  }, [sessions]);
   const { controllable, viewOnly, visible } = useMemo(() => {
     const rows = orderedIds.map((id) => byId.get(id)).filter((r): r is SessionRow => !!r && matchesFilter(r, filter, topicTitles?.(r)));
     const controllable = rows.filter((r) => r.controllable);
@@ -99,16 +111,22 @@ export function Sidebar(props: SidebarProps) {
     () => [...launches.map((l) => ({ kind: 'launch' as const, id: l.id, failed: l.state === 'failed', needsYou: l.state === 'trust' })), ...visible.map((r) => ({ kind: 'session' as const, id: r.id, needsYou: r.status === 'needs-you' }))],
     [launches, visible],
   );
-  const latest = useRef({ rows, selectedId, selectedLaunchId, onSelect, onSelectLaunch, enabled: props.keyboardEnabled });
+  const latest = useRef({ rows, selectedId, selectedLaunchId, onSelect, onSelectLaunch, enabled: props.keyboardEnabled, settingsOpen: props.settingsOpen, onOpenSettings: props.onOpenSettings });
   useEffect(() => {
-    latest.current = { rows, selectedId, selectedLaunchId, onSelect, onSelectLaunch, enabled: props.keyboardEnabled };
+    latest.current = { rows, selectedId, selectedLaunchId, onSelect, onSelectLaunch, enabled: props.keyboardEnabled, settingsOpen: props.settingsOpen, onOpenSettings: props.onOpenSettings };
   });
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.isComposing || e.defaultPrevented || !latest.current.enabled) return;
-      const { rows, selectedId, selectedLaunchId, onSelect, onSelectLaunch } = latest.current;
+      const { rows, selectedId, selectedLaunchId, onSelect, onSelectLaunch, settingsOpen, onOpenSettings } = latest.current;
       const inFilter = e.target === filterRef.current;
       const editing = !inFilter && isEditable(e.target);
+      // SIDE-7.6: Esc leaves Settings as Back does, the way it closes a dialog; not from a field or the filter.
+      if (e.key === 'Escape' && settingsOpen && !inFilter && !editing && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        onOpenSettings();
+        return;
+      }
       const index = rows.findIndex((r) => (r.kind === 'launch' ? r.id === selectedLaunchId : r.id === selectedId));
       const select = (row: NavRow | undefined, how: 'push' | 'replace') => {
         if (!row) return;
@@ -217,6 +235,7 @@ export function Sidebar(props: SidebarProps) {
         dimmed={isLongIdle(row, now, idleThresholdHours)}
         now={now}
         onSelect={selectId}
+        twin={twins.get(row.id) ?? null}
       />
     );
     // DS-9.1: the list takes focus as History's does: the selected Session is its active option, none

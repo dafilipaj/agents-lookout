@@ -61,12 +61,17 @@ it('MEM-1.3: glyph transitions by token, with textual warning and critical descr
   const app = show();
   const glyph = () => trigger().querySelector('[data-field="memory-glyph"]')!;
   expect(glyph()).toHaveClass('bg-muted-foreground', 'transition-colors', 'duration-700', 'motion-reduce:transition-none');
+  const total = () => trigger().querySelector('[data-field="memory-total"]')!;
+  expect(total()).not.toHaveClass('text-warning-text', 'text-destructive-text');
   app.emit({ type: 'memory', memory: sample({ pressure: 'warn' }) });
   expect(glyph()).toHaveClass('bg-warning');
+  // The total takes the level's colour too: a 3 px glyph alone is easy to miss.
+  expect(total()).toHaveClass('text-warning-text');
   expect(trigger()).toHaveAccessibleDescription(expect.stringContaining('memory warning'));
   expect(trigger().title).toContain('memory warning');
   app.emit({ type: 'memory', memory: sample({ pressure: 'critical' }) });
   expect(glyph()).toHaveClass('bg-destructive');
+  expect(total()).toHaveClass('text-destructive-text');
   expect(trigger()).toHaveAccessibleDescription(expect.stringContaining('memory critical'));
 });
 
@@ -115,7 +120,7 @@ it('MEM-3.2: the header shows total, RAM, pressure icon and age, with info tone 
   app.emit({ type: 'memory', memory: sample({ pressure: 'critical', old: true, sampledAt: NOW - 60_000 }) });
   expect(within(details()).getByText('pressure critical')).toHaveClass('text-destructive-text');
   expect(within(details()).getByRole('img', { name: 'critical' })).toBeInTheDocument();
-  expect(within(details()).getByText('old · 1m')).toHaveClass('text-info-text');
+  expect(within(details()).getByText('stale · 1m')).toHaveClass('text-info-text');
 });
 
 it('MEM-3.3: collecting draws nothing, then a hidden sparkline and signed trend reading with a direction icon', async () => {

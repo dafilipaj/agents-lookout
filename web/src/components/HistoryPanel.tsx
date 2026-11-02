@@ -12,7 +12,7 @@ import { Loading } from '@/components/ui/loading';
 import { SessionMarker } from '@/components/ui/session-marker';
 import type { HistoryQuery } from '@/lib/client';
 import { type HarnessFilter, filterHarness, isLive, itemKey, loadHarnessFilter, saveHarnessFilter, snippetParts } from '@/lib/history';
-import type { PanelNav } from '@/lib/right-sidebar';
+import { type PanelNav, focusTab } from '@/lib/right-sidebar';
 import { HARNESS_NAME } from '@/lib/sessions';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
@@ -271,6 +271,11 @@ export function HistoryPanel({ focusKey, sessions, now, search, peek, onOpen, na
     } else if (e.key === 'Escape' && inSearch && query) {
       e.preventDefault();
       changeQuery('');
+    } else if (e.key === 'Escape' && inSearch) {
+      // HIST-1.1: the search box takes focus as the tab opens, so Esc with nothing to clear leaves it
+      // for the History tab, and the letter shortcuts (W, L, T, P…) work again.
+      e.preventDefault();
+      focusTab('history');
     }
   };
 

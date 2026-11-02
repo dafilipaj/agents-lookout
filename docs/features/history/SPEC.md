@@ -22,7 +22,7 @@ Once History is in Lookout, a stray click on a result resumes a past Session, wh
 
 ### HIST-1 Right sidebar
 
-- [x] HIST-1.1 A right sidebar, opened and closed with a button at the top right or `H` (when focus isn't in a text field), holds History as a tab, next to Work (WORK-1). `H` opens it on History, switches to History from another tab, and closes it when History is already showing. It's named "Right sidebar", and its tab strip in the header row stands in for a heading: History's tab names History's panel, with no other "History" heading. Opening it on History focuses the search box. (test)
+- [x] HIST-1.1 A right sidebar, opened and closed with a button at the top right or `H` (when focus isn't in a text field), holds History as a tab, next to Work (WORK-1). `H` opens it on History, switches to History from another tab, and closes it when History is already showing. It's named "Right sidebar", and its tab strip in the header row stands in for a heading: History's tab names History's panel, with no other "History" heading. Opening it on History focuses the search box. Esc in the empty search box leaves it for the History tab, so the letter shortcuts work again. (test)
 - [x] HIST-1.2 The Session sidebar on the left and the main pane stay visible and usable while it's open. (manual)
 - [x] HIST-1.3 Whether it's open, and its width, are remembered across reloads. (test)
 
@@ -228,3 +228,4 @@ None.
 - 2026-10-27: From Dario's report (a resume in a folder Claude Code didn't trust failed after 15 s, its Trust prompt in the terminal's last lines, with nowhere to answer it): HIST-3.4 amended to include the Trust prompt in the Starting view (LAUNCH-6) and unticked until it's seen live. Technical approach: a resume waiting at its Trust prompt is answered from its row; a `session_starting` resume whose Session host Fleet names is followed as Lookout's own (fork contract C7); "answer it there" is said only of another terminal app, never of a Session host.
 - 2026-10-30: From TOOLS-2.5: a tb-session that refuses a subcommand or flag History needs, after the 0.2 fallback (`legacy`), says "tb-session 0.1.0 is older than History needs (0.3.0)", the version from the Tools table, with the update command, instead of "tb-session failed"; only a tb-session that isn't there says it isn't installed.
 - 2026-10-30: Non-goals: tagging past Sessions stays out, and a Topic membership (TOPIC-2.1, "Add to Topic" on an expanded result) isn't one: it's a row in Lookout's own store, and the Session is untouched.
+- 2026-11-02: Design pass: HIST-1.1 amended, Esc in the empty search box leaves it for the History tab; the search box took focus as the tab opened, so the next `W`, `L`, `T` or `P` typed into it.

@@ -20,6 +20,9 @@ it('LIB-1.1: Library follows Work, L switches and closes it, the rail opens it a
   expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['History', 'Work', 'Library', 'Topics', 'Servers']);
   const filter = screen.getByRole('searchbox', { name: 'Filter Outputs' }); expect(filter).toHaveFocus();
   fireEvent.keyDown(filter, { key: 'l' }); expect(panel()).toBeVisible();
+  // Esc in the empty filter leaves it for the tab, so the letters work again.
+  fireEvent.keyDown(filter, { key: 'Escape' }); expect(screen.getByRole('tab', { name: 'Library' })).toHaveFocus();
+  filter.focus();
   fireEvent.keyDown(document.body, { key: 'l' }); expect(screen.queryByTestId('library-panel')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Work' }));
   fireEvent.keyDown(document.body, { key: 'L' }); expect(panel()).toBeVisible();

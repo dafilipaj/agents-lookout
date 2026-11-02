@@ -127,6 +127,37 @@ describe('sidebar rows', () => {
     for (const id of ['quiet', 'away', 'waits', 'does']) expect(field(id, 'age')).toHaveTextContent('1m');
   });
 
+  it('SIDE-2.1: rows that share a title show their location even at the default one, or when they started once that matches too', () => {
+    const app = renderApp();
+    const hidden = { repo: false, where: false };
+    const git = { repo: 'work', worktree: null, branch: 'main', commonDir: '/Users/me/Projects/work/.git', defaultBranch: 'main' };
+    app.snapshot([
+      row({ id: 'one', title: 'port-the-row', locationShown: hidden, git }),
+      row({ id: 'two', title: 'port-the-row', locationShown: hidden, git: { ...git, worktree: 'crm-rates', branch: 'fix/rates' } }),
+      row({ id: 'alone', title: 'other', locationShown: hidden, git }),
+    ]);
+    // Their locations differ: each shows its own, though neither would alone; the repo stays by SIDE-2.9.
+    expect(field('one', 'repo')).toBeNull();
+    expect(field('one', 'location')).toHaveTextContent('main');
+    expect(field('two', 'location')).toHaveTextContent('crm-rates');
+    expect(field('one', 'started')).toBeNull();
+    expect(field('alone', 'slot')).toBeEmptyDOMElement();
+
+    // The same location too: when each started tells them apart, in the location's place.
+    app.snapshot([
+      row({ id: 'one', title: 'port-the-row', locationShown: hidden, git, procStart: '2026-10-14T08:12:03Z' }),
+      row({ id: 'two', title: 'port-the-row', locationShown: hidden, git, procStart: '2026-10-14T09:40:00Z' }),
+    ]);
+    expect(field('one', 'location')).toBeNull();
+    expect(field('one', 'started')).toHaveTextContent(`from ${new Date('2026-10-14T08:12:03Z').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
+    expect(field('two', 'started')).toHaveTextContent(`from ${new Date('2026-10-14T09:40:00Z').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
+
+    // Renamed apart: back to the default rows.
+    app.snapshot([row({ id: 'one', title: 'port-the-row', locationShown: hidden, git }), row({ id: 'two', title: 'port-the-row-again', locationShown: hidden, git })]);
+    expect(field('one', 'slot')).toBeEmptyDOMElement();
+    expect(field('one', 'started')).toBeNull();
+  });
+
   it('SIDE-2.2: a linked Worktree shows its name with the worktree icon; otherwise the branch with the branch icon', () => {
     const app = renderApp();
     app.snapshot([

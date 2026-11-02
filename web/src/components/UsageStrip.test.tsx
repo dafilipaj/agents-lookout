@@ -158,7 +158,7 @@ describe('usage strip', () => {
     expect(field('codex', 'age')).toHaveClass('min-w-0', 'truncate');
     expect(field('codex', 'age')).toHaveAttribute('title', 'as of last turn · just now');
     // An old reading's tooltip also says why.
-    expect(field('claude', 'age')).toHaveAttribute('title', 'old · 12m ago; fleet usage timed out');
+    expect(field('claude', 'age')).toHaveAttribute('title', 'stale · 12m ago; fleet usage timed out');
     expect(field('claude', 'age')).toHaveClass('text-info-text');
   });
 
@@ -247,27 +247,27 @@ describe('usage strip', () => {
     app.unmount();
 
     app = at({ observedAt: NOW - 20 * 60_000, stale: true }, { observedAt: null, fetchedAt: NOW });
-    expect(age('claude')).toHaveTextContent('old · 20m ago');
+    expect(age('claude')).toHaveTextContent('stale · 20m ago');
     expect(age('claude')).toHaveAttribute('data-flagged', 'true');
     expect(age('codex')).toHaveTextContent('age unknown'); // Codex's age comes from observed_at only
     expect(age('codex')).toHaveAttribute('data-flagged', 'true');
     act(() => vi.advanceTimersByTime(10 * 60_000)); // ages keep counting
-    expect(age('claude')).toHaveTextContent('old · 30m ago');
+    expect(age('claude')).toHaveTextContent('stale · 30m ago');
     app.unmount();
 
     app = at({ observedAt: Date.now() - 6 * 60_000 }); // Claude past 5 minutes: its reads must be failing
-    expect(age('claude')).toHaveTextContent('old · 6m ago');
+    expect(age('claude')).toHaveTextContent('stale · 6m ago');
     app.unmount();
 
     at({ observedAt: Date.now() + 10 * 60_000 }, { observedAt: Date.now() - 60_000, stale: true, reason: 'Fleet returned older numbers than before' });
     expect(age('claude')).toHaveTextContent('clock skew');
-    expect(age('codex')).toHaveTextContent('old · 1m ago');
+    expect(age('codex')).toHaveTextContent('stale · 1m ago');
   });
 
   it('USAGE-2.2: screen readers get each line as shown, its age included, so old numbers after a failed read are never read out as current', () => {
     show(
       usage([
-        // Dario's case after a reset, then a read that fails: the line is dimmed and says "old · 12m ago".
+        // Dario's case after a reset, then a read that fails: the line is dimmed and says "stale · 12m ago".
         provider({
           id: 'claude',
           state: 'signed-out',
@@ -280,12 +280,12 @@ describe('usage strip', () => {
         provider({ id: 'codex', observedAt: NOW - 17 * 60_000, windows: [win({ kind: 'weekly_all', label: 'Weekly limit', percent: 33, resetsAt: NOW + 26 * H })] }),
       ]),
     );
-    expect(field('claude', 'age')).toHaveTextContent('old · 12m ago');
+    expect(field('claude', 'age')).toHaveTextContent('stale · 12m ago');
     expect(field('claude', 'age')).toHaveAttribute('data-flagged', 'true');
-    expect(second('claude')).toHaveTextContent(/^weekly 85% · old · 12m ago$/);
+    expect(second('claude')).toHaveTextContent(/^weekly 85% · stale · 12m ago$/);
     expect(field('codex', 'age')).toHaveTextContent('as of last turn · 17m');
     expect(screen.getByRole('button', { name: 'Usage details' })).toHaveAccessibleDescription(
-      'Claude Code: 5-hour 0%; weekly 85%, warning; old · 12m ago. Codex: weekly 33%, resets in 1d 2h; as of last turn · 17m. Jev: ready.',
+      'Claude Code: 5-hour 0%; weekly 85%, warning; stale · 12m ago. Codex: weekly 33%, resets in 1d 2h; as of last turn · 17m. Jev: ready.',
     );
   });
 
@@ -566,10 +566,10 @@ describe('usage strip colours (design system)', () => {
     expect(line('claude').querySelector('[data-field="edge"]')).toBeNull();
   });
 
-  it('DS-3.3: a reading marked old says "old · …" in the info tone, not amber', () => {
+  it('DS-3.3: a reading marked old says "stale · …" in the info tone, not amber', () => {
     show(usage([provider({ id: 'claude', stale: true, reason: 'fleet usage timed out', observedAt: NOW - 12 * 60_000, windows: [win({ percent: 12 })] })]));
     const age = line('claude').querySelector<HTMLElement>('[data-field="age"]')!;
-    expect(age).toHaveTextContent(/^old · 12m ago/);
+    expect(age).toHaveTextContent(/^stale · 12m ago/);
     expect(age).toHaveClass('text-info-text');
     expect([...age.classList].filter((c) => c.includes('needs-you') || c.includes('warning'))).toEqual([]);
   });

@@ -279,6 +279,7 @@ function Canvas({ topics, edges, pruned, sessions, selected, onSelect, archived,
     );
     const positions = [...laid].map(([id, p]) => ({ id, ...p }));
     setLocal(new Map(laid));
+    centred.current = false;
     onArranged();
     onProblem(null);
     api.placeTopics(positions).catch((err: unknown) => {
@@ -292,6 +293,20 @@ function Canvas({ topics, edges, pruned, sessions, selected, onSelect, archived,
   const memberAt = expandedTopic ? ring(at.get(expandedTopic.id)!, members.length, sizeOf(expandedTopic.id)) : [];
   const box = drag?.box ?? bounds([...[...at].map(([id, p]) => ({ ...p, size: sizeOf(id) })), ...memberAt], size);
   const half = (id: string) => ({ w: sizeOf(id).w / 2, h: sizeOf(id).h / 2 });
+
+  // TOPIC-7.1: a graph larger than the pane opens on the selected Topic, else on the middle of its
+  // nodes (their centroid, so a lone far-off node doesn't pull the view into empty space), never on
+  // its top-left corner; again after Arrange.
+  const centred = useRef(false);
+  useLayoutEffect(() => {
+    const el = boxRef.current;
+    if (!el || !measured || centred.current || !at.size) return;
+    centred.current = true;
+    const points = [...at.values()];
+    const on = (selected && at.get(selected)) || { x: points.reduce((s, p) => s + p.x, 0) / points.length, y: points.reduce((s, p) => s + p.y, 0) / points.length };
+    el.scrollLeft = Math.max(0, Math.round(on.x - box.x - el.clientWidth / 2));
+    el.scrollTop = Math.max(0, Math.round(on.y - box.y - el.clientHeight / 2));
+  });
 
   // TOPIC-7.5: drawn at scale 1, a graph unit is a CSS pixel; one larger than the pane scrolls.
   const toGraph = (clientX: number, clientY: number, b: Box): Point => {

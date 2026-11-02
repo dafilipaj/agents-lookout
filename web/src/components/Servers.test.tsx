@@ -150,6 +150,10 @@ describe('the Servers tab (PORTS-3)', () => {
     expect(within(vite).getByRole('link', { name: ':5173' })).toHaveAttribute('target', '_blank');
     expect(vite).toHaveTextContent(':5174');
     expect(vite.querySelector('[data-field="dir"]')).toHaveTextContent('fantastic');
+    // The name keeps its width and the directory gives way, cut from its start (a Worktree's name ends in what tells it apart).
+    expect(vite.querySelector('[data-field="name"]')).toHaveClass('shrink-0', 'max-w-[60%]');
+    expect(vite.querySelector('[data-field="dir"]')).toHaveClass('min-w-0', 'truncate', '[direction:rtl]');
+    expect(vite.querySelector('[data-field="dir"] > span')).toHaveAttribute('dir', 'ltr'); // keeps `~/` and `/` in place inside the rtl box
     expect(vite.querySelector('[data-field="age"]')).toHaveTextContent('14m');
     expect(rows[2]!.querySelector('[data-field="dir"]')).toHaveAttribute('title', API.cwd);
     const list = within(panel()).getByRole('listbox');

@@ -102,6 +102,13 @@ const PROBES: Record<string, (user: UserEvent, press: Press) => Promise<void>> =
     await pressKey(user, press);
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   },
+  async 'settings-back'(user, press) {
+    fresh('/settings');
+    await screen.findByRole('heading', { name: 'Settings' });
+    await pressKey(user, press);
+    await waitFor(() => expect(screen.queryByRole('heading', { name: 'Settings' })).toBeNull());
+    expect(window.location.pathname).toBe('/');
+  },
 };
 
 /** What a shown key is pressed as. A letter is its lowercase; ⌘ is `meta` on the press, not a key. */

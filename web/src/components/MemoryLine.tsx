@@ -37,7 +37,8 @@ export function MemoryLine({ memory, sessions, now, open, onOpenChange, onSelect
         <span aria-hidden data-field="memory-glyph" className={cn('h-3 w-[3px] shrink-0 rounded-full transition-colors duration-700 motion-reduce:transition-none', MEMORY_GLYPH[memory ? watchedLevel(memory) : 'normal'])} />
         {memory ? (
           <span>
-            <span className="font-medium tabular-nums">{formatBytes(memory.watchedBytes)}</span>
+            {/* MEM-1.3: at a warning or critical level the total takes the level's text colour too, so the 3 px glyph isn't the only sign. */}
+            <span className={cn('font-medium tabular-nums', watchedLevel(memory) !== 'normal' && MEMORY_TEXT[watchedLevel(memory)])} data-field="memory-total">{formatBytes(memory.watchedBytes)}</span>
             <span className="text-muted-foreground"> · {memory.pressure === 'normal' ? `load ${memory.load.one.toFixed(1)}` : `pressure ${memory.pressure}`}</span>
           </span>
         ) : <Loading label="Reading memory…" className="text-caption leading-4" />}
@@ -80,7 +81,7 @@ function Details({ memory, sessions, now, onSelect }: { memory: MemorySnapshot; 
       <header className="px-3.5 py-3">
         <div className="flex items-baseline justify-between gap-2">
           <span className="text-title font-medium tabular-nums">{formatBytes(memory.watchedBytes)}</span>
-          <span className={cn('shrink-0 text-caption tabular-nums', memory.old ? 'text-info-text' : 'text-muted-foreground')}>{memory.old ? `old · ${age}` : `sampled ${age} ago`}</span>
+          <span className={cn('shrink-0 text-caption tabular-nums', memory.old ? 'text-info-text' : 'text-muted-foreground')}>{memory.old ? `stale · ${age}` : `sampled ${age} ago`}</span>
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-1 text-meta text-muted-foreground">
           <span>of {formatBytes(memory.ramBytes).replace('.0 GB', ' GB')} on this Mac ·</span>

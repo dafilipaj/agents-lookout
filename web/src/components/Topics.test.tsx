@@ -77,9 +77,10 @@ describe('the Topics tab (TOPIC-3)', () => {
     await user.keyboard('t');
     expect(screen.getByRole('tab', { name: 'Topics' })).toHaveAttribute('aria-selected', 'true');
     expect(JSON.parse(window.localStorage.getItem('lookout.right')!)).toMatchObject({ open: true, tab: 'topics' });
-    // With no Topic, opening Topics focuses its filter, which keeps its letters: leave it.
+    // With no Topic, opening Topics focuses its filter, which keeps its letters: Esc leaves it for the tab.
     expect(screen.getByRole('searchbox', { name: 'Filter Topics' })).toHaveFocus();
-    act(() => (document.activeElement as HTMLElement).blur());
+    await user.keyboard('{Escape}');
+    expect(screen.getByRole('tab', { name: 'Topics' })).toHaveFocus();
     await user.keyboard('w');
     act(() => (document.activeElement as HTMLElement).blur());
     await user.keyboard('t');

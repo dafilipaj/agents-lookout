@@ -14,7 +14,7 @@ import { Loading } from '@/components/ui/loading';
 import { SessionMarker } from '@/components/ui/session-marker';
 import { useCopy } from '@/lib/copy';
 import { isLive } from '@/lib/history';
-import type { PanelNav } from '@/lib/right-sidebar';
+import { type PanelNav, focusTab } from '@/lib/right-sidebar';
 import { STATUS_LABEL } from '@/lib/sessions';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
@@ -242,7 +242,11 @@ export function LibraryPanel({ focusKey, visible, sessions, now, search, status,
     const k = e.key.toLowerCase();
     if (e.key === 'ArrowDown' || (!text && k === 'j')) { e.preventDefault(); move(1); }
     else if (e.key === 'ArrowUp' || (!text && k === 'k')) { e.preventDefault(); move(-1); }
-    else if (e.key === 'Escape') { if (collapse()) e.preventDefault(); }
+    else if (e.key === 'Escape') {
+      // HIST-1.1: with no row to collapse and an empty filter (a search field clears itself first), Esc leaves the field for the tab.
+      if (collapse()) e.preventDefault();
+      else if (e.target === input.current && !query) { e.preventDefault(); focusTab('library'); }
+    }
     else if (e.key === 'Enter' && (e.target === input.current || e.target === list.current) && items[index] && !e.repeat) {
       e.preventDefault(); const id = key(items[index]!); setActive(id); if (expanded !== id) setExpanded(id); else actions.current.get(id)?.open();
     } else if (!text && !e.repeat && items[index] && k === 'a' && topics) {

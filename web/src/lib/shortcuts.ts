@@ -163,7 +163,7 @@ export const SHORTCUTS: readonly Shortcut[] = [
     group: 'panels',
     keys: ['Esc'],
     label: 'Collapse the row, or clear the search',
-    note: 'Clearing the search is History only.',
+    note: 'Clearing the search is History only; an empty search box lets Esc leave it for the tab.',
     press: [{ key: 'Escape' }],
   },
   {
@@ -245,6 +245,14 @@ export const SHORTCUTS: readonly Shortcut[] = [
     keys: ['Esc'],
     label: 'Close a dialog',
     note: 'Other shortcuts stand down while a dialog is open.',
+    press: [{ key: 'Escape' }],
+  },
+  {
+    id: 'settings-back',
+    group: 'app',
+    keys: ['Esc'],
+    label: 'Leave Settings',
+    note: 'With focus in Settings, not in a field.',
     press: [{ key: 'Escape' }],
   },
 ];

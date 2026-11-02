@@ -9,7 +9,7 @@ import { Chip } from '@/components/ui/chip';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Loading } from '@/components/ui/loading';
 import { SessionMarker } from '@/components/ui/session-marker';
-import type { PanelNav } from '@/lib/right-sidebar';
+import { type PanelNav, focusTab } from '@/lib/right-sidebar';
 import { OUTCOME_WORD, SUMMARY_STATE_WORD, liveRow, looksDone, matchesTopic, memberCounts, orderSessions, topicMarker } from '@/lib/topics';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
@@ -166,6 +166,10 @@ export function TopicsPanel(props: TopicsPanelProps) {
     } else if (e.key === 'Escape' && !text && open !== null) {
       e.preventDefault();
       collapse();
+    } else if (e.key === 'Escape' && e.target === filterRef.current && !query) {
+      // HIST-1.1: an empty filter (a search field clears itself first) lets Esc leave it for the tab.
+      e.preventDefault();
+      focusTab('topics');
     } else if (e.key === 'Enter' && e.target === filterRef.current && topic) {
       e.preventDefault();
       select(topic.id, true);

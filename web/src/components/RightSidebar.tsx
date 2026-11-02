@@ -156,14 +156,15 @@ export function RightSidebar({ width, onResize, tab, onTab, onClose, refresh, on
                 title={`${tabTitle(t, servers)} (${TAB_KEY[t]})`}
                 onClick={() => onTab(t, true)}
                 className={cn(
-                  'flex h-7 min-w-0 items-center gap-1.5 rounded-md px-2 text-body transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
+                  'relative flex h-7 min-w-0 items-center gap-1.5 rounded-md px-2 text-body transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
                   active ? 'bg-sidebar-accent font-medium text-foreground' : 'text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground',
                 )}
               >
                 <Icon className="size-4 shrink-0" />
                 {/* PORTS-3.1: five names don't fit; the others show their icon, their name in the tooltip. */}
                 <span className={cn('truncate', !active && 'sr-only')} data-slot="tab-name">{TAB_LABEL[t]}</span>
-                {!!counts?.[t] && <Count n={counts[t]!} />}
+                {/* An icon-only tab wears its count on the icon's corner, as the rail's buttons do, so it reads as that tab's. */}
+                {!!counts?.[t] && <Count n={counts[t]!} className={cn(!active && 'absolute -top-1 -right-0.5 px-1')} />}
               </button>
             );
           })}

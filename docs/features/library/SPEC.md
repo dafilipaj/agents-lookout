@@ -26,7 +26,7 @@ Slice 1 is what the criteria cover; slices 2 and 3 are under Later. Building blo
 
 A third tab in the right sidebar, beside History (HIST-1) and Work (WORK-1).
 
-- [x] LIB-1.1 The right sidebar has a third tab, Library, after Work. With focus not in a text field and no modal open, `L` opens the sidebar on Library, switches to it from another tab, and closes the sidebar when Library is showing, as `H` and `W` do (HIST-1.1, WORK-1.1). Opening it on Library focuses its text filter. The closed rail has a Library button under Work. (test)
+- [x] LIB-1.1 The right sidebar has a third tab, Library, after Work. With focus not in a text field and no modal open, `L` opens the sidebar on Library, switches to it from another tab, and closes the sidebar when Library is showing, as `H` and `W` do (HIST-1.1, WORK-1.1). Opening it on Library focuses its text filter. The closed rail has a Library button under Work. Esc in the empty text filter leaves it for the Library tab (HIST-1.1). (test)
 - [x] LIB-1.2 Which tab is open, the sidebar's width and its open state are remembered across reloads with the other tabs' (WORK-1.2). (test)
 - [x] LIB-1.3 The Session sidebar and the main pane stay visible and usable while Library is open (HIST-1.2). (manual)
 
@@ -271,3 +271,4 @@ None.
 - 2026-10-29: Review round 2 of the `events` build. Technical approach "Git-owned" and "Titles" amended: `realpath` has the same 2 s limit as a git question and its timeout or error counts as a git failure (the folder's file Outputs are left out, one path-free log line); git runs in the C locale and "not a git repository" is matched only at the start of a line; folders resolving to one physical folder share one discovery per read; an HTML title keeps its own text as written (`<title>How <script> works</title>`), skipping comments, `<script>` and `<style>` only outside it (LIB-2.10, LIB-2.12).
 - 2026-10-30: LIB-1.3 and LIB-3.6 checked by Dario in the running app and ticked. Every requirement is now ticked, so the status is Done; slices 2 and 3 stay under Later. Dario confirmed the fork-credit rule (Technical approach).
 - 2026-10-30: From TOOLS-2.5: a tb-session without `events` (clap's `unrecognized subcommand`, or an `unexpected argument '--…'`, exit 2) is a `too-old` read, not `not-installed`: its Alert says "tb-session 0.3.0 is older than the Library needs (0.4.0)", the version installed as Settings › Tools last read it and the needed one from the Tools table, with the same command. LIB-2.8 amended; its test and Behaviour test say so.
+- 2026-11-02: Design pass: LIB-1.1 amended, Esc in the empty text filter leaves it for the tab, as HIST-1.1 now says (`focusTab` in `lib/right-sidebar.ts`).

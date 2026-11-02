@@ -49,7 +49,7 @@ export function formatAgeShort(at: number, now: number): string {
 }
 
 /**
- * How fresh, for people: `updated 1m ago`, `as of last turn · 17m` (Codex), `old · 20m ago`,
+ * How fresh, for people: `updated 1m ago`, `as of last turn · 17m` (Codex), `stale · 20m ago`,
  * `age unknown`, `clock skew`.
  */
 export function freshnessLabel(f: Freshness, now: number): string {
@@ -59,7 +59,7 @@ export function freshnessLabel(f: Freshness, now: number): string {
     case 'last-turn':
       return `as of last turn · ${formatAgeShort(f.at, now)}`;
     case 'old':
-      return `old · ${formatAgeAgo(f.at, now)}`;
+      return `stale · ${formatAgeAgo(f.at, now)}`;
     case 'unknown':
       return 'age unknown';
     case 'skew':

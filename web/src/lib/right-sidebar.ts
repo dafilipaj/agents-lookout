@@ -85,6 +85,14 @@ export function saveLayout(layout: RightLayout): void {
   }
 }
 
+/**
+ * HIST-1.1: a panel's text field takes focus as its tab opens; Esc in it, with nothing left to clear
+ * or collapse, hands focus to the tab, so the letter shortcuts work again.
+ */
+export function focusTab(tab: RightTab): void {
+  document.getElementById(`right-tab-${tab}`)?.focus();
+}
+
 /** WORK-1.1, HIST-1.1: `W` or `H`: open on that tab, or close when it's already showing. */
 export function toggleTab(layout: RightLayout, tab: RightTab): RightLayout {
   if (layout.open && layout.tab === tab) return { ...layout, open: false };

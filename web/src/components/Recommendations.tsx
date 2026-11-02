@@ -52,15 +52,16 @@ export function Recommendations({ recommendations, topics, sessions, showTopic, 
               <span className="min-w-0 truncate text-foreground" title={title} data-field="item">
                 {title}
               </span>
-              {showTopic && (
-                <>
-                  <ArrowRight aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
-                  <span className="min-w-0 truncate font-medium text-foreground" title={target} data-field="target">
-                    {target}
-                  </span>
-                </>
-              )}
             </div>
+            {/* The Topic on its own line, so neither it nor the item is cut to a few letters in a 360 px tab. */}
+            {showTopic && (
+              <div className="flex min-w-0 items-center gap-1.5 pl-0.5">
+                <ArrowRight aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 truncate font-medium text-foreground" title={target} data-field="target">
+                  {target}
+                </span>
+              </div>
+            )}
             <span className="min-w-0 truncate text-muted-foreground" title={r.reason} data-field="reason">
               {r.reason}
             </span>

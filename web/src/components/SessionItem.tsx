@@ -2,6 +2,7 @@ import { GROWTH_BYTES } from '@shared/memory.ts';
 import type { SessionRow } from '@shared/types.ts';
 import { Bot, FolderGit2, GitBranch, SquareTerminal, TrendingUp } from 'lucide-react';
 import { memo, useEffect, useRef } from 'react';
+import { clockTime } from '@/lib/chat';
 import { BACKGROUND_SHELL_TIP, CONTEXT_LEVEL_CLASS, ROW_TONE, STATUS_LABEL, STATUS_STRIP_CLASS, contextLevel, location, locationTip, sessionOptionId } from '@/lib/sessions';
 import { SessionMarker } from '@/components/ui/session-marker';
 import { formatBytes } from '@/lib/memory';
@@ -18,20 +19,29 @@ interface Props {
   dimmed: boolean;
   now: number;
   onSelect(id: string): void;
+  /**
+   * SIDE-2.1: another live row has this title. `location`: their locations differ, so the row shows
+   * where it works even at the default location; `start`: those match too, so it shows when its
+   * process started instead. Null when the title is the row's alone.
+   */
+  twin?: 'location' | 'start' | null;
 }
 
 const NOT_CONTROLLABLE = 'Not Controllable: this Session runs in another app, so Lookout can only show it.';
 
 /** One sidebar row (SIDE-2). */
-export const SessionItem = memo(function SessionItem({ row, selected, dimmed, now, onSelect }: Props) {
+export const SessionItem = memo(function SessionItem({ row, selected, dimmed, now, onSelect, twin = null }: Props) {
   const ref = useRef<HTMLLIElement>(null);
   useEffect(() => {
     if (selected) ref.current?.scrollIntoView?.({ block: 'nearest' });
   }, [selected]);
 
   const shown = row.locationShown;
-  const loc = shown.where ? location(row) : null;
+  // SIDE-2.1: a title two rows share stops hiding where each works, since that's what tells them
+  // apart; when that matches too, when each started shows instead (the row has room for one).
+  const loc = shown.where || twin === 'location' ? location(row) : null;
   const showRepo = shown.repo && (row.git !== null || row.cwd !== null);
+  const started = twin === 'start' ? clockTime(row.procStart) : null;
   const tip = locationTip(row);
   const needsYou = row.status === 'needs-you';
   const tone = needsYou ? ROW_TONE.needsYou : ROW_TONE.plain;
@@ -42,8 +52,8 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
       ? { text: row.activity, field: 'activity', className: tone.quiet }
       : null;
   // SIDE-2.10: with no location to show, the words take the slot; otherwise they go on a line under it.
-  const wordsInSlot = !!words && !showRepo && !loc;
-  const slotEmpty = !showRepo && !loc && !wordsInSlot;
+  const wordsInSlot = !!words && !showRepo && !loc && !started;
+  const slotEmpty = !showRepo && !loc && !started && !wordsInSlot;
   const age = row.statusSince !== null ? formatAge(now - row.statusSince) : null;
   const running = row.subagents?.running ?? 0;
   const wordsLine = (className: string, title: string) => words && (
@@ -126,6 +136,14 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
                 {loc.name}
               </span>
             </span>
+          )}
+          {started && (
+            <>
+              {(showRepo || loc) && <span aria-hidden>·</span>}
+              <span className="min-w-0 truncate tabular-nums" title={`Started ${started}; another Session has this title and location`} data-field="started">
+                from {started}
+              </span>
+            </>
           )}
           {wordsInSlot && wordsLine('min-w-0 truncate', tip ? `${words.text}\n${tip}` : words.text)}
         </span>

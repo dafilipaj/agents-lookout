@@ -787,6 +787,8 @@ function StatusLine({
   );
   const menu = { row, onLoadModels, onSwitch, statusSwitch };
   return (
+    // Below 36rem (StatusBar's container query) the model and Effort parts are left out whole
+    // (they're in the tooltip) rather than cut to a letter or two beside the parts that say where the work is.
     <StatusBar role="group" aria-label="Status line" title={parts.join(' · ')}>
       {where && (
         <span className="min-w-0 truncate" data-field={row.git ? 'repo' : 'cwd'} title={row.cwd ?? undefined}>
@@ -811,7 +813,7 @@ function StatusLine({
       )}
       <PortsChip servers={servers} onShowAll={onShowServers} focusFallback={focusFallback} dot={(where || loc || changed) && dot} />
       {model && (
-        <>
+        <span className="contents @max-[36rem]:hidden" data-slot="status-model">
           {(where || loc) && dot}
           {canSwitchModel(row, ended) ? (
             <SwitchMenu
@@ -827,10 +829,10 @@ function StatusLine({
           ) : (
             <PlainPart field="model" value={model.id} why={plainWhy('model', row, ended)} note={modelNote} />
           )}
-        </>
+        </span>
       )}
       {effort && (
-        <>
+        <span className="contents @max-[36rem]:hidden" data-slot="status-effort">
           {(where || loc || model) && dot}
           {canSwitchEffort(row, ended) ? (
             <SwitchMenu
@@ -846,7 +848,7 @@ function StatusLine({
           ) : (
             <PlainPart field="effort" value={effort.level} why={plainWhy('effort', row, ended)} note={effortNote} />
           )}
-        </>
+        </span>
       )}
       {context && (
         <>
@@ -1011,7 +1013,7 @@ export function StatusBar({ className, ...rest }: ComponentPropsWithoutRef<'div'
   return (
     <div
       className={cn(
-        'flex h-7 min-w-0 shrink-0 items-center gap-1.5 overflow-hidden border-t border-border/70 bg-muted/30 px-5 font-mono text-meta whitespace-nowrap text-muted-foreground',
+        '@container flex h-7 min-w-0 shrink-0 items-center gap-1.5 overflow-hidden border-t border-border/70 bg-muted/30 px-5 font-mono text-meta whitespace-nowrap text-muted-foreground',
         className,
       )}
       {...rest}

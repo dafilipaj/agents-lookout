@@ -76,6 +76,22 @@ describe('the right sidebar (HIST-1)', () => {
     await waitFor(() => expect(screen.getByRole('searchbox', { name: 'Search past Sessions' })).toHaveFocus());
   });
 
+  it('HIST-1.1: Esc in the empty search box leaves it for the History tab, so the letter shortcuts work again', async () => {
+    const app = renderApp('/', { history: async () => ok([]) });
+    app.snapshot([]);
+    await openHistory(app);
+    const search = screen.getByRole('searchbox', { name: 'Search past Sessions' });
+    expect(search).toHaveFocus();
+    await userEvent.type(search, 'x');
+    await userEvent.keyboard('{Escape}');
+    expect(search).toHaveValue(''); // the first Esc clears
+    expect(search).toHaveFocus();
+    await userEvent.keyboard('{Escape}');
+    expect(screen.getByRole('tab', { name: /^History/ })).toHaveFocus(); // the second leaves
+    await userEvent.keyboard('w');
+    expect(screen.getByRole('tab', { name: /^Work/ })).toHaveAttribute('aria-selected', 'true');
+  });
+
   it('HIST-1.2: the Session sidebar and the main pane stay there while it’s open', async () => {
     const app = renderApp('/s/alpha', { history: async () => ok([]) });
     app.snapshot([row({ id: 'alpha', title: 'alpha' })]);

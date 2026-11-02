@@ -175,9 +175,16 @@ function ServerRow({ server: s, now, active, dim, onSelect }: { server: LocalSer
         :{s.ports[0]}
       </a>
       {s.ports.length > 1 && <span className="shrink-0 text-meta text-muted-foreground tabular-nums">{s.ports.slice(1).map((p) => `:${p}`).join(' ')}</span>}
-      <span className="min-w-0 truncate text-body" data-field="name">{dim ? s.command : s.name}</span>
-      <span className="ml-auto min-w-0 truncate text-meta text-muted-foreground" title={s.cwd ?? undefined} data-field="dir">
-        {s.dir ?? 'unknown directory'}
+      {/* PORTS-3.2: the port and the name are the server's identity, so the name keeps up to 60% of the
+          row and the directory gives way first, cut from its start: a Worktree's name ends in what tells it apart. */}
+      <span className="max-w-[60%] shrink-0 truncate text-body" data-field="name">{dim ? s.command : s.name}</span>
+      <span
+        // An rtl box puts the ellipsis at the start; the ltr span inside keeps a leading `~/` or trailing `/` in place.
+        className="ml-auto min-w-0 truncate text-left text-meta text-muted-foreground [direction:rtl]"
+        title={s.cwd ?? undefined}
+        data-field="dir"
+      >
+        <span dir="ltr">{s.dir ?? 'unknown directory'}</span>
       </span>
       {age && <span className="shrink-0 text-meta text-muted-foreground tabular-nums" data-field="age">{age}</span>}
     </div>
