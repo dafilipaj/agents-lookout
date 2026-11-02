@@ -36,20 +36,6 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
 - **How (proposal):** a USAGE spec change with a Changelog line first; maybe a Settings toggle per Harness rather than hiding on "not installed" alone, since a leftover `~/.codex` makes Fleet think Codex is installed.
 - **Added:** 2026-10-17, from the review of the TEST spec.
 
-## Switch a Codex Session's model and Effort (VIEW-6, VIEW-7)
-
-- **What:** the status line's model menu (VIEW-6) and Effort menu (VIEW-7) for Codex Sessions too, not only Claude Code ones. Unblocked: Codex 0.166.0 is installed (2026-10-31), so the proposal below is to be checked against it (Plan item 22).
-- **Why:** VIEW-6 and VIEW-7 leave Codex out because the installed Codex, 0.163, only opens a picker on `/model` (the model, then its reasoning effort), which Fleet would have to drive by keys. Codex 0.164 adds `/model [model] --reasoning <level> --speed <tier>` with everything inline (openai/codex #54378, merged 2026-10-15; in the 0.164 alphas), so Codex's model and Effort can be switched the way Claude Code's are.
-- **How (proposal):**
-  - VIEW-6.1, 6.2, 7.1 and 7.2 change wording: the menus are for Controllable Claude Code and Codex Sessions, listing the models and levels Fleet gives for the Session's Harness (Codex's levels already come from `models_cache.json`'s `supported_reasoning_levels` through `harness list`, `ultra` included where a model has it), and only a Session that isn't Controllable or has ended keeps plain text. The Technical approach's Codex Known gaps go.
-  - `fleet model` and `fleet effort` in the fork take Codex: they type `/model <slug>` and `/model --reasoning <level>`, answer no confirmation (Codex asks none), and succeed once the rollout has a `thread_settings_applied` event with the new model or `reasoning_effort`, written after the command began.
-  - Fleet's `list` reads that event for a Codex Session's `model` and `effort`, so the status line shows the new value at once and Lookout keeps no `pendingModel` or `pendingEffort` for Codex.
-- **Costs and risks:**
-  - Codex's inline `/model` applies to this session only and leaves saved defaults alone, while Claude Code's `/model` and `/effort` (below `max`) also become the default for new Sessions (VIEW-6.4, VIEW-7.4). Each menu's note has to say which applies to the Session's Harness.
-  - `thread_settings_applied` is written only once the rollout file exists, i.e. after the first prompt, so a switch before it has nothing to succeed on.
-  - Codex accepts `/model` mid-turn (from the next turn), but VIEW-6.3 and VIEW-7.3 keep the menus to Idle Sessions for both Harnesses.
-- **Added:** 2026-10-19, from VIEW-6, where Codex is a Known gap. Effort added 2026-10-22, from VIEW-7.
-
 ## Workflow editor: agents and the order they run in (FLOW)
 
 - **What:** define agents and workflows in Lookout, then run a workflow on a piece of work and watch it go.

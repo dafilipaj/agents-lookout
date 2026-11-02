@@ -2,13 +2,16 @@ import { effortLevels } from '@shared/model.ts';
 import type { SessionRow } from '@shared/types.ts';
 import type { HarnessState } from '@/lib/launch';
 import { shownModel } from '@/lib/model-switch';
-import { type MenuOptions, canSwitch, itermWhy, notIdleWhy, restartedWhy, switchingWhy } from '@/lib/status-switch';
+import { CODEX_SESSION_ONLY_NOTE, type MenuOptions, canSwitch, itermWhy, notIdleWhy, restartedWhy, switchingWhy } from '@/lib/status-switch';
 
 /**
  * VIEW-7.4: under the menu's levels, as `/effort <level>` does in the terminal: Claude Code saves
  * `low` to `xhigh` as its default for new Sessions on the model, and keeps `max` for this Session.
  */
 export const EFFORT_DEFAULT_NOTE = 'low to xhigh also become the default for new Claude Code Sessions on this model. max is for this Session only.';
+
+/** VIEW-7.4: what the pick does beyond this Session, by its Harness: every Codex level is for the Session only. */
+export const effortFootnote = (harness: string) => (harness === 'codex' ? CODEX_SESSION_ONLY_NOTE : EFFORT_DEFAULT_NOTE);
 
 /** VIEW-7.3: why the Effort can't open the menu now, for its tooltip. */
 export const EFFORT_WHY = { ...notIdleWhy('effort'), switching: switchingWhy('effort') } as const;
@@ -38,12 +41,12 @@ export function canSwitchEffort(row: SessionRow, ended: boolean): boolean {
 
 /**
  * VIEW-7.1: the levels Fleet lists for the Session's model (the one the status line shows), each by
- * its bare word, lowest first; every Claude Code level for a model Fleet doesn't list.
+ * its bare word, lowest first; every level of its Harness for a model Fleet doesn't list.
  */
 export function effortOptions(harnesses: HarnessState, row: SessionRow): MenuOptions {
   if (harnesses.state !== 'ready') return harnesses;
-  const claude = harnesses.harnesses.find((h) => h.id === 'claude');
-  const levels = effortLevels(claude?.models ?? [], shownModel(row)?.id ?? null);
+  const own = harnesses.harnesses.find((h) => h.id === row.harness);
+  const levels = effortLevels(own?.models ?? [], shownModel(row)?.id ?? null);
   if (!levels.length) return { state: 'error', error: NO_LEVELS };
   return { state: 'ready', items: levels.map((level) => ({ value: level, label: level })) };
 }
@@ -51,10 +54,11 @@ export function effortOptions(harnesses: HarnessState, row: SessionRow): MenuOpt
 /**
  * VIEW-7.1: whether the shown Effort may not be what the Session runs: a model switch is pending and
  * no Effort switch is newer than it, and Claude Code may have moved the Session to the new model's
- * saved level (unverified on 2.1.308: Known gap under "Switching the Effort").
+ * saved level (unverified on 2.1.308: Known gap under "Switching the Effort"). Never for Codex,
+ * whose switch Fleet reads at once, the level it moved to included (VIEW-7.7).
  */
 export function effortUnverified(row: SessionRow): boolean {
-  if (!row.pendingModel) return false;
+  if (!row.pendingModel || row.harness !== 'claude') return false;
   if (!row.pendingEffort) return true;
   return Date.parse(row.pendingEffort.since) <= Date.parse(row.pendingModel.since);
 }

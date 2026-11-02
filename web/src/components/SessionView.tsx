@@ -29,8 +29,8 @@ import {
   stopButton,
 } from '@/lib/answers';
 import type { HarnessState } from '@/lib/launch';
-import { EFFORT_DEFAULT_NOTE, canSwitchEffort, checkedEffort, effortOptions, effortUnverified, shownEffort } from '@/lib/effort-switch';
-import { MODEL_DEFAULT_NOTE, type ModelTarget, canSwitchModel, checkedModel, modelOptions, shownModel } from '@/lib/model-switch';
+import { canSwitchEffort, checkedEffort, effortFootnote, effortOptions, effortUnverified, shownEffort } from '@/lib/effort-switch';
+import { type ModelTarget, canSwitchModel, checkedModel, modelFootnote, modelOptions, shownModel } from '@/lib/model-switch';
 import { FROM_NEXT_REPLY, type MenuOptions, type SwitchState, type SwitchWhat, plainWhy, switchWhy } from '@/lib/status-switch';
 import type { Chat as ChatState, Preview } from '@/lib/store';
 import { BACKGROUND_SHELL_TIP, CONTEXT_LEVEL_CLASS, HARNESS_NAME, STATUS_LABEL, STATUS_TAG_CLASS, contextLevel, location } from '@/lib/sessions';
@@ -797,9 +797,9 @@ function StatusLine({
               value={model.id}
               pending={model.pending && !ended}
               note={modelNote}
-              options={modelOptions(models)}
+              options={modelOptions(models, row.harness)}
               checked={(options) => checkedModel(options, model.id)}
-              footnote={MODEL_DEFAULT_NOTE}
+              footnote={modelFootnote(row.harness)}
             />
           ) : (
             <PlainPart field="model" value={model.id} why={plainWhy('model', row, ended)} note={modelNote} />
@@ -818,7 +818,7 @@ function StatusLine({
               note={effortNote}
               options={effortOptions(models, row)}
               checked={(options) => checkedEffort(options, effort.level, effortUnverified(row))}
-              footnote={EFFORT_DEFAULT_NOTE}
+              footnote={effortFootnote(row.harness)}
             />
           ) : (
             <PlainPart field="effort" value={effort.level} why={plainWhy('effort', row, ended)} note={effortNote} />

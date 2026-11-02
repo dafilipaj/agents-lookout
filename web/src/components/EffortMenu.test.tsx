@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { SaveError } from '@/lib/client';
 import { EFFORT_DEFAULT_NOTE, EFFORT_ITERM, EFFORT_RESTARTED, EFFORT_WHY, NO_LEVELS } from '@/lib/effort-switch';
 import { FROM_NEXT_REPLY, MODEL_WHY } from '@/lib/model-switch';
+import { CODEX_SESSION_ONLY_NOTE, itermWhy } from '@/lib/status-switch';
 import { HARNESSES, renderApp, row } from '@/test/helpers';
 
 const statusLine = () => screen.getByRole('group', { name: 'Status line' });
@@ -98,10 +99,11 @@ describe('switching the Effort from the status line (VIEW-7)', () => {
     expect(within(menu()).queryAllByRole('menuitemradio')).toEqual([]);
   });
 
-  it('VIEW-7.2: a Codex Session’s Effort, a View only one’s, one in an iTerm tab (its tooltip says why) and an ended one’s stay plain text', () => {
+  it('VIEW-7.2: a View only Session’s Effort, one in an iTerm tab (its tooltip says why, naming its Harness’s command) and an ended one’s stay plain text', () => {
     const codex = renderApp('/s/a');
-    codex.snapshot([row({ id: 'a', harness: 'codex', model: 'gpt-6-astra', effort: 'xhigh' })]);
-    expect(effortField()).toHaveTextContent('xhigh');
+    codex.snapshot([row({ id: 'a', harness: 'codex', backend: 'iterm', model: 'gpt-6-astra', effort: 'xhigh' })]);
+    expect(effortField()).toHaveAttribute('title', `xhigh\n${itermWhy('effort', 'codex')}`);
+    expect(itermWhy('effort', 'codex')).toBe('Lookout can’t switch the Effort of a Session in an iTerm tab. Use /model in its terminal.');
     expect(effortButtonOrNull()).toBeNull();
     codex.unmount();
 
@@ -182,6 +184,31 @@ describe('switching the Effort from the status line (VIEW-7)', () => {
     await user.click(effortButton());
     expect(within(menu()).getByText(EFFORT_DEFAULT_NOTE)).toBeInTheDocument();
     expect(EFFORT_DEFAULT_NOTE).toBe('low to xhigh also become the default for new Claude Code Sessions on this model. max is for this Session only.');
+  });
+
+  it('VIEW-7.1, VIEW-7.4: a Codex Session’s Effort is a button opening its model’s levels from Fleet, `ultra` where listed; the menu says every level is for this Session only', async () => {
+    const user = userEvent.setup();
+    const codexTwo: HarnessOption[] = [
+      HARNESSES[0]!,
+      { ...HARNESSES[1]!, models: [...HARNESSES[1]!.models, { id: 'gpt-6-sol', label: 'GPT-6 Sol', efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'], defaultEffort: 'medium' }] },
+    ];
+    const app = renderApp('/s/a', { harnesses: async () => codexTwo });
+    app.snapshot([row({ id: 'a', harness: 'codex', model: 'gpt-6-sol', effort: 'high' })]);
+    await user.click(effortButton());
+    expect(items().map((i) => i.textContent)).toEqual(['low', 'medium', 'high', 'xhigh', 'max', 'ultra']);
+    expect(level('high')).toHaveAttribute('aria-checked', 'true');
+    expect(within(menu()).getByText(CODEX_SESSION_ONLY_NOTE)).toBeInTheDocument();
+    expect(within(menu()).queryByText(EFFORT_DEFAULT_NOTE)).toBeNull();
+    await user.click(level('ultra'));
+    await waitFor(() => expect(app.client.switchEffort).toHaveBeenCalledWith('a', expect.objectContaining({ effort: 'ultra' })));
+  });
+
+  it('VIEW-7.7: a pending Codex model switch never leaves the Effort unchecked: Fleet already shows the level Codex moved to', async () => {
+    const user = userEvent.setup();
+    const app = renderApp('/s/a');
+    app.snapshot([row({ id: 'a', harness: 'codex', model: 'gpt-6-astra', effort: 'medium', pendingModel: { model: 'gpt-6-astra', since: '2026-10-22T10:00:00Z' } })]);
+    await user.click(effortButton());
+    expect(level('medium')).toHaveAttribute('aria-checked', 'true');
   });
 
   it('VIEW-7.5: picking a level asks for the switch once, for that level and the process the menu opened on; picking the checked one types nothing and closes the menu', async () => {

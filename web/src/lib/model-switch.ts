@@ -1,12 +1,26 @@
 import { sameModel } from '@shared/model.ts';
 import type { SessionRow } from '@shared/types.ts';
-import { FROM_NEXT_REPLY, type MenuOptions, canSwitch, itermWhy, notIdleWhy, restartedWhy, switchKey, switchingWhy, SWITCH_RUNNING } from '@/lib/status-switch';
+import {
+  CODEX_SESSION_ONLY_NOTE,
+  FROM_NEXT_REPLY,
+  type MenuOptions,
+  canSwitch,
+  itermWhy,
+  notIdleWhy,
+  restartedWhy,
+  switchKey,
+  switchingWhy,
+  SWITCH_RUNNING,
+} from '@/lib/status-switch';
 import type { HarnessState } from '@/lib/launch';
 
 export { FROM_NEXT_REPLY };
 
-/** VIEW-6.4: under the menu's models, as `/model` does in the terminal. */
+/** VIEW-6.4: under a Claude Code Session's menu, as `/model` does in its terminal. */
 export const MODEL_DEFAULT_NOTE = 'Also becomes the default for new Claude Code Sessions.';
+
+/** VIEW-6.4: what the pick does beyond this Session, by its Harness. */
+export const modelFootnote = (harness: string) => (harness === 'codex' ? CODEX_SESSION_ONLY_NOTE : MODEL_DEFAULT_NOTE);
 
 /** VIEW-6.5, VIEW-7.5: the Session process a menu was opened on; the pick is for it. */
 export type ModelTarget = Pick<SessionRow, 'pid' | 'procStart'>;
@@ -40,11 +54,11 @@ export function canSwitchModel(row: SessionRow, ended: boolean): boolean {
   return canSwitch(row, ended) && shownModel(row) !== null;
 }
 
-/** VIEW-6.1: the models Fleet lists for Claude Code (LAUNCH-3.2), by label, without its "Default" entry. */
-export function modelOptions(harnesses: HarnessState): MenuOptions {
+/** VIEW-6.1: the models Fleet lists for the Session's Harness (LAUNCH-3.2), by label, without its "Default" entry. */
+export function modelOptions(harnesses: HarnessState, harness: string): MenuOptions {
   if (harnesses.state !== 'ready') return harnesses;
-  const claude = harnesses.harnesses.find((h) => h.id === 'claude');
-  return { state: 'ready', items: (claude?.models ?? []).filter((m) => m.id !== '').map((m) => ({ value: m.id, label: m.label, detail: m.id })) };
+  const own = harnesses.harnesses.find((h) => h.id === harness);
+  return { state: 'ready', items: (own?.models ?? []).filter((m) => m.id !== '').map((m) => ({ value: m.id, label: m.label, detail: m.id })) };
 }
 
 /** VIEW-6.1: the listed model the Session runs, a `[1m]` or a date suffix aside; null when it isn't listed. */

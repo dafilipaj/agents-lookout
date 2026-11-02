@@ -19,7 +19,8 @@ const FLEET_FIXTURES = new URL('./fixtures/fleet/messages/', import.meta.url).pa
 
 const CLAUDE = 'dddddddd-0000-4000-8000-000000000104'; // Claude Code, Idle, tmux, pid 61004
 const PROC = { pid: 61004, procStart: '2026-10-14T09:30:00Z' };
-const CODEX = 'bbbbbbbb-0000-4000-8000-000000000102'; // Codex, Idle, tmux
+const CODEX = 'bbbbbbbb-0000-4000-8000-000000000102'; // Codex, Idle, tmux, gpt-6-astra · xhigh
+const CODEX_PROC = { pid: 61002, procStart: '2026-10-14T07:55:41Z' };
 const WAITING = 'aaaaaaaa-0000-4000-8000-000000000101'; // Claude Code, Needs you
 const VIEW_ONLY = 'cccccccc-0000-4000-8000-000000000103'; // Claude Code, backend unknown
 
@@ -174,9 +175,8 @@ describe('switching the model (VIEW-6)', { timeout: 30_000 }, () => {
     expect(sameModel('claude-sonnet-5-5', 'claude-opus-5-5')).toBe(false);
   });
 
-  it('VIEW-6.2: a Codex Session, and one that isn’t Controllable, isn’t switched; nothing runs', async () => {
+  it('VIEW-6.2: a Session that isn’t Controllable isn’t switched; nothing runs', async () => {
     const t = await setup();
-    expect(await refusal(t.switchTo('claude-sonnet-5-5', CODEX, { pid: 61002, procStart: '2026-10-14T07:55:41Z' }))).toMatchObject({ status: 409, message: 'Lookout switches the model only in a Claude Code Session.' });
     expect(await refusal(t.switchTo('claude-sonnet-5-5', VIEW_ONLY, { pid: 61003, procStart: '2026-10-14T08:01:17.250Z' }))).toMatchObject({ status: 409, message: 'This Session runs in another app, so Lookout can’t switch its model.' });
     expect(switches()).toEqual([]);
     // In an iTerm tab (Fleet's `model` reads the box only in its own terminal host), as listed, or by
@@ -511,9 +511,8 @@ describe('switching the Effort (VIEW-7)', { timeout: 30_000 }, () => {
     expect(await t.effortTo('xhigh')).toMatchObject({ effort: 'xhigh' });
   });
 
-  it('VIEW-7.2: a Codex Session’s Effort, one that isn’t Controllable, and one in an iTerm tab isn’t switched; nothing runs', async () => {
+  it('VIEW-7.2: the Effort of a Session that isn’t Controllable, or in an iTerm tab, isn’t switched; nothing runs', async () => {
     const t = await setup();
-    expect(await refusal(t.effortTo('high', CODEX, { pid: 61002, procStart: '2026-10-14T07:55:41Z' }))).toMatchObject({ status: 409, message: 'Lookout switches the Effort only in a Claude Code Session.' });
     expect(await refusal(t.effortTo('high', VIEW_ONLY, { pid: 61003, procStart: '2026-10-14T08:01:17.250Z' }))).toMatchObject({ status: 409, message: 'This Session runs in another app, so Lookout can’t switch its Effort.' });
     editRow(CLAUDE, { backend: 'iterm' });
     const u = await setup();
@@ -676,5 +675,86 @@ describe('switching the Effort (VIEW-7)', { timeout: 30_000 }, () => {
     expect(switches.pendingFor(row)).toBeNull();
     switches.observe(...listed(null, { pid: 61099, procStart: '2026-10-14T10:02:00Z' }));
     expect(switches.pendingEffortFor(row)).toBeNull();
+  });
+});
+
+describe('switching a Codex Session (VIEW-6, VIEW-7)', { timeout: 30_000 }, () => {
+  it('VIEW-6.1: an Idle Codex Session switches to a model Fleet lists for Codex, through the same `fleet model`; a Claude model, or the "Default" entry, isn’t one', async () => {
+    const t = await setup();
+    expect(await t.switchTo('gpt-6-sol', CODEX, CODEX_PROC)).toEqual({ model: 'gpt-6-sol', confirmed: false });
+    expect(switches()).toEqual([
+      ['--local', 'model', '--json', '--require-empty', '--expect-pid', '61002', '--expect-start', '2026-10-14T07:55:41Z', '--', `id:${CODEX}`, 'gpt-6-sol'],
+    ]);
+    const unlisted = { status: 400, message: 'Fleet doesn’t list this model for Codex, so the Session wasn’t switched.', uncertain: false };
+    expect(await refusal(t.switchTo('claude-sonnet-5-5', CODEX, CODEX_PROC))).toEqual(unlisted);
+    expect(await refusal(t.switchTo('', CODEX, CODEX_PROC).catch((e: unknown) => Promise.reject(e)))).toMatchObject({ status: 400 });
+    expect(switches()).toHaveLength(1);
+  });
+
+  it('VIEW-6.4: a Codex switch is for the Session only, so LAUNCH’s cached list stays, whatever the outcome', async () => {
+    const t = await setup();
+    await t.switchTo('gpt-6-sol', CODEX, CODEX_PROC);
+    await t.effortTo('high', CODEX, CODEX_PROC);
+    for (const kind of ['outcome_uncertain', 'io']) {
+      editRow(CODEX, { fake_model: kind, fake_effort: kind });
+      await refusal(t.switchTo('gpt-6-sol', CODEX, CODEX_PROC));
+      await refusal(t.effortTo('high', CODEX, CODEX_PROC));
+    }
+    expect(t.drop).not.toHaveBeenCalled();
+  });
+
+  it('VIEW-6.7, VIEW-7.7: once switched, the Codex row carries the new model and level as pending, from the next reply', async () => {
+    editRow(CODEX, { fake_switched_at: '2026-10-14T10:00:00.000Z' });
+    const t = await setup();
+    await t.switchTo('gpt-6-sol', CODEX, CODEX_PROC);
+    await t.effortTo('ultra', CODEX, CODEX_PROC);
+    const row = t.monitor.get(CODEX)!;
+    expect(row.pendingModel).toEqual({ model: 'gpt-6-sol', since: '2026-10-14T10:00:00.000Z' });
+    expect(row.pendingEffort).toEqual({ effort: 'ultra', since: '2026-10-14T10:00:00.000Z' });
+  });
+
+  it('VIEW-6.8: Codex’s refusals in plain words: a model it doesn’t offer; no Transcript before its first prompt; a Fleet that can’t switch Codex yet', async () => {
+    const t = await setup();
+    editRow(CODEX, { fake_model: 'model_not_found' });
+    expect(await refusal(t.switchTo('gpt-6-sol', CODEX, CODEX_PROC))).toEqual({ status: 409, message: 'Codex doesn’t offer this model, so the Session wasn’t switched.', uncertain: false });
+    editRow(CODEX, { fake_model: 'transcript_not_found' });
+    expect(await refusal(t.switchTo('gpt-6-sol', CODEX, CODEX_PROC))).toEqual({
+      status: 409,
+      message: 'This Codex Session has no Transcript until its first prompt, so Lookout can’t confirm a switch and the model wasn’t switched. Send a prompt first.',
+      uncertain: false,
+    });
+    editRow(CODEX, { fake_model: 'harness_unsupported' });
+    expect(await refusal(t.switchTo('gpt-6-sol', CODEX, CODEX_PROC))).toEqual({ status: 501, message: 'This Fleet can’t switch a Codex Session’s model yet. Update the Fleet fork.', uncertain: false });
+    // A held switch names Codex's command.
+    editRow(CODEX, { fake_model: undefined, fake_model_held: 'unreadable' });
+    expect((await refusal(t.switchTo('gpt-6-sol', CODEX, CODEX_PROC))).message).toMatch(/Switch with \/model in the terminal instead/);
+  });
+
+  it('VIEW-7.1: a Codex Session’s levels are its model’s, `ultra` included where Fleet lists it; others aren’t typed', async () => {
+    const t = await setup();
+    const unlisted = { status: 400, message: 'Fleet doesn’t list this level for the Session’s model, so the Effort wasn’t switched.', uncertain: false };
+    expect(await refusal(t.effortTo('ultra', CODEX, CODEX_PROC))).toEqual(unlisted); // gpt-6-astra has no `ultra`
+    expect(effortRuns()).toEqual([]);
+    editRow(CODEX, { model: 'gpt-6-sol' });
+    const u = await setup();
+    expect(await u.effortTo('ultra', CODEX, CODEX_PROC)).toEqual({ effort: 'ultra', confirmed: false, saved: false });
+    expect(effortRuns()).toEqual([
+      ['--local', 'effort', '--json', '--require-empty', '--expect-pid', '61002', '--expect-start', '2026-10-14T07:55:41Z', '--', `id:${CODEX}`, 'ultra'],
+    ]);
+  });
+
+  it('VIEW-7.8: Codex’s refusals in plain words: a level it doesn’t offer for the model; no Transcript yet; an iTerm tab names /model', async () => {
+    const t = await setup();
+    editRow(CODEX, { fake_effort: 'effort_not_found' });
+    expect(await refusal(t.effortTo('high', CODEX, CODEX_PROC))).toEqual({ status: 409, message: 'Codex doesn’t offer this level for the Session’s model, so the Effort wasn’t switched.', uncertain: false });
+    editRow(CODEX, { fake_effort: 'transcript_not_found' });
+    expect((await refusal(t.effortTo('high', CODEX, CODEX_PROC))).message).toMatch(/^This Codex Session has no Transcript until its first prompt/);
+    editRow(CODEX, { fake_effort: undefined, backend: 'iterm' });
+    const u = await setup();
+    expect(await refusal(u.effortTo('high', CODEX, CODEX_PROC))).toEqual({
+      status: 409,
+      message: 'This Session runs in an iTerm tab, where Lookout can’t switch its Effort. Use /model in its terminal.',
+      uncertain: false,
+    });
   });
 });

@@ -189,7 +189,8 @@ describe('Session view header', () => {
 
   it('VIEW-5.11: it keeps the line one line: the Effort truncates like the other parts', () => {
     const app = renderApp('/s/a');
-    app.snapshot([row({ id: 'a', model: 'gpt-6-luna', harness: 'codex', effort: 'xhigh', contextPct: 9 })]);
+    // View only, so the Effort is plain text (a switchable one is VIEW-7's button).
+    app.snapshot([row({ id: 'a', model: 'gpt-6-luna', harness: 'codex', controllable: false, backend: 'unknown', effort: 'xhigh', contextPct: 9 })]);
     const line = statusLine();
     expect(line).toHaveClass('whitespace-nowrap', 'overflow-hidden', 'h-7');
     expect(line.querySelector('[data-field="effort"]')).toHaveClass('truncate', 'min-w-0');

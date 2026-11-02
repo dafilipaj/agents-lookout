@@ -61,7 +61,8 @@
 //   fork's `model`, which holds as `--require-empty` whether given or not): types nothing, and changes nothing in list.json (Fleet's `model` follows only
 //   with the Session's next reply: edit the row's `model` and `model_at` for that). Exact targets
 //   only, the model id as Fleet checks it (`usage`); `--expect-*` as `close` (`target_changed`);
-//   a Codex row is `harness_unsupported`, one off tmux `backend_unsupported`; a row that isn't
+//   a pi row is `harness_unsupported`, a Codex row without a session id (no rollout yet)
+//   `transcript_not_found`, one off tmux `backend_unsupported`; a row that isn't
 //   `idle` is `not_idle` with its `status`. A row's `fake_model_held` (`text`, `prompt`,
 //   `no_input_box`, `unreadable`) holds it as `send --require-empty` does: exit 3, `send_held` with
 //   that `reason` (and `input`, the row's `fake_input`, for `text` and `unreadable`). A row's
@@ -79,7 +80,8 @@
 //   `fake_effort_typed`; the level is checked for shape only (lowercase letters, at most 16:
 //   `usage`). Otherwise `{ ok: true, host, session_id, pid, harness, effort, confirmed, saved,
 //   switched_at, dry_run }`: `confirmed` the row's `fake_effort_confirm` (default false), `saved`
-//   its `fake_effort_saved` (default: true but for `max`, as Claude Code 2.1.308 writes it).
+//   its `fake_effort_saved` (default: true but for `max`, as Claude Code 2.1.308 writes it;
+//   always false for Codex, whose switch is for the session only).
 //   `harness list --json` prints `harnesses.json` from the fixture dir, or `[]` without one.
 //   `--version` prints FAKE_FLEET_VERSION, else `fleet 0.1.0` (TOOLS-2.2, docs/contracts/fleet-tools.md).
 //   FAKE_FLEET_REGISTER  `later`: a spawned Session doesn't show in `list` until
@@ -553,7 +555,8 @@ function model(args, cmd = 'model') {
   if ((expectPid === undefined) !== (expectStart === undefined)) fail('usage', '--expect-pid and --expect-start go together');
   const row = resolveExact(target);
   if (!row) fail('target_not_found', `no session matches '${target}'`);
-  if (row.harness !== 'claude') fail('harness_unsupported', `session runs ${row.harness}: ${cmd} switches Claude Code sessions only; nothing typed`);
+  if (row.harness !== 'claude' && row.harness !== 'codex') fail('harness_unsupported', `session runs ${row.harness}: ${cmd} switches Claude Code and Codex sessions only; nothing typed`);
+  if (row.harness === 'codex' && !row.session_id) fail('transcript_not_found', `session ${row.pid} has no rollout yet (Codex writes it with the first prompt), so a switch could not be confirmed; nothing typed`);
   if (expectPid !== undefined && (String(row.pid) !== expectPid || row.proc_start == null || row.proc_start !== expectStart)) {
     fail('target_changed', `the session's process is now pid ${row.pid} started ${row.proc_start ?? 'unknown'}; nothing typed`);
   }
@@ -573,7 +576,8 @@ function model(args, cmd = 'model') {
     process.stderr.write(`error: held (${held}); nothing typed\n`);
     process.exit(3);
   }
-  const value = cmd === 'effort' ? { effort: id, saved: dryRun ? null : (row.fake_effort_saved ?? id !== 'max') } : { model: id };
+  const saved = row.harness === 'codex' ? false : (row.fake_effort_saved ?? id !== 'max');
+  const value = cmd === 'effort' ? { effort: id, saved: dryRun ? null : saved } : { model: id };
   out({
     ok: true, host: 'fake', session_id: row.session_id, pid: row.pid, harness: row.harness, ...value,
     confirmed: !dryRun && fake('_confirm') === true, switched_at: dryRun ? null : (row.fake_switched_at ?? new Date().toISOString()), dry_run: dryRun,

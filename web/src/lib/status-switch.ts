@@ -18,9 +18,10 @@ export const SWITCH_LOST = 'Lookout’s server didn’t answer, so Lookout can�
 /** What the status line switches: VIEW-6's model, or VIEW-7's Effort beside it. */
 export type SwitchWhat = 'model' | 'effort';
 
-/** How a sentence names it (the Glossary's Effort is capitalized), and its slash command. */
+/** How a sentence names it (the Glossary's Effort is capitalized), and its slash command: Codex switches both with `/model`. */
 const NOUN: Readonly<Record<SwitchWhat, string>> = { model: 'model', effort: 'Effort' };
 const COMMAND: Readonly<Record<SwitchWhat, string>> = { model: '/model', effort: '/effort' };
+const command = (what: SwitchWhat, harness: string) => (harness === 'codex' ? '/model' : COMMAND[what]);
 
 /**
  * A switch the status line runs through the server, as App keeps it per Session process, so it
@@ -64,8 +65,9 @@ export function switchWhy(what: SwitchWhat, status: Status, sw: SwitchState | un
   return status === 'idle' ? null : notIdleWhy(what)[status];
 }
 
-/** VIEW-6.2: the tooltip of a value that stays plain text in an iTerm tab. */
-export const itermWhy = (what: SwitchWhat) => `Lookout can’t switch the ${NOUN[what]} of a Session in an iTerm tab. Use ${COMMAND[what]} in its terminal.`;
+/** VIEW-6.2, VIEW-7.2: the tooltip of a value that stays plain text in an iTerm tab, naming its Harness's command. */
+export const itermWhy = (what: SwitchWhat, harness = 'claude') =>
+  `Lookout can’t switch the ${NOUN[what]} of a Session in an iTerm tab. Use ${command(what, harness)} in its terminal.`;
 
 /** VIEW-6.8: a pick while this tab's switch for the Session is still under way; nothing is asked. */
 export const SWITCH_RUNNING = 'A switch for this Session is already under way.';
@@ -78,17 +80,20 @@ export const FROM_NEXT_REPLY = 'from the next reply';
 
 /**
  * VIEW-6.1/6.2, VIEW-7.1/7.2: whether a Session's model or Effort can be a menu: a live,
- * Controllable Claude Code Session in a tmux pane (where Fleet reads the input box). A Codex
- * Session's, a View only one's, one in an iTerm tab and an ended one's stay plain text.
+ * Controllable Claude Code or Codex Session in a tmux pane (where Fleet reads the input box). A
+ * View only one's, one in an iTerm tab and an ended one's stay plain text.
  */
 export function canSwitch(row: SessionRow, ended: boolean): boolean {
-  return !ended && row.controllable && row.harness === 'claude' && row.backend === 'tmux';
+  return !ended && row.controllable && row.backend === 'tmux';
 }
 
-/** VIEW-6.2: why a live Claude Code Session's value stays plain text when it's only its terminal host; null otherwise. */
+/** VIEW-6.2: why a live Session's value stays plain text when it's only its terminal host; null otherwise. */
 export function plainWhy(what: SwitchWhat, row: SessionRow, ended: boolean): string | null {
-  return !ended && row.controllable && row.harness === 'claude' && row.backend !== 'tmux' ? itermWhy(what) : null;
+  return !ended && row.controllable && row.backend !== 'tmux' ? itermWhy(what, row.harness) : null;
 }
+
+/** VIEW-6.4, VIEW-7.4: under a Codex Session's menu: Codex's `/model` is for the Session only. */
+export const CODEX_SESSION_ONLY_NOTE = 'For this Session only. New Codex Sessions keep their default.';
 
 /**
  * Why a switch failed, for people; `uncertain` when Lookout can't be sure of the outcome (the

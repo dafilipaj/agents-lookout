@@ -3,6 +3,7 @@ import {
   HELD_REASONS,
   type EffortSwitchRequest,
   type EffortSwitchResult,
+  type Harness,
   type HarnessOption,
   type HeldReason,
   type ModelSwitchRequest,
@@ -178,13 +179,12 @@ interface Kind {
 
 /**
  * What the status line switches, in people's words (VIEW-6.8, VIEW-7.6/7.8: the Effort's are the
- * model's, naming `/effort` where they name `/model`), and Fleet's kinds for it. Nothing names
- * tmux (0001).
+ * model's, naming Claude Code's `/effort` where they name `/model`; Codex switches both with
+ * `/model`), and Fleet's kinds for it. Nothing names tmux (0001).
  */
 export interface SwitchWords {
   OTHER_APP: string;
   ITERM: string;
-  NOT_CLAUDE: string;
   NOT_IDLE: string;
   CHANGED: string;
   FLEET_CHANGED: string;
@@ -227,7 +227,6 @@ function switchWords(noun: string, cmd: string, listed: { unlisted: string; unre
     OTHER_APP: `This Session runs in another app, so Lookout can’t switch its ${noun}.`,
     // VIEW-6.2: Fleet reads the input box only in its own terminal host (tmux), which is never named.
     ITERM: `This Session runs in an iTerm tab, where Lookout can’t switch its ${noun}. Use ${cmd} in its terminal.`,
-    NOT_CLAUDE: `Lookout switches the ${noun} only in a Claude Code Session.`,
     NOT_IDLE,
     CHANGED: `This Session was restarted since you picked the ${noun}, so it wasn’t switched.`,
     // VIEW-6.8: Fleet found the Session changed (`target_changed`) or gone (`target_not_found`, or no
@@ -276,7 +275,7 @@ function switchWords(noun: string, cmd: string, listed: { unlisted: string; unre
       target_changed: { status: 409, message: FLEET_CHANGED },
       target_ambiguous: { status: 409, message: ambiguous },
       target_invalid: { status: 409, message: ambiguous },
-      harness_unsupported: { status: 409, message: `Lookout switches the ${noun} only in a Claude Code Session.` },
+      harness_unsupported: { status: 409, message: `Lookout switches the ${noun} only in a Claude Code or Codex Session.` },
       backend_unsupported: { status: 409, message: `Lookout can’t reach this Session’s terminal, ${not}.` },
       usage: { status: 502, message: `Fleet refused the request, ${not}.` },
       // Something else came up after the command, nothing pressed: "can't tell whether it switched".
@@ -288,7 +287,17 @@ function switchWords(noun: string, cmd: string, listed: { unlisted: string; unre
   };
 }
 
-/** VIEW-6's words, and the Fleet fork's `model --json` failures for people (VIEW-6.8). */
+/** Codex's own refusals, either switch: no Transcript before its first prompt. */
+function codexKinds(noun: string): Record<string, Kind> {
+  return {
+    transcript_not_found: {
+      status: 409,
+      message: `This Codex Session has no Transcript until its first prompt, so Lookout can’t confirm a switch and the ${noun} wasn’t switched. Send a prompt first.`,
+    },
+  };
+}
+
+/** VIEW-6's words, and the Fleet fork's `model --json` failures for people (VIEW-6.8): Claude Code's. */
 export const MODEL_WORDS: SwitchWords = (() => {
   const w = switchWords('model', '/model', {
     unlisted: 'Fleet doesn’t list this model for Claude Code, so the Session wasn’t switched.',
@@ -301,6 +310,25 @@ export const MODEL_WORDS: SwitchWords = (() => {
       ...w.KINDS,
       model_not_found: { status: 409, message: 'Claude Code doesn’t know this model, so the Session wasn’t switched.' },
       switch_refused: { status: 409, message: 'A hook in Claude Code refused the switch, so the model wasn’t switched.' },
+    },
+  };
+})();
+
+/** VIEW-6's words for a Codex Session: `/model <slug>`, no hook, its own refusals. */
+export const CODEX_MODEL_WORDS: SwitchWords = (() => {
+  const w = switchWords('model', '/model', {
+    unlisted: 'Fleet doesn’t list this model for Codex, so the Session wasn’t switched.',
+    unreadable: 'Couldn’t read the models Fleet lists, so the model wasn’t switched. Try again.',
+    oldFleet: 'This Fleet can’t switch a Codex Session’s model yet. Update the Fleet fork.',
+  });
+  return {
+    ...w,
+    // A Fleet before Codex's switch refuses the Harness: the fork is what's old.
+    KINDS: {
+      ...w.KINDS,
+      ...codexKinds('model'),
+      harness_unsupported: { status: 501, message: 'This Fleet can’t switch a Codex Session’s model yet. Update the Fleet fork.' },
+      model_not_found: { status: 409, message: 'Codex doesn’t offer this model, so the Session wasn’t switched.' },
     },
   };
 })();
@@ -326,6 +354,24 @@ export const EFFORT_WORDS: SwitchWords = (() => {
         message: 'Claude Code asked something Fleet didn’t recognise after /effort, so nothing was pressed. Check the terminal.',
         uncertain: true,
       },
+    },
+  };
+})();
+
+/** VIEW-7's words for a Codex Session: `/model --reasoning <level>`, so they name `/model`. */
+export const CODEX_EFFORT_WORDS: SwitchWords = (() => {
+  const w = switchWords('Effort', '/model', {
+    unlisted: 'Fleet doesn’t list this level for the Session’s model, so the Effort wasn’t switched.',
+    unreadable: 'Couldn’t read the levels Fleet lists, so the Effort wasn’t switched. Try again.',
+    oldFleet: 'This Fleet can’t switch a Codex Session’s Effort yet. Update the Fleet fork.',
+  });
+  return {
+    ...w,
+    KINDS: {
+      ...w.KINDS,
+      ...codexKinds('Effort'),
+      harness_unsupported: { status: 501, message: 'This Fleet can’t switch a Codex Session’s Effort yet. Update the Fleet fork.' },
+      effort_not_found: { status: 409, message: 'Codex doesn’t offer this level for the Session’s model, so the Effort wasn’t switched.' },
     },
   };
 })();
@@ -376,30 +422,34 @@ export function parseEffortRequest(body: unknown): EffortSwitchRequest {
   return { effort: b.effort, ...parseTarget(b) };
 }
 
-/** One switch through Fleet: its words, its subcommand and value, how it's checked and what it settles. */
+/** One switch through Fleet: its words by Harness, its subcommand and value, how it's checked and what it settles. */
 interface SwitchSpec<R> {
-  words: SwitchWords;
+  words: Readonly<Record<Harness, SwitchWords>>;
   /** Fleet's subcommand, `model` or `effort`. */
   command: string;
   value: string;
-  /** Throws (with `words.UNLISTED`) unless the value is one Fleet lists for the Session. */
-  check(harnesses: HarnessOption[], row: SessionRow): void;
+  /** Throws (with `words.UNLISTED`) unless the value is one Fleet lists for the Session's Harness. */
+  check(harnesses: HarnessOption[], row: SessionRow, w: SwitchWords): void;
   /** Fleet's exit-0 report: what the tab gets, whether Claude Code's default may have changed, and the pending value installed. */
-  done(answer: Record<string, unknown> & { switched_at: string }, proc: { pid: number; procStart: string }): { result: R; dropDefault: boolean; settled: boolean };
+  done(
+    answer: Record<string, unknown> & { switched_at: string },
+    proc: { pid: number; procStart: string },
+    harness: Harness,
+  ): { result: R; dropDefault: boolean; settled: boolean };
 }
 
 /**
- * VIEW-6 and VIEW-7: switches a live, Controllable, Idle Claude Code Session's model or Effort
+ * VIEW-6 and VIEW-7: switches a live, Controllable, Idle Claude Code or Codex Session's model or Effort
  * through the Fleet fork's `fleet <model|effort> --json --require-empty --expect-pid … --expect-start
  * … -- <exact target> <value>`, which types the command only into an empty input box (as `send
  * --require-empty` reads it; both always hold so, and the flag is passed as for `send` and `rename`)
  * and answers only Claude Code's confirmation of that switch. The value must be one Fleet lists.
  */
 async function runSwitch<R>(opts: ModelSwitcherOptions, id: string, target: { pid: number; procStart: string | null }, spec: SwitchSpec<R>): Promise<R> {
-  const w = spec.words;
   const known = opts.lookup(id);
   if (!known) throw new ModelSwitchError(404, 'This Session isn’t running.');
-  if (known.harness !== 'claude') throw new ModelSwitchError(409, w.NOT_CLAUDE);
+  const harness = known.harness;
+  const w = spec.words[harness];
   if (!known.controllable) throw new ModelSwitchError(409, w.OTHER_APP);
   if (target.procStart === null) throw new ModelSwitchError(409, w.UNCONFIRMED);
   let harnesses: HarnessOption[];
@@ -408,7 +458,7 @@ async function runSwitch<R>(opts: ModelSwitcherOptions, id: string, target: { pi
   } catch {
     throw new ModelSwitchError(503, w.UNREADABLE_LIST);
   }
-  spec.check(harnesses, known);
+  spec.check(harnesses, known, w);
 
   if (known.backend !== 'tmux') throw new ModelSwitchError(409, w.ITERM);
   const proc = { pid: target.pid, procStart: target.procStart };
@@ -440,16 +490,17 @@ async function runSwitch<R>(opts: ModelSwitcherOptions, id: string, target: { pi
       );
     } catch (err) {
       const e = failure(err as RunError, w);
-      if (e.uncertain) await settled(opts, true);
+      // Only Claude Code's switch can change a saved default; Codex's is for the Session only.
+      if (e.uncertain) await settled(opts, harness === 'claude');
       throw e;
     }
     // Exit 0: switched. Only Fleet's own report says so, with the switch's Transcript time.
     const answer = fleetObject(stdout);
     if (answer?.ok !== true || typeof answer.switched_at !== 'string') {
-      await settled(opts, true);
+      await settled(opts, harness === 'claude');
       throw new ModelSwitchError(502, w.UNCERTAIN, true);
     }
-    const { result, dropDefault, settled: pending } = spec.done(answer as Record<string, unknown> & { switched_at: string }, proc);
+    const { result, dropDefault, settled: pending } = spec.done(answer as Record<string, unknown> & { switched_at: string }, proc, harness);
     if (pending) opts.changed();
     await settled(opts, dropDefault);
     return result;
@@ -458,38 +509,42 @@ async function runSwitch<R>(opts: ModelSwitcherOptions, id: string, target: { pi
   }
 }
 
-/** VIEW-6: the model; only one Fleet lists for Claude Code, never its "Default" entry (VIEW-6.1). */
+/** VIEW-6: the model; only one Fleet lists for the Session's Harness, never its "Default" entry (VIEW-6.1). */
 export function switchModel(opts: ModelSwitcherOptions, id: string, req: ModelSwitchRequest): Promise<ModelSwitchResult> {
   return runSwitch(opts, id, req, {
-    words: MODEL_WORDS,
+    words: { claude: MODEL_WORDS, codex: CODEX_MODEL_WORDS },
     command: 'model',
     value: req.model,
-    check(harnesses) {
-      const claude = harnesses.find((h) => h.id === 'claude');
-      if (!claude?.models.some((m) => m.id !== '' && m.id === req.model)) throw new ModelSwitchError(400, MODEL_WORDS.UNLISTED);
+    check(harnesses, row, w) {
+      const own = harnesses.find((h) => h.id === row.harness);
+      if (!own?.models.some((m) => m.id !== '' && m.id === req.model)) throw new ModelSwitchError(400, w.UNLISTED);
     },
-    done(answer, proc) {
-      // `/model` always saves the pick as Claude Code's default (VIEW-6.4).
-      return { result: { model: req.model, confirmed: answer.confirmed === true }, dropDefault: true, settled: opts.switches.settle(proc, req.model, answer.switched_at) };
+    done(answer, proc, harness) {
+      // Claude Code's `/model` always saves the pick as its default (VIEW-6.4); Codex's is for the Session only.
+      return {
+        result: { model: req.model, confirmed: answer.confirmed === true },
+        dropDefault: harness === 'claude',
+        settled: opts.switches.settle(proc, req.model, answer.switched_at),
+      };
     },
   });
 }
 
 /**
  * VIEW-7: the Effort; only a level Fleet lists for the Session's model (VIEW-7.1: the model it shows,
- * a pending switch's first, matched as VIEW-6.1 matches it; every Claude Code level for a model
- * Fleet doesn't list). Claude Code's default changed only when Fleet's `saved` says so (`max` is for
- * this Session only), so only then does LAUNCH's cached list go.
+ * a pending switch's first, matched as VIEW-6.1 matches it; every level of the Session's Harness for
+ * a model Fleet doesn't list). Claude Code's default changed only when Fleet's `saved` says so (`max`
+ * is for this Session only; Codex's never), so only then does LAUNCH's cached list go.
  */
 export function switchEffort(opts: ModelSwitcherOptions, id: string, req: EffortSwitchRequest): Promise<EffortSwitchResult> {
   return runSwitch(opts, id, req, {
-    words: EFFORT_WORDS,
+    words: { claude: EFFORT_WORDS, codex: CODEX_EFFORT_WORDS },
     command: 'effort',
     value: req.effort,
-    check(harnesses, row) {
-      const claude = harnesses.find((h) => h.id === 'claude');
-      const levels = effortLevels(claude?.models ?? [], row.pendingModel?.model ?? row.model);
-      if (!levels.includes(req.effort)) throw new ModelSwitchError(400, EFFORT_WORDS.UNLISTED);
+    check(harnesses, row, w) {
+      const own = harnesses.find((h) => h.id === row.harness);
+      const levels = effortLevels(own?.models ?? [], row.pendingModel?.model ?? row.model);
+      if (!levels.includes(req.effort)) throw new ModelSwitchError(400, w.UNLISTED);
     },
     done(answer, proc) {
       const saved = answer.saved === true;

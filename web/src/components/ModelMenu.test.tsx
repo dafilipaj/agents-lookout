@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { SaveError } from '@/lib/client';
 import { FROM_NEXT_REPLY, MODEL_DEFAULT_NOTE, MODEL_ITERM, MODEL_RESTARTED, MODEL_WHY } from '@/lib/model-switch';
-import { SWITCH_LOST } from '@/lib/status-switch';
+import { CODEX_SESSION_ONLY_NOTE, SWITCH_LOST } from '@/lib/status-switch';
 import { HARNESSES, NOW, renderApp, row } from '@/test/helpers';
 
 const statusLine = () => screen.getByRole('group', { name: 'Status line' });
@@ -18,6 +18,15 @@ const view = (id: string) => {
   act(() => window.history.pushState(null, '', `/s/${id}`));
   act(() => window.dispatchEvent(new PopStateEvent('popstate')));
 };
+
+/** Codex with two models, `ultra` on one, as Codex 0.166's model list gives them. */
+const CODEX_TWO: HarnessOption[] = [
+  HARNESSES[0]!,
+  {
+    ...HARNESSES[1]!,
+    models: [...HARNESSES[1]!.models, { id: 'gpt-6-sol', label: 'GPT-6 Sol', efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'], defaultEffort: 'medium' }],
+  },
+];
 
 const WITH_HAIKU: HarnessOption[] = [
   {
@@ -80,13 +89,7 @@ describe('switching the model from the status line (VIEW-6)', () => {
     expect(modelButtonOrNull()).toBeNull();
   });
 
-  it('VIEW-6.2: a Codex Session’s model, a View only one’s, one in an iTerm tab (its tooltip says why) and an ended one’s stay plain text', () => {
-    const app = renderApp('/s/a');
-    app.snapshot([row({ id: 'a', harness: 'codex', model: 'gpt-6-astra' }), row({ id: 'b', controllable: false, backend: 'unknown', model: 'claude-opus-5-5' })]);
-    expect(statusLine().querySelector('[data-field="model"]')).toHaveTextContent('gpt-6-astra');
-    expect(modelButtonOrNull()).toBeNull();
-    app.unmount();
-
+  it('VIEW-6.2: a View only Session’s model, one in an iTerm tab (its tooltip says why, naming /model) and an ended one’s stay plain text', () => {
     const viewOnly = renderApp('/s/b');
     viewOnly.snapshot([row({ id: 'b', controllable: false, backend: 'unknown', model: 'claude-opus-5-5' })]);
     expect(statusLine().querySelector('[data-field="model"]')).toHaveTextContent('claude-opus-5-5');
@@ -100,6 +103,11 @@ describe('switching the model from the status line (VIEW-6)', () => {
     expect(statusLine().querySelector('[data-field="model"]')).toHaveAttribute('title', `claude-opus-5-5\n${MODEL_ITERM}`);
     expect(modelButtonOrNull()).toBeNull();
     iterm.unmount();
+    const codexIterm = renderApp('/s/e');
+    codexIterm.snapshot([row({ id: 'e', harness: 'codex', backend: 'iterm', model: 'gpt-6-astra' })]);
+    expect(statusLine().querySelector('[data-field="model"]')).toHaveAttribute('title', `gpt-6-astra\n${MODEL_ITERM}`);
+    expect(modelButtonOrNull()).toBeNull();
+    codexIterm.unmount();
 
     const ended = renderApp('/s/c');
     ended.snapshot([row({ id: 'c', model: 'claude-opus-5-5' })]);
@@ -167,6 +175,27 @@ describe('switching the model from the status line (VIEW-6)', () => {
     await user.click(modelButton());
     expect(within(menu()).getByText(MODEL_DEFAULT_NOTE)).toBeInTheDocument();
     expect(MODEL_DEFAULT_NOTE).toBe('Also becomes the default for new Claude Code Sessions.');
+  });
+
+  it('VIEW-6.1, VIEW-6.4: a Codex Session’s model is a button opening Fleet’s Codex models by label, without "Default"; the menu says the pick is for this Session only', async () => {
+    const user = userEvent.setup();
+    const app = renderApp('/s/a', { harnesses: async () => CODEX_TWO });
+    app.snapshot([row({ id: 'a', harness: 'codex', model: 'gpt-6-astra', effort: 'high' })]);
+    expect(modelButton()).toHaveTextContent('gpt-6-astra');
+    await user.click(modelButton());
+    expect(items().map((i) => i.textContent)).toEqual(['GPT-6 Astragpt-6-astra', 'GPT-6 Solgpt-6-sol']);
+    expect(within(menu()).getByRole('menuitemradio', { name: /GPT-6 Astra/ })).toHaveAttribute('aria-checked', 'true');
+    expect(within(menu()).getByText(CODEX_SESSION_ONLY_NOTE)).toBeInTheDocument();
+    expect(within(menu()).queryByText(MODEL_DEFAULT_NOTE)).toBeNull();
+    expect(CODEX_SESSION_ONLY_NOTE).toBe('For this Session only. New Codex Sessions keep their default.');
+    await user.click(within(menu()).getByRole('menuitemradio', { name: /GPT-6 Sol/ }));
+    await waitFor(() => expect(app.client.switchModel).toHaveBeenCalledWith('a', { model: 'gpt-6-sol', pid: 100, procStart: '2026-10-14T08:12:03Z' }));
+  });
+
+  it('VIEW-6.1: a Codex Session before its first prompt has no model known, so no button', () => {
+    const app = renderApp('/s/codex:77');
+    app.snapshot([row({ id: 'codex:77', harness: 'codex', model: null, effort: null })]);
+    expect(modelButtonOrNull()).toBeNull();
   });
 
   it('VIEW-6.4: the launcher reads the models each time it opens, keeping the list it has until the new one comes', async () => {
