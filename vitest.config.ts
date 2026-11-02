@@ -11,6 +11,10 @@ export default defineConfig({
     },
   },
   test: {
+    // Off: the on-disk module cache keys a module by its own text, so the design-system and icon
+    // guards' `import.meta.glob` kept the file list of when the guard last changed, and passed while
+    // files added since broke it.
+    fsModuleCache: false,
     projects: [
       {
         extends: true,

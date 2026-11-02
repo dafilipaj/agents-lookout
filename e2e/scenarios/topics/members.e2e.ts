@@ -34,6 +34,8 @@ scenario(
     await topicsPanel(page).getByRole('button', { name: /^Proposals rates,/ }).click();
     // Its members are in its view (TOPIC-10).
     await topicsPanel(page).getByRole('button', { name: 'Open', exact: true }).click();
+    // TOPIC-10.7: the members are on their own tab.
+    await page.getByTestId('topic-view').getByRole('tab', { name: /^Members/ }).click();
     const prs = page.getByTestId('topic-view').locator('[data-field="pr"]');
     await expect(prs).toHaveCount(2);
     await expect(prs.getByText('Loading…')).toHaveCount(2);

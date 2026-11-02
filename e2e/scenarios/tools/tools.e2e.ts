@@ -9,6 +9,8 @@ import { expect, scenario, world } from '../../world/index.ts';
 
 const sidebar = (page: Page) => page.getByRole('complementary', { name: 'Session sidebar' });
 const settingsButton = (page: Page) => sidebar(page).getByRole('button', { name: 'Settings', exact: true });
+// SIDE-7.6: Settings opens on General; Tools is its own sub-page, through the side nav.
+const toolsLink = (page: Page) => page.getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: 'Tools' });
 const toolRow = (page: Page, id: string) => page.getByRole('region', { name: 'Tools' }).locator(`[data-tool="${id}"]`);
 
 scenario(
@@ -16,6 +18,8 @@ scenario(
   world(),
   async ({ page, world }) => {
     await settingsButton(page).click();
+    await toolsLink(page).click();
+    await expect(page).toHaveURL(/\/settings\/tools$/);
     const row = toolRow(page, 'tb-pr');
     await world.step('the tb-pr row to say it is missing', () => expect(row.getByRole('alert')).toContainText('tb-pr is missing'));
     await expect(row).toContainText('Work reads PRs through it');
@@ -40,6 +44,10 @@ scenario(
     // tb-pr has an update out: a notice on its row, never the dot.
     await expect(button).not.toHaveAttribute('title', /\btb-pr\b/);
     await button.click();
+    // The Tools link carries the same dot and names the same Tools.
+    await expect(toolsLink(page).locator('[data-field="tools-dot"]')).toBeVisible();
+    await expect(toolsLink(page)).toHaveAttribute('title', /tb-prod is missing/);
+    await toolsLink(page).click();
     const row = toolRow(page, 'tb-pr');
     await expect(row.getByRole('status')).toContainText('0.3.2');
     await expect(row.getByRole('alert')).toHaveCount(0);

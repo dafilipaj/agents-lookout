@@ -13,9 +13,9 @@ One row per feature. Update the status here and in the spec's frontmatter togeth
 | Usage at a glance: Claude, Codex and Jev limits | USAGE | Done | [SPEC](usage/SPEC.md) |
 | Tasks and PRs: your Productive Tasks, PRs and Review requests, Linked to their Sessions | WORK | In Progress | [SPEC](tasks-and-prs/SPEC.md) |
 | Behaviour tests: every requirement checked end to end ([0007](../decisions/0007-behaviour-tests-from-spec-requirements.md)) | TEST | In Progress | [SPEC](behaviour-tests/SPEC.md) |
-| Design system: one type scale, colour by meaning and shared components, guarded by tests ([0009](../decisions/0009-one-design-system-guarded-by-tests.md)) | DS | Done | [SPEC](design-system/SPEC.md) |
+| Design system: one type scale, colour by meaning and shared components, guarded by tests ([0009](../decisions/0009-one-design-system-guarded-by-tests.md)) | DS | In Progress | [SPEC](design-system/SPEC.md) |
 | Library: everything Sessions produced, searchable, each item linked to its Session | LIB | Done | [SPEC](library/SPEC.md) |
 | Memory overview: what the Sessions cost the Mac, under the usage strip, with a breakdown per Session | MEM | In Progress | [SPEC](memory-overview/SPEC.md) |
 | Tools: the CLIs Lookout runs, their versions, what's missing or behind, and the command that fixes it | TOOLS | In Progress | [SPEC](tools/SPEC.md) |
-| Topics: a Session, its PR, its Task and its run as one Topic with notes, recommended by Links and Jev, Topics linked into a graph | TOPIC | Ready | [SPEC](topics/SPEC.md) |
+| Topics: a Session, its PR, its Task and its run as one Topic with notes, recommended by Links and Jev, Topics linked into a graph | TOPIC | In Progress | [SPEC](topics/SPEC.md) |
 | Changed files: a Session's changed lines on its row and status line, its changed files listed, each opening its Changes in VS Code | DIFF | In Progress | [SPEC](changed-files/SPEC.md) |

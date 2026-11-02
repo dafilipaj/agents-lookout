@@ -160,13 +160,6 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
 - **How:** Fleet's `spawn --from <target>` takes its first prompt from the Session's brief (`brief --prompt`), so it needs the brief above to exist first; `handoff` does the same with a brief you write. Also "start a Session on this Task" from Work, with the Task's link and title as context, as Fleet's `task spawn` does.
 - **Added:** 2026-10-30, by Dario, from the Fleet review.
 
-## Settings in sections (SIDE-7, DS)
-
-- **What:** the Settings page split into tabs or sub-pages (for example General, Sessions, Topics, Usage, Fleet), so each setting group has its own place instead of one long page.
-- **Why:** every feature has added its switches to the one page (idle threshold, Start directories, the Topics recommender, …), and it's getting crowded.
-- **How:** a SIDE-7 spec change; the design system has no tabs or side navigation yet, so it likely needs new DS components (a tab list or a sub-navigation, with keyboard and routes such as `/settings/<section>`).
-- **Added:** 2026-11-02, by Dario.
-
 ## Dropped
 
 Discussed and decided against. Each keeps why, so it isn't proposed again without something new.

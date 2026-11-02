@@ -5,23 +5,37 @@ import { useCallback, useSyncExternalStore } from 'react';
 export type Route =
   | { name: 'home' }
   | { name: 'session'; id: string }
-  | { name: 'settings' }
+  /** SIDE-7.6: a Settings sub-page; none is General. */
+  | { name: 'settings'; section?: SettingsSection }
   /** TOPIC-7: the Topics graph, in place of the Session view. */
   | { name: 'topics' }
   /** TOPIC-10: one Topic's view. */
-  | { name: 'topic'; id: string }
+  /** TOPIC-10.8: the open tab is in the path; none is Overview. */
+  | { name: 'topic'; id: string; tab?: TopicTab }
   /** HIST-3.3: a past Session that can't be resumed, read-only. */
   | { name: 'past'; harness: Harness; id: string }
   /** LAUNCH-4.2 / 4.6: a "Starting…" row, selected until its Session takes over. */
   | { name: 'launch'; id: string };
 
+/** SIDE-7.6: Settings' sub-pages, in the side nav's order. */
+export const SETTINGS_SECTIONS = ['general', 'tools'] as const;
+export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
+
+/** TOPIC-10.7: a Topic view's tabs, in their order. */
+export const TOPIC_TABS = ['overview', 'members', 'activity'] as const;
+export type TopicTab = (typeof TOPIC_TABS)[number];
+
 export function parseRoute(pathname: string): Route {
-  if (pathname === '/settings') return { name: 'settings' };
+  // SIDE-7.6: any other sub-page is General.
+  const settings = /^\/settings(?:\/([^/]*))?\/?$/.exec(pathname);
+  if (settings) return settings[1] === 'general' || settings[1] === 'tools' ? { name: 'settings', section: settings[1] } : { name: 'settings' };
   if (pathname === '/topics' || pathname === '/topics/') return { name: 'topics' };
-  const topic = /^\/topics\/([^/]+)\/?$/.exec(pathname);
+  // TOPIC-10.8: any other tab is Overview.
+  const topic = /^\/topics\/([^/]+)(?:\/([^/]*))?\/?$/.exec(pathname);
   if (topic?.[1]) {
     try {
-      return { name: 'topic', id: decodeURIComponent(topic[1]) };
+      const id = decodeURIComponent(topic[1]);
+      return topic[2] === 'members' || topic[2] === 'activity' ? { name: 'topic', id, tab: topic[2] } : { name: 'topic', id };
     } catch {
       return { name: 'home' };
     }
@@ -58,11 +72,11 @@ export function routePath(route: Route): string {
     case 'home':
       return '/';
     case 'settings':
-      return '/settings';
+      return route.section ? `/settings/${route.section}` : '/settings';
     case 'topics':
       return '/topics';
     case 'topic':
-      return `/topics/${encodeURIComponent(route.id)}`;
+      return `/topics/${encodeURIComponent(route.id)}${route.tab && route.tab !== 'overview' ? `/${route.tab}` : ''}`;
     case 'session':
       return `/s/${encodeURIComponent(route.id)}`;
     case 'past':

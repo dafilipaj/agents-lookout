@@ -1022,6 +1022,8 @@ export function App({ client }: { client: LookoutClient }) {
                 settings={state.settings}
                 save={save}
                 onBack={() => navigate({ name: 'home' })}
+                section={route.section ?? 'general'}
+                onSection={(section) => navigate({ name: 'settings', section }, { replace: true })}
                 tools={state.tools}
                 now={now}
                 loadTools={loadTools}
@@ -1054,6 +1056,8 @@ export function App({ client }: { client: LookoutClient }) {
                 // One Topic's drafts, focus and Library read never carry over to another's (TOPIC-1.2, TOPIC-4.4).
                 key={route.id}
                 id={route.id}
+                tab={route.tab ?? 'overview'}
+                onTab={(tab) => navigate({ name: 'topic', id: route.id, tab }, { replace: true })}
                 view={state.topics}
                 sessions={state.sessions}
                 work={state.work}

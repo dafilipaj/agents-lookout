@@ -13,9 +13,11 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { IconButton, labelledButtonLook } from '@/components/ui/icon-button';
 import { Loading } from '@/components/ui/loading';
 import { SessionMarker } from '@/components/ui/session-marker';
+import { Tabs } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { STATUS_LABEL } from '@/lib/sessions';
 import { OUTCOME_WORD, SUMMARY_STATE_WORD, edgesOf, liveRow, looksDone, memberCounts, orderSessions, orderWorkMembers, prState, sharedLabel, sharedPairs, taskState, topicMarker } from '@/lib/topics';
+import type { TopicTab } from '@/lib/router';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { HarnessIcon } from './HarnessIcon';
@@ -36,6 +38,9 @@ export type SessionMember = Extract<TopicMember, { kind: 'session' }>;
 export interface TopicViewProps {
   /** The route's Topic id. */
   id: string;
+  /** TOPIC-10.8: the open tab, from the path, and how to open another (replacing the history entry). */
+  tab?: TopicTab;
+  onTab?(tab: TopicTab): void;
   /** TOPIC-8.3: as the server last sent it; null before it did. */
   view: TopicsView | null;
   /** The Session sidebar's list, by session id (TOPIC-4.1). */
@@ -88,8 +93,9 @@ const message = (err: unknown, fallback: string) => (err instanceof Error ? err.
 
 /**
  * TOPIC-10: one Topic, whole, in the main pane at `/topics/<id>`: its header with the Topic's
- * buttons, its notes in full, its members by kind with their state, then its recommendations,
- * Outputs and Edges. Drawn from the `topics` event and the browser's joins; it reads nothing new.
+ * buttons, then three tabs (TOPIC-10.7): Overview (what's new, the Summary, the notes in full and
+ * the Edges), Members (recommendations, members by kind with their state, Outputs) and Activity.
+ * Drawn from the `topics` event and the browser's joins; it reads nothing new.
  */
 export function TopicView(props: TopicViewProps) {
   const { id, view } = props;
@@ -137,6 +143,23 @@ function OneTopic({ topic, problem, setProblem, ...props }: TopicViewProps & { t
   };
   const fresh = new Set(activity.fresh.flatMap((e) => (e.member ? [e.member] : [])));
   const all = view?.state === 'ok' ? view.topics : [];
+  // TOPIC-10.7, 13.2: the count is kept while the view is open; it rises with new activity, but
+  // another browser marking the Topic seen doesn't take it down to the page loaded here.
+  const [keptNew, setKeptNew] = useState(0);
+  const newTotal = Math.max(keptNew, topic.newCount, activity.fresh.length);
+  if (newTotal !== keptNew) setKeptNew(newTotal);
+  const tab = props.tab ?? 'overview';
+  // TOPIC-10.8: a switch keeps the scroll, but brings the tab strip into view when it isn't.
+  const selectTab = (next: TopicTab) => {
+    document.querySelector('[data-testid="topic-view"] [data-slot="tabs"]')?.scrollIntoView?.({ block: 'nearest' });
+    props.onTab?.(next);
+  };
+  // "+N more" and "N changes since" open Activity at its newest entries, and focus its tab: the button pressed is hidden then.
+  const showActivity = () => {
+    selectTab('activity');
+    document.getElementById('tab-topic-view-activity')?.focus();
+  };
+  const entryProps = { sessions, now: props.now, act, onOpenSession: props.onOpenSession, pruned: view?.pruned ?? [] };
   return (
     <PlainView
       aria-label={`Topic ${topic.title}`}
@@ -172,12 +195,36 @@ function OneTopic({ topic, problem, setProblem, ...props }: TopicViewProps & { t
     >
       <div className="mx-auto flex w-full max-w-4xl min-w-0 flex-col gap-5 px-8 py-6 text-body">
         {problem && <Alert title={problem} data-field="topic-problem" />}
-        {activity.fresh.length > 0 && <SinceLooked topic={topic} entries={activity.fresh} total={Math.max(topic.newCount, activity.fresh.length)} sessions={sessions} now={props.now} act={act} onOpenSession={props.onOpenSession} pruned={view?.pruned ?? []} />}
-        <Summary topic={topic} {...props} act={act} />
-        <Notes topic={topic} save={(notes) => props.updateTopic(topic.id, { notes })} onProblem={setProblem} />
-        <Members topic={topic} {...props} act={act} fresh={fresh} />
-        <Extras topic={topic} {...props} act={act} onProblem={setProblem} />
-        <Activity topic={topic} activity={activity} sessions={sessions} now={props.now} act={act} onOpenSession={props.onOpenSession} pruned={view?.pruned ?? []} />
+        {/* TOPIC-10.7: three tabs; the ones not shown stay mounted, so a notes edit or Activity's pages survive a switch. */}
+        <Tabs
+          label="Topic view"
+          selected={tab}
+          onSelect={selectTab}
+          className="-mt-2"
+          tabs={[
+            { id: 'overview', label: 'Overview' },
+            { id: 'members', label: 'Members', count: topic.members.length, ...(topic.members.some((m) => fresh.has(m.key)) ? { dot: <FreshDot />, dotLabel: 'new activity' } : {}) },
+            { id: 'activity', label: 'Activity', ...(activity.fresh.length > 0 ? { note: `${newTotal} new` } : {}) },
+          ]}
+          panels={{
+            overview: (
+              <>
+                {activity.fresh.length > 0 && <SinceLooked topic={topic} entries={activity.fresh} total={newTotal} onMore={showActivity} {...entryProps} />}
+                <Summary topic={topic} {...props} act={act} onShowActivity={showActivity} />
+                <Notes topic={topic} save={(notes) => props.updateTopic(topic.id, { notes })} onProblem={setProblem} />
+                <Edges topic={topic} view={view} act={act} linkTopics={props.linkTopics} editEdge={props.editEdge} unlinkTopics={props.unlinkTopics} />
+              </>
+            ),
+            members: (
+              <>
+                <OwnRecommendations topic={topic} {...props} onProblem={setProblem} />
+                <Members topic={topic} {...props} act={act} fresh={fresh} />
+                <TopicOutputs topic={topic} {...props} />
+              </>
+            ),
+            activity: <Activity topic={topic} activity={activity} {...entryProps} />,
+          }}
+        />
       </div>
     </PlainView>
   );
@@ -324,7 +371,7 @@ function Entry({ entry, topic, sessions, now, act, onOpenSession, pruned }: Entr
 }
 
 /** TOPIC-13.2: what Lookout recorded since the Topic was last seen, between the header and the Summary. */
-function SinceLooked({ topic, entries, total, ...rest }: EntryProps & { topic: Topic; entries: ActivityEntry[]; total: number }) {
+function SinceLooked({ topic, entries, total, onMore, ...rest }: EntryProps & { topic: Topic; entries: ActivityEntry[]; total: number; onMore(): void }) {
   const shown = entries.slice(0, MAX_NEW_SHOWN);
   return (
     <section className="flex min-w-0 flex-col gap-1.5 rounded-md border border-border p-3" data-field="since-looked" aria-label="Since you last looked">
@@ -335,7 +382,7 @@ function SinceLooked({ topic, entries, total, ...rest }: EntryProps & { topic: T
         ))}
       </ul>
       {total > shown.length && (
-        <button type="button" className={cn(labelledButtonLook(), 'h-6 self-start text-meta')} data-field="since-more" onClick={() => document.querySelector('[data-field="activity"]')?.scrollIntoView({ block: 'start' })}>
+        <button type="button" className={cn(labelledButtonLook(), 'h-6 self-start text-meta')} data-field="since-more" onClick={onMore}>
           +{total - shown.length} more
         </button>
       )}
@@ -343,10 +390,10 @@ function SinceLooked({ topic, entries, total, ...rest }: EntryProps & { topic: T
   );
 }
 
-/** TOPIC-12.3: the Topic's activity, newest first, 50 at a time. */
+/** TOPIC-12.3: the Topic's activity, newest first, 50 at a time; its tab names it, so no heading. */
 function Activity({ topic, activity, ...rest }: EntryProps & { topic: Topic; activity: ActivityState }) {
   return (
-    <Section label="Activity" field="activity">
+    <div className="flex min-w-0 flex-col gap-1.5" data-field="activity">
       {activity.error && <Alert title={activity.error} data-field="activity-error" />}
       {activity.entries.length === 0 && activity.loading ? (
         <Loading label="Loading…" />
@@ -362,7 +409,7 @@ function Activity({ topic, activity, ...rest }: EntryProps & { topic: Topic; act
           Show more
         </Button>
       )}
-    </Section>
+    </div>
   );
 }
 
@@ -440,7 +487,7 @@ function Members({ topic, sessions, work, view, act, fresh, ...props }: TopicVie
  * the last run failed. Each point's cited members show by name, and a click does what their chip or
  * line does.
  */
-function Summary({ topic, view, sessions, now, act, ...props }: TopicViewProps & { topic: Topic; act: Act }) {
+function Summary({ topic, view, sessions, now, act, onShowActivity, ...props }: TopicViewProps & { topic: Topic; act: Act; onShowActivity(): void }) {
   const running = view?.summarizing.includes(topic.id) ?? false;
   const error = view?.summaryErrors[topic.id] ?? null;
   const summary = topic.summary;
@@ -475,7 +522,7 @@ function Summary({ topic, view, sessions, now, act, ...props }: TopicViewProps &
           {error.fix && <CommandBlock>{error.fix}</CommandBlock>}
         </Alert>
       )}
-      {summary && <SummaryBody topic={topic} summary={summary} sessions={sessions} pruned={view?.pruned ?? []} now={now} act={act} onOpenSession={props.onOpenSession} changes={topic.changesSinceSummary} />}
+      {summary && <SummaryBody topic={topic} summary={summary} sessions={sessions} pruned={view?.pruned ?? []} now={now} act={act} onOpenSession={props.onOpenSession} changes={topic.changesSinceSummary} onChanges={onShowActivity} />}
       {topic.earlierSummaries > 0 && <EarlierSummaries topic={topic} count={topic.earlierSummaries} now={now} load={props.earlierSummaries} />}
     </section>
   );
@@ -523,7 +570,7 @@ function EarlierSummaries({ topic, count, now, load }: { topic: Topic; count: nu
  * date, Open with "+N more open", Next with each point's trigger, and Watch out. `readOnly`: an
  * earlier summary (TOPIC-11.10), its citations as names without buttons.
  */
-function SummaryBody({ topic, summary, sessions, pruned, now, act, onOpenSession, changes = 0, readOnly = false }: { topic: Topic; summary: TopicSummary; sessions: ReadonlyMap<string, SessionRow>; pruned: readonly string[]; now: number; act: Act; onOpenSession: TopicViewProps['onOpenSession']; changes?: number; readOnly?: boolean }) {
+function SummaryBody({ topic, summary, sessions, pruned, now, act, onOpenSession, changes = 0, onChanges, readOnly = false }: { topic: Topic; summary: TopicSummary; sessions: ReadonlyMap<string, SessionRow>; pruned: readonly string[]; now: number; act: Act; onOpenSession: TopicViewProps['onOpenSession']; changes?: number; onChanges?(): void; readOnly?: boolean }) {
   const { answer } = summary;
   const lists: [string, string, SummaryPoint[], ReactNode][] = [
     ['Recent', 'summary-recent', answer.recent, null],
@@ -577,7 +624,7 @@ function SummaryBody({ topic, summary, sessions, pruned, now, act, onOpenSession
       <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-meta text-muted-foreground" data-field="summary-by">
         <span>{[modelName(summary.model), summary.costUsd === null ? null : formatCost(summary.costUsd), `${formatAge(now - summary.writtenAt)} ago`].filter(Boolean).join(' · ')}</span>
         {changes > 0 && (
-          <button type="button" className={cn(labelledButtonLook(), 'h-6 text-meta font-normal')} data-field="summary-changes" onClick={() => document.querySelector('[data-field="activity"]')?.scrollIntoView({ block: 'start' })}>
+          <button type="button" className={cn(labelledButtonLook(), 'h-6 text-meta font-normal')} data-field="summary-changes" onClick={onChanges}>
             · {changes} {changes === 1 ? 'change' : 'changes'} since
           </button>
         )}
@@ -629,20 +676,21 @@ function Cite({ cite, topic, sessions, pruned, act, onOpenSession }: { cite: Sum
 }
 
 /** TOPIC-10.5: its own pending recommendations, its Sessions' Outputs and its Edges. */
-function Extras({ topic, view, sessions, now, act, onProblem, ...props }: TopicViewProps & { topic: Topic; act: Act; onProblem(m: string | null): void }) {
+/** TOPIC-10.5: on Members, above the members, its pending recommendations (TOPIC-9.4). */
+function OwnRecommendations({ topic, view, sessions, onProblem, ...props }: TopicViewProps & { topic: Topic; onProblem(m: string | null): void }) {
   const own = view?.state === 'ok' ? view.recommendations.filter((r) => r.topicId === topic.id) : [];
-  const hasSessions = topic.members.some((m) => m.kind === 'session');
+  if (own.length === 0) return null;
   return (
-    <>
-      {own.length > 0 && (
-        <Section label="Recommended" count={own.length} field="topic-recommended">
-          <Recommendations label={`Recommended for ${topic.title}`} recommendations={own} topics={[topic]} sessions={sessions} showTopic={false} recommend={props.recommend} onOtherTopic={props.onOtherTopic} onProblem={onProblem} />
-        </Section>
-      )}
-      {hasSessions && <Outputs topic={topic} now={now} readAt={view?.libraryReadAt ?? null} error={props.outputsError ?? null} onRead={props.onReadLibrary} onMore={() => props.onMoreOutputs(topic)} />}
-      <Edges topic={topic} view={view} act={act} linkTopics={props.linkTopics} editEdge={props.editEdge} unlinkTopics={props.unlinkTopics} />
-    </>
+    <Section label="Recommended" count={own.length} field="topic-recommended">
+      <Recommendations label={`Recommended for ${topic.title}`} recommendations={own} topics={[topic]} sessions={sessions} showTopic={false} recommend={props.recommend} onOtherTopic={props.onOtherTopic} onProblem={onProblem} />
+    </Section>
   );
+}
+
+/** TOPIC-10.5: on Members, under the members, the Outputs its Sessions touched (TOPIC-4.4). */
+function TopicOutputs({ topic, view, now, ...props }: TopicViewProps & { topic: Topic }) {
+  if (!topic.members.some((m) => m.kind === 'session')) return null;
+  return <Outputs topic={topic} now={now} readAt={view?.libraryReadAt ?? null} error={props.outputsError ?? null} onRead={props.onReadLibrary} onMore={() => props.onMoreOutputs(topic)} />;
 }
 
 function Section({ label, count, field, children }: { label: string; count?: number; field: string; children: ReactNode }) {
@@ -1007,7 +1055,7 @@ function State({ state }: { state: 'loading' | 'gone' | 'listed' }) {
 /** A PR or Task member: its line, then its button and Remove, on one row at the view's width. */
 /** TOPIC-13.2: a member new activity is about carries a dot. */
 function FreshDot() {
-  return <span role="img" aria-label="new activity" className="size-1.5 shrink-0 rounded-full bg-primary" data-field="fresh" />;
+  return <span role="img" aria-label="new activity" className="size-1.5 shrink-0 rounded-full bg-foreground" data-field="fresh" />;
 }
 
 function MemberLine({ field, children, open, onRemove, removeLabel, fresh = false }: { field: string; children: ReactNode; open: { label: string; onPress(): void } | null; onRemove(): void; removeLabel: string; fresh?: boolean }) {

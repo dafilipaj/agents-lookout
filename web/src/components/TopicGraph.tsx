@@ -535,7 +535,8 @@ function Node({ topic, at, selected, expanded, target, sessions, onDown, onUp, o
         <div
           className={cn(
             'flex size-full min-w-0 flex-col justify-center gap-0.5 rounded-md border bg-card px-2.5 text-card-foreground shadow-xs group-focus-visible:ring-2 group-focus-visible:ring-ring/50',
-            selected ? 'border-primary ring-1 ring-primary' : 'border-border',
+            // DS-12.4: a selection keeps a neutral ring; Primary is for drawing an Edge (the line, the target, the handle).
+            selected ? 'border-foreground ring-1 ring-foreground' : 'border-border',
             target && 'border-dashed border-primary',
           )}
           data-field="node"

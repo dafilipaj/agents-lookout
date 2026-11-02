@@ -1,5 +1,5 @@
 import { PRODUCTIVE_EMAIL_ERROR, type Settings, type SettingsView, parseProductiveEmail } from '@shared/settings.ts';
-import type { ToolsSnapshot } from '@shared/tools.ts';
+import { type ToolsSnapshot, toolsAttention } from '@shared/tools.ts';
 import { JEV_ASKS_PER_HOUR } from '@shared/topics.ts';
 import type { JevStatus } from '@shared/usage.ts';
 import { ArrowLeft, Folder, X } from 'lucide-react';
@@ -11,6 +11,8 @@ import { CommandBlock } from '@/components/ui/command-block';
 import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { SideNav } from '@/components/ui/side-nav';
+import { SETTINGS_SECTIONS, type SettingsSection, routePath } from '@/lib/router';
 import { PlainView } from './Shell';
 import { ToolsSection } from './ToolsSection';
 
@@ -18,6 +20,9 @@ interface Props {
   settings: SettingsView;
   save(patch: Partial<Settings>): Promise<unknown>;
   onBack(): void;
+  /** SIDE-7.6: the open sub-page, and how to open another (in place, replacing the history entry). */
+  section: SettingsSection;
+  onSection(section: SettingsSection): void;
   /** TOOLS: the last read of every Tool, and how to ask for another. */
   tools: ToolsSnapshot | null;
   now: number;
@@ -29,8 +34,56 @@ interface Props {
   jevAsksToday?: number;
 }
 
-/** SIDE-7.1: the Settings page. Values come from the server, so every tab shows the same. */
-export function SettingsPage({ settings, save, onBack, tools, now, loadTools, refreshTools, jev = null, jevAsksToday = 0 }: Props) {
+const SECTION_LABEL: Record<SettingsSection, string> = { general: 'General', tools: 'Tools' };
+
+/**
+ * SIDE-7.1, SIDE-7.6: the Settings page, in two sub-pages: General, the settings, and Tools, the
+ * CLIs Lookout runs. Values come from the server, so every tab shows the same.
+ */
+export function SettingsPage({ settings, save, onBack, section, onSection, tools, now, loadTools, refreshTools, jev = null, jevAsksToday = 0 }: Props) {
+  // TOOLS-2.4: the Settings button's dot, on the Tools link too.
+  const attention = toolsAttention(tools);
+  return (
+    // SIDE-8.1: Back and the title sit in the main pane's header row, like every other view's.
+    <PlainView
+      header={
+        <>
+          <Button variant="ghost" size="sm" className="-ml-2.5 h-7 text-muted-foreground" onClick={onBack}>
+            <ArrowLeft /> Back
+          </Button>
+          <h1 className="text-title font-semibold tracking-tight">Settings</h1>
+        </>
+      }
+    >
+      {/* DS-13.1: the side nav's query measures the pane, so the container is outside the padding. */}
+      <div className="@container">
+        <div className="mx-auto w-full max-w-4xl px-8 py-7">
+          <SideNav
+            label="Settings"
+            open={section}
+            onOpen={onSection}
+            items={SETTINGS_SECTIONS.map((id) => ({
+              id,
+              label: SECTION_LABEL[id],
+              href: routePath({ name: 'settings', section: id }),
+              ...(id === 'tools' && attention.length > 0 ? { tip: attention.join(', '), dot: <span aria-hidden data-field="tools-dot" className="size-1.5 shrink-0 rounded-full bg-destructive" /> } : {}),
+            }))}
+          >
+            {section === 'tools' ? (
+              // TOOLS-1.4: the list is read when this sub-page opens.
+              <ToolsSection tools={tools} now={now} load={loadTools} refresh={refreshTools} />
+            ) : (
+              <General settings={settings} save={save} jev={jev} jevAsksToday={jevAsksToday} />
+            )}
+          </SideNav>
+        </div>
+      </div>
+    </PlainView>
+  );
+}
+
+/** SIDE-7.6: General, every setting, under where they're kept. */
+function General({ settings, save, jev, jevAsksToday }: Pick<Props, 'settings' | 'save'> & { jev: JevStatus | null; jevAsksToday: number }) {
   // What's typed; null while it matches the server's value, so changes from other tabs show.
   const [draft, setDraft] = useState<string | null>(null);
   const [state, setState] = useState<{ kind: 'idle' | 'saving' | 'saved' } | { kind: 'error'; message: string }>({
@@ -56,21 +109,10 @@ export function SettingsPage({ settings, save, onBack, tools, now, loadTools, re
   };
 
   return (
-    // SIDE-8.1: Back and the title sit in the main pane's header row, like every other view's.
-    <PlainView
-      header={
-        <>
-          <Button variant="ghost" size="sm" className="-ml-2.5 h-7 text-muted-foreground" onClick={onBack}>
-            <ArrowLeft /> Back
-          </Button>
-          <h1 className="text-title font-semibold tracking-tight">Settings</h1>
-        </>
-      }
-    >
-      <div className="mx-auto w-full max-w-2xl px-8 py-7">
+    <div className="max-w-2xl">
         <p className="text-body text-muted-foreground">Saved on this Mac, shared by every Lookout tab.</p>
 
-        <form onSubmit={submit} className="mt-6 rounded-lg border border-border bg-card p-4">
+        <form onSubmit={submit} className="mt-4 rounded-lg border border-border bg-card p-4">
           <Label htmlFor="idle-threshold" className="text-body">
             Idle threshold
           </Label>
@@ -109,10 +151,7 @@ export function SettingsPage({ settings, save, onBack, tools, now, loadTools, re
         <RecommendWithJev settings={settings} save={save} jev={jev} asksToday={jevAsksToday} />
 
         <StartDirectories settings={settings} save={save} />
-
-        <ToolsSection tools={tools} now={now} load={loadTools} refresh={refreshTools} />
-      </div>
-    </PlainView>
+    </div>
   );
 }
 

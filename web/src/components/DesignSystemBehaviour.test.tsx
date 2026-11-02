@@ -1,10 +1,13 @@
 import { NO_ACTIVITY } from '@shared/topics.ts';
 import type { ChatEntry, ServerEvent } from '@shared/types.ts';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { useState } from 'react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import css from '@/index.css?raw';
 import { SessionMarker } from '@/components/ui/session-marker';
+import { SideNav } from '@/components/ui/side-nav';
+import { Tabs } from '@/components/ui/tabs';
 import { ClockContext } from '@/lib/time';
 import { NOW, fakeResizeObserver, launchView, renderApp, row, rowEl, settings } from '@/test/helpers';
 
@@ -451,5 +454,89 @@ describe('a view that throws stays in the main pane (DS-4.5)', () => {
     expect(path()).toBe('/s/a');
     expect(screen.queryByText("This view couldn't be drawn")).not.toBeInTheDocument();
     expect(errors).toHaveBeenCalled();
+  });
+});
+
+describe('sub-pages and tabs (DS-13)', () => {
+  it('DS-13.1: SideNav is links in a nav named after the page, the open one the current page; a plain click opens in place, any other is the browser\u2019s; beside the content when wide, above it in a narrow main pane', async () => {
+    const onOpen = vi.fn();
+    render(
+      <SideNav label="Settings" open="general" onOpen={onOpen} items={[{ id: 'general', label: 'General', href: '/settings/general' }, { id: 'tools', label: 'Tools', href: '/settings/tools', tip: 'tb-pr is missing', dot: <span data-field="dot" /> }]}>
+        <p>Content</p>
+      </SideNav>,
+    );
+    const nav = screen.getByRole('navigation', { name: 'Settings' });
+    const [general, tools] = within(nav).getAllByRole('link');
+    expect(general).toHaveAttribute('aria-current', 'page');
+    expect(tools).not.toHaveAttribute('aria-current');
+    expect(tools).toHaveAttribute('href', '/settings/tools');
+    expect(tools).toHaveAttribute('title', 'tb-pr is missing');
+    expect(tools!.querySelector('[data-field="dot"]')).not.toBeNull();
+    // A plain click opens it here; the browser's own navigation doesn't happen.
+    expect(fireEvent.click(tools!)).toBe(false);
+    expect(onOpen).toHaveBeenCalledWith('tools');
+    // ⌘, Ctrl, Shift and the middle button are the browser's (a new tab or window).
+    for (const opts of [{ metaKey: true }, { ctrlKey: true }, { shiftKey: true }, { button: 1 }]) expect(fireEvent.click(tools!, opts)).toBe(true);
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    // The open one again does nothing.
+    fireEvent.click(general!);
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    // Tab reaches each link in turn.
+    const user = userEvent.setup();
+    await user.tab();
+    expect(general).toHaveFocus();
+    await user.tab();
+    expect(tools).toHaveFocus();
+    // Narrow is a container query on the main pane: a row above the content, a column beside it from 640 px.
+    const box = nav.parentElement!;
+    // The page's main pane is the container, outside its padding (SIDE-7.6), so SideNav declares none.
+    expect(box.closest('.\\@container')).toBeNull();
+    expect(box).toHaveClass('flex-col', '@min-[640px]:flex-row');
+    expect(nav).toHaveClass('flex-row', 'flex-wrap', '@min-[640px]:w-40', '@min-[640px]:flex-col');
+    expect(screen.getByText('Content')).toBeInTheDocument();
+  });
+
+  it('DS-13.2: Tabs is a tablist over named panels; only the selected tab takes Tab; \u2190/\u2192 wrap, Home and End go to the ends, focus following; panels not shown stay mounted and hidden', async () => {
+    function Harness() {
+      const [tab, setTab] = useState<'a' | 'b' | 'c'>('a');
+      return (
+        <Tabs<'a' | 'b' | 'c'>
+          label="Parts"
+          selected={tab}
+          onSelect={setTab}
+          tabs={[{ id: 'a', label: 'One' }, { id: 'b', label: 'Two', count: 46, dot: <span data-field="dot" />, dotLabel: 'new activity' }, { id: 'c', label: 'Three', note: '3 new' }]}
+          panels={{ a: <input aria-label="Draft" />, b: <p>Second</p>, c: <p>Third</p> }}
+        />
+      );
+    }
+    const user = userEvent.setup();
+    render(<Harness />);
+    const list = screen.getByRole('tablist', { name: 'Parts' });
+    const [one, two, three] = within(list).getAllByRole('tab');
+    expect([one, two, three].map((t) => t!.getAttribute('aria-label'))).toEqual(['One', 'Two 46, new activity', 'Three 3 new']);
+    expect([one, two, three].map((t) => t!.tabIndex)).toEqual([0, -1, -1]);
+    expect(screen.getByRole('tabpanel', { name: 'One' })).toBeInTheDocument();
+    expect(one).toHaveAttribute('aria-controls', screen.getByRole('tabpanel', { name: 'One' }).id);
+    // A draft survives a switch: the panel stays mounted, hidden.
+    await user.type(screen.getByRole('textbox', { name: 'Draft' }), 'kept');
+    await user.click(two!);
+    expect(two).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('textbox', { name: 'Draft', hidden: true })).toHaveValue('kept');
+    expect(screen.getByRole('textbox', { name: 'Draft', hidden: true }).closest('[role="tabpanel"]')).toHaveAttribute('hidden');
+    await user.keyboard('{ArrowRight}');
+    expect(three).toHaveAttribute('aria-selected', 'true');
+    expect(three).toHaveFocus();
+    await user.keyboard('{ArrowRight}');
+    expect(one).toHaveFocus();
+    await user.keyboard('{ArrowLeft}');
+    expect(three).toHaveFocus();
+    await user.keyboard('{Home}');
+    expect(one).toHaveAttribute('aria-selected', 'true');
+    await user.keyboard('{End}');
+    expect(three).toHaveAttribute('aria-selected', 'true');
+    expect([one, two, three].map((t) => t!.tabIndex)).toEqual([-1, -1, 0]);
+    // Tab leaves the strip for the panel, even one holding only text.
+    await user.tab();
+    expect(screen.getByRole('tabpanel', { name: 'Three 3 new' })).toHaveFocus();
   });
 });

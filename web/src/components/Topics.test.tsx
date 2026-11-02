@@ -3,7 +3,7 @@ import { type ActivityEntry, type NewMember, RESTATE_LINE, type Recommendation, 
 import type { UsageSnapshot } from '@shared/usage.ts';
 import type { HistoryItem } from '@shared/types.ts';
 import type { PrSection, TaskSection, WorkPr, WorkSnapshot, WorkTask } from '@shared/work.ts';
-import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NOW, pressRowAction, renderApp, row, settings } from '@/test/helpers';
@@ -43,11 +43,17 @@ const titles = () => within(panel()).queryAllByRole('button', { expanded: false 
 
 const topicView = () => screen.getByTestId('topic-view');
 /** TOPIC-10.1: a Topic's view, from "Open" on its expanded row in the tab. */
-async function openView(user: ReturnType<typeof userEvent.setup>, title: string) {
+async function openView(user: ReturnType<typeof userEvent.setup>, title: string, tab?: 'Members' | 'Activity') {
   if (header(title).getAttribute('aria-expanded') !== 'true') await user.click(header(title));
   await user.click(within(item(title)).getByRole('button', { name: 'Open' }));
+  if (tab) await showTab(user, tab);
   return topicView();
 }
+/** TOPIC-10.7: one of the view's tabs. */
+async function showTab(user: ReturnType<typeof userEvent.setup>, name: 'Overview' | 'Members' | 'Activity') {
+  await user.click(within(topicView()).getByRole('tab', { name: new RegExp(`^${name}`) }));
+}
+const shownPanel = () => topicView().querySelector<HTMLElement>('[role="tabpanel"]:not([hidden])')!;
 
 function openApp(topics: Topic[] = [], w: WorkSnapshot | null = work(), options: Parameters<typeof renderApp>[1] = {}) {
   const app = renderApp('/s/alpha', { topics, ...options });
@@ -398,7 +404,7 @@ describe('members (TOPIC-2)', () => {
   it('TOPIC-2.4: an item can be in any number of Topics, and Remove takes away that membership only', async () => {
     const app = openApp([topic(1, { title: 'Rates', members: [member(PR_MEMBER), member(TASK_MEMBER)] }), topic(2, { title: 'Other', members: [member(PR_MEMBER)] })]);
     const user = await openTopics();
-    await openView(user, 'Rates');
+    await openView(user, 'Rates', 'Members');
     await user.click(within(topicView()).getByRole('button', { name: 'Remove #2101 from Rates' }));
     expect(app.client.removeMember).toHaveBeenCalledWith(id(1), expect.objectContaining({ kind: 'pr', ref: PR_MEMBER.ref }));
     await waitFor(() => expect(item('Rates').querySelector('[data-field="counts"]')).toHaveTextContent(/^1 Task$/));
@@ -427,7 +433,7 @@ describe('what a member is doing now (TOPIC-4)', () => {
   it('TOPIC-4.1: a Session member follows the Session list’s Status; a PR or Task member shows Work’s state and CI', async () => {
     const app = openApp([topic(1, { title: 'Rates', members: [member(SESSION), member(PR_MEMBER), member(TASK_MEMBER)] })]);
     const user = await openTopics();
-    await openView(user, 'Rates');
+    await openView(user, 'Rates', 'Members');
     const details = topicView;
     expect(within(details()).getByRole('button', { name: 'Open rates-port, Needs you' })).toBeInTheDocument();
     app.emit({ type: 'sessions', upsert: [row({ id: SESSION_ID, title: 'rates-port', status: 'busy' })], remove: [] });
@@ -443,7 +449,7 @@ describe('what a member is doing now (TOPIC-4)', () => {
   it('TOPIC-4.2: a member Work doesn’t list shows its snapshot with "not in Work"; before Work has read, "Loading"; a Session pruned from the index shows its snapshot and no button', async () => {
     const app = openApp([topic(1, { title: 'Rates', members: [member({ ...SESSION, ref: { harness: 'claude', sessionId: 'gone-one' }, snapshot: { harness: 'claude', title: 'old fix', directory: null } }), member(PR_MEMBER), member(TASK_MEMBER)] })], LOADING);
     const user = await openTopics();
-    await openView(user, 'Rates');
+    await openView(user, 'Rates', 'Members');
     const details = topicView;
     expect(details().querySelectorAll('[data-field="member-loading"]')).toHaveLength(2);
     app.emit({ type: 'work', work: work({ mine: [] }, { tasks: [] }) });
@@ -479,7 +485,7 @@ describe('what a member is doing now (TOPIC-4)', () => {
     /** Leaves the view for another Topic's, then opens it again. */
     const reopen = async () => {
       await openView(user, 'Other');
-      await openView(user, 'Rates');
+      await openView(user, 'Rates', 'Members');
     };
     app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Rates', members: [member(SESSION)], outputs: { items: [output(1), output(2)], total: 12 } }), topic(2, { title: 'Other' })], edges: [], pruned: [], libraryReadAt: Date.now(), recommendations: [], jevAsksToday: 0, summarizing: [], summaryErrors: {} } });
     // Opened again within a minute of the last read: nothing is read again.
@@ -552,7 +558,7 @@ describe('recommendations (TOPIC-9)', () => {
   it('TOPIC-9.4, TOPIC-9.5: Accept adds it with where it came from; Dismiss adds nothing; "Recommended" goes once nothing is pending; the Topic view repeats its own', async () => {
     const app = openApp([topic(1, { title: 'Proposals rates' })], work(), { recommendations: [fromJev, fromLink] });
     const user = await openTopics();
-    await openView(user, 'Proposals rates');
+    await openView(user, 'Proposals rates', 'Members');
     expect(within(topicView().querySelector<HTMLElement>('[data-field="topic-recommended"]')!).getByRole('listitem', { name: /rates-port/ })).toBeInTheDocument();
     await user.click(within(rec(/^rates-port/)).getByRole('button', { name: 'Accept' }));
     expect(app.client.recommend).toHaveBeenCalledWith({ action: 'accept', key: fromLink.key, topicId: id(1) });
@@ -968,23 +974,25 @@ describe('the Topic view (TOPIC-10)', () => {
     ]);
     app.snapshot([row({ id: 'alpha' }), row({ id: SESSION_ID, title: 'rates-port', status: 'needs-you' }), row({ id: live2, title: 'idle one', status: 'idle' })]);
     const user = await openTopics();
-    const view = await openView(user, 'Rates');
-    const sections = [...view.querySelectorAll<HTMLElement>('section')];
-    expect(sections.map((s) => s.querySelector('h2')!.textContent)).toEqual(['Summary', 'Sessions4', 'PRs2', 'Tasks3', 'Activity']);
+    const view = await openView(user, 'Rates', 'Members');
+    const sections = [...shownPanel().querySelectorAll<HTMLElement>('section')];
+    expect(sections.map((s) => s.querySelector('h2')!.textContent)).toEqual(['Sessions4', 'PRs2', 'Tasks3']);
     expect([...view.querySelectorAll('[data-field="session"] button[aria-label^="Open"], [data-field="session"] button[aria-label^="Resume"]')].map((c) => c.getAttribute('aria-label'))).toEqual(['Open rates-port, Needs you', 'Open idle one, Idle', 'Resume past new, past', 'Resume past old, past']);
     expect([...view.querySelectorAll('[data-field="pr"]')].map((l) => l.querySelector('[data-field="member-title"]')!.textContent)).toEqual([ANVIL.title, 'Old anvil']);
     expect([...view.querySelectorAll('[data-field="task"]')].map((l) => l.querySelector('[data-field="member-title"]')!.textContent)).toEqual([LIGHT.title, 'Closed 2', 'Closed 1']);
     expect(within(view).getAllByRole('button', { name: /^Remove .* from Rates$/ })).toHaveLength(9);
   });
 
-  it('TOPIC-10.5: under the members, its recommendations, Outputs and Edges; while the view shows, Work is watched', async () => {
+  it('TOPIC-10.5: on Members its recommendations above the members and Outputs under them, on Overview its Edges; while the view shows, whichever tab, Work is watched', async () => {
     const app = openApp([topic(1, { title: 'Rates', members: [member(SESSION)], outputs: null }), topic(2, { title: 'Proposals v2' })], work(), {
       edges: [{ from: id(1), to: id(2), label: 'part of', createdAt: NOW }],
       recommendations: [{ key: memberKey('pr', PR_MEMBER.ref), member: PR_MEMBER, topicId: id(1), newTitle: null, source: 'link', confidence: null, reason: 'Linked', createdAt: NOW }],
     });
     const user = await openTopics();
-    const view = await openView(user, 'Rates');
-    expect([...view.querySelectorAll('section')].map((s) => s.getAttribute('data-field'))).toEqual(['summary', 'sessions', 'topic-recommended', 'outputs', 'edges', 'activity']);
+    await openView(user, 'Rates');
+    expect([...shownPanel().querySelectorAll('section')].map((s) => s.getAttribute('data-field'))).toEqual(['summary', 'edges']);
+    await showTab(user, 'Members');
+    expect([...shownPanel().querySelectorAll('section')].map((s) => s.getAttribute('data-field'))).toEqual(['topic-recommended', 'sessions', 'outputs']);
     // With the sidebar closed, the view still keeps Work read.
     act(() => (document.activeElement as HTMLElement).blur());
     await user.keyboard('t');
@@ -1378,7 +1386,8 @@ describe('slice 7: finding a Topic, what happened, what’s new, how it ended', 
     expect([...since.querySelectorAll('[data-field="activity-entry"]')].map((e) => e.textContent)).toEqual([expect.stringContaining('anvil #2101 CI failing')]);
     expect(view.querySelector('[data-field="pr"] [data-field="fresh"]')).not.toBeNull();
     expect(view.querySelector('[data-field="session"] [data-field="fresh"]')).toBeNull();
-    const activity = within(view).getByRole('region', { name: 'Activity' });
+    await showTab(user, 'Activity');
+    const activity = within(view).getByRole('tabpanel', { name: 'Activity 1 new' });
     await waitFor(() => expect(activity.querySelectorAll('[data-field="activity-entry"]')).toHaveLength(50));
     await user.click(within(activity).getByRole('button', { name: 'Show more' }));
     await waitFor(() => expect(activity.querySelectorAll('[data-field="activity-entry"]')).toHaveLength(60));
@@ -1395,7 +1404,8 @@ describe('slice 7: finding a Topic, what happened, what’s new, how it ended', 
     const user = await openTopics();
     let view = await openView(user, 'Rates');
     await within(view).findByRole('region', { name: 'Since you last looked' });
-    const activity = within(view).getByRole('region', { name: 'Activity' });
+    await showTab(user, 'Activity');
+    const activity = within(view).getByRole('tabpanel', { name: /^Activity/ });
     await waitFor(() => expect(activity.querySelectorAll('[data-field="activity-entry"]')).toHaveLength(50));
     const more = within(activity).getByRole('button', { name: 'Show more' });
     await user.dblClick(more);
@@ -1439,6 +1449,12 @@ describe('slice 7: finding a Topic, what happened, what’s new, how it ended', 
     expect(earlier).toHaveTextContent('Before.');
     await user.click(within(earlier).getByRole('button', { name: /Before\./ }));
     expect(within(earlier).getAllByText('anvil #2101').every((el) => el.tagName === 'SPAN')).toBe(true);
+    // TOPIC-10.8: "N changes since" opens Activity, its tab focused.
+    await user.click(s.querySelector<HTMLElement>('[data-field="summary-changes"]')!);
+    const tab = within(view).getByRole('tab', { name: /^Activity/ });
+    expect(tab).toHaveAttribute('aria-selected', 'true');
+    expect(tab).toHaveFocus();
+    expect(window.location.pathname).toBe(`/topics/${id(1)}/activity`);
   });
 
   it('TOPIC-1.6: "Superseded by…" picks the Topic from the Open ones, and the view says which Topic superseded it, with a button to it', async () => {
@@ -1455,5 +1471,113 @@ describe('slice 7: finding a Topic, what happened, what’s new, how it ended', 
     const by = await within(topicView()).findByRole('button', { name: 'superseded by Rates v2' });
     await user.click(by);
     await waitFor(() => expect(topicView()).toHaveAccessibleName('Topic Rates v2'));
+  });
+});
+
+describe('the Topic view in tabs (TOPIC-10.7, TOPIC-10.8)', () => {
+  // Ids of their own (31, 41): what a view sent as seen is kept for the page's life.
+  const entry = (n: number, over: Partial<ActivityEntry> = {}): ActivityEntry => ({ id: n, at: Date.now() - (100 - n) * 60_000, kind: 'ci-failing', member: memberKey('pr', PR_MEMBER.ref), by: 'lookout', data: { name: 'anvil #2101' }, ...over });
+  const tabs = () => within(topicView()).getAllByRole('tab');
+  const selected = () => within(topicView()).getByRole('tab', { selected: true });
+
+  it('TOPIC-10.7: Overview holds what\u2019s new, the Summary, the notes and the Edges; Members its count, a dot for new activity, and the members; Activity "N new" and the log', async () => {
+    const fresh = Array.from({ length: 12 }, (_, i) => entry(20 - i));
+    openApp([topic(31, { title: 'Rates', notes: 'Corners first.', members: [member(PR_MEMBER), member(TASK_MEMBER), member(SESSION)], seenUpto: 8, newCount: 12, lastEntryId: 20 }), topic(32, { title: 'Proposals v2' })], work(), {
+      edges: [{ from: id(31), to: id(32), label: 'part of', createdAt: NOW }],
+      activity: { [id(31)]: fresh },
+    });
+    const user = await openTopics();
+    const view = await openView(user, 'Rates');
+    await within(view).findByRole('region', { name: 'Since you last looked' });
+    expect(within(view).getByRole('tablist', { name: 'Topic view' })).toBeInTheDocument();
+    expect(tabs().map((t) => t.getAttribute('aria-label'))).toEqual(['Overview', 'Members 3, new activity', 'Activity 12 new']);
+    expect(selected()).toHaveAccessibleName('Overview');
+    const overview = within(view).getByRole('tabpanel', { name: 'Overview' });
+    expect(['since-looked', 'summary', 'notes', 'edges'].map((f) => overview.querySelector(`[data-field="${f}"]`) !== null)).toEqual([true, true, true, true]);
+    expect(overview.querySelector('[data-field="sessions"], [data-field="activity"]')).toBeNull();
+    await showTab(user, 'Members');
+    const members = within(view).getByRole('tabpanel', { name: 'Members 3, new activity' });
+    expect(['sessions', 'prs', 'tasks'].every((f) => members.querySelector(`[data-field="${f}"]`))).toBe(true);
+    expect(within(view).getByRole('tab', { name: /^Members/ }).querySelector('[data-field="fresh"]')).not.toBeNull();
+    await showTab(user, 'Activity');
+    expect(within(view).getByRole('tabpanel', { name: 'Activity 12 new' }).querySelectorAll('[data-field="activity-entry"]')).toHaveLength(12);
+  });
+
+  it('TOPIC-10.8: the tab is in the path, replaced on a switch; a reload or another path keeps it or opens Overview; every opening from the app is Overview', async () => {
+    openApp([topic(31, { title: 'Rates', members: [member(PR_MEMBER)] }), topic(32, { title: 'Other' })]);
+    const user = await openTopics();
+    await openView(user, 'Rates');
+    expect(window.location.pathname).toBe(`/topics/${id(31)}`);
+    const depth = window.history.length;
+    await showTab(user, 'Members');
+    expect(window.location.pathname).toBe(`/topics/${id(31)}/members`);
+    await showTab(user, 'Activity');
+    expect(window.location.pathname).toBe(`/topics/${id(31)}/activity`);
+    await showTab(user, 'Overview');
+    expect(window.location.pathname).toBe(`/topics/${id(31)}`);
+    expect(window.history.length).toBe(depth);
+    await showTab(user, 'Members');
+    // Opening another Topic, or this one again, lands on Overview.
+    await openView(user, 'Other');
+    expect(window.location.pathname).toBe(`/topics/${id(32)}`);
+    expect(selected()).toHaveAccessibleName('Overview');
+    cleanup();
+    renderApp(`/topics/${id(31)}/activity`, { topics: [topic(31, { title: 'Rates' })] }).snapshot([row({ id: 'alpha' })]);
+    expect(selected()).toHaveAccessibleName('Activity');
+    cleanup();
+    renderApp(`/topics/${id(31)}/nonsense`, { topics: [topic(31, { title: 'Rates' })] }).snapshot([row({ id: 'alpha' })]);
+    expect(selected()).toHaveAccessibleName('Overview');
+  });
+
+  it('TOPIC-10.8: ←/→, Home and End move between tabs, focus following; "+N more" opens Activity with its tab focused; a switch keeps Activity\u2019s pages, reads nothing again and saves a notes edit on its blur', async () => {
+    const entries = Array.from({ length: 60 }, (_, i) => entry(60 - i));
+    const app = openApp([topic(41, { title: 'Rates', notes: 'Old.', members: [member(PR_MEMBER)], seenUpto: 0, newCount: 60, lastEntryId: 60 }), topic(42, { title: 'Other' })], work(), { activity: { [id(41)]: entries } });
+    const user = await openTopics();
+    const view = await openView(user, 'Rates');
+    const since = await within(view).findByRole('region', { name: 'Since you last looked' });
+    await user.click(within(since).getByRole('button', { name: '+50 more' }));
+    expect(selected()).toHaveAccessibleName('Activity 60 new');
+    expect(selected()).toHaveFocus();
+    const activity = within(view).getByRole('tabpanel', { name: /^Activity/ });
+    await waitFor(() => expect(activity.querySelectorAll('[data-field="activity-entry"]')).toHaveLength(50));
+    await user.click(within(activity).getByRole('button', { name: 'Show more' }));
+    await waitFor(() => expect(activity.querySelectorAll('[data-field="activity-entry"]')).toHaveLength(60));
+    act(() => selected().focus());
+    await user.keyboard('{ArrowRight}');
+    expect(selected()).toHaveAccessibleName('Overview');
+    expect(selected()).toHaveFocus();
+    await user.keyboard('{End}');
+    expect(selected()).toHaveAccessibleName('Activity 60 new');
+    await user.keyboard('{Home}');
+    await user.keyboard('{ArrowLeft}');
+    expect(selected()).toHaveAccessibleName('Activity 60 new');
+    expect(activity.querySelectorAll('[data-field="activity-entry"]')).toHaveLength(60);
+    expect(app.client.topicActivity).toHaveBeenCalledTimes(2);
+    expect(app.client.seenTopic).not.toHaveBeenCalled();
+    // A notes edit is saved by the blur a tab's click brings (TOPIC-1.2).
+    await showTab(user, 'Overview');
+    await user.click(within(view).getByRole('button', { name: 'Edit' }));
+    await user.clear(within(view).getByRole('textbox', { name: 'Notes' }));
+    await user.type(within(view).getByRole('textbox', { name: 'Notes' }), 'Corners first.');
+    await showTab(user, 'Members');
+    expect(app.client.updateTopic).toHaveBeenCalledWith(id(41), { notes: 'Corners first.' });
+  });
+
+  it('TOPIC-10.7: "N new" is kept while the view is open, when another browser marks the Topic seen; the Members tab carries a dot only while a member in it does', async () => {
+    // Ids of their own (51, 52), as above.
+    const entries = Array.from({ length: 60 }, (_, i) => entry(60 - i));
+    const app = openApp([topic(51, { title: 'Rates', members: [member(PR_MEMBER)], seenUpto: 0, newCount: 60, lastEntryId: 60 })], work(), { activity: { [id(51)]: entries } });
+    const user = await openTopics();
+    await openView(user, 'Rates');
+    await waitFor(() => expect(tabs().map((t) => t.getAttribute('aria-label'))).toEqual(['Overview', 'Members 1, new activity', 'Activity 60 new']));
+    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(51, { title: 'Rates', members: [member(PR_MEMBER)], seenUpto: 60, newCount: 0, lastEntryId: 60 })], edges: [], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 0, summarizing: [], summaryErrors: {} } });
+    expect(tabs().map((t) => t.getAttribute('aria-label'))).toEqual(['Overview', 'Members 1, new activity', 'Activity 60 new']);
+    expect(within(topicView()).getByRole('region', { name: 'Since you last looked' })).toHaveTextContent('+50 more');
+    cleanup();
+    // New activity about a member no longer in the Topic: Activity counts it, Members carries no dot.
+    openApp([topic(52, { title: 'Proposals', members: [member(TASK_MEMBER)], seenUpto: 0, newCount: 1, lastEntryId: 1 })], work(), { activity: { [id(52)]: [entry(1)] } });
+    const again = await openTopics();
+    await openView(again, 'Proposals');
+    await waitFor(() => expect(tabs().map((t) => t.getAttribute('aria-label'))).toEqual(['Overview', 'Members 1', 'Activity 1 new']));
   });
 });

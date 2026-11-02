@@ -36,14 +36,18 @@ const TROUBLE = snapshot({
   git: { state: 'unknown', version: null, number: null, reason: 'git --version took longer than 5 s.' },
 });
 
+const toolsLink = () => within(screen.getByRole('navigation', { name: 'Settings' })).getByRole('link', { name: 'Tools' });
 async function openSettings(tools: ToolsSnapshot | null, client: Parameters<typeof renderApp>[1] = {}) {
   const user = userEvent.setup();
   const app = renderApp('/', client);
   app.snapshot([]);
   if (tools) app.emit({ type: 'tools', tools });
   await user.click(screen.getByRole('button', { name: 'Settings' }));
+  // SIDE-7.6: Settings opens on General; the Tools are a sub-page of their own, read when it opens (TOOLS-1.4).
+  const asked = vi.mocked(app.client.tools).mock.calls.length;
+  await user.click(toolsLink());
   const section = screen.getByRole('region', { name: 'Tools' });
-  return { app, user, section, item: (id: string) => section.querySelector<HTMLElement>(`[data-tool="${id}"]`)! };
+  return { app, user, section, asked, item: (id: string) => section.querySelector<HTMLElement>(`[data-tool="${id}"]`)! };
 }
 
 describe('Settings › Tools', () => {
@@ -59,13 +63,14 @@ describe('Settings › Tools', () => {
     expect(item('tmux').querySelector('[data-field="state"]')).toHaveTextContent('ok');
   });
 
-  it('TOOLS-1.4: opening Settings asks the server for the Tools once, the page says how old they are, and Refresh reads them now', async () => {
+  it('TOOLS-1.4: opening Settings › Tools, not General, asks the server for the Tools once; the page says how old they are, and Refresh reads them now', async () => {
     // The page's clock is the app's: ages from now.
     const old = snapshot({}, Date.now() - 120_000);
     const fresh = snapshot({}, Date.now());
     const tools = vi.fn(async () => old);
     const refreshTools = vi.fn(async () => fresh);
-    const { section, user } = await openSettings(old, { tools, refreshTools });
+    const { section, user, asked } = await openSettings(old, { tools, refreshTools });
+    expect(asked).toBe(0);
     await waitFor(() => expect(tools).toHaveBeenCalledTimes(1));
     expect(section.querySelector('[data-field="checked"]')).toHaveTextContent('Checked 2m ago');
     await user.click(within(section).getByRole('button', { name: 'Refresh' }));
@@ -124,9 +129,15 @@ describe('the Settings button', () => {
     expect(button).toHaveAttribute('title', 'Settings: fleet is behind, tb-session is behind, tb-pr is missing');
     // Its name stays "Settings": the tooltip says why.
     expect(button).toHaveAccessibleName('Settings');
+    // SIDE-7.6: Settings' Tools link carries the same dot, naming the same Tools.
+    await userEvent.setup().click(button);
+    expect(toolsLink().querySelector('[data-field="tools-dot"]')).not.toBeNull();
+    expect(toolsLink()).toHaveAttribute('title', 'fleet is behind, tb-session is behind, tb-pr is missing');
     act(() => {});
     app.emit({ type: 'tools', tools: snapshot({ claude: { state: 'newer-than-known' }, codex: { state: 'update-available' } }, NOW) });
     expect(dot()).toBeNull();
     expect(button).toHaveAttribute('title', 'Settings');
+    expect(toolsLink().querySelector('[data-field="tools-dot"]')).toBeNull();
+    expect(toolsLink()).not.toHaveAttribute('title');
   });
 });

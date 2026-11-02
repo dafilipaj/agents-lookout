@@ -21,7 +21,8 @@ import { solid, themeTokens } from './contrast';
  * - a `Button` with an `icon…` size outside `components/ui/`, an `IconButton` whose `className` sets a size, or a
  *   `<button>`/`<Button>` holding only an icon that isn't an `IconButton` (DS-7.2);
  * - a 20 px icon (`size-5`) outside `components/ui/`: only the labelled button size draws one (DS-7.1, 7.4);
- * - a `<kbd>` outside `Kbd`, or a `select-all` command outside `CommandBlock` (DS-8.2, 8.4).
+ * - a `<kbd>` outside `Kbd`, or a `select-all` command outside `CommandBlock` (DS-8.2, 8.4);
+ * - a `role="tablist"` outside `Tabs` and the right sidebar, or `aria-current="page"` outside `SideNav` (DS-13.3).
  * Every exception is in this file, with its reason, so adding one is a reviewed change.
  */
 
@@ -261,6 +262,7 @@ const FAMILIES: Record<string, Family> = {
       'web/src/lib/sessions.ts': { why: "the Status's strip and header tag", uses: ['bg-busy', 'bg-busy-soft', 'text-busy-text'] },
       'web/src/components/ChatActivity.tsx': { why: 'the "Working…" dot: the Session is Busy', uses: ['bg-busy'] },
       'web/src/components/SessionView.tsx': { why: "VIEW-8's running Subagents in the status line", uses: ['text-busy-text'] },
+      'web/src/components/SubagentsButton.tsx': { why: "VIEW-8's running Subagents in the status line's count and its popover", uses: ['text-busy-text'] },
     },
   },
   idle: {
@@ -270,6 +272,7 @@ const FAMILIES: Record<string, Family> = {
       'web/src/lib/sessions.ts': { why: "the Status's strip and header tag", uses: ['bg-idle', 'bg-idle-soft', 'text-idle-text', 'var(--color-idle)'] },
       'web/src/components/SessionItem.tsx': { why: "SIDE-2.6's background shell: Idle with a command still running", uses: ['text-idle-text'] },
       'web/src/components/SessionView.tsx': { why: "VIEW-5.16's background shell and VIEW-8's finished Subagents in the status line", uses: ['text-idle-text'] },
+      'web/src/components/SubagentsButton.tsx': { why: "VIEW-8's finished Subagents in the status line's count", uses: ['text-idle-text'] },
     },
   },
   diff: {
@@ -307,6 +310,7 @@ const FAMILIES: Record<string, Family> = {
       'web/src/components/SessionView.tsx': { why: 'a Stop that failed, and a failed copy', uses: ['text-destructive'] },
       'web/src/components/Markdown.tsx': { why: 'a failed copy', uses: ['text-destructive'] },
       'web/src/components/Sidebar.tsx': { why: "the Settings button's dot: a Tool missing or behind (TOOLS-2.4)", uses: ['bg-destructive'] },
+      'web/src/components/SettingsPage.tsx': { why: "the Tools link's dot, the Settings button's (TOOLS-2.4, SIDE-7.6)", uses: ['bg-destructive'] },
     },
   },
   ok: {
@@ -358,6 +362,13 @@ const FAMILIES: Record<string, Family> = {
       'web/src/components/ui/dialog.tsx': { why: 'keyboard focus on Close', uses: ['ring-ring'] },
       'web/src/components/ui/input.tsx': { why: 'keyboard focus and a focused field', uses: ['border-ring', 'ring-ring/50'] },
       'web/src/components/ui/textarea.tsx': { why: 'keyboard focus and a focused field', uses: ['border-ring', 'ring-ring/50'] },
+      'web/src/components/ui/tabs.tsx': { why: 'keyboard focus on a tab (DS-13.2)', uses: ['ring-ring/50'] },
+      'web/src/components/ui/side-nav.tsx': { why: 'keyboard focus on a sub-page link (DS-13.1)', uses: ['ring-ring/50'] },
+      'web/src/components/ui/picker.tsx': { why: "a focused picker's filter", uses: ['border-ring', 'ring-ring/30'] },
+      'web/src/components/TopicsPanel.tsx': { why: 'keyboard focus and the focused filter', uses: ['border-ring', 'ring-ring/30', 'ring-ring/50'] },
+      'web/src/components/TopicView.tsx': { why: 'the focused title field', uses: ['border-ring', 'ring-ring/30'] },
+      'web/src/components/SubagentsButton.tsx': { why: "keyboard focus on the status line's Subagents", uses: ['ring-ring'] },
+      'web/src/components/TopicGraph.tsx': { why: 'keyboard focus, and drawing an Edge: its line, the dashed target and the handle (DS-12.4, TOPIC-6.1)', uses: ['border-primary', 'ring-ring/50', 'stroke-primary', 'text-primary'] },
     },
   },
 };
@@ -639,7 +650,7 @@ describe('colour by meaning', () => {
     expect(FAMILIES.primary!.tokens).toEqual(['primary', 'primary-foreground', 'primary-soft', 'ring']);
     const primary = FAMILIES.primary!;
     const coloured = Object.entries(primary.files).filter(([, { uses }]) => uses.some((c) => /primary/.test(c))).map(([path]) => path).sort();
-    expect(coloured).toEqual(['web/src/components/Answering.tsx', 'web/src/components/Chat.tsx', 'web/src/components/SessionView.tsx', 'web/src/components/ui/button.tsx']);
+    expect(coloured).toEqual(['web/src/components/Answering.tsx', 'web/src/components/Chat.tsx', 'web/src/components/SessionView.tsx', 'web/src/components/TopicGraph.tsx', 'web/src/components/ui/button.tsx']);
     expect(classesOf('primary', 'web/src/components/ui/button.tsx')).not.toContain('text-primary');
     expect(familyUses('primary', `'bg-primary-soft border-primary text-primary text-primary-foreground ring-ring bg-ring outline-ring'`)).toHaveLength(7);
     expect(familyUses('primary', `'bg-primary-soft'`, 'web/src/components/SessionItem.tsx')).toHaveLength(1);
@@ -678,7 +689,7 @@ describe('colour by meaning', () => {
   });
 
   it('DS-3.6: Busy\'s colour is only a Status\'s: the marker, strip, tag, "Working…" dot and VIEW-8\'s running Subagents', () => {
-    expect(Object.keys(FAMILIES.busy!.files).sort()).toEqual(['web/src/components/ChatActivity.tsx', 'web/src/components/SessionView.tsx', 'web/src/components/StatusMarker.tsx', 'web/src/lib/sessions.ts']);
+    expect(Object.keys(FAMILIES.busy!.files).sort()).toEqual(['web/src/components/ChatActivity.tsx', 'web/src/components/SessionView.tsx', 'web/src/components/StatusMarker.tsx', 'web/src/components/SubagentsButton.tsx', 'web/src/lib/sessions.ts']);
     // No link, spinner, chip, search hit or Mark takes Busy's blue: the places that did are neutral now.
     for (const path of ['web/src/lib/links.tsx', 'web/src/components/Markdown.tsx', 'web/src/components/WorkPanel.tsx', 'web/src/components/HistoryPanel.tsx', 'web/src/components/ChatRail.tsx']) {
       expect(classesOf('busy', path), path).toEqual([]);
@@ -1169,5 +1180,42 @@ describe('keys and commands', () => {
       .filter(([path]) => /\.tsx?$/.test(path))
       .flatMap(([path, text]) => keysAndCommands(text, path).filter((s) => s.split(' ')[1] !== own[path]).map((s) => `${path}:${s}`));
     expect(found).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// DS-13.3: one tab strip, one side nav
+
+/** `role="tablist"` and `aria-current="page"` written as JSX attributes, as `line:col what`. */
+function tabsAndNavs(source: string, path = 'x.tsx'): string[] {
+  const file = parse(source, path);
+  const found: string[] = [];
+  const visit = (node: ts.Node) => {
+    if (ts.isJsxAttribute(node) && node.initializer) {
+      const name = node.name.getText();
+      const init = node.initializer;
+      const text = ts.isStringLiteral(init) ? init.text : init.getText();
+      if (name === 'role' && /\btablist\b/.test(text)) found.push(`${where(file, node.getStart())} tablist`);
+      if (name === 'aria-current' && /\bpage\b/.test(text)) found.push(`${where(file, node.getStart())} aria-current=page`);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return found;
+}
+
+describe('sub-pages and tabs', () => {
+  it('DS-13.3: the guard catches a tab strip and a current page however they are written, and lets other roles through', () => {
+    expect(tabsAndNavs(`<div role="tablist" />; <div role={'tablist'} />; <a aria-current="page" />; <a aria-current={on ? 'page' : undefined} />`).map((s) => s.split(' ')[1])).toEqual(['tablist', 'tablist', 'aria-current=page', 'aria-current=page']);
+    expect(tabsAndNavs(`<div role="tab" />; <div role="tabpanel" />; <li aria-current="true" />; <li aria-current={selected || undefined} />`)).toEqual([]);
+  });
+
+  it('DS-13.3: tab strips are drawn only by Tabs and the right sidebar, and current pages only by SideNav', () => {
+    const own: Record<string, string> = { 'web/src/components/ui/tabs.tsx': 'tablist', 'web/src/components/RightSidebar.tsx': 'tablist', 'web/src/components/ui/side-nav.tsx': 'aria-current=page' };
+    const found = Object.entries(SOURCES)
+      .filter(([path]) => /\.tsx$/.test(path))
+      .flatMap(([path, text]) => tabsAndNavs(text, path).filter((s) => s.split(' ')[1] !== own[path]).map((s) => `${path}:${s}`));
+    expect(found).toEqual([]);
+    for (const [path, what] of Object.entries(own)) expect(tabsAndNavs(SOURCES[path] ?? '', path).map((s) => s.split(' ')[1]), path).toContain(what);
   });
 });

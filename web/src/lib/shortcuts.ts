@@ -139,7 +139,7 @@ export const SHORTCUTS: readonly Shortcut[] = [
     group: 'panels',
     keys: ['←', '→'],
     label: 'Switch tab',
-    note: 'On the tab strip.',
+    note: "On a tab strip: the right sidebar's, or a Topic view's, where Home and End go to the first and last.",
     press: [{ key: 'ArrowRight' }, { key: 'ArrowLeft' }],
   },
   {
