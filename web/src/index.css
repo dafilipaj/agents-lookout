@@ -248,6 +248,31 @@
   }
 }
 
+/*
+ * VIEW-3.9: Undo send's countdown, a ring that drains over the wait. A chart of time drawn in CSS,
+ * not an icon, so it needs no <svg> (0008); its duration is set where it's drawn.
+ */
+@property --countdown-left {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 100%;
+}
+
+@keyframes countdown-drain {
+  from {
+    --countdown-left: 100%;
+  }
+  to {
+    --countdown-left: 0%;
+  }
+}
+
+@utility countdown-ring {
+  border-radius: 9999px;
+  background: conic-gradient(currentColor var(--countdown-left), color-mix(in oklab, currentColor 25%, transparent) 0);
+  mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px));
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .animate-busy {
     animation: busy-pulse 1.6s ease-in-out infinite;

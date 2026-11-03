@@ -1,5 +1,5 @@
 import type { ChatEntry, ChatPage, ChatQuestion, Harness } from '@shared/types.ts';
-import { ArrowDown, ChevronRight, CircleHelp, type LucideIcon, MessagesSquare, TerminalSquare, Wrench } from 'lucide-react';
+import { ArrowDown, ChevronRight, CircleHelp, type LucideIcon, MessagesSquare, TerminalSquare, Undo2, Wrench } from 'lucide-react';
 import { type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, memo, useCallback, useContext, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { Alert } from '@/components/ui/alert';
@@ -26,6 +26,14 @@ const BOTTOM_SLACK_PX = 48;
 const NONE: readonly ChatEntry[] = [];
 /** VIEW-1.13: a message you sent, as the chat shows it: waiting for its copy, or lost. */
 type ChatEcho = Pick<Echo, 'id' | 'text' | 'state'>;
+/** VIEW-3.9: your message waiting to go (Undo send), from `at` until `until`, ms since epoch. */
+export interface HeldMessage {
+  text: string;
+  at: number;
+  until: number;
+  /** VIEW-3.10: takes it back into the composer, unsent. */
+  onUndo(): void;
+}
 /** Keys that scroll the chat when focus is in it, or on the page: pressing one releases a jump's hold (VIEW-1.11). */
 const SCROLL_KEYS = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ']);
 /**
@@ -49,6 +57,8 @@ export interface ChatProps {
   onFollowing(sessionId: string, following: boolean): void;
   /** VIEW-1.13: messages you sent that the Transcript hasn't shown yet, oldest first. */
   echoes?: readonly ChatEcho[];
+  /** VIEW-3.9: the message waiting to go, after them. */
+  outgoing?: HeldMessage | null;
   /** VIEW-1.10: what the Session is doing, under the last message. */
   activity?: ReactNode;
   /** A Controllable Session's terminal preview: the way to it while the Transcript is slow to read (DS-6.2). */
@@ -56,7 +66,7 @@ export interface ChatProps {
 }
 
 /** VIEW-1: the conversation from the Transcript. Mounted per Session. */
-export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFollowing, echoes = NO_ECHOES, activity, terminal = null }: ChatProps) {
+export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFollowing, echoes = NO_ECHOES, outgoing = null, activity, terminal = null }: ChatProps) {
   const [loadingEarlier, setLoadingEarlier] = useState(false);
   const [earlierError, setEarlierError] = useState<string | null>(null);
   const entries = chat?.entries ?? NONE;
@@ -92,7 +102,7 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
     } else if (atBottom.current) {
       el.scrollTop = el.scrollHeight;
     }
-  }, [entries, queue, echoes, before, chat?.loaded, chat?.problem]);
+  }, [entries, queue, echoes, outgoing, before, chat?.loaded, chat?.problem]);
 
   useEffect(() => onFollowing(sessionId, following), [onFollowing, sessionId, following]);
 
@@ -283,7 +293,7 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
     ) : (
       <Skeleton terminal={terminal} />
     );
-  } else if (items.length === 0 && queue.length === 0 && echoes.length === 0 && !before) {
+  } else if (items.length === 0 && queue.length === 0 && echoes.length === 0 && !outgoing && !before) {
     // A Session before its first prompt: an empty conversation, not an error.
     body = (
       <Notice icon={MessagesSquare} title="No messages yet">
@@ -326,6 +336,11 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
             <Sending echo={e} />
           </li>
         ))}
+        {outgoing && (
+          <li key={`held:${outgoing.at}`} data-held>
+            <Held held={outgoing} />
+          </li>
+        )}
         {problem && (
           <li>
             <Alert tone="info" title={`${problem.kind === 'missing' ? "The Transcript can't be found right now" : "Couldn't read new messages"}: ${problem.message} · retrying`} />
@@ -496,6 +511,42 @@ function Sending({ echo }: { echo: ChatEcho }) {
       <Prompt text={echo.text} ts={null} state={lost ? 'lost' : 'sending'} />
       {lost && <TerminalNote message={command ? IN_TERMINAL : NOT_TAKEN} terminal={terminal} info={command} className="mt-1.5 justify-end" />}
     </>
+  );
+}
+
+/**
+ * VIEW-3.9: your message waiting to go. It reads as yours and isn't dimmed, so you can still read
+ * what you're about to send; its dashed edge says it hasn't gone. Under it a ring drains over the
+ * wait, the seconds left count down, and Undo takes it back (VIEW-3.10).
+ */
+function Held({ held }: { held: HeldMessage }) {
+  const [now, setNow] = useState(held.at);
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(t);
+  }, []);
+  const total = Math.max(1, held.until - held.at);
+  const left = Math.max(1, Math.ceil((held.until - now) / 1000));
+  return (
+    <div className="flex flex-col items-end">
+      <Meta who="You" ts={null} srLabel="waiting to send" />
+      <div className="max-w-[85%] rounded-lg border border-dashed border-primary/45 bg-primary-soft px-3.5 py-2 text-prose leading-[1.6] break-words whitespace-pre-wrap">
+        <LinkedText text={held.text} />
+      </div>
+      <div className="mt-1 flex items-center gap-1.5 text-meta text-muted-foreground" data-field="undo-send">
+        <span className="countdown-ring size-3.5 shrink-0 motion-reduce:hidden" style={{ animation: `countdown-drain ${total}ms linear forwards` }} aria-hidden />
+        <span className="tabular-nums" aria-hidden>
+          Sending in {left} s
+        </span>
+        <span className="sr-only" role="status">
+          Sending in {Math.round(total / 1000)} seconds. Undo, or Backspace in the empty box, takes it back.
+        </span>
+        <Button type="button" variant="ghost" size="xs" className="-mr-1.5 text-foreground/80" title="Undo, or Backspace in the empty box" onClick={held.onUndo}>
+          <Undo2 />
+          Undo
+        </Button>
+      </div>
+    </div>
   );
 }
 

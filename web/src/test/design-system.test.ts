@@ -344,7 +344,7 @@ const FAMILIES: Record<string, Family> = {
     files: {
       'web/src/components/ui/button.tsx': { why: 'the default Button, keyboard focus and a focused field (DS-12.4)', uses: ['bg-primary', 'bg-primary/90', 'border-ring', 'ring-ring/50', 'text-primary-foreground'] },
       'web/src/components/Answering.tsx': { why: 'a chosen option’s border and dot or tick, and keyboard focus (DS-12.4)', uses: ['border-primary', 'border-ring', 'ring-ring', 'ring-ring/25', 'text-primary'] },
-      'web/src/components/Chat.tsx': { why: 'your own message bubble and keyboard focus (DS-12.4)', uses: ['bg-primary-soft', 'ring-ring'] },
+      'web/src/components/Chat.tsx': { why: 'your own message bubble, the dashed edge of one waiting to go (VIEW-3.9), and keyboard focus (DS-12.4)', uses: ['bg-primary-soft', 'border-primary/45', 'ring-ring'] },
       'web/src/index.css': { why: 'the base outline colour, as before DS-12', uses: ['outline-ring/50'] },
       'web/src/lib/links.tsx': { why: 'keyboard focus on a link', uses: ['outline-ring'] },
       'web/src/components/ChatRail.tsx': { why: 'keyboard focus on a Mark', uses: ['ring-ring'] },

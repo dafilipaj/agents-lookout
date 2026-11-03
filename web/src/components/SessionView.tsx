@@ -41,7 +41,7 @@ import { clockTime } from '@/lib/chat';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { PromptCard } from './Answering';
-import { Chat } from './Chat';
+import { Chat, type HeldMessage } from './Chat';
 import { ChatActivity } from './ChatActivity';
 import { HarnessIcon } from './HarnessIcon';
 import { useSessionTitle } from './SessionTitle';
@@ -236,6 +236,9 @@ export function SessionView({
   // view keeps its key across that), or its chat hasn't loaded (no Transcript, VIEW-1.8). While the
   // chat shows a feed problem they show but don't time out: a copy may be on its way.
   const [echoes, setEchoes] = useState<readonly Echo[]>(NO_ECHOES);
+  // VIEW-3.9: the composer's message waiting to go (Undo send), shown after the echoes.
+  const [held, setHeld] = useState<Omit<HeldMessage, 'onUndo'> | null>(null);
+  const undoHeld = useRef<() => void>(() => {});
   const echoIds = useRef(0);
   const hidden = ended || !chat?.loaded;
   const settled = settleEchoes(echoes, {
@@ -342,6 +345,7 @@ export function SessionView({
             onPage={onPage}
             onFollowing={onFollowing}
             echoes={visible}
+            outgoing={held && { ...held, onUndo: () => undoHeld.current() }}
             terminal={controls ? answering.terminal : null}
             activity={
               <>
@@ -388,6 +392,8 @@ export function SessionView({
             onSend={send}
             inputRef={composerRef}
             undoSend={undoSend}
+            onHold={setHeld}
+            undoRef={undoHeld}
             attachments={attachments}
             dragging={dragging}
           />
@@ -1215,13 +1221,17 @@ interface ComposerProps {
   inputRef: RefObject<HTMLTextAreaElement | null>;
   /** VIEW-3.9: a sent message waits UNDO_SEND_MS, with Undo, before it goes. */
   undoSend: boolean;
+  /** VIEW-3.9: the message now waiting to go, for the chat to show; null once it went or came back. */
+  onHold(held: Omit<HeldMessage, 'onUndo'> | null): void;
+  /** VIEW-3.10: set to what takes the waiting message back, for the chat's Undo. */
+  undoRef: RefObject<() => void>;
 }
 
 /** VIEW-3.9: how long a sent message waits in the composer, with Undo, before it goes. */
 export const UNDO_SEND_MS = 3000;
 
 /** VIEW-3: Enter sends, Shift+Enter adds a line; a failed send keeps the text. */
-function Composer({ sessionId, title, drafts, sending, error, onEdit, onSend, inputRef, attachments, dragging, undoSend }: ComposerProps) {
+function Composer({ sessionId, title, drafts, sending, error, onEdit, onSend, inputRef, attachments, dragging, undoSend, onHold, undoRef }: ComposerProps) {
   const attachmentState = useSyncExternalStore(attachments.subscribe, () => attachments.state(sessionId));
   const attaching = attachmentState.loading !== null;
   const issue = [error, attachmentState.error].filter(Boolean).join(' ') || null;
@@ -1254,18 +1264,11 @@ function Composer({ sessionId, title, drafts, sending, error, onEdit, onSend, in
     edit.current(box.value);
   }), [attachments, sessionId, inputRef]);
 
-  // VIEW-3.9–3.11: the message waiting to go, its timer, and what delivering it needs, kept current
-  // so an unmount (another Session selected) can still send it.
-  const [waiting, setWaiting] = useState<{ text: string; until: number } | null>(null);
+  // VIEW-3.9–3.11: the message waiting to go and its timer, and what delivering it needs, kept
+  // current so an unmount (another Session selected) can still send it. The chat shows it (onHold).
   const pending = useRef<{ text: string; timer: ReturnType<typeof setTimeout> } | null>(null);
-  const live = useRef({ onSend, sessionId, drafts });
-  useLayoutEffect(() => { live.current = { onSend, sessionId, drafts }; });
-  const [clock, setClock] = useState(0);
-  useEffect(() => {
-    if (!waiting) return;
-    const t = setInterval(() => setClock(Date.now()), 250);
-    return () => clearInterval(t);
-  }, [waiting]);
+  const live = useRef({ onSend, sessionId, drafts, onHold });
+  useLayoutEffect(() => { live.current = { onSend, sessionId, drafts, onHold }; });
   const deliver = async (sent: string) => {
     const { onSend: send, sessionId: id, drafts: kept } = live.current;
     if (await send(id, sent)) return;
@@ -1280,7 +1283,7 @@ function Composer({ sessionId, title, drafts, sending, error, onEdit, onSend, in
     if (!p) return null;
     clearTimeout(p.timer);
     pending.current = null;
-    setWaiting(null);
+    live.current.onHold(null);
     return p.text;
   };
   const flush = () => {
@@ -1294,6 +1297,7 @@ function Composer({ sessionId, title, drafts, sending, error, onEdit, onSend, in
     update(text ? `${back}\n${text}` : back);
     inputRef.current?.focus();
   };
+  useLayoutEffect(() => { undoRef.current = undo; });
 
   const submit = async () => {
     if (sending || attachments.state(sessionId).loading || text.trim() === '') return;
@@ -1306,19 +1310,17 @@ function Composer({ sessionId, title, drafts, sending, error, onEdit, onSend, in
       const timer = setTimeout(flush, UNDO_SEND_MS);
       pending.current = { text: sent, timer };
       const at = Date.now();
-      setClock(at);
-      setWaiting({ text: sent, until: at + UNDO_SEND_MS });
+      onHold({ text: sent, at, until: at + UNDO_SEND_MS });
       return;
     }
     // On success, clear the box only if it still holds what was sent (App does the same for the
     // stored draft), so text typed meanwhile stays. A failure's error is kept by App.
     if (await onSend(sessionId, sent)) setText((current) => (current === sent ? '' : current));
   };
-  const left = waiting ? Math.max(1, Math.ceil((waiting.until - clock) / 1000)) : 0;
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.nativeEvent.isComposing) return;
-    if (e.key === 'Backspace' && waiting && text === '') {
+    if (e.key === 'Backspace' && pending.current && text === '') {
       // VIEW-3.10: Backspace in an empty box takes the waiting message back.
       e.preventDefault();
       undo();
@@ -1365,20 +1367,11 @@ function Composer({ sessionId, title, drafts, sending, error, onEdit, onSend, in
         ),
       }}
       hint={
-        waiting ? (
-          <span data-field="undo-send">
-            Sending in {left} s ·{' '}
-            <button type="button" className="font-medium text-foreground underline-offset-2 hover:underline focus-visible:underline outline-none" onClick={undo}>
-              Undo
-            </button>
-          </span>
-        ) : (
-          <>
-            Enter sends · Shift+Enter for a new line · <Kbd>i</Kbd> to type here · Esc to leave
-          </>
-        )
+        <>
+          Enter sends · Shift+Enter for a new line · <Kbd>i</Kbd> to type here · Esc to leave
+        </>
       }
-      hintTitle={waiting ? `Sending in ${left} s · Undo, or Backspace in the empty box` : 'Enter sends · Shift+Enter for a new line · i to type here · Esc to leave'}
+      hintTitle="Enter sends · Shift+Enter for a new line · i to type here · Esc to leave"
     />
   );
 }

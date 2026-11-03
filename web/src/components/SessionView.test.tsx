@@ -744,22 +744,32 @@ describe('composer', () => {
       const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
       const app = renderApp('/s/a', options);
       app.snapshot([row({ id: 'a' }), row({ id: 'b' })], { state: 'ok' }, settings({ undoSend: true }));
+      app.emit({ type: 'chat', sessionId: 'a', op: 'reset', entries: [], before: null, queue: [] });
       const box = screen.getByRole('textbox', { name: 'Message' });
-      const hint = () => box.closest('form')!.querySelector<HTMLElement>('[data-field="undo-send"]');
-      return { app, user, box, hint };
+      // The waiting message, at the end of the chat.
+      const held = () => document.querySelector<HTMLElement>('[data-held]');
+      return { app, user, box, held };
     };
 
-    it('VIEW-3.9: the message waits 3 s, counting down with Undo, then goes; Enter again sends the waiting one at once', async () => {
-      const { app, user, box, hint } = start();
+    it('VIEW-3.9: the message waits 3 s at the end of the chat, counting down with Undo, then goes; Enter again sends the waiting one at once', async () => {
+      const { app, user, box, held } = start();
       await user.type(box, 'Reply with OK{Enter}');
       expect(box).toHaveValue('');
       expect(app.client.sendMessage).not.toHaveBeenCalled();
-      expect(hint()).toHaveTextContent('Sending in 3 s · Undo');
+      // Readable, not dimmed, with the count and Undo under it; the composer stays as at rest.
+      expect(held()).toHaveTextContent('Reply with OK');
+      expect(held()).toHaveTextContent('Sending in 3 s');
+      expect(held()!.closest('.opacity-60')).toBeNull();
+      expect(within(held()!).getByRole('button', { name: 'Undo' })).toBeInTheDocument();
+      expect(within(held()!).getByRole('status')).toHaveTextContent('Sending in 3 seconds. Undo, or Backspace in the empty box, takes it back.');
+      expect(box.closest('form')!).toHaveTextContent('Enter sends');
       act(() => vi.advanceTimersByTime(1100));
-      expect(hint()).toHaveTextContent('Sending in 2 s · Undo');
+      expect(held()).toHaveTextContent('Sending in 2 s');
       act(() => vi.advanceTimersByTime(2000));
       expect(app.client.sendMessage).toHaveBeenCalledWith('a', 'Reply with OK');
-      expect(hint()).toBeNull();
+      // Gone, it's the dimmed copy of VIEW-1.13 in the same place.
+      expect(held()).toBeNull();
+      expect(document.querySelector('[data-echo="waiting"]')).toHaveTextContent('Reply with OK');
       await user.type(box, 'one{Enter}');
       await user.type(box, 'two{Enter}');
       expect(app.client.sendMessage).toHaveBeenLastCalledWith('a', 'one');
@@ -768,19 +778,21 @@ describe('composer', () => {
     });
 
     it('VIEW-3.10: Undo, or Backspace in the empty box, puts the message back unsent, before what was typed since', async () => {
-      const { app, user, box, hint } = start();
+      const { app, user, box, held } = start();
       await user.type(box, 'first{Enter}');
-      await user.click(within(hint()!).getByRole('button', { name: 'Undo' }));
+      await user.click(within(held()!).getByRole('button', { name: 'Undo' }));
       expect(box).toHaveValue('first');
-      expect(hint()).toBeNull();
+      expect(box).toHaveFocus();
+      expect(held()).toBeNull();
       await user.clear(box);
       await user.type(box, 'second{Enter}');
       await user.keyboard('{Backspace}');
       expect(box).toHaveValue('second');
+      expect(held()).toBeNull();
       await user.clear(box);
       await user.type(box, 'third{Enter}');
       await user.type(box, 'more');
-      await user.click(within(hint()!).getByRole('button', { name: 'Undo' }));
+      await user.click(within(held()!).getByRole('button', { name: 'Undo' }));
       expect(box).toHaveValue('third\nmore');
       act(() => vi.advanceTimersByTime(5000));
       expect(app.client.sendMessage).not.toHaveBeenCalled();
@@ -807,11 +819,11 @@ describe('composer', () => {
     });
 
     it('VIEW-3.11: with Undo send off, Enter sends at once', async () => {
-      const { app, user, box, hint } = start();
+      const { app, user, box, held } = start();
       app.snapshot([row({ id: 'a' })], { state: 'ok' }, settings({ undoSend: false }));
       await user.type(box, 'now{Enter}');
       expect(app.client.sendMessage).toHaveBeenCalledWith('a', 'now');
-      expect(hint()).toBeNull();
+      expect(held()).toBeNull();
     });
   });
 
