@@ -167,6 +167,34 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
 - **How:** no new reads: the Summary's reads already fetch it, so the store updates `members.snapshot` (or a new column) after each successful read. Open: whether a Session that's never been in a Summary should be read once on its own before it ages out, and how long a snapshot may grow.
 - **Added:** 2026-11-02, by Dario, after asking what happens to a Topic's members when their Sessions are deleted from disk.
 
+## Active and Quiet Topics as a filter (TOPIC)
+
+- **What:** a filter in the Topics tab and the graph: Active (a live member Session, or activity in the last 7 days) or Quiet (the rest). The graph can dim Quiet nodes while it shows all.
+- **Why:** of 34 Topics on 2026-11-03, 29 had recorded no activity since slice 7, and the tab and graph draw them the same as the live ones.
+- **Decided:** a filter, not a split of the list (Dario, 2026-11-03). Not decided yet: whether a Topic Quiet for 3 weeks offers Archive with the outcome dialog (TOPIC-1.6).
+- **Added:** 2026-11-03, by Dario, from the Topics review (`output/lookout-2026-11-03/topics-improvements.md`).
+
+## Decide: `/` and `@` autocomplete in the composer (VIEW)
+
+- **What:** typing `/` in the composer offers the Session's slash commands and skills, and `@` offers files from its folder, as the Harnesses' own prompts do.
+- **Why it's here:** Fleet upstream has it (from its November guide). It wasn't taken in the 2026-11-03 sync because the Session view spec lists it as a Non-goal ("Slash-command autocomplete, `@` file mentions and voice in the composer").
+- **Decide:** lift the Non-goal or keep it. Lifting it is a VIEW spec change. A slash-command draft already sits in another worktree (VIEW Open question 1) and has to be renumbered off VIEW-3.7–3.14, which are taken.
+- **Added:** 2026-11-03, by Dario, from the Fleet upstream sync.
+
+## Decide: review comments sent to the Session as a prompt (DIFF)
+
+- **What:** comment on lines of a Session's Changes and send the comments to the Session as one prompt, as Fleet web's reviewer does.
+- **Why it's here:** deferred in the 2026-11-03 sync. It needs a diff view inside Lookout, and the changed-files spec hands diffs to VS Code (DIFF-4) and lists "comments on lines sent to the Session" as a Non-goal.
+- **Decide:** keep VS Code as the viewer, or build a diff view in Lookout so comments can come back as a prompt. A middle way: comments collected in VS Code (a file of notes) and sent from Lookout, without a viewer of its own.
+- **Added:** 2026-11-03, by Dario, from the Fleet upstream sync.
+
+## Decide: Fleet answers Codex's "Trust this folder?" itself (LAUNCH)
+
+- **What:** since the 2026-11-03 rebase, a tmux `fleet spawn` of Codex answers "Trust this folder?" with "Trust and continue" on its own (upstream `a5f42fd`). That clashes with LAUNCH-6.10's rule that a trust prompt is never answered automatically, and leaves the planned Codex card with nothing to show.
+- **Recommendation:** keep the auto-answer, because the start directory comes from Settings or the Launch form, so it was picked explicitly. Then the rule becomes "Claude Code's is answered from the Starting view; Codex's is answered by Fleet", and the Codex card is dropped.
+- **Decide:** in [LAUNCH Open question 1](features/launch-session/SPEC.md#open-questions); the answer goes into Key decisions and LAUNCH-6.10.
+- **Added:** 2026-11-03, by Dario, from the Fleet upstream sync.
+
 ## Dropped
 
 Discussed and decided against. Each keeps why, so it isn't proposed again without something new.
