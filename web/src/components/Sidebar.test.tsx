@@ -461,6 +461,28 @@ describe('sidebar rows', () => {
     });
   });
 
+  it('SIDE-2.17: a Done row shows Done after its title, its note as the words; Needs you and Busy keep theirs', () => {
+    const app = renderApp();
+    const at = NOW - 5 * 60_000;
+    app.snapshot([
+      row({ id: 'done', locationShown: { repo: false, where: false }, done: { at, note: 'Opened PR #42, CI green' } }),
+      row({ id: 'bare', locationShown: { repo: false, where: false }, done: { at, note: null } }),
+      row({ id: 'asks', status: 'needs-you', waitingFor: 'input needed', locationShown: { repo: false, where: false }, done: { at, note: 'old note' } }),
+      row({ id: 'plain', locationShown: { repo: false, where: false } }),
+    ]);
+    expect(field('done', 'done')).toHaveTextContent('Done');
+    expect(field('done', 'done')!.getAttribute('title')).toMatch(/^Done at \d{1,2}:\d{2}( [AP]M)?\nOpened PR #42, CI green$/);
+    expect(field('done', 'done')!.querySelector('svg')).toHaveAttribute('aria-hidden');
+    expect(field('done', 'done-note')).toHaveTextContent('Opened PR #42, CI green');
+    expect(rowEl('done')).toHaveAccessibleName('IdledoneDoneClaude Code Opened PR #42, CI green1m');
+    expect(field('bare', 'done')!.getAttribute('title')).toMatch(/^Done at \d{1,2}:\d{2}( [AP]M)?$/);
+    expect(field('bare', 'done-note')).toBeNull();
+    // What a Needs you Session waits for still wins over the note.
+    expect(field('asks', 'done-note')).toBeNull();
+    expect(field('asks', 'waiting-for')).toHaveTextContent('input needed');
+    expect(field('plain', 'done')).toBeNull();
+  });
+
   it('SIDE-2.4: context usage shows as a percentage when reported, and not at all otherwise', () => {
     const app = renderApp();
     app.snapshot([row({ id: 'c', contextPct: 41 }), row({ id: 'none', contextPct: null })]);

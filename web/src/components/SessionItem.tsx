@@ -1,9 +1,10 @@
 import { GROWTH_BYTES } from '@shared/memory.ts';
 import type { SessionRow } from '@shared/types.ts';
-import { Bot, FolderGit2, GitBranch, SquareTerminal, TrendingUp } from 'lucide-react';
+import { Bot, CircleCheck, FolderGit2, GitBranch, SquareTerminal, TrendingUp } from 'lucide-react';
 import { memo, useEffect, useRef } from 'react';
 import { clockTime } from '@/lib/chat';
 import { BACKGROUND_SHELL_TIP, CONTEXT_LEVEL_CLASS, ROW_TONE, STATUS_LABEL, STATUS_STRIP_CLASS, contextLevel, location, locationTip, sessionOptionId } from '@/lib/sessions';
+import { Chip } from '@/components/ui/chip';
 import { SessionMarker } from '@/components/ui/session-marker';
 import { formatBytes } from '@/lib/memory';
 import { formatAge } from '@/lib/time';
@@ -45,12 +46,16 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
   const tip = locationTip(row);
   const needsYou = row.status === 'needs-you';
   const tone = needsYou ? ROW_TONE.needsYou : ROW_TONE.plain;
-  // The Session's words: what a Needs you row waits for (SIDE-2.3), or a Busy row's activity (SIDE-2.11).
+  // The Session's words: what a Needs you row waits for (SIDE-2.3), a Busy row's activity (SIDE-2.11),
+  // or else a Done Session's note (SIDE-2.17).
   const words = needsYou && row.waitingFor
     ? { text: row.waitingFor, field: 'waiting-for', className: 'font-medium text-needs-you-text' }
     : row.status === 'busy' && row.activity
       ? { text: row.activity, field: 'activity', className: tone.quiet }
-      : null;
+      : !needsYou && row.status !== 'busy' && row.done?.note
+        ? { text: row.done.note, field: 'done-note', className: tone.quiet }
+        : null;
+  const doneAt = row.done ? clockTime(new Date(row.done.at).toISOString()) : null;
   // SIDE-2.10: with no location to show, the words take the slot; otherwise they go on a line under it.
   const wordsInSlot = !!words && !showRepo && !loc && !started;
   const slotEmpty = !showRepo && !loc && !started && !wordsInSlot;
@@ -104,6 +109,13 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
         >
           {row.title}
         </span>
+        {/* SIDE-2.17: it reported its work finished and wasn't prompted since. */}
+        {row.done && (
+          <Chip tone="ok" title={[`Done at ${doneAt}`, row.done.note].filter(Boolean).join('\n')} data-field="done">
+            <CircleCheck aria-hidden className="size-3" />
+            Done
+          </Chip>
+        )}
         {/* DS-3.1: the Harness mark in the row's quiet colour; Status carries the colour in a list. */}
         <span className={cn('flex shrink-0 items-center', tone.quiet)} data-field="harness">
           <HarnessIcon harness={row.harness} className={cn(!row.controllable && 'opacity-70')} />

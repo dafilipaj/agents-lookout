@@ -10,7 +10,8 @@ import { type ActivityEntry, type NewMember, type Recommendation, type Recommend
 
 export const NOW = Date.UTC(2026, 9, 16, 12, 0, 0);
 
-export const settings = (over: Partial<SettingsView> = {}): SettingsView => ({ ...defaultSettings(), productiveEmailSuggestion: null, ...over });
+/** Undo send (VIEW-3.9) is off here, so a composer test's Enter sends at once; its own tests turn it on. */
+export const settings = (over: Partial<SettingsView> = {}): SettingsView => ({ ...defaultSettings(), undoSend: false, productiveEmailSuggestion: null, ...over });
 
 export function row(over: Partial<SessionRow> & { id: string }): SessionRow {
   return {

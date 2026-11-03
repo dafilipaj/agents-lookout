@@ -109,6 +109,8 @@ function fromProviderEntry(id: UsageProviderId, e: Json, extra: ExtraUsage | nul
     credits: readCredits(e.credits),
     fetchedAt: rfc3339(e.fetched_at),
     observedAt: rfc3339(e.observed_at),
+    // USAGE-1.5: a live read, or Codex's Transcripts; an older fork names no source.
+    live: e.source === 'endpoint' || (e.source === undefined && id === 'claude'),
   };
   if (!status || !Array.isArray(e.limits)) {
     return { ...base, state: 'error', reason: "Fleet sent usage Lookout doesn't understand", windows: [], stale: false };

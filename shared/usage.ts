@@ -61,6 +61,16 @@ export interface ProviderUsage {
   observedAt: number | null;
   /** Old numbers, kept after a failed read or served stale by Fleet. */
   stale: boolean;
+  /**
+   * USAGE-1.5: the numbers come from a live read (Fleet's `source: endpoint`): Claude's endpoint, or
+   * the ChatGPT plan for Codex. False: Codex's Transcripts. Missing: Claude live, Codex not.
+   */
+  live?: boolean;
+}
+
+/** USAGE-1.5: whether a provider's numbers come from a live read; see `ProviderUsage.live`. */
+export function isLive(p: Pick<ProviderUsage, 'id' | 'live'>): boolean {
+  return p.live ?? p.id === 'claude';
 }
 
 export type JevState = 'ready' | 'not-set-up' | 'not-installed' | 'unavailable' | 'error';
@@ -151,14 +161,14 @@ export const USAGE_STALE_MS = 5 * 60_000;
 export const CLOCK_SKEW_MS = 2 * 60_000;
 
 export type Freshness =
-  /** Claude, read in the last 5 minutes. */
+  /** A live read (Claude, or Codex's ChatGPT plan: USAGE-1.5) in the last 5 minutes. */
   | { kind: 'fresh'; at: number }
   /**
-   * Codex, read fine: its numbers are as of its last turn, and stay correct between turns.
+   * Codex from its Transcripts, read fine: its numbers are as of its last turn, and stay correct between turns.
    * Shown neutrally, however long ago that turn was.
    */
   | { kind: 'last-turn'; at: number }
-  /** Old numbers: a failed or stale read, older than ones already shown, or Claude past 5 min. */
+  /** Old numbers: a failed or stale read, older than ones already shown, or a live read past 5 min. */
   | { kind: 'old'; at: number }
   /** No usable time: treated as old. */
   | { kind: 'unknown' }
@@ -170,14 +180,14 @@ export type Freshness =
  * turn) only; falling back to the read time is only for legacy Claude data.
  */
 export function freshness(
-  p: Pick<ProviderUsage, 'id' | 'observedAt' | 'fetchedAt' | 'stale' | 'state'>,
+  p: Pick<ProviderUsage, 'id' | 'observedAt' | 'fetchedAt' | 'stale' | 'state' | 'live'>,
   now: number,
 ): Freshness {
   const at = p.id === 'codex' ? p.observedAt : (p.observedAt ?? p.fetchedAt);
   if (at === null || !Number.isFinite(at)) return { kind: 'unknown' };
   if (at - now > CLOCK_SKEW_MS) return { kind: 'skew', at };
   if (p.stale || p.state !== 'ok') return { kind: 'old', at };
-  if (p.id === 'codex') return { kind: 'last-turn', at };
+  if (!isLive(p)) return { kind: 'last-turn', at };
   if (now - at > USAGE_STALE_MS) return { kind: 'old', at };
   return { kind: 'fresh', at };
 }

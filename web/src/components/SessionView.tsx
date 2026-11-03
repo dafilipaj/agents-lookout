@@ -1,6 +1,6 @@
 import type { LocalServer, PortsSnapshot } from '@shared/ports.ts';
 import type { AnswerRequest, ChangesView, ChatPage, EndTarget, RenameResult, SessionRow } from '@shared/types.ts';
-import { Check, ChevronDown, CircleSlash, CircleStop, Copy, FolderGit2, GitBranch, Info, OctagonX, Paperclip, Power, SendHorizontal, TerminalSquare } from 'lucide-react';
+import { Check, ChevronDown, CircleCheck, CircleSlash, CircleStop, Copy, FolderGit2, GitBranch, Info, OctagonX, Paperclip, Power, SendHorizontal, TerminalSquare } from 'lucide-react';
 import { type ComponentPropsWithRef, type ComponentPropsWithoutRef, type KeyboardEvent, type PointerEvent, type ReactNode, type RefObject, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -37,6 +37,7 @@ import type { Chat as ChatState, Preview } from '@/lib/store';
 import { chipText, sessionServers } from '@/lib/ports';
 import { BACKGROUND_SHELL_TIP, CONTEXT_LEVEL_CLASS, HARNESS_NAME, STATUS_LABEL, STATUS_TAG_CLASS, contextLevel, location } from '@/lib/sessions';
 import { HEIGHT_STEP, clampHeight, drawerHeight, heightBounds, keepHeight, parseHeights, readHeightsRaw, subscribeHeights } from '@/lib/terminal-height';
+import { clockTime } from '@/lib/chat';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { PromptCard } from './Answering';
@@ -56,6 +57,8 @@ import { rowMember } from '@/lib/topics';
 
 export interface SessionViewProps {
   attachments: ComposerAttachments;
+  /** VIEW-3.9: a sent message waits 3 s in the composer, with Undo (SIDE-7.7). */
+  undoSend?: boolean;
   row: SessionRow;
   /** The Session's process is gone (SIDE-4.3); `row` is the last one seen. */
   ended: boolean;
@@ -128,6 +131,7 @@ export interface SessionViewProps {
 
 /** VIEW: the selected Session. Mounted per Session (`key`), so its local state is its own. */
 export function SessionView({
+  undoSend = false,
   row,
   ended,
   now,
@@ -349,6 +353,7 @@ export function SessionView({
                     terminal={answering.terminal}
                   />
                 )}
+                {row.done && !ended && <DoneCard row={row} onEnd={onEnd} fallbackFocus={composerRef} />}
                 <ChatActivity row={row} ended={ended} entries={chat?.entries} sentAt={sentAt} />
               </>
             }
@@ -382,6 +387,7 @@ export function SessionView({
             onEdit={onEdit}
             onSend={send}
             inputRef={composerRef}
+            undoSend={undoSend}
             attachments={attachments}
             dragging={dragging}
           />
@@ -395,10 +401,12 @@ export function SessionView({
           statusSwitch={statusSwitch}
           focusFallback={() => focusComposerOrChat(composerRef.current)}
           servers={!ended && onShowServers ? sessionServers(ports ?? null, row.id) : []}
+          onCompact={compactOffered(row, ended) && !sending.has(row.id) ? () => void send(row.id, '/compact') : null}
           onShowServers={() => onShowServers?.(row.id)}
           changes={
             !ended && onChangesOpen && onOpenChange
               ? {
+                  sessionId: row.id,
                   changes: row.changes ?? null,
                   list: changes?.get(row.id),
                   onOpenChange: (open) => onChangesOpen(row.id, open),
@@ -411,6 +419,35 @@ export function SessionView({
         />
       </ShellCell>
     </ShellView>
+  );
+}
+
+/** VIEW-5.18: Compact is offered from this much context usage, as Fleet's web app does. */
+export const COMPACT_FROM_PCT = 30;
+
+/** VIEW-5.18: a Controllable, Idle, live Session at 30% context or more. */
+function compactOffered(row: SessionRow, ended: boolean): boolean {
+  return !ended && row.controllable && row.status === 'idle' && row.contextPct !== null && row.contextPct >= COMPACT_FROM_PCT;
+}
+
+/**
+ * VIEW-5.17: a Done Session's chat ends with what it reported: when, its note, and End Session when
+ * the header offers it (its own dialog, the same as the header's).
+ */
+function DoneCard({ row, onEnd, fallbackFocus }: { row: SessionRow; onEnd: SessionViewProps['onEnd']; fallbackFocus: RefObject<HTMLElement | null> }) {
+  const at = clockTime(new Date(row.done!.at).toISOString());
+  return (
+    // The chat's column, as the permission card (PromptCard) sits in it.
+    <div className="mx-auto w-full max-w-3xl px-6 pb-3">
+      <div role="status" aria-label="Done" className="flex items-start gap-2 rounded-lg border border-ok/40 px-4 py-3 text-body" data-testid="done-card">
+        <CircleCheck aria-hidden className="mt-0.5 size-4 shrink-0 text-ok" />
+        <div className="min-w-0 flex-1">
+          <p className="font-medium">Done{at ? ` · ${at}` : ''}</p>
+          {row.done!.note && <p className="text-muted-foreground" data-field="done-note">{row.done!.note}</p>}
+        </div>
+        <EndSession row={row} eligible={row.controllable && row.ownHost} onEnd={onEnd} fallbackFocus={fallbackFocus} />
+      </div>
+    </div>
   );
 }
 
@@ -739,9 +776,12 @@ function StatusLine({
   servers,
   onShowServers,
   focusFallback,
+  onCompact = null,
 }: {
   row: SessionRow;
   ended: boolean;
+  /** VIEW-5.18: sends `/compact`; null when Compact isn't offered. */
+  onCompact?: (() => void) | null;
   models: HarnessState;
   onLoadModels(): void;
   onSwitch: SessionViewProps['onSwitch'];
@@ -860,6 +900,18 @@ function StatusLine({
           >
             {context}
           </span>
+          {onCompact && (
+            <Button
+              variant="outline"
+              size="xs"
+              className="h-5 shrink-0 px-1.5 text-caption"
+              title="Compact the conversation (/compact)"
+              onClick={onCompact}
+              data-field="compact"
+            >
+              Compact
+            </Button>
+          )}
         </>
       )}
       {shell && (
@@ -1161,10 +1213,15 @@ interface ComposerProps {
   onEdit(sessionId: string): void;
   onSend(sessionId: string, text: string): Promise<boolean>;
   inputRef: RefObject<HTMLTextAreaElement | null>;
+  /** VIEW-3.9: a sent message waits UNDO_SEND_MS, with Undo, before it goes. */
+  undoSend: boolean;
 }
 
+/** VIEW-3.9: how long a sent message waits in the composer, with Undo, before it goes. */
+export const UNDO_SEND_MS = 3000;
+
 /** VIEW-3: Enter sends, Shift+Enter adds a line; a failed send keeps the text. */
-function Composer({ sessionId, title, drafts, sending, error, onEdit, onSend, inputRef, attachments, dragging }: ComposerProps) {
+function Composer({ sessionId, title, drafts, sending, error, onEdit, onSend, inputRef, attachments, dragging, undoSend }: ComposerProps) {
   const attachmentState = useSyncExternalStore(attachments.subscribe, () => attachments.state(sessionId));
   const attaching = attachmentState.loading !== null;
   const issue = [error, attachmentState.error].filter(Boolean).join(' ') || null;
@@ -1197,18 +1254,75 @@ function Composer({ sessionId, title, drafts, sending, error, onEdit, onSend, in
     edit.current(box.value);
   }), [attachments, sessionId, inputRef]);
 
+  // VIEW-3.9–3.11: the message waiting to go, its timer, and what delivering it needs, kept current
+  // so an unmount (another Session selected) can still send it.
+  const [waiting, setWaiting] = useState<{ text: string; until: number } | null>(null);
+  const pending = useRef<{ text: string; timer: ReturnType<typeof setTimeout> } | null>(null);
+  const live = useRef({ onSend, sessionId, drafts });
+  useLayoutEffect(() => { live.current = { onSend, sessionId, drafts }; });
+  const [clock, setClock] = useState(0);
+  useEffect(() => {
+    if (!waiting) return;
+    const t = setInterval(() => setClock(Date.now()), 250);
+    return () => clearInterval(t);
+  }, [waiting]);
+  const deliver = async (sent: string) => {
+    const { onSend: send, sessionId: id, drafts: kept } = live.current;
+    if (await send(id, sent)) return;
+    // VIEW-3.11: a failed send's text comes back, before what was typed since; App keeps its error.
+    const now = kept.get(id) ?? '';
+    const back = now ? `${sent}\n${now}` : sent;
+    kept.set(id, back);
+    setText(back);
+  };
+  const take = (): string | null => {
+    const p = pending.current;
+    if (!p) return null;
+    clearTimeout(p.timer);
+    pending.current = null;
+    setWaiting(null);
+    return p.text;
+  };
+  const flush = () => {
+    const sent = take();
+    if (sent !== null) void deliver(sent);
+  };
+  useEffect(() => () => flush(), []); // eslint-disable-line react-hooks/exhaustive-deps -- only on unmount
+  const undo = () => {
+    const back = take();
+    if (back === null) return;
+    update(text ? `${back}\n${text}` : back);
+    inputRef.current?.focus();
+  };
+
   const submit = async () => {
     if (sending || attachments.state(sessionId).loading || text.trim() === '') return;
     attachments.clear(sessionId);
     const sent = text;
+    if (undoSend) {
+      // VIEW-3.9: Enter again sends the one waiting at once; the new one waits its own 3 s.
+      flush();
+      update('');
+      const timer = setTimeout(flush, UNDO_SEND_MS);
+      pending.current = { text: sent, timer };
+      const at = Date.now();
+      setClock(at);
+      setWaiting({ text: sent, until: at + UNDO_SEND_MS });
+      return;
+    }
     // On success, clear the box only if it still holds what was sent (App does the same for the
     // stored draft), so text typed meanwhile stays. A failure's error is kept by App.
     if (await onSend(sessionId, sent)) setText((current) => (current === sent ? '' : current));
   };
+  const left = waiting ? Math.max(1, Math.ceil((waiting.until - clock) / 1000)) : 0;
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.nativeEvent.isComposing) return;
-    if (e.key === 'Enter' && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey) {
+    if (e.key === 'Backspace' && waiting && text === '') {
+      // VIEW-3.10: Backspace in an empty box takes the waiting message back.
+      e.preventDefault();
+      undo();
+    } else if (e.key === 'Enter' && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey) {
       e.preventDefault();
       void submit();
     } else if (e.key === 'Escape') {
@@ -1251,11 +1365,20 @@ function Composer({ sessionId, title, drafts, sending, error, onEdit, onSend, in
         ),
       }}
       hint={
-        <>
-          Enter sends · Shift+Enter for a new line · <Kbd>i</Kbd> to type here · Esc to leave
-        </>
+        waiting ? (
+          <span data-field="undo-send">
+            Sending in {left} s ·{' '}
+            <button type="button" className="font-medium text-foreground underline-offset-2 hover:underline focus-visible:underline outline-none" onClick={undo}>
+              Undo
+            </button>
+          </span>
+        ) : (
+          <>
+            Enter sends · Shift+Enter for a new line · <Kbd>i</Kbd> to type here · Esc to leave
+          </>
+        )
       }
-      hintTitle="Enter sends · Shift+Enter for a new line · i to type here · Esc to leave"
+      hintTitle={waiting ? `Sending in ${left} s · Undo, or Backspace in the empty box` : 'Enter sends · Shift+Enter for a new line · i to type here · Esc to leave'}
     />
   );
 }

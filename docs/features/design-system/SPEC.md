@@ -191,7 +191,7 @@ A page in parts gets one of two shared pieces, never a strip made by hand: sub-p
 | Busy, Idle | `busy…`, `idle…` | a Status, nothing else: no link, spinner, chip or Mark | Status marker, strip and tag; the chat's "Working…" dot; VIEW-8's running Subagents (Busy); SIDE-2.6's and VIEW-5.16's background shell (Idle) |
 | Warning | `warning`, `-text` | a level heading toward a limit | context above 40% (status line and sidebar), usage at 80% or more, a PR aged 3 to 10 days (WORK-3.5) |
 | Destructive | `destructive`, `-soft`, `-text` | an error, a critical level, a destructive action | error Alerts, the critical octagon and the bar's edge, context above 60% (`-text`), a PR over 10 days, End Session, a failed start |
-| OK | `ok`, `-text` | something passed | CI passing, an approved PR, a PR under 3 days |
+| OK | `ok`, `-text` | something passed | CI passing, an approved PR, a PR under 3 days, a Done Session (SIDE-2.17, VIEW-5.17) |
 | Info | `info-soft`, `-border`, `-text` | staleness, or something to know that needs nothing from you | info Alerts, the "old" chip, a usage reading marked old, "retrying" |
 | Highlight | `highlight` | a search hit | History's snippets and Library's title, path and URL hits |
 | Productive palette | `palette-0` … `palette-16` | the colour a status was given in Productive, the same in both modes (DS-2.4) | a Task's status dot (WORK-2.12) |
@@ -463,3 +463,4 @@ None.
 - 2026-11-02: Added DS-13 (`SideNav` for sub-pages, `Tabs` for one thing in parts, both guarded) from Dario's request for Settings in sections (Backlog) and the Topic view in tabs; Dario chose sub-pages for Settings and tabs for a Topic. In Progress until built.
 - 2026-11-02: DS-13.1 to 13.3 built and ticked (`ui/side-nav.tsx`, `ui/tabs.tsx`, the guard in `design-system.test.ts`); DS-13.4 waits for Dario's look. Found while building: Vitest 5's on-disk module cache (`fsModuleCache`) keyed the guards' `import.meta.glob` by the guard file's own text, so the colour guard had kept an old file list and passed while newer files broke it; the cache is off (`vitest.config.ts`). The focus rings it then found are pinned; TopicGraph's selected node, drag line and handle in Primary, the Topic view's new-activity dot in Primary, and the Subagents popover's Busy and Idle text are not, and failed it; Dario decided them the same day (Key decisions): the graph's selected node and the new-activity dot are `foreground`, drawing an Edge stays Primary (DS-12.4 amended), and the popover is listed under Busy and Idle.
 - 2026-11-02: DS-3.3's quoted usage label follows USAGE: "stale · …".
+- 2026-11-03: The `ok` family also marks a Done Session: its row's Done chip (SIDE-2.17, the Chip's `ok` tone) and its Done card in the chat (VIEW-5.17).

@@ -1122,6 +1122,7 @@ export function App({ client }: { client: LookoutClient }) {
                 drawerOpen={drawerOpen}
                 onToggleDrawer={toggleDrawer}
                 drafts={drafts}
+                undoSend={state.settings?.undoSend ?? true}
                 attachments={attachments}
                 questionDrafts={questionDrafts}
                 sending={sending}

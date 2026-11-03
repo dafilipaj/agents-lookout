@@ -44,6 +44,8 @@ export interface FleetRow {
   background?: { shells?: unknown } | null;
   /** The agent process's start time, RFC 3339 UTC; null when Fleet can't read it (VIEW-5.6). */
   proc_start?: string | null;
+  /** SIDE-2.17: it ran `fleet done` and wasn't prompted since (`at` ms since epoch); null otherwise. Missing from an older Fleet. */
+  done?: { at?: unknown; note?: unknown } | null;
   /**
    * VIEW-6.7: the `timestamp` of the Transcript entry `model` was read from (Claude Code: its last
    * reply), as written; null without one. Missing from a Fleet older than the fork's `fleet model`.

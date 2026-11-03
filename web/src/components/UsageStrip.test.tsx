@@ -102,6 +102,17 @@ describe('usage strip', () => {
     expect(second('codex')).toHaveTextContent(/^weekly 63% · as of last turn · 1m$/);
   });
 
+  const codexAt = (live: boolean | undefined) =>
+    provider({ id: 'codex', live, windows: [win({ label: 'Current session', percent: 3 }), win({ kind: 'weekly_all', label: 'Weekly', percent: 25, resetsAt: NOW + 90 * H })] });
+  it('USAGE-1.5: Codex from a live read says when it was updated, like Claude', () => {
+    show(usage([provider({ id: 'claude', windows: [win({})] }), codexAt(true)]));
+    expect(field('codex', 'age')).toHaveTextContent('updated 1m ago');
+  });
+  it('USAGE-1.5: Codex from its Transcripts, or a Fleet that names no source, says as of its last turn', () => {
+    show(usage([provider({ id: 'claude', windows: [win({})] }), codexAt(false)]));
+    expect(field('codex', 'age')).toHaveTextContent('as of last turn · 1m');
+  });
+
   it('USAGE-1.1: with no 5-hour window reported, the weekly window takes the bar, % used and time to reset, labelled "w", and the second line has only the age', () => {
     show(
       usage([

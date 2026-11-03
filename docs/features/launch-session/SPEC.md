@@ -236,11 +236,11 @@ LAUNCH-6.1 to 6.12 and 6.14 are covered by unit tests of the launcher and the St
 
 ## Open questions
 
-None.
+1. **Codex's Trust prompt is now answered by Fleet** (2026-11-03). Since the fork's rebase on upstream, a tmux `fleet spawn` of Codex answers "Trust this folder?" with "Trust and continue" itself (upstream `a5f42fd`: the directory was picked explicitly, as Fleet's web spawner has always done). So a Codex start from Lookout no longer waits at the prompt, and the second slice's card for Codex (Key decisions, 2026-10-27) has nothing to show. That differs from LAUNCH-6.10's rule for Claude Code, never answered automatically. Keep Fleet's behaviour for Codex (recommended: the start directory comes from Settings, so it was picked), or add a fork commit that turns it off for Lookout's spawns and build the Codex card as planned?
 
-Resolved while building (2026-10-16): `fleet spawn` (the CLI) never answers a trust prompt; only Fleet's web spawner does.
+Resolved while building (2026-10-16): `fleet spawn` (the CLI) never answered a trust prompt then; only Fleet's web spawner did. Upstream's tmux spawn answers Codex's since 2026-11-01 (Open question 1).
 - **Claude Code:** a Session waiting on "Quick safety check… Yes, I trust this folder" isn't in `fleet list` at all, because Claude registers only after trust. So LAUNCH-4.5 catches it, and its error shows that prompt. On this Mac, `~/.claude.json` trusts `/` but has `hasTrustDialogAccepted: false` for the home directory, so new directories under `~` ask and `/private/tmp/…` doesn't. Replaced by LAUNCH-6 (2026-10-27): the Starting view shows the prompt and answers it when you click.
-- **Codex:** a Session waiting on its trust prompt (or on its "Update available" prompt) *is* in `fleet list`, as Idle, with no session id. So its start succeeds and the Session shows as Idle, not Needs you.
+- **Codex:** a Session waiting on its trust prompt (or on its "Update available" prompt) *is* in `fleet list`, as Idle, with no session id. So its start succeeds and the Session shows as Idle, not Needs you. Since the 2026-11-03 rebase, Fleet's tmux spawn answers the trust prompt itself, polling the pane for up to about 11 s inside `spawn`, within the launcher's 20 s spawn timeout (Open question 1).
 
 ## Changelog
 
@@ -271,3 +271,4 @@ Resolved while building (2026-10-16): `fleet spawn` (the CLI) never answers a tr
 
 - 2026-10-27: Review round 1 fixes: Trust prompt reads validate Fleet reason fields without coercion and background read failures cannot reject the polling task; an independent 2 s schedule keeps LAUNCH-6.1 within its bound when Fleet list polls fail or stall; LAUNCH-6.9 keeps one polite status region mounted from waiting through trust and answering. Regression tests cover the malformed payload, startup/monitor failure sequence and live-region identity.
 - 2026-10-31: The launcher's footer said "your input is kept" in a launcher opened from Work or a Topic view too, whose draft goes when it closes (LAUNCH-1.3); there it now says "your input is discarded".
+- 2026-11-03: Fleet's fork rebased on upstream: a tmux `fleet spawn` of Codex now answers Codex's Trust prompt itself. Known gaps say so; whether Lookout keeps that is Open question 1.

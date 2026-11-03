@@ -7,6 +7,7 @@ import { formatLines } from '@/lib/changes';
 import css from '@/index.css?raw';
 import { contrast, paint, solid, themeTokens, type Mode } from '@/test/contrast';
 import { renderApp, row } from '@/test/helpers';
+import { forgetViewed } from '@/lib/changes';
 import { OPEN_ERROR_MS } from './ChangesButton';
 
 const statusLine = () => screen.getByRole('group', { name: 'Status line' });
@@ -25,7 +26,10 @@ const checkout = (root: string, files: ChangedFile[], o: Partial<ChangedCheckout
 });
 const view = (...checkouts: ChangedCheckout[]): ChangesView => ({ sessionId: 'a', checkouts });
 
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.useRealTimers();
+  forgetViewed();
+});
 
 describe('the count', () => {
   it('DIFF-1.1: a row shows added lines in green and removed in red, after the Subagent count and before the age; never +0 −0', () => {
@@ -187,6 +191,52 @@ describe('the list', () => {
     expect(within(panel).getByText('No changes')).toBeInTheDocument();
     await user.keyboard('{Escape}');
     expect(document.activeElement).toHaveAccessibleName('Chat');
+  });
+
+  it('DIFF-3.7: a file you opened is Viewed, a check and no bold, until its Changes differ; one that failed to open is not', async () => {
+    const openChange = vi.fn(async (_id: string, _root: string, path: string) => {
+      if (path === 'b.rb') throw new SaveError('VS Code is not installed');
+    });
+    const { app, user, panel } = await openList(view(checkout('/r/api', [file('a.rb'), file('b.rb')])), { openChange });
+    const button = (name: string) => within(panel).getByRole('button', { name: new RegExp(`^${name.replace('.', '\\.')}`) });
+    await user.click(button('a.rb'));
+    await user.click(button('b.rb'));
+    await waitFor(() => expect(button('a.rb')).toHaveAttribute('data-viewed', 'true'));
+    expect(button('a.rb')).toHaveAccessibleName(/, viewed, open in VS Code$/);
+    expect(button('a.rb').querySelector('[data-icon="viewed"]')).not.toBeNull();
+    expect(within(button('a.rb')).getByText('a.rb')).not.toHaveClass('font-medium');
+    expect(button('b.rb')).not.toHaveAttribute('data-viewed');
+    expect(within(button('b.rb')).getByText('b.rb')).toHaveClass('font-medium');
+    // The same answer again keeps it; the agent changing the file makes it unread.
+    app.emit({ type: 'changes', sessionId: 'a', changes: view(checkout('/r/api', [file('a.rb'), file('b.rb')])) });
+    await waitFor(() => expect(button('a.rb')).toHaveAttribute('data-viewed', 'true'));
+    app.emit({ type: 'changes', sessionId: 'a', changes: view(checkout('/r/api', [file('a.rb', { additions: 9 }), file('b.rb')])) });
+    await waitFor(() => expect(button('a.rb')).not.toHaveAttribute('data-viewed'));
+    app.emit({ type: 'changes', sessionId: 'a', changes: view(checkout('/r/api', [file('a.rb'), file('b.rb')])) });
+    await waitFor(() => expect(button('a.rb')).not.toHaveAttribute('data-viewed')); // forgotten, not hidden
+  });
+
+  it('DIFF-3.7: Viewed marks outlast closing the list', async () => {
+    const { user, panel } = await openList(view(checkout('/r/api', [file('a.rb')])));
+    await user.click(within(panel).getByRole('button', { name: /^a\.rb/ }));
+    await user.keyboard('{Escape}');
+    await user.click(within(statusLine()).getByRole('button', { name: /show changed files/ }));
+    const again = await screen.findByRole('dialog');
+    await waitFor(() => expect(within(again).getByRole('button', { name: /^a\.rb/ })).toHaveAttribute('data-viewed', 'true'));
+  });
+
+  it('DIFF-3.8: a file whose Changes differ from the previous answer, or new to it, is tinted as just changed until an answer leaves it be', async () => {
+    const { app, panel } = await openList(view(checkout('/r/api', [file('a.rb'), file('b.rb')])));
+    const button = (name: string) => within(panel).getByRole('button', { name: new RegExp(`^${name.replace('.', '\\.')}`) });
+    expect(panel.querySelector('[data-just-changed]')).toBeNull(); // the first answer marks nothing
+    app.emit({ type: 'changes', sessionId: 'a', changes: view(checkout('/r/api', [file('a.rb'), file('b.rb', { deletions: 4 }), file('c.rb')])) });
+    await waitFor(() => expect(button('b.rb')).toHaveAttribute('data-just-changed', 'true'));
+    expect(button('b.rb')).toHaveClass('bg-muted');
+    expect(button('b.rb')).toHaveAccessibleName(/, just changed, open in VS Code$/);
+    expect(button('c.rb')).toHaveAttribute('data-just-changed', 'true');
+    expect(button('a.rb')).not.toHaveAttribute('data-just-changed');
+    app.emit({ type: 'changes', sessionId: 'a', changes: view(checkout('/r/api', [file('a.rb'), file('b.rb', { deletions: 4 }), file('c.rb')])) });
+    await waitFor(() => expect(panel.querySelector('[data-just-changed]')).toBeNull());
   });
 
   it('DIFF-3.5: a long file name or error is cut, never wider than the row', async () => {

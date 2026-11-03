@@ -3,7 +3,7 @@ title: Usage at a glance
 code: USAGE
 status: Done
 created: 2026-10-16
-updated: 2026-10-19
+updated: 2026-11-03
 ---
 
 # Usage at a glance
@@ -21,7 +21,8 @@ Limits show up only when an agent stalls. Claude's usage page and Codex's `/stat
 ### USAGE-1 Always visible
 - [x] USAGE-1.1 A compact strip at the bottom of the Session sidebar shows, for Claude and for Codex, the 5-hour window: the Harness mark, a bar with **% used**, and the time to reset. On a second line under it come the weekly limit as a percentage, then how old the numbers are (USAGE-1.3), for example `weekly 42% · updated just now`: the tightest weekly window, per-model weekly windows included. Its tooltip ("Weekly limit 42%") and the screen-reader description say "weekly" too. A per-model 5-hour window counts as a 5-hour window, so the tightest one shows. A 5-hour window whose reset has passed shows 0% with no time to reset until the new read, with the weekly limit still on the second line. Only a Harness that reported no 5-hour window at all shows its tightest weekly window with the bar, % used and time to reset instead, labelled `w` before the bar, with the same tooltip, so it never passes for a 5-hour window; its second line then says only how old the numbers are. (test)
 - [x] USAGE-1.2 A window at 80% or more is marked as a warning (a triangle icon); at 95% or more, as critical (an octagon icon). In the strip each of the two numbers gets its own mark, beside it: the 5-hour window's by its % used, the weekly limit's after its % on the second line (`weekly 85% ⚠` in the mock-up). So a weekly limit at 85% marks the second line, not the bar. The marks are recognizable without colour. (test)
-- [x] USAGE-1.3 The numbers refresh on their own: Claude every 60 s, Codex whenever one of its Transcripts records new limits. The strip says how old they are. (manual)
+- [x] USAGE-1.3 The numbers refresh on their own: Claude every 60 s; Codex every 60 s too when Fleet reads its ChatGPT plan (USAGE-1.5), otherwise whenever one of its Transcripts records new limits. The strip says how old they are. (manual)
+- [x] USAGE-1.5 Codex's numbers from a live read of its ChatGPT plan read like Claude's: `updated 1m ago`, and `stale · …` once they are more than 5 minutes old. Numbers from its Transcripts keep `as of last turn · 17m`. Fleet says which in each provider's `source`; a Fleet that doesn't (older forks) means Transcripts for Codex and a live read for Claude. (test)
 - [x] USAGE-1.4 The strip shows whether Jev is ready (tb-jev installed, with credentials) or not set up. Nothing Lookout does here costs a billed call. (test)
 
 ### USAGE-2 Details
@@ -69,7 +70,8 @@ Limits show up only when an agent stalls. Claude's usage page and Codex's `/stat
   - Gives `account.plan_label` (for example "Team · Max 5x") and `limits[]`, each with `kind` (session, weekly_all, weekly_scoped), `label`, `percent`, `severity` and `resets_at`. It also gives `extra_usage`.
   - Fleet caches it for 60 s and backs off for 2 minutes after a failure.
   - It reads an undocumented Anthropic endpoint, so it may break without notice.
-- **Codex**, from its own Transcripts.
+- **Codex**, from the live read of its ChatGPT plan when Fleet has one, else from its own Transcripts (USAGE-1.5).
+  - **Live read** (fork commit `58648b1` on upstream's `openai` read, 2026-11-03): `providers[]`'s Codex entry carries `source: endpoint`, the plan as `ChatGPT Plus`, `observed_at` equal to `fetched_at`, and credits. Fleet caches it for 60 s like Claude's, so Lookout's 60 s poll gets new numbers each time. A ChatGPT read with no numbers leaves the Transcripts' entry, `source: transcripts`.
   - Each `token_count` event in `~/.codex/sessions/**/rollout-*.jsonl` carries `rate_limits.primary` and `rate_limits.secondary`: `used_percent`, `window_minutes` (300 = 5 hours, 10080 = weekly) and `resets_at`. It also carries `credits.balance`.
   - The numbers are only as fresh as the last Codex turn; Orca has the same limit.
   - **In the Fleet fork** (commit `usage-codex`, `d0e0227`, [0006](../../decisions/0006-run-a-fork-of-fleet.md)), `fleet usage --json` adds `providers[]`. Each entry is `{ id: claude|codex, label, status: ok|stale|no_data|not_installed|error, plan, limits[], fetched_at, observed_at, error, credits }`. Each limit is `{ kind: session|session_scoped|weekly_all|weekly_scoped, group, label, model, percent, severity, resets_at, active }`. The old top-level fields stay Claude-only.
@@ -77,6 +79,7 @@ Limits show up only when an agent stalls. Claude's usage page and Codex's `/stat
     - **Reading it:** Lookout prefers `providers[]` and falls back to the top-level Claude fields only when `providers` is absent (upstream Fleet). It never reads rollout files itself.
     - **Status mapping:** ok becomes ok (no data when there are no limits); stale stays ok, marked old with its reason; no_data, not_installed and error map one to one (an error mentioning login means "not signed in").
     - **Validation:** enums are allowlisted, and unknown kinds and statuses are dropped or become errors. A shape Lookout doesn't know is an error, never "no data". A limits list that isn't empty but holds nothing Lookout understands (unknown kinds, non-numeric `percent`) is an error that keeps the last numbers.
+    - **`source`** (USAGE-1.5): `endpoint` is a live read, `transcripts` Codex's rollouts. Missing means Claude live and Codex from its Transcripts; any other value counts as Transcripts.
     - **Codex specifics:** a window whose reset passed comes back as 0% with no reset time. `observed_at` is Codex's last turn, and the age shown comes from it. Fleet sorts Codex's windows by length (`window_minutes`): up to a day is a 5-hour kind (`session`, `session_scoped`), longer a weekly one (`weekly_all`, `weekly_scoped`); `primary` and `secondary` decide only when the length is missing.
     - **5-hour and weekly (USAGE-1.1):** Lookout goes by Fleet's kinds alone: `session` and `session_scoped` are 5-hour windows, `weekly_all` and `weekly_scoped` weekly ones.
     - **When Claude can't be read,** Fleet exits 1 but still prints `{ error, providers: [claude with status error, codex live] }`. Lookout parses that, so Claude shows the error with its last numbers kept and marked old, and Codex stays live. Only when there's no JSON on stdout does it show "usage unavailable: <reason>" for both.
@@ -96,7 +99,7 @@ Limits show up only when an agent stalls. Claude's usage page and Codex's `/stat
   - **Nothing secret reaches the UI:** reasons from Fleet's stderr, its `error` fields and tb-jev's `error_reason` are cut to one line of about 160 characters, with token-like text redacted (`sk-…`, `Bearer …`, long base64 or hex runs, `user:pass@`). Labels are bounded, and a base URL that isn't plain scheme://host[:port] isn't shown.
   - **Times:**
     - **Claude** is read every 60 s, so numbers more than 5 minutes old mean its reads are failing: they're marked old.
-    - **Codex** numbers are as of its last turn (`observed_at`), and stay correct between turns. A successful read shows a neutral grey "as of last turn · 17m", however long ago that turn was. Codex's age comes from `observed_at` only; falling back to the read time is only for legacy Claude data.
+    - **Codex** from a live read follows Claude's rule (USAGE-1.5). From its Transcripts, its numbers are as of its last turn (`observed_at`), and stay correct between turns. A successful read shows a neutral grey "as of last turn · 17m", however long ago that turn was. Codex's age comes from `observed_at` only; falling back to the read time is only for legacy Claude data.
     - **"stale · …"**, in the info tone (DS-3.3), is only for failed or stale reads, numbers older than ones already shown, an unknown age (no usable time), or clock skew (a time more than 2 minutes in the future).
     - **High-water mark:** the newest numbers accepted so far stay shown, marked old, until Fleet returns something at least as new; an older reading never becomes current, however often it repeats.
   - **A window whose reset has passed** shows "reset · refreshing" in the details. In the strip it counts as 0% with no reset time until the new read, the shape Fleet already gives a passed Codex window, so a 5-hour window keeps the bar and a weekly one its place on the second line. It leaves the launcher hint, and makes the tab ask for a new read (at most every 15 s). The launcher hint says how old the numbers are when they're old.
@@ -138,3 +141,5 @@ None.
 - 2026-10-22: Design system (DS-6.3): "Reading usage…" is the design system's Loading, in `meta` instead of `caption`, and after 3 s it counts the seconds. The strip's text stays otherwise.
 - 2026-10-30: From TOOLS-2.5: a tb-jev that refuses `status` says "tb-jev is older than the usage strip needs (0.2.0)", the version from the Tools table, and the details show its update command to copy; it was "update tb-jev (needs 0.2+ for status)". The strip's short label, "update tb-jev", stays.
 - 2026-11-02: Design pass: the strip's "old · …" reads "stale · …" (`freshnessLabel`); "old" read as cryptic beside the age. The tooltip keeps the reason, as before.
+- 2026-11-03: In Progress again. Fleet's upstream reads the ChatGPT plan Codex is logged in with (`openai`), and the fork's `providers[]` now gives Codex's entry from it, with a `source` field. USAGE-1.3 unticked: Codex refreshes every 60 s when the live read is there. USAGE-1.5 added: a live Codex read reads like Claude's (`updated …`, stale after 5 minutes), Transcripts keep `as of last turn`.
+- 2026-11-03: Done again: USAGE-1.5 by its tests; USAGE-1.3 seen in the running app, Codex reading `updated just now` across reads minutes apart from the live ChatGPT read.

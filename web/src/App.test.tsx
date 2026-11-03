@@ -1,7 +1,8 @@
+import { defaultSettings } from '@shared/settings.ts';
 import { act, fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
-import { renderApp, row, rowEl } from '@/test/helpers';
+import { renderApp, row, rowEl, settings } from '@/test/helpers';
 
 const selected = () => document.querySelector('[aria-selected="true"]')?.getAttribute('data-session-id') ?? null;
 
@@ -134,6 +135,18 @@ describe('settings page', () => {
     await user.click(form.getByRole('button', { name: 'Save' }));
     expect(app.saveSettings).toHaveBeenCalledWith({ idleThresholdHours: 2.5 });
     expect(await form.findByText('Saved')).toBeInTheDocument();
+  });
+
+  it('SIDE-7.7: General has "Undo send", on by default, saying what it does; turning it off saves it', async () => {
+    const user = userEvent.setup();
+    const app = renderApp('/settings/general');
+    app.snapshot([], { state: 'ok' }, settings({ undoSend: true }));
+    const sw = screen.getByRole('switch', { name: 'Undo send' });
+    expect(sw).toBeChecked();
+    expect(sw).toHaveAccessibleDescription('Enter waits 3 s before sending, so Undo or Backspace can take the message back.');
+    await user.click(sw);
+    expect(app.client.saveSettings).toHaveBeenCalledWith({ undoSend: false });
+    expect(defaultSettings().undoSend).toBe(true);
   });
 
   it('SIDE-7.6: Settings is two sub-pages, General and Tools, in a side nav; the sub-page is in the path, replaced on a switch, kept on a reload; the Settings button closes it from either', async () => {

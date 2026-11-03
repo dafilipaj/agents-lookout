@@ -183,6 +183,30 @@ describe('reading `fleet usage --json` (the fork’s providers[])', () => {
   });
 });
 
+describe('USAGE-1.5: Codex from a live read of its ChatGPT plan reads like Claude', () => {
+  const now = Date.parse('2026-10-16T14:00:00Z');
+  const limit = { kind: 'session', group: 'session', label: 'Current session', model: null, percent: 3, severity: 'normal', resets_at: '2026-10-16T18:00:00Z', active: false };
+  const codex = (entry: Record<string, unknown>) =>
+    parseFleetUsage(JSON.stringify({ providers: [{ id: 'codex', label: 'Codex', status: 'ok', plan: 'ChatGPT Plus', limits: [limit], fetched_at: '2026-10-16T13:59:00Z', observed_at: '2026-10-16T13:59:00Z', error: null, credits: null, ...entry }] })).codex!;
+  it('reads `source`, and goes by it for how fresh the numbers are', () => {
+    const live = codex({ source: 'endpoint' });
+    expect(live).toMatchObject({ live: true, plan: 'ChatGPT Plus', state: 'ok' });
+    expect(freshness(live, now)).toEqual({ kind: 'fresh', at: now - 60_000 });
+    // Past 5 minutes a live read is stale, as Claude's is.
+    expect(freshness(live, now + 5 * 60_000).kind).toBe('old');
+    // From the Transcripts, or from a fork that names no source: as of the last turn, however old.
+    for (const entry of [{ source: 'transcripts' }, {}, { source: 'something-new' }]) {
+      const p = codex(entry);
+      expect(p.live).toBe(false);
+      expect(freshness(p, now + 60 * 60_000).kind).toBe('last-turn');
+    }
+    // Claude with no source is a live read, as it always was.
+    const claude = parseFleetUsage(JSON.stringify({ providers: [{ id: 'claude', label: 'Claude', status: 'ok', plan: null, limits: [limit], fetched_at: '2026-10-16T13:59:00Z', observed_at: '2026-10-16T13:59:00Z', error: null, credits: null }] })).claude!;
+    expect(claude.live).toBe(true);
+    expect(freshness(claude, now).kind).toBe('fresh');
+  });
+});
+
 describe('freshness (USAGE-2.2): missing, invalid, future and old times never look fresh', () => {
   const now = Date.parse('2026-10-16T14:00:00Z');
   const p = (over: Partial<ProviderUsage>) => ({ id: 'claude' as const, observedAt: null, fetchedAt: null, stale: false, state: 'ok' as const, ...over });

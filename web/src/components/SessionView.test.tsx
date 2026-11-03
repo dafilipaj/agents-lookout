@@ -184,7 +184,8 @@ describe('Session view header', () => {
     app.emit({ type: 'sessions', upsert: [row({ id: 'a', model: 'claude-opus-5-5', effort: null, contextPct: 42, git })], remove: [] });
     expect(effort()).toBeNull();
     expect(line).toHaveAttribute('title', 'work · crm-rates · claude-opus-5-5 · 42% context');
-    expect(line.textContent).toBe('work·crm-rates·claude-opus-5-5·42% context');
+    // VIEW-5.18: an Idle Session at 42% is offered Compact after its context usage.
+    expect(line.textContent).toBe('work·crm-rates·claude-opus-5-5·42% contextCompact');
   });
 
   it('VIEW-5.11: it keeps the line one line: the Effort truncates like the other parts', () => {
@@ -384,6 +385,53 @@ describe('Session view header', () => {
 
 describe('ending a Session', () => {
   const endButton = () => within(header()).queryByRole('button', { name: 'End Session' });
+
+  it('VIEW-5.17: a Done Session\'s chat ends with a Done card: when, its note, and End Session when the header offers it', async () => {
+    const user = userEvent.setup();
+    const app = renderApp('/s/a');
+    const done = { at: Date.parse('2026-10-14T09:40:00Z'), note: 'Opened PR #42, CI green' };
+    app.snapshot([row({ id: 'a', title: 'fix-rates', ownHost: true, done })]);
+    const card = screen.getByTestId('done-card');
+    expect(card).toHaveAttribute('role', 'status');
+    expect(card).toHaveTextContent(/^Done · \d{1,2}:\d{2}( [AP]M)?Opened PR #42, CI greenEnd Session$/);
+    await user.click(within(card).getByRole('button', { name: 'End Session' }));
+    await user.click(within(screen.getByRole('dialog', { name: 'End “fix-rates”?' })).getByRole('button', { name: 'End Session' }));
+    expect(app.client.endSession).toHaveBeenCalledWith('a', { pid: 100, procStart: '2026-10-14T08:12:03Z' });
+  });
+
+  it('VIEW-5.17: no End Session in the card where the header has none, no note line without a note, and no card once it isn\'t Done', () => {
+    const app = renderApp('/s/a');
+    const done = { at: Date.parse('2026-10-14T09:40:00Z'), note: null };
+    app.snapshot([row({ id: 'a', ownHost: false, done })]);
+    const card = screen.getByTestId('done-card');
+    expect(within(card).queryByRole('button')).toBeNull();
+    expect(card.querySelector('[data-field="done-note"]')).toBeNull();
+    app.snapshot([row({ id: 'a', ownHost: false, done: null })]);
+    expect(screen.queryByTestId('done-card')).toBeNull();
+  });
+
+  it('VIEW-5.18: Compact shows after the context usage from 30% on an Idle Controllable Session, and sends /compact', async () => {
+    const user = userEvent.setup();
+    const app = renderApp('/s/a');
+    const compact = () => statusLine().querySelector<HTMLButtonElement>('[data-field="compact"]');
+    app.snapshot([row({ id: 'a', contextPct: 29 })]);
+    expect(compact()).toBeNull();
+    app.snapshot([row({ id: 'a', contextPct: 30 })]);
+    expect(compact()).toHaveTextContent('Compact');
+    expect(compact()).toHaveAttribute('title', 'Compact the conversation (/compact)');
+    expect(compact()!.previousElementSibling).toHaveAttribute('data-field', 'context');
+    await user.click(compact()!);
+    expect(app.client.sendMessage).toHaveBeenCalledWith('a', '/compact');
+  });
+
+  it('VIEW-5.18: no Compact while Busy or Needs you, for a View only Session, or without context usage', () => {
+    const app = renderApp('/s/a');
+    const compact = () => statusLine().querySelector('[data-field="compact"]');
+    for (const over of [{ status: 'busy' as const }, { status: 'needs-you' as const }, { backend: 'unknown' as const, controllable: false }, { contextPct: null }]) {
+      app.snapshot([row({ id: 'a', contextPct: 80, ...over })]);
+      expect(compact()).toBeNull();
+    }
+  });
 
   it('VIEW-5.6: "End Session" is in the header only for a Controllable Session in a Session host of its own', () => {
     const app = renderApp('/s/own');
@@ -687,6 +735,84 @@ describe('composer', () => {
     await user.keyboard('{Enter}');
     expect(app.client.sendMessage).toHaveBeenCalledWith('a', 'Line one\nLine two');
     await waitFor(() => expect(box).toHaveValue(''));
+  });
+
+  describe('Undo send (VIEW-3.9–3.11)', () => {
+    afterEach(() => vi.useRealTimers());
+    const start = (options: Parameters<typeof renderApp>[1] = {}) => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      const app = renderApp('/s/a', options);
+      app.snapshot([row({ id: 'a' }), row({ id: 'b' })], { state: 'ok' }, settings({ undoSend: true }));
+      const box = screen.getByRole('textbox', { name: 'Message' });
+      const hint = () => box.closest('form')!.querySelector<HTMLElement>('[data-field="undo-send"]');
+      return { app, user, box, hint };
+    };
+
+    it('VIEW-3.9: the message waits 3 s, counting down with Undo, then goes; Enter again sends the waiting one at once', async () => {
+      const { app, user, box, hint } = start();
+      await user.type(box, 'Reply with OK{Enter}');
+      expect(box).toHaveValue('');
+      expect(app.client.sendMessage).not.toHaveBeenCalled();
+      expect(hint()).toHaveTextContent('Sending in 3 s · Undo');
+      act(() => vi.advanceTimersByTime(1100));
+      expect(hint()).toHaveTextContent('Sending in 2 s · Undo');
+      act(() => vi.advanceTimersByTime(2000));
+      expect(app.client.sendMessage).toHaveBeenCalledWith('a', 'Reply with OK');
+      expect(hint()).toBeNull();
+      await user.type(box, 'one{Enter}');
+      await user.type(box, 'two{Enter}');
+      expect(app.client.sendMessage).toHaveBeenLastCalledWith('a', 'one');
+      act(() => vi.advanceTimersByTime(3000));
+      expect(app.client.sendMessage).toHaveBeenLastCalledWith('a', 'two');
+    });
+
+    it('VIEW-3.10: Undo, or Backspace in the empty box, puts the message back unsent, before what was typed since', async () => {
+      const { app, user, box, hint } = start();
+      await user.type(box, 'first{Enter}');
+      await user.click(within(hint()!).getByRole('button', { name: 'Undo' }));
+      expect(box).toHaveValue('first');
+      expect(hint()).toBeNull();
+      await user.clear(box);
+      await user.type(box, 'second{Enter}');
+      await user.keyboard('{Backspace}');
+      expect(box).toHaveValue('second');
+      await user.clear(box);
+      await user.type(box, 'third{Enter}');
+      await user.type(box, 'more');
+      await user.click(within(hint()!).getByRole('button', { name: 'Undo' }));
+      expect(box).toHaveValue('third\nmore');
+      act(() => vi.advanceTimersByTime(5000));
+      expect(app.client.sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('VIEW-3.11: switching Session sends the waiting message at once', async () => {
+      const { app, user, box } = start();
+      await user.type(box, 'go now{Enter}');
+      act(() => window.history.pushState(null, '', '/s/b'));
+      act(() => window.dispatchEvent(new PopStateEvent('popstate')));
+      expect(app.client.sendMessage).toHaveBeenCalledWith('a', 'go now');
+    });
+
+    it('VIEW-3.11: a failed send puts its text back with the error', async () => {
+      const { user, box } = start({
+        sendMessage: async () => {
+          throw new SaveError("Couldn't send: session has no terminal handle");
+        },
+      });
+      await user.type(box, 'Reply with OK{Enter}');
+      act(() => vi.advanceTimersByTime(3000));
+      await waitFor(() => expect(box).toHaveValue('Reply with OK'));
+      expect(screen.getByRole('alert')).toHaveTextContent("Couldn't send: session has no terminal handle");
+    });
+
+    it('VIEW-3.11: with Undo send off, Enter sends at once', async () => {
+      const { app, user, box, hint } = start();
+      app.snapshot([row({ id: 'a' })], { state: 'ok' }, settings({ undoSend: false }));
+      await user.type(box, 'now{Enter}');
+      expect(app.client.sendMessage).toHaveBeenCalledWith('a', 'now');
+      expect(hint()).toBeNull();
+    });
   });
 
   it('VIEW-3.4: if sending fails, the text stays and the error shows', async () => {

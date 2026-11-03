@@ -318,6 +318,7 @@ const FAMILIES: Record<string, Family> = {
     files: {
       'web/src/components/ui/chip.tsx': { why: "an approved PR's chip (WORK-3.2)", uses: ['border-ok/40', 'text-ok'] },
       'web/src/components/WorkPanel.tsx': { why: 'CI passing', uses: ['text-ok'] },
+      'web/src/components/SessionView.tsx': { why: "a Done Session's card (VIEW-5.17)", uses: ['border-ok/40', 'text-ok'] },
       'web/src/lib/work.ts': { why: 'a PR under 3 days', uses: ['text-ok-text'] },
     },
   },

@@ -15,6 +15,8 @@ export interface Settings {
   productiveEmail: string | null;
   /** TOPIC-9.3: Jev judges new items Links can't tie to a Topic; each ask is billed, so off by default. */
   recommendWithJev: boolean;
+  /** VIEW-3.9, SIDE-7.7: a sent message waits 3 s in the composer, so it can be taken back. */
+  undoSend: boolean;
 }
 
 /**
@@ -151,6 +153,13 @@ const fields: { [K in keyof Settings]: Field<Settings[K]> } = {
     default: false,
     parse(value, field) {
       if (typeof value !== 'boolean') throw new SettingsError(field, 'Recommend Topics with Jev is on or off.');
+      return value;
+    },
+  },
+  undoSend: {
+    default: true,
+    parse(value, field) {
+      if (typeof value !== 'boolean') throw new SettingsError(field, 'Undo send is on or off.');
       return value;
     },
   },

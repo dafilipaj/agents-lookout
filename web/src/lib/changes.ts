@@ -62,3 +62,14 @@ export function splitPath(path: string): { name: string; folder: string } {
   const i = path.lastIndexOf('/');
   return i < 0 ? { name: path, folder: '' } : { name: path.slice(i + 1), folder: path.slice(0, i + 1) };
 }
+
+/** DIFF-3.7, 3.8: what a file's Changes are; a different one means the file changed. */
+export const fileSignature = (f: ChangedFile): string => JSON.stringify([f.kind, f.oldPath, f.additions, f.deletions, f.binary]);
+
+/** DIFF-3.7: Viewed files per Session (`<session>\0<root>\0<path>`), with their Changes when opened; until reload. */
+export const viewedFiles = new Map<string, string>();
+
+/** DIFF-3.7: forget every Viewed mark (tests). */
+export function forgetViewed(): void {
+  viewedFiles.clear();
+}

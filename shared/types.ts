@@ -114,6 +114,11 @@ export interface SessionRow {
    */
   procStart: string | null;
   /**
+   * SIDE-2.17, VIEW-5.17: the Session is Done, since `at` (ms since epoch), with its one-line note;
+   * null or missing when it isn't, or Fleet doesn't say.
+   */
+  done?: { at: number; note: string | null } | null;
+  /**
    * VIEW-6.7: the model a switch from Lookout moved this Session's process to, until a reply after
    * it reaches the Transcript (Fleet's `model` follows only then); null otherwise.
    */

@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { GitLocation } from '../shared/types.ts';
 import type { FleetRow } from './fleet.ts';
-import { activity, effort, locationShown, normalizeRows, procStart, sessionId, subagentItems, subagents, toStatus } from './normalize.ts';
+import { activity, done, effort, locationShown, normalizeRows, procStart, sessionId, subagentItems, subagents, toStatus } from './normalize.ts';
 
 const fixture = (name: string): FleetRow[] =>
   JSON.parse(readFileSync(new URL(`./fixtures/fleet/${name}`, import.meta.url), 'utf8')).filter(
@@ -109,6 +109,7 @@ describe('fleet list → sidebar rows', () => {
         subagents: { running: 2, finished: 1 },
         activity: null,
         backgroundShell: false,
+        done: null,
         procStart: null,
         memoryGrowthBytes: null, pendingModel: null, pendingEffort: null,
         modelAt: null,
@@ -133,6 +134,7 @@ describe('fleet list → sidebar rows', () => {
         subagents: null,
         activity: null,
         backgroundShell: false,
+        done: null,
         procStart: null,
         memoryGrowthBytes: null, pendingModel: null, pendingEffort: null,
         modelAt: null,
@@ -157,6 +159,7 @@ describe('fleet list → sidebar rows', () => {
         subagents: null,
         activity: null,
         backgroundShell: false,
+        done: null,
         procStart: null,
         memoryGrowthBytes: null, pendingModel: null, pendingEffort: null,
         modelAt: null,
@@ -181,6 +184,7 @@ describe('fleet list → sidebar rows', () => {
         subagents: null,
         activity: 'Edit: web/src/components/LanternPanel.tsx',
         backgroundShell: false,
+        done: null,
         procStart: null,
         memoryGrowthBytes: null, pendingModel: null, pendingEffort: null,
         modelAt: null,
@@ -221,6 +225,17 @@ describe('fleet list → sidebar rows', () => {
     expect(normalizeRows(fixture('recorded-2026-10-16.json'), deps).every((r) => r.modelAt === null)).toBe(true);
     const base = { session_id: 'eeeeeeee-0000-4000-8000-000000000005', pid: 1, harness: 'claude', backend: 'tmux', status: 'idle', display_title: 'x' };
     expect(normalizeRows([{ ...base, model_at: 42 }] as never, deps)[0]!.modelAt).toBeNull();
+  });
+
+  it('SIDE-2.17: Fleet\'s `done` reaches the row with its time and a one-line note; anything else is not Done', () => {
+    const base = { session_id: 'eeeeeeee-0000-4000-8000-000000000005', pid: 1, harness: 'claude', backend: 'tmux', status: 'idle', display_title: 'x' };
+    const one = (d: unknown) => normalizeRows([{ ...base, done: d }] as never, deps)[0]!.done;
+    expect(one({ at: 1_790_000_000_000, note: '  Opened the PR,\n  CI green ' })).toEqual({ at: 1_790_000_000_000, note: 'Opened the PR, CI green' });
+    expect(one({ at: 1_790_000_000_000, note: null })).toEqual({ at: 1_790_000_000_000, note: null });
+    expect(one({ at: 1_790_000_000_000 })).toEqual({ at: 1_790_000_000_000, note: null });
+    for (const none of [undefined, null, {}, { at: '1790' }, { at: Number.NaN }, 'done', true]) expect(one(none)).toBeNull();
+    expect(normalizeRows([base] as never, deps)[0]!.done).toBeNull(); // a Fleet without `done`
+    expect(done({ at: 5, note: 'x'.repeat(300) })!.note!.length).toBe(120);
   });
 
   it('VIEW-5.11: an effort is kept only as a short word; anything else is null', () => {

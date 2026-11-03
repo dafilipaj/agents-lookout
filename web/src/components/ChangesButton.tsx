@@ -1,8 +1,9 @@
 import type { ChangedCheckout, ChangedFile, ChangesView, RowChanges } from '@shared/types.ts';
+import { Check } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Loading } from '@/components/ui/loading';
-import { changesButtonLabel, changesTip, filesPart, hasLines, kindLabel, noOpenReason, splitPath } from '@/lib/changes';
+import { changesButtonLabel, changesTip, fileSignature as signature, filesPart, hasLines, kindLabel, noOpenReason, splitPath, viewedFiles } from '@/lib/changes';
 import { cn } from '@/lib/utils';
 import { ChangesCount } from './ChangesCount';
 
@@ -11,7 +12,10 @@ export const OPEN_ERROR_MS = 5000;
 
 const fileKey = (root: string, path: string) => `${root}\u0000${path}`;
 
+
 export interface ChangesButtonProps {
+  /** DIFF-3.7: whose files these are, for their Viewed marks. */
+  sessionId: string;
   /** The row's count; null when nothing changed (the button is then gone, unless its list is open). */
   changes: RowChanges | null;
   /** The list as the server last sent it: undefined before it did, null when nothing counts. */
@@ -28,7 +32,8 @@ export interface ChangesButtonProps {
  * DIFF-1.3, DIFF-3: the status line's count, `+120 −30 · 4 files`, a button that opens the list of
  * changed files; a file opens its Changes in VS Code (DIFF-4).
  */
-export function ChangesButton({ changes, list, onOpenChange, onOpenFile, focusFallback }: ChangesButtonProps) {
+export function ChangesButton({ sessionId, changes, list, onOpenChange, onOpenFile, focusFallback }: ChangesButtonProps) {
+  const [, setViewedTick] = useState(0);
   const [open, setOpen] = useState(false);
   const [errors, setErrors] = useState<ReadonlyMap<string, string>>(new Map());
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
@@ -63,7 +68,21 @@ export function ChangesButton({ changes, list, onOpenChange, onOpenFile, focusFa
     );
   };
   const openFile = (root: string, f: ChangedFile) => {
-    void onOpenFile(root, f.path).catch((err: unknown) => showError(fileKey(root, f.path), err instanceof Error ? err.message : String(err)));
+    void onOpenFile(root, f.path).then(
+      () => {
+        viewedFiles.set(`${sessionId}\u0000${fileKey(root, f.path)}`, signature(f));
+        setViewedTick((n) => n + 1);
+      },
+      (err: unknown) => showError(fileKey(root, f.path), err instanceof Error ? err.message : String(err)),
+    );
+  };
+  const isViewed = (root: string, f: ChangedFile) => {
+    const k = `${sessionId}\u0000${fileKey(root, f.path)}`;
+    const at = viewedFiles.get(k);
+    if (at === undefined) return false;
+    if (at === signature(f)) return true;
+    viewedFiles.delete(k); // it changed since: unread again
+    return false;
   };
 
   return (
@@ -98,7 +117,7 @@ export function ChangesButton({ changes, list, onOpenChange, onOpenFile, focusFa
           }
         }}
       >
-        <ChangesList list={list} errors={errors} onOpen={openFile} />
+        <ChangesList list={list} errors={errors} onOpen={openFile} isViewed={isViewed} />
       </PopoverContent>
     </Popover>
   );
@@ -119,11 +138,23 @@ function ChangesList({
   list,
   errors,
   onOpen,
+  isViewed,
 }: {
   list: ChangesView | null | undefined;
   errors: ReadonlyMap<string, string>;
   onOpen(root: string, f: ChangedFile): void;
+  isViewed(root: string, f: ChangedFile): boolean;
 }) {
+  // DIFF-3.8: the files whose Changes differ from the previous answer while the list is open; the
+  // first answer marks nothing. Adjusted while rendering, as React documents for derived state.
+  const [answer, setAnswer] = useState<{ list: ChangesView | null | undefined; sigs: ReadonlyMap<string, string> | null; changed: ReadonlySet<string> }>({ list, sigs: null, changed: new Set() });
+  if (answer.list !== list) {
+    const sigs = list ? new Map(list.checkouts.flatMap((c) => c.files.map((f) => [fileKey(c.root, f.path), signature(f)] as const))) : null;
+    const before = answer.sigs;
+    const changed = new Set<string>();
+    if (before && sigs) for (const [k, sig] of sigs) if (before.get(k) !== sig) changed.add(k);
+    setAnswer({ list, sigs: sigs ?? before, changed });
+  }
   const ref = useRef<HTMLDivElement>(null);
   /** DIFF-3.3: the focused file, and the files as last shown, so focus can move on when it leaves. */
   const focused = useRef<string | null>(null);
@@ -184,7 +215,9 @@ function ChangesList({
           <ul className="flex flex-col">
             {c.files.map((f) => {
               const key = fileKey(c.root, f.path);
-              return <FileRow key={key} fileKey={key} root={c.root} file={f} error={errors.get(key) ?? null} onOpen={onOpen} />;
+              return (
+                <FileRow key={key} fileKey={key} root={c.root} file={f} error={errors.get(key) ?? null} onOpen={onOpen} viewed={isViewed(c.root, f)} justChanged={answer.changed.has(key)} />
+              );
             })}
           </ul>
           {c.moreFiles > 0 && <p className="px-2 py-1 text-meta text-muted-foreground">and {c.moreFiles} more</p>}
@@ -198,11 +231,29 @@ function checkoutName(c: ChangedCheckout): string {
   return c.where ? `${c.repo} · ${c.where}` : c.repo;
 }
 
-function FileRow({ fileKey: key, root, file, error, onOpen }: { fileKey: string; root: string; file: ChangedFile; error: string | null; onOpen(root: string, f: ChangedFile): void }) {
+function FileRow({
+  fileKey: key,
+  root,
+  file,
+  error,
+  onOpen,
+  viewed,
+  justChanged,
+}: {
+  fileKey: string;
+  root: string;
+  file: ChangedFile;
+  error: string | null;
+  onOpen(root: string, f: ChangedFile): void;
+  /** DIFF-3.7 */
+  viewed: boolean;
+  /** DIFF-3.8 */
+  justChanged: boolean;
+}) {
   const { name, folder } = splitPath(file.path);
   const kind = kindLabel(file);
   const blocked = noOpenReason(file);
-  const label = [file.path, kind, file.binary ? 'binary' : `${file.additions} added, ${file.deletions} removed`, file.uncommitted ? 'uncommitted' : null]
+  const label = [file.path, kind, file.binary ? 'binary' : `${file.additions} added, ${file.deletions} removed`, file.uncommitted ? 'uncommitted' : null, viewed ? 'viewed' : null, justChanged ? 'just changed' : null]
     .filter(Boolean)
     .join(', ');
   return (
@@ -213,6 +264,8 @@ function FileRow({ fileKey: key, root, file, error, onOpen }: { fileKey: string;
         aria-label={blocked ? `${label}. ${blocked}` : `${label}, open in VS Code`}
         aria-disabled={blocked ? true : undefined}
         title={blocked ?? file.path}
+        data-viewed={viewed || undefined}
+        data-just-changed={justChanged || undefined}
         onClick={() => {
           if (!blocked) onOpen(root, file);
         }}
@@ -220,11 +273,13 @@ function FileRow({ fileKey: key, root, file, error, onOpen }: { fileKey: string;
           'flex w-full min-w-0 items-center gap-2 rounded-sm px-2 py-1 text-left text-meta outline-none',
           'hover:bg-accent focus-visible:bg-accent',
           blocked && 'cursor-default opacity-70',
+          justChanged && 'bg-muted',
         )}
       >
         <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
           {/* DIFF-3.5: the folder gives way first; a name longer than the row is cut too. */}
-          <span className="min-w-0 max-w-full shrink-0 truncate font-medium">{name}</span>
+          {viewed && <Check aria-hidden data-icon="viewed" className="size-3 shrink-0 self-center text-muted-foreground" />}
+          <span className={cn('min-w-0 max-w-full shrink-0 truncate', !viewed && 'font-medium')}>{name}</span>
           {folder && <span className="min-w-0 truncate text-muted-foreground">{folder}</span>}
         </span>
         {error ? (

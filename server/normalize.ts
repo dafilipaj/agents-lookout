@@ -147,6 +147,14 @@ export function activity(value: unknown): string | null {
   return chars.length <= MAX_ACTIVITY ? text : `${chars.slice(0, MAX_ACTIVITY - 1).join('').trimEnd()}…`;
 }
 
+/** SIDE-2.17: Fleet's `done`, its time a number, its note one line like `activity`; null when it isn't Done. */
+export function done(value: unknown): SessionRow['done'] {
+  if (typeof value !== 'object' || value === null) return null;
+  const { at, note } = value as { at?: unknown; note?: unknown };
+  if (typeof at !== 'number' || !Number.isFinite(at)) return null;
+  return { at, note: activity(note) };
+}
+
 export interface NormalizeDeps {
   /** Git location for a working directory; null when not a git dir or not read yet. */
   git(cwd: string): GitLocation | null;
@@ -211,6 +219,7 @@ export function normalizeRows(rows: readonly FleetRow[], deps: NormalizeDeps): S
       activity: status === 'busy' ? activity(r.activity) : null,
       backgroundShell: status === 'idle' && backgroundShell(r),
       procStart: procStart(r.proc_start),
+      done: done(r.done),
       pendingModel: null,
       pendingEffort: null,
       modelAt: typeof r.model_at === 'string' ? r.model_at : null,

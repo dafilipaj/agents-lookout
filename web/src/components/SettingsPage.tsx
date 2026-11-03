@@ -150,6 +150,8 @@ function General({ settings, save, jev, jevAsksToday }: Pick<Props, 'settings' |
 
         <RecommendWithJev settings={settings} save={save} jev={jev} asksToday={jevAsksToday} />
 
+        <UndoSend settings={settings} save={save} />
+
         <StartDirectories settings={settings} save={save} />
     </div>
   );
@@ -270,6 +272,37 @@ function RecommendWithJev({ settings, save, jev, asksToday }: Pick<Props, 'setti
           {jev.fix && <CommandBlock className="mt-1.5">{jev.fix}</CommandBlock>}
         </div>
       )}
+      {error && <Alert layout="inline" title={error} className="mt-2" />}
+    </section>
+  );
+}
+
+/** SIDE-7.7: Undo send (VIEW-3.9), on by default. */
+function UndoSend({ settings, save }: Pick<Props, 'settings' | 'save'>) {
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const toggle = async (on: boolean) => {
+    setSaving(true);
+    setError(null);
+    try {
+      await save({ undoSend: on });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Saving failed.');
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <section aria-labelledby="undo-send-title" className="mt-4 rounded-lg border border-border bg-card p-4" data-field="undo-send">
+      <label className="flex items-center gap-2">
+        <Checkbox role="switch" aria-describedby="undo-send-help" checked={settings.undoSend} disabled={saving} onChange={(e) => void toggle(e.target.checked)} />
+        <span id="undo-send-title" className="text-body font-medium">
+          Undo send
+        </span>
+      </label>
+      <p id="undo-send-help" className="mt-1 text-meta text-muted-foreground">
+        Enter waits 3 s before sending, so Undo or Backspace can take the message back.
+      </p>
       {error && <Alert layout="inline" title={error} className="mt-2" />}
     </section>
   );
