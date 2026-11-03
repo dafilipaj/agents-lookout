@@ -16,6 +16,7 @@ import { Sidebar } from '@/components/Sidebar';
 import { StartingView } from '@/components/StartingView';
 import { WorkPanel } from '@/components/WorkPanel';
 import { type PickTarget, TopicPicker } from '@/components/TopicPicker';
+import { SuggestView } from '@/components/SuggestView';
 import { TopicGraph } from '@/components/TopicGraph';
 import { TopicView } from '@/components/TopicView';
 import { ViewErrorBoundary } from '@/components/ViewErrorBoundary';
@@ -497,7 +498,8 @@ export function App({ client }: { client: LookoutClient }) {
   const openChange = useCallback((sessionId: string, root: string, path: string) => client.openChange(sessionId, root, path), [client]);
   // TOPIC-4.3: Topics open counts as Work open, so its PR and Task members are as fresh as Work's rows.
   // TOPIC-10.5: so does a Topic's view.
-  const workOpen = (layout.open && (layout.tab === 'work' || layout.tab === 'topics')) || route.name === 'topic';
+  // TOPIC-4.3, TOPIC-14.3: a Topic view and the Suggest view count as Topics open.
+  const workOpen = (layout.open && (layout.tab === 'work' || layout.tab === 'topics')) || route.name === 'topic' || route.name === 'suggest';
   useEffect(() => {
     if (state.clientId) void client.watchWork(state.clientId, workOpen);
   }, [client, state.clientId, workOpen]);
@@ -663,6 +665,8 @@ export function App({ client }: { client: LookoutClient }) {
   const [graphPick, setGraphPick] = useState<{ id: string } | null>(null);
   // TOPIC-7.1: "Open graph" and G: the graph in the main pane.
   const openGraph = useCallback(() => navigate({ name: 'topics' }), [navigate]);
+  // TOPIC-14.1.
+  const openSuggest = useCallback(() => navigate({ name: 'suggest' }), [navigate]);
   // TOPIC-10.1: "Open", Enter on an expanded Topic, or a graph node: its view, and the tab selects it.
   const openTopic = useCallback((id: string) => navigate({ name: 'topic', id }), [navigate]);
   // TOPIC-12.3, TOPIC-11.10, TOPIC-13.1: stable, so the Topic view reads its activity once per change.
@@ -1040,6 +1044,8 @@ export function App({ client }: { client: LookoutClient }) {
                 refreshTools={refreshTools}
                 jev={state.usage?.jev ?? null}
                 jevAsksToday={state.topics?.jevAsksToday ?? 0}
+                jevSetAside={state.topics?.jevSetAside}
+                recommend={(action) => client.recommend(action)}
               />
             ) : route.name === 'topics' ? (
               <TopicGraph
@@ -1059,7 +1065,19 @@ export function App({ client }: { client: LookoutClient }) {
                 placeTopics={(positions) => client.placeTopics(positions)}
                 onOpenSession={openTopicSession}
                 onOpen={openTopic}
+                onSuggest={openSuggest}
                 keyboardEnabled={!modalOpen}
+              />
+            ) : route.name === 'suggest' ? (
+              <SuggestView
+                view={state.topics}
+                sessions={state.sessions}
+                now={now}
+                suggestPreview={() => client.suggestPreview()}
+                suggest={() => client.suggest()}
+                cancelSuggest={() => client.cancelSuggest()}
+                acceptProposal={(id, accept) => client.acceptProposal(id, accept)}
+                dismissProposal={(id) => client.dismissProposal(id)}
               />
             ) : route.name === 'topic' ? (
               <TopicView
@@ -1191,6 +1209,7 @@ export function App({ client }: { client: LookoutClient }) {
                   onArchived={setShowArchived}
                   picked={graphPick}
                   onOpenGraph={openGraph}
+                  onSuggest={openSuggest}
                   onOpenTopic={openTopic}
                   onLinkTo={linkTo}
                   keyboardEnabled={!modalOpen}

@@ -268,6 +268,11 @@ export function summaryInput(ctx: InputContext): { text: string; keys: Map<strin
 
 /** TOPIC-11.2: the run's argv, after `claude`. */
 export function summaryArgs(): string[] {
+  return oneShotArgs(SUMMARY_SCHEMA, SUMMARY_SYSTEM_PROMPT, MAX_BUDGET_USD);
+}
+
+/** Decision 0013: a one-shot `claude -p` with Sonnet, no tools, no MCP, no settings and no saved session (TOPIC-11.2, TOPIC-14.2). */
+export function oneShotArgs(schema: object, systemPrompt: string, budgetUsd: string): string[] {
   return [
     '-p',
     '--model', 'sonnet',
@@ -277,19 +282,19 @@ export function summaryArgs(): string[] {
     '--setting-sources', '',
     '--no-session-persistence',
     '--output-format', 'json',
-    '--json-schema', JSON.stringify(SUMMARY_SCHEMA),
-    '--max-budget-usd', MAX_BUDGET_USD,
-    '--system-prompt', SUMMARY_SYSTEM_PROMPT,
+    '--json-schema', JSON.stringify(schema),
+    '--max-budget-usd', budgetUsd,
+    '--system-prompt', systemPrompt,
   ];
 }
 
-const CANT_READ = "Claude answered something Lookout can't read.";
+export const CANT_READ = "Claude answered something Lookout can't read.";
 
-function object(v: unknown): Record<string, unknown> | null {
+export function object(v: unknown): Record<string, unknown> | null {
   return typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
 }
 
-function parseJson(text: string | undefined): Record<string, unknown> | null {
+export function parseJson(text: string | undefined): Record<string, unknown> | null {
   if (!text?.trim()) return null;
   try {
     return object(JSON.parse(text));
@@ -299,23 +304,23 @@ function parseJson(text: string | undefined): Record<string, unknown> | null {
 }
 
 /** Plain text on one line or a few, bounded. */
-function prose(v: unknown, max: number): string | null {
+export function prose(v: unknown, max: number): string | null {
   if (typeof v !== 'string') return null;
   const s = v.replace(/[\p{Cc}\p{Cf}]/gu, ' ').replace(/\s+/g, ' ').trim();
   return s ? (s.length > max ? `${s.slice(0, max - 1)}…` : s) : null;
 }
 
 /** TOPIC-11.6: why a `claude -p` result isn't an answer, in plain words. */
-function resultError(r: Record<string, unknown>): string | null {
+export function resultError(r: Record<string, unknown>, budgetUsd = MAX_BUDGET_USD): string | null {
   if (r.is_error !== true && (r.subtype === undefined || r.subtype === 'success')) return null;
-  if (r.subtype === 'error_max_budget_usd') return `It reached the $${Number(MAX_BUDGET_USD).toFixed(2)} limit and was stopped.`;
+  if (r.subtype === 'error_max_budget_usd') return `It reached the $${Number(budgetUsd).toFixed(2)} limit and was stopped.`;
   const first = Array.isArray(r.errors) ? r.errors.find((e) => typeof e === 'string') : undefined;
   const said = sanitizeLine(typeof r.result === 'string' ? r.result : (first ?? ''), 200);
   return said ? `Claude said: ${said}` : `Claude stopped with ${sanitizeLine(String(r.subtype ?? 'an error'), 60) ?? 'an error'}.`;
 }
 
 /** TOPIC-11.7: the model that did the work: `modelUsage`'s key with the highest cost. */
-function modelOf(r: Record<string, unknown>): string {
+export function modelOf(r: Record<string, unknown>): string {
   const usage = object(r.modelUsage);
   if (!usage) return 'sonnet';
   const ids = Object.keys(usage).filter((k) => /^[A-Za-z0-9._-]{1,80}$/.test(k));

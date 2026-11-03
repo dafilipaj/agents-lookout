@@ -34,6 +34,8 @@ const PEEK_LINES = 3;
 const MAX_PEEK = 600;
 const MAX_SNIPPET = 400;
 const MAX_PATH = 1024;
+/** TOPIC-14.3: a Session's first prompt, as a Suggest run is given it. */
+const MAX_RECENT_PROMPT = 400;
 const MAX_BRANCH = 200;
 const MAX_TEXT = 200_000;
 /** The Fleet fork's rule for `spawn --resume` (contracts/fleet-spawn-resume.md). */
@@ -112,6 +114,20 @@ export interface HistoryOptions {
 /** TOOLS-2.5: tb-session refused a subcommand or flag History needs, even without the 0.3 flags. */
 class TooOld extends Error {}
 
+/** TOPIC-14.3: one Session tb-session lists, with what a Suggest run is given. */
+export interface RecentSession {
+  sessionId: string;
+  harness: Harness;
+  headless: boolean | null;
+  title: string;
+  summary: string | null;
+  firstPrompt: string | null;
+  projectPath: string | null;
+  branch: string | null;
+  messageCount: number | null;
+  lastActiveAt: number | null;
+}
+
 export class History {
   private readonly opts: HistoryOptions;
   /** tb-session 0.2: refuses the 0.3 flags. Learned from its first refusal. */
@@ -169,6 +185,34 @@ export class History {
     const total = typeof parsed.total_results === 'number' ? parsed.total_results : null;
     const hasMore = !q.query && (total !== null ? q.page * HISTORY_PAGE < total : raw.length >= HISTORY_PAGE);
     return { state: 'ok', items, page: q.query ? 1 : q.page, hasMore };
+  }
+
+  /**
+   * TOPIC-14.3: the Sessions active since `afterDay` (`YYYY-MM-DD`), newest first, at most `limit`,
+   * headless ones left out where tb-session can tell, each with what a Suggest run is given.
+   */
+  async recent(afterDay: string, limit: number): Promise<RecentSession[]> {
+    const out = await this.call((legacy) => ['list', '--all-projects', '--json', '--limit', String(limit), '--after', afterDay, ...(legacy ? [] : ['--headless', 'exclude'])]);
+    if (out === null) return [];
+    const parsed = parseObject(out);
+    if (!parsed || !Array.isArray(parsed.results)) throw new HistoryError(502, 'tb-session returned an unexpected answer.');
+    return (parsed.results as unknown[]).slice(0, limit).flatMap((v) => {
+      const row = toRow(v, this.home);
+      if (!row) return [];
+      const r = v as Record<string, unknown>;
+      return [{
+        sessionId: row.item.sessionId,
+        harness: row.item.harness,
+        headless: row.item.headless,
+        title: row.item.title,
+        summary: text(r.summary, MAX_TITLE),
+        firstPrompt: text(unwrapPasted(r.first_prompt), MAX_RECENT_PROMPT),
+        projectPath: row.item.projectPath,
+        branch: row.item.branch,
+        messageCount: typeof r.message_count === 'number' && Number.isSafeInteger(r.message_count) ? r.message_count : null,
+        lastActiveAt: row.item.lastActiveAt,
+      }];
+    });
   }
 
   /**

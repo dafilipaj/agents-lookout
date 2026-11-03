@@ -1,11 +1,12 @@
-import { MAX_TOPIC_TITLE, type Recommendation, type RecommendationAction, type Topic, type TopicsView, activityWords, sortTopics } from '@shared/topics.ts';
+import { MAX_TOPIC_TITLE, type Recommendation, type RecommendationAction, type Topic, type TopicsView, activityWords, memberKey, rowMember, sortTopics } from '@shared/topics.ts';
 import type { SessionRow } from '@shared/types.ts';
 import type { WorkSnapshot } from '@shared/work.ts';
-import { Network, Plus, Search } from 'lucide-react';
+import { Network, Plus, Search, Sparkles } from 'lucide-react';
 import { type FormEvent, type KeyboardEvent, type ReactNode, type Ref, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Chip } from '@/components/ui/chip';
+import { labelledButtonLook } from '@/components/ui/icon-button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Loading } from '@/components/ui/loading';
 import { SessionMarker } from '@/components/ui/session-marker';
@@ -15,7 +16,7 @@ import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { Markdown } from './Markdown';
 import type { ArchivePatch } from './ArchiveDialog';
-import { Recommendations } from './Recommendations';
+import { JevSetAside, Recommendations } from './Recommendations';
 import { type SessionMember, SessionChip, TopicActions } from './TopicView';
 
 /** TOPIC-3.4: the expanded Topic shows this many lines of its notes. */
@@ -53,6 +54,8 @@ export interface TopicsPanelProps {
   onArchived(archived: boolean): void;
   /** TOPIC-7.1: "Open graph" or `G`. */
   onOpenGraph(): void;
+  /** TOPIC-14.1: "Suggest Topics": the Suggest view. */
+  onSuggest?(): void;
   /** TOPIC-10.1: "Open", or Enter on an expanded Topic: its view. */
   onOpenTopic(id: string): void;
   /** TOPIC-6.1: "Link to Topic…" opens the Topic picker for this Topic. */
@@ -215,6 +218,13 @@ export function TopicsPanel(props: TopicsPanelProps) {
     setProblem(null);
   };
 
+  // TOPIC-14.1: live Sessions in no Topic, from what the browser holds; nothing is read for it.
+  const filed = new Set(all.flatMap((t) => t.members.map((m) => m.key)));
+  const unfiled = view?.state === 'ok' ? [...sessions.values()].filter((r) => {
+    const m = rowMember(r);
+    return m !== null && !filed.has(memberKey(m.kind, m.ref));
+  }).length : 0;
+
   // TOPIC-9.4: at the top, only while something is pending.
   const pending = view?.state === 'ok' ? view.recommendations : [];
   const recommended = pending.length > 0 && (
@@ -284,11 +294,17 @@ export function TopicsPanel(props: TopicsPanelProps) {
             className="h-7 w-full min-w-0 rounded-md border border-input bg-background/60 pr-2 pl-7 text-body outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 dark:bg-input/20"
           />
         </label>
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           <Button variant="outline" size="xs" className="h-7 gap-1.5 px-2 text-meta" onClick={newTopic} disabled={view?.state !== 'ok'}>
             <Plus className="size-3.5" />
             New Topic
           </Button>
+          {props.onSuggest && (
+            <Button variant="outline" size="xs" className="h-7 gap-1.5 px-2 text-meta" onClick={props.onSuggest} disabled={view?.state !== 'ok'} aria-label="Suggest Topics" title="Suggest Topics" data-action="suggest-topics">
+              <Sparkles className="size-3.5" />
+              Suggest
+            </Button>
+          )}
           <Button variant="outline" size="xs" className="h-7 gap-1.5 px-2 text-meta" onClick={props.onOpenGraph} disabled={view?.state !== 'ok'} data-action="open-graph">
             <Network className="size-3.5" />
             Open graph
@@ -298,6 +314,15 @@ export function TopicsPanel(props: TopicsPanelProps) {
             Archived
           </label>
         </div>
+        {props.onSuggest && unfiled > 0 && (
+          <div className="flex min-w-0 items-center gap-2 text-meta text-muted-foreground" data-field="unfiled">
+            <span className="min-w-0 truncate">{unfiled === 1 ? '1 live Session in no Topic' : `${unfiled} live Sessions in no Topic`}</span>
+            <button type="button" className={cn(labelledButtonLook(), 'h-6 text-meta [&>svg]:size-3.5')} onClick={props.onSuggest}>
+              <Sparkles />
+              Suggest Topics
+            </button>
+          </div>
+        )}
         {creating && (
           <form onSubmit={create} className="flex min-w-0 items-center gap-1.5" data-field="new-topic">
             <input
@@ -328,6 +353,7 @@ export function TopicsPanel(props: TopicsPanelProps) {
       )}
       {problem && <Alert title={problem} className="mx-2.5 mb-2" data-field="topics-problem" />}
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
+        {view?.state === 'ok' && <JevSetAside setAside={view.jevSetAside} recommend={props.recommend} onProblem={setProblem} className="mx-2.5 mb-2" />}
         {recommended}
         {body}
       </div>

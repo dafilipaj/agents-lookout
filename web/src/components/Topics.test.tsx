@@ -107,10 +107,10 @@ describe('the Topics tab (TOPIC-3)', () => {
     app.snapshot([]);
     expect(within(panel()).getByText('No Topics yet')).toBeInTheDocument();
     expect(within(panel()).getAllByRole('button', { name: /New Topic/ })).toHaveLength(2);
-    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1)], edges: [], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 0, summarizing: [], summaryErrors: {} } });
+    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1)], edges: [], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 0, jevSetAside: { count: 0, reason: null }, summarizing: [], summaryErrors: {} } });
     await user.type(screen.getByRole('searchbox', { name: 'Filter Topics' }), 'zzz');
     expect(within(panel()).getByText('Nothing matches')).toBeInTheDocument();
-    app.emit({ type: 'topics', topics: { state: 'error', reason: 'Lookout couldn’t open its Topics database: permission denied.', path: '/Users/me/.lookout/topics.db', topics: [], edges: [], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 0, summarizing: [], summaryErrors: {} } });
+    app.emit({ type: 'topics', topics: { state: 'error', reason: 'Lookout couldn’t open its Topics database: permission denied.', path: '/Users/me/.lookout/topics.db', topics: [], edges: [], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 0, jevSetAside: { count: 0, reason: null }, summarizing: [], summaryErrors: {} } });
     const alert = within(panel()).getByRole('alert');
     expect(alert).toHaveTextContent('Topics can\'t be opened');
     expect(alert).toHaveTextContent('permission denied. /Users/me/.lookout/topics.db');
@@ -459,7 +459,7 @@ describe('what a member is doing now (TOPIC-4)', () => {
     expect(chips[0]).toHaveAttribute('title', 'Work lists open items only, so this may be merged, closed or not read yet.');
     expect(details().querySelector('[data-field="pr"]')).toHaveTextContent('Sharpen the anvil corners');
     expect(within(details()).getByRole('button', { name: 'Resume old fix, past' })).toBeInTheDocument();
-    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Rates', members: [member({ ...SESSION, ref: { harness: 'claude', sessionId: 'gone-one' }, snapshot: { harness: 'claude', title: 'old fix', directory: null } })] })], edges: [], pruned: ['claude:gone-one'], libraryReadAt: null, recommendations: [], jevAsksToday: 0, summarizing: [], summaryErrors: {} } });
+    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Rates', members: [member({ ...SESSION, ref: { harness: 'claude', sessionId: 'gone-one' }, snapshot: { harness: 'claude', title: 'old fix', directory: null } })] })], edges: [], pruned: ['claude:gone-one'], libraryReadAt: null, recommendations: [], jevAsksToday: 0, jevSetAside: { count: 0, reason: null }, summarizing: [], summaryErrors: {} } });
     expect(details().querySelector('[data-field="session"]')).toHaveTextContent('old fix· removed from the index');
     expect(within(details()).queryByRole('button', { name: /^(Open|Resume) old fix/ })).toBeNull();
   });
@@ -488,13 +488,13 @@ describe('what a member is doing now (TOPIC-4)', () => {
       await openView(user, 'Other');
       await openView(user, 'Rates', 'Members');
     };
-    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Rates', members: [member(SESSION)], outputs: { items: [output(1), output(2)], total: 12 } }), topic(2, { title: 'Other' })], edges: [], pruned: [], libraryReadAt: Date.now(), recommendations: [], jevAsksToday: 0, summarizing: [], summaryErrors: {} } });
+    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Rates', members: [member(SESSION)], outputs: { items: [output(1), output(2)], total: 12 } }), topic(2, { title: 'Other' })], edges: [], pruned: [], libraryReadAt: Date.now(), recommendations: [], jevAsksToday: 0, jevSetAside: { count: 0, reason: null }, summarizing: [], summaryErrors: {} } });
     // Opened again within a minute of the last read: nothing is read again.
     const reads = vi.mocked(app.client.library).mock.calls.length;
     await reopen();
     expect(app.client.library).toHaveBeenCalledTimes(reads);
     // A minute or more after it: opening it reads the Library again, for Outputs written since.
-    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Rates', members: [member(SESSION)], outputs: { items: [output(1), output(2)], total: 12 } }), topic(2, { title: 'Other' })], edges: [], pruned: [], libraryReadAt: Date.now() - 61_000, recommendations: [], jevAsksToday: 0, summarizing: [], summaryErrors: {} } });
+    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Rates', members: [member(SESSION)], outputs: { items: [output(1), output(2)], total: 12 } }), topic(2, { title: 'Other' })], edges: [], pruned: [], libraryReadAt: Date.now() - 61_000, recommendations: [], jevAsksToday: 0, jevSetAside: { count: 0, reason: null }, summarizing: [], summaryErrors: {} } });
     await reopen();
     await waitFor(() => expect(app.client.library).toHaveBeenCalledTimes(reads + 1));
     const outputs = topicView().querySelector<HTMLElement>('[data-field="outputs"]')!;
@@ -593,6 +593,28 @@ describe('recommendations (TOPIC-9)', () => {
     expect(screen.getByText('tb-jev config init')).toBeInTheDocument();
     await user.click(sw);
     expect(app.client.saveSettings).toHaveBeenCalledWith({ recommendWithJev: true });
+  });
+
+  it('TOPIC-9.7: while items are set aside after failed asks, the Topics tab and the Settings switch say how many and why, with "Ask again"', async () => {
+    const setAside = { count: 3, reason: 'the question is too long for tb-jev' };
+    const view = { state: 'ok' as const, reason: null, path: '/p', topics: [topic(1)], edges: [], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 3, jevSetAside: setAside, summarizing: [], summaryErrors: {} };
+    const app = openApp([topic(1)]);
+    const user = await openTopics();
+    app.emit({ type: 'topics', topics: view });
+    const notice = () => screen.getByText("3 items couldn't be judged by Jev: the question is too long for tb-jev").closest<HTMLElement>('[data-field="jev-set-aside"]')!;
+    expect(panel()).toContainElement(notice());
+    await user.click(within(notice()).getByRole('button', { name: 'Ask again' }));
+    expect(app.client.recommend).toHaveBeenCalledWith({ action: 'ask-again' });
+    app.emit({ type: 'topics', topics: { ...view, jevSetAside: { count: 0, reason: null } } });
+    expect(within(panel()).queryByText(/couldn't be judged/)).toBeNull();
+    app.unmount();
+    const settingsApp = renderApp('/settings');
+    settingsApp.snapshot([row({ id: 'alpha' })]);
+    settingsApp.emit({ type: 'topics', topics: { ...view, jevSetAside: { count: 1, reason: 'took too long' } } });
+    // Under the switch, as in the Topics tab (still open in the right sidebar).
+    const inSettings = within(document.querySelector<HTMLElement>('[data-field="recommend-with-jev"]')!).getByText("1 item couldn't be judged by Jev: took too long").closest<HTMLElement>('[data-field="jev-set-aside"]')!;
+    await user.click(within(inSettings).getByRole('button', { name: 'Ask again' }));
+    expect(settingsApp.client.recommend).toHaveBeenCalledWith({ action: 'ask-again' });
   });
 
   it('TOPIC-9.1: while Jev can be asked, the Topic picker offers "Ask Jev which Topic" ("Judge again") for the row it was opened on', async () => {
@@ -903,7 +925,7 @@ describe('the Topic view (TOPIC-10)', () => {
   });
 
   it('TOPIC-4.4: opening another Topic’s view asks for a Library read when the last one is a minute old', async () => {
-    const view = (readAt: number) => ({ state: 'ok' as const, reason: null, path: '/p', topics: [topic(1, { title: 'Rates', members: [member(SESSION)] }), topic(2, { title: 'Other', members: [member({ ...SESSION, ref: { harness: 'claude', sessionId: 'other-one' } })] })], edges: [], pruned: [], libraryReadAt: readAt, recommendations: [], jevAsksToday: 0, summarizing: [], summaryErrors: {} });
+    const view = (readAt: number) => ({ state: 'ok' as const, reason: null, path: '/p', topics: [topic(1, { title: 'Rates', members: [member(SESSION)] }), topic(2, { title: 'Other', members: [member({ ...SESSION, ref: { harness: 'claude', sessionId: 'other-one' } })] })], edges: [], pruned: [], libraryReadAt: readAt, recommendations: [], jevAsksToday: 0, jevSetAside: { count: 0, reason: null }, summarizing: [], summaryErrors: {} });
     const app = openApp([]);
     app.emit({ type: 'topics', topics: view(Date.now()) });
     const user = await openTopics();
@@ -1066,7 +1088,7 @@ describe('a summary of the Topic (TOPIC-11)', () => {
     await openView(user, 'Anvil');
     const recent = () => section().querySelector<HTMLElement>('[data-field="summary-recent"]')!;
     expect(within(recent()).getByRole('button', { name: 'Resume old fix' })).toBeInTheDocument();
-    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Anvil', members: [member(GONE)], summary: SUMMARY({ answer: { ...SUMMARY().answer, recent: [{ text: 'It was fixed.', cites: [{ key: memberKey('session', GONE.ref), name: 'old fix' }] }] } }) })], edges: [], pruned: ['claude:gone-one'], libraryReadAt: null, recommendations: [], jevAsksToday: 0, summarizing: [], summaryErrors: {} } });
+    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Anvil', members: [member(GONE)], summary: SUMMARY({ answer: { ...SUMMARY().answer, recent: [{ text: 'It was fixed.', cites: [{ key: memberKey('session', GONE.ref), name: 'old fix' }] }] } }) })], edges: [], pruned: ['claude:gone-one'], libraryReadAt: null, recommendations: [], jevAsksToday: 0, jevSetAside: { count: 0, reason: null }, summarizing: [], summaryErrors: {} } });
     expect(within(recent()).queryByRole('button', { name: /old fix/ })).toBeNull();
     expect(within(recent()).getByText('old fix')).toHaveAttribute('title', 'Removed from the index');
   });
@@ -1076,7 +1098,7 @@ describe('a summary of the Topic (TOPIC-11)', () => {
     const user = await openTopics();
     await openView(user, 'Anvil');
     expect(within(section()).queryByText('Out of date')).toBeNull();
-    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Anvil', members: [member(PR_MEMBER)], summary: SUMMARY(), summaryStale: true })], edges: [], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 0, summarizing: [], summaryErrors: {} } });
+    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Anvil', members: [member(PR_MEMBER)], summary: SUMMARY(), summaryStale: true })], edges: [], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 0, jevSetAside: { count: 0, reason: null }, summarizing: [], summaryErrors: {} } });
     const chip = within(section()).getByText('Out of date');
     expect(chip).toHaveAttribute('data-tone', 'info');
     // The summary itself still shows, by its age.
@@ -1099,9 +1121,9 @@ describe('a summary of the Topic (TOPIC-11)', () => {
     expect(alert).toHaveTextContent('Cancelled. The summary before it is kept.');
     expect(within(section()).getByText('The corners are still blunt.')).toBeInTheDocument();
     // A run another tab started shows here too; one Lookout can't start says why.
-    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Anvil', members: [member(PR_MEMBER)], summary: SUMMARY() })], edges: [], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 0, summarizing: [id(1)], summaryErrors: {} } });
+    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Anvil', members: [member(PR_MEMBER)], summary: SUMMARY() })], edges: [], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 0, jevSetAside: { count: 0, reason: null }, summarizing: [id(1)], summaryErrors: {} } });
     expect(within(section()).getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
-    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Anvil', members: [member(PR_MEMBER)], summary: SUMMARY() })], edges: [], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 0, summarizing: [], summaryErrors: { [id(1)]: { reason: "Claude Code isn't installed: Fleet doesn't find claude. Settings, under Tools, says where it looks.", fix: null } } } });
+    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Anvil', members: [member(PR_MEMBER)], summary: SUMMARY() })], edges: [], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 0, jevSetAside: { count: 0, reason: null }, summarizing: [], summaryErrors: { [id(1)]: { reason: "Claude Code isn't installed: Fleet doesn't find claude. Settings, under Tools, says where it looks.", fix: null } } } });
     expect(within(section()).getByRole('alert')).toHaveTextContent("Claude Code isn't installed");
   });
 
@@ -1120,7 +1142,7 @@ describe('a summary of the Topic (TOPIC-11)', () => {
     const user = await openTopics();
     await openView(user, 'Anvil');
     expect(section().querySelector('[data-field="summary-by"]')).toHaveTextContent(/^Sonnet 5\.5 · \$0\.04 · 2h ago$/);
-    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Anvil', summary: SUMMARY({ costUsd: 0.003, model: 'claude-opus-5-5' }) })], edges: [], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 0, summarizing: [], summaryErrors: {} } });
+    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Anvil', summary: SUMMARY({ costUsd: 0.003, model: 'claude-opus-5-5' }) })], edges: [], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 0, jevSetAside: { count: 0, reason: null }, summarizing: [], summaryErrors: {} } });
     expect(section().querySelector('[data-field="summary-by"]')).toHaveTextContent(/^Opus 5\.5 · <\$0\.01 · 2h ago$/);
   });
 
@@ -1133,10 +1155,10 @@ describe('a summary of the Topic (TOPIC-11)', () => {
     expect(shown).toHaveTextContent('In progress');
     expect(shown.compareDocumentPosition(within(item('Anvil')).getByText('Sharp corners.')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(shown).queryByText('Out of date')).toBeNull();
-    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Anvil', notes: 'Sharp corners.', summary: SUMMARY(), summaryStale: true })], edges: [], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 0, summarizing: [], summaryErrors: {} } });
+    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Anvil', notes: 'Sharp corners.', summary: SUMMARY(), summaryStale: true })], edges: [], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 0, jevSetAside: { count: 0, reason: null }, summarizing: [], summaryErrors: {} } });
     expect(within(item('Anvil').querySelector<HTMLElement>('[data-field="summary"]')!).getByText('Out of date')).toHaveAttribute('data-tone', 'info');
     // None yet: nothing is shown for it.
-    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Anvil', notes: 'Sharp corners.' })], edges: [], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 0, summarizing: [], summaryErrors: {} } });
+    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Anvil', notes: 'Sharp corners.' })], edges: [], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 0, jevSetAside: { count: 0, reason: null }, summarizing: [], summaryErrors: {} } });
     expect(item('Anvil').querySelector('[data-field="summary"]')).toBeNull();
   });
 });
@@ -1232,7 +1254,7 @@ describe('starting a Session in a Topic (TOPIC-5)', () => {
     expect(app.client.launch).toHaveBeenLastCalledWith(expect.objectContaining({ prompt: LIGHT.url, topic: { id: id(1), via: 'task' } }), expect.any(String));
 
     // In two Open Topics: no Topic.
-    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Anvil', members: [member(TASK_MEMBER)] }), topic(3, { title: 'Lanterns', members: [member(TASK_MEMBER)] })], edges: [], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 0, summarizing: [], summaryErrors: {} } });
+    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Anvil', members: [member(TASK_MEMBER)] }), topic(3, { title: 'Lanterns', members: [member(TASK_MEMBER)] })], edges: [], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 0, jevSetAside: { count: 0, reason: null }, summarizing: [], summaryErrors: {} } });
     d = await start();
     expect(within(d).getByLabelText('Topic')).toHaveValue('');
     await waitFor(() => expect(within(d).getByRole('button', { name: /Start/ })).toBeEnabled());
@@ -1262,10 +1284,10 @@ describe('starting a Session in a Topic (TOPIC-5)', () => {
     const user = await openTopics();
     await openView(user, 'Anvil');
     await user.click(startButton());
-    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Anvil', state: 'archived' })], edges: [], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 0, summarizing: [], summaryErrors: {} } });
+    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Anvil', state: 'archived' })], edges: [], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 0, jevSetAside: { count: 0, reason: null }, summarizing: [], summaryErrors: {} } });
     expect(within(dialog()).getByLabelText('Topic')).toHaveValue(id(1));
     expect(within(dialog()).getByLabelText('Topic')).toHaveDisplayValue('Anvil');
-    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [], edges: [], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 0, summarizing: [], summaryErrors: {} } });
+    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [], edges: [], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 0, jevSetAside: { count: 0, reason: null }, summarizing: [], summaryErrors: {} } });
     expect(within(dialog()).getByLabelText('Topic')).toHaveDisplayValue('A deleted Topic');
     await waitFor(() => expect(within(dialog()).getByRole('button', { name: /Start/ })).toBeEnabled());
     await user.click(within(dialog()).getByRole('button', { name: /Start/ }));
@@ -1296,7 +1318,7 @@ describe('starting a Session in a Topic (TOPIC-5)', () => {
     await user.selectOptions(await screen.findByLabelText('Topic'), id(1));
     await user.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Anvil', state: 'archived' }), topic(2, { title: 'Lanterns' })], edges: [], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 0, summarizing: [], summaryErrors: {} } });
+    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Anvil', state: 'archived' }), topic(2, { title: 'Lanterns' })], edges: [], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 0, jevSetAside: { count: 0, reason: null }, summarizing: [], summaryErrors: {} } });
     await user.keyboard('n');
     const field = await screen.findByLabelText('Topic');
     expect(field).toHaveValue('');
@@ -1571,7 +1593,7 @@ describe('the Topic view in tabs (TOPIC-10.7, TOPIC-10.8)', () => {
     const user = await openTopics();
     await openView(user, 'Rates');
     await waitFor(() => expect(tabs().map((t) => t.getAttribute('aria-label'))).toEqual(['Overview', 'Members 1, new activity', 'Activity 60 new']));
-    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(51, { title: 'Rates', members: [member(PR_MEMBER)], seenUpto: 60, newCount: 0, lastEntryId: 60 })], edges: [], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 0, summarizing: [], summaryErrors: {} } });
+    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(51, { title: 'Rates', members: [member(PR_MEMBER)], seenUpto: 60, newCount: 0, lastEntryId: 60 })], edges: [], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 0, jevSetAside: { count: 0, reason: null }, summarizing: [], summaryErrors: {} } });
     expect(tabs().map((t) => t.getAttribute('aria-label'))).toEqual(['Overview', 'Members 1, new activity', 'Activity 60 new']);
     expect(within(topicView()).getByRole('region', { name: 'Since you last looked' })).toHaveTextContent('+50 more');
     cleanup();

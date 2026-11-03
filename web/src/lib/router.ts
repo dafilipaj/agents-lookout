@@ -9,6 +9,8 @@ export type Route =
   | { name: 'settings'; section?: SettingsSection }
   /** TOPIC-7: the Topics graph, in place of the Session view. */
   | { name: 'topics' }
+  /** TOPIC-14.1: the Suggest view. */
+  | { name: 'suggest' }
   /** TOPIC-10: one Topic's view. */
   /** TOPIC-10.8: the open tab is in the path; none is Overview. */
   | { name: 'topic'; id: string; tab?: TopicTab }
@@ -30,6 +32,7 @@ export function parseRoute(pathname: string): Route {
   const settings = /^\/settings(?:\/([^/]*))?\/?$/.exec(pathname);
   if (settings) return settings[1] === 'general' || settings[1] === 'tools' ? { name: 'settings', section: settings[1] } : { name: 'settings' };
   if (pathname === '/topics' || pathname === '/topics/') return { name: 'topics' };
+  if (pathname === '/topics/suggest' || pathname === '/topics/suggest/') return { name: 'suggest' };
   // TOPIC-10.8: any other tab is Overview.
   const topic = /^\/topics\/([^/]+)(?:\/([^/]*))?\/?$/.exec(pathname);
   if (topic?.[1]) {
@@ -75,6 +78,8 @@ export function routePath(route: Route): string {
       return route.section ? `/settings/${route.section}` : '/settings';
     case 'topics':
       return '/topics';
+    case 'suggest':
+      return '/topics/suggest';
     case 'topic':
       return `/topics/${encodeURIComponent(route.id)}${route.tab && route.tab !== 'overview' ? `/${route.tab}` : ''}`;
     case 'session':

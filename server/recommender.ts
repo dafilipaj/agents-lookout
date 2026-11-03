@@ -3,7 +3,6 @@ import { join } from 'node:path';
 import {
   JEV_ASKS_PER_HOUR,
   JEV_MIN_CONFIDENCE,
-  MAX_TOPIC_TITLE,
   type NewMember,
   type Topic,
   type TopicMember,
@@ -32,10 +31,22 @@ const HOUR_MS = 60 * 60_000;
 /** `--timeout-ms`: tb-jev's own deadline, retries included; the process gets a little more. */
 const JEV_DEADLINE_MS = 3_000;
 const JEV_PROCESS_MS = 5_000;
-/** Jev's choice options are 1 to 255; two of them are `new` and `none`. */
-const MAX_JEV_TOPICS = 253;
+/** TOPIC-9.3: the shortlist of Open Topics an ask offers, with `none`. */
+export const JEV_SHORTLIST = 12;
+const JEV_MEMBERS = 8;
+/** TOPIC-9.3: tb-jev refuses a state and question past 32,000 bytes (its estimate); this leaves room. */
+export const JEV_MAX_BYTES = 30_000;
+/** TOPIC-9.3: what's sent when the full shortlist doesn't fit: fewer members, then fewer Topics. */
+const JEV_FALLBACKS: readonly [topics: number, members: number][] = [
+  [JEV_SHORTLIST, JEV_MEMBERS],
+  [JEV_SHORTLIST, 3],
+  [6, 3],
+];
+/** TOPIC-9.7: a failed ask is asked again after these, then set aside. */
+export const JEV_RETRY_MS: readonly number[] = [60 * 60_000, 6 * 60 * 60_000];
 const MAX_TEXT = 600;
-const MAX_NOTES = 300;
+const MAX_NOTES = 200;
+const MAX_MEMBER_TITLE = 100;
 
 export interface Tie {
   member: NewMember;
@@ -120,6 +131,8 @@ export interface RecommenderOptions {
 }
 
 type Pick = { topicId: string | null; newTitle: string | null; confidence: number } | null;
+/** TOPIC-9.7: an ask that failed, with its reason: not a judgment. */
+type Failed = { failed: string };
 /** TOPIC-9.7: tb-jev said it isn't set up (exit 4): the item isn't judged, and asks stop for a while. */
 const NOT_READY = Symbol('not ready');
 const NOT_READY_PAUSE_MS = 10 * 60_000;
@@ -178,6 +191,14 @@ export class Recommender {
     this.kick();
   }
 
+  /** TOPIC-9.7: "Ask again" on every candidate set aside; refused unless Jev can be asked. */
+  askAgain(): void {
+    if (!this.opts.enabled()) throw new TopicsError(409, 'Turn on "Recommend Topics with Jev" in Settings first.');
+    if (!this.opts.jevReady()) throw new TopicsError(409, "Jev isn't set up: Settings says how.");
+    this.opts.topics.askAgain();
+    this.kick();
+  }
+
   /** Something changed that may let an ask run: a candidate, the switch, Jev's readiness. */
   kick(): void {
     if (this.closed) return;
@@ -227,9 +248,11 @@ export class Recommender {
       if (this.asks.length >= JEV_ASKS_PER_HOUR) return this.later(this.asks[0]! + HOUR_MS - now);
       const waiting = this.opts.topics.waitingForJev();
       const key = (c: { member: NewMember }) => memberKey(c.member.kind, c.member.ref);
-      const next = waiting.find((c) => this.first.has(key(c))) ?? waiting.find((c) => now - c.firstSeen >= JEV_SETTLE_MS);
+      // TOPIC-9.7: an item whose ask failed waits for its retry, "Judge again" or not.
+      const dueAt = (c: (typeof waiting)[number]) => Math.max(this.first.has(key(c)) ? -Infinity : c.firstSeen + JEV_SETTLE_MS, c.retryAt ?? -Infinity);
+      const next = waiting.find((c) => this.first.has(key(c)) && dueAt(c) <= now) ?? waiting.find((c) => dueAt(c) <= now);
       if (!next) {
-        const due = waiting.map((c) => c.firstSeen + JEV_SETTLE_MS - now);
+        const due = waiting.map((c) => dueAt(c) - now);
         if (due.length) this.later(Math.min(...due));
         return;
       }
@@ -241,32 +264,20 @@ export class Recommender {
         this.pausedUntil = this.now() + NOT_READY_PAUSE_MS;
         return this.later(NOT_READY_PAUSE_MS);
       }
+      if (pick && 'failed' in pick) {
+        const wait = JEV_RETRY_MS[next.failures];
+        this.opts.topics.jevFailed(next.member, pick.failed, wait === undefined ? null : this.now() + wait);
+        continue;
+      }
       this.opts.topics.jevJudged(next.member, pick);
     }
   }
 
-  private async ask(member: NewMember, open: readonly Topic[]): Promise<Pick | typeof NOT_READY> {
-    const topics = open.slice(0, MAX_JEV_TOPICS);
-    const state = {
-      item: { kind: member.kind, title: member.snapshot.title, text: await this.text(member) },
-      topics: topics.map((t) => ({ id: t.id, title: t.title, notes: t.notes.slice(0, MAX_TEXT), members: t.members.map(memberTitle) })),
-    };
-    const questions = {
-      id: 'topics',
-      version: '1',
-      questions: {
-        topic: {
-          type: 'choice',
-          instructions:
-            'Which Topic is this item part of? Pick `new` when it is a distinct piece of work that no listed Topic covers, and `none` when it is routine or unrelated to any.',
-          criteria: {
-            ...Object.fromEntries(topics.map((t) => [t.id, `${t.title}: ${t.notes.slice(0, MAX_NOTES)}; members: ${t.members.map(memberTitle).join(', ')}`])),
-            new: 'A distinct piece of work no listed Topic covers.',
-            none: 'Routine, or unrelated to every listed Topic.',
-          },
-        },
-      },
-    };
+  private async ask(member: NewMember, open: readonly Topic[]): Promise<Pick | Failed | typeof NOT_READY> {
+    const text = await this.text(member);
+    const ask = jevAsk(member, text, open);
+    if (!ask) return this.failed(member, 'the question is too long for tb-jev');
+    const { state, questions, topics } = ask;
     const subject = `${member.kind}:${member.kind === 'session' ? member.ref.sessionId : member.kind === 'pr' ? member.ref.url : member.ref.id}`;
     const bin = this.opts.jevBin();
     if (!bin) return this.failed(member, 'tb-jev is not installed');
@@ -301,14 +312,15 @@ export class Recommender {
     const confidence = topic?.confidence;
     if (typeof choice !== 'string' || typeof confidence !== 'number' || !Number.isFinite(confidence)) return this.failed(member, "printed something Lookout doesn't understand");
     if (confidence < JEV_MIN_CONFIDENCE || choice === 'none') return null;
-    if (choice === 'new') return { topicId: null, newTitle: member.snapshot.title.slice(0, MAX_TOPIC_TITLE), confidence };
+    // TOPIC-9.3: Jev never proposes a new Topic (slice 8); Suggest Topics does (TOPIC-14).
     return topics.some((t) => t.id === choice) ? { topicId: choice, newTitle: null, confidence } : null;
   }
 
-  /** TOPIC-9.7: one redacted line; the candidate is judged with nothing. */
-  private failed(member: NewMember, why: string): null {
-    this.warn(`ask for a ${member.kind} failed: ${sanitizeLine(why) ?? 'no reason given'}`);
-    return null;
+  /** TOPIC-9.7: one redacted line; the ask isn't a judgment, and the reason is kept with the candidate. */
+  private failed(member: NewMember, why: string): Failed {
+    const reason = sanitizeLine(why) ?? 'no reason given';
+    this.warn(`ask for a ${member.kind} failed: ${reason}`);
+    return { failed: reason };
   }
 
   private warn(line: string): void {
@@ -341,6 +353,65 @@ function message(err: unknown): string {
 
 function memberTitle(m: TopicMember): string {
   return m.kind === 'pr' ? `${m.snapshot.repo} #${m.snapshot.number} ${m.snapshot.title}` : m.snapshot.title;
+}
+
+/** TOPIC-9.3: lower-cased words of three letters or more, once each. */
+function words(text: string): Set<string> {
+  return new Set(text.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 3));
+}
+
+/**
+ * TOPIC-9.3: at most `max` Open Topics: the ones sharing the most words with the item first (a word
+ * counting `log(1 + N / n)`, N the Topics and n the ones using it), then the most recently changed.
+ */
+export function shortlist(itemText: string, open: readonly Topic[], max = JEV_SHORTLIST): Topic[] {
+  const vocab = open.map((t) => words([t.title, t.notes, ...t.members.map(memberTitle)].join(' ')));
+  const uses = new Map<string, number>();
+  for (const v of vocab) for (const w of v) uses.set(w, (uses.get(w) ?? 0) + 1);
+  const item = words(itemText);
+  const score = vocab.map((v) => {
+    let sum = 0;
+    for (const w of item) if (v.has(w)) sum += Math.log(1 + open.length / uses.get(w)!);
+    return sum;
+  });
+  return open
+    .map((t, i) => ({ t, s: score[i]! }))
+    .sort((a, b) => b.s - a.s || b.t.updatedAt - a.t.updatedAt)
+    .slice(0, max)
+    .map((x) => x.t);
+}
+
+/** TOPIC-9.3: a choice: the title, the notes' first line and the newest members' titles. */
+function describe(t: Topic, members: number): string {
+  const line = t.notes.split('\n').map((l) => l.trim()).find(Boolean)?.slice(0, MAX_NOTES);
+  const newest = [...t.members].sort((a, b) => b.addedAt - a.addedAt).slice(0, members).map((m) => memberTitle(m).slice(0, MAX_MEMBER_TITLE));
+  return [line ? `${t.title}: ${line}` : t.title, newest.length ? `members: ${newest.join(', ')}` : null].filter(Boolean).join('; ');
+}
+
+/** TOPIC-9.3: the state and question set for one ask, shrunk to fit tb-jev's limit; null when even the smallest doesn't. */
+export function jevAsk(member: NewMember, text: string, open: readonly Topic[]) {
+  const ranked = shortlist(`${member.snapshot.title} ${text}`, open);
+  const state = { item: { kind: member.kind, title: member.snapshot.title, text } };
+  for (const [n, m] of JEV_FALLBACKS) {
+    const topics = ranked.slice(0, n);
+    const questions = {
+      id: 'topics',
+      version: '1',
+      questions: {
+        topic: {
+          type: 'choice',
+          instructions:
+            'Which Topic is this item part of? Pick `none` when it is routine, unrelated to every listed Topic, or a piece of work none of them covers.',
+          criteria: {
+            ...Object.fromEntries(topics.map((t) => [t.id, describe(t, m)])),
+            none: 'Routine, unrelated to every listed Topic, or work none of them covers.',
+          },
+        },
+      },
+    };
+    if (Buffer.byteLength(JSON.stringify(state)) + Buffer.byteLength(JSON.stringify(questions)) <= JEV_MAX_BYTES) return { state, questions, topics };
+  }
+  return null;
 }
 
 function answer(text: string): Record<string, unknown> | null {

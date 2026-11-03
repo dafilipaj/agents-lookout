@@ -1,6 +1,6 @@
 import { PRODUCTIVE_EMAIL_ERROR, type Settings, type SettingsView, parseProductiveEmail } from '@shared/settings.ts';
 import { type ToolsSnapshot, toolsAttention } from '@shared/tools.ts';
-import { JEV_ASKS_PER_HOUR } from '@shared/topics.ts';
+import { JEV_ASKS_PER_HOUR, type RecommendationAction } from '@shared/topics.ts';
 import type { JevStatus } from '@shared/usage.ts';
 import { ArrowLeft, Folder, X } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { SideNav } from '@/components/ui/side-nav';
 import { SETTINGS_SECTIONS, type SettingsSection, routePath } from '@/lib/router';
+import { JevSetAside } from './Recommendations';
 import { PlainView } from './Shell';
 import { ToolsSection } from './ToolsSection';
 
@@ -32,6 +33,9 @@ interface Props {
   jev?: JevStatus | null;
   /** TOPIC-9.3: Jev asks since midnight. */
   jevAsksToday?: number;
+  /** TOPIC-9.7: the items set aside after three failed asks, and "Ask again". */
+  jevSetAside?: { count: number; reason: string | null };
+  recommend?(action: RecommendationAction): Promise<unknown>;
 }
 
 const SECTION_LABEL: Record<SettingsSection, string> = { general: 'General', tools: 'Tools' };
@@ -40,7 +44,7 @@ const SECTION_LABEL: Record<SettingsSection, string> = { general: 'General', too
  * SIDE-7.1, SIDE-7.6: the Settings page, in two sub-pages: General, the settings, and Tools, the
  * CLIs Lookout runs. Values come from the server, so every tab shows the same.
  */
-export function SettingsPage({ settings, save, onBack, section, onSection, tools, now, loadTools, refreshTools, jev = null, jevAsksToday = 0 }: Props) {
+export function SettingsPage({ settings, save, onBack, section, onSection, tools, now, loadTools, refreshTools, jev = null, jevAsksToday = 0, jevSetAside, recommend }: Props) {
   // TOOLS-2.4: the Settings button's dot, on the Tools link too.
   const attention = toolsAttention(tools);
   return (
@@ -73,7 +77,7 @@ export function SettingsPage({ settings, save, onBack, section, onSection, tools
               // TOOLS-1.4: the list is read when this sub-page opens.
               <ToolsSection tools={tools} now={now} load={loadTools} refresh={refreshTools} />
             ) : (
-              <General settings={settings} save={save} jev={jev} jevAsksToday={jevAsksToday} />
+              <General settings={settings} save={save} jev={jev} jevAsksToday={jevAsksToday} jevSetAside={jevSetAside} recommend={recommend} />
             )}
           </SideNav>
         </div>
@@ -83,7 +87,7 @@ export function SettingsPage({ settings, save, onBack, section, onSection, tools
 }
 
 /** SIDE-7.6: General, every setting, under where they're kept. */
-function General({ settings, save, jev, jevAsksToday }: Pick<Props, 'settings' | 'save'> & { jev: JevStatus | null; jevAsksToday: number }) {
+function General({ settings, save, jev, jevAsksToday, jevSetAside, recommend }: Pick<Props, 'settings' | 'save' | 'jevSetAside' | 'recommend'> & { jev: JevStatus | null; jevAsksToday: number }) {
   // What's typed; null while it matches the server's value, so changes from other tabs show.
   const [draft, setDraft] = useState<string | null>(null);
   const [state, setState] = useState<{ kind: 'idle' | 'saving' | 'saved' } | { kind: 'error'; message: string }>({
@@ -148,7 +152,7 @@ function General({ settings, save, jev, jevAsksToday }: Pick<Props, 'settings' |
 
         <ProductiveEmail settings={settings} save={save} />
 
-        <RecommendWithJev settings={settings} save={save} jev={jev} asksToday={jevAsksToday} />
+        <RecommendWithJev settings={settings} save={save} jev={jev} asksToday={jevAsksToday} setAside={jevSetAside} recommend={recommend} />
 
         <UndoSend settings={settings} save={save} />
 
@@ -239,7 +243,7 @@ function ProductiveEmail({ settings, save }: Pick<Props, 'settings' | 'save'>) {
  * TOPIC-9.3: Jev judges new items Links can't tie to a Topic. Off by default, as each ask is billed;
  * the line under it says so and how many ran today, and USAGE's fix when Jev isn't set up.
  */
-function RecommendWithJev({ settings, save, jev, asksToday }: Pick<Props, 'settings' | 'save'> & { jev: JevStatus | null; asksToday: number }) {
+function RecommendWithJev({ settings, save, jev, asksToday, setAside, recommend }: Pick<Props, 'settings' | 'save' | 'recommend'> & { jev: JevStatus | null; asksToday: number; setAside: Props['jevSetAside'] }) {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const ready = jev?.state === 'ready';
@@ -272,6 +276,7 @@ function RecommendWithJev({ settings, save, jev, asksToday }: Pick<Props, 'setti
           {jev.fix && <CommandBlock className="mt-1.5">{jev.fix}</CommandBlock>}
         </div>
       )}
+      {recommend && <JevSetAside setAside={setAside} recommend={recommend} onProblem={setError} className="mt-2" />}
       {error && <Alert layout="inline" title={error} className="mt-2" />}
     </section>
   );

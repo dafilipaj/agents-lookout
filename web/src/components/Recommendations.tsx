@@ -1,7 +1,9 @@
-import type { Recommendation, RecommendationAction, Topic } from '@shared/topics.ts';
+import type { NewMember, Recommendation, RecommendationAction, Topic } from '@shared/topics.ts';
 import type { SessionRow } from '@shared/types.ts';
-import { ArrowRight, Check, FolderInput, X } from 'lucide-react';
+import { ArrowRight, Check, FolderInput, RotateCcw, TriangleAlert, X } from 'lucide-react';
 import { useState } from 'react';
+import { Alert } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
 import { labelledButtonLook } from '@/components/ui/icon-button';
 import { SessionMarker } from '@/components/ui/session-marker';
 import { liveRow } from '@/lib/topics';
@@ -88,9 +90,13 @@ export function Recommendations({ recommendations, topics, sessions, showTopic, 
 
 /** The item's mark, as its row shows it: a Session's Harness and Status, a PR's icon, a Task's dot. */
 function ItemIcon({ rec, sessions }: { rec: Recommendation; sessions: ReadonlyMap<string, SessionRow> }) {
-  const m = rec.member;
+  return <MemberMark member={{ ...rec.member, key: rec.key }} sessions={sessions} />;
+}
+
+/** An item's mark by its kind (TOPIC-9.4, TOPIC-14.5). */
+export function MemberMark({ member: m, sessions }: { member: NewMember & { key: string }; sessions: ReadonlyMap<string, SessionRow> }) {
   if (m.kind === 'session') {
-    const row = liveRow({ ...m, key: rec.key, addedAt: 0, reason: '' }, sessions);
+    const row = liveRow({ ...m, addedAt: 0, reason: '' }, sessions);
     return (
       <>
         <HarnessIcon harness={m.ref.harness} />
@@ -100,4 +106,31 @@ function ItemIcon({ rec, sessions }: { rec: Recommendation; sessions: ReadonlyMa
   }
   if (m.kind === 'pr') return <PrIcon chip={null} />;
   return <TaskStatusDot color={null} milestone={false} />;
+}
+
+/**
+ * TOPIC-9.7: the items set aside after three failed Jev asks, with the latest reason and "Ask again",
+ * which puts them all back in the queue. Nothing while none are set aside.
+ */
+export function JevSetAside({ setAside, recommend, onProblem, className }: { setAside: { count: number; reason: string | null } | undefined; recommend(action: RecommendationAction): Promise<unknown>; onProblem(message: string | null): void; className?: string }) {
+  const [asking, setAsking] = useState(false);
+  if (!setAside?.count) return null;
+  const askAgain = () => {
+    setAsking(true);
+    onProblem(null);
+    recommend({ action: 'ask-again' })
+      .catch((err: unknown) => onProblem(err instanceof Error ? err.message : "Couldn't ask Jev again."))
+      .finally(() => setAsking(false));
+  };
+  const items = setAside.count === 1 ? '1 item' : `${setAside.count} items`;
+  return (
+    <Alert tone="info" icon={TriangleAlert} title={`${items} couldn't be judged by Jev: ${setAside.reason ?? 'no reason given'}`} className={className} data-field="jev-set-aside">
+      <div>
+        <Button variant="outline" size="xs" disabled={asking} onClick={askAgain}>
+          <RotateCcw aria-hidden />
+          Ask again
+        </Button>
+      </div>
+    </Alert>
+  );
 }

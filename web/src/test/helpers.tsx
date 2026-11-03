@@ -132,7 +132,7 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
   // TOPIC-11.6: the fake server's summary runs and their errors; `finishSummary` ends a run.
   let summarizingSet: string[] = [];
   let summaryErrorSet: Record<string, SummaryError> = {};
-  const topicsView = (): TopicsView => ({ state: 'ok', reason: null, path: '/Users/me/.lookout/topics.db', topics: sortTopics(topicSet), edges: edgeSet, pruned: [], libraryReadAt: null, recommendations: pendingSet, jevAsksToday: 0, summarizing: summarizingSet, summaryErrors: summaryErrorSet });
+  const topicsView = (): TopicsView => ({ state: 'ok', reason: null, path: '/Users/me/.lookout/topics.db', topics: sortTopics(topicSet), edges: edgeSet, pruned: [], libraryReadAt: null, jevSetAside: { count: 0, reason: null }, recommendations: pendingSet, jevAsksToday: 0, summarizing: summarizingSet, summaryErrors: summaryErrorSet });
   const changeTopics = (next: Topic[]) => {
     topicSet = next;
     act(() => listener?.onEvent({ type: 'topics', topics: topicsView() }));
@@ -222,7 +222,7 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
       return { added: true, title: t.title };
     }),
     recommend: vi.fn(async (a: RecommendationAction) => {
-      if (a.action === 'judge-again') return { topicId: null };
+      if (a.action === 'judge-again' || a.action === 'ask-again') return { topicId: null };
       const r = pendingSet.find((x) => x.key === a.key && x.topicId === a.topicId);
       if (!r) throw new SaveError('That recommendation is no longer pending.', null, 404);
       pendingSet = pendingSet.filter((x) => x !== r);
@@ -278,6 +278,12 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
       summaryErrorSet = { ...summaryErrorSet, [id]: { reason: 'Cancelled. The summary before it is kept.', fix: null } };
       changeTopics(topicSet);
     }),
+    // TOPIC-14: what a run would look at; how a run goes comes with the topics events a test emits.
+    suggestPreview: vi.fn(async () => ({ sessions: 4, prs: 1, tasks: 0 })),
+    suggest: vi.fn(async () => {}),
+    cancelSuggest: vi.fn(async () => {}),
+    acceptProposal: vi.fn(async () => ({ topicId: '00000000-0000-4000-8000-000000000099' })),
+    dismissProposal: vi.fn(async () => {}),
     topicActivity: vi.fn(async (id: string, before: number | null) => (options.activity?.[id] ?? []).filter((e) => before === null || e.id < before).slice(0, 50)),
     earlierSummaries: vi.fn(async (id: string) => options.earlierSummaries?.[id] ?? []),
     // TOPIC-13.1: seen only moves forward.

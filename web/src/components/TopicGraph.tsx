@@ -1,6 +1,6 @@
 import { MAX_EDGE_LABEL, MAX_TOPIC_TITLE, type Topic, type TopicEdge, type TopicMember, type TopicPosition, type TopicsView, sortTopics } from '@shared/topics.ts';
 import type { SessionRow } from '@shared/types.ts';
-import { ArrowRight, LayoutGrid, Pencil, Plus } from 'lucide-react';
+import { ArrowRight, LayoutGrid, Pencil, Plus, Sparkles } from 'lucide-react';
 import { type FormEvent, type KeyboardEvent, type PointerEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -37,6 +37,8 @@ export interface TopicGraphProps {
   onOpenSession(member: SessionMember, live: boolean): Promise<void>;
   /** TOPIC-10.1: a double-click on a node, or Enter on an expanded one: its Topic's view. */
   onOpen(id: string): void;
+  /** TOPIC-14.1: "Suggest Topics": the Suggest view. */
+  onSuggest?(): void;
   keyboardEnabled: boolean;
 }
 
@@ -112,6 +114,12 @@ export function TopicGraph(props: TopicGraphProps) {
               <Plus />
               New Topic
             </Button>
+            {props.onSuggest && (
+              <Button variant="outline" size="sm" className="h-7" disabled={view?.state !== 'ok'} onClick={props.onSuggest} data-action="suggest-topics">
+                <Sparkles />
+                Suggest Topics
+              </Button>
+            )}
           </div>
         </>
       }

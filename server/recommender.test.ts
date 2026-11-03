@@ -2,11 +2,11 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { type NewMember, NO_ACTIVITY, type TopicsView } from '../shared/topics.ts';
+import { type NewMember, NO_ACTIVITY, type Topic, type TopicsView } from '../shared/topics.ts';
 import type { SessionRow } from '../shared/types.ts';
 import type { WorkPr, WorkSessionLink, WorkSnapshot, WorkTask } from '../shared/work.ts';
 import type { RunError, Runner } from './exec.ts';
-import { JEV_SETTLE_MS, Recommender, linkTies } from './recommender.ts';
+import { JEV_MAX_BYTES, JEV_RETRY_MS, JEV_SETTLE_MS, Recommender, jevAsk, linkTies } from './recommender.ts';
 import { SCHEMA_VERSION, TopicStore, Topics, TopicsError, parseRecommendationAction, schemaSql } from './topics.ts';
 
 /** Synthetic Sessions, PRs and Tasks only: invented titles, repos and ids. */
@@ -198,7 +198,7 @@ describe('TOPIC-9.2 Links first', () => {
 });
 
 describe('TOPIC-9.3 Jev second', () => {
-  it('TOPIC-9.3: one ask with the Open Topics as choices plus new and none, and the item’s text and each Topic as state; a pick at 0.6 or above is a recommendation, "Jev, 82%"', async () => {
+  it('TOPIC-9.3: one ask with the shortlisted Open Topics as choices plus none, and the item’s text as state; a pick at 0.6 or above is a recommendation, "Jev, 82%"', async () => {
     const { topics } = setup();
     const t = topics.create('Harbor lanterns');
     topics.update(t.id, { notes: 'Service every lantern on the pier' });
@@ -211,19 +211,18 @@ describe('TOPIC-9.3 Jev second', () => {
     expect(jev.calls).toHaveLength(1);
     const { args, stdin } = jev.calls[0]!;
     expect(args).toEqual(['ask', '--questions', 'topics@1', '--questions-dir', expect.any(String), '--state', '-', '--timeout-ms', '3000', '--caller', 'lookout-topics', '--subject', `session:${sid(1)}`, '--on-error', 'closed', '--format', 'json']);
-    expect(JSON.parse(stdin!)).toEqual({
-      item: { kind: 'session', title: 'replace wicks', text: 'Replace the lantern wicks before tonight' },
-      // Most recently changed first, as the tab lists them.
-      topics: [expect.objectContaining({ title: 'Anvil work', members: [] }), expect.objectContaining({ title: 'Harbor lanterns', notes: 'Service every lantern on the pier', members: ['Light the harbor lanterns'] })],
-    });
+    // The Topics are in the choices only, described once.
+    expect(JSON.parse(stdin!)).toEqual({ item: { kind: 'session', title: 'replace wicks', text: 'Replace the lantern wicks before tonight' } });
     const set = JSON.parse(readFileSync(join(args[4]!, 'topics@1.json'), 'utf8'));
-    expect(Object.keys(set.questions.topic.criteria)).toEqual([expect.any(String), expect.any(String), 'new', 'none']);
+    // The Topic sharing the item's words first, though the other changed later.
+    expect(Object.keys(set.questions.topic.criteria)).toEqual([t.id, expect.any(String), 'none']);
+    expect(Object.values(set.questions.topic.criteria)[1]).toBe('Anvil work');
     expect(set.questions.topic.criteria[t.id]).toBe('Harbor lanterns: Service every lantern on the pier; members: Light the harbor lanterns');
     expect(topics.view().recommendations).toEqual([expect.objectContaining({ topicId: t.id, source: 'jev', confidence: 0.82, reason: 'Jev, 82%' })]);
     expect(topics.view().jevAsksToday).toBe(1);
   });
 
-  it('TOPIC-9.7, TOPIC-9.3: "new" proposes a Topic titled after the item; below 0.6, "none", a timeout or unreadable output leaves nothing and the item judged, a failure one redacted log line', async () => {
+  it('TOPIC-9.7, TOPIC-9.3: Jev never proposes a new Topic; "new", below 0.6 or "none" leaves nothing and the item judged; a timeout or unreadable output is one redacted log line and no judgment', async () => {
     const { topics } = setup();
     topics.create('Harbor lanterns');
     const timeout = Object.assign(new Error('timeout'), { timedOut: true, code: null }) as RunError;
@@ -232,12 +231,109 @@ describe('TOPIC-9.3 Jev second', () => {
     r.observeSessions([1, 2, 3, 4, 5].map((n) => row(n, { title: `item ${n}` })));
     await settled(r);
     expect(jev.calls).toHaveLength(5);
-    expect(topics.view().recommendations).toEqual([expect.objectContaining({ topicId: null, newTitle: 'item 1', reason: 'Jev, 71%' })]);
+    // "new" isn't a choice since slice 8: an answer Lookout didn't offer leaves nothing.
+    expect(topics.view().recommendations).toEqual([]);
     // TOPIC-9.7: one redacted line per failure; the switch stays as it was.
     expect(log.mock.calls.map(([l]) => l)).toEqual(['lookout: tb-jev: ask for a session failed: took too long', "lookout: tb-jev: ask for a session failed: printed something Lookout doesn't understand"]);
     r.observeSessions([1, 2, 3, 4, 5].map((n) => row(n)));
     await settled(r);
     expect(jev.calls).toHaveLength(5);
+    // TOPIC-9.7: the two that failed wait for their retry; the three Jev answered are judged.
+    expect(topics.waitingForJev().map((c) => [key(c.member), c.failures, c.retryAt !== null])).toEqual([
+      [key(SESSION(4)), 1, true],
+      [key(SESSION(5)), 1, true],
+    ]);
+  });
+
+  it('TOPIC-9.3: with many Open Topics the ask offers at most 12, the ones sharing the item’s words first, then the most recently changed; each by its title, its notes’ first line and its 8 newest members', async () => {
+    let clock = 1;
+    const { topics } = setup({ now: () => clock++ });
+    const harbor = topics.create('Harbor lanterns');
+    topics.update(harbor.id, { notes: 'Service every lantern on the pier\nSecond line, not sent' });
+    for (let m = 1; m <= 10; m++) topics.addMember(harbor.id, TASK(`9${m}`, `Wick batch ${m}`));
+    for (let n = 1; n <= 40; n++) {
+      const t = topics.create(`Anvil job ${n}`);
+      for (let m = 1; m <= 10; m++) topics.addMember(t.id, TASK(`${n}0${m}`, `Hammer step ${n}.${m}`));
+    }
+    const jev = fakeJev([picked('none', 0.9)]);
+    const { r } = recommender(topics, jev.runner, { now: () => Date.now() + JEV_SETTLE_MS });
+    r.observeSessions([row(1, { title: 'replace wicks' })]);
+    await settled(r);
+    const { args, stdin } = jev.calls[0]!;
+    const set = JSON.parse(readFileSync(join(args[4]!, 'topics@1.json'), 'utf8'));
+    const criteria = set.questions.topic.criteria as Record<string, string>;
+    expect(Object.keys(criteria)).toHaveLength(13);
+    // Made first and unchanged since, so only its words put it on the list, and first.
+    expect(Object.keys(criteria)[0]).toBe(harbor.id);
+    expect(criteria[harbor.id]).toBe('Harbor lanterns: Service every lantern on the pier; members: ' + [10, 9, 8, 7, 6, 5, 4, 3].map((m) => `Wick batch ${m}`).join(', '));
+    // The rest are the most recently changed Anvil jobs, 40 down to 30.
+    expect(Object.values(criteria).slice(1, 12).map((c) => c.split(';')[0])).toEqual(Array.from({ length: 11 }, (_, i) => `Anvil job ${40 - i}`));
+    expect(Buffer.byteLength(stdin!) + Buffer.byteLength(JSON.stringify(set))).toBeLessThanOrEqual(JEV_MAX_BYTES);
+  });
+
+  it('TOPIC-9.3: an ask past tb-jev’s size limit goes with 3 members a Topic, then 6 Topics, and one that still doesn’t fit is a failed ask', () => {
+    const wide = (n: number, size: number): Topic =>
+      ({
+        id: `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`,
+        title: '漢'.repeat(size),
+        notes: '漢'.repeat(200),
+        state: 'open',
+        updatedAt: n,
+        members: Array.from({ length: 8 }, (_, m) => ({ ...TASK(`${n}${m}`, '漢'.repeat(100)), key: `task:${n}${m}`, addedAt: m, reason: 'added by hand' })),
+      }) as unknown as Topic;
+    const size = (a: NonNullable<ReturnType<typeof jevAsk>>) => Buffer.byteLength(JSON.stringify(a.state)) + Buffer.byteLength(JSON.stringify(a.questions));
+    const members = (a: NonNullable<ReturnType<typeof jevAsk>>) => Object.values(a.questions.questions.topic.criteria)[0]!.split(', ').length;
+    // 12 Topics with 8 members each is past the limit; with 3 members each it fits.
+    const three = jevAsk(SESSION(1), 'text', Array.from({ length: 12 }, (_, i) => wide(i + 1, 120)))!;
+    expect([three.topics.length, members(three)]).toEqual([12, 3]);
+    expect(size(three)).toBeLessThanOrEqual(JEV_MAX_BYTES);
+    // Titles longer than a Topic can have: only 6 Topics fit.
+    const six = jevAsk(SESSION(1), 'text', Array.from({ length: 12 }, (_, i) => wide(i + 1, 900)))!;
+    expect([six.topics.length, members(six)]).toEqual([6, 3]);
+    expect(jevAsk(SESSION(1), 'text', Array.from({ length: 12 }, (_, i) => wide(i + 1, 4_000)))).toBeNull();
+  });
+
+  it('TOPIC-9.7: a failed ask is asked again an hour later, then six hours after that; the third failure sets it aside with its reason until "Ask again"', async () => {
+    const { topics } = setup();
+    const t = topics.create('Harbor lanterns');
+    const boom = (why: string) => Object.assign(new Error('exit 1'), { code: 1, stderr: why }) as RunError;
+    const jev = fakeJev([boom('first'), boom('second'), boom('question too long'), picked(t.id, 0.9)]);
+    // Well past settling: the store dates the candidate by the real clock, a moment after this.
+    let now = Date.now() + JEV_SETTLE_MS + 60_000;
+    let on = true;
+    const { r, log } = recommender(topics, jev.runner, { now: () => now, enabled: () => on });
+    r.observeSessions([row(1)]);
+    await settled(r);
+    expect(jev.calls).toHaveLength(1);
+    // Not a judgment: it waits, and nothing asks it before its hour; the ask still ran today (TOPIC-9.3).
+    expect(topics.waitingForJev().map((c) => c.failures)).toEqual([1]);
+    expect(topics.view().jevAsksToday).toBe(1);
+    now += JEV_RETRY_MS[0]! - 1_000;
+    r.kick();
+    await settled(r);
+    expect(jev.calls).toHaveLength(1);
+    now += 1_000;
+    r.kick();
+    await settled(r);
+    expect(jev.calls).toHaveLength(2);
+    now += JEV_RETRY_MS[1]!;
+    r.kick();
+    await settled(r);
+    expect(jev.calls).toHaveLength(3);
+    expect(topics.waitingForJev()).toEqual([]);
+    expect(topics.view().jevSetAside).toEqual({ count: 1, reason: 'question too long' });
+    expect(log.mock.calls.map(([l]) => l)).toEqual(['first', 'second', 'question too long'].map((w) => `lookout: tb-jev: ask for a session failed: ${w}`));
+    // "Ask again" is refused while the switch is off, and asks at once when it's on.
+    on = false;
+    expect(() => r.askAgain()).toThrow(TopicsError);
+    on = true;
+    expect(parseRecommendationAction({ action: 'ask-again' })).toEqual({ action: 'ask-again' });
+    r.askAgain();
+    expect(topics.view().jevAsksToday).toBe(1);
+    await settled(r);
+    expect(jev.calls).toHaveLength(4);
+    expect(topics.view().jevSetAside).toEqual({ count: 0, reason: null });
+    expect(topics.view().recommendations).toEqual([expect.objectContaining({ key: key(SESSION(1)), topicId: t.id, source: 'jev' })]);
   });
 
   it('TOPIC-9.3: only candidates first seen while the switch is on are asked; never while it is off, Jev isn’t ready, or no Topic is Open; at most 30 an hour, one at a time', async () => {

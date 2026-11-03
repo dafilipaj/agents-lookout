@@ -435,7 +435,7 @@ describe('a view that throws stays in the main pane (DS-4.5)', () => {
     app.snapshot([row({ id: 'a' })]);
     expect(screen.getByTestId('topic-graph')).toBeInTheDocument();
     // A server from before Edges sends a view without them, which the graph can't draw.
-    const view = { state: 'ok' as const, reason: null, path: '/Users/me/.lookout/topics.db', topics: [topic], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 0, summarizing: [], summaryErrors: {} };
+    const view = { state: 'ok' as const, reason: null, path: '/Users/me/.lookout/topics.db', topics: [topic], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 0, jevSetAside: { count: 0, reason: null }, summarizing: [], summaryErrors: {} };
     app.emit({ type: 'topics', topics: view as never });
     const alert = screen.getByRole('alert');
     expect(alert).toHaveTextContent("This view couldn't be drawn");

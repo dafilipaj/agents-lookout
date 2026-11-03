@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { ActivityEntry, NewMember } from '../shared/topics.ts';
+import { type ActivityEntry, type NewMember, activityWords } from '../shared/topics.ts';
 import type { SessionRow } from '../shared/types.ts';
 import type { WorkPr, WorkSnapshot, WorkTask } from '../shared/work.ts';
 import { type PrObserved, observePr, observeSession, observeTask, prSightings, taskSightings } from './topic-activity.ts';
@@ -50,6 +50,28 @@ describe('TOPIC-12.2 what counts as a change', () => {
     s = observeSession(s.next, false);
     expect(s.changes).toEqual([]);
     expect(observeSession(s.next, true).changes).toEqual([{ kind: 'live' }]);
+  });
+
+  it('TOPIC-12.1, TOPIC-12.2: a Session marked Done is recorded once per mark, with its note on one line; Done at the first sighting, or while it’s missing from the list, records nothing', () => {
+    const done = (at: number, note: string | null = 'Fixed the wicks') => ({ at, note });
+    // Done when first seen: what it sees, not a change.
+    let s = observeSession(null, true, done(1));
+    expect(s.changes).toEqual([]);
+    s = observeSession(s.next, true, done(1));
+    expect(s.changes).toEqual([]);
+    // Prompted again (the mark clears), then Done again: a second entry.
+    s = observeSession(s.next, true, null);
+    expect(s.changes).toEqual([]);
+    s = observeSession(s.next, true, done(2, '  Ported the\nrates   table '));
+    expect(s.changes).toEqual([{ kind: 'done', data: { note: 'Ported the rates table' } }]);
+    // Missing from one list says nothing about Done; back with the same mark, nothing new.
+    s = observeSession(s.next, false);
+    s = observeSession(s.next, true, done(2));
+    expect(s.changes).toEqual([]);
+    expect(observeSession(s.next, true, done(3, null)).changes).toEqual([{ kind: 'done', data: { note: null } }]);
+    expect(observeSession(s.next, true, done(3, 'x'.repeat(400))).changes[0]!.data!.note).toHaveLength(300);
+    // A member observed before Done was: its first look at Done records nothing.
+    expect(observeSession({ live: true, missed: 0 }, true, done(4)).changes).toEqual([]);
   });
 
   it('TOPIC-12.2: CI failing is recorded once until a passing follows it; unknown, none and running say nothing; failing at the first sighting is never recorded, nor the passing after it', () => {
@@ -150,6 +172,11 @@ describe('TOPIC-12.1 recording', () => {
     expect(words(topics.activity(b, null).filter((e) => e.by === 'lookout')).map((w) => w[0])).toEqual(['ended', 'ci-failing']);
     // TOPIC-3.8: the row's latest activity by Lookout.
     expect(topics.view().topics.find((t) => t.id === a)!.lastActivity).toMatchObject({ kind: 'ended', data: { name: 'session 1' } });
+    // TOPIC-12.1: live again, then marked Done: the note is the entry, and the row's last line.
+    topics.observeSessions([row(1, 'fix the lanterns')]);
+    topics.observeSessions([{ ...row(1, 'fix the lanterns'), done: { at: 5, note: 'Fixed the wicks' } } as SessionRow]);
+    const last = topics.view().topics.find((t) => t.id === a)!.lastActivity!;
+    expect([last.kind, activityWords(last)]).toEqual(['done', 'fix the lanterns done: Fixed the wicks']);
   });
 
   it('TOPIC-12.2: nothing is recorded, or made on disk, before the store exists', () => {

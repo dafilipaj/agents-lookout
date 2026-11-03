@@ -71,7 +71,7 @@ describe('TOPIC-8 storage', () => {
     store.close();
     const db = new (sqlite().DatabaseSync)(path);
     const tables = (db.prepare("select name from sqlite_master where type = 'table' order by name").all() as { name: string }[]).map((t) => t.name);
-    expect(tables).toEqual(['candidates', 'edges', 'events', 'members', 'recommendations', 'schema_version', 'sqlite_sequence', 'summaries', 'topics']);
+    expect(tables).toEqual(['candidates', 'edges', 'events', 'members', 'recommendations', 'schema_version', 'sqlite_sequence', 'suggest_dismissed', 'suggestions', 'summaries', 'topics']);
     const columns = (t: string) => (db.prepare(`pragma table_info(${t})`).all() as { name: string }[]).map((c) => c.name);
     expect(columns('topics')).toEqual(['id', 'title', 'notes', 'state', 'created_at', 'updated_at', 'pos_x', 'pos_y', 'outcome', 'closing', 'superseded_by', 'seen_upto']);
     expect(columns('members')).toEqual(['topic_id', 'kind', 'ref', 'snapshot', 'added_at', 'reason', 'observed']);

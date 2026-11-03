@@ -2,7 +2,7 @@ import type { LibraryPage, LibraryQuery } from '@shared/library.ts';
 import type { PathAnswer } from '@shared/files.ts';
 import type { Settings, SettingsView } from '@shared/settings.ts';
 import type { ToolsSnapshot } from '@shared/tools.ts';
-import type { ActivityEntry, NewMember, RecommendationAction, Topic, TopicOutcome, TopicPosition, TopicState, TopicSummary } from '@shared/topics.ts';
+import type { ActivityEntry, NewMember, ProposalAccept, RecommendationAction, SuggestPreview, Topic, TopicOutcome, TopicPosition, TopicState, TopicSummary } from '@shared/topics.ts';
 import type { WorkRefreshResult } from '@shared/work.ts';
 import { HELD_REASONS, type AnswerRequest, type AnswerResult, type ChatPage, type EffortSwitchRequest, type EffortSwitchResult, type EndResult, type EndTarget, type Harness, type HarnessOption, type HeldReason, type HistoryDetail, type HistoryPage, type HistoryPeek, type LaunchRequest, type LaunchView, type TrustRequest, type ModelSwitchRequest, type ModelSwitchResult, type RenameResult, type ResumeResult, type ServerEvent } from '@shared/types.ts';
 
@@ -103,6 +103,13 @@ export interface LookoutClient {
   summarize(topicId: string): Promise<void>;
   /** TOPIC-11.6: Cancel. */
   cancelSummary(topicId: string): Promise<void>;
+  /** TOPIC-14.2: what a Suggest run would look at; start one, or cancel it. */
+  suggestPreview(): Promise<SuggestPreview>;
+  suggest(): Promise<void>;
+  cancelSuggest(): Promise<void>;
+  /** TOPIC-14.5, TOPIC-14.6: Accept a proposal, with what was edited and ticked, or Dismiss it. */
+  acceptProposal(id: string, accept: ProposalAccept): Promise<{ topicId: string }>;
+  dismissProposal(id: string): Promise<void>;
   /** TOPIC-12.3: a Topic's activity, newest first, a page at a time before an entry id. */
   topicActivity(topicId: string, before: number | null): Promise<ActivityEntry[]>;
   /** TOPIC-11.10: a Topic's earlier summaries, newest first. */
@@ -475,7 +482,7 @@ export function createHttpClient(): LookoutClient {
       await call(() => send('DELETE', `/api/topics/${encodeURIComponent(id)}`), 'Deleting the Topic');
     },
     addMember: (topicId, member) => call<{ added: boolean; title: string }>(() => send('POST', `/api/topics/${encodeURIComponent(topicId)}/members`, member), 'Adding to the Topic'),
-    recommend: (action) => call<{ topicId: string | null }>(() => send('POST', '/api/topics/recommendations', action), action.action === 'judge-again' ? 'Asking Jev' : 'Saving that'),
+    recommend: (action) => call<{ topicId: string | null }>(() => send('POST', '/api/topics/recommendations', action), action.action === 'judge-again' || action.action === 'ask-again' ? 'Asking Jev' : 'Saving that'),
     removeMember: async (topicId, member) => {
       await call(() => send('DELETE', `/api/topics/${encodeURIComponent(topicId)}/members`, { kind: member.kind, ref: member.ref }), 'Removing from the Topic');
     },
@@ -502,6 +509,17 @@ export function createHttpClient(): LookoutClient {
     },
     cancelSummary: async (topicId) => {
       await call(() => send('DELETE', `/api/topics/${encodeURIComponent(topicId)}/summary`), 'Cancelling the summary');
+    },
+    suggestPreview: () => call<SuggestPreview>(() => fetch('/api/topics/suggest'), 'Reading what’s in no Topic'),
+    suggest: async () => {
+      await call(() => send('POST', '/api/topics/suggest'), 'Starting Suggest Topics');
+    },
+    cancelSuggest: async () => {
+      await call(() => send('DELETE', '/api/topics/suggest'), 'Cancelling Suggest Topics');
+    },
+    acceptProposal: (id, accept) => call<{ topicId: string }>(() => send('POST', `/api/topics/suggest/${encodeURIComponent(id)}`, { action: 'accept', ...accept }), 'Accepting the proposal'),
+    dismissProposal: async (id) => {
+      await call(() => send('POST', `/api/topics/suggest/${encodeURIComponent(id)}`, { action: 'dismiss' }), 'Dismissing the proposal');
     },
     sendMessage: async (sessionId, text) => {
       await call(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/send`, { text }), 'Sending');

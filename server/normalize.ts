@@ -1,5 +1,6 @@
 import type { Backend, GitLocation, Harness, LocationShown, SessionRow, Status, SubagentItem } from '../shared/types.ts';
 import type { FleetListResult, FleetRow } from './fleet.ts';
+import { MAX_DONE_NOTE } from '../shared/topics.ts';
 
 const HARNESSES: readonly string[] = ['claude', 'codex'] satisfies Harness[];
 
@@ -138,13 +139,13 @@ const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
  * SIDE-2.11: Fleet's `activity` collapsed to one line (whitespace runs become one space) and cut to
  * 120 characters, the last an ellipsis; null when it's missing (an older Fleet), null, not a string or empty.
  */
-export function activity(value: unknown): string | null {
+export function activity(value: unknown, max = MAX_ACTIVITY): string | null {
   if (typeof value !== 'string') return null;
   const text = value.replace(BIDI, '').replace(/\s+/g, ' ').trim();
   if (!text) return null;
   // By grapheme, so a cut never splits an emoji or a letter from its accent.
   const chars = Array.from(graphemes.segment(text), (s) => s.segment);
-  return chars.length <= MAX_ACTIVITY ? text : `${chars.slice(0, MAX_ACTIVITY - 1).join('').trimEnd()}…`;
+  return chars.length <= max ? text : `${chars.slice(0, max - 1).join('').trimEnd()}…`;
 }
 
 /** SIDE-2.17: Fleet's `done`, its time a number, its note one line like `activity`; null when it isn't Done. */
@@ -152,7 +153,8 @@ export function done(value: unknown): SessionRow['done'] {
   if (typeof value !== 'object' || value === null) return null;
   const { at, note } = value as { at?: unknown; note?: unknown };
   if (typeof at !== 'number' || !Number.isFinite(at)) return null;
-  return { at, note: activity(note) };
+  // TOPIC-12.1: kept to 300 characters, as a Topic's activity keeps it; the row cuts it to its line.
+  return { at, note: activity(note, MAX_DONE_NOTE) };
 }
 
 export interface NormalizeDeps {

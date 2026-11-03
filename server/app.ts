@@ -27,8 +27,8 @@ import type { SessionMonitor } from './monitor.ts';
 import { type GuardConfig, guardRequest } from './security.ts';
 import type { SettingsStore } from './settings.ts';
 import { serveStatic } from './static.ts';
-import { type Topics, TopicsError, parseEdgeEdit, parseLink, parseMember, parseMemberRef, parsePatch, parsePositions, parseRecommendationAction, parseTitle, parseUnlink } from './topics.ts';
-import type { ActivityEntry, RecommendationAction, TopicSummary } from '../shared/topics.ts';
+import { type Topics, TopicsError, parseEdgeEdit, parseLink, parseMember, parseMemberRef, parsePatch, parsePositions, parseProposalAction, parseRecommendationAction, parseTitle, parseUnlink } from './topics.ts';
+import type { ActivityEntry, ProposalAccept, RecommendationAction, SuggestPreview, TopicSummary } from '../shared/topics.ts';
 import { MAX_MESSAGE, ViewError } from './viewer.ts';
 import type { RefreshAnswer } from './work.ts';
 
@@ -129,6 +129,12 @@ export interface AppOptions {
     activity?(id: string, before: number | null): ActivityEntry[];
     earlierSummaries?(id: string): TopicSummary[];
     seenUpTo?(id: string, upto: number): void;
+    /** TOPIC-14: Suggest Topics: what a run would look at, start or cancel it, and accept or dismiss a proposal. */
+    suggestPreview?(): Promise<SuggestPreview>;
+    suggest?(): void;
+    cancelSuggest?(): void;
+    acceptProposal?(id: string, accept: ProposalAccept): { topicId: string };
+    dismissProposal?(id: string): void;
   };
   /** Directory of the built UI; null in `pnpm dev`, where Vite serves it. */
   staticDir: string | null;
@@ -648,6 +654,45 @@ export function createApp(opts: AppOptions): LookoutApp {
   return { server, broadcast, sendTo };
 }
 
+/** TOPIC-14: Suggest Topics' routes. A run goes on after the answer; every tab hears it through `topics`. */
+async function suggestCall(req: IncomingMessage, res: ServerResponse, path: string, topics: NonNullable<AppOptions['topics']>): Promise<void> {
+  try {
+    if (path === '/api/topics/suggest') {
+      if (req.method === 'GET') {
+        if (!topics.suggestPreview) return json(res, 404, { error: 'not found' });
+        return json(res, 200, await topics.suggestPreview());
+      }
+      if (req.method === 'POST') {
+        if (!topics.suggest) return json(res, 404, { error: 'not found' });
+        topics.suggest();
+        return json(res, 202, { ok: true });
+      }
+      if (req.method === 'DELETE') {
+        topics.cancelSuggest?.();
+        return json(res, 200, { ok: true });
+      }
+      return json(res, 405, { error: 'method not allowed' });
+    }
+    const id = decodeURIComponent(path.slice('/api/topics/suggest/'.length));
+    if (!/^\d{1,12}:\d{1,3}$/.test(id)) return json(res, 404, { error: 'not found' });
+    if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed' });
+    const b = await readJson(req, res, MAX_TOPIC_BODY, null);
+    if (b === NO_BODY) return;
+    const action = parseProposalAction(b);
+    if (action.action === 'dismiss') {
+      if (!topics.dismissProposal) return json(res, 404, { error: 'not found' });
+      topics.dismissProposal(id);
+      return json(res, 200, { ok: true });
+    }
+    if (!topics.acceptProposal) return json(res, 404, { error: 'not found' });
+    return json(res, 200, topics.acceptProposal(id, action.accept));
+  } catch (err) {
+    if (err instanceof TopicsError) return json(res, err.status, { error: err.message });
+    if (err instanceof HistoryError) return json(res, err.status, { error: err.message });
+    throw err;
+  }
+}
+
 /**
  * TOPIC: `GET /api/topics`; `POST /api/topics`; `PUT` and `DELETE /api/topics/<id>`; `POST` and
  * `DELETE /api/topics/<id>/members`; `POST`, `PUT` and `DELETE /api/topics/<id>/edges` (TOPIC-6);
@@ -657,6 +702,8 @@ export function createApp(opts: AppOptions): LookoutApp {
  * plain reason (TOPIC-8.4).
  */
 async function topicsCall(req: IncomingMessage, res: ServerResponse, path: string, topics: NonNullable<AppOptions['topics']>): Promise<void> {
+  // TOPIC-14: `GET`, `POST` and `DELETE /api/topics/suggest`, and `POST /api/topics/suggest/<proposal id>`.
+  if (path === '/api/topics/suggest' || path.startsWith('/api/topics/suggest/')) return suggestCall(req, res, path, topics);
   if (path === '/api/topics/recommendations') {
     if (req.method !== 'POST' || !topics.recommend) return json(res, req.method === 'POST' ? 404 : 405, { error: req.method === 'POST' ? 'not found' : 'method not allowed' });
     const b = await readJson(req, res, MAX_TOPIC_BODY, null);

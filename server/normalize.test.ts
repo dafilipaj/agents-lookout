@@ -227,7 +227,7 @@ describe('fleet list → sidebar rows', () => {
     expect(normalizeRows([{ ...base, model_at: 42 }] as never, deps)[0]!.modelAt).toBeNull();
   });
 
-  it('SIDE-2.17: Fleet\'s `done` reaches the row with its time and a one-line note; anything else is not Done', () => {
+  it('SIDE-2.17, TOPIC-12.1: Fleet\'s `done` reaches the row with its time and a one-line note of up to 300 characters; anything else is not Done', () => {
     const base = { session_id: 'eeeeeeee-0000-4000-8000-000000000005', pid: 1, harness: 'claude', backend: 'tmux', status: 'idle', display_title: 'x' };
     const one = (d: unknown) => normalizeRows([{ ...base, done: d }] as never, deps)[0]!.done;
     expect(one({ at: 1_790_000_000_000, note: '  Opened the PR,\n  CI green ' })).toEqual({ at: 1_790_000_000_000, note: 'Opened the PR, CI green' });
@@ -235,7 +235,9 @@ describe('fleet list → sidebar rows', () => {
     expect(one({ at: 1_790_000_000_000 })).toEqual({ at: 1_790_000_000_000, note: null });
     for (const none of [undefined, null, {}, { at: '1790' }, { at: Number.NaN }, 'done', true]) expect(one(none)).toBeNull();
     expect(normalizeRows([base] as never, deps)[0]!.done).toBeNull(); // a Fleet without `done`
-    expect(done({ at: 5, note: 'x'.repeat(300) })!.note!.length).toBe(120);
+    // TOPIC-12.1: up to 300 characters, as a Topic's activity keeps it; the row cuts it to its line.
+    expect(done({ at: 5, note: 'x'.repeat(300) })!.note!.length).toBe(300);
+    expect(done({ at: 5, note: 'x'.repeat(400) })!.note!.length).toBe(300);
   });
 
   it('VIEW-5.11: an effort is kept only as a short word; anything else is null', () => {

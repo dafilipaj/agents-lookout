@@ -13,15 +13,20 @@ import {
   MAX_EDGE_LABEL,
   MAX_TOPIC_NOTES,
   MAX_TOPIC_OUTPUTS,
+  MAX_SUGGEST_NOTE,
   MAX_TOPIC_TITLE,
   MEMBER_KINDS,
   type MemberKind,
   type NewMember,
+  type Proposal,
+  type ProposalAccept,
   type Recommendation,
   type RecommendationAction,
   type RecommendationSource,
   type SummaryAnswer,
   type SummaryError,
+  type SuggestPreview,
+  type SuggestState,
   acceptedReason,
   type Topic,
   type TopicEdge,
@@ -53,7 +58,10 @@ import { type Change, type Observed, type PrObserved, type SessionObserved, type
  */
 
 /** TOPIC-8.1: the schema this server writes and reads; a newer one is refused, never overwritten. */
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 7;
+const NO_SET_ASIDE = { count: 0, reason: null } as const;
+/** TOPIC-14.5: the reason a member accepted from a Suggest proposal has. */
+export const SUGGESTED_REASON = 'from Suggest Topics';
 
 /** TOPIC-2.3: snapshots are bounded on write. */
 const MAX_SNAPSHOT_TITLE = 300;
@@ -102,12 +110,22 @@ alter table summaries_4 rename to summaries;
 /**
  * TOPIC-8.1: each step takes the schema one version up, inside the migration's transaction. Version 2:
  * a candidate keeps what Lookout knew of it when first seen, for the "Recommended" row (TOPIC-9.4).
- * Version 3: a Topic's summary (TOPIC-11.5). Version 4: slice 7.
+ * Version 3: a Topic's summary (TOPIC-11.5). Version 4: slice 7. Version 5: a failed Jev ask is
+ * retried, then set aside with its reason (TOPIC-9.7). Version 6: Suggest runs and the items dismissed
+ * from them (TOPIC-14). Version 7: when a candidate was last asked, failed or not (TOPIC-9.3's "ran today").
  */
 const MIGRATIONS: Record<number, string> = {
   2: "alter table candidates add column snapshot text not null default '{}';",
   3: SUMMARIES,
   4: SCHEMA_4,
+  5: `alter table candidates add column failures integer not null default 0;
+alter table candidates add column retry_at integer;
+alter table candidates add column failed_reason text;`,
+  6: `create table suggestions (id integer primary key autoincrement, written_at integer not null,
+  model text not null, cost_usd real, proposals text not null);
+create table suggest_dismissed (kind text not null, ref text not null, dismissed_at integer not null,
+  primary key (kind, ref));`,
+  7: 'alter table candidates add column asked_at integer;',
 };
 
 /** TOPIC-8.2: schema 1; later versions are its migrations (`schemaSql`). */
@@ -267,7 +285,8 @@ const TOPIC_ID = /^[0-9a-f-]{36}$/;
 export function parseRecommendationAction(body: unknown): RecommendationAction {
   const b = object(body);
   if (b.action === 'judge-again') return { action: 'judge-again', member: parseMember(b.member) };
-  if (b.action !== 'accept' && b.action !== 'dismiss' && b.action !== 'move') throw new TopicsError(400, 'Accept, Dismiss, Other Topic or Judge again.');
+  if (b.action === 'ask-again') return { action: 'ask-again' };
+  if (b.action !== 'accept' && b.action !== 'dismiss' && b.action !== 'move') throw new TopicsError(400, 'Accept, Dismiss, Other Topic, Judge again or Ask again.');
   const key = parseKey(b.key);
   const topicId = b.topicId === null ? null : typeof b.topicId === 'string' && TOPIC_ID.test(b.topicId) ? b.topicId : undefined;
   if (topicId === undefined) throw new TopicsError(400, 'Which recommendation?');
@@ -275,6 +294,24 @@ export function parseRecommendationAction(body: unknown): RecommendationAction {
   if (b.action !== 'move') return { action: b.action, key: k, topicId };
   if (typeof b.to !== 'string' || !TOPIC_ID.test(b.to)) throw new TopicsError(400, 'Pick a Topic.');
   return { action: 'move', key: k, topicId, to: b.to };
+}
+
+/** TOPIC-14.5, TOPIC-14.6: Accept, with what was edited and ticked, or Dismiss. */
+export function parseProposalAction(body: unknown): { action: 'accept'; accept: ProposalAccept } | { action: 'dismiss' } {
+  const b = object(body);
+  if (b.action === 'dismiss') return { action: 'dismiss' };
+  if (b.action !== 'accept') throw new TopicsError(400, 'Accept or Dismiss.');
+  const keys = (v: unknown, what: string) => {
+    if (v === undefined) return [];
+    if (!Array.isArray(v) || v.length > 200 || !v.every((k) => typeof k === 'string' && k.length <= 2_000)) throw new TopicsError(400, `Which ${what}?`);
+    return v as string[];
+  };
+  if (b.title !== undefined && typeof b.title !== 'string') throw new TopicsError(400, 'A title is text.');
+  if (b.note !== undefined && typeof b.note !== 'string') throw new TopicsError(400, 'A note is text.');
+  return {
+    action: 'accept',
+    accept: { title: b.title as string | undefined, note: (b.note as string | undefined)?.slice(0, 1_000), members: keys(b.members, 'members'), edges: keys(b.edges, 'Edges') },
+  };
 }
 
 /** TOPIC-1.2, TOPIC-1.3, TOPIC-1.6: what `PUT /api/topics/<id>` may change. */
@@ -416,8 +453,14 @@ export interface CandidateRow {
   judged_at: number | null;
   outcome: 'link' | 'jev' | 'none' | null;
   snapshot: string;
+  /** TOPIC-9.7: failed asks in a row, when it's asked again, and the latest failure's reason. */
+  failures: number;
+  retry_at: number | null;
+  failed_reason: string | null;
 }
-const CANDIDATE_COLUMNS = 'kind, ref, first_seen, jev, judged_at, outcome, snapshot';
+const CANDIDATE_COLUMNS = 'kind, ref, first_seen, jev, judged_at, outcome, snapshot, failures, retry_at, failed_reason';
+/** TOPIC-9.7: a candidate whose third ask in a row failed is set aside. */
+export const JEV_MAX_FAILURES = 3;
 interface RecommendationRow {
   kind: MemberKind;
   ref: string;
@@ -911,8 +954,40 @@ export class TopicStore {
     this.transaction(() => {
       this.db
         // A Link that ties an item Jev already judged keeps when Jev was asked ("ran today" counts asks).
-        .prepare(`update candidates set judged_at = case when ? = 0 and jev = 'asked' then judged_at else ? end, outcome = ?, jev = case when ? then 'asked' else jev end where kind = ? and ref = ?`)
-        .run(asked ? 1 : 0, this.now(), outcome, asked ? 1 : 0, kind, ref);
+        .prepare(`update candidates set judged_at = case when ? = 0 and jev = 'asked' then judged_at else ? end, outcome = ?, jev = case when ? then 'asked' else jev end, failures = 0, retry_at = null, asked_at = case when ? then ? else asked_at end where kind = ? and ref = ?`)
+        .run(asked ? 1 : 0, this.now(), outcome, asked ? 1 : 0, asked ? 1 : 0, this.now(), kind, ref);
+    });
+  }
+
+  /**
+   * TOPIC-9.7: an ask that failed isn't a judgment: the candidate waits until `retryAt`, or, at its
+   * third failure in a row, is set aside (`asked`, no outcome) with the reason.
+   */
+  askFailed(kind: MemberKind, ref: string, reason: string, retryAt: number | null): void {
+    this.transaction(() => {
+      this.db
+        .prepare(`update candidates set failures = failures + 1, failed_reason = ?, retry_at = case when failures + 1 >= ? then null else ? end,
+          jev = case when failures + 1 >= ? then 'asked' else jev end, judged_at = case when failures + 1 >= ? then ? else judged_at end,
+          asked_at = ? where kind = ? and ref = ? and jev = 'waiting'`)
+        .run(reason, JEV_MAX_FAILURES, retryAt, JEV_MAX_FAILURES, JEV_MAX_FAILURES, this.now(), this.now(), kind, ref);
+    });
+  }
+
+  /** TOPIC-9.7: the candidates set aside, in no Topic, and the latest reason. */
+  setAside(): { count: number; reason: string | null } {
+    const where = `jev = 'asked' and outcome is null and failures >= ${JEV_MAX_FAILURES} and not exists (select 1 from members m where m.kind = c.kind and m.ref = c.ref)`;
+    const row = this.db.prepare(`select count(*) as n from candidates c where ${where}`).get() as { n: number };
+    const last = this.db.prepare(`select failed_reason as r from candidates c where ${where} order by judged_at desc, kind, ref limit 1`).get() as { r: string | null } | undefined;
+    return { count: row.n, reason: last?.r ?? null };
+  }
+
+  /** TOPIC-9.7: "Ask again": every candidate set aside waits for Jev again, from zero failures. */
+  askAgain(): number {
+    return this.transaction(() => {
+      const r = this.db
+        .prepare(`update candidates set jev = 'waiting', judged_at = null, failures = 0, retry_at = null, failed_reason = null where jev = 'asked' and outcome is null and failures >= ?`)
+        .run(JEV_MAX_FAILURES);
+      return Number(r.changes);
     });
   }
 
@@ -920,13 +995,16 @@ export class TopicStore {
   judgeAgain(member: NewMember): void {
     this.transaction(() => {
       this.addCandidate(member, 'waiting');
-      this.db.prepare("update candidates set jev = 'waiting', judged_at = null, outcome = null where kind = ? and ref = ?").run(member.kind, refText(member.kind, member.ref));
+      this.db
+        .prepare("update candidates set jev = 'waiting', judged_at = null, outcome = null, failures = 0, retry_at = null, failed_reason = null where kind = ? and ref = ?")
+        .run(member.kind, refText(member.kind, member.ref));
     });
   }
 
   /** TOPIC-9.3: Jev asks since then (the Settings line's "ran today"). */
   asksSince(at: number): number {
-    const row = this.db.prepare("select count(*) as n from candidates where jev = 'asked' and judged_at >= ?").get(at) as { n: number };
+    // An item asked today counts once, failed or answered; rows from before schema 7 count by when they were judged.
+    const row = this.db.prepare("select count(*) as n from candidates where asked_at >= ? or (asked_at is null and jev = 'asked' and judged_at >= ?)").get(at, at) as { n: number };
     return row.n;
   }
 
@@ -1003,6 +1081,96 @@ export class TopicStore {
       .prepare('select topic_id, answer, written_at, model, cost_usd, fingerprint, input_upto from summaries where topic_id = ? order by written_at desc limit -1 offset 1')
       .all(id) as unknown as SummaryRow[];
     return rows.flatMap((r) => toSummary(r) ?? []);
+  }
+
+  /** TOPIC-14.2: a run that answered: its proposals replace the ones still pending. */
+  saveSuggestion(proposals: readonly Omit<Proposal, 'id' | 'status'>[], model: string, costUsd: number | null): number {
+    return this.transaction(() => {
+      for (const run of this.db.prepare('select id, proposals from suggestions').all() as { id: number; proposals: string }[]) {
+        const list = JSON.parse(run.proposals) as Proposal[];
+        if (!list.some((p) => p.status === 'pending')) continue;
+        const kept = list.map((p) => (p.status === 'pending' ? { ...p, status: 'replaced' as const } : p));
+        this.db.prepare('update suggestions set proposals = ? where id = ?').run(JSON.stringify(kept), run.id);
+      }
+      const r = this.db.prepare('insert into suggestions (written_at, model, cost_usd, proposals) values (?, ?, ?, ?)').run(this.now(), model, costUsd, '[]');
+      const id = Number(r.lastInsertRowid);
+      const list: Proposal[] = proposals.map((p, i) => ({ ...p, id: `${id}:${i}`, status: 'pending' }));
+      this.db.prepare('update suggestions set proposals = ? where id = ?').run(JSON.stringify(list), id);
+      return id;
+    });
+  }
+
+  /** TOPIC-14.5: the pending proposals, the newest run's first, and who wrote the newest run. */
+  suggestions(): Omit<SuggestState, 'running' | 'error'> {
+    const runs = this.db.prepare('select id, written_at, model, cost_usd, proposals from suggestions order by id desc').all() as { id: number; written_at: number; model: string; cost_usd: number | null; proposals: string }[];
+    const last = runs[0];
+    return {
+      proposals: runs.flatMap((r) => (JSON.parse(r.proposals) as Proposal[]).filter((p) => p.status === 'pending')),
+      run: last ? { writtenAt: last.written_at, model: last.model, costUsd: last.cost_usd } : null,
+    };
+  }
+
+  /** TOPIC-14.6: the items dismissed from a proposal, as member keys. */
+  dismissedFromSuggestions(): Set<string> {
+    const rows = this.db.prepare('select kind, ref from suggest_dismissed').all() as { kind: MemberKind; ref: string }[];
+    return new Set(rows.map((r) => `${r.kind}:${r.ref}`));
+  }
+
+  /**
+   * TOPIC-14.5: Accept: a new Topic with the edited title and note, or the Open Topic it adds to; the
+   * ticked members, "from Suggest Topics"; the ticked Edges, a pair already linked keeping its own.
+   * One transaction, so a refusal leaves nothing half made. The Topic's id.
+   */
+  acceptProposal(id: string, accept: ProposalAccept): string {
+    return this.transaction(() => {
+      const { run, list, p } = this.proposal(id);
+      const members = p.members.filter((m) => accept.members.includes(m.key));
+      if (!members.length) throw new TopicsError(400, 'Tick at least one member to accept.');
+      let topicId: string;
+      if (p.kind === 'new') {
+        const title = parseTitle(accept.title ?? p.title ?? '');
+        topicId = this.create(title);
+        const note = (accept.note ?? p.note ?? '').replace(/\s+/g, ' ').trim().slice(0, MAX_SUGGEST_NOTE);
+        if (note) this.update(topicId, { notes: note });
+      } else {
+        const row = p.topicId ? this.db.prepare('select state from topics where id = ?').get(p.topicId) as { state: TopicState } | undefined : undefined;
+        if (!row || row.state !== 'open') throw new TopicsError(409, 'That Topic was archived or deleted since: dismiss this proposal.');
+        topicId = p.topicId!;
+      }
+      for (const m of members) this.addMember(topicId, m, SUGGESTED_REASON);
+      if (p.kind === 'new') {
+        for (const e of p.edges.filter((e) => (accept.edges ?? []).includes(e.to))) {
+          const to = this.db.prepare('select state from topics where id = ?').get(e.to) as { state: TopicState } | undefined;
+          if (to?.state === 'open' && !this.edge(topicId, e.to)) this.link(topicId, e.to, e.label);
+        }
+      }
+      this.setProposal(run, list, id, 'accepted');
+      return topicId;
+    });
+  }
+
+  /** TOPIC-14.6: Dismiss: the proposal leaves the list, and each of its items is never looked at again. */
+  dismissProposal(id: string): void {
+    this.transaction(() => {
+      const { run, list, p } = this.proposal(id);
+      for (const m of p.members) {
+        this.db.prepare('insert or ignore into suggest_dismissed (kind, ref, dismissed_at) values (?, ?, ?)').run(m.kind, refText(m.kind, m.ref), this.now());
+      }
+      this.setProposal(run, list, id, 'dismissed');
+    });
+  }
+
+  private proposal(id: string): { run: number; list: Proposal[]; p: Proposal } {
+    const run = Number(id.split(':')[0]);
+    const row = Number.isSafeInteger(run) ? (this.db.prepare('select proposals from suggestions where id = ?').get(run) as { proposals: string } | undefined) : undefined;
+    const list = row ? (JSON.parse(row.proposals) as Proposal[]) : [];
+    const p = list.find((x) => x.id === id);
+    if (!p || p.status !== 'pending') throw new TopicsError(404, 'That proposal is no longer pending.');
+    return { run, list, p };
+  }
+
+  private setProposal(run: number, list: Proposal[], id: string, status: 'accepted' | 'dismissed'): void {
+    this.db.prepare('update suggestions set proposals = ? where id = ?').run(JSON.stringify(list.map((x) => (x.id === id ? { ...x, status } : x))), run);
   }
 
   private require(id: string): TopicRow {
@@ -1107,6 +1275,9 @@ export class Topics {
   /** TOPIC-11.6: the Topics a summary is being written for, and why each one's last run failed. */
   private summarizing: string[] = [];
   private summaryErrors: Record<string, SummaryError> = {};
+  /** TOPIC-14.2: whether a Suggest run goes, and why the last one failed. */
+  private suggestRunning = false;
+  private suggestError: SummaryError | null = null;
   private last: TopicsView;
 
   constructor(opts: TopicsOptions) {
@@ -1167,11 +1338,59 @@ export class Topics {
     this.summarizer?.cancel(id);
   }
 
+  /** TOPIC-14: set by the server: Suggest runs are the Suggester's. */
+  suggester: { preview(): Promise<SuggestPreview>; start(): void; cancel(): void } | null = null;
+
+  /** TOPIC-14.2: what a run would look at. */
+  suggestPreview(): Promise<SuggestPreview> {
+    if (!this.suggester) throw new TopicsError(404, 'Suggest Topics is off here.');
+    return this.suggester.preview();
+  }
+
+  /** TOPIC-14.2: "Suggest". */
+  suggest(): void {
+    if (!this.suggester) throw new TopicsError(404, 'Suggest Topics is off here.');
+    this.suggester.start();
+  }
+
+  /** TOPIC-14.2: Cancel. */
+  cancelSuggest(): void {
+    this.suggester?.cancel();
+  }
+
   /** TOPIC-11.6: the Summarizer's runs and errors, for every tab. */
   summaryRuns(summarizing: readonly string[], errors: Readonly<Record<string, SummaryError>>): void {
     this.summarizing = [...summarizing];
     this.summaryErrors = { ...errors };
     this.changed();
+  }
+
+  /** TOPIC-14.2: the Suggester's run, for every tab. */
+  suggestRun(running: boolean, error: SummaryError | null): void {
+    this.suggestRunning = running;
+    this.suggestError = error;
+    this.changed();
+  }
+
+  /** TOPIC-14.2: a run that answered. */
+  saveSuggestion(proposals: readonly Omit<Proposal, 'id' | 'status'>[], model: string, costUsd: number | null): void {
+    this.write((s) => s.saveSuggestion(proposals, model, costUsd));
+  }
+
+  /** TOPIC-14.5: Accept; the Topic's id. */
+  acceptProposal(id: string, accept: ProposalAccept): { topicId: string } {
+    return { topicId: this.write((s) => s.acceptProposal(id, accept)) };
+  }
+
+  /** TOPIC-14.6: Dismiss. */
+  dismissProposal(id: string): void {
+    this.write((s) => s.dismissProposal(id));
+  }
+
+  /** TOPIC-14.3: the items no run looks at again; none before the store exists. */
+  dismissedFromSuggestions(): Set<string> {
+    if (!this.store) return new Set();
+    return this.write((s) => s.dismissedFromSuggestions(), false);
   }
 
   /** TOPIC-11.5: a summary just written, with the fingerprint of what it was written from. */
@@ -1212,14 +1431,15 @@ export class Topics {
 
   /** TOPIC-12.1: Fleet's list: a member Session live again, or ended. */
   observeSessions(rows: readonly SessionRow[]): void {
-    const live = new Map<string, string>();
+    const live = new Map<string, { title: string; done: SessionRow['done'] }>();
     for (const r of rows) {
       const m = rowMember(r);
-      if (m) live.set(refText(m.kind, m.ref), m.snapshot.title);
+      if (m) live.set(refText(m.kind, m.ref), { title: m.snapshot.title, done: r.done ?? null });
     }
     this.observe((m) => {
       if (m.kind !== 'session') return null;
-      return { ...observeSession(m.observed as SessionObserved | null, live.has(m.ref)), name: live.get(m.ref) };
+      const row = live.get(m.ref);
+      return { ...observeSession(m.observed as SessionObserved | null, !!row, row?.done), name: row?.title };
     });
   }
 
@@ -1319,14 +1539,24 @@ export class Topics {
   }
 
   /** TOPIC-9.3: candidates waiting for Jev, oldest first; none before the store exists. */
-  waitingForJev(): { member: NewMember; firstSeen: number }[] {
+  waitingForJev(): { member: NewMember; firstSeen: number; failures: number; retryAt: number | null }[] {
     if (!this.store) return [];
     return this.write((s) => s.waitingForJev(), false).flatMap((c) => {
       const m = toMember({ topic_id: '', kind: c.kind, ref: c.ref, snapshot: c.snapshot, added_at: 0, reason: '' });
       if (!m) return [];
       const { key: _k, addedAt: _a, reason: _r, ...member } = m;
-      return [{ member: member as NewMember, firstSeen: c.first_seen }];
+      return [{ member: member as NewMember, firstSeen: c.first_seen, failures: c.failures, retryAt: c.retry_at }];
     });
+  }
+
+  /** TOPIC-9.7: an ask that failed: asked again at `retryAt`, or set aside at its third failure. */
+  jevFailed(member: NewMember, reason: string, retryAt: number | null): void {
+    this.write((s) => s.askFailed(member.kind, refText(member.kind, member.ref), reason, retryAt));
+  }
+
+  /** TOPIC-9.7: "Ask again" on the candidates set aside; how many go back in the queue. */
+  askAgain(): number {
+    return this.write((s) => s.askAgain());
   }
 
   /**
@@ -1348,9 +1578,16 @@ export class Topics {
 
   /** TOPIC-9.1: set by the server: "Judge again" goes through the Recommender, which can refuse it. */
   judgeAgainWith: ((member: NewMember) => void) | null = null;
+  /** TOPIC-9.7: set by the server: "Ask again" goes through the Recommender, which can refuse it. */
+  askAgainWith: (() => void) | null = null;
 
   /** TOPIC-9.4: `POST /api/topics/recommendations`. */
   recommend(action: RecommendationAction): { topicId: string | null } {
+    if (action.action === 'ask-again') {
+      if (!this.askAgainWith) throw new TopicsError(409, "Jev can't be asked here.");
+      this.askAgainWith();
+      return { topicId: null };
+    }
     if (action.action !== 'judge-again') return this.recommendation(action);
     if (!this.judgeAgainWith) throw new TopicsError(409, "Jev can't be asked here.");
     this.judgeAgainWith(action.member);
@@ -1366,7 +1603,7 @@ export class Topics {
    * TOPIC-9.4, TOPIC-9.5: Accept adds the member (or makes the Topic and adds it) with where it came
    * from; Dismiss records it; "Other Topic…" adds it to the Topic you picked and dismisses this one.
    */
-  recommendation(action: Exclude<RecommendationAction, { action: 'judge-again' }>): { topicId: string | null } {
+  recommendation(action: Exclude<RecommendationAction, { action: 'judge-again' | 'ask-again' }>): { topicId: string | null } {
     const { kind, ref } = parseKey(action.key);
     return this.write((s) =>
       s.transaction(() => {
@@ -1420,7 +1657,7 @@ export class Topics {
   }
 
   private build(): TopicsView {
-    const none = { topics: [], edges: [], pruned: [], libraryReadAt: this.readAt, recommendations: [], jevAsksToday: 0, summarizing: this.summarizing, summaryErrors: this.summaryErrors };
+    const none = { topics: [], edges: [], pruned: [], libraryReadAt: this.readAt, recommendations: [], jevAsksToday: 0, jevSetAside: NO_SET_ASIDE, summarizing: this.summarizing, summaryErrors: this.summaryErrors, suggest: { running: this.suggestRunning, error: this.suggestError, proposals: [], run: null } };
     if (!this.store && !this.failure) return { state: 'ok', reason: null, path: this.opts.path, ...none };
     if (!this.store) return { state: 'error', reason: this.failure, path: this.opts.path, ...none };
     let stored: StoredTopic[];
@@ -1428,6 +1665,8 @@ export class Topics {
     let edges: TopicEdge[];
     let recommendations: Recommendation[];
     let jevAsksToday: number;
+    let jevSetAside: TopicsView['jevSetAside'];
+    let suggested: Omit<SuggestState, 'running' | 'error'>;
     let summaries: Map<string, { summary: TopicSummary; fingerprint: string }>;
     try {
       stored = this.store.list();
@@ -1436,6 +1675,8 @@ export class Topics {
       const midnight = new Date();
       midnight.setHours(0, 0, 0, 0);
       jevAsksToday = this.store.asksSince(midnight.getTime());
+      jevSetAside = this.store.setAside();
+      suggested = this.store.suggestions();
       summaries = this.store.summaries();
       counts = this.store.activityCounts();
     } catch (err) {
@@ -1459,7 +1700,7 @@ export class Topics {
     });
     const ids = new Set(topics.map((t) => t.id));
     const summaryErrors = Object.fromEntries(Object.entries(this.summaryErrors).filter(([id]) => ids.has(id)));
-    return { state: 'ok', reason: null, path: this.opts.path, topics, edges, pruned: this.pruned, libraryReadAt: this.readAt, recommendations, jevAsksToday, summarizing: this.summarizing, summaryErrors };
+    return { state: 'ok', reason: null, path: this.opts.path, topics, edges, pruned: this.pruned, libraryReadAt: this.readAt, recommendations, jevAsksToday, jevSetAside, summarizing: this.summarizing, summaryErrors, suggest: { running: this.suggestRunning, error: this.suggestError, ...suggested } };
   }
 }
 

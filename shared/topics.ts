@@ -128,7 +128,8 @@ export type ActivityKind =
   | 'chip'
   | 'task-status'
   | 'live'
-  | 'ended';
+  | 'ended'
+  | 'done';
 
 /**
  * TOPIC-12.1: an entry's details, as it was written: the member's name and the other Topic's title
@@ -147,7 +148,12 @@ export interface ActivityData {
   label?: string | null;
   /** A title's, chip's or Task status's new value. */
   to?: string | null;
+  /** TOPIC-12.1: a Done Session's note. */
+  note?: string | null;
 }
+
+/** TOPIC-12.1: a Done note is kept to this many characters. */
+export const MAX_DONE_NOTE = 300;
 
 /** TOPIC-12: one entry of a Topic's activity. `member` is its member's key, kept after a Remove. */
 export interface ActivityEntry {
@@ -213,6 +219,8 @@ export function activityWords(e: ActivityEntry): string {
       return `${name} running`;
     case 'ended':
       return `${name} ended`;
+    case 'done':
+      return d.note ? `${name} done: ${d.note}` : `${name} done`;
   }
 }
 
@@ -261,10 +269,59 @@ export interface TopicsView {
   recommendations: Recommendation[];
   /** TOPIC-9.3: Jev asks since local midnight, for the Settings switch's line. */
   jevAsksToday: number;
+  /** TOPIC-9.7: candidates set aside after three failed asks, and the latest failure's reason. */
+  jevSetAside: { count: number; reason: string | null };
   /** TOPIC-11.6: the Topics a summary is being written for. */
   summarizing: string[];
   /** TOPIC-11.6: why each Topic's last summary run failed, by Topic id, until its next run. */
   summaryErrors: Record<string, SummaryError>;
+  /** TOPIC-14: the Suggest run and its pending proposals. Optional so an older server's view still reads. */
+  suggest?: SuggestState;
+}
+
+/** TOPIC-14.4: the labels a proposed Edge can have. */
+export const SUGGEST_EDGE_LABELS = ['part of', 'uses', 'related'] as const;
+export type SuggestEdgeLabel = (typeof SUGGEST_EDGE_LABELS)[number];
+export const MAX_SUGGEST_NOTE = 200;
+
+/** TOPIC-14.4, TOPIC-14.5: one proposal of a run: a new Topic, or members for an Open one. */
+export interface Proposal {
+  /** `<run id>:<index>`. */
+  id: string;
+  kind: 'new' | 'add';
+  /** A new Topic's title and note. */
+  title: string | null;
+  note: string | null;
+  /** An addition's Topic. */
+  topicId: string | null;
+  members: (NewMember & { key: string })[];
+  /** A new Topic's Edges, from it to an Open Topic. */
+  edges: { to: string; label: SuggestEdgeLabel }[];
+  why: string;
+  status: 'pending' | 'accepted' | 'dismissed' | 'replaced';
+}
+
+/** TOPIC-14.2: whether a run goes, why the last one failed, the pending proposals and who wrote them. */
+export interface SuggestState {
+  running: boolean;
+  error: SummaryError | null;
+  proposals: Proposal[];
+  run: { writtenAt: number; model: string; costUsd: number | null } | null;
+}
+
+/** TOPIC-14.2: what a run would look at, as counts. */
+export interface SuggestPreview {
+  sessions: number;
+  prs: number;
+  tasks: number;
+}
+
+/** TOPIC-14.5: what Accept sends: the edited title and note, and the ticked members and Edges. */
+export interface ProposalAccept {
+  title?: string;
+  note?: string;
+  members: string[];
+  edges?: string[];
 }
 
 /** TOPIC-11.4: where the work stands, as the summary says. */
@@ -365,7 +422,9 @@ export type RecommendationAction =
   /** "Other Topic…": the item goes to `to`, and this recommendation counts as dismissed. */
   | { action: 'move'; key: string; topicId: string | null; to: string }
   /** TOPIC-9.1: the one way back for an item already judged, accepted or dismissed. */
-  | { action: 'judge-again'; member: NewMember };
+  | { action: 'judge-again'; member: NewMember }
+  /** TOPIC-9.7: every candidate set aside after three failed asks goes back in the queue. */
+  | { action: 'ask-again' };
 
 /** TOPIC-9.3: a pick below this confidence leaves nothing. */
 export const JEV_MIN_CONFIDENCE = 0.6;

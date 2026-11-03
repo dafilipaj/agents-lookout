@@ -1,4 +1,4 @@
-import type { ActivityData, ActivityKind } from '../shared/topics.ts';
+import { type ActivityData, type ActivityKind, MAX_DONE_NOTE } from '../shared/topics.ts';
 import type { CiState, PrChip, PrColumn, WorkSnapshot } from '../shared/work.ts';
 import { MAX_TASK_PAGES } from './work.ts';
 
@@ -15,6 +15,8 @@ const MAX_TASKS = MAX_TASK_PAGES * 20;
 export interface SessionObserved {
   live: boolean;
   missed: number;
+  /** TOPIC-12.1: when the Done mark last seen was made; null when it wasn't Done. Absent before Done was observed. */
+  doneAt?: number | null;
 }
 /**
  * A PR: in Work's read, its CI, whether a failing was recorded and no passing since (`failing`), or
@@ -49,13 +51,28 @@ export interface Step<T> {
 /** TOPIC-12.2: "ended" needs a Session missing from this many lists in a row. */
 export const ENDED_AFTER_MISSES = 2;
 
-export function observeSession(prev: SessionObserved | null, live: boolean): Step<SessionObserved> {
-  if (!prev) return { next: { live, missed: 0 }, changes: [] };
-  if (live) return { next: { live: true, missed: 0 }, changes: prev.live ? [] : [{ kind: 'live' }] };
+/**
+ * TOPIC-12.1, TOPIC-12.2: a Session's sighting: live in Fleet's list or not, and its Done mark when
+ * live (`undefined` when not listed, which says nothing about Done).
+ */
+export function observeSession(prev: SessionObserved | null, live: boolean, done?: { at: number; note: string | null } | null): Step<SessionObserved> {
+  const doneAt = live ? (done?.at ?? null) : undefined;
+  const keep = (o: SessionObserved): SessionObserved => (doneAt === undefined ? o : { ...o, doneAt });
+  // A first sighting, and the first since Done was observed, records what it sees, not a change.
+  if (!prev) return { next: keep({ live, missed: 0 }), changes: [] };
+  const known = prev.doneAt !== undefined;
+  const marked: Change[] = live && known && doneAt !== null && doneAt !== undefined && doneAt !== prev.doneAt ? [{ kind: 'done', data: { note: doneNote(done?.note) } }] : [];
+  if (live) return { next: keep({ live: true, missed: 0 }), changes: [...(prev.live ? [] : [{ kind: 'live' as const }]), ...marked] };
   if (!prev.live) return { next: prev, changes: [] };
   const missed = prev.missed + 1;
-  if (missed >= ENDED_AFTER_MISSES) return { next: { live: false, missed: 0 }, changes: [{ kind: 'ended' }] };
-  return { next: { live: true, missed }, changes: [] };
+  if (missed >= ENDED_AFTER_MISSES) return { next: { ...prev, live: false, missed: 0 }, changes: [{ kind: 'ended' }] };
+  return { next: { ...prev, live: true, missed }, changes: [] };
+}
+
+/** TOPIC-12.1: a note on one line, at most 300 characters; none when empty. */
+function doneNote(note: string | null | undefined): string | null {
+  const s = (note ?? '').replace(/[\p{Cc}\p{Cf}]/gu, ' ').replace(/\s+/g, ' ').trim();
+  return s ? (s.length > MAX_DONE_NOTE ? `${s.slice(0, MAX_DONE_NOTE - 1)}…` : s) : null;
 }
 
 /** What a Work read says about a PR: unknown, not in it, or in it as it is now. */
