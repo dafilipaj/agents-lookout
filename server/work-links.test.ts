@@ -18,6 +18,7 @@ function pr(over: Partial<WorkPr> = {}): WorkPr {
     ci: 'passing',
     chip: 'ready',
     column: 'review_mine',
+    baseBranch: null,
     taskIds: [],
     links: null,
     ...over,

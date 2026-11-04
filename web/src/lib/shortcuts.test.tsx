@@ -149,6 +149,7 @@ const ELSEWHERE: Record<string, { file: string; criteria: string[] }[]> = {
   'panel-start': [
     { file: 'WorkPanel.test.tsx', criteria: ['WORK-5.1'] },
     { file: 'LibraryPanel.test.tsx', criteria: ['LIB-3.7'] },
+    { file: 'PrSpecs.test.tsx', criteria: ['PLAIN-5.1'] },
   ],
   'panel-copy': [{ file: 'LibraryPanel.test.tsx', criteria: ['LIB-3.7'] }],
   start: [{ file: 'Launcher.test.tsx', criteria: ['LAUNCH-3.3'] }],

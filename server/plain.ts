@@ -3,7 +3,7 @@ import { constants } from 'node:fs';
 import { mkdir, open, readFile, realpath, rename, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join, posix, sep } from 'node:path';
-import { clauseLines, definitionName, parseModule, type Clause, type PlainAnswer, type PlainConcept } from '../shared/plain.ts';
+import { clauseLines, definitionName, parseModule, type Clause, type PlainAnswer, type PlainConcept, type PlainPrFiles, type PlainSource } from '../shared/plain.ts';
 import type { RunError, Runner } from './exec.ts';
 import type { KnownCheckout } from './changes.ts';
 
@@ -25,10 +25,42 @@ export class PlainError extends Error {
   }
 }
 
+/**
+ * PLAIN-6.1: what a Module is read from: a live Session's Checkout, at its working tree, or a PR's
+ * commits in a local clone of its repo, at the PR's head (PLAIN-5.3).
+ */
+export interface PlainTree {
+  /** The id the answer names it by (PLAIN-6.1): DIFF's for a Checkout, from the repo and number for a PR. */
+  id: string;
+  /** Where git runs: the Checkout, or the clone the PR was fetched into. */
+  root: string;
+  repo: string;
+  where: string | null;
+  baseSha: string;
+  /** "Branch point", or "merge-base with <base branch>" for a PR. */
+  baseName: string;
+  /** The repo's common directory: PLAIN-4.2's Viewed key. */
+  commonDir: string;
+  /** Null: the text is the working tree's. Else the commit it's read at, a PR's head. */
+  headSha: string | null;
+}
+
+/** PLAIN-5: a PR's commits, fetched into a local clone of its repo. */
+export interface PlainPrSource {
+  /**
+   * PLAIN-5.2, 5.3: the PR's tree and its changed `.plain` paths; `fresh` when the Spec view or the
+   * "Specs" list has just opened, so a newer push is fetched first. `error` is why the last fetch
+   * failed, the tree then being an earlier fetch's; a PR never fetched rejects with a PlainError.
+   */
+  tree(repo: string, number: number, fresh: boolean): Promise<{ tree: PlainTree; paths: string[]; error: string | null }>;
+}
+
 export interface PlainOptions {
   runner: Runner;
   /** PLAIN-6.1: a live Session's counted Checkout by id, or null (the Changes it last reported). */
   checkout(sessionId: string, id: string): KnownCheckout | null;
+  /** PLAIN-5: a PR's commits; without it, a PR is refused. */
+  prs?: PlainPrSource;
   /** PLAIN-4.2: `~/.lookout/plain-viewed.json` unless a test says otherwise. */
   viewedFile?: string;
   now?: () => number;
@@ -59,7 +91,7 @@ export class Plain {
   private store: Promise<Store> | null = null;
   /** PLAIN-4.2: saves run one at a time, each writing the store as it is then. */
   private saving: Promise<void> = Promise.resolve();
-  /** A base commit's file never changes: `<root>\0<sha>\0<path>` → its text, or null. */
+  /** A commit's file never changes: `<root>\0<sha>\0<path>` → its text, or null. */
   private baseCache = new Map<string, string | null>();
 
   constructor(opts: PlainOptions) {
@@ -68,14 +100,15 @@ export class Plain {
     this.viewedFile = opts.viewedFile ?? join(homedir(), '.lookout', 'plain-viewed.json');
   }
 
-  /** PLAIN-1, PLAIN-2: one Module, its base, and the Concepts it sees. */
-  async read(sessionId: string, checkoutId: string, path: unknown): Promise<PlainAnswer> {
-    const c = this.known(sessionId, checkoutId);
+  /** PLAIN-1, PLAIN-2: one Module, its base, and the Concepts it sees; `fresh` as PlainPrSource's. */
+  async read(source: unknown, path: unknown, fresh = false): Promise<PlainAnswer> {
+    const src = plainSource(source);
     const p = modulePath(path);
-    const realRoot = await this.realRoot(c);
+    const { tree: c, error: fetchError } = await this.tree(src, fresh);
+    const realRoot = c.headSha === null ? await this.realRoot(c) : null;
     const text = await this.headText(c, realRoot, p);
     const baseText = await this.baseText(c, p);
-    if (text === null && baseText === null) throw new PlainError(404, `${p} isn't in this Checkout or at its Branch point.`);
+    if (text === null && baseText === null) throw new PlainError(404, src.kind === 'pr' ? `${p} isn't in this PR or at its base.` : `${p} isn't in this Checkout or at its Branch point.`);
 
     const { concepts, missing } = await this.resolve(c, realRoot, p, text ?? baseText!);
     const key = viewedKey(c.commonDir, p, text, baseText);
@@ -88,12 +121,14 @@ export class Plain {
       void this.save().catch(() => {});
     }
     return {
-      sessionId,
+      source: src,
       checkout: { id: c.id, repo: c.repo, where: c.where },
       path: p,
       text,
       baseText,
       base: c.baseSha.slice(0, 7),
+      baseName: c.baseName,
+      fetchError,
       concepts,
       missing,
       key,
@@ -103,9 +138,10 @@ export class Plain {
   }
 
   /** PLAIN-4.1, 4.2: ticks or clears a Module's Viewed mark for the text and base it was read with. */
-  async setViewed(sessionId: string, checkoutId: string, path: unknown, key: unknown, viewed: unknown): Promise<void> {
-    const c = this.known(sessionId, checkoutId);
+  async setViewed(source: unknown, path: unknown, key: unknown, viewed: unknown): Promise<void> {
+    const src = plainSource(source);
     const p = modulePath(path);
+    const { tree: c } = await this.tree(src, false);
     if (typeof key !== 'string' || !/^[0-9a-f]{64}$/.test(key) || typeof viewed !== 'boolean') throw new PlainError(400, 'Expected { key, viewed }.');
     const store = await this.load();
     const k = modKey(c.commonDir, p);
@@ -119,26 +155,48 @@ export class Plain {
 
   /** PLAIN-3.3: which of a Checkout's changed Modules carry a Viewed mark for their text now. */
   async viewedPaths(sessionId: string, checkoutId: string): Promise<string[]> {
-    const c = this.known(sessionId, checkoutId);
+    const known = this.known(sessionId, checkoutId);
+    const paths = known.files.filter((f) => f.path.endsWith('.plain') && f.kind !== 'submodule').map((f) => f.path);
+    return this.viewedOf(checkoutTree(known), paths);
+  }
+
+  /** PLAIN-5.1: a PR's changed Modules, each with its Viewed mark; `fresh` as PlainPrSource's. */
+  async prFiles(repo: unknown, number: unknown, fresh: boolean): Promise<PlainPrFiles> {
+    const src = plainSource({ kind: 'pr', repo, number });
+    if (src.kind !== 'pr' || !this.opts.prs) throw new PlainError(404, "Lookout can't read PRs here.");
+    const { tree, paths, error } = await this.opts.prs.tree(src.repo, src.number, fresh);
+    const viewed = new Set(await this.viewedOf(tree, paths));
+    return { repo: src.repo, number: src.number, files: paths.map((path) => ({ path, viewed: viewed.has(path) })), error };
+  }
+
+  /** PLAIN-3.3, 5.1: which of these Modules carry a Viewed mark for their text now. */
+  private async viewedOf(c: PlainTree, paths: readonly string[]): Promise<string[]> {
     const marks = (await this.load()).marks;
-    const realRoot = await this.realRoot(c);
+    let realRoot: string | null = null;
     const out: string[] = [];
-    for (const f of c.files) {
-      if (!f.path.endsWith('.plain') || f.kind === 'submodule') continue;
-      const kept = marks[modKey(c.commonDir, f.path)];
+    for (const path of paths) {
+      const kept = marks[modKey(c.commonDir, path)];
       if (!kept?.length) continue;
       let p: string;
       try {
-        p = modulePath(f.path);
+        p = modulePath(path);
       } catch {
         continue;
       }
+      if (c.headSha === null) realRoot ??= await this.realRoot(c);
       const text = await this.headText(c, realRoot, p).catch(() => null);
       const baseText = await this.baseText(c, p).catch(() => null);
       const key = viewedKey(c.commonDir, p, text, baseText);
       if (kept.some((m) => m.key === key)) out.push(p);
     }
     return out;
+  }
+
+  /** PLAIN-6.1: the tree a source names, if Lookout knows it. */
+  private async tree(src: PlainSource, fresh: boolean): Promise<{ tree: PlainTree; error: string | null }> {
+    if (src.kind === 'session') return { tree: checkoutTree(this.known(src.session, src.checkout)), error: null };
+    if (!this.opts.prs) throw new PlainError(404, "Lookout can't read PRs here.");
+    return this.opts.prs.tree(src.repo, src.number, fresh);
   }
 
   private known(sessionId: string, checkoutId: string): KnownCheckout {
@@ -148,7 +206,7 @@ export class Plain {
     return c;
   }
 
-  private async realRoot(c: KnownCheckout): Promise<string> {
+  private async realRoot(c: PlainTree): Promise<string> {
     try {
       return await realpath(c.root);
     } catch {
@@ -161,7 +219,9 @@ export class Plain {
    * The resolved path is opened without following a link, read from that one handle, and resolved
    * again afterwards, so a file or folder swapped for a link meanwhile is refused, as DIFF-4.4 does.
    */
-  private async headText(c: KnownCheckout, realRoot: string, p: string): Promise<string | null> {
+  private async headText(c: PlainTree, realRoot: string | null, p: string): Promise<string | null> {
+    if (c.headSha !== null) return this.commitText(c, c.headSha, p);
+    if (realRoot === null) throw new PlainError(500, 'No Checkout to read.');
     let real: string;
     try {
       real = await realpath(join(c.root, p));
@@ -198,19 +258,25 @@ export class Plain {
     }
   }
 
-  /** PLAIN-1.5: the text at the Branch point; null when the base doesn't have it. */
-  private async baseText(c: KnownCheckout, p: string): Promise<string | null> {
-    const k = `${c.root}\u0000${c.baseSha}\u0000${p}`;
+  /** PLAIN-1.5, 5.3: the text at the base; null when the base doesn't have it. */
+  private baseText(c: PlainTree, p: string): Promise<string | null> {
+    return this.commitText(c, c.baseSha, p);
+  }
+
+  /** A commit's file, which never changes, so it's read once; null when the commit doesn't have it. */
+  private async commitText(c: PlainTree, commit: string, p: string): Promise<string | null> {
+    const k = `${c.root}\u0000${commit}\u0000${p}`;
     if (this.baseCache.has(k)) return this.baseCache.get(k)!;
+    const at = commit === c.baseSha ? `at its ${c.baseName}` : "at the PR's head";
     let text: string | null;
     try {
-      text = await this.opts.runner('git', ['-C', c.root, '-c', 'core.hooksPath=/dev/null', '-c', 'core.fsmonitor=false', 'show', `${c.baseSha}:${p}`], { timeoutMs: GIT_TIMEOUT_MS });
+      text = await this.opts.runner('git', ['-C', c.root, '-c', 'core.hooksPath=/dev/null', '-c', 'core.fsmonitor=false', 'show', `${commit}:${p}`], { timeoutMs: GIT_TIMEOUT_MS });
     } catch (err) {
       const stderr = (err as RunError).stderr ?? '';
-      if (!/does not exist in|exists on disk, but not in|bad revision|invalid object name/i.test(stderr)) throw new PlainError(500, "git couldn't read the Module at the Branch point.");
+      if (!/does not exist in|exists on disk, but not in|bad revision|invalid object name/i.test(stderr)) throw new PlainError(500, `git couldn't read the Module ${at}.`);
       text = null;
     }
-    if (text !== null && Buffer.byteLength(text) > MAX_MODULE_BYTES) throw new PlainError(413, `${p} is larger than 1 MB at the Branch point.`);
+    if (text !== null && Buffer.byteLength(text) > MAX_MODULE_BYTES) throw new PlainError(413, `${p} is larger than 1 MB ${at}.`);
     if (this.baseCache.size > 500) this.baseCache.clear();
     this.baseCache.set(k, text);
     return text;
@@ -220,7 +286,7 @@ export class Plain {
    * PLAIN-2.1, 2.4, 2.6: imports transitively, `requires` one level for its `exported_concepts`, each
    * path from the importing Module's folder; every Module read at the working tree and the base.
    */
-  private async resolve(c: KnownCheckout, realRoot: string, p: string, text: string): Promise<{ concepts: Record<string, PlainConcept>; missing: string[] }> {
+  private async resolve(c: PlainTree, realRoot: string | null, p: string, text: string): Promise<{ concepts: Record<string, PlainConcept>; missing: string[] }> {
     const concepts: Record<string, PlainConcept> = {};
     const missing: string[] = [];
     const own = new Set(definitionsOf(parseModule(text)).map((d) => d.name));
@@ -325,6 +391,24 @@ export class Plain {
     this.saving = next.catch(() => {});
     return next;
   }
+}
+
+/** A live Session's Checkout as a tree: its working tree, at DIFF's Branch point. */
+function checkoutTree(c: KnownCheckout): PlainTree {
+  return { id: c.id, root: c.root, repo: c.repo, where: c.where, baseSha: c.baseSha, baseName: 'Branch point', commonDir: c.commonDir, headSha: null };
+}
+
+/** PLAIN-6.1: a Session's Checkout by its id, or a PR by its repo (in `productiveio`) and number; anything else is refused. */
+export function plainSource(v: unknown): PlainSource {
+  const o = (typeof v === 'object' && v ? v : {}) as Record<string, unknown>;
+  if (o.kind === 'session' && typeof o.session === 'string' && o.session.length <= 512 && typeof o.checkout === 'string' && /^[0-9a-f]{16}$/.test(o.checkout)) {
+    return { kind: 'session', session: o.session, checkout: o.checkout };
+  }
+  const number = typeof o.number === 'string' && /^[1-9][0-9]{0,9}$/.test(o.number) ? Number(o.number) : o.number;
+  if (o.kind === 'pr' && typeof o.repo === 'string' && /^[A-Za-z0-9._-]{1,100}$/.test(o.repo) && o.repo !== '.' && o.repo !== '..' && typeof number === 'number' && Number.isSafeInteger(number) && number > 0) {
+    return { kind: 'pr', repo: o.repo, number };
+  }
+  throw new PlainError(400, 'Unknown Checkout.');
 }
 
 interface Def {

@@ -1,6 +1,6 @@
 import type { LibraryPage, LibraryQuery } from '@shared/library.ts';
 import type { PathAnswer } from '@shared/files.ts';
-import type { PlainAnswer } from '@shared/plain.ts';
+import type { PlainAnswer, PlainPrFiles, PlainSource } from '@shared/plain.ts';
 import type { Settings, SettingsView } from '@shared/settings.ts';
 import type { ToolsSnapshot } from '@shared/tools.ts';
 import type { ActivityEntry, NewMember, ProposalAccept, RecommendationAction, SuggestPreview, Topic, TopicOutcome, TopicPosition, TopicState, TopicSummary } from '@shared/topics.ts';
@@ -64,11 +64,16 @@ export interface LookoutClient {
   /** DIFF-4: opens a listed file's Changes in VS Code; rejects with a SaveError saying why it didn't. */
   openChange(sessionId: string, root: string, path: string): Promise<void>;
   /** PLAIN-1, 2: a Module of a Session's Checkout. */
-  readPlain(sessionId: string, checkout: string, path: string): Promise<PlainAnswer>;
+  /** PLAIN-1, PLAIN-5.3: `fresh` when the view has just opened, so a PR's newer push is fetched first. */
+  readPlain(source: PlainSource, path: string, fresh?: boolean): Promise<PlainAnswer>;
   /** PLAIN-4.1: ticks or clears a Module's Viewed mark for the text it was read with. */
-  setPlainViewed(sessionId: string, checkout: string, path: string, key: string, viewed: boolean): Promise<void>;
+  setPlainViewed(source: PlainSource, path: string, key: string, viewed: boolean): Promise<void>;
   /** PLAIN-3.3: the Checkout's changed Modules that are Viewed. */
   plainViewed(sessionId: string, checkout: string): Promise<string[]>;
+  /** PLAIN-5.1: a PR's changed Modules; `fresh` when the list opens or Retry is pressed. */
+  plainPr(repo: string, number: number, fresh: boolean): Promise<PlainPrFiles>;
+  /** PLAIN-5.4: the repos Lookout has a local clone of. */
+  plainClones(): Promise<string[]>;
   /** WORK-8.1: whether this tab has Work open, so the server reads only while some tab does. */
   watchWork(clientId: string, open: boolean): Promise<void>;
   /**
@@ -481,13 +486,17 @@ export function createHttpClient(): LookoutClient {
     openChange: async (sessionId, root, path) => {
       await call(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/changes/open`, { root, path }), 'Opening');
     },
-    readPlain: (sessionId, checkout, path) =>
-      call<PlainAnswer>(() => fetch(`/api/plain?${new URLSearchParams({ session: sessionId, checkout, path })}`), 'Reading the Module'),
-    setPlainViewed: async (sessionId, checkout, path, key, viewed) => {
-      await call(() => send('POST', '/api/plain/viewed', { session: sessionId, checkout, path, key, viewed }), 'Saving Viewed');
+    readPlain: (source, path, fresh) =>
+      call<PlainAnswer>(() => fetch(`/api/plain?${new URLSearchParams({ ...plainQuery(source), path, ...(fresh ? { fresh: '1' } : {}) })}`), 'Reading the Module'),
+    setPlainViewed: async (source, path, key, viewed) => {
+      const where = source.kind === 'pr' ? { repo: source.repo, pr: source.number } : { session: source.session, checkout: source.checkout };
+      await call(() => send('POST', '/api/plain/viewed', { ...where, path, key, viewed }), 'Saving Viewed');
     },
     plainViewed: async (sessionId, checkout) =>
       (await call<{ paths: string[] }>(() => fetch(`/api/plain/viewed?${new URLSearchParams({ session: sessionId, checkout })}`), 'Reading Viewed marks')).paths,
+    plainPr: (repo, number, fresh) =>
+      call<PlainPrFiles>(() => fetch(`/api/plain/pr?${new URLSearchParams({ repo, pr: String(number), ...(fresh ? { fresh: '1' } : {}) })}`), 'Reading the PR'),
+    plainClones: async () => (await call<{ repos: string[] }>(() => fetch('/api/plain/clones'), 'Reading local clones')).repos,
     checkPaths: async (sessionId, paths) =>
       (await call<{ paths: PathAnswer[] }>(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/paths`, { paths }), 'Checking paths')).paths,
     createTopic: async (title) => (await call<{ topic: Topic }>(() => send('POST', '/api/topics', { title }), 'Making the Topic')).topic,
@@ -539,4 +548,9 @@ export function createHttpClient(): LookoutClient {
       await call(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/send`, { text }), 'Sending');
     },
   };
+}
+
+/** PLAIN-1.1, PLAIN-5: a source as the Spec view's query names it. */
+function plainQuery(source: PlainSource): Record<string, string> {
+  return source.kind === 'pr' ? { repo: source.repo, pr: String(source.number) } : { session: source.session, checkout: source.checkout };
 }

@@ -186,8 +186,8 @@ export const SHORTCUTS: readonly Shortcut[] = [
     id: 'panel-start',
     group: 'panels',
     keys: ['S'],
-    label: 'Start a Session on the selected Task, or open the selected Session',
-    note: 'Work (a Task) and Library (a Session).',
+    label: 'Start a Session on the selected Task, open the selected Session, or list the selected PR’s specs',
+    note: 'Work (a Task, or a PR with a local clone) and Library (a Session).',
     press: [{ key: 's' }],
   },
   {

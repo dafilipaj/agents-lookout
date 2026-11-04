@@ -107,6 +107,8 @@ export interface WorkPr {
   /** Mine's state chip; null in Review requests. */
   chip: PrChip | null;
   column: PrColumn;
+  /** PLAIN-5.2: tb-pr's `base_branch`, the branch the PR merges into; null when tb-pr gives none. */
+  baseBranch: string | null;
   /** tb-pr's `task_ids`; null when this tb-pr doesn't give them (before Gap 1). */
   taskIds: PrTaskRef[] | null;
   /** WORK-3.4, WORK-4: matching Tasks and Sessions, null until the Link searches run. */

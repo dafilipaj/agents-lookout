@@ -1,4 +1,4 @@
-import { compareClauses, compareModules, definitionName, gist, parseClauses, PREDEFINED_CONCEPTS, wordDiff, type Clause, type Compared, type FunctionalSpec, type PlainAnswer, type PlainConcept, type Touched } from '@shared/plain.ts';
+import { compareClauses, compareModules, definitionName, gist, parseClauses, PREDEFINED_CONCEPTS, wordDiff, type Clause, type Compared, type FunctionalSpec, type PlainAnswer, type PlainConcept, type PlainSource, type Touched } from '@shared/plain.ts';
 import { ArrowLeft } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { Alert } from '@/components/ui/alert';
@@ -7,7 +7,7 @@ import { labelledButtonLook } from '@/components/ui/icon-button';
 import { Loading } from '@/components/ui/loading';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
 import { SaveError } from '@/lib/client';
-import { routePath } from '@/lib/router';
+import { plainRoute, routePath } from '@/lib/router';
 import { cn } from '@/lib/utils';
 import { PlainView } from './Shell';
 
@@ -40,16 +40,17 @@ function moduleClick(onOpen: () => void) {
 }
 
 export interface SpecViewProps {
-  sessionId: string;
-  checkout: string;
+  /** A live Session's Checkout, or a PR (PLAIN-5). */
+  source: PlainSource;
   path: string;
-  /** PLAIN-3.2: the Session's title, for "Back to …"; null when it's gone. */
-  sessionTitle: string | null;
-  load(sessionId: string, checkout: string, path: string): Promise<PlainAnswer>;
-  setViewed(sessionId: string, checkout: string, path: string, key: string, viewed: boolean): Promise<void>;
-  /** PLAIN-3.2: back to the Session's view. */
+  /** PLAIN-3.2: what "Back to …" names: the Session's title, or the PR; null for plain "Back". */
+  backTo: string | null;
+  /** `fresh` on the view's first read, so a PR's newer push is fetched first (PLAIN-5.3). */
+  load(source: PlainSource, path: string, fresh: boolean): Promise<PlainAnswer>;
+  setViewed(source: PlainSource, path: string, key: string, viewed: boolean): Promise<void>;
+  /** PLAIN-3.2: back to where it was opened from. */
   onBack(): void;
-  /** PLAIN-2.5: another Module of the same Checkout, as a new history entry. */
+  /** PLAIN-2.5: another Module of the same Checkout or PR, as a new history entry. */
   onOpenModule(path: string): void;
 }
 
@@ -60,7 +61,7 @@ const specAnchor = (id: string) => `plain-s-${id.replace(/[^A-Za-z0-9]+/g, '-').
 const defAnchor = (name: string) => `plain-def-${name.replace(/[^A-Za-z0-9]+/g, '-')}`;
 const moduleName = (path: string) => path.replace(/^.*\//, '').replace(/\.plain$/, '');
 
-/** PLAIN-1.5: a Module new since the Branch point compares with nothing, so every clause is added. */
+/** PLAIN-1.5: a Module new since the base compares with nothing, so every clause is added. */
 const compare = (a: Pick<PlainAnswer, 'text' | 'baseText'>) => compareModules(a.text, a.baseText ?? (a.text !== null ? '' : null));
 
 /** The texts of every clause, to tell which clauses a new read brought (PLAIN-1.7). */
@@ -83,10 +84,13 @@ function clauseTexts(c: Compared): Set<string> {
 }
 
 /**
- * PLAIN-1 to 4: a Module of a live Session's Checkout, whole, its change since the Branch point
+ * PLAIN-1 to 5: a Module of a live Session's Checkout or of a PR, whole, its change since the base
  * marked in place, other Modules' Concepts on hover, and its Viewed box.
  */
-export function SpecView({ sessionId, checkout, path, sessionTitle, load, setViewed, onBack, onOpenModule }: SpecViewProps) {
+export function SpecView({ source, path, backTo, load, setViewed, onBack, onOpenModule }: SpecViewProps) {
+  // The source by value: a new object for the same Checkout or PR never starts the reads over.
+  const sourceKey = JSON.stringify(source);
+  const src = useMemo(() => JSON.parse(sourceKey) as PlainSource, [sourceKey]);
   const [answer, setAnswer] = useState<PlainAnswer | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [justChanged, setJustChanged] = useState<ReadonlySet<string>>(new Set());
@@ -95,16 +99,19 @@ export function SpecView({ sessionId, checkout, path, sessionTitle, load, setVie
   const [saving, setSaving] = useState(false);
   const last = useRef<PlainAnswer | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
-  const here = routePath({ name: 'plain', session: sessionId, checkout, path });
-  const hrefOf = useCallback((p: string) => routePath({ name: 'plain', session: sessionId, checkout, path: p }), [sessionId, checkout]);
+  const here = routePath(plainRoute(src, path));
+  const hrefOf = useCallback((p: string) => routePath(plainRoute(src, p)), [src]);
 
   useEffect(() => {
     let alive = true;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let clear: ReturnType<typeof setTimeout> | null = null;
+    let first = true;
     const read = async () => {
       try {
-        const next = await load(sessionId, checkout, path);
+        const fresh = first;
+        first = false;
+        const next = await load(src, path, fresh);
         if (!alive) return;
         const before = last.current;
         last.current = next;
@@ -136,7 +143,7 @@ export function SpecView({ sessionId, checkout, path, sessionTitle, load, setVie
       if (timer) clearTimeout(timer);
       if (clear) clearTimeout(clear);
     };
-  }, [load, sessionId, checkout, path]);
+  }, [load, src, path]);
 
   const toggleViewed = useCallback(async () => {
     const a = last.current;
@@ -144,7 +151,7 @@ export function SpecView({ sessionId, checkout, path, sessionTitle, load, setVie
     const next = !a.viewed;
     setSaving(true);
     try {
-      await setViewed(sessionId, checkout, path, a.key, next);
+      await setViewed(src, path, a.key, next);
       // Only the answer it was saved for takes it: a read that brought a newer text meanwhile stands.
       const apply = (x: PlainAnswer | null) => (x && x.key === a.key ? { ...x, viewed: next, changedSinceViewed: next ? false : x.changedSinceViewed } : x);
       last.current = apply(last.current);
@@ -154,7 +161,7 @@ export function SpecView({ sessionId, checkout, path, sessionTitle, load, setVie
     } finally {
       setSaving(false);
     }
-  }, [saving, setViewed, sessionId, checkout, path]);
+  }, [saving, setViewed, src, path]);
 
   // PLAIN-4.1: V toggles Viewed, with focus outside a text field and no dialog open.
   useEffect(() => {
@@ -204,7 +211,7 @@ export function SpecView({ sessionId, checkout, path, sessionTitle, load, setVie
     <div className="flex min-w-0 flex-1 items-center gap-3">
       <button type="button" className={cn(labelledButtonLook(), 'h-7 shrink-0 text-meta font-normal')} onClick={onBack} data-field="spec-back">
         <ArrowLeft aria-hidden className="size-3.5" />
-        <span className="max-w-48 truncate">{sessionTitle ? `Back to ${sessionTitle}` : 'Back'}</span>
+        <span className="max-w-48 truncate">{backTo ? `Back to ${backTo}` : 'Back'}</span>
       </button>
       <h1 className="min-w-0 flex-1 truncate text-title font-semibold tracking-tight">
         {name}
@@ -357,9 +364,11 @@ function Module({
               )}
             </p>
           )}
-          {answer.text === null && <Alert tone="info" title="This Module was deleted since the Branch point." detail="Its text at the Branch point is shown, every clause removed." />}
-          {answer.baseText === null && answer.text !== null && compared.diffed && <p className="text-meta text-muted-foreground">New since the Branch point.</p>}
+          {answer.text === null && <Alert tone="info" title={`This Module was deleted since the ${answer.baseName}.`} detail={`Its text at the ${answer.baseName} is shown, every clause removed.`} />}
+          {answer.baseText === null && answer.text !== null && compared.diffed && <p className="text-meta text-muted-foreground">New since the {answer.baseName}.</p>}
         </header>
+
+        {answer.fetchError && <Alert tone="info" title={`Showing ${answer.checkout.where ?? 'the PR'} as fetched before`} detail={answer.fetchError} data-field="spec-fetch-error" />}
 
         {answer.changedSinceViewed && !answer.viewed && <Alert tone="info" title="Changed since you viewed it" data-field="spec-changed-since" />}
 
@@ -367,7 +376,7 @@ function Module({
           <section id="changes" aria-label="Changes" className="flex flex-col gap-2 rounded-md border border-border p-3" data-slot="spec-changes">
             <h2 className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-body font-semibold">
               Changes
-              <span className="text-meta font-normal text-muted-foreground">against {answer.base} (Branch point)</span>
+              <span className="text-meta font-normal text-muted-foreground">against {answer.base} ({answer.baseName})</span>
               <span className="ml-auto flex gap-3 text-meta font-normal" data-field="spec-tally">
                 <span className="text-diff-added-text">{compared.stats.added} added</span>
                 <span className="text-muted-foreground">{compared.stats.changed} changed</span>

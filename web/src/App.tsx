@@ -20,6 +20,8 @@ import { SuggestView } from '@/components/SuggestView';
 import { TopicGraph } from '@/components/TopicGraph';
 import { TopicView } from '@/components/TopicView';
 import { SpecView } from '@/components/SpecView';
+import type { PrSpecsApi } from '@/lib/pr-specs';
+import type { PlainSource } from '@shared/plain.ts';
 import { ViewErrorBoundary } from '@/components/ViewErrorBoundary';
 import { TopicsPanel } from '@/components/TopicsPanel';
 import { ServersPanel } from '@/components/ServersPanel';
@@ -46,7 +48,7 @@ import { type HarnessState, type LaunchDraft, initialDraft } from '@/lib/launch'
 import { shownEffort } from '@/lib/effort-switch';
 import { type ModelTarget, shownModel } from '@/lib/model-switch';
 import { SWITCH_RUNNING, type SwitchState, type SwitchWhat, restartedWhy, switchFailure, switchKey } from '@/lib/status-switch';
-import { parseRoute, routePath, useRoute } from '@/lib/router';
+import { parseRoute, routePath, useRoute, type Route } from '@/lib/router';
 import { HARNESS_NAME } from '@/lib/sessions';
 import { cn } from '@/lib/utils';
 import { listKnown, shownLaunches, useLookout } from '@/lib/store';
@@ -499,8 +501,26 @@ export function App({ client }: { client: LookoutClient }) {
   const openChange = useCallback((sessionId: string, root: string, path: string) => client.openChange(sessionId, root, path), [client]);
   // PLAIN-3.1: a changed Module opens in the Spec view, as a new history entry (Back returns, PLAIN-3.2).
   const openSpec = useCallback((session: string, checkout: string, path: string) => navigate({ name: 'plain', session, checkout, path }), [navigate]);
-  const readPlain = useCallback((s: string, c: string, p: string) => client.readPlain(s, c, p), [client]);
-  const setPlainViewed = useCallback((s: string, c: string, p: string, key: string, viewed: boolean) => client.setPlainViewed(s, c, p, key, viewed), [client]);
+  const readPlain = useCallback((source: PlainSource, p: string, fresh: boolean) => client.readPlain(source, p, fresh), [client]);
+  const setPlainViewed = useCallback((source: PlainSource, p: string, key: string, viewed: boolean) => client.setPlainViewed(source, p, key, viewed), [client]);
+  // PLAIN-5: Work's "Specs" on a PR; a Module opens in the Spec view, and Back returns to what the main pane showed.
+  const prSpecs = useMemo<PrSpecsApi>(
+    () => ({
+      clones: () => client.plainClones(),
+      list: (repo, number, fresh) => client.plainPr(repo, number, fresh),
+      onOpen: (repo, number, path) => {
+        // Back returns to what the main pane showed when Work opened it, a Spec view included.
+        prOpener.current = currentRoute.current;
+        navigate({ name: 'plain-pr', repo, number, path });
+      },
+    }),
+    [client, navigate],
+  );
+  const currentRoute = useRef<Route>(route);
+  const prOpener = useRef<Route>({ name: 'home' });
+  useEffect(() => {
+    currentRoute.current = route;
+  }, [route]);
   const plainViewed = useCallback((s: string, c: string) => client.plainViewed(s, c), [client]);
   // TOPIC-4.3: Topics open counts as Work open, so its PR and Task members are as fresh as Work's rows.
   // TOPIC-10.5: so does a Topic's view.
@@ -1121,14 +1141,24 @@ export function App({ client }: { client: LookoutClient }) {
             ) : route.name === 'plain' ? (
               <SpecView
                 key={`${route.session}\u0000${route.checkout}\u0000${route.path}`}
-                sessionId={route.session}
-                checkout={route.checkout}
+                source={{ kind: 'session', session: route.session, checkout: route.checkout }}
                 path={route.path}
-                sessionTitle={state.sessions.get(route.session)?.title ?? null}
+                backTo={state.sessions.get(route.session)?.title ?? null}
                 load={readPlain}
                 setViewed={setPlainViewed}
                 onBack={() => navigate({ name: 'session', id: route.session })}
                 onOpenModule={(path) => navigate({ name: 'plain', session: route.session, checkout: route.checkout, path })}
+              />
+            ) : route.name === 'plain-pr' ? (
+              <SpecView
+                key={`pr\u0000${route.repo}\u0000${route.number}\u0000${route.path}`}
+                source={{ kind: 'pr', repo: route.repo, number: route.number }}
+                path={route.path}
+                backTo={null}
+                load={readPlain}
+                setViewed={setPlainViewed}
+                onBack={() => navigate(prOpener.current)}
+                onOpenModule={(path) => navigate({ name: 'plain-pr', repo: route.repo, number: route.number, path })}
               />
             ) : route.name === 'past' ? (
               <PastSessionView harness={route.harness} sessionId={route.id} now={now} load={loadPast} />
@@ -1265,6 +1295,7 @@ export function App({ client }: { client: LookoutClient }) {
                   onOpenSettings={() => navigate({ name: 'settings' })}
                   keyboardEnabled={!modalOpen}
                   navRef={workNav}
+                  specs={prSpecs}
                 />
               ),
             }}

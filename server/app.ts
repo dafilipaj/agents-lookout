@@ -88,7 +88,9 @@ export interface AppOptions {
     open(sessionId: string, body: unknown): Promise<void>;
   };
   /** PLAIN: the Spec view's Modules and Viewed marks; optional, so a server without it answers 404. */
-  plain?: Pick<Plain, 'read' | 'setViewed' | 'viewedPaths'>;
+  plain?: Pick<Plain, 'read' | 'setViewed' | 'viewedPaths' | 'prFiles'>;
+  /** PLAIN-5.1, 5.4: the repos Lookout has a local clone of. */
+  plainClones?: () => Promise<string[]>;
   /** VIEW-1.18: which of a batch of paths are files, for one Session's file links (VIEW-1.17). */
   files: {
     check(sessionId: string, body: unknown): Promise<PathAnswer[]>;
@@ -453,11 +455,11 @@ export function createApp(opts: AppOptions): LookoutApp {
         throw err;
       }
     }
-    // PLAIN-1, 2: a Module of a live Session's Checkout, read only (PLAIN-6).
+    // PLAIN-1, 2: a Module of a live Session's Checkout or of a PR, read only (PLAIN-6).
     if (route === 'GET /api/plain' && opts.plain) {
       const q = url.searchParams;
       try {
-        return json(res, 200, await opts.plain.read(q.get('session') ?? '', q.get('checkout') ?? '', q.get('path')));
+        return json(res, 200, await opts.plain.read(plainSourceOf(q), q.get('path'), q.get('fresh') === '1'));
       } catch (err) {
         if (err instanceof PlainError) return json(res, err.status, { error: err.message });
         throw err;
@@ -473,13 +475,28 @@ export function createApp(opts: AppOptions): LookoutApp {
         throw err;
       }
     }
+    // PLAIN-5.1: a PR's changed Modules, fetched from GitHub into a local clone (PLAIN-5.2).
+    if (route === 'GET /api/plain/pr' && opts.plain) {
+      const q = url.searchParams;
+      try {
+        return json(res, 200, await opts.plain.prFiles(q.get('repo'), q.get('pr'), q.get('fresh') === '1'));
+      } catch (err) {
+        if (err instanceof PlainError) return json(res, err.status, { error: err.message });
+        throw err;
+      }
+    }
+    // PLAIN-5.4: which repos have a local clone, so a PR without one has no "Specs" button.
+    if (route === 'GET /api/plain/clones' && opts.plainClones) {
+      return json(res, 200, { repos: await opts.plainClones() });
+    }
     // PLAIN-4.1: ticking or clearing Viewed writes a file: a mutation, so every check a POST gets.
     if (route === 'POST /api/plain/viewed' && opts.plain) {
       const body = await readJson(req, res, MAX_OPEN_CHANGE_BODY, null);
       if (body === NO_BODY) return;
       const b = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
       try {
-        await opts.plain.setViewed(String(b.session ?? ''), String(b.checkout ?? ''), b.path, b.key, b.viewed);
+        const source = b.repo !== undefined ? { kind: 'pr', repo: b.repo, number: b.pr } : { kind: 'session', session: b.session, checkout: b.checkout };
+        await opts.plain.setViewed(source, b.path, b.key, b.viewed);
         return json(res, 200, { ok: true });
       } catch (err) {
         if (err instanceof PlainError) return json(res, err.status, { error: err.message });
@@ -960,4 +977,10 @@ function readBody(req: IncomingMessage, limit: number): Promise<string> {
       reject(err);
     });
   });
+}
+
+/** PLAIN-1.1, PLAIN-5: a Spec view's source from its query: `repo` and `pr`, else `session` and `checkout`. */
+function plainSourceOf(q: URLSearchParams): unknown {
+  if (q.has('repo')) return { kind: 'pr', repo: q.get('repo'), number: q.get('pr') };
+  return { kind: 'session', session: q.get('session') ?? '', checkout: q.get('checkout') ?? '' };
 }

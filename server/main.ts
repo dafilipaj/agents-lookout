@@ -22,10 +22,11 @@ import { SessionMonitor } from './monitor.ts';
 import { parsePort } from './port.ts';
 import { PortsMonitor } from './ports.ts';
 import { localAllowLists } from './security.ts';
-import { SettingsStore, defaultSettingsPath } from './settings.ts';
+import { SettingsStore, defaultSettingsPath, expandHome } from './settings.ts';
 import { trackStartDirectories } from './start-repos.ts';
 import { Changes } from './changes.ts';
 import { Plain } from './plain.ts';
+import { PlainPrs } from './plain-prs.ts';
 import { ToolsMonitor } from './tools.ts';
 import { TopicStore, Topics, defaultTopicsPath } from './topics.ts';
 import { UsageMonitor, resolveJevBin } from './usage.ts';
@@ -124,7 +125,24 @@ const changes = new Changes({
 void changes.prune();
 setInterval(() => void changes.prune(), 24 * 60 * 60 * 1000).unref();
 // PLAIN: the Spec view reads Modules of the Checkouts DIFF counts.
-const plain = new Plain({ runner: run, checkout: (sessionId, id) => changes.checkout(sessionId, id) });
+// PLAIN-5: and a PR's commits, fetched into a clone Lookout knows: a Start directory's, a live Session's.
+const plainPrs = new PlainPrs({
+  runner: run,
+  candidates: () => [
+    ...settings.get().startDirectories.map((dir) => expandHome(dir)),
+    ...monitor.snapshot().sessions.flatMap((row) => (row.cwd && row.git ? [row.cwd] : [])),
+    ...changes.roots(),
+  ],
+  baseBranch: (repo, number) => {
+    const prs = work.snapshot().prs;
+    const pr = [...prs.mine, ...prs.reviewRequests].find((p) => p.repo.toLowerCase() === repo.toLowerCase() && p.number === number);
+    return pr?.baseBranch ?? null;
+  },
+  env,
+});
+void plainPrs.prune();
+setInterval(() => void plainPrs.prune(), 60 * 60 * 1000).unref();
+const plain = new Plain({ runner: run, checkout: (sessionId, id) => changes.checkout(sessionId, id), prs: plainPrs });
 
 // VIEW-6, VIEW-7: the status line's switches share one gate, one switch per Session process at a time.
 const switcher: ModelSwitcherOptions = {
@@ -277,6 +295,7 @@ const app = createApp({
   work,
   changes,
   plain,
+  plainClones: () => plainPrs.clones(),
   sessions: {
     answer: (id, req) => viewer.answer(id, req),
     stop: (id, status) => viewer.stopSession(id, status),

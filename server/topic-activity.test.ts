@@ -21,7 +21,7 @@ const TASK = (id: string): NewMember => ({ kind: 'task', ref: { id }, snapshot: 
 const row = (n: number, title = `session ${n}`) => ({ id: sid(n), harness: 'claude', pid: 100 + n, title, cwd: '~/Projects/work', status: 'idle' }) as unknown as SessionRow;
 
 function workPr(n: number, over: Partial<WorkPr> = {}): WorkPr {
-  return { repo: 'anvil', number: n, title: `anvil change ${n}`, url: prUrl(n), author: null, createdAt: null, ageDays: 1, rotting: 'fresh', ci: 'passing', chip: 'draft', column: 'draft_mine', taskIds: [], links: null, ...over };
+  return { repo: 'anvil', number: n, title: `anvil change ${n}`, url: prUrl(n), author: null, createdAt: null, ageDays: 1, rotting: 'fresh', ci: 'passing', chip: 'draft', column: 'draft_mine', baseBranch: null, taskIds: [], links: null, ...over };
 }
 function workTask(id: string, over: Partial<WorkTask> = {}): WorkTask {
   return { id, title: `Task ${id}`, project: 'Lantern Works', status: 'In progress', statusCategory: 'started', statusColor: null, dueDate: null, lastActivityAt: null, milestone: false, description: null, url: `https://app.fantastic.productive.io/109-productive/tasks/${id}`, links: null, ...over };

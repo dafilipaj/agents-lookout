@@ -8,6 +8,7 @@ import { renderApp, row } from '@/test/helpers';
 import { JUST_CHANGED_MS, SPEC_POLL_MS } from './SpecView';
 
 const CHECKOUT = '0123456789abcdef';
+const SRC = { kind: 'session', session: 'a', checkout: CHECKOUT } as const;
 const URL = `/plain/a/${CHECKOUT}/${encodeURIComponent('plain/rates.plain')}`;
 
 const BASE = `---
@@ -43,8 +44,10 @@ const TEXT = BASE.replace('- Prices are kept in cents.', '- Prices are kept in c
 
 function answer(over: Partial<PlainAnswer> = {}): PlainAnswer {
   return {
-    sessionId: 'a',
+    source: { kind: 'session', session: 'a', checkout: CHECKOUT },
     checkout: { id: CHECKOUT, repo: 'shop', where: 'feature/rates' },
+    baseName: 'Branch point',
+    fetchError: null,
     path: 'plain/rates.plain',
     text: TEXT,
     baseText: BASE,
@@ -80,7 +83,7 @@ describe('the Spec view', () => {
     expect(parseRoute('/plain/a/not-an-id/x.plain')).toEqual({ name: 'home' });
     const { readPlain } = open();
     await screen.findByText('Rate cards on a Deal.');
-    expect(readPlain).toHaveBeenCalledWith('a', CHECKOUT, 'plain/rates.plain');
+    expect(readPlain).toHaveBeenCalledWith(SRC, 'plain/rates.plain', true);
   });
 
   it("PLAIN-1.2: the header names the Module, its path, its Checkout and description, and links its imports", async () => {
@@ -273,7 +276,7 @@ describe("other Modules' Concepts", () => {
     expect(openApi).toHaveAttribute('href', `/plain/a/${CHECKOUT}/${encodeURIComponent('plain/api.plain')}`);
     await user.click(openApi);
     expect(window.location.pathname).toBe(`/plain/a/${CHECKOUT}/${encodeURIComponent('plain/api.plain')}`);
-    await waitFor(() => expect(readPlain).toHaveBeenLastCalledWith('a', CHECKOUT, 'plain/api.plain'));
+    await waitFor(() => expect(readPlain).toHaveBeenLastCalledWith(SRC, 'plain/api.plain', true));
     act(() => window.history.back());
     await waitFor(() => expect(window.location.pathname).toBe(URL));
 
@@ -344,11 +347,11 @@ describe('back and Viewed', () => {
     const box = screen.getByRole('checkbox', { name: 'Viewed' });
     expect(box).not.toBeChecked();
     await user.click(box);
-    expect(setPlainViewed).toHaveBeenLastCalledWith('a', CHECKOUT, 'plain/rates.plain', 'k'.repeat(64), true);
+    expect(setPlainViewed).toHaveBeenLastCalledWith(SRC, 'plain/rates.plain', 'k'.repeat(64), true);
     expect(box).toBeChecked();
     act(() => (document.activeElement as HTMLElement).blur());
     await user.keyboard('v');
-    expect(setPlainViewed).toHaveBeenLastCalledWith('a', CHECKOUT, 'plain/rates.plain', 'k'.repeat(64), false);
+    expect(setPlainViewed).toHaveBeenLastCalledWith(SRC, 'plain/rates.plain', 'k'.repeat(64), false);
     await waitFor(() => expect(box).not.toBeChecked());
   });
 

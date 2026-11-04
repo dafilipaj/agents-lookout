@@ -31,7 +31,7 @@ const key = (m: NewMember) => `${m.kind}:${JSON.stringify(m.kind === 'session' ?
 
 const link = (n: number, reason: WorkSessionLink['reason'], title = `session ${n}`): WorkSessionLink => ({ sessionId: sid(n), harness: 'claude', title, createdAt: null, modifiedAt: null, live: true, reason });
 function workPr(n: number, over: Partial<WorkPr> = {}): WorkPr {
-  return { repo: 'anvil', number: n, title: `anvil change ${n}`, url: prUrl(n), author: null, createdAt: null, ageDays: 1, rotting: 'fresh', ci: 'passing', chip: 'draft', column: 'draft_mine', taskIds: [], links: null, ...over };
+  return { repo: 'anvil', number: n, title: `anvil change ${n}`, url: prUrl(n), author: null, createdAt: null, ageDays: 1, rotting: 'fresh', ci: 'passing', chip: 'draft', column: 'draft_mine', baseBranch: null, taskIds: [], links: null, ...over };
 }
 function workTask(id: string, over: Partial<WorkTask> = {}): WorkTask {
   return { id, title: `Task ${id}`, project: 'Lantern Works', status: 'In progress', statusCategory: 'started', statusColor: null, dueDate: null, lastActivityAt: null, milestone: false, description: `Light the lanterns of ${id}`, url: `https://app.fantastic.productive.io/109-productive/tasks/${id}`, links: null, ...over };

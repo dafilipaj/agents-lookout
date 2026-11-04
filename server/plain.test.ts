@@ -17,6 +17,7 @@ let outside: string;
 let base: string;
 let checkout: KnownCheckout;
 
+const S = (session: string, checkout: string) => ({ kind: 'session', session, checkout });
 const DEAL_BEFORE = /^- :Deal: .*$/m;
 
 beforeAll(() => {
@@ -50,21 +51,21 @@ function plain(over: Partial<KnownCheckout> = {}, viewedFile = join(root, `viewe
 describe('reading a Module', () => {
   it('PLAIN-1.5: the working tree and the Branch point; a new Module has no base, a deleted one no text', async () => {
     const p = plain();
-    const crm = await p.read('sess', checkout.id, 'plain/crm.plain');
+    const crm = await p.read(S('sess', checkout.id), 'plain/crm.plain');
     expect(crm.text).toBe(readFileSync(join(repo, 'plain', 'crm.plain'), 'utf8'));
     expect(crm.baseText).toBe(crm.text);
     expect(crm.base).toBe(base.slice(0, 7));
     expect(crm.checkout).toEqual({ id: checkout.id, repo: 'shop', where: 'feature/rates' });
 
-    const added = await p.read('sess', checkout.id, 'plain/rates.plain');
+    const added = await p.read(S('sess', checkout.id), 'plain/rates.plain');
     expect(added.text).toContain(':Rate:');
     expect(added.baseText).toBeNull();
 
-    const gone = await p.read('sess', checkout.id, 'plain/gone.plain');
+    const gone = await p.read(S('sess', checkout.id), 'plain/gone.plain');
     expect(gone.text).toBeNull();
     expect(gone.baseText).toContain(':Gone:');
 
-    await expect(p.read('sess', checkout.id, 'plain/never.plain')).rejects.toMatchObject({ status: 404 });
+    await expect(p.read(S('sess', checkout.id), 'plain/never.plain')).rejects.toMatchObject({ status: 404 });
   });
 
   it('PLAIN-1.5: uncommitted edits are read, and a base newer than the cache is read again', async () => {
@@ -73,14 +74,14 @@ describe('reading a Module', () => {
     const before = readFileSync(file, 'utf8');
     writeFileSync(file, `${before}\n- An uncommitted line.\n`);
     try {
-      expect((await p.read('sess', checkout.id, 'plain/shell.plain')).text).toContain('An uncommitted line.');
+      expect((await p.read(S('sess', checkout.id), 'plain/shell.plain')).text).toContain('An uncommitted line.');
     } finally {
       writeFileSync(file, before);
     }
   });
 
   it('PLAIN-2.1: imports are followed transitively from the importing folder, requires gives only exported Concepts, and the own Module wins', async () => {
-    const a = await plain().read('sess', checkout.id, 'plain/crm.plain');
+    const a = await plain().read(S('sess', checkout.id), 'plain/crm.plain');
     // :Deal: is api.plain's, through productive → api.
     expect(a.concepts.Deal?.module).toBe('plain/api');
     // shell.plain is required: its exported :AppShell: is seen, its other definitions aren't.
@@ -94,29 +95,29 @@ describe('reading a Module', () => {
   });
 
   it('PLAIN-2.3: a definition the branch changed carries its base text too', async () => {
-    const a = await plain().read('sess', checkout.id, 'plain/crm.plain');
+    const a = await plain().read(S('sess', checkout.id), 'plain/crm.plain');
     expect(a.concepts.Deal!.lines[0]).toMatch(/It has a pipeline\.$/);
     expect(a.concepts.Deal!.baseLines![0]).not.toMatch(/It has a pipeline/);
     expect(a.concepts.Company!.lines).toEqual(a.concepts.Company!.baseLines);
   });
 
   it('PLAIN-2.4: import paths with no Module are listed as missing, and the rest still resolve', async () => {
-    const crm = await plain().read('sess', checkout.id, 'plain/crm.plain');
+    const crm = await plain().read(S('sess', checkout.id), 'plain/crm.plain');
     expect(crm.missing).toEqual(['providers/exporter/exporter-public', 'providers/realtime/realtime-public']);
-    const rates = await plain().read('sess', checkout.id, 'plain/rates.plain');
+    const rates = await plain().read(S('sess', checkout.id), 'plain/rates.plain');
     expect(rates.missing).toContain('nowhere/missing');
     expect(rates.concepts.Deal?.module).toBe('plain/api');
   });
 
   it('PLAIN-2.6: crm.plain and everything it reads takes under 500 ms', async () => {
     const p = plain();
-    await p.read('sess', checkout.id, 'plain/crm.plain'); // warm, as a view's later reads are
+    await p.read(S('sess', checkout.id), 'plain/crm.plain'); // warm, as a view's later reads are
     const t = performance.now();
-    await p.read('sess', checkout.id, 'plain/crm.plain');
+    await p.read(S('sess', checkout.id), 'plain/crm.plain');
     expect(performance.now() - t).toBeLessThan(500);
     const cold = plain();
     const c = performance.now();
-    await cold.read('sess', checkout.id, 'plain/crm.plain');
+    await cold.read(S('sess', checkout.id), 'plain/crm.plain');
     expect(performance.now() - c).toBeLessThan(500);
   });
 
@@ -124,7 +125,7 @@ describe('reading a Module', () => {
     const big = join(repo, 'plain', 'big.plain');
     writeFileSync(big, `---\n---\n${'x'.repeat(MAX_MODULE_BYTES + 1)}`);
     try {
-      await expect(plain().read('sess', checkout.id, 'plain/big.plain')).rejects.toMatchObject({ status: 413 });
+      await expect(plain().read(S('sess', checkout.id), 'plain/big.plain')).rejects.toMatchObject({ status: 413 });
     } finally {
       unlinkSync(big);
     }
@@ -134,11 +135,11 @@ describe('reading a Module', () => {
 describe('safety', () => {
   it('PLAIN-6.1: only a live Session\'s Checkout, by id; a path that leaves it, or isn\'t .plain, is refused', async () => {
     const p = plain();
-    await expect(p.read('other', checkout.id, 'plain/crm.plain')).rejects.toMatchObject({ status: 404 });
-    await expect(p.read('sess', '0123456789abcdef', 'plain/crm.plain')).rejects.toMatchObject({ status: 404 });
-    await expect(p.read('sess', repo, 'plain/crm.plain')).rejects.toMatchObject({ status: 400 });
+    await expect(p.read(S('other', checkout.id), 'plain/crm.plain')).rejects.toMatchObject({ status: 404 });
+    await expect(p.read(S('sess', '0123456789abcdef'), 'plain/crm.plain')).rejects.toMatchObject({ status: 404 });
+    await expect(p.read(S('sess', repo), 'plain/crm.plain')).rejects.toMatchObject({ status: 400 });
     for (const bad of ['../outside/secret.plain', '/etc/x.plain', 'plain/../plain/crm.plain', './plain/crm.plain', 'plain//crm.plain', 'plain/crm.md', 'plain\\crm.plain', '']) {
-      await expect(p.read('sess', checkout.id, bad), bad).rejects.toBeInstanceOf(PlainError);
+      await expect(p.read(S('sess', checkout.id), bad), bad).rejects.toBeInstanceOf(PlainError);
     }
     expect(modulePath('plain/crm.plain')).toBe('plain/crm.plain');
   });
@@ -149,8 +150,8 @@ describe('safety', () => {
     const importer = join(repo, 'plain', 'importer.plain');
     writeFileSync(importer, '---\nimport:\n  - linked\n---\n***definitions***\n- :X: is x.\n');
     try {
-      await expect(plain().read('sess', checkout.id, 'plain/linked.plain')).rejects.toMatchObject({ status: 403 });
-      const a = await plain().read('sess', checkout.id, 'plain/importer.plain');
+      await expect(plain().read(S('sess', checkout.id), 'plain/linked.plain')).rejects.toMatchObject({ status: 403 });
+      const a = await plain().read(S('sess', checkout.id), 'plain/importer.plain');
       expect(a.missing).toEqual(['linked']);
     } finally {
       unlinkSync(link);
@@ -162,7 +163,7 @@ describe('safety', () => {
     const climber = join(repo, 'plain', 'climber.plain');
     writeFileSync(climber, '---\nimport:\n  - ../../outside/secret\n---\n');
     try {
-      const a = await plain().read('sess', checkout.id, 'plain/climber.plain');
+      const a = await plain().read(S('sess', checkout.id), 'plain/climber.plain');
       expect(a.missing).toEqual(['../../outside/secret']);
       expect(Object.keys(a.concepts)).toEqual([]);
     } finally {
@@ -175,39 +176,39 @@ describe('Viewed', () => {
   it('PLAIN-4.2, 4.3: a mark is kept in a 0600 file across restarts, and stops applying once the Module changes', async () => {
     const file = join(root, 'viewed-keep.json');
     const first = plain({}, file);
-    const a = await first.read('sess', checkout.id, 'plain/shell.plain');
+    const a = await first.read(S('sess', checkout.id), 'plain/shell.plain');
     expect([a.viewed, a.changedSinceViewed]).toEqual([false, false]);
-    await first.setViewed('sess', checkout.id, 'plain/shell.plain', a.key, true);
+    await first.setViewed(S('sess', checkout.id), 'plain/shell.plain', a.key, true);
     expect(statSync(file).mode & 0o777).toBe(0o600);
 
     const again = plain({}, file); // a restart
-    expect((await again.read('sess', checkout.id, 'plain/shell.plain')).viewed).toBe(true);
+    expect((await again.read(S('sess', checkout.id), 'plain/shell.plain')).viewed).toBe(true);
 
     const shell = join(repo, 'plain', 'shell.plain');
     const before = readFileSync(shell, 'utf8');
     writeFileSync(shell, `${before}\n- One more line.\n`);
     try {
-      const b = await again.read('sess', checkout.id, 'plain/shell.plain');
+      const b = await again.read(S('sess', checkout.id), 'plain/shell.plain');
       expect([b.viewed, b.changedSinceViewed]).toEqual([false, true]);
     } finally {
       writeFileSync(shell, before);
     }
-    expect((await again.read('sess', checkout.id, 'plain/shell.plain')).viewed).toBe(true);
-    await again.setViewed('sess', checkout.id, 'plain/shell.plain', a.key, false);
-    expect((await plain({}, file).read('sess', checkout.id, 'plain/shell.plain')).viewed).toBe(false);
+    expect((await again.read(S('sess', checkout.id), 'plain/shell.plain')).viewed).toBe(true);
+    await again.setViewed(S('sess', checkout.id), 'plain/shell.plain', a.key, false);
+    expect((await plain({}, file).read(S('sess', checkout.id), 'plain/shell.plain')).viewed).toBe(false);
   });
 
   it('PLAIN-4.2: the same text and base seen from another Checkout of the repo share one mark; old marks are dropped', async () => {
     const file = join(root, 'viewed-share.json');
     const p = plain({}, file);
-    const a = await p.read('sess', checkout.id, 'plain/crm.plain');
-    await p.setViewed('sess', checkout.id, 'plain/crm.plain', a.key, true);
+    const a = await p.read(S('sess', checkout.id), 'plain/crm.plain');
+    await p.setViewed(S('sess', checkout.id), 'plain/crm.plain', a.key, true);
     const wt = join(root, 'shop-wt');
     git(repo, 'worktree', 'add', '-q', '-b', 'other', wt, 'HEAD');
     const other = plain({ id: checkoutId(wt), root: wt, where: 'other' }, file);
-    expect((await other.read('sess', checkoutId(wt), 'plain/crm.plain')).viewed).toBe(true);
+    expect((await other.read(S('sess', checkoutId(wt)), 'plain/crm.plain')).viewed).toBe(true);
     const later = plain({}, file, () => 1_000_000 + VIEWED_TTL_MS + 1);
-    expect((await later.read('sess', checkout.id, 'plain/crm.plain')).viewed).toBe(false);
+    expect((await later.read(S('sess', checkout.id), 'plain/crm.plain')).viewed).toBe(false);
   });
 
   it('PLAIN-4.2: two different changes of one Module, Viewed in two Worktrees, each keep their mark', async () => {
@@ -218,53 +219,53 @@ describe('Viewed', () => {
     const two: KnownCheckout = { ...checkout, id: checkoutId(wt), root: wt, where: 'two' };
     const both = (f: string) => new Plain({ runner: run, checkout: (_s, id) => [checkout, two].find((c) => c.id === id) ?? null, viewedFile: f });
     const p = both(file);
-    const a = await p.read('sess', checkout.id, 'plain/shell.plain');
-    const b = await p.read('sess', two.id, 'plain/shell.plain');
+    const a = await p.read(S('sess', checkout.id), 'plain/shell.plain');
+    const b = await p.read(S('sess', two.id), 'plain/shell.plain');
     expect(a.key).not.toBe(b.key);
-    await p.setViewed('sess', checkout.id, 'plain/shell.plain', a.key, true);
-    await p.setViewed('sess', two.id, 'plain/shell.plain', b.key, true);
+    await p.setViewed(S('sess', checkout.id), 'plain/shell.plain', a.key, true);
+    await p.setViewed(S('sess', two.id), 'plain/shell.plain', b.key, true);
     const again = both(file);
-    expect(await again.read('sess', checkout.id, 'plain/shell.plain')).toMatchObject({ viewed: true, changedSinceViewed: false });
-    expect(await again.read('sess', two.id, 'plain/shell.plain')).toMatchObject({ viewed: true, changedSinceViewed: false });
+    expect(await again.read(S('sess', checkout.id), 'plain/shell.plain')).toMatchObject({ viewed: true, changedSinceViewed: false });
+    expect(await again.read(S('sess', two.id), 'plain/shell.plain')).toMatchObject({ viewed: true, changedSinceViewed: false });
   });
 
   it('PLAIN-4.2: many later changes of a Module never evict an earlier one still within 30 days', async () => {
     const file = join(root, 'viewed-many.json');
     const p = plain({}, file);
-    const a = await p.read('sess', checkout.id, 'plain/shell.plain');
-    await p.setViewed('sess', checkout.id, 'plain/shell.plain', a.key, true);
-    for (let i = 0; i < 25; i++) await p.setViewed('sess', checkout.id, 'plain/shell.plain', i.toString(16).padStart(64, '0'), true);
-    expect((await plain({}, file).read('sess', checkout.id, 'plain/shell.plain')).viewed).toBe(true);
+    const a = await p.read(S('sess', checkout.id), 'plain/shell.plain');
+    await p.setViewed(S('sess', checkout.id), 'plain/shell.plain', a.key, true);
+    for (let i = 0; i < 25; i++) await p.setViewed(S('sess', checkout.id), 'plain/shell.plain', i.toString(16).padStart(64, '0'), true);
+    expect((await plain({}, file).read(S('sess', checkout.id), 'plain/shell.plain')).viewed).toBe(true);
   });
 
   it('PLAIN-4.2: marks saved at the same time are all kept', async () => {
     const file = join(root, 'viewed-race.json');
     const p = plain({}, file);
     const paths = ['plain/crm.plain', 'plain/shell.plain', 'plain/api.plain', 'plain/productive.plain'];
-    const reads = await Promise.all(paths.map((x) => p.read('sess', checkout.id, x)));
-    await Promise.all(reads.map((a) => p.setViewed('sess', checkout.id, a.path, a.key, true)));
+    const reads = await Promise.all(paths.map((x) => p.read(S('sess', checkout.id), x)));
+    await Promise.all(reads.map((a) => p.setViewed(S('sess', checkout.id), a.path, a.key, true)));
     const after = plain({}, file);
-    for (const x of paths) expect((await after.read('sess', checkout.id, x)).viewed, x).toBe(true);
+    for (const x of paths) expect((await after.read(S('sess', checkout.id), x)).viewed, x).toBe(true);
   });
 
   it('PLAIN-4.2: a mark still read is kept past 30 days from when it was set; one unread for 30 days goes without a restart', async () => {
     const file = join(root, 'viewed-ttl.json');
     let now = 1_000_000;
     const p = plain({}, file, () => now);
-    const a = await p.read('sess', checkout.id, 'plain/shell.plain');
-    await p.setViewed('sess', checkout.id, 'plain/shell.plain', a.key, true);
+    const a = await p.read(S('sess', checkout.id), 'plain/shell.plain');
+    await p.setViewed(S('sess', checkout.id), 'plain/shell.plain', a.key, true);
     now += 29 * 24 * 60 * 60 * 1000;
-    expect((await p.read('sess', checkout.id, 'plain/shell.plain')).viewed).toBe(true); // used again
+    expect((await p.read(S('sess', checkout.id), 'plain/shell.plain')).viewed).toBe(true); // used again
     now += 2 * 24 * 60 * 60 * 1000;
-    expect((await p.read('sess', checkout.id, 'plain/shell.plain')).viewed).toBe(true);
+    expect((await p.read(S('sess', checkout.id), 'plain/shell.plain')).viewed).toBe(true);
     now += VIEWED_TTL_MS + 1;
-    expect((await p.read('sess', checkout.id, 'plain/shell.plain')).viewed).toBe(false);
+    expect((await p.read(S('sess', checkout.id), 'plain/shell.plain')).viewed).toBe(false);
   });
 
   it('PLAIN-4.1: a mark takes a key from a read, and nothing else', async () => {
     const p = plain();
-    await expect(p.setViewed('sess', checkout.id, 'plain/crm.plain', 'nope', true)).rejects.toMatchObject({ status: 400 });
-    await expect(p.setViewed('sess', checkout.id, 'plain/crm.plain', 'a'.repeat(64), 'yes')).rejects.toMatchObject({ status: 400 });
+    await expect(p.setViewed(S('sess', checkout.id), 'plain/crm.plain', 'nope', true)).rejects.toMatchObject({ status: 400 });
+    await expect(p.setViewed(S('sess', checkout.id), 'plain/crm.plain', 'a'.repeat(64), 'yes')).rejects.toMatchObject({ status: 400 });
   });
 
   it("PLAIN-3.3: a Checkout's changed Modules that carry a mark for their text now", async () => {
@@ -276,8 +277,8 @@ describe('Viewed', () => {
     ];
     const p = plain({ files }, file);
     expect(await p.viewedPaths('sess', checkout.id)).toEqual([]);
-    const a = await p.read('sess', checkout.id, 'plain/rates.plain');
-    await p.setViewed('sess', checkout.id, 'plain/rates.plain', a.key, true);
+    const a = await p.read(S('sess', checkout.id), 'plain/rates.plain');
+    await p.setViewed(S('sess', checkout.id), 'plain/rates.plain', a.key, true);
     expect(await p.viewedPaths('sess', checkout.id)).toEqual(['plain/rates.plain']);
   });
 });
@@ -290,7 +291,7 @@ describe('what reading runs', () => {
       return run(file, args, opts);
     };
     const p = new Plain({ runner: spy, checkout: () => checkout, viewedFile: join(root, 'viewed-runs.json') });
-    await p.read('sess', checkout.id, 'plain/crm.plain');
+    await p.read(S('sess', checkout.id), 'plain/crm.plain');
     expect(calls.length).toBeGreaterThan(1);
     for (const c of calls) {
       expect(c[0]).toBe('git');
@@ -307,9 +308,9 @@ describe('what reading runs', () => {
       return run(file, args, opts);
     };
     const p = new Plain({ runner: spy, checkout: () => checkout, viewedFile: join(root, 'viewed-only.json') });
-    const a = await p.read('sess', checkout.id, 'plain/shell.plain');
+    const a = await p.read(S('sess', checkout.id), 'plain/shell.plain');
     calls.length = 0;
-    await p.setViewed('sess', checkout.id, 'plain/shell.plain', a.key, true);
+    await p.setViewed(S('sess', checkout.id), 'plain/shell.plain', a.key, true);
     expect(calls).toEqual([]);
   });
 });

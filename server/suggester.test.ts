@@ -44,7 +44,7 @@ const recent = (n: number, over: Partial<RecentSession> = {}): RecentSession => 
 const SESSION = (n: number): NewMember => ({ kind: 'session', ref: { harness: 'claude', sessionId: sid(n) }, snapshot: { harness: 'claude', title: `Polish the lantern ${n}`, directory: '/Users/me/Projects/harbor' } });
 const prUrl = (n: number) => `https://github.com/productiveio/anvil/pull/${n}`;
 function workPr(n: number): WorkPr {
-  return { repo: 'anvil', number: n, title: `anvil change ${n}`, url: prUrl(n), author: null, createdAt: null, ageDays: 1, rotting: 'fresh', ci: 'passing', chip: 'draft', column: 'draft_mine', taskIds: [], links: null };
+  return { repo: 'anvil', number: n, title: `anvil change ${n}`, url: prUrl(n), author: null, createdAt: null, ageDays: 1, rotting: 'fresh', ci: 'passing', chip: 'draft', column: 'draft_mine', baseBranch: null, taskIds: [], links: null };
 }
 function workTask(id: string): WorkTask {
   return { id, title: `Task ${id}`, project: 'Lantern Works', status: 'In progress', statusCategory: 'started', statusColor: null, dueDate: null, lastActivityAt: null, milestone: false, description: null, url: `https://app.fantastic.productive.io/109-productive/tasks/${id}`, links: null };

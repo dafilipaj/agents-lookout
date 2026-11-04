@@ -176,6 +176,11 @@ export class Changes {
     return { sessionId, checkouts: checkouts.map(({ baseSha: _, commonDir: __, ...c }) => c) };
   }
 
+  /** PLAIN-5.2: every live Session's counted Checkouts, where a PR's repo may have a clone. */
+  roots(): string[] {
+    return [...this.entries.keys()].flatMap((id) => (this.fresh(id) ?? []).map((c) => c.root));
+  }
+
   /** PLAIN-6.1: one of a live Session's counted Checkouts, by id, while its answer is fresh. */
   checkout(sessionId: string, id: string): KnownCheckout | null {
     const c = this.fresh(sessionId)?.find((x) => x.id === id);

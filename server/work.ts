@@ -233,6 +233,17 @@ function paletteIndex(value: unknown): number | null {
   return Number.isInteger(n) && n >= 0 && n <= 16 ? n : null;
 }
 
+/**
+ * PLAIN-5.2: a branch name git would take (`git check-ref-format --branch`'s rules, a little
+ * stricter), so it can be fetched as `refs/heads/<name>` and never read as an option; else null.
+ */
+export function branchName(v: unknown): string | null {
+  if (typeof v !== 'string' || !v || v.length > 255 || !/^[A-Za-z0-9._/-]+$/.test(v)) return null;
+  if (v.startsWith('-') || v.startsWith('/') || v.endsWith('/') || v.endsWith('.') || v.endsWith('.lock')) return null;
+  if (v.includes('..') || v.includes('//') || v.split('/').some((part) => part.startsWith('.'))) return null;
+  return v;
+}
+
 export function parsePr(raw: unknown, column: PrColumn): WorkPr | null {
   const unreadable = (what: string) => new TbPrShapeError(`a PR in ${column} ${what}`);
   if (!isObj(raw)) throw unreadable('is not an object');
@@ -256,6 +267,7 @@ export function parsePr(raw: unknown, column: PrColumn): WorkPr | null {
     ci: CI.get(raw.check_state) ?? 'none',
     chip: column === 'waiting_on_me' ? null : CHIP_OF[column],
     column,
+    baseBranch: branchName(raw.base_branch),
     taskIds: readTaskIds(raw.task_ids),
     links: null,
   };

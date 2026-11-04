@@ -111,7 +111,7 @@ describe('WORK-3.9: avatars the server fetches and keeps', () => {
 describe('WORK-3.9: GET /api/avatars/<login>', () => {
   const review = (author: string | null): WorkPr => ({
     repo: 'willow', number: 2106, title: 'Count the willow leaves', url: 'https://github.com/productiveio/willow/pull/2106', author,
-    createdAt: null, ageDays: null, rotting: null, ci: 'none', chip: null, column: 'waiting_on_me', taskIds: [], links: null,
+    createdAt: null, ageDays: null, rotting: null, ci: 'none', chip: null, column: 'waiting_on_me', baseBranch: null, taskIds: [], links: null,
   });
 
   function app(avatarsDir?: string) {

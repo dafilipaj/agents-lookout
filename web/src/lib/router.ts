@@ -1,3 +1,4 @@
+import type { PlainSource } from '@shared/plain.ts';
 import type { Harness } from '@shared/types.ts';
 import { useCallback, useSyncExternalStore } from 'react';
 
@@ -19,7 +20,14 @@ export type Route =
   /** LAUNCH-4.2 / 4.6: a "Starting…" row, selected until its Session takes over. */
   | { name: 'launch'; id: string }
   /** PLAIN-1.1: a Module of a live Session's Checkout, by the Checkout's id (never its path). */
-  | { name: 'plain'; session: string; checkout: string; path: string };
+  | { name: 'plain'; session: string; checkout: string; path: string }
+  /** PLAIN-5: a Module of a PR, by its repo (in `productiveio`) and number. */
+  | { name: 'plain-pr'; repo: string; number: number; path: string };
+
+/** PLAIN-1.1, PLAIN-5: the Spec view's route for a Module of this source. */
+export function plainRoute(source: PlainSource, path: string): Route {
+  return source.kind === 'pr' ? { name: 'plain-pr', repo: source.repo, number: source.number, path } : { name: 'plain', session: source.session, checkout: source.checkout, path };
+}
 
 /** SIDE-7.6: Settings' sub-pages, in the side nav's order. */
 export const SETTINGS_SECTIONS = ['general', 'tools'] as const;
@@ -57,6 +65,14 @@ export function parseRoute(pathname: string): Route {
   if (launch?.[1]) {
     try {
       return { name: 'launch', id: decodeURIComponent(launch[1]) };
+    } catch {
+      return { name: 'home' };
+    }
+  }
+  const pr = /^\/plain\/pr\/([A-Za-z0-9._-]{1,100})\/([1-9][0-9]{0,9})\/([^/]+)\/?$/.exec(pathname);
+  if (pr) {
+    try {
+      return { name: 'plain-pr', repo: pr[1]!, number: Number(pr[2]), path: decodeURIComponent(pr[3]!) };
     } catch {
       return { name: 'home' };
     }
@@ -100,6 +116,8 @@ export function routePath(route: Route): string {
       return `/l/${encodeURIComponent(route.id)}`;
     case 'plain':
       return `/plain/${encodeURIComponent(route.session)}/${route.checkout}/${encodeURIComponent(route.path)}`;
+    case 'plain-pr':
+      return `/plain/pr/${route.repo}/${route.number}/${encodeURIComponent(route.path)}`;
   }
 }
 

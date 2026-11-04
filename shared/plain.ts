@@ -515,8 +515,14 @@ export interface PlainConcept {
 }
 
 /** PLAIN: what `GET /api/plain` answers for one Module of a Checkout. */
+/**
+ * PLAIN-1.1, PLAIN-5: where a Module is read from: a live Session's Checkout, by the id DIFF gave it,
+ * or a PR's commits, fetched into a local clone of its repo (in `productiveio`), by repo and number.
+ */
+export type PlainSource = { kind: 'session'; session: string; checkout: string } | { kind: 'pr'; repo: string; number: number };
+
 export interface PlainAnswer {
-  sessionId: string;
+  source: PlainSource;
   checkout: { id: string; repo: string; where: string | null };
   /** The Module's path in the Checkout (`plain/crm.plain`). */
   path: string;
@@ -526,6 +532,10 @@ export interface PlainAnswer {
   baseText: string | null;
   /** The base commit, short. */
   base: string;
+  /** What the base is: "Branch point" (PLAIN-1.5), or "merge-base with develop" for a PR (PLAIN-5.3). */
+  baseName: string;
+  /** PLAIN-5.4: a PR whose last fetch failed is shown as fetched before, and this says why; null otherwise. */
+  fetchError: string | null;
   /** PLAIN-2.1: every Concept the Module sees from other Modules, by name. */
   concepts: Record<string, PlainConcept>;
   /** PLAIN-2.4: import and requires paths with no Module in the Checkout or its base. */
@@ -535,4 +545,13 @@ export interface PlainAnswer {
   viewed: boolean;
   /** PLAIN-4.3: a mark exists for an earlier text or base of this Module. */
   changedSinceViewed: boolean;
+}
+
+/** PLAIN-5.1: a PR's changed Modules, from its fetched commits, each with its Viewed mark (PLAIN-4). */
+export interface PlainPrFiles {
+  repo: string;
+  number: number;
+  files: { path: string; viewed: boolean }[];
+  /** PLAIN-5.4: why the last fetch failed; the files are then an earlier fetch's, or none. Null when it worked. */
+  error: string | null;
 }

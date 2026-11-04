@@ -25,12 +25,16 @@ function setup() {
     }),
   };
   const plain = {
-    read: vi.fn(async (_s: string, _c: string, path: unknown) => {
+    read: vi.fn(async (_source: unknown, path: unknown, _fresh?: boolean) => {
       if (path === 'gone.plain') throw new PlainError(404, "gone.plain isn't in this Checkout or at its Branch point.");
       return { path } as never;
     }),
     setViewed: vi.fn(async () => {}),
     viewedPaths: vi.fn(async () => ['plain/a.plain']),
+    prFiles: vi.fn(async (repo: unknown, number: unknown) => {
+      if (repo === 'nowhere') throw new PlainError(404, 'No local clone of nowhere.');
+      return { repo: String(repo), number: Number(number), files: [{ path: 'plain/crm.plain', viewed: true }], error: null };
+    }),
   };
   const app = createApp({
     attachmentsDir: join(tmpdir(), `lookout-unused-attachments-${randomUUID()}`),
@@ -133,7 +137,7 @@ it('PLAIN-1.1, PLAIN-6.1: a Module is read by Session, Checkout id and path, and
   const ok = exchange('GET', '/api/plain?session=s1&checkout=0123456789abcdef&path=plain%2Fcrm.plain', undefined, { 'x-lookout-token': '' });
   await ok.done;
   expect(ok.res.statusCode).toBe(200);
-  expect(plain.read).toHaveBeenCalledWith('s1', '0123456789abcdef', 'plain/crm.plain');
+  expect(plain.read).toHaveBeenCalledWith({ kind: 'session', session: 's1', checkout: '0123456789abcdef' }, 'plain/crm.plain', false);
   const no = exchange('GET', '/api/plain?session=s1&checkout=0123456789abcdef&path=gone.plain');
   await no.done;
   expect(no.res.statusCode).toBe(404);
@@ -159,5 +163,25 @@ it('PLAIN-4.1: ticking Viewed passes every check a mutation gets', async () => {
   const ok = exchange('POST', '/api/plain/viewed', body);
   await ok.done;
   expect(ok.res.statusCode).toBe(200);
-  expect(plain.setViewed).toHaveBeenCalledWith('s1', '0123456789abcdef', 'plain/crm.plain', 'a'.repeat(64), true);
+  expect(plain.setViewed).toHaveBeenCalledWith({ kind: 'session', session: 's1', checkout: '0123456789abcdef' }, 'plain/crm.plain', 'a'.repeat(64), true);
+  const pr = exchange('POST', '/api/plain/viewed', { repo: 'shop', pr: 7, path: 'plain/crm.plain', key: 'b'.repeat(64), viewed: false });
+  await pr.done;
+  expect(pr.res.statusCode).toBe(200);
+  expect(plain.setViewed).toHaveBeenLastCalledWith({ kind: 'pr', repo: 'shop', number: 7 }, 'plain/crm.plain', 'b'.repeat(64), false);
+});
+
+it("PLAIN-5.1, 5.3, 5.4: a PR's Modules and a PR's Module are read by repo and number, fresh on opening; no clone says why", async () => {
+  const { plain, exchange } = setup();
+  const view = exchange('GET', '/api/plain?repo=shop&pr=7&path=plain%2Fcrm.plain&fresh=1');
+  await view.done;
+  expect(view.res.statusCode).toBe(200);
+  expect(plain.read).toHaveBeenCalledWith({ kind: 'pr', repo: 'shop', number: '7' }, 'plain/crm.plain', true);
+  const list = exchange('GET', '/api/plain/pr?repo=shop&pr=7&fresh=1');
+  await list.done;
+  expect(JSON.parse(list.text())).toEqual({ repo: 'shop', number: 7, files: [{ path: 'plain/crm.plain', viewed: true }], error: null });
+  expect(plain.prFiles).toHaveBeenCalledWith('shop', '7', true);
+  const none = exchange('GET', '/api/plain/pr?repo=nowhere&pr=7');
+  await none.done;
+  expect(none.res.statusCode).toBe(404);
+  expect(JSON.parse(none.text())).toEqual({ error: 'No local clone of nowhere.' });
 });

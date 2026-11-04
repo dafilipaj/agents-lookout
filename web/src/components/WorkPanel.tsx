@@ -45,6 +45,8 @@ import {
 import { HarnessIcon } from './HarnessIcon';
 import { TaskStatusDot } from './TaskStatusDot';
 import { AddToTopicAction, TopicChips } from './TopicLinks';
+import { PrSpecsAction } from './PrSpecs';
+import { PrSpecsContext, useNoCloneReason, type PrSpecsApi } from '@/lib/pr-specs';
 import { useTopics } from '@/lib/topics';
 
 export interface WorkPanelProps {
@@ -69,6 +71,8 @@ export interface WorkPanelProps {
   keyboardEnabled: boolean;
   /** WORK-1.7: how the tab strip moves Work's rows. */
   navRef?: Ref<PanelNav>;
+  /** PLAIN-5: a PR's "Specs"; without it, no PR has the button. */
+  specs?: PrSpecsApi;
 }
 
 const DAY_MS = 86_400_000;
@@ -122,7 +126,7 @@ function openInBrowser(url: string) {
  * `O`, `R` and `S` (WORK UX, "Markers and buttons"). ↑/↓ and j/k run through both sections' rows,
  * and focus follows the selection into the list that holds it, the only list in the Tab order (UX, Focus).
  */
-export function WorkPanel({ work, sessions, filter, onFilter, now, focusKey, onStart, onReview, onOpenSession, onOpenSettings, keyboardEnabled, navRef }: WorkPanelProps) {
+export function WorkPanel({ work, sessions, filter, onFilter, now, focusKey, onStart, onReview, onOpenSession, onOpenSettings, keyboardEnabled, navRef, specs }: WorkPanelProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const topics = useTopics();
   const tasksList = useRef<HTMLDivElement | null>(null);
@@ -141,6 +145,10 @@ export function WorkPanel({ work, sessions, filter, onFilter, now, focusKey, onS
   const open = expanded !== null && rows.some((r) => r.key === expanded) ? expanded : null;
   if (open !== expanded) setExpanded(null);
   const sessionsAvailable = work?.sessionLinks.state === 'ok';
+  // PLAIN-5.1: the PR row whose Specs list is open; it closes with its row.
+  const clones = usePrClones(specs, open);
+  const [specsFor, setSpecsFor] = useState<string | null>(null);
+  const specsOpen = specsFor !== null && specsFor === open ? specsFor : null;
   // WORK-2.10: the row whose Resume runs ("Resuming…") and its Session, and a failed open, under that
   // row's buttons. It says so until the Session is live in the Session list; a resume that answered
   // but isn't live LAUNCH-4.5's 15 s later has failed, and its "Starting…" row says why.
@@ -284,6 +292,13 @@ export function WorkPanel({ work, sessions, filter, onFilter, now, focusKey, onS
     } else if (letter === 's' && row?.kind === 'task') {
       e.preventDefault();
       if (!e.repeat) start(row);
+    } else if (letter === 's' && row?.kind === 'pr' && specs && clones?.has(row.pr.repo.toLowerCase())) {
+      // PLAIN-5.1: S opens the selected PR's Specs, expanding it, as the button does.
+      e.preventDefault();
+      if (!e.repeat) {
+        if (open !== row.key) expand(row.key);
+        setSpecsFor(row.key);
+      }
     } else if (letter === 'a' && row && topics) {
       // TOPIC-2.1: A opens the Topic picker for the selected row, expanded or not.
       e.preventDefault();
@@ -303,11 +318,14 @@ export function WorkPanel({ work, sessions, filter, onFilter, now, focusKey, onS
     },
     onAct: act,
     onSession: openSession,
+    specsOpen,
+    onSpecs: (row, next) => setSpecsFor(next ? row.key : null),
   };
 
   const tasks = work?.tasks ?? null;
   const prs = work?.prs ?? null;
   return (
+    <PrSpecsProvider api={specs} clones={clones}>
     <LiveSessions.Provider value={sessions}>
       {/* Named, as it holds focus while there's no list to focus (WORK-1.7). */}
       <div ref={rootRef} role="group" aria-label="Work" tabIndex={-1} className="flex min-h-0 flex-1 flex-col outline-none" onKeyDown={onKeyDown} data-testid="work-panel">
@@ -368,7 +386,30 @@ export function WorkPanel({ work, sessions, filter, onFilter, now, focusKey, onS
         </div>
       </div>
     </LiveSessions.Provider>
+    </PrSpecsProvider>
   );
+}
+
+/** PLAIN-5.4: which repos have a local clone, read when Work opens and when a row expands. */
+function usePrClones(api: PrSpecsApi | undefined, expanded: string | null): ReadonlySet<string> | null {
+  const [clones, setClones] = useState<ReadonlySet<string> | null>(null);
+  useEffect(() => {
+    if (!api) return;
+    let alive = true;
+    api.clones().then(
+      (repos) => alive && setClones((cur) => (cur && cur.size === repos.length && repos.every((r) => cur.has(r)) ? cur : new Set(repos))),
+      () => {},
+    );
+    return () => {
+      alive = false;
+    };
+  }, [api, expanded]);
+  return clones;
+}
+
+function PrSpecsProvider({ api, clones, children }: { api: PrSpecsApi | undefined; clones: ReadonlySet<string> | null; children: ReactNode }) {
+  if (!api) return children;
+  return <PrSpecsContext.Provider value={{ api, clones }}>{children}</PrSpecsContext.Provider>;
 }
 
 /** What a row needs to expand and act (WORK-1.12, WORK-2.10, WORK-3.6), handed down from WorkPanel. */
@@ -386,6 +427,9 @@ interface RowState {
   onRow(row: WorkRow, e: MouseEvent): void;
   onAct(row: WorkRow, action: RowActionKind): void;
   onSession(row: WorkRow, session: WorkSessionLink): void;
+  /** PLAIN-5.1: the row whose Specs list is open, and opening or closing it. */
+  specsOpen: string | null;
+  onSpecs(row: WorkRow, open: boolean): void;
 }
 
 interface SectionHeaderProps {
@@ -681,6 +725,8 @@ interface DetailsProps {
   state: RowState;
   /** The row's own lines, before the chips. */
   children?: ReactNode;
+  /** Buttons of its own kind, after the row's (PLAIN-5.1's "Specs"), before "Add to Topic". */
+  extra?: ReactNode;
 }
 
 /**
@@ -688,7 +734,7 @@ interface DetailsProps {
  * Linked Session chips (WORK-4.10), then its buttons (WORK-2.10, WORK-3.6), wrapping when they don't
  * fit, and a failed open under them. A screen reader hears it as the row's description, not its name.
  */
-function Details({ id, row, actions, sessions, state, children }: DetailsProps) {
+function Details({ id, row, actions, sessions, state, children, extra }: DetailsProps) {
   const resuming = state.resuming === row.key;
   const failure = state.failure?.key === row.key ? state.failure.message : null;
   return (
@@ -717,6 +763,7 @@ function Details({ id, row, actions, sessions, state, children }: DetailsProps) 
               />
             );
           })}
+          {extra}
           <AddToTopicAction members={rowMembers(row)} label={rowLabel(row)} />
         </RowActions>
       </div>
@@ -932,6 +979,9 @@ function PrRow({ row, group, pr, now, active, state }: PrRowProps) {
   const expanded = state.open === row.key;
   const actions = rowActions(row, state.sessionsAvailable);
   const sessions = state.sessionsAvailable ? (pr.links?.sessions ?? []) : [];
+  // PLAIN-5.4: a PR without a local clone has no "Specs"; its tooltip says why.
+  const noClone = useNoCloneReason(pr.repo);
+  const tip = [pr.links?.incomplete ? 'Links may be incomplete' : null, noClone].filter(Boolean).join('\n');
   return (
     <div
       id={id}
@@ -940,7 +990,7 @@ function PrRow({ row, group, pr, now, active, state }: PrRowProps) {
       aria-expanded={expanded}
       aria-describedby={expanded ? `${id}-keys ${id}-details` : `${id}-keys`}
       data-pr={`${pr.repo}#${pr.number}`}
-      title={pr.links?.incomplete ? 'Links may be incomplete' : undefined}
+      title={tip || undefined}
       onClick={(e) => state.onRow(row, e)}
       className={cn('flex min-w-0 cursor-default items-start gap-1.5 rounded-md px-2 py-1.5 text-body hover:bg-sidebar-accent/60', active && 'bg-sidebar-accent')}
     >
@@ -993,7 +1043,7 @@ function PrRow({ row, group, pr, now, active, state }: PrRowProps) {
             ))}
           </div>
         )}
-        {expanded && <Details id={`${id}-details`} row={row} actions={actions} sessions={sessions} state={state} />}
+        {expanded && <Details id={`${id}-details`} row={row} actions={actions} sessions={sessions} state={state} extra={<PrSpecsAction pr={pr} open={state.specsOpen === row.key} onOpenChange={(next) => state.onSpecs(row, next)} />} />}
       </div>
     </div>
   );

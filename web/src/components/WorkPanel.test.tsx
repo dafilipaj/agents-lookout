@@ -21,6 +21,7 @@ const pr = (over: Partial<WorkPr> & { repo: string; number: number }): WorkPr =>
   ci: 'none',
   chip: 'draft',
   column: 'draft_mine',
+  baseBranch: 'develop',
   taskIds: [],
   links: null,
   ...over,

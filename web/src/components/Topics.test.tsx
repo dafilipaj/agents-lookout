@@ -16,7 +16,7 @@ const topic = (n: number, over: Partial<Topic> = {}): Topic => ({ id: id(n), tit
 const pr = (over: Partial<WorkPr> & { repo: string; number: number }): WorkPr => ({
   title: `${over.repo} change ${over.number}`,
   url: `https://github.com/productiveio/${over.repo}/pull/${over.number}`,
-  author: null, createdAt: NOW - 2 * 86_400_000, ageDays: 2, rotting: 'fresh', ci: 'passing', chip: 'draft', column: 'draft_mine', taskIds: [], links: null,
+  author: null, createdAt: NOW - 2 * 86_400_000, ageDays: 2, rotting: 'fresh', ci: 'passing', chip: 'draft', column: 'draft_mine', baseBranch: null, taskIds: [], links: null,
   ...over,
 });
 const task = (over: Partial<WorkTask> & { id: string; title: string }): WorkTask => ({

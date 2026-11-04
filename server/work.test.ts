@@ -111,6 +111,7 @@ describe('reading `tb-pr list --json` (tb-pr 0.3.1)', () => {
       ci: 'passing',
       chip: 'draft',
       column: 'draft_mine',
+      baseBranch: 'develop',
       taskIds: null,
       links: null,
     });
