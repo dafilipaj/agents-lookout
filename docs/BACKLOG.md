@@ -195,6 +195,12 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
 - **Decide:** in [LAUNCH Open question 1](features/launch-session/SPEC.md#open-questions); the answer goes into Key decisions and LAUNCH-6.10.
 - **Added:** 2026-11-03, by Dario, from the Fleet upstream sync.
 
+## Ask the Session about a clause of a spec (PLAIN)
+
+- **What:** in the Spec view, select a clause and choose "Ask the Session about this", which quotes it in that Session's composer.
+- **Why it's here:** a Non-goal of PLAIN's first version (grill, 2026-11-04): reading and Viewed come first. It fits with "review comments sent to the Session as a prompt" (DIFF) above.
+- **Added:** 2026-11-04, by Dario, from PLAIN's grill.
+
 ## Dropped
 
 Discussed and decided against. Each keeps why, so it isn't proposed again without something new.

@@ -16,6 +16,8 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Checkout**: A git working tree: a repo's main one or a Worktree. A Claude Code Session's Checkouts are those it edited files in, and its working directory's when it edited there or it isn't on its default branch (DIFF-2.1); a Codex Session's is its working directory's (DIFF-2.2).
 
+**Concept**: A name a PlainLang Module defines in its definitions, written `:Name:` (`:Deal:`). A Module also sees the Concepts of the Modules it imports, and the exported ones of those it requires. See the PLAIN spec.
+
 **Controllable**: A Session Lookout can bring to the front and type into, because Fleet knows its terminal (backend `tmux` or `iterm`). Sessions in other apps, such as Claude Desktop or IDE terminals, aren't.
 
 **Design system**: Lookout's shared look: the type scale and colour tokens in `web/src/index.css`, the components in `web/src/components/ui/`, and the rules for using them, written down in the DS spec and guarded by tests ([0009](decisions/0009-one-design-system-guarded-by-tests.md)).
@@ -48,6 +50,8 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Memory overview**: The line under the usage strip with what Lookout's and the Sessions' Process trees cost the Mac, and the breakdown it opens. See the MEM spec.
 
+**Module**: A PlainLang (`.plain`) spec file, such as fantastic-productive's `plain/crm.plain`. See the PLAIN spec.
+
 **Needs you**: The Status of a Session that is blocked on you: a permission prompt, a question, or input.
 
 **Output**: A document file, an Artifact on claude.ai or a Backyard Share that a Session, or one of its Subagents, produced. tb-session's `events` lists the recorded actions, and Lookout's server turns them into Outputs: one per kind and key, with the Sessions that touched it. A file counts only when it has a document extension, isn't under a Harness home, still has its folder and isn't owned by git. An Artifact and the file it was published from are one Output, the Artifact's. See the LIB spec.
@@ -69,6 +73,8 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 **Session**: One agent conversation: a Harness process with a session ID and a working directory. Every Session Lookout starts runs in its own Session host.
 
 **Session host**: The tmux session a Session runs in. Lookout never shows tmux itself.
+
+**Spec view**: A Module shown whole in the main pane, with its change since its base marked in place and other Modules' Concepts on hover. See the PLAIN spec.
 
 **Start directory**: A directory listed in Settings where Lookout can start new Sessions. `~/Projects/work` by default.
 
