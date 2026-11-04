@@ -48,6 +48,7 @@ Agents start dev servers, in Worktrees and through tb-devctl, and leave them run
 - [ ] PORTS-4.3 A process that ignores the polite signal is force-stopped after 3 s. (test)
 - [ ] PORTS-4.4 A tb-devctl service is stopped through `tb-devctl down`, so its stack's state stays right. (test)
 - [ ] PORTS-4.5 If stopping fails, the row says why and stays. (test)
+- [ ] PORTS-4.6 Each server row in the Servers tab has a Stop button, and every Stop asks first: an in-app dialog, as End Session's (VIEW-5.6, never `window.confirm`), names the server (port, name, and its Session or directory) and what stops with it (the processes it started; for a tb-devctl service, `tb-devctl down` of that service). Buttons: Cancel and Stop (destructive); Stop reads "Stopping…" while it works, and a failure shows in the dialog (PORTS-4.5). (test)
 
 ## Non-goals
 
@@ -82,6 +83,7 @@ Servers tab (P)
 
 - The chip is `text-meta`, `muted-foreground`, as the status line's other parts; no colour: a running server is information, not a state to act on (DS-12).
 - Rows are the design system's list rows: port in `tabular-nums`, name in `body`, the directory and age in `meta`.
+- Slice 2: a Stop icon button (DS-7, lucide's `Square`, named "Stop <port> <name>") at the end of each row, opening the confirmation (PORTS-4.6).
 
 ## Technical approach
 
@@ -101,11 +103,11 @@ Servers tab (P)
 - **Lookout's server reads `lsof` and `ps` itself, not a `tb-ports` CLI** (Dario, 2026-11-02): 0005 keeps Building blocks outside Lookout, but reading the OS's listeners is a read like MEM's `ps`, with no state or logic another tool needs today. A `tb-ports` CLI waits for an agent wanting the same.
 - **Seeing first, Stop in slice 2** (Dario, 2026-11-02): seeing answers the question; Stop is the risky half (PORTS-4.2) and gets its own slice and review.
 - **Shown: a Session's, a tb-devctl service, or in a git checkout** (Dario, 2026-11-02): on 2026-11-02 twelve of thirteen listeners were the Mac's or apps', so an unfiltered list is mostly noise; "Show all" has the rest.
+- **Every Stop is confirmed** (Dario, 2026-11-04: "If I click stop button I want confirmation window"): a dialog before every Stop, a Session's server and a tb-devctl service alike. The recommendation (one click except for tb-devctl) wasn't taken.
 - **tb-devctl's `owner` first**: it names the Session that started the stack outright, so it beats the tree and the working directory.
 
 ## Open questions
 
-- [ ] Slice 2: is Stop one click, or confirmed? Recommended: one click for a server that belongs to a Session or a checkout; a tb-devctl service asks first, as `down` stops its whole stack's service.
 - [ ] Slice 2: Stop names a server by pid, command and start time, and the server checks all three again before signalling, so a reused pid is never signalled; every process it signals, not only the group's leader, is checked against PORTS-4.2 (as the Session actions' process identity does, VIEW-5.6). From Codex's spec review.
 
 ## Changelog
@@ -118,3 +120,4 @@ Servers tab (P)
 - 2026-11-02: Seen running on Dario's Mac: MySQL showed by default, as `/opt/homebrew` is a git checkout, so PORTS-1.4 counts only checkouts at or below `~`; and five tabs cut every name short at the default width, so PORTS-3.1 shows the other tabs as icons alone.
 - 2026-11-02: Slice 1 built (`shared/ports.ts`, `server/ports.ts`, `PortsChip`, `ServersPanel`, the World's `.ports()` with `lsof`, `ps` and `tb-devctl` shims) and reviewed by Codex (Sol high, 2 rounds: 5 fixes taken, the checkout-in-`~` finding rejected as the amendment above); PORTS-1 to 3.5 ticked, 3.6 waits for an eye. In Progress.
 - 2026-11-02: Design pass on the running app (Dario's walk-through): PORTS-3.2's row keeps the port and name whole and cuts the directory from its start; PORTS-3.1's icon-only tabs wear their count on the icon's corner.
+- 2026-11-04: Dario asked for slice 2 ("I lack buttons to be able to stop servers from the Servers tab") and answered its first Open question: every Stop is confirmed in a dialog. PORTS-4.6 added, the UX gains the row's Stop button, a Key decision replaces the Open question.
