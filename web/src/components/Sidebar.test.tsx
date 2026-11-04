@@ -903,6 +903,17 @@ describe('both sections', () => {
 });
 
 describe('filter', () => {
+  it("SIDE-8.2: the Filter bar starts with Lookout's mark at 16 px, hidden from screen readers, just before the Filter box", () => {
+    renderApp().snapshot([row({ id: 'a', title: 'a' })]);
+    const label = screen.getByRole('searchbox', { name: 'Filter Sessions' }).closest('label')!;
+    const mark = label.previousElementSibling!;
+    expect(mark).toHaveAttribute('data-slot', 'lookout-mark');
+    expect(mark).toHaveAttribute('aria-hidden', 'true');
+    expect(mark).toHaveClass('size-4');
+    expect(mark.parentElement).toHaveClass('gap-1.5');
+    expect(mark.previousElementSibling).toBeNull();
+  });
+
   it('SIDE-5.4: `/` focuses the filter; typing filters by title, repo, Worktree or branch; Esc clears it', async () => {
     pinDate();
     const user = userEvent.setup();

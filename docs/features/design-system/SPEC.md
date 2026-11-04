@@ -3,7 +3,7 @@ title: "Design system"
 code: "DS"
 status: "In Progress"
 created: "2026-10-22"
-updated: "2026-11-02"
+updated: "2026-11-04"
 ---
 
 # Design system
@@ -153,6 +153,14 @@ A page in parts gets one of two shared pieces, never a strip made by hand: sub-p
 - [x] DS-13.3 The guard fails on `role="tablist"` outside `tabs.tsx` and `RightSidebar.tsx` (whose icon tabs also open and close the sidebar, WORK-1.7), and on `aria-current="page"` outside `side-nav.tsx`. (test)
 - [ ] DS-13.4 Settings (SIDE-7.6) and a Topic view (TOPIC-10.7) read well from a 480 px main pane to a wide one, light and dark: the side nav beside the content when wide and above it when narrow, and the Topic view's tabs on one line at 480 px with "Members 46" and "Activity 10 new". (manual)
 
+### DS-14 Lookout's own mark
+
+Lookout's mark is the Lens: a ring and an off-centre dot (0014). It's the brand, so it never takes a Status colour (DS-3).
+
+- [x] DS-14.1 `LookoutMark` (`ui/lookout-mark.tsx`) draws the Lens in a 24 px viewBox with lucide's grammar: a ring, `circle cx=12 cy=12 r=8.5`, stroked at 2 px with round caps and joins, and a solid dot, `circle cx=14.25 cy=9.75 r=2.75`. Its stroke and fill are `currentColor`, so it takes the text colour around it and never a Status, Warning, Destructive or Primary token; its size comes from its `className`; it's hidden from screen readers. The icon guard (0008) lists its file among those that may draw an `<svg>`. (test)
+- [x] DS-14.2 The favicon (`web/public/favicon.svg`) is the Lens on a 32 px tile, `rx=8`, in `#18181b`: the mark in `#fafafa` at a 2.6 px stroke, scaled 0.9167 from `translate(5 5)`. No amber: it's Needs you's colour, kept free for a Needs you mark on the favicon later. (test)
+- [ ] DS-14.3 Seen in both modes: the favicon reads as the Lens in a light and a dark browser tab strip, and the sidebar's mark (SIDE-8.2) reads as the brand, quieter than any Status marker. (manual)
+
 ## Non-goals
 
 - **Narrow widths** (the review's suggestion 2): columns that collapse below about 1024 px, a header that folds its buttons, a status line that drops whole parts. Dario uses Lookout full screen; it's in the Backlog.
@@ -165,7 +173,7 @@ A page in parts gets one of two shared pieces, never a strip made by hand: sub-p
 - Line heights, spacing and row heights beyond icon buttons. They're consistent enough today.
 - The review's smaller findings not listed in DS's requirements: the View only row's grey marker, the composer's Needs you border, the flagged usage line's dimming, the composer hint, the chat's measure, the header's Status tag shape, the launcher's layout, Settings' three Save buttons, a `?` shortcut overlay. Each can come back as its own item.
 - A theme switch or other themes. Dark mode follows the system, as now.
-- New icons or shapes. DS reuses lucide and the Status shapes, within 0008.
+- New icons or shapes. DS reuses lucide and the Status shapes, within 0008; the one new shape is Lookout's mark (DS-14, 0014).
 
 ## UX
 
@@ -464,3 +472,4 @@ None.
 - 2026-11-02: DS-13.1 to 13.3 built and ticked (`ui/side-nav.tsx`, `ui/tabs.tsx`, the guard in `design-system.test.ts`); DS-13.4 waits for Dario's look. Found while building: Vitest 5's on-disk module cache (`fsModuleCache`) keyed the guards' `import.meta.glob` by the guard file's own text, so the colour guard had kept an old file list and passed while newer files broke it; the cache is off (`vitest.config.ts`). The focus rings it then found are pinned; TopicGraph's selected node, drag line and handle in Primary, the Topic view's new-activity dot in Primary, and the Subagents popover's Busy and Idle text are not, and failed it; Dario decided them the same day (Key decisions): the graph's selected node and the new-activity dot are `foreground`, drawing an Edge stays Primary (DS-12.4 amended), and the popover is listed under Busy and Idle.
 - 2026-11-02: DS-3.3's quoted usage label follows USAGE: "stale · …".
 - 2026-11-03: The `ok` family also marks a Done Session: its row's Done chip (SIDE-2.17, the Chip's `ok` tone) and its Done card in the chat (VIEW-5.17).
+- 2026-11-04: Added DS-14, Lookout's own mark, the Lens (Plan item 36, decision 0014): `LookoutMark` and a new favicon without amber. Dario chose the Lens from five concepts. Built the same day: `ui/lookout-mark.tsx`, the favicon, the guard's exception (`icons.test.ts`), tests in `shared.test.tsx` (DS-14.1, DS-14.2); seen in Chromium in both modes at 1440 px with the server's build. DS-14.3 waits for Dario's look.

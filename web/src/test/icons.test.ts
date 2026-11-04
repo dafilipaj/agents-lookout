@@ -25,12 +25,13 @@ const SOURCES = Object.fromEntries(
  * Files that draw with `<svg>`: the Harness logos and the Status shapes (both 0008 exceptions), and
  * the Session row's context gauge (`ContextRing`), a tiny chart of a number rather than an icon.
  * MEM's sparkline is a chart too, and so is the Topics graph (TOPIC-7), a diagram of nodes and Edges.
+ * Lookout's own mark, the Lens, is a brand like the Harness logos (0014, DS-14.1).
  * The chat rail's Marks are CSS shapes and need no entry.
  */
 /** DS-8.5 (0012): the one component that renders an `<img>`: a person's avatar, never an icon. */
 const IMG_FILES = new Set(['web/src/components/ui/avatar.tsx']);
 
-const SVG_FILES = new Set(['web/src/components/HarnessIcon.tsx', 'web/src/components/StatusMarker.tsx', 'web/src/components/SessionItem.tsx', 'web/src/components/MemoryLine.tsx', 'web/src/components/TopicGraph.tsx']);
+const SVG_FILES = new Set(['web/src/components/HarnessIcon.tsx', 'web/src/components/StatusMarker.tsx', 'web/src/components/SessionItem.tsx', 'web/src/components/MemoryLine.tsx', 'web/src/components/TopicGraph.tsx', 'web/src/components/ui/lookout-mark.tsx']);
 
 /**
  * The packages UI source may import. Any other package fails the guard until someone checks it isn't

@@ -3,7 +3,7 @@ title: Session sidebar
 code: SIDE
 status: In Progress
 created: 2026-10-16
-updated: 2026-11-02
+updated: 2026-11-04
 ---
 
 # Session sidebar
@@ -107,6 +107,7 @@ The "Needs you" and "View only" headers are not Session rows: ↑/↓, j/k, ⌘1
 The app shell: the Session sidebar, the main pane and the right sidebar (HIST, WORK) are columns of one grid, so their horizontal lines line up.
 
 - [x] SIDE-8.1 The three column headers (the Filter bar, the main pane's header, the right sidebar's tab strip, or its rail's History button when closed) share one height, and their bottom borders read as one continuous line. The line above the usage panel (USAGE-1) continues as the line above the composer, or above the "View only" or "This Session ended" banner; the Terminal row stays above it and the status line below it. At rest the dock row has one height in every main-pane view: that of a live Session's empty one-line composer with the status line under it, or the usage panel's if that is taller. An empty composer is one line high whatever its placeholder, a long Session title included. The banners and the past-Session note fit inside it, hovered or focused too, so switching views (live, View only, ended, past, Starting, Settings, nothing selected) moves neither the dock line nor the usage panel's content. When a cell on either side grows past it (a multi-line message in the composer, more usage rows), the whole row grows with it, so the lines stay aligned; back at one line, the composer returns the row to its resting height. The dock row grows to at most 40% of the window's height, so the content row (the Session list, the chat) keeps the rest; a dock cell taller than that scrolls. The header line holds in every main-pane view (a Session, a past Session, a start under way, Settings, nothing selected), with the right sidebar open on either tab or closed; the dock line wherever the view has a dock, and on the sidebar's side in every view. (manual)
+- [x] SIDE-8.2 The Filter bar starts with Lookout's mark (DS-14) at 16 px, in the sidebar's text colour and hidden from screen readers, 6 px left of the Filter box, which gives up those 22 px. The header cell keeps SIDE-8.1's height, and at 280 px the box, its placeholder and its `/` hint still fit beside New Session and Settings. (test)
 
 ### SIDE-9 Running Subagents
 
@@ -137,7 +138,7 @@ A row shows how many Subagents its Session has running right now, so a Session w
 
 ```
 ┌──────────────────────────────┬───────────────────────────────────┐
-│ / filter                + ⚙  │ header (VIEW)                     │
+│ ◎ / filter              + ⚙  │ header (VIEW)                     │
 ├──────────────────────────────┼───────────────────────────────────┤
 │ NEEDS YOU 1                  │                                   │
 │ ◆ fix-deal-rates        [cl] │   selected Session (VIEW spec)    │
@@ -358,3 +359,4 @@ None.
 - 2026-11-03: Added SIDE-2.17, the Done chip: a Session that ran `fleet done` and wasn't prompted since shows Done after its title, its note as the row's words. From Fleet's upstream `done` (in `fleet list --json` since the 2026-11-03 rebase of the fork); the Session learns to run it from Fleet's instruction in your own `CLAUDE.md` or `AGENTS.md`.
 - 2026-11-03: Added SIDE-7.7, the Undo send switch in General (VIEW-3.9).
 - 2026-11-03: SIDE-2.17's note is kept to 300 characters, not the 120 of a Session's words, so a Topic's activity records it whole (TOPIC-12.1); the row still shows one line.
+- 2026-11-04: Added SIDE-8.2: Lookout's mark (DS-14) at the start of the Filter bar (Plan item 36). The UX sketch shows it as ◎. Built and ticked the same day (test in `Sidebar.test.tsx`); measured at 280 px: the mark 16 px, the Filter box 139 px beside three buttons, the header cell 48 px as before.

@@ -10,6 +10,7 @@ import { EmptyState } from './empty-state';
 import { IconButton, RowAction, RowSettling } from './icon-button';
 import { Kbd } from './kbd';
 import { Loading } from './loading';
+import { LookoutMark } from './lookout-mark';
 import { SessionMarker } from './session-marker';
 
 /** The lucide icon an element draws (`lucide-circle-x` → `circle-x`). */
@@ -310,5 +311,48 @@ describe('Avatar', () => {
     fireEvent.error(container.querySelector('img')!);
     expect(screen.getByRole('img', { name: 'dario' })).toHaveTextContent(/^D$/);
     expect(container.querySelector('img')).toBeNull();
+  });
+});
+
+describe("Lookout's mark", () => {
+  /** The two circles of the Lens, as [cx, cy, r], ring first. */
+  const LENS = [
+    ['12', '12', '8.5'],
+    ['14.25', '9.75', '2.75'],
+  ];
+  const circles = (root: ParentNode) => [...root.querySelectorAll('circle')].map((c) => ['cx', 'cy', 'r'].map((a) => c.getAttribute(a)));
+
+  it('DS-14.1: the Lens in a 24 px box, a 2 px round stroke and a solid dot in currentColor, sized by its class and hidden from screen readers', () => {
+    const { container } = render(<LookoutMark className="size-4" />);
+    const svg = container.querySelector('svg')!;
+    expect(svg).toHaveAttribute('viewBox', '0 0 24 24');
+    expect(svg).toHaveAttribute('aria-hidden', 'true');
+    expect(svg).toHaveClass('size-4', 'shrink-0');
+    expect(svg).toHaveAttribute('fill', 'none');
+    expect(svg).toHaveAttribute('stroke', 'currentColor');
+    expect(svg).toHaveAttribute('stroke-width', '2');
+    expect(svg).toHaveAttribute('stroke-linecap', 'round');
+    expect(svg).toHaveAttribute('stroke-linejoin', 'round');
+    expect(circles(svg)).toEqual(LENS);
+    const dot = svg.querySelectorAll('circle')[1]!;
+    expect(dot).toHaveAttribute('fill', 'currentColor');
+    expect(dot).toHaveAttribute('stroke', 'none');
+  });
+
+  it('DS-14.2: the favicon is the Lens in near-white on a 32 px near-black tile, with no amber', () => {
+    const [text] = Object.values(import.meta.glob<string>('../../../public/favicon.svg', { query: '?raw', import: 'default', eager: true }));
+    const doc = new DOMParser().parseFromString(text!, 'image/svg+xml');
+    const svg = doc.documentElement;
+    expect(svg.getAttribute('viewBox')).toBe('0 0 32 32');
+    const tile = svg.querySelector('rect')!;
+    expect([tile.getAttribute('width'), tile.getAttribute('height'), tile.getAttribute('rx'), tile.getAttribute('fill')]).toEqual(['32', '32', '8', '#18181b']);
+    const g = svg.querySelector('g')!;
+    expect(g.getAttribute('transform')).toBe('translate(5 5) scale(0.9167)');
+    expect([g.getAttribute('stroke'), g.getAttribute('stroke-width')]).toEqual(['#fafafa', '2.6']);
+    expect(circles(g)).toEqual(LENS);
+    expect(g.querySelectorAll('circle')[1]!.getAttribute('fill')).toBe('#fafafa');
+    // Amber is Needs you's colour (DS-3): the old favicon's ring was #f59e0b.
+    const colours = text!.match(/#[0-9a-f]{3,8}\b/gi)!.map((c) => c.toLowerCase());
+    expect(new Set(colours)).toEqual(new Set(['#18181b', '#fafafa']));
   });
 });

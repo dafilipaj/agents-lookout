@@ -10,6 +10,7 @@ import { CommandBlock } from '@/components/ui/command-block';
 import { EmptyState } from '@/components/ui/empty-state';
 import { IconButton } from '@/components/ui/icon-button';
 import { Kbd } from '@/components/ui/kbd';
+import { LookoutMark } from '@/components/ui/lookout-mark';
 import { isLongIdle, locationTip, matchesFilter, sessionOptionId } from '@/lib/sessions';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
@@ -306,6 +307,8 @@ export function Sidebar(props: SidebarProps) {
     >
       {/* SIDE-8.1: the Filter bar is this column's header cell. */}
       <ShellCell row="header" className="gap-1.5 border-sidebar-border px-2.5 py-2">
+        {/* SIDE-8.2: Lookout's mark (DS-14), 6 px (the cell's gap) left of the Filter box. */}
+        <LookoutMark className="size-4" />
         <label className="relative flex min-w-0 flex-1 items-center">
           <Search aria-hidden className="pointer-events-none absolute left-2 size-3.5 text-muted-foreground" />
           <input
