@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { accessSync, constants } from 'node:fs';
 import { mkdir, mkdtemp, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
@@ -54,6 +55,24 @@ export function counts(harness: string, c: Pick<FleetCandidate, 'why' | 'on_defa
 /** A counted Checkout, with what opening a file needs. */
 interface Counted extends ChangedCheckout {
   baseSha: string;
+  /** The repo's common directory: PLAIN-4.2's Viewed key. */
+  commonDir: string;
+}
+
+/** PLAIN: a Checkout as the Spec view reads it. */
+export interface KnownCheckout {
+  id: string;
+  root: string;
+  repo: string;
+  where: string | null;
+  baseSha: string;
+  commonDir: string;
+  files: readonly ChangedFile[];
+}
+
+/** PLAIN-6.1: a Checkout's id, from its path; the same path always gets the same id. */
+export function checkoutId(root: string): string {
+  return createHash('sha256').update(root).digest('hex').slice(0, 16);
 }
 
 interface Entry {
@@ -154,7 +173,13 @@ export class Changes {
   view(sessionId: string): ChangesView | null {
     const checkouts = this.fresh(sessionId);
     if (!checkouts?.length) return null;
-    return { sessionId, checkouts: checkouts.map(({ baseSha: _, ...c }) => c) };
+    return { sessionId, checkouts: checkouts.map(({ baseSha: _, commonDir: __, ...c }) => c) };
+  }
+
+  /** PLAIN-6.1: one of a live Session's counted Checkouts, by id, while its answer is fresh. */
+  checkout(sessionId: string, id: string): KnownCheckout | null {
+    const c = this.fresh(sessionId)?.find((x) => x.id === id);
+    return c ? { id: c.id, root: c.root, repo: c.repo, where: c.where, baseSha: c.baseSha, commonDir: c.commonDir, files: c.files } : null;
   }
 
   /**
@@ -418,6 +443,7 @@ export function parseCandidates(raw: unknown, harness: string): Counted[] {
     if (!isCandidate(v) || !counts(harness, v) || v.stats.files === 0) continue;
     const files = v.files.flatMap((f) => (isFile(f) ? [toFile(f)] : []));
     out.push({
+      id: checkoutId(v.root),
       root: v.root,
       repo: repoName(v.repo.common_dir, v.root),
       where: v.repo.linked_worktree ? basename(v.root) : (v.branch ?? (v.head ? v.head.slice(0, 7) : null)),
@@ -426,6 +452,7 @@ export function parseCandidates(raw: unknown, harness: string): Counted[] {
       files,
       moreFiles: Math.max(0, v.more_files),
       baseSha: v.base.sha,
+      commonDir: v.repo.common_dir,
     });
   }
   return out;

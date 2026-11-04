@@ -1,7 +1,7 @@
 ---
 title: "Spec view: a .plain module and its change, with imported concepts on hover"
 code: "PLAIN"
-status: "Ready"
+status: "In Progress"
 created: "2026-11-04"
 updated: "2026-11-04"
 ---
@@ -24,43 +24,43 @@ Rendering and resolution are `(test)` against fixtures (fantastic-productive's M
 
 A Module shown whole in the main pane, with its change since the base marked in place.
 
-- [ ] PLAIN-1.1 The Spec view opens at its own URL, `/plain?checkout=<id>&path=<module path>`, where `<id>` names a Checkout Lookout knows (PLAIN-6.1), so a reload keeps it, ⌘-click opens it in a new browser tab and Back returns to where it was opened from. It takes the main pane; the right sidebar stays as it was. (test)
-- [ ] PLAIN-1.2 Its header names the Module (`crm.plain`), its path in the Checkout, its description, and the Checkout (repo and Worktree or branch, as DIFF-3.2 heads a Checkout); its `import` and `requires` Modules are listed, each a link that opens that Module in the Spec view (PLAIN-2.5). (test)
-- [ ] PLAIN-1.3 Its sections are those of `/p-plain:page` (p-plain 0.6.1), in the same order: definitions, implementation reqs, test reqs, functional specs with their nested acceptance tests, and the Module's notes. A section nav beside the content lists them with their counts, and the touched ones are marked; in a main pane narrower than 640 px it sits above the content (as DS-13.1's side nav). (test)
-- [ ] PLAIN-1.4 Inside the Module, a `:Concept:` defined in it links to its definition, a `§N.M` to that functional spec, and a predefined Concept (`:UnitTests:`, `:ConformanceTests:`, `:AcceptanceTest:`, `:AcceptanceTests:`, `:Implementation:`) is marked as predefined by plain. Code spans stay code. (test)
-- [ ] PLAIN-1.5 The text is the Module as it is in the Checkout's working tree, uncommitted edits included. The base is the Checkout's Branch point, the one DIFF counts from (DIFF-2.3), so the view and DIFF's `+ −` agree. A Module new since the Branch point shows every clause as added; a deleted one shows its base text, every clause removed; an unchanged one shows no marks and no Changes card. (test)
-- [ ] PLAIN-1.6 Changed clauses are marked in place as `/p-plain:page` marks them: added, removed, and rewritten with the word-level change inside the clause. The Changes card at the top counts added, changed and removed clauses, links to each touched one, and has "Highlight changes" (on) and "Only what changed" (off), which hides every untouched clause and section. (test)
-- [ ] PLAIN-1.7 While the view is open, the Module and its base are read again every 3 s; when either differs, the view updates in place and keeps its scroll position, and the clauses that changed since the last read are briefly marked as just changed (as DIFF-3.8). (test)
-- [ ] PLAIN-1.8 A file that can't be read (gone from the Checkout and the base, not a `.plain` file, larger than 1 MB) shows an Alert (DS-4) saying why, with no content. Text the parser can't place in a section is shown under "Not in a section" as plain text, so nothing in the Module is hidden. (test)
+- [x] PLAIN-1.1 The Spec view opens at its own URL, `/plain/<Session id>/<Checkout id>/<module path>`, where the Checkout id names a Checkout Lookout knows (PLAIN-6.1) and the path is one encoded segment, so a reload keeps it, ⌘-click opens it in a new browser tab and Back returns to where it was opened from. It takes the main pane; the right sidebar stays as it was. (test)
+- [x] PLAIN-1.2 Its header names the Module (`crm.plain`), its path in the Checkout, its description, and the Checkout (repo and Worktree or branch, as DIFF-3.2 heads a Checkout); its `import` and `requires` Modules are listed, each a link that opens that Module in the Spec view (PLAIN-2.5). (test)
+- [x] PLAIN-1.3 Its sections are those of `/p-plain:page` (p-plain 0.6.1), in the same order: definitions, implementation reqs, test reqs, functional specs with their nested acceptance tests, and the Module's notes. A section nav beside the content lists them with their counts, and the touched ones are marked; in a main pane narrower than 640 px it sits above the content (as DS-13.1's side nav). (test)
+- [x] PLAIN-1.4 Inside the Module, a `:Concept:` defined in it links to its definition, a `§N.M` to that functional spec, and a predefined Concept (`:UnitTests:`, `:ConformanceTests:`, `:AcceptanceTest:`, `:AcceptanceTests:`, `:Implementation:`) is marked as predefined by plain. Code spans stay code. (test)
+- [x] PLAIN-1.5 The text is the Module as it is in the Checkout's working tree, uncommitted edits included. The base is the Checkout's Branch point, the one DIFF counts from (DIFF-2.3), so the view and DIFF's `+ −` agree. A Module new since the Branch point shows every clause as added; a deleted one shows its base text, every clause removed; an unchanged one shows no marks and no Changes card. (test)
+- [x] PLAIN-1.6 Changed clauses are marked in place as `/p-plain:page` marks them: added, removed, and rewritten with the word-level change inside the clause. The Changes card at the top counts added, changed and removed clauses, links to each touched one, and has "Highlight changes" (on) and "Only what changed" (off), which hides every untouched clause and section. (test)
+- [x] PLAIN-1.7 While the view is open, the Module and its base are read again every 3 s; when either differs, the view updates in place and keeps its scroll position, and the clauses that changed since the last read are briefly marked as just changed (as DIFF-3.8). (test)
+- [x] PLAIN-1.8 A file that can't be read (gone from the Checkout and the base, not a `.plain` file, larger than 1 MB) shows an Alert (DS-4) saying why, with no content. Text the parser can't place in a section is shown under "Not in a section" as plain text, so nothing in the Module is hidden. (test)
 - [ ] PLAIN-1.9 Seen in both modes from a 480 px main pane to a wide one, on `crm.plain` (1240 lines) with a change in each kind of section: the marks read as `/p-plain:page`'s do, with the design system's colours (DS-2.5's `diff-added` and `diff-removed` families), the nav never hides the content, and scrolling stays smooth. (manual)
 
 ### PLAIN-2 Concepts from other Modules
 
 A Concept used in the Module but defined in another one shows that definition on hover or focus.
 
-- [ ] PLAIN-2.1 A Module's visible Concepts are its own definitions, every definition of the Modules it imports and of theirs in turn (imports are transitive), and the `exported_concepts` of each Module it `requires` (not transitive). An import or `requires` path is resolved from the importing Module's own folder, with `.plain` added. A cycle is read once. (test)
-- [ ] PLAIN-2.2 A `:Concept:` from another Module is a focusable term; hovering it, or focusing it with Tab, opens a popover (the design system's) with the definition whole, its nested bullets included, the Module it comes from, and "Open <module>" (PLAIN-2.5). Esc or leaving it closes the popover. (test)
-- [ ] PLAIN-2.3 When that definition differs between the base and the working tree, the popover says "Changed in this branch" and shows its change marked as PLAIN-1.6 marks a clause. (test)
-- [ ] PLAIN-2.4 A Concept whose Module isn't there (an import path with no file, such as fantastic-productive's `providers/…` Modules, which are fetched and never committed) shows "Defined in `providers/exporter/exporter-public`, which isn't in this Checkout". A Concept found in no visible Module shows "Not defined in any Module this one reads". Neither breaks the rest of the view. (test)
-- [ ] PLAIN-2.5 "Open <module>" and the header's import links open that Module in the Spec view, in the same Checkout, at the same base, as a new history entry, so Back returns to the Module and scroll position you came from. (test)
-- [ ] PLAIN-2.6 Resolution is done on the server, once per read of the Module (PLAIN-1.7), and a Module's imports are read from the same working tree and base as the Module itself. With fantastic-productive's `crm.plain` and its imports, a read takes under 500 ms on this Mac. (test)
+- [x] PLAIN-2.1 A Module's visible Concepts are its own definitions, every definition of the Modules it imports and of theirs in turn (imports are transitive), and the `exported_concepts` of each Module it `requires` (not transitive). An import or `requires` path is resolved from the importing Module's own folder, with `.plain` added. A cycle is read once. (test)
+- [x] PLAIN-2.2 A `:Concept:` from another Module is a focusable term; hovering it, or focusing it with Tab, opens a popover (the design system's) with the definition whole, its nested bullets included, the Module it comes from, and "Open <module>" (PLAIN-2.5). Esc or leaving it closes the popover. (test)
+- [x] PLAIN-2.3 When that definition differs between the base and the working tree, the popover says "Changed in this branch" and shows its change marked as PLAIN-1.6 marks a clause. (test)
+- [x] PLAIN-2.4 A Concept whose Module isn't there (an import path with no file, such as fantastic-productive's `providers/…` Modules, which are fetched and never committed) can't be told apart from one defined nowhere, so a Concept found in no visible Module shows "Not in the Modules this one reads here; it may be defined in `providers/exporter/exporter-public`, which isn't in this Checkout" when some of its Modules are missing, and "Not defined in any Module this one reads" when none are. Neither breaks the rest of the view. (test)
+- [x] PLAIN-2.5 "Open <module>" and the header's import links open that Module in the Spec view, in the same Checkout, at the same base, as a new history entry, so Back returns to the Module and scroll position you came from. (test)
+- [x] PLAIN-2.6 Resolution is done on the server, once per read of the Module (PLAIN-1.7), and a Module's imports are read from the same working tree and base as the Module itself. With fantastic-productive's `crm.plain` and its imports, a read takes under 500 ms on this Mac. (test)
 
 ### PLAIN-3 Open from a Session's changed files
 
 Slice 1: the Spec view opens from DIFF's list.
 
 - [ ] PLAIN-3.1 In DIFF's list of changed files (DIFF-3.1), clicking a `.plain` file, or Enter on it, opens it in the Spec view (DIFF-4.1's `code --diff` is not run). Its row gets a second action, "Open in VS Code", that does what DIFF-4 does for any file. (e2e)
-- [ ] PLAIN-3.2 The Spec view's header has "Back to <Session title>", which returns to that Session's view with its list closed; Back in the browser does the same. (test)
-- [ ] PLAIN-3.3 A `.plain` file's row in DIFF's list shows the Module's Viewed mark (PLAIN-4) in place of DIFF-3.7's, so both lists agree. (test)
+- [x] PLAIN-3.2 The Spec view's header has "Back to <Session title>", which returns to that Session's view with its list closed; Back in the browser does the same. (test)
+- [x] PLAIN-3.3 A `.plain` file's row in DIFF's list shows the Module's Viewed mark (PLAIN-4) in place of DIFF-3.7's, so both lists agree. (test)
 
 ### PLAIN-4 Viewed
 
 A Module you've read is marked Viewed, kept across reloads, until it changes again.
 
-- [ ] PLAIN-4.1 The Spec view's header has a "Viewed" checkbox, as GitHub's; `V` toggles it with focus outside a text field. Opening a Module doesn't tick it. (test)
-- [ ] PLAIN-4.2 A Viewed mark is kept by the server, in `~/.lookout/plain-viewed.json` (mode `0600`), keyed by the repo (its common directory), the Module's path, and a hash of its text and its base text, so the same change seen from a Worktree and from its PR (PLAIN-5) shares one mark. It survives reloads and restarts; marks not used for 30 days are dropped. (test)
-- [ ] PLAIN-4.3 When the Module's text or its base changes, its mark no longer applies: the checkbox is clear, and the view says "Changed since you viewed it" above the Changes card. (test)
-- [ ] PLAIN-4.4 Nothing blocks or delays opening a PR. Viewed is a mark for you, not a gate. (test)
+- [x] PLAIN-4.1 The Spec view's header has a "Viewed" checkbox, as GitHub's; `V` toggles it with focus outside a text field. Opening a Module doesn't tick it. (test)
+- [x] PLAIN-4.2 A Viewed mark is kept by the server, in `~/.lookout/plain-viewed.json` (mode `0600`), keyed by the repo (its common directory), the Module's path, and a hash of its text and its base text, so the same change seen from a Worktree and from its PR (PLAIN-5) shares one mark. It survives reloads and restarts; marks not used for 30 days are dropped. (test)
+- [x] PLAIN-4.3 When the Module's text or its base changes, its mark no longer applies: the checkbox is clear, and the view says "Changed since you viewed it" above the Changes card. (test)
+- [x] PLAIN-4.4 Nothing blocks or delays opening a PR. Viewed is a mark for you, not a gate. (test)
 
 ### PLAIN-5 Open from a PR in Work
 
@@ -73,8 +73,8 @@ Slice 2: a PR's Modules, your own and a Review request alike, read from GitHub's
 
 ### PLAIN-6 Safety
 
-- [ ] PLAIN-6.1 The server reads only from Checkouts it knows: a live Session's Checkout from DIFF (DIFF-2), or a PR's fetched commits (PLAIN-5.2). The URL's `checkout` is an id Lookout issued for one of those, never a path; a `path` that leaves the Checkout (`..`, an absolute path, a symlink out of it) or isn't `.plain` is refused. (test)
-- [ ] PLAIN-6.2 Reading a Module runs only `git` (`show`, `merge-base`, `rev-parse`, `diff --name-only`, and PLAIN-5.2's `fetch`) and file reads. Nothing in a Module is executed, fetched or rendered as HTML: its text is shown as text, its links (PLAIN-1.4, PLAIN-2.5) are Lookout's own. (test)
+- [x] PLAIN-6.1 The server reads only from Checkouts it knows: a live Session's Checkout from DIFF (DIFF-2), or a PR's fetched commits (PLAIN-5.2). The URL's `checkout` is an id Lookout issued for one of those, never a path; a `path` that leaves the Checkout (`..`, an absolute path, a symlink out of it) or isn't `.plain` is refused. (test)
+- [x] PLAIN-6.2 Reading a Module runs only `git` (`show`, `merge-base`, `rev-parse`, `diff --name-only`, and PLAIN-5.2's `fetch`) and file reads. Nothing in a Module is executed, fetched or rendered as HTML: its text is shown as text, its links (PLAIN-1.4, PLAIN-2.5) are Lookout's own. (test)
 
 ## Non-goals
 
@@ -152,3 +152,6 @@ None blocking. To confirm in building slice 2: that `tb-pr --json` carries a PR'
 ## Changelog
 
 - 2026-11-04: Created from Plan item 31 and grilled with Dario the same day; every question as recommended (renderer, entry points and slices, place, base and imports, Viewed, no talking back). Ready.
+- 2026-11-04: Slice 1 built: `shared/plain.ts` (the parser and diff, ported from p-plain 0.6.1's page template), `server/plain.ts` (reads, resolution, Viewed in `~/.lookout/plain-viewed.json`), `GET /api/plain`, `GET`/`POST /api/plain/viewed`, `SpecView.tsx`, and DIFF's list opening a `.plain` file in it. PLAIN-1.1's URL carries the Session and the Checkout id in the path, since Lookout's router reads only the path. PLAIN-2.4: a Concept's Module can't be known when its import is missing, so the card names the missing Modules as where it may be. Ticked: every `(test)` criterion of slice 1. Open: PLAIN-3.1 `(e2e)`, which waits on DIFF's World with a real Fleet (DIFF-1.3, 3.1 and 4.1 are open for the same reason), and PLAIN-1.9 `(manual)`, Dario's look. Fixtures: the 8 fantastic-productive Modules `crm.plain` reaches, at `d9353385cf`.
+- 2026-11-04: Codex review, round 1 (Sol, high: 4 major, 6 minor), all fixed. A Module's `>` notes inside its sections, which the page template drops (16 in `crm.plain`), and text before a section's first bullet are kept and shown (PLAIN-1.8); notes are diffed with their spec. Viewed keeps every Viewed change of a Module, not one per Module, so two Worktrees' versions don't evict each other; saves are queued; a mark still read counts as used, and expiry runs without a restart (PLAIN-4.2). The working tree is read through one handle opened without following a link and resolved again afterwards (PLAIN-6.1). In the view: a save that ends after a newer read leaves it standing, a refusal on a later read clears the content, Back restores the scroll position (PLAIN-2.5), and links to Modules are real links, ⌘-click included in DIFF's list (PLAIN-1.1).
+- 2026-11-04: Codex review, round 2 (the last; 1 major, 5 minor), fixed without a further round. The opened file must be the file the path names after the read (device and inode), so a folder swapped for a link and back is refused too; a swap toggled twice between the two final checks remains possible in principle, and is accepted, since only the user's own processes write to a Checkout and the page shows it only to the user. No cap on the changes of a Module kept Viewed: 30 days unused is the only limit. A section holding only notes is shown; a note between a clause and its nested bullet keeps the nesting; text before the first spec is kept once; the scroll position is kept per history entry, not per URL.

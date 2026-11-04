@@ -19,6 +19,7 @@ import { type PickTarget, TopicPicker } from '@/components/TopicPicker';
 import { SuggestView } from '@/components/SuggestView';
 import { TopicGraph } from '@/components/TopicGraph';
 import { TopicView } from '@/components/TopicView';
+import { SpecView } from '@/components/SpecView';
 import { ViewErrorBoundary } from '@/components/ViewErrorBoundary';
 import { TopicsPanel } from '@/components/TopicsPanel';
 import { ServersPanel } from '@/components/ServersPanel';
@@ -496,6 +497,11 @@ export function App({ client }: { client: LookoutClient }) {
   }, [client, state.clientId, changesOpen]);
   const onChangesOpen = useCallback((sessionId: string, open: boolean) => setChangesOpen((cur) => (open ? sessionId : cur === sessionId ? null : cur)), []);
   const openChange = useCallback((sessionId: string, root: string, path: string) => client.openChange(sessionId, root, path), [client]);
+  // PLAIN-3.1: a changed Module opens in the Spec view, as a new history entry (Back returns, PLAIN-3.2).
+  const openSpec = useCallback((session: string, checkout: string, path: string) => navigate({ name: 'plain', session, checkout, path }), [navigate]);
+  const readPlain = useCallback((s: string, c: string, p: string) => client.readPlain(s, c, p), [client]);
+  const setPlainViewed = useCallback((s: string, c: string, p: string, key: string, viewed: boolean) => client.setPlainViewed(s, c, p, key, viewed), [client]);
+  const plainViewed = useCallback((s: string, c: string) => client.plainViewed(s, c), [client]);
   // TOPIC-4.3: Topics open counts as Work open, so its PR and Task members are as fresh as Work's rows.
   // TOPIC-10.5: so does a Topic's view.
   // TOPIC-4.3, TOPIC-14.3: a Topic view and the Suggest view count as Topics open.
@@ -1112,6 +1118,18 @@ export function App({ client }: { client: LookoutClient }) {
                 onOpenTopic={openTopic}
                 onStartSession={startInTopic}
               />
+            ) : route.name === 'plain' ? (
+              <SpecView
+                key={`${route.session}\u0000${route.checkout}\u0000${route.path}`}
+                sessionId={route.session}
+                checkout={route.checkout}
+                path={route.path}
+                sessionTitle={state.sessions.get(route.session)?.title ?? null}
+                load={readPlain}
+                setViewed={setPlainViewed}
+                onBack={() => navigate({ name: 'session', id: route.session })}
+                onOpenModule={(path) => navigate({ name: 'plain', session: route.session, checkout: route.checkout, path })}
+              />
             ) : route.name === 'past' ? (
               <PastSessionView harness={route.harness} sessionId={route.id} now={now} load={loadPast} />
             ) : route.name === 'launch' ? (
@@ -1162,6 +1180,8 @@ export function App({ client }: { client: LookoutClient }) {
                 changes={state.changes}
                 onChangesOpen={onChangesOpen}
                 onOpenChange={openChange}
+                onOpenSpec={openSpec}
+                plainViewed={plainViewed}
                 ports={state.ports}
                 onShowServers={showServers}
                 switches={switches}

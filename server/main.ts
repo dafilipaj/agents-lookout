@@ -25,6 +25,7 @@ import { localAllowLists } from './security.ts';
 import { SettingsStore, defaultSettingsPath } from './settings.ts';
 import { trackStartDirectories } from './start-repos.ts';
 import { Changes } from './changes.ts';
+import { Plain } from './plain.ts';
 import { ToolsMonitor } from './tools.ts';
 import { TopicStore, Topics, defaultTopicsPath } from './topics.ts';
 import { UsageMonitor, resolveJevBin } from './usage.ts';
@@ -122,6 +123,8 @@ const changes = new Changes({
 // DIFF-4.3: base copies older than a day go, at start and once a day.
 void changes.prune();
 setInterval(() => void changes.prune(), 24 * 60 * 60 * 1000).unref();
+// PLAIN: the Spec view reads Modules of the Checkouts DIFF counts.
+const plain = new Plain({ runner: run, checkout: (sessionId, id) => changes.checkout(sessionId, id) });
 
 // VIEW-6, VIEW-7: the status line's switches share one gate, one switch per Session process at a time.
 const switcher: ModelSwitcherOptions = {
@@ -273,6 +276,7 @@ const app = createApp({
   ports,
   work,
   changes,
+  plain,
   sessions: {
     answer: (id, req) => viewer.answer(id, req),
     stop: (id, status) => viewer.stopSession(id, status),

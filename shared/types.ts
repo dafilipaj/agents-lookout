@@ -253,6 +253,8 @@ export interface ChangedFile {
 
 /** DIFF-3.2: one Checkout that counts, with its heading and its files (at most 500, DIFF-2.7). */
 export interface ChangedCheckout {
+  /** PLAIN-6.1: the id the Spec view's URL names this Checkout by, never its path. */
+  id: string;
   root: string;
   /** The repo's name (`server/git.ts` `repoName`). */
   repo: string;

@@ -17,7 +17,9 @@ export type Route =
   /** HIST-3.3: a past Session that can't be resumed, read-only. */
   | { name: 'past'; harness: Harness; id: string }
   /** LAUNCH-4.2 / 4.6: a "Starting…" row, selected until its Session takes over. */
-  | { name: 'launch'; id: string };
+  | { name: 'launch'; id: string }
+  /** PLAIN-1.1: a Module of a live Session's Checkout, by the Checkout's id (never its path). */
+  | { name: 'plain'; session: string; checkout: string; path: string };
 
 /** SIDE-7.6: Settings' sub-pages, in the side nav's order. */
 export const SETTINGS_SECTIONS = ['general', 'tools'] as const;
@@ -59,6 +61,14 @@ export function parseRoute(pathname: string): Route {
       return { name: 'home' };
     }
   }
+  const plain = /^\/plain\/([^/]+)\/([0-9a-f]{16})\/([^/]+)\/?$/.exec(pathname);
+  if (plain) {
+    try {
+      return { name: 'plain', session: decodeURIComponent(plain[1]!), checkout: plain[2]!, path: decodeURIComponent(plain[3]!) };
+    } catch {
+      return { name: 'home' };
+    }
+  }
   const m = /^\/s\/([^/]+)\/?$/.exec(pathname);
   if (m?.[1]) {
     try {
@@ -88,6 +98,8 @@ export function routePath(route: Route): string {
       return `/h/${route.harness}/${encodeURIComponent(route.id)}`;
     case 'launch':
       return `/l/${encodeURIComponent(route.id)}`;
+    case 'plain':
+      return `/plain/${encodeURIComponent(route.session)}/${route.checkout}/${encodeURIComponent(route.path)}`;
   }
 }
 

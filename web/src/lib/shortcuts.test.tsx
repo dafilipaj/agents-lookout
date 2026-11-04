@@ -121,6 +121,7 @@ const pressedAs = (shown: string) => PRESSED_AS[shown] ?? (shown.length === 1 ? 
  * ⌘N (new Session) is not pressed anywhere: it only works in the installed app, so the list shows N.
  */
 const ELSEWHERE: Record<string, { file: string; criteria: string[] }[]> = {
+  'spec-viewed': [{ file: 'SpecView.test.tsx', criteria: ['PLAIN-4.1'] }],
   marks: [{ file: 'ChatRail.test.tsx', criteria: ['VIEW-1.11'] }],
   'rail-move': [{ file: 'ChatRail.test.tsx', criteria: ['VIEW-1.11'] }],
   'preview-resize': [{ file: 'DesignSystemBehaviour.test.tsx', criteria: ['DS-11.2'] }],

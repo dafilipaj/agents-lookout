@@ -248,6 +248,14 @@ export const SHORTCUTS: readonly Shortcut[] = [
     press: [{ key: 'Escape' }],
   },
   {
+    id: 'spec-viewed',
+    group: 'app',
+    keys: ['V'],
+    label: 'Mark a spec Viewed, or not',
+    note: 'In the Spec view, with focus outside a field.',
+    press: [{ key: 'v' }],
+  },
+  {
     id: 'settings-back',
     group: 'app',
     keys: ['Esc'],

@@ -276,9 +276,10 @@ const FAMILIES: Record<string, Family> = {
     },
   },
   diff: {
-    tokens: ['diff-added-text', 'diff-removed-text'],
+    tokens: ['diff-added-text', 'diff-removed-text', 'diff-added-soft', 'diff-removed-soft'],
     files: {
       'web/src/components/ChangesCount.tsx': { why: "a Session's lines added and removed, on its row, in the status line and in its list of changed files (DIFF-1.1, DS-2.5)", uses: ['text-diff-added-text', 'text-diff-removed-text'] },
+      'web/src/components/SpecView.tsx': { why: "a Module's added, removed and rewritten clauses and words, and the Changes card's tally (PLAIN-1.6, DS-2.5)", uses: ['bg-diff-added-soft', 'bg-diff-removed-soft', 'text-diff-added-text', 'text-diff-removed-text'] },
     },
   },
   warning: {

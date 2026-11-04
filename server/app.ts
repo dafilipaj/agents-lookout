@@ -16,6 +16,7 @@ import { LibraryError, parseLibraryQuery } from './library.ts';
 import { OUTPUT_HEADERS } from './output-files.ts';
 import { Avatars } from './avatars.ts';
 import { PathsError } from './files.ts';
+import { PlainError, type Plain } from './plain.ts';
 import { ModelSwitchError, parseEffortRequest, parseModelRequest } from './model-switch.ts';
 import { RenameError, parseRenameRequest } from './renamer.ts';
 import { type FindQuery, HistoryError, parseFindQuery } from './history.ts';
@@ -86,6 +87,8 @@ export interface AppOptions {
     drop(clientId: string): void;
     open(sessionId: string, body: unknown): Promise<void>;
   };
+  /** PLAIN: the Spec view's Modules and Viewed marks; optional, so a server without it answers 404. */
+  plain?: Pick<Plain, 'read' | 'setViewed' | 'viewedPaths'>;
   /** VIEW-1.18: which of a batch of paths are files, for one Session's file links (VIEW-1.17). */
   files: {
     check(sessionId: string, body: unknown): Promise<PathAnswer[]>;
@@ -447,6 +450,39 @@ export function createApp(opts: AppOptions): LookoutApp {
         return json(res, 200, { ok: true });
       } catch (err) {
         if (err instanceof ChangesError) return json(res, err.status, { error: err.message });
+        throw err;
+      }
+    }
+    // PLAIN-1, 2: a Module of a live Session's Checkout, read only (PLAIN-6).
+    if (route === 'GET /api/plain' && opts.plain) {
+      const q = url.searchParams;
+      try {
+        return json(res, 200, await opts.plain.read(q.get('session') ?? '', q.get('checkout') ?? '', q.get('path')));
+      } catch (err) {
+        if (err instanceof PlainError) return json(res, err.status, { error: err.message });
+        throw err;
+      }
+    }
+    // PLAIN-3.3: which of a Checkout's changed Modules are Viewed.
+    if (route === 'GET /api/plain/viewed' && opts.plain) {
+      const q = url.searchParams;
+      try {
+        return json(res, 200, { paths: await opts.plain.viewedPaths(q.get('session') ?? '', q.get('checkout') ?? '') });
+      } catch (err) {
+        if (err instanceof PlainError) return json(res, err.status, { error: err.message });
+        throw err;
+      }
+    }
+    // PLAIN-4.1: ticking or clearing Viewed writes a file: a mutation, so every check a POST gets.
+    if (route === 'POST /api/plain/viewed' && opts.plain) {
+      const body = await readJson(req, res, MAX_OPEN_CHANGE_BODY, null);
+      if (body === NO_BODY) return;
+      const b = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
+      try {
+        await opts.plain.setViewed(String(b.session ?? ''), String(b.checkout ?? ''), b.path, b.key, b.viewed);
+        return json(res, 200, { ok: true });
+      } catch (err) {
+        if (err instanceof PlainError) return json(res, err.status, { error: err.message });
         throw err;
       }
     }

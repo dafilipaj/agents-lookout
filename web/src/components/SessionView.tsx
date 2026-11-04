@@ -112,6 +112,10 @@ export interface SessionViewProps {
   onChangesOpen?(sessionId: string, open: boolean): void;
   /** DIFF-4: opens a changed file's Changes in VS Code; rejects with the reason to show. */
   onOpenChange?(sessionId: string, root: string, path: string): Promise<void>;
+  /** PLAIN-3.1: a changed `.plain` file opens in the Spec view. */
+  onOpenSpec?(sessionId: string, checkout: string, path: string): void;
+  /** PLAIN-3.3: the Checkout's changed Modules that are Viewed. */
+  plainViewed?(sessionId: string, checkout: string): Promise<string[]>;
   /** PORTS-2: the Local servers, as the server last sent them; the chip shows this Session's. */
   ports?: PortsSnapshot | null;
   /** PORTS-2.2: opens the Servers tab at a Session's group. */
@@ -159,6 +163,8 @@ export function SessionView({
   changes,
   onChangesOpen,
   onOpenChange,
+  onOpenSpec,
+  plainViewed,
   ports,
   onShowServers,
   screen,
@@ -417,6 +423,8 @@ export function SessionView({
                   list: changes?.get(row.id),
                   onOpenChange: (open) => onChangesOpen(row.id, open),
                   onOpenFile: (root, path) => onOpenChange(row.id, root, path),
+                  ...(onOpenSpec ? { onOpenSpec: (checkout: string, path: string) => onOpenSpec(row.id, checkout, path) } : {}),
+                  ...(plainViewed ? { plainViewed: (checkout: string) => plainViewed(row.id, checkout) } : {}),
                   // DIFF-3.3: the count went away while its list was open.
                   focusFallback: () => focusComposerOrChat(composerRef.current),
                 }

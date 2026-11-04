@@ -8,6 +8,7 @@ import { defaultSettings } from '../shared/settings.ts';
 import type { ServerEvent } from '../shared/types.ts';
 import { createApp } from './app.ts';
 import { ChangesError } from './changes.ts';
+import { PlainError } from './plain.ts';
 import { WorkMonitor } from './work.ts';
 import { Library } from './library.ts';
 
@@ -23,6 +24,14 @@ function setup() {
       if ((body as { path?: string }).path === 'refused.ts') throw new ChangesError(404, "Lookout's latest list doesn't have that file.");
     }),
   };
+  const plain = {
+    read: vi.fn(async (_s: string, _c: string, path: unknown) => {
+      if (path === 'gone.plain') throw new PlainError(404, "gone.plain isn't in this Checkout or at its Branch point.");
+      return { path } as never;
+    }),
+    setViewed: vi.fn(async () => {}),
+    viewedPaths: vi.fn(async () => ['plain/a.plain']),
+  };
   const app = createApp({
     attachmentsDir: join(tmpdir(), `lookout-unused-attachments-${randomUUID()}`),
     guard: { allowedHosts: new Set(['localhost']), allowedOrigins: new Set(['http://localhost']), token: 'test' },
@@ -36,6 +45,7 @@ function setup() {
     viewer: { watch: () => {}, drop: () => {}, send: unused, earlier: unused },
     sessions: { end: unused, answer: unused, stop: unused, rename: unused, switchModel: unused, switchEffort: unused },
     changes,
+    plain,
     files: { check: unused },
     history: { find: unused, detail: unused, peek: unused, resume: unused },
     staticDir: null,
@@ -65,7 +75,7 @@ function setup() {
     req.emit('end');
     return { req, res, done, text: () => text, events: () => text.split('\n').filter((l) => l.startsWith('data: ')).map((l) => JSON.parse(l.slice(6)) as ServerEvent) };
   };
-  return { changes, exchange };
+  return { changes, plain, exchange };
 }
 
 it("DIFF-3.6: a list is watched through the tab's live event stream, and its closing drops the watch", async () => {
@@ -116,4 +126,38 @@ it('DIFF-4.4: opening a file passes every check a mutation gets, and says why wh
   await no.done;
   expect(no.res.statusCode).toBe(404);
   expect(JSON.parse(no.text())).toEqual({ error: "Lookout's latest list doesn't have that file." });
+});
+
+it('PLAIN-1.1, PLAIN-6.1: a Module is read by Session, Checkout id and path, and a refusal says why', async () => {
+  const { plain, exchange } = setup();
+  const ok = exchange('GET', '/api/plain?session=s1&checkout=0123456789abcdef&path=plain%2Fcrm.plain', undefined, { 'x-lookout-token': '' });
+  await ok.done;
+  expect(ok.res.statusCode).toBe(200);
+  expect(plain.read).toHaveBeenCalledWith('s1', '0123456789abcdef', 'plain/crm.plain');
+  const no = exchange('GET', '/api/plain?session=s1&checkout=0123456789abcdef&path=gone.plain');
+  await no.done;
+  expect(no.res.statusCode).toBe(404);
+  expect(JSON.parse(no.text())).toEqual({ error: "gone.plain isn't in this Checkout or at its Branch point." });
+  const list = exchange('GET', '/api/plain/viewed?session=s1&checkout=0123456789abcdef');
+  await list.done;
+  expect(JSON.parse(list.text())).toEqual({ paths: ['plain/a.plain'] });
+});
+
+it('PLAIN-4.1: ticking Viewed passes every check a mutation gets', async () => {
+  const { plain, exchange } = setup();
+  const body = { session: 's1', checkout: '0123456789abcdef', path: 'plain/crm.plain', key: 'a'.repeat(64), viewed: true };
+  for (const [headers, status] of [
+    [{ 'x-lookout-token': '' }, 403],
+    [{ origin: 'http://evil.example' }, 403],
+    [{ 'sec-fetch-site': 'cross-site' }, 403],
+  ] as const) {
+    const call = exchange('POST', '/api/plain/viewed', body, headers);
+    await call.done;
+    expect(call.res.statusCode).toBe(status);
+  }
+  expect(plain.setViewed).not.toHaveBeenCalled();
+  const ok = exchange('POST', '/api/plain/viewed', body);
+  await ok.done;
+  expect(ok.res.statusCode).toBe(200);
+  expect(plain.setViewed).toHaveBeenCalledWith('s1', '0123456789abcdef', 'plain/crm.plain', 'a'.repeat(64), true);
 });

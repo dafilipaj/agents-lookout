@@ -13,8 +13,10 @@ import { OPEN_ERROR_MS } from './ChangesButton';
 const statusLine = () => screen.getByRole('group', { name: 'Status line' });
 const option = (name: RegExp) => screen.getByRole('option', { name });
 
+const checkoutIdOf = (root: string) => [...root].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7).toString(16).padStart(16, '0').slice(-16);
 const file = (path: string, o: Partial<ChangedFile> = {}): ChangedFile => ({ path, oldPath: null, kind: 'modified', additions: 3, deletions: 1, binary: false, uncommitted: false, ...o });
 const checkout = (root: string, files: ChangedFile[], o: Partial<ChangedCheckout> = {}): ChangedCheckout => ({
+  id: checkoutIdOf(root),
   root,
   repo: 'api',
   where: 'fix-rates',
@@ -87,7 +89,7 @@ describe('the count', () => {
     expect(within(statusLine()).queryByRole('button', { name: /show changed files/ })).toBeNull();
   });
 
-  it('DS-2.5: added and removed keep 4.5:1 on the background, the sidebar, every row state, the status line and the popover, in both modes', () => {
+  it('DS-2.5: added and removed keep 4.5:1 on the background, the sidebar, every row state, the status line and the popover, in both modes, and on a clause\'s tint', () => {
     for (const mode of ['light', 'dark'] as Mode[]) {
       const t = themeTokens(css)[mode];
       const sidebar = solid(t, 'sidebar');
@@ -106,6 +108,12 @@ describe('the count', () => {
       ];
       for (const token of ['diff-added-text', 'diff-removed-text']) {
         for (const s of surfaces) expect(contrast(solid(t, token), s), `${mode} ${token}`).toBeGreaterThanOrEqual(4.5);
+      }
+      // PLAIN-1.6: a clause's tint keeps its text readable: the text colour on an added one, the
+      // quieter colour on a removed one (struck through), and the diff colours on either.
+      for (const [tint, text] of [['diff-added-soft', 'foreground'], ['diff-removed-soft', 'foreground'], ['diff-removed-soft', 'muted-foreground'], ['diff-added-soft', 'diff-added-text'], ['diff-removed-soft', 'diff-removed-text']] as const) {
+        const on = paint(t, tint, background);
+        expect(contrast(solid(t, text), on), `${mode} ${text} on ${tint}`).toBeGreaterThanOrEqual(4.5);
       }
     }
   });
@@ -214,6 +222,45 @@ describe('the list', () => {
     await waitFor(() => expect(button('a.rb')).not.toHaveAttribute('data-viewed'));
     app.emit({ type: 'changes', sessionId: 'a', changes: view(checkout('/r/api', [file('a.rb'), file('b.rb')])) });
     await waitFor(() => expect(button('a.rb')).not.toHaveAttribute('data-viewed')); // forgotten, not hidden
+  });
+
+  it('PLAIN-3.1: a changed .plain file opens in the Spec view; "Open in VS Code" beside it does what any file does', async () => {
+    const openChange = vi.fn(async () => {});
+    const c = checkout('/r/shop', [file('plain/crm.plain'), file('src/a.ts')]);
+    const { user, panel } = await openList(view(c), { openChange });
+    const spec = within(panel).getByRole('button', { name: /^plain\/crm\.plain.*, open the spec$/ });
+    // A plain file keeps its one action.
+    expect(within(panel).getAllByRole('button', { name: 'Open in VS Code' })).toHaveLength(1);
+    await user.click(within(panel).getByRole('button', { name: 'Open in VS Code' }));
+    expect(openChange).toHaveBeenCalledWith('a', '/r/shop', 'plain/crm.plain');
+    await user.click(spec);
+    expect(window.location.pathname).toBe(`/plain/a/${c.id}/${encodeURIComponent('plain/crm.plain')}`);
+    expect(openChange).toHaveBeenCalledTimes(1);
+  });
+
+  it('PLAIN-1.1: ⌘-click on a changed .plain file opens its Spec view in a new browser tab', async () => {
+    const opened = vi.spyOn(window, 'open').mockImplementation(() => null);
+    const c = checkout('/r/shop', [file('plain/crm.plain')]);
+    const { user, panel } = await openList(view(c));
+    await user.keyboard('{Meta>}');
+    await user.click(within(panel).getByRole('button', { name: /^plain\/crm\.plain/ }));
+    await user.keyboard('{/Meta}');
+    expect(opened).toHaveBeenCalledWith(`/plain/a/${c.id}/${encodeURIComponent('plain/crm.plain')}`, '_blank', 'noopener');
+    expect(window.location.pathname).toBe('/s/a');
+    opened.mockRestore();
+  });
+
+  it("PLAIN-3.3: a .plain file's Viewed mark is the Spec view's, asked of the server for each answer", async () => {
+    const c = checkout('/r/shop', [file('plain/crm.plain'), file('plain/shell.plain')]);
+    const plainViewed = vi.fn(async () => ['plain/crm.plain']);
+    const { app, panel } = await openList(view(c), { plainViewed });
+    const button = (name: string) => within(panel).getByRole('button', { name: new RegExp(`^${name.replace(/[./]/g, (m) => `\\${m}`)}`) });
+    await waitFor(() => expect(button('plain/crm.plain')).toHaveAttribute('data-viewed', 'true'));
+    expect(button('plain/shell.plain')).not.toHaveAttribute('data-viewed');
+    expect(plainViewed).toHaveBeenCalledWith('a', c.id);
+    plainViewed.mockImplementation(async () => []);
+    app.emit({ type: 'changes', sessionId: 'a', changes: view(checkout('/r/shop', [file('plain/crm.plain', { additions: 5 }), file('plain/shell.plain')])) });
+    await waitFor(() => expect(button('plain/crm.plain')).not.toHaveAttribute('data-viewed'));
   });
 
   it('DIFF-3.7: Viewed marks outlast closing the list', async () => {

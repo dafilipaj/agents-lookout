@@ -102,6 +102,9 @@ interface RenderOptions {
   checkPaths?: LookoutClient['checkPaths'];
   watchChanges?: LookoutClient['watchChanges'];
   openChange?: LookoutClient['openChange'];
+  readPlain?: LookoutClient['readPlain'];
+  setPlainViewed?: LookoutClient['setPlainViewed'];
+  plainViewed?: LookoutClient['plainViewed'];
   saveSettings?: LookoutClient['saveSettings'];
   tools?: LookoutClient['tools'];
   refreshTools?: LookoutClient['refreshTools'];
@@ -164,6 +167,9 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
     watchMemory: vi.fn(async () => {}),
     watchChanges: vi.fn(options.watchChanges ?? (async () => {})),
     openChange: vi.fn(options.openChange ?? (async () => {})),
+    readPlain: vi.fn(options.readPlain ?? (async () => { throw new Error('no Module'); })),
+    setPlainViewed: vi.fn(options.setPlainViewed ?? (async () => {})),
+    plainViewed: vi.fn(options.plainViewed ?? (async () => [])),
     watchWork: vi.fn(async () => {}),
     refreshWork: vi.fn(options.refreshWork ?? (async () => ({ ok: true as const }))),
     sendMessage: vi.fn(options.sendMessage ?? (async () => {})),

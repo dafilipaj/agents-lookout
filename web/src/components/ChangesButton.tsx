@@ -1,6 +1,8 @@
 import type { ChangedCheckout, ChangedFile, ChangesView, RowChanges } from '@shared/types.ts';
-import { Check } from 'lucide-react';
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { Check, Code } from 'lucide-react';
+import { IconButton } from '@/components/ui/icon-button';
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
+import { routePath } from '@/lib/router';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Loading } from '@/components/ui/loading';
 import { changesButtonLabel, changesTip, fileSignature as signature, filesPart, hasLines, kindLabel, noOpenReason, splitPath, viewedFiles } from '@/lib/changes';
@@ -24,6 +26,10 @@ export interface ChangesButtonProps {
   onOpenChange(open: boolean): void;
   /** DIFF-4: opens a file's Changes in VS Code; rejects with the reason to show. */
   onOpenFile(root: string, path: string): Promise<void>;
+  /** PLAIN-3.1: a `.plain` file opens in the Spec view instead; VS Code is its second action. */
+  onOpenSpec?(checkout: string, path: string): void;
+  /** PLAIN-3.3: a Checkout's changed Modules that are Viewed (PLAIN-4), in place of DIFF-3.7's marks. */
+  plainViewed?(checkout: string): Promise<string[]>;
   /** DIFF-3.3: where focus goes when the list closes after its count went away. */
   focusFallback(): void;
 }
@@ -32,8 +38,10 @@ export interface ChangesButtonProps {
  * DIFF-1.3, DIFF-3: the status line's count, `+120 −30 · 4 files`, a button that opens the list of
  * changed files; a file opens its Changes in VS Code (DIFF-4).
  */
-export function ChangesButton({ sessionId, changes, list, onOpenChange, onOpenFile, focusFallback }: ChangesButtonProps) {
+export function ChangesButton({ sessionId, changes, list, onOpenChange, onOpenFile, onOpenSpec, plainViewed, focusFallback }: ChangesButtonProps) {
   const [, setViewedTick] = useState(0);
+  /** PLAIN-3.3: the Viewed Modules of the open list, `<root>\0<path>`, as the server last said. */
+  const [plainMarks, setPlainMarks] = useState<ReadonlySet<string>>(new Set());
   const [open, setOpen] = useState(false);
   const [errors, setErrors] = useState<ReadonlyMap<string, string>>(new Map());
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
@@ -49,6 +57,24 @@ export function ChangesButton({ sessionId, changes, list, onOpenChange, onOpenFi
     told.current = onOpenChange;
   });
   useEffect(() => () => told.current(false), []);
+
+  // PLAIN-3.3: each answer while the list is open asks which of its Modules are Viewed.
+  const askMarks = useRef(plainViewed);
+  useEffect(() => {
+    askMarks.current = plainViewed;
+  });
+  useEffect(() => {
+    const ask = askMarks.current;
+    if (!open || !ask || !onOpenSpec || !list) return;
+    let alive = true;
+    const withModules = list.checkouts.filter((c) => c.files.some(isModule));
+    void Promise.all(withModules.map((c) => ask(c.id).then((paths) => paths.map((p) => fileKey(c.root, p)), () => [] as string[]))).then((keys) => {
+      if (alive) setPlainMarks(new Set(keys.flat()));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [open, list, onOpenSpec]);
 
   if (!changes && !open) return null;
 
@@ -77,6 +103,7 @@ export function ChangesButton({ sessionId, changes, list, onOpenChange, onOpenFi
     );
   };
   const isViewed = (root: string, f: ChangedFile) => {
+    if (onOpenSpec && isModule(f)) return plainMarks.has(fileKey(root, f.path));
     const k = `${sessionId}\u0000${fileKey(root, f.path)}`;
     const at = viewedFiles.get(k);
     if (at === undefined) return false;
@@ -117,7 +144,23 @@ export function ChangesButton({ sessionId, changes, list, onOpenChange, onOpenFi
           }
         }}
       >
-        <ChangesList list={list} errors={errors} onOpen={openFile} isViewed={isViewed} />
+        <ChangesList
+          list={list}
+          errors={errors}
+          onOpen={(c, f, e) => {
+            if (onOpenSpec && isModule(f)) {
+              // PLAIN-1.1: ⌘- or Ctrl-click opens the Spec view in a new browser tab.
+              if (e.metaKey || e.ctrlKey) {
+                window.open(routePath({ name: 'plain', session: sessionId, checkout: c.id, path: f.path }), '_blank', 'noopener');
+                return;
+              }
+              setOpenAndTell(false);
+              onOpenSpec(c.id, f.path);
+            } else openFile(c.root, f);
+          }}
+          onOpenInCode={onOpenSpec ? (c, f) => openFile(c.root, f) : null}
+          isViewed={isViewed}
+        />
       </PopoverContent>
     </Popover>
   );
@@ -134,15 +177,21 @@ function onArrows(e: KeyboardEvent<HTMLElement>) {
   all[to]!.focus();
 }
 
+/** PLAIN-3.1: a PlainLang Module, which opens in the Spec view (a deleted one too: it shows its base). */
+const isModule = (f: ChangedFile) => f.path.endsWith('.plain') && f.kind !== 'submodule' && !f.binary;
+
 function ChangesList({
   list,
   errors,
   onOpen,
+  onOpenInCode,
   isViewed,
 }: {
   list: ChangesView | null | undefined;
   errors: ReadonlyMap<string, string>;
-  onOpen(root: string, f: ChangedFile): void;
+  onOpen(c: ChangedCheckout, f: ChangedFile, e: MouseEvent): void;
+  /** PLAIN-3.1: a Module's second action; null when Modules open in VS Code like any file. */
+  onOpenInCode: ((c: ChangedCheckout, f: ChangedFile) => void) | null;
   isViewed(root: string, f: ChangedFile): boolean;
 }) {
   // DIFF-3.8: the files whose Changes differ from the previous answer while the list is open; the
@@ -216,7 +265,17 @@ function ChangesList({
             {c.files.map((f) => {
               const key = fileKey(c.root, f.path);
               return (
-                <FileRow key={key} fileKey={key} root={c.root} file={f} error={errors.get(key) ?? null} onOpen={onOpen} viewed={isViewed(c.root, f)} justChanged={answer.changed.has(key)} />
+                <FileRow
+                  key={key}
+                  fileKey={key}
+                  file={f}
+                  error={errors.get(key) ?? null}
+                  onOpen={(e) => onOpen(c, f, e)}
+                  spec={!!onOpenInCode && isModule(f)}
+                  onOpenInCode={onOpenInCode && isModule(f) ? () => onOpenInCode(c, f) : null}
+                  viewed={isViewed(c.root, f)}
+                  justChanged={answer.changed.has(key)}
+                />
               );
             })}
           </ul>
@@ -233,18 +292,22 @@ function checkoutName(c: ChangedCheckout): string {
 
 function FileRow({
   fileKey: key,
-  root,
   file,
   error,
   onOpen,
+  spec,
+  onOpenInCode,
   viewed,
   justChanged,
 }: {
   fileKey: string;
-  root: string;
   file: ChangedFile;
   error: string | null;
-  onOpen(root: string, f: ChangedFile): void;
+  onOpen(e: MouseEvent): void;
+  /** PLAIN-3.1: it opens in the Spec view. */
+  spec: boolean;
+  /** PLAIN-3.1: the Module's "Open in VS Code". */
+  onOpenInCode: (() => void) | null;
   /** DIFF-3.7 */
   viewed: boolean;
   /** DIFF-3.8 */
@@ -252,25 +315,25 @@ function FileRow({
 }) {
   const { name, folder } = splitPath(file.path);
   const kind = kindLabel(file);
-  const blocked = noOpenReason(file);
+  const blocked = spec ? null : noOpenReason(file);
   const label = [file.path, kind, file.binary ? 'binary' : `${file.additions} added, ${file.deletions} removed`, file.uncommitted ? 'uncommitted' : null, viewed ? 'viewed' : null, justChanged ? 'just changed' : null]
     .filter(Boolean)
     .join(', ');
   return (
-    <li>
+    <li className="flex min-w-0 items-center gap-1">
       <button
         type="button"
         data-file={key}
-        aria-label={blocked ? `${label}. ${blocked}` : `${label}, open in VS Code`}
+        aria-label={blocked ? `${label}. ${blocked}` : spec ? `${label}, open the spec` : `${label}, open in VS Code`}
         aria-disabled={blocked ? true : undefined}
         title={blocked ?? file.path}
         data-viewed={viewed || undefined}
         data-just-changed={justChanged || undefined}
-        onClick={() => {
-          if (!blocked) onOpen(root, file);
+        onClick={(e) => {
+          if (!blocked) onOpen(e);
         }}
         className={cn(
-          'flex w-full min-w-0 items-center gap-2 rounded-sm px-2 py-1 text-left text-meta outline-none',
+          'flex w-full min-w-0 flex-1 items-center gap-2 rounded-sm px-2 py-1 text-left text-meta outline-none',
           'hover:bg-accent focus-visible:bg-accent',
           blocked && 'cursor-default opacity-70',
           justChanged && 'bg-muted',
@@ -294,6 +357,11 @@ function FileRow({
           </>
         )}
       </button>
+      {onOpenInCode && (
+        <IconButton size="sm" label="Open in VS Code" onClick={onOpenInCode} data-field="open-in-code">
+          <Code />
+        </IconButton>
+      )}
     </li>
   );
 }
