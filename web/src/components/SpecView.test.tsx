@@ -636,10 +636,10 @@ describe('reading a Module', () => {
     delete (HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView;
   });
 
-  it('PLAIN-9.1: the Module reads in `reading`, at most 36rem wide; its notes and code spans are `prose`', async () => {
+  it('PLAIN-9.1: the Module reads in `reading`, at most 42rem wide; its notes and code spans are `prose`', async () => {
     open({ text: TEXT_9, baseText: BASE_9 });
     await screen.findByText('Rate cards on a Deal.');
-    expect(module()).toHaveClass('max-w-[36rem]');
+    expect(module()).toHaveClass('max-w-[42rem]');
     expect(screen.getByText('Rate cards on a Deal.').closest('p')).toHaveClass('text-reading');
     expect(clause('A Deal shows its').closest('ul')).toHaveClass('text-reading');
     expect(clause('Each row can be deleted').closest('ul')).toHaveClass('text-reading');

@@ -602,8 +602,8 @@ function Module({
     >
       {nav}
       {/* PLAIN-8.1: a long code span or word wraps, so nothing widens the pane. */}
-      {/* PLAIN-9.1: at most 36rem, about 70 characters a line, from the column's left edge. */}
-      <article className="flex w-full min-w-0 max-w-[36rem] flex-col gap-5 [overflow-wrap:anywhere] @min-[640px]:col-start-2 @min-[640px]:row-start-1" data-slot="spec-module">
+      {/* PLAIN-9.1: at most 42rem, about 85 characters a line, from the column's left edge. */}
+      <article className="flex w-full min-w-0 max-w-[42rem] flex-col gap-5 [overflow-wrap:anywhere] @min-[640px]:col-start-2 @min-[640px]:row-start-1" data-slot="spec-module">
         <SpecStrip spec={stuck ? mod.specs.find((s) => s.id === stuck) : undefined} highlight={highlight} />
         <header className="flex flex-col gap-1.5">
           <p className="text-meta text-muted-foreground" data-field="spec-where">
