@@ -39,7 +39,7 @@ Agents start dev servers, in Worktrees and through tb-devctl, and leave them run
 - [x] PORTS-3.3 A "Show all" switch at the top adds, under "Other listeners", the ones PORTS-1.4 hides, dimmed, with their command and ports. Its state is remembered with the sidebar's layout (`lib/right-sidebar.ts`). (test)
 - [x] PORTS-3.4 With no shown server the tab says "No Local servers running." and, when "Show all" is off and others exist, "N other listeners hidden". Before the first read it shows the design system's Loading, "Reading ports…" (DS-6.3); a first read that fails shows "Couldn't read the ports: <reason>." in its place, and the next good read replaces it. (test)
 - [x] PORTS-3.5 When the last listener query failed after a good one, the tab keeps the last list with an Alert, "Couldn't read the ports: <reason>. Showing the list from <time>."; the chips keep it too. The next good read removes the Alert. (e2e)
-- [ ] PORTS-3.6 It reads well from 280 px to the sidebar's widest, light and dark, with 12 servers over 4 Sessions. (manual)
+- [x] PORTS-3.6 It reads well from 280 px to the sidebar's widest, light and dark, with 12 servers over 4 Sessions. (manual)
 
 ### PORTS-4 Stop a Local server (slice 2)
 
@@ -121,3 +121,4 @@ Servers tab (P)
 - 2026-11-02: Slice 1 built (`shared/ports.ts`, `server/ports.ts`, `PortsChip`, `ServersPanel`, the World's `.ports()` with `lsof`, `ps` and `tb-devctl` shims) and reviewed by Codex (Sol high, 2 rounds: 5 fixes taken, the checkout-in-`~` finding rejected as the amendment above); PORTS-1 to 3.5 ticked, 3.6 waits for an eye. In Progress.
 - 2026-11-02: Design pass on the running app (Dario's walk-through): PORTS-3.2's row keeps the port and name whole and cuts the directory from its start; PORTS-3.1's icon-only tabs wear their count on the icon's corner.
 - 2026-11-04: Dario asked for slice 2 ("I lack buttons to be able to stop servers from the Servers tab") and answered its first Open question: every Stop is confirmed in a dialog. PORTS-4.6 added, the UX gains the row's Stop button, a Key decision replaces the Open question.
+- 2026-11-05: PORTS-3.6 ticked: Dario checked and confirmed it.

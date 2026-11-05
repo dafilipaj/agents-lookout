@@ -46,7 +46,7 @@ Once History is in Lookout, a stray click on a result resumes a past Session, wh
 - [x] HIST-3.1 The "Resume" button on an expanded result that can be resumed, or Enter on it, starts the Session again in its own Session host, in the directory it originally started in. It appears in the Session sidebar as "Starting…", selected at once, then as a live Session that takes over the selection while the "Starting…" row is still selected (as in LAUNCH-4.2). (test)
 - [x] HIST-3.2 The "Open" button on an expanded result that's live right now, or Enter on it, selects that Session; a second process is never started. (test)
 - [x] HIST-3.3 The "Show" button on an expanded result that can't be resumed, because its start directory no longer exists, or Enter on it, opens it in the main pane read-only: its latest messages, and a note on why it can't be resumed. (test)
-- [ ] HIST-3.4 A resumed Session behaves like one LAUNCH started: the 15 s failure (LAUNCH-4.5), Claude Code's Trust prompt in the Starting view (LAUNCH-6) and telemetry (LAUNCH-5) apply. (manual)
+- [x] HIST-3.4 A resumed Session behaves like one LAUNCH started: the 15 s failure (LAUNCH-4.5), Claude Code's Trust prompt in the Starting view (LAUNCH-6) and telemetry (LAUNCH-5) apply. (manual)
 - [x] HIST-3.5 A click on a result, or Enter on a selected one that isn't expanded, selects and expands it and does nothing else: it never resumes, opens or shows a Session, and starts no process. A Session is resumed, opened or shown only by the expanded result's one button ("Resume", "Open" or "Show", by what the result is) or by Enter on the expanded result. (test)
 - [x] HIST-3.6 The button is labelled with its word and has a 20 px icon and a 28 px tall target; "Add to Topic" is under "More" beside it (DS-16). While a resume runs, the result stays expanded and says "Resuming…"; a failure shows under the button as an error Alert, as it does now. (manual)
 
@@ -233,3 +233,4 @@ None.
 - 2026-11-05: HIST-3.6 amended for DS-16: "Add to Topic" moves under "More"; the result's one labelled button is unchanged.
 - 2026-11-05: Added HIST-2.12, day groups without a query (DS-17, Dario's choice of hairlines and day groups for History and Library).
 - 2026-11-05: HIST-2.12 amended from Codex's review of DS-17: a search's results shown while the cleared query is read get no headings (they're best match first), and a day is keyed by its calendar date, so its rows stay mounted at midnight.
+- 2026-11-05: HIST-3.4 ticked: Dario checked and confirmed it.
