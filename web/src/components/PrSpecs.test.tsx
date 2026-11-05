@@ -138,6 +138,46 @@ describe("Work's Specs on a PR", () => {
     expect(window.location.pathname).toBe('/plain/pr/shop/8/plain%2Fapi.plain');
   });
 
+  it('PLAIN-5.1 (support): Back steps through nested PR Spec views, each to its own opener', async () => {
+    const readPlain = vi.fn(async (): Promise<PlainAnswer> => {
+      throw new SaveError('stop', null, 404);
+    });
+    openApp('/s/alpha', { plainPr: async (_repo: string, number: number) => files({ number }), readPlain });
+    const user = userEvent.setup();
+    await user.keyboard('w');
+    const openFrom = async (id: string) => {
+      await waitFor(() => expect(specsButton(id)).not.toBeNull());
+      fireEvent.click(specsButton(id)!);
+      await waitFor(() => expect(list()?.querySelector('button[data-file="plain/rates.plain"]')).not.toBeNull());
+      fireEvent.click(list()!.querySelector('button[data-file="plain/rates.plain"]')!);
+    };
+    await openFrom('shop#7');
+    expect(window.location.pathname).toBe('/plain/pr/shop/7/plain%2Frates.plain');
+    await openFrom('shop#8');
+    expect(window.location.pathname).toBe('/plain/pr/shop/8/plain%2Frates.plain');
+    await user.click(await screen.findByRole('button', { name: 'Back' }));
+    expect(window.location.pathname).toBe('/plain/pr/shop/7/plain%2Frates.plain');
+    await user.click(await screen.findByRole('button', { name: 'Back' }));
+    expect(window.location.pathname).toBe('/s/alpha');
+  });
+
+  it('PLAIN-5.1 (support): closing Specs by focusing another control leaves focus there', async () => {
+    openApp('/s/alpha', { plainPr: async () => files() });
+    const user = userEvent.setup();
+    await user.keyboard('w');
+    await waitFor(() => expect(specsButton('shop#7')).not.toBeNull());
+    const outside = document.body.appendChild(document.createElement('input'));
+    try {
+      fireEvent.click(specsButton('shop#7')!);
+      await waitFor(() => expect(list()?.querySelectorAll('button[data-file]')).toHaveLength(2));
+      await user.click(outside);
+      await waitFor(() => expect(list()).toBeNull());
+      expect(document.activeElement).toBe(outside);
+    } finally {
+      outside.remove();
+    }
+  });
+
   it('PLAIN-5.1 (support): a PR without spec changes says so', async () => {
     openApp('/s/alpha', { plainPr: async () => files({ files: [] }) });
     await userEvent.setup().keyboard('w');

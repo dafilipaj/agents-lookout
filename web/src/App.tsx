@@ -509,15 +509,20 @@ export function App({ client }: { client: LookoutClient }) {
       clones: () => client.plainClones(),
       list: (repo, number, fresh) => client.plainPr(repo, number, fresh),
       onOpen: (repo, number, path) => {
-        // Back returns to what the main pane showed when Work opened it, a Spec view included.
-        prOpener.current = currentRoute.current;
-        navigate({ name: 'plain-pr', repo, number, path });
+        // Back returns to what the main pane showed when Work opened it, a Spec view included. Kept
+        // per Spec view, so Back from a PR opened from another PR's Spec view, then Back again, steps
+        // through both.
+        const to: Route = { name: 'plain-pr', repo, number, path };
+        const from = currentRoute.current;
+        if (routePath(from) !== routePath(to)) prOpeners.current.set(routePath(to), from);
+        navigate(to);
       },
     }),
     [client, navigate],
   );
   const currentRoute = useRef<Route>(route);
-  const prOpener = useRef<Route>({ name: 'home' });
+  /** Each PR Spec view's opener, by its path. */
+  const prOpeners = useRef(new Map<string, Route>());
   useEffect(() => {
     currentRoute.current = route;
   }, [route]);
@@ -1157,8 +1162,14 @@ export function App({ client }: { client: LookoutClient }) {
                 backTo={null}
                 load={readPlain}
                 setViewed={setPlainViewed}
-                onBack={() => navigate(prOpener.current)}
-                onOpenModule={(path) => navigate({ name: 'plain-pr', repo: route.repo, number: route.number, path })}
+                onBack={() => navigate(prOpeners.current.get(routePath(route)) ?? { name: 'home' })}
+                onOpenModule={(path) => {
+                  // An imported Module of the same PR keeps this view's opener.
+                  const to: Route = { name: 'plain-pr', repo: route.repo, number: route.number, path };
+                  const opener = prOpeners.current.get(routePath(route));
+                  if (opener && !prOpeners.current.has(routePath(to))) prOpeners.current.set(routePath(to), opener);
+                  navigate(to);
+                }}
               />
             ) : route.name === 'past' ? (
               <PastSessionView harness={route.harness} sessionId={route.id} now={now} load={loadPast} />

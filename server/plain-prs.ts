@@ -79,6 +79,8 @@ export class PlainPrs implements PlainPrSource {
   private remembered: Promise<Map<string, string>> | null = null;
   private prs = new Map<string, PrState>();
   private sweeping = new Map<string, Promise<void>>();
+  /** Per clone (common dir): fetches and sweeps of `refs/lookout/pr/*` run one at a time. */
+  private locks = new Map<string, Promise<unknown>>();
 
   constructor(opts: PlainPrsOptions) {
     this.opts = opts;
@@ -153,6 +155,8 @@ export class PlainPrs implements PlainPrSource {
         }));
       const head = `refs/lookout/pr/${number}/head`;
       const baseRef = `refs/lookout/pr/${number}/base`;
+      // Writing the refs and reading them back is one step a sweep of this clone never splits.
+      const fetched = await this.locked(st.clone.commonDir, async () => {
       try {
         await this.git(
           root,
@@ -177,12 +181,25 @@ export class PlainPrs implements PlainPrSource {
       }
       const diff = await this.git(root, ['-c', 'core.quotePath=false', 'diff', '--name-only', '-z', '--no-renames', '--no-ext-diff', '--no-textconv', baseSha, headSha, '--', '*.plain']);
       const paths = diff.split('\u0000').filter(Boolean).sort();
-      st.fetched = { headSha, baseSha, baseBranch: base, paths, at: this.now() };
+      return { headSha, baseSha, baseBranch: base, paths, at: this.now() };
+      });
+      st.fetched = fetched;
       st.error = null;
       void this.sweep(st.clone).catch(() => {});
     } catch (err) {
       st.error = err instanceof PlainError ? err.message : `Couldn't fetch #${number}.`;
     }
+  }
+
+  /** Runs `fn` once every earlier fetch or sweep of this clone has ended. */
+  private locked<T>(commonDir: string, fn: () => Promise<T>): Promise<T> {
+    const run = (this.locks.get(commonDir) ?? Promise.resolve()).catch(() => {}).then(fn);
+    const tail = run.catch(() => {});
+    this.locks.set(commonDir, tail);
+    void tail.then(() => {
+      if (this.locks.get(commonDir) === tail) this.locks.delete(commonDir);
+    });
+    return run;
   }
 
   /** The base branch of a PR Work hasn't read, from GitHub through `gh`. */
@@ -205,7 +222,7 @@ export class PlainPrs implements PlainPrSource {
   private sweep(c: Clone): Promise<void> {
     const running = this.sweeping.get(c.commonDir);
     if (running) return running;
-    const run = (async () => {
+    const run = this.locked(c.commonDir, async () => {
       const refs = (await this.git(c.root, ['for-each-ref', '--format=%(refname)', 'refs/lookout/pr/'])).split('\n').filter(Boolean);
       const now = this.now();
       const old = refs.filter((ref) => {
@@ -216,7 +233,7 @@ export class PlainPrs implements PlainPrSource {
         return !st?.fetched || now - st.fetched.at > PR_REF_TTL_MS;
       });
       if (old.length) await this.git(c.root, ['update-ref', '--stdin'], GIT_TIMEOUT_MS, old.map((ref) => `delete ${ref}\n`).join(''));
-    })().finally(() => this.sweeping.delete(c.commonDir));
+    }).finally(() => this.sweeping.delete(c.commonDir));
     this.sweeping.set(c.commonDir, run);
     return run;
   }
@@ -289,9 +306,13 @@ export class PlainPrs implements PlainPrSource {
   private async git(cwd: string, args: readonly string[], timeoutMs = GIT_TIMEOUT_MS, stdin?: string): Promise<string> {
     const env = { ...(this.opts.env ?? process.env) };
     if (args.includes('fetch')) {
-      // The user's own ssh command, if any, in batch mode, so a locked key fails instead of asking.
-      const own = env.GIT_SSH_COMMAND || (await this.git(cwd, ['config', '--get', 'core.sshCommand']).catch(() => '')).trim() || 'ssh';
-      env.GIT_SSH_COMMAND = `${own} -o BatchMode=yes`;
+      // ssh in batch mode, so a locked key fails instead of asking, keeping git's own order: the
+      // GIT_SSH_COMMAND environment variable, then core.sshCommand, then GIT_SSH, then ssh. A
+      // GIT_SSH program, or a command that isn't OpenSSH's, is left as it is.
+      const own = env.GIT_SSH_COMMAND || (await this.git(cwd, ['config', '--get', 'core.sshCommand']).catch(() => '')).trim();
+      if (own) {
+        if (/^(?:\S*\/)?ssh(?:\s|$)/.test(own)) env.GIT_SSH_COMMAND = `${own} -o BatchMode=yes`;
+      } else if (!env.GIT_SSH) env.GIT_SSH_COMMAND = 'ssh -o BatchMode=yes';
     }
     return this.opts.runner('git', ['-C', cwd, '-c', 'core.hooksPath=/dev/null', '-c', 'core.fsmonitor=false', '-c', 'credential.interactive=never', ...args], {
       timeoutMs,

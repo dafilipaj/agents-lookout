@@ -217,10 +217,48 @@ describe("fetching a PR's commits", () => {
     const p = prs({ runner: held, now: () => 7_000_000 });
     const pending = p.tree('shop', 7, true);
     await new Promise((r) => setTimeout(r, 400));
-    await p.prune();
-    expect(refs('refs/lookout/')).toContain('pr/7/head');
+    const sweeping = p.prune(); // queued behind the fetch's lock on the clone
+    await new Promise((r) => setTimeout(r, 100));
     release();
+    await sweeping;
+    expect(refs('refs/lookout/')).toContain('pr/7/head');
     expect((await pending).tree.headSha).toBe(prHead);
+  });
+
+  it('PLAIN-5.2: a fetch that starts while a sweep runs waits for it, so the sweep never deletes its new refs', async () => {
+    git(clone, 'update-ref', 'refs/lookout/pr/7/head', prHead); // an earlier run's, so the sweep picks it
+    let release: () => void = () => {};
+    const held: Runner = async (file, args, opts) => {
+      if (args.includes('update-ref')) await new Promise<void>((r) => (release = r));
+      return noGh(file, args, opts);
+    };
+    const p = prs({ runner: held, now: () => 9_000_000 });
+    const sweeping = p.prune();
+    await new Promise((r) => setTimeout(r, 300)); // the sweep has chosen pr/7/head and waits to delete it
+    const pending = p.tree('shop', 7, true);
+    await new Promise((r) => setTimeout(r, 300));
+    release();
+    await sweeping;
+    const { tree } = await pending;
+    expect(tree.headSha).toBe(prHead);
+    expect(refs('refs/lookout/')).toContain('pr/7/head');
+  });
+
+  it('PLAIN-6.2: ssh keeps git\'s own order: a GIT_SSH program is left as it is, a GIT_SSH_COMMAND gets batch mode', async () => {
+    const seen: NodeJS.ProcessEnv[] = [];
+    const spy: Runner = (file, args, opts) => {
+      if (args.includes('fetch')) seen.push(opts.env ?? {});
+      return noGh(file, args, opts);
+    };
+    const base = { runner: spy, candidates: () => [clone], baseBranch: () => 'main', clonesFile: join(root, `c-${Math.random()}.json`), now: () => 9_500_000 };
+    await new PlainPrs({ ...base, env: { ...env, GIT_SSH: '/opt/my ssh/wrapper' } }).tree('shop', 7, true);
+    await new PlainPrs({ ...base, env: { ...env, GIT_SSH_COMMAND: 'ssh -i ~/.ssh/work' } }).tree('shop', 7, true);
+    await new PlainPrs({ ...base, env: { ...env, GIT_SSH_COMMAND: 'plink -batch' } }).tree('shop', 7, true);
+    expect(seen.map((e) => [e.GIT_SSH, e.GIT_SSH_COMMAND])).toEqual([
+      ['/opt/my ssh/wrapper', undefined],
+      [undefined, 'ssh -i ~/.ssh/work -o BatchMode=yes'],
+      [undefined, 'plink -batch'],
+    ]);
   });
 
   it('PLAIN-6.2: a fetch never asks for a password: no terminal prompt, askpass or interactive helper, ssh in batch mode', async () => {

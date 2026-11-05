@@ -23,6 +23,7 @@ export const PR_SPECS_POLL_MS = 60_000;
 export function PrSpecsAction({ pr, open, onOpenChange: setOpen }: { pr: WorkPr; open: boolean; onOpenChange(open: boolean): void }) {
   const specs = useContext(PrSpecsContext);
   const anchor = useRef<HTMLSpanElement>(null);
+  const content = useRef<HTMLDivElement>(null);
   const [answer, setAnswer] = useState<PlainPrFiles | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
@@ -82,6 +83,7 @@ export function PrSpecsAction({ pr, open, onOpenChange: setOpen }: { pr: WorkPr;
         </span>
       </PopoverAnchor>
       <PopoverContent
+        ref={content}
         side="bottom"
         align="start"
         className="max-h-[60vh] w-[min(28rem,calc(100vw-2rem))] overflow-y-auto p-1"
@@ -89,10 +91,13 @@ export function PrSpecsAction({ pr, open, onOpenChange: setOpen }: { pr: WorkPr;
         aria-label={`Specs in ${pr.repo} #${pr.number}`}
         // A click or key in the list is the list's, never the Work row's under it (WORK-1.12).
         onClick={(e) => e.stopPropagation()}
-        // Closing gives focus back to Work's list, whose keys reach the row's actions (WORK-1.7).
+        // Closing gives focus back to Work's list, whose keys reach the row's actions (WORK-1.7), unless
+        // it closed because focus went to another control: that one keeps it.
         onCloseAutoFocus={(e) => {
           e.preventDefault();
-          anchor.current?.closest<HTMLElement>('[role="listbox"]')?.focus();
+          const at = document.activeElement;
+          const lost = !at || at === document.body || !at.isConnected || !!content.current?.contains(at);
+          if (lost) anchor.current?.closest<HTMLElement>('[role="listbox"]')?.focus();
         }}
         // Esc too: the popover closes on it (Radix listens first), and the row stays expanded.
         onKeyDown={(e) => {
