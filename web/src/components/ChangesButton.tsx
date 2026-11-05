@@ -1,5 +1,5 @@
 import type { ChangedCheckout, ChangedFile, ChangesView, RowChanges } from '@shared/types.ts';
-import { Check, Code } from 'lucide-react';
+import { Check, Code, ScrollText } from 'lucide-react';
 import { IconButton } from '@/components/ui/icon-button';
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { routePath } from '@/lib/router';
@@ -262,7 +262,8 @@ function ChangesList({
             </div>
           )}
           <ul className="flex flex-col">
-            {c.files.map((f) => {
+            {/* PLAIN-3.4: the Modules first, each group in path order (the sort is stable). */}
+            {(onOpenInCode ? [...c.files].sort((a, b) => Number(isModule(b)) - Number(isModule(a))) : c.files).map((f) => {
               const key = fileKey(c.root, f.path);
               return (
                 <FileRow
@@ -334,12 +335,14 @@ function FileRow({
         }}
         className={cn(
           'flex w-full min-w-0 flex-1 items-center gap-2 rounded-sm px-2 py-1 text-left text-meta outline-none',
-          'hover:bg-accent focus-visible:bg-accent',
+          // PLAIN-3.4: a Module's row is tinted in the spec colour (DS-2.6), more under the pointer.
+          spec ? 'bg-spec/10 hover:bg-spec/16 focus-visible:bg-spec/16' : 'hover:bg-accent focus-visible:bg-accent',
           blocked && 'cursor-default opacity-70',
           justChanged && 'bg-muted',
         )}
       >
         <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
+          {spec && <ScrollText aria-hidden data-icon="spec" className="size-3 shrink-0 self-center text-spec-text" />}
           {/* DIFF-3.5: the folder gives way first; a name longer than the row is cut too. */}
           {viewed && <Check aria-hidden data-icon="viewed" className="size-3 shrink-0 self-center text-muted-foreground" />}
           <span className={cn('min-w-0 max-w-full shrink-0 truncate', !viewed && 'font-medium')}>{name}</span>

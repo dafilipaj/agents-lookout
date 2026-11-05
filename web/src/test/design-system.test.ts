@@ -286,6 +286,12 @@ const FAMILIES: Record<string, Family> = {
       'web/src/components/SpecView.tsx': { why: "a Module's added, removed and rewritten clauses and words, their bars, its specs' counts and marks, and the Changes card's tally (PLAIN-1.6, PLAIN-8.3, DS-2.5)", uses: ['bg-diff-added-soft', 'bg-diff-added-text', 'bg-diff-removed-soft', 'bg-diff-removed-text', 'text-diff-added-text', 'text-diff-removed-text'] },
     },
   },
+  spec: {
+    tokens: ['spec', 'spec-text'],
+    files: {
+      'web/src/components/ChangesButton.tsx': { why: "a .plain Module's row in a Session's changed files: its tint and icon (PLAIN-3.4, DS-2.6)", uses: ['bg-spec/10', 'bg-spec/16', 'text-spec-text'] },
+    },
+  },
   warning: {
     tokens: ['warning', 'warning-text'],
     files: {

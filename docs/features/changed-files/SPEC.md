@@ -3,7 +3,7 @@ title: "Changed files"
 code: "DIFF"
 status: "In Progress"
 created: "2026-10-31"
-updated: "2026-10-31"
+updated: "2026-11-05"
 ---
 
 # Changed files
@@ -48,7 +48,7 @@ Fleet reports a Session's candidate Checkouts and each one's Changes (the contra
 
 ### DIFF-3 The list of changed files
 
-- [ ] DIFF-3.1 The status line's count (DIFF-1.3) opens a popover listing the changed files, sorted by path. Each row shows the file's name, its folder in the quieter colour, its `+ −` (or "binary"), its kind when it isn't modified (added, deleted, `old → new`, type changed, mode changed, submodule) and an "uncommitted" mark for uncommitted files. (e2e)
+- [ ] DIFF-3.1 The status line's count (DIFF-1.3) opens a popover listing the changed files, sorted by path, a `.plain` Module first in its Checkout (PLAIN-3.4). Each row shows the file's name, its folder in the quieter colour, its `+ −` (or "binary"), its kind when it isn't modified (added, deleted, `old → new`, type changed, mode changed, submodule) and an "uncommitted" mark for uncommitted files. (e2e)
 - [x] DIFF-3.2 With more than one Checkout, the files are grouped under a heading per Checkout with that Checkout's own `+ −`. The heading is the repo's name (its common directory's repo, as `server/git.ts` names it for rows) and, for a linked Worktree, the Worktree's folder name, else the branch; a detached HEAD shows its short commit. The working directory's Checkout comes first, then Fleet's order. With one Checkout there's no heading. (test)
 - [x] DIFF-3.3 While it's open the list updates in place and keeps its scroll position. When the focused file leaves the list, focus moves to the next file, else the previous one. When no Changes are left, the list says "No changes" until closed; the status line's count is then gone, so Esc returns focus to the composer, or to the Session view's chat without a composer. (test)
 - [x] DIFF-3.4 It's keyboard reachable: Up and Down move between files, Enter opens one (DIFF-4), Esc closes the popover and returns focus to the count. It's built from the design system's popover and list pieces. (test)
@@ -171,3 +171,4 @@ None.
 - 2026-10-31: DIFF-4.7 ticked: Dario saw a file open in VS Code side by side, the base on the left. No requirement changed.
 - 2026-11-03: Added DIFF-3.7, a Viewed mark on a file you opened that goes when the file changes again, and DIFF-3.8, a tint on a file that just changed while the list is open. Both after Fleet's upstream reviewer (its per-file Viewed and its border on a file the agent just changed), without a diff viewer in Lookout.
 - 2026-11-04: A `.plain` file in the list opens in the Spec view, with "Open in VS Code" as its second action, and its Viewed mark is PLAIN-4's (DIFF-3.7, DIFF-4.1; PLAIN-3.1, 3.3). Each Checkout in the list carries an id (PLAIN-6.1).
+- 2026-11-05: DIFF-3.1: a `.plain` Module is listed first in its Checkout, tinted, with an icon (PLAIN-3.4); the other files keep their path order.

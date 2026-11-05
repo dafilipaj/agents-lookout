@@ -89,6 +89,20 @@ describe('the count', () => {
     expect(within(statusLine()).queryByRole('button', { name: /show changed files/ })).toBeNull();
   });
 
+  it("DS-2.6: on a Module row's 10% and 16% spec tints over the popover, its text, the muted grey and the diff colours keep 4.5:1, the icon 3:1, in both modes", () => {
+    for (const mode of ['light', 'dark'] as Mode[]) {
+      const t = themeTokens(css)[mode];
+      expect(t.spec?.h, `${mode} spec is violet`).toBeCloseTo(300, 0);
+      for (const alpha of [0.1, 0.16]) {
+        const on = paint(t, 'spec', solid(t, 'popover'), alpha);
+        for (const text of ['popover-foreground', 'muted-foreground', 'diff-added-text', 'diff-removed-text']) {
+          expect(contrast(solid(t, text), on), `${mode} ${text} on spec/${alpha}`).toBeGreaterThanOrEqual(4.5);
+        }
+        expect(contrast(solid(t, 'spec-text'), on), `${mode} spec-text on spec/${alpha}`).toBeGreaterThanOrEqual(3);
+      }
+    }
+  });
+
   it('DS-2.5: added and removed keep 4.5:1 on the background, the sidebar, every row state, the status line and the popover, in both modes, and on a clause\'s tint', () => {
     for (const mode of ['light', 'dark'] as Mode[]) {
       const t = themeTokens(css)[mode];
@@ -236,6 +250,38 @@ describe('the list', () => {
     await user.click(spec);
     expect(window.location.pathname).toBe(`/plain/a/${c.id}/${encodeURIComponent('plain/crm.plain')}`);
     expect(openChange).toHaveBeenCalledTimes(1);
+  });
+
+  it('PLAIN-3.4: Modules come first in their Checkout, tinted in the spec colour with a ScrollText icon; Up and Down follow that order', async () => {
+    const c = checkout('/r/shop', [file('a/first.ts'), file('plain/crm.plain'), file('src/z.ts'), file('plain/deals.plain')]);
+    const { app, user, panel } = await openList(view(c), { openChange: vi.fn(async () => {}) });
+    const files = () => within(panel).getAllByRole('button').filter((b) => b.hasAttribute('data-file'));
+    expect(files().map((b) => b.getAttribute('data-file')!.split('\u0000').pop())).toEqual(['plain/crm.plain', 'plain/deals.plain', 'a/first.ts', 'src/z.ts']);
+    for (const [i, b] of files().entries()) {
+      const module = i < 2;
+      expect(b.querySelector('[data-icon="spec"]') !== null, b.getAttribute('data-file')!).toBe(module);
+      if (module) {
+        expect(b).toHaveClass('bg-spec/10', 'hover:bg-spec/16', 'focus-visible:bg-spec/16');
+        expect(b.querySelector('[data-icon="spec"]')).toHaveClass('text-spec-text', 'size-3');
+        expect(b.querySelector('[data-icon="spec"]')).toHaveAttribute('aria-hidden', 'true');
+        expect(b).toHaveAccessibleName(/, open the spec$/);
+      } else {
+        expect(b).not.toHaveClass('bg-spec/10');
+        expect(b).toHaveClass('hover:bg-accent');
+      }
+    }
+    // The keyboard walks the list as it shows.
+    files()[0]!.focus();
+    await user.keyboard('{ArrowDown}');
+    expect(document.activeElement).toBe(files()[1]);
+    await user.keyboard('{ArrowDown}');
+    expect(document.activeElement).toBe(files()[2]);
+    // Just changed: the muted background like any file, the icon kept.
+    app.emit({ type: 'changes', sessionId: 'a', changes: view(checkout('/r/shop', [file('a/first.ts'), file('plain/crm.plain', { additions: 9 }), file('src/z.ts'), file('plain/deals.plain')])) });
+    await waitFor(() => expect(files()[0]).toHaveAttribute('data-just-changed', 'true'));
+    expect(files()[0]).toHaveClass('bg-muted');
+    expect(files()[0]).not.toHaveClass('bg-spec/10');
+    expect(files()[0]!.querySelector('[data-icon="spec"]')).not.toBeNull();
   });
 
   it('PLAIN-1.1: ⌘-click on a changed .plain file opens its Spec view in a new browser tab', async () => {

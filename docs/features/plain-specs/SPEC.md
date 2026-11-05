@@ -52,6 +52,8 @@ Slice 1: the Spec view opens from DIFF's list.
 - [ ] PLAIN-3.1 In DIFF's list of changed files (DIFF-3.1), clicking a `.plain` file, or Enter on it, opens it in the Spec view (DIFF-4.1's `code --diff` is not run). Its row gets a second action, "Open in VS Code", that does what DIFF-4 does for any file. (e2e)
 - [x] PLAIN-3.2 The Spec view's header has "Back to <Session title>", which returns to that Session's view with its list closed; Back in the browser does the same. (test)
 - [x] PLAIN-3.3 A `.plain` file's row in DIFF's list shows the Module's Viewed mark (PLAIN-4) in place of DIFF-3.7's, so both lists agree. (test)
+- [x] PLAIN-3.4 In DIFF's list a Module's row (a `.plain` file that opens in the Spec view, PLAIN-3.1) stands out: tinted with the `spec` colour (DS-2.6), 10% at rest and 16% under the pointer or focused, with lucide `ScrollText` before its name in `spec-text`; and the Modules come first in their Checkout, by path, before the other files, by path. Up and Down (DIFF-3.4) and where focus goes when a file leaves (DIFF-3.3) follow that order. A just-changed Module (DIFF-3.8) takes the muted background like any file and keeps its icon; its Viewed check (PLAIN-3.3) stays before the name, after the icon. The row's accessible name doesn't change. (test)
+- [x] PLAIN-3.5 Seen in both modes, in a list of 20 or more files: the Modules are found at a glance, and the tint reads as "a spec", not as a Status, a diff colour or the selection. (manual)
 
 ### PLAIN-4 Viewed
 
@@ -198,3 +200,5 @@ None.
 - 2026-11-05: Opus review of PLAIN-9 (high: 1 major, 1 medium, 1 minor), all fixed. Opening or closing a spec's notes reads the Marks again, so a folded change leaves no dead Mark on the rail (PLAIN-9.5). An outline or strip link landed its spec 48 px down and "On this page" then marked the spec before it: the scroll box keeps the strip's room clear for links and focus (`scroll-pt-9`), and the outline's current entry counts from below the strip, as jumps do (PLAIN-9.3 amended).
 - 2026-11-05: PLAIN-9.1 amended: the Module is at most 42rem wide (86 characters a line, measured), not 36rem (74); Dario found 36rem too narrow in a wide pane.
 - 2026-11-05: Dario tested and confirmed the feature (Plan item 31); PLAIN-9.7 ticked. PLAIN-3.1 and 5.1 are `(e2e)` and stay open until a World has a real repo to open a `.plain` change from.
+- 2026-11-05: Added PLAIN-3.4 and 3.5 (Dario: "plain specs are hard to find in the list of files with diff"): a Module's row in DIFF's list is tinted in a new `spec` colour (DS-2.6) with a `ScrollText` icon, and the Modules come first in their Checkout. Chosen from three sketches (tint only; tint and icon; tint, icon and first), as recommended. DIFF-3.1's order amended.
+- 2026-11-05: PLAIN-3.5 confirmed by Dario ("I can find it now").
