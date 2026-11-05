@@ -15,7 +15,7 @@ import type { HistoryQuery } from '@/lib/client';
 import { type HarnessFilter, filterHarness, isLive, itemKey, loadHarnessFilter, saveHarnessFilter, snippetParts } from '@/lib/history';
 import { type PanelNav, focusTab } from '@/lib/right-sidebar';
 import { HARNESS_NAME } from '@/lib/sessions';
-import { formatAge } from '@/lib/time';
+import { byDay, formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { HarnessIcon } from './HarnessIcon';
 import { TopicChips } from './TopicLinks';
@@ -61,7 +61,7 @@ type Results =
    * `gen`: the request (query and toggle) these pages answer; only that one pages further.
    * `auto`: pages fetched on their own since the first page or the last scroll or click.
    */
-  | { state: 'ok'; gen: number; items: HistoryItem[]; page: number; hasMore: boolean; loadingMore: boolean; auto: number };
+  | { state: 'ok'; gen: number; query: string; items: HistoryItem[]; page: number; hasMore: boolean; loadingMore: boolean; auto: number };
 
 /** HIST-2.10: an expanded result's read: under way, done, or failed with a reason. */
 type Peek = { state: 'loading' } | { state: 'ok'; peek: HistoryPeek } | { state: 'error'; message: string };
@@ -131,7 +131,7 @@ export function HistoryPanel({ focusKey, sessions, now, search, peek, onOpen, na
             setPeeks(new Map());
             setResults(
               page.state === 'ok'
-                ? { state: 'ok', gen: mine, items: page.items, page: page.page, hasMore: page.hasMore, loadingMore: false, auto: 0 }
+                ? { state: 'ok', gen: mine, query: q, items: page.items, page: page.page, hasMore: page.hasMore, loadingMore: false, auto: 0 }
                 : page.state === 'too-old'
                   ? { state: 'too-old', reason: page.reason, command: page.installCommand }
                   : { state: 'not-installed', command: page.installCommand },
@@ -290,6 +290,27 @@ export function HistoryPanel({ focusKey, sessions, now, search, peek, onOpen, na
   else if (items.length === 0 && results.hasMore) body = <LoadMore onClick={() => loadMore()} hint="None of the newest past Sessions can be shown here; older ones may." />;
   else if (items.length === 0) body = <EmptyState role="status" title={q ? `Nothing matches “${q}”` : 'No past Sessions'} />;
   else {
+    const result = (item: HistoryItem, i: number) => (
+      <Result
+        key={itemKey(item)}
+        index={i}
+        item={item}
+        status={isLive(item, sessions) ? (sessions.get(item.sessionId)?.status ?? 'unknown') : null}
+        since={sessions.get(item.sessionId)?.statusSince ?? null}
+        active={i === active}
+        expanded={expanded === itemKey(item)}
+        peek={peeks.get(itemKey(item)) ?? null}
+        opening={opening === itemKey(item)}
+        busy={opening !== null}
+        openError={openError?.key === itemKey(item) ? openError.message : null}
+        now={now}
+        onClick={(e) => {
+          if (expanded !== itemKey(item)) settle(e);
+          expand(i);
+        }}
+        onOpen={() => open(item)}
+      />
+    );
     body = (
       <div
         ref={listboxRef}
@@ -297,29 +318,20 @@ export function HistoryPanel({ focusKey, sessions, now, search, peek, onOpen, na
         aria-label="Past Sessions"
         aria-activedescendant={activeId}
         tabIndex={0}
-        className="flex flex-col gap-px px-1.5 pb-2 outline-none"
+        className="flex flex-col px-1.5 pb-2 outline-none"
       >
-        {items.map((item, i) => (
-          <Result
-            key={itemKey(item)}
-            index={i}
-            item={item}
-            status={isLive(item, sessions) ? (sessions.get(item.sessionId)?.status ?? 'unknown') : null}
-            since={sessions.get(item.sessionId)?.statusSince ?? null}
-            active={i === active}
-            expanded={expanded === itemKey(item)}
-            peek={peeks.get(itemKey(item)) ?? null}
-            opening={opening === itemKey(item)}
-            busy={opening !== null}
-            openError={openError?.key === itemKey(item) ? openError.message : null}
-            now={now}
-            onClick={(e) => {
-              if (expanded !== itemKey(item)) settle(e);
-              expand(i);
-            }}
-            onOpen={() => open(item)}
-          />
-        ))}
+        {/* HIST-2.12: by day while newest first; a search is best match first (HIST-2.2), so it's one run,
+            and so are a search's results still shown while the empty query's are read. */}
+        {q || results.query
+          ? items.map(result)
+          : byDay(items, (item) => item.lastActiveAt, now).map((run, n) => (
+              <div key={run.key} role="group" aria-labelledby={`history-day-${n}`} className="flex flex-col">
+                <div role="presentation" className="px-2 pt-2 pb-1 text-caption font-medium text-muted-foreground">
+                  <span id={`history-day-${n}`}>{run.label}</span>
+                </div>
+                {run.rows.map(({ item, index }) => result(item, index))}
+              </div>
+            ))}
         {results.loadingMore && <Loading label="Loading more…" className="px-2 py-2" />}
         {!results.loadingMore && results.hasMore && results.auto >= AUTO_FILL_PAGES && <LoadMore onClick={() => loadMore()} />}
       </div>
@@ -444,10 +456,12 @@ function Result({ index, item, status, since, active, expanded, peek, opening, b
       data-index={index}
       data-state={state}
       data-session-id={item.sessionId}
+      data-slot="row"
+      data-selected={active || undefined}
       title={expanded ? undefined : 'Show its details'}
       onClick={onClick}
       className={cn(
-        'flex cursor-pointer flex-col gap-0.5 rounded-md px-2 py-1.5 text-body hover:bg-sidebar-accent/60',
+        'flex cursor-pointer flex-col gap-0.5 rounded-md px-2 py-[7px] text-body hover:bg-sidebar-accent/60',
         active && 'bg-sidebar-accent',
       )}
     >

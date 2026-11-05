@@ -39,7 +39,7 @@ it('LIB-1.2: remembers Library, open state and width in lookout.right across rel
   expect(screen.getByRole('complementary', { name: 'Right sidebar' })).toHaveStyle({ width: '420px' });
   await waitFor(() => expect(app.client.library).toHaveBeenCalledWith(expect.objectContaining({ types: ['share'], project: '/other', hideGone: false })));
 });
-it('LIB-2.1: keeps loading an underfilled panel beyond five pages from one read, then groups by local day', async () => {
+it('LIB-2.1: keeps loading an underfilled panel beyond five pages from one read, then groups by local day, each day a named group of the listbox', async () => {
   const library = vi.fn(async (q: LibraryQuery) => ok(q.page < 8 ? [] : [output(), output({ key: 'yesterday', updatedAt: NOW - 86400000 }), output({ key: 'older', updatedAt: NOW - 3 * 86400000 })], { nextPage: q.page + 1, hasMore: q.page < 8 }));
   const app = renderApp('/', { library }); await open(app);
   await waitFor(() => expect(rows()).toHaveLength(3));
@@ -47,6 +47,11 @@ it('LIB-2.1: keeps loading an underfilled panel beyond five pages from one read,
   expect(library.mock.calls.slice(1).every(([q]) => q.readId === 'read-1')).toBe(true);
   expect(within(panel()).queryByRole('button', { name: 'Load more' })).toBeNull();
   expect(within(panel()).getByText('Today')).toBeVisible(); expect(within(panel()).getByText('Yesterday')).toBeVisible();
+  // DS-17: each day a group of the listbox, named by its heading, its Outputs its rows.
+  const days = within(within(panel()).getByRole('listbox', { name: 'Outputs' })).getAllByRole('group');
+  expect(days.map((g) => [document.getElementById(g.getAttribute('aria-labelledby')!)!.textContent, within(g).getAllByRole('option').length])).toEqual([['Today', 1], ['Yesterday', 1], [new Date(NOW - 3 * 86400000).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }), 1]]);
+  expect(days[0]).toHaveAccessibleName('Today');
+  expect(rows().every((r) => r.getAttribute('data-slot') === 'row')).toBe(true);
 });
 it('LIB-2.2: rows expose title, Type, repo, age, path and live/gone chips as options of one focusable listbox with decorative icons', async () => {
   const app = renderApp('/', { library: async () => ok([output({ exists: false })]) }); await open(app); app.snapshot([row({ id: 'writer' })]);

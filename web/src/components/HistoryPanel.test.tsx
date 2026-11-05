@@ -139,6 +139,43 @@ describe('finding past Sessions (HIST-2)', () => {
     expect(history).toHaveBeenCalledTimes(2); // no more pages
   });
 
+  it('HIST-2.12, DS-17.1: with an empty query, the results are grouped by day, each a named group of the listbox; ↓ runs across days; a search, and its results while the cleared query is read, have no headings; the selected row is marked', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: NOW });
+    const YESTERDAY = item({ sessionId: 'y-1', title: 'rates-spec', lastActiveAt: NOW - 86_400_000 });
+    const UNDATED = item({ sessionId: 'n-1', title: 'no-time', lastActiveAt: null });
+    const history = vi.fn(async (q: HistoryQuery) => (q.query ? ok([CODEX, LIVE]) : ok([LIVE, YESTERDAY, CODEX, UNDATED])));
+    const app = renderApp('/', { history });
+    app.snapshot([]);
+    const user = await openHistory(app);
+    await waitFor(() => expect(titles()).toEqual(['fix-deal-rates', 'rates-spec', 'kg-hook-review', 'no-time']));
+    const list = within(panel()).getByRole('listbox', { name: 'Past Sessions' });
+    const days = within(list).getAllByRole('group');
+    const thirdDay = new Date(NOW - 3 * 86_400_000).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    expect(days.map((g) => document.getElementById(g.getAttribute('aria-labelledby')!)!.textContent)).toEqual(['Today', 'Yesterday', thirdDay, 'No date']);
+    expect(days[1]).toHaveAccessibleName('Yesterday');
+    expect(days.map((g) => within(g).getAllByRole('option').length)).toEqual([1, 1, 1, 1]);
+    // DS-17.1: every result a row, the selected one marked; ↓ moves across the days as through one list.
+    expect(options().every((o) => o.getAttribute('data-slot') === 'row')).toBe(true);
+    list.focus();
+    await user.keyboard('{ArrowDown}');
+    expect(options().map((o) => o.hasAttribute('data-selected'))).toEqual([false, true, false, false]);
+    expect(options()[1]).toHaveAttribute('aria-selected', 'true');
+    // While searching, best match first: no headings.
+    await user.type(screen.getByRole('searchbox', { name: 'Search past Sessions' }), 'hook');
+    await waitFor(() => expect(titles()).toEqual(['kg-hook-review', 'fix-deal-rates']));
+    const groups = () => within(panel()).getByRole('listbox', { name: 'Past Sessions' }).querySelectorAll('[role="group"]').length;
+    expect(groups()).toBe(0);
+    // Cleared, the search's results stay until the empty query's answer, and they get no headings meanwhile.
+    let answer!: () => void;
+    history.mockImplementationOnce(() => new Promise((done) => (answer = () => done(ok([LIVE, YESTERDAY, CODEX, UNDATED])))));
+    await user.clear(screen.getByRole('searchbox', { name: 'Search past Sessions' }));
+    await waitFor(() => expect(history).toHaveBeenLastCalledWith(expect.objectContaining({ query: '' })));
+    expect(titles()).toEqual(['kg-hook-review', 'fix-deal-rates']);
+    expect(groups()).toBe(0);
+    act(() => answer());
+    await waitFor(() => expect(groups()).toBe(4));
+  });
+
   it('HIST-2.2: typing searches, and the results show within 1 s, in the order given (best match first)', async () => {
     const history = vi.fn(async (q: HistoryQuery) => (q.query ? ok([CODEX, GONE]) : ok([LIVE])));
     const app = renderApp('/', { history });

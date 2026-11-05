@@ -518,6 +518,37 @@ scenario(
 );
 
 scenario(
+  'DS-17.2: a hairline separates two Task rows, from the title after the icon, and is gone on both sides of the selected row',
+  world().tbProd({ tasks: { [ME]: MINE } }).tbPr({ board: BOARD }).settings({ productiveEmail: ME }),
+  async ({ page, world }) => {
+    await openWork(page);
+    await world.step('the Tasks and PRs to show', async () => {
+      await expect(taskRows(page)).toHaveCount(3);
+      await expect(prRows(page)).toHaveCount(3);
+    });
+    /** Each row's line, as the browser draws its `::before`: null where there is none. */
+    const lines = () =>
+      taskRows(page).evaluateAll((rows) =>
+        rows.map((r) => {
+          const s = getComputedStyle(r, '::before');
+          return s.content === 'none' ? null : { height: s.height, left: s.left, drawn: s.backgroundColor !== 'rgba(0, 0, 0, 0)' && s.backgroundColor !== 'transparent' };
+        }),
+      );
+    const line = { height: '1px', left: '30px', drawn: true };
+    // The first row selected (a click, once nothing moves: which row Work selects first depends on
+    // which section answered first, WORK-1.9): no line above it nor above the next.
+    await taskRows(page).nth(0).click();
+    await expect(taskRows(page).nth(0)).toHaveAttribute('aria-selected', 'true');
+    await expect.poll(lines).toEqual([null, null, line]);
+    // ↓ twice: the last row selected, the line now above the middle one.
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('ArrowDown');
+    await expect(taskRows(page).nth(2)).toHaveAttribute('aria-selected', 'true');
+    await expect.poll(lines).toEqual([null, line, null]);
+  },
+);
+
+scenario(
   'WORK-1.6: switching the filter shows the hidden section’s latest data at once and starts no read; a hidden section is read like a shown one',
   world().tbProd({ tasks: { [ME]: MINE.slice(0, 1) } }).tbPr({ board: BOARD }).settings({ productiveEmail: ME }),
   async ({ page, world }) => {

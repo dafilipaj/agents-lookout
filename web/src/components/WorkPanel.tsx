@@ -588,7 +588,7 @@ function TasksSection({ tasks, now: clock, selected, rowState, listRef, onListFo
           tabIndex={active ? 0 : -1}
           onFocus={onListFocus}
           onMouseDown={onListPress}
-          className="flex flex-col gap-px px-1.5 outline-none"
+          className="flex flex-col px-1.5 outline-none"
         >
           {tasks.tasks.map((task) => {
             const row: WorkRow = { key: taskKey(task), kind: 'task', task };
@@ -631,7 +631,10 @@ function TaskRow({ row, task, now, active, state }: TaskRowProps) {
       data-task={task.id}
       title={task.links?.incomplete ? 'Links may be incomplete' : undefined}
       onClick={(e) => state.onRow(row, e)}
-      className={cn('flex min-w-0 cursor-default items-start gap-1.5 rounded-md px-2 py-1.5 text-body hover:bg-sidebar-accent/60', active && 'bg-sidebar-accent')}
+      // DS-17.1: the line between rows starts at the title, after the 16 px icon.
+      data-slot="row"
+      data-selected={active || undefined}
+      className={cn('flex min-w-0 cursor-default items-start gap-1.5 rounded-md px-2 py-[7px] text-body [--row-inset:30px] hover:bg-sidebar-accent/60', active && 'bg-sidebar-accent')}
     >
       {/* The row's description only: its name is its content (WORK-2.2). */}
       <span id={`${id}-keys`} className="sr-only" aria-hidden>
@@ -977,7 +980,7 @@ function PrGroupView({ group, prs, marks, now, selected, rowState }: PrGroupProp
         />
       )}
       {prs.length > 0 && (
-        <div role="presentation" className="flex flex-col gap-px px-1.5">
+        <div role="presentation" className="flex flex-col px-1.5">
           {prs.map((pr) => {
             const row: WorkRow = { key: prKey(pr), kind: 'pr', group, pr };
             return <PrRow key={row.key} row={row} group={group} pr={pr} now={now} active={row.key === selected} state={rowState} />;
@@ -1039,7 +1042,10 @@ function PrRow({ row, group, pr, now, active, state }: PrRowProps) {
       data-pr={`${pr.repo}#${pr.number}`}
       title={tip || undefined}
       onClick={(e) => state.onRow(row, e)}
-      className={cn('flex min-w-0 cursor-default items-start gap-1.5 rounded-md px-2 py-1.5 text-body hover:bg-sidebar-accent/60', active && 'bg-sidebar-accent')}
+      // DS-17.1: the line between rows starts at the title, after the 16 px icon.
+      data-slot="row"
+      data-selected={active || undefined}
+      className={cn('flex min-w-0 cursor-default items-start gap-1.5 rounded-md px-2 py-[7px] text-body [--row-inset:30px] hover:bg-sidebar-accent/60', active && 'bg-sidebar-accent')}
     >
       {/* The row's description only: its name is its content, as History's rows' (WORK-3.2). */}
       <span id={`${id}-keys`} className="sr-only" aria-hidden>

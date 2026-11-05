@@ -1243,6 +1243,46 @@ function tabsAndNavs(source: string, path = 'x.tsx'): string[] {
   return found;
 }
 
+/** DS-17.1: the list rows (`option`, `listitem`) without `data-slot="row"` and `data-selected`. */
+function unmarkedRows(source: string, path = 'x.tsx'): string[] {
+  const file = parse(source, path);
+  const found: string[] = [];
+  const visit = (node: ts.Node) => {
+    if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
+      const attrs = new Map(node.attributes.properties.filter(ts.isJsxAttribute).map((a) => [a.name.getText(), a.initializer && ts.isStringLiteral(a.initializer) ? a.initializer.text : (a.initializer?.getText() ?? '')]));
+      const role = attrs.get('role');
+      if ((role === 'option' || role === 'listitem') && (attrs.get('data-slot') !== 'row' || !attrs.has('data-selected'))) found.push(`${where(file, node.getStart())} ${role}`);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return found;
+}
+
+describe('rows', () => {
+  const PANELS = ['WorkPanel', 'HistoryPanel', 'LibraryPanel', 'TopicsPanel'].map((p) => `web/src/components/${p}.tsx`);
+
+  it("DS-17.1: one rule in index.css draws a hairline in sidebar-border above a row that follows another, from the title's edge to 8 px from the right, and none touching the selected row", () => {
+    const rule = (selector: string) => new RegExp(`${selector.replace(/[[\]()+*.]/g, '\\$&')}\\s*\\{([^}]*)\\}`).exec(css)?.[1] ?? '';
+    const line = rule("[data-slot='row'] + [data-slot='row']::before");
+    for (const decl of ["content: ''", 'position: absolute', 'top: 0', 'left: var(--row-inset, 28px)', 'right: 8px', 'height: 1px', 'background: var(--sidebar-border)']) expect(line).toContain(`${decl};`);
+    expect(rule("[data-slot='row']")).toContain('position: relative;');
+    expect(css).toMatch(/\[data-slot='row'\]\[data-selected\]::before,\s*\[data-slot='row'\]\[data-selected\] \+ \[data-slot='row'\]::before\s*\{\s*content: none;\s*\}/);
+  });
+
+  it('DS-17.1: every row of Work, History, Library and Topics is marked a row with its selection, with 7 px padding and no gap, Work\'s line starting after its icon', () => {
+    expect(unmarkedRows(`<div role="option" aria-selected />; <div role="listitem" data-slot="row" />; <div role="option" data-slot="row" data-selected={a || undefined} />`).map((f) => f.split(' ')[1])).toEqual(['option', 'listitem']);
+    for (const path of PANELS) {
+      const text = SOURCES[path]!;
+      expect(text, path).toContain('data-slot="row"');
+      expect(unmarkedRows(text, path)).toEqual([]);
+      expect(text, path).not.toMatch(/\bgap-px\b/);
+      expect(text, path).toContain('py-[7px]');
+    }
+    expect(SOURCES['web/src/components/WorkPanel.tsx']!.match(/\[--row-inset:30px\]/g)).toHaveLength(2);
+  });
+});
+
 describe('scroll bars', () => {
   it("DS-15.1: every element's scroll bar is thin with a transparent track, set once in index.css's base layer, and nothing else styles one", () => {
     const base = /@layer base\s*\{\s*(?:\/\*[\s\S]*?\*\/\s*)?\*\s*\{([^}]*)\}/.exec(css)?.[1] ?? '';

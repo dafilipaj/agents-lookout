@@ -259,7 +259,7 @@ export function TopicsPanel(props: TopicsPanelProps) {
   } else if (shown.length === 0) body = <EmptyState role="status" title="Nothing matches" hint={archived ? undefined : 'Archived Topics are hidden. Turn on Archived to show them.'} />;
   else {
     body = (
-      <div role="list" aria-label="Topics" className="flex flex-col gap-px px-1.5 pb-2">
+      <div role="list" aria-label="Topics" className="flex flex-col px-1.5 pb-2">
         {shown.map((t) => (
           <TopicItem
             key={t.id}
@@ -388,7 +388,7 @@ function TopicItem({ topic, selected, expanded, sessions, work, onHeader, panel,
   const last = topic.lastActivity;
   const fresh = panel.viewedTopic === topic.id ? 0 : topic.newCount;
   return (
-    <div role="listitem" data-topic-id={topic.id} className={cn('flex min-w-0 flex-col rounded-md', selected && 'bg-sidebar-accent')}>
+    <div role="listitem" data-topic-id={topic.id} data-slot="row" data-selected={selected || undefined} className={cn('flex min-w-0 flex-col rounded-md', selected && 'bg-sidebar-accent')}>
       <button
         id={headerId(topic.id)}
         type="button"
@@ -397,7 +397,7 @@ function TopicItem({ topic, selected, expanded, sessions, work, onHeader, panel,
         aria-label={[topic.title, counts, topic.state === 'archived' && (topic.outcome ? `archived, ${OUTCOME_WORD[topic.outcome]}` : 'archived'), done && 'looks done', fresh > 0 && `${fresh} new`].filter(Boolean).join(', ')}
         // A click from the keyboard has no pointer, so `detail` is 0.
         onClick={(e) => onHeader(e.detail === 0)}
-        className="flex min-w-0 cursor-default flex-col gap-0.5 rounded-md px-2 py-1.5 text-left text-body outline-none hover:bg-sidebar-accent/60 focus-visible:ring-2 focus-visible:ring-ring/50"
+        className="flex min-w-0 cursor-default flex-col gap-0.5 rounded-md px-2 py-[7px] text-left text-body outline-none hover:bg-sidebar-accent/60 focus-visible:ring-2 focus-visible:ring-ring/50"
       >
         <span className="flex w-full min-w-0 items-center gap-1.5">
           <span className="inline-flex size-3.5 shrink-0" data-field="marker">

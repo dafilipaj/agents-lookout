@@ -241,6 +241,31 @@
   }
 }
 
+@layer components {
+  /*
+   * DS-17.1: where one row ends. A hairline at the top of a right-sidebar row that directly follows
+   * another, from where its title starts to 8 px from the right; none under a heading, which sits
+   * between them, and none touching the selected row, so its highlight is the only shape there.
+   */
+  [data-slot='row'] {
+    position: relative;
+  }
+  [data-slot='row'] + [data-slot='row']::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: var(--row-inset, 28px);
+    right: 8px;
+    height: 1px;
+    background: var(--sidebar-border);
+    pointer-events: none;
+  }
+  [data-slot='row'][data-selected]::before,
+  [data-slot='row'][data-selected] + [data-slot='row']::before {
+    content: none;
+  }
+}
+
 
 @keyframes busy-pulse {
   0%,

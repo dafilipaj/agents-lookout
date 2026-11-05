@@ -17,7 +17,7 @@ import { useCopy } from '@/lib/copy';
 import { isLive } from '@/lib/history';
 import { type PanelNav, focusTab } from '@/lib/right-sidebar';
 import { STATUS_LABEL } from '@/lib/sessions';
-import { formatAge } from '@/lib/time';
+import { byDay, formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { SEARCH_DEBOUNCE_MS } from './HistoryPanel';
 import { HarnessIcon } from './HarnessIcon';
@@ -29,12 +29,6 @@ const FILTER_LABEL: Record<LibraryType, string> = { pages: 'Pages', pdf: 'PDF', 
 const EVENT: Record<OutputSession['event'], string> = { write: 'wrote it', edit: 'edited it', publish: 'published it', upload: 'uploaded it' };
 const key = (i: OutputItem) => `${i.kind}:${i.key}`;
 const stamp = (at: number) => new Date(at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-function day(at: number, now: number): string {
-  const date = new Date(at), today = new Date(now), yesterday = new Date(now);
-  yesterday.setDate(today.getDate() - 1);
-  return date.toDateString() === today.toDateString() ? 'Today' : date.toDateString() === yesterday.toDateString() ? 'Yesterday' : date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-}
-
 /** LIB-2.7: starts, ends, replacement processes and Subagent completions can add Outputs.
  * Activity, context, model and Status updates during normal polling wait for the 60-second read.
  */
@@ -314,11 +308,10 @@ export function LibraryPanel({ focusKey, visible, sessions, now, search, status,
         {!busy && !error && results && items.length === 0 && !moreBusy && !last?.hasMore && <EmptyState role="status" title={results.pages[0]?.unfilteredEmpty ? 'Nothing produced yet' : q ? `Nothing matches “${q}”` : 'Nothing matches'} hint={hidden ? `${hidden} gone Outputs are hidden. Turn off Hide gone to show them.` : undefined} />}
         <div ref={list} role="listbox" aria-label="Outputs" tabIndex={0} aria-activedescendant={items[index] ? `library-${encodeURIComponent(key(items[index]!))}` : undefined} className="outline-none focus-visible:ring-2 focus-visible:ring-ring/30">
           <RowSettling value={settling}>
-            {items.map((item, n) => <div key={key(item)}>
-              {(n === 0 || day(item.updatedAt, now) !== day(items[n - 1]!.updatedAt, now)) && <p className="px-2 py-1.5 text-caption font-medium text-muted-foreground">
-                {day(item.updatedAt, now)}
-              </p>}
-              <OutputRow item={item} now={now} query={q} active={n === index} expanded={expanded === key(item)} sessions={sessions} enabled={!opening && keyboardEnabled} onSession={(s) => void session(s)} onRow={(e) => { settle(e); setActive(key(item)); setExpanded(key(item)); list.current?.focus(); }} onHover={(on) => setHovered(on ? key(item) : null)} register={(a) => { if (a) actions.current.set(key(item), a); else actions.current.delete(key(item)); }} />
+            {/* LIB-2.1: each day a group of the listbox, named by its heading (DS-17). */}
+            {byDay(items, (item) => item.updatedAt, now).map((run, d) => <div key={run.key} role="group" aria-labelledby={`library-day-${d}`} className="flex flex-col">
+              <div role="presentation" className="px-2 py-1.5 text-caption font-medium text-muted-foreground"><span id={`library-day-${d}`}>{run.label}</span></div>
+              {run.rows.map(({ item, index: n }) => <OutputRow key={key(item)} item={item} now={now} query={q} active={n === index} expanded={expanded === key(item)} sessions={sessions} enabled={!opening && keyboardEnabled} onSession={(s) => void session(s)} onRow={(e) => { settle(e); setActive(key(item)); setExpanded(key(item)); list.current?.focus(); }} onHover={(on) => setHovered(on ? key(item) : null)} register={(a) => { if (a) actions.current.set(key(item), a); else actions.current.delete(key(item)); }} />)}
             </div>)}
           </RowSettling>
         </div>
@@ -353,7 +346,7 @@ function OutputRow({ item, now, query, active, expanded, sessions, enabled, onSe
   const t = item.kind === 'file' ? item.type! : item.kind, Icon = OUTPUT_ICON[t], id = `library-${encodeURIComponent(key(item))}`;
   const gone = item.kind === 'file' && !item.exists, live = sorted.some((s) => isLive(s, sessions));
   const age = formatAge(now - item.updatedAt);
-  return <div id={id} role="option" aria-selected={active} aria-expanded={expanded} aria-label={[item.title, TYPE_LABEL[t], item.repo, age, item.display, gone && 'gone', live && 'live'].filter(Boolean).join(' ')} aria-describedby={`${id}-keys${expanded ? ` ${id}-details` : ''}`} onClick={onRow} onMouseEnter={() => onHover(true)} onMouseLeave={() => onHover(false)} className={cn('flex min-w-0 cursor-default flex-col gap-0.5 rounded-md px-2 py-1.5 text-body hover:bg-sidebar-accent/60', active && 'bg-sidebar-accent')}>
+  return <div id={id} role="option" aria-selected={active} aria-expanded={expanded} aria-label={[item.title, TYPE_LABEL[t], item.repo, age, item.display, gone && 'gone', live && 'live'].filter(Boolean).join(' ')} aria-describedby={`${id}-keys${expanded ? ` ${id}-details` : ''}`} onClick={onRow} onMouseEnter={() => onHover(true)} onMouseLeave={() => onHover(false)} data-slot="row" data-selected={active || undefined} className={cn('flex min-w-0 cursor-default flex-col gap-0.5 rounded-md px-2 py-[7px] text-body hover:bg-sidebar-accent/60', active && 'bg-sidebar-accent')}>
     <span id={`${id}-keys`} aria-hidden className="sr-only">O opens it, C copies its link, S opens its Session</span>
     <div className="flex min-w-0 items-center gap-1.5">
       <Icon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
