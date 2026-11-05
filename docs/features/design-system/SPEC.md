@@ -3,7 +3,7 @@ title: "Design system"
 code: "DS"
 status: "In Progress"
 created: "2026-10-22"
-updated: "2026-11-04"
+updated: "2026-11-05"
 ---
 
 # Design system
@@ -34,7 +34,7 @@ Each was fixed once, by hand, in one place. Nothing stops the next component fro
 
 Five sizes, by role. Nothing that carries information is smaller than 11 px, and there are no half-pixel sizes.
 
-- [x] DS-1.1 Every font size in `web/src` comes from the scale's five named steps (UX, "Type scale"): `caption` 11 px, `meta` 12 px, `body` 13 px, `prose` 14 px and `title` 15 px. A guard test fails on an arbitrary size (`text-[11.5px]`), on Tailwind's own size utilities (`text-xs`, `text-sm`, `text-base`, `text-lg` and up), and on a `font-size` or `fontSize` in CSS or a `style`, outside the exceptions listed in the Technical approach. (test)
+- [x] DS-1.1 Every font size in `web/src` comes from the scale's named steps (UX, "Type scale"): `caption` 11 px, `meta` 12 px, `body` 13 px, `prose` 14 px and `title` 15 px, plus `reading` 16 px and `reading-title` 20 px for a long document read whole (the Spec view's Module, PLAIN-9.1). A guard test fails on an arbitrary size (`text-[11.5px]`), on Tailwind's own size utilities (`text-xs`, `text-sm`, `text-base`, `text-lg` and up), and on a `font-size` or `fontSize` in CSS or a `style`, outside the exceptions listed in the Technical approach. (test)
 - [x] DS-1.2 The shadcn components in `components/ui/` use the scale too: a button, input, menu item, label and popover are `body`, a dialog's title is `title`, its description `meta`. (test)
 - [x] DS-1.3 Seen in both modes at 1440 px: the sidebar, the main pane, History and Work read in four UI levels plus the chat's prose, with no two neighbouring texts a half step apart. (manual)
 
@@ -211,8 +211,10 @@ In the right sidebar's lists, rows of two to four lines followed each other with
 | `body` | 13 / 20 px | row titles, controls, menus, dialogs, Settings, notices | 12.5 px where body text, 13 px; `text-sm`, `text-base` in controls |
 | `prose` | 14 / 22 px | the chat's text, the composer, a question's text, Markdown's smaller headings | 13.5, 14, 14.5 px |
 | `title` | 15 / 20 px | the main pane's title, a dialog's title, section headers (Work's, the Session sidebar's), Markdown's first heading | 15 px; `text-lg` |
+| `reading` | 16 / 26 px | a long document read whole: the Spec view's clauses, definitions and acceptance tests (PLAIN-9.1) | (new) |
+| `reading-title` | 20 / 28 px | a heading inside such a document: a functional spec's heading (PLAIN-9.2) | (new) |
 
-- Classes are `text-caption`, `text-meta`, `text-body`, `text-prose` and `text-title`, from `--text-*` theme variables, each with its line height. None of the names is a colour token, so `text-…` stays unambiguous.
+- Classes are `text-caption`, `text-meta`, `text-body`, `text-prose`, `text-title`, `text-reading` and `text-reading-title`, from `--text-*` theme variables, each with its line height. None of the names is a colour token, so `text-…` stays unambiguous.
 - Monospace (the status line, commands, the terminal preview) uses the same steps.
 - Weights stay as they are: 400, 500 for emphasis, 600 for titles.
 
@@ -508,3 +510,4 @@ None.
 - 2026-11-05: DS-15.2, DS-16.5 and DS-17.3 ticked: Dario looked and confirmed all three.
 - 2026-11-05: DS-13.4 and DS-14.3 ticked: Dario checked and confirmed them.
 - 2026-11-05: The colour guard's diff family lists `ChatRail.tsx` (a Module's added and removed changes as Marks, PLAIN-8.5) and pins `SpecView.tsx`'s bars (`before:bg-diff-added-text`, `before:bg-diff-removed-text`, PLAIN-8.3). A rewritten clause's bar and Mark are `muted-foreground`: no third diff hue, which would read as a Status (DS-3.6).
+- 2026-11-05: DS-1.1 amended for PLAIN-9: two steps for a long document read whole, `reading` (16 / 26 px) and `reading-title` (20 / 28 px), used by the Spec view's Module only. The UI's own levels stay the five they were; a Module of 1,200 lines is read like a book, not scanned like a row (Dario, 2026-11-05, from the canvas https://claude.ai/artifact/1B7FmUEyqXzR2WoUGBmQrD).

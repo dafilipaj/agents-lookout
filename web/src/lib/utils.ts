@@ -2,7 +2,7 @@ import { type ClassValue, clsx } from 'clsx';
 import { extendTailwindMerge } from 'tailwind-merge';
 
 /** The type scale's steps (DS-1), named by role: `text-caption` … `text-title`, from `--text-*` in index.css. */
-export const TYPE_SCALE = ['caption', 'meta', 'body', 'prose', 'title'] as const;
+export const TYPE_SCALE = ['caption', 'meta', 'body', 'prose', 'title', 'reading', 'reading-title'] as const;
 
 /**
  * tailwind-merge has to know the steps are font sizes: otherwise it takes `text-meta` for a colour

@@ -66,9 +66,10 @@ export function PlainView({
   header,
   rail,
   scrollRef,
+  scrollClassName,
   children,
   ...rest
-}: { header?: ReactNode; rail?: ReactNode; scrollRef?: Ref<HTMLDivElement>; children: ReactNode } & ComponentPropsWithoutRef<'div'>) {
+}: { header?: ReactNode; rail?: ReactNode; scrollRef?: Ref<HTMLDivElement>; /** Classes for the scroll box beside the rail. */ scrollClassName?: string; children: ReactNode } & ComponentPropsWithoutRef<'div'>) {
   return (
     <ShellView {...rest}>
       <PaneHeader aria-hidden={header ? undefined : true}>{header}</PaneHeader>
@@ -77,7 +78,7 @@ export function PlainView({
         <ShellCell row="body" toBottom className="@container flex">
           <div
             ref={scrollRef}
-            className="h-full min-w-0 flex-1 overflow-y-auto"
+            className={cn('h-full min-w-0 flex-1 overflow-y-auto', scrollClassName)}
             data-slot="pane-scroll"
             // SIDE-5 leaves the arrow keys to the view when they come from inside it: they scroll it, as the chat's.
             data-scroll-keys

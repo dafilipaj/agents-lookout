@@ -144,20 +144,22 @@ function offScale(source: string, path: string): string[] {
 describe('type scale', () => {
   const what = (source: string, path?: string) => fontSizes(source, path).map((s) => s.split(' ').slice(1).join(' '));
 
-  it('DS-1.1: the scale is five steps, caption 11, meta 12, body 13, prose 14 and title 15 px, each with its line height, defined once in index.css', () => {
+  it('DS-1.1: the scale is caption 11, meta 12, body 13, prose 14 and title 15 px, plus reading 16 and reading-title 20 px, each with its line height, defined once in index.css', () => {
     const theme = css.slice(css.indexOf('@theme inline'));
     expect(theme).toMatch(/--text-\*:\s*initial;/); // Tailwind's own sizes are cleared, so `text-sm` generates nothing
-    const steps = [...theme.matchAll(/--text-([a-z]+):\s*([^;]+);/g)].map((m) => [m[1], m[2]]);
+    const steps = [...theme.matchAll(/--text-([a-z]+(?:-[a-z]+)*):\s*([^;]+);/g)].map((m) => [m[1], m[2]]);
     expect(steps).toEqual([
       ['caption', '11px'],
       ['meta', '12px'],
       ['body', '13px'],
       ['prose', '14px'],
       ['title', '15px'],
+      ['reading', '16px'],
+      ['reading-title', '20px'],
     ]);
-    const lines = Object.fromEntries([...theme.matchAll(/--text-([a-z]+)--line-height:\s*([^;]+);/g)].map((m) => [m[1], m[2]]));
-    expect(lines).toEqual({ caption: '16px', meta: '16px', body: '20px', prose: '22px', title: '20px' });
-    // cn() knows the same five steps as font sizes (tailwind-merge), and the page's own text is `body`.
+    const lines = Object.fromEntries([...theme.matchAll(/--text-([a-z]+(?:-[a-z]+)*)--line-height:\s*([^;]+);/g)].map((m) => [m[1], m[2]]));
+    expect(lines).toEqual({ caption: '16px', meta: '16px', body: '20px', prose: '22px', title: '20px', reading: '26px', 'reading-title': '28px' });
+    // cn() knows the same steps as font sizes (tailwind-merge), and the page's own text is `body`.
     expect([...TYPE_SCALE]).toEqual(steps.map(([name]) => name));
     expect(css).toMatch(/body \{\s*@apply [^;]*\btext-body\b/);
     // No other file defines a step.

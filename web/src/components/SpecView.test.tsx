@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SaveError } from '@/lib/client';
 import { parseRoute, routePath } from '@/lib/router';
 import { renderApp, row } from '@/test/helpers';
-import { JUST_CHANGED_MS, SPEC_POLL_MS } from './SpecView';
+import { JUST_CHANGED_MS, SPEC_POLL_MS, STRIP_PX } from './SpecView';
 
 const CHECKOUT = '0123456789abcdef';
 const SRC = { kind: 'session', session: 'a', checkout: CHECKOUT } as const;
@@ -464,7 +464,7 @@ describe('reading and stepping through a change', () => {
       'Added in §1.2: A rate can be deleted by Mystery',
     ]);
     await user.click(within(rail).getByRole('button', { name: /^Added/ }));
-    expect(scrollTo).toHaveBeenLastCalledWith({ top: 888, behavior: 'smooth' });
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 888 - STRIP_PX, behavior: 'smooth' });
     expect(document.activeElement).toHaveAttribute('data-mark', 'c2');
     expect(document.querySelector('[data-field="spec-at"]')).toHaveTextContent('3 of 3');
     await user.click(screen.getByRole('checkbox', { name: 'Highlight changes' }));
@@ -521,12 +521,12 @@ describe('reading and stepping through a change', () => {
     const at = () => document.querySelector('[data-field="spec-at"]');
     await waitFor(() => expect(at()).toHaveTextContent('3 changes'));
     fireEvent.keyDown(document.body, { key: ']' });
-    expect(scrollTo).toHaveBeenLastCalledWith({ top: 288, behavior: 'smooth' });
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 288 - STRIP_PX, behavior: 'smooth' });
     expect(at()).toHaveTextContent('1 of 3');
     fireEvent.keyDown(document.body, { key: ']' });
     expect(at()).toHaveTextContent('2 of 3');
     fireEvent.keyDown(document.body, { key: '[' });
-    expect(scrollTo).toHaveBeenLastCalledWith({ top: 288, behavior: 'smooth' });
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 288 - STRIP_PX, behavior: 'smooth' });
     await user.click(screen.getByRole('button', { name: 'Next change' }));
     expect(at()).toHaveTextContent('2 of 3');
     // ⌘[ is the browser's Back, not a step.
@@ -615,5 +615,149 @@ describe('reading and stepping through a change', () => {
     const only = screen.getByRole('checkbox', { name: 'Only what changed' }).closest('label')!;
     expect(within(only).getByText('Only what changed')).toHaveClass('@max-[40rem]/header:hidden');
     expect(within(only).getByText('Changed only')).toHaveClass('hidden', '@max-[40rem]/header:inline');
+  });
+});
+
+// PLAIN-9: §1.1 with a nested clause, an unchanged note and acceptance tests; §1.2 gains a note.
+const BASE_9 = BASE.replace(
+  '- A Deal shows its :RateCard: as a table, as §1.2 says.\n',
+  '- A Deal shows its :RateCard: as a table, as §1.2 says.\n  - Each row is a `rate_id`.\n\n> Parity: as the old app.\n\n***acceptance tests***\n\n- A Deal with two rates shows two rows.\n',
+);
+const TEXT_9 = BASE_9.replace('- Prices are kept in cents.', '- Prices are kept in cents, never as floats.')
+  .replace('  - Each row is a `rate_id`.\n', '  - Each row is a `rate_id`.\n  - Each row can be deleted.\n')
+  .replace('- A Deal with two rates shows two rows.\n', '- A Deal with two rates shows two rows.\n- A Deal with no rates shows "No rates".\n')
+  .replace('- A rate can be edited inline.', '- A rate can be edited inline.\n\n> Parity: inline, as in Ember.');
+
+const spec9 = (id: string) => within(module()).getByRole('article', { name: id });
+
+describe('reading a Module', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete (HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+  });
+
+  it('PLAIN-9.1: the Module reads in `reading`, at most 36rem wide; its notes and code spans are `prose`', async () => {
+    open({ text: TEXT_9, baseText: BASE_9 });
+    await screen.findByText('Rate cards on a Deal.');
+    expect(module()).toHaveClass('max-w-[36rem]');
+    expect(screen.getByText('Rate cards on a Deal.').closest('p')).toHaveClass('text-reading');
+    expect(clause('A Deal shows its').closest('ul')).toHaveClass('text-reading');
+    expect(clause('Each row can be deleted').closest('ul')).toHaveClass('text-reading');
+    expect(within(module()).getByText('RateCard', { selector: 'dt' })).toHaveClass('text-reading');
+    expect(within(module()).getByText('rate_id', { selector: 'code' })).toHaveClass('text-prose');
+    expect(within(spec9('§1.2')).getByText('Parity: inline, as in Ember.').closest('[data-slot="spec-notes"]')).toHaveClass('text-prose');
+  });
+
+  it('PLAIN-9.2: a spec opens with its gist as a `reading-title` heading, its change under it and its id hanging in the margin', async () => {
+    open({ text: TEXT_9, baseText: BASE_9 });
+    await screen.findByText('Rate cards on a Deal.');
+    const heading = within(spec9('§1.1')).getByRole('heading', { level: 3 });
+    expect(heading).toHaveTextContent(/^A Deal shows its RateCard as a table, as §1$/);
+    expect(heading).toHaveClass('text-reading-title');
+    expect(heading).not.toHaveClass('truncate');
+    const id = spec9('§1.1').querySelector('[data-field="spec-id"]')!;
+    expect(id).toHaveTextContent('§1.1');
+    expect(id).toHaveClass('font-mono', 'text-meta', '@min-[73rem]:absolute', '@min-[73rem]:right-full');
+    expect(spec9('§1.2').querySelector('[data-spec-head] [data-field="spec-counts"]')).toHaveTextContent('+1');
+  });
+
+  it('PLAIN-9.3: a strip names the spec the view is inside once its heading has scrolled away, takes no room, and leads back to it', async () => {
+    const user = userEvent.setup();
+    let headBottom = -50;
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      const el = this as HTMLElement;
+      const box = (top: number, bottom: number) => ({ top, bottom, left: 0, right: 0, width: 0, height: bottom - top, x: 0, y: top, toJSON: () => ({}) }) as DOMRect;
+      if (el.dataset.specId === '§1.1') return box(-100, 400);
+      if (el.dataset.specId === '§1.2') return box(400, 600);
+      if (el.hasAttribute('data-spec-head') && el.closest('[data-spec-id="§1.1"]')) return box(-100, headBottom);
+      return box(0, 20);
+    });
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: scrollIntoView });
+    open({ text: TEXT_9, baseText: BASE_9 });
+    await screen.findByText('Rate cards on a Deal.');
+    const strip = document.querySelector('[data-slot="spec-strip"]')!;
+    expect(strip).toHaveClass('sticky', 'top-0', 'h-0');
+    const box = module().closest<HTMLElement>('[data-slot="pane-scroll"]')!;
+    box.dispatchEvent(new Event('scroll'));
+    const link = await within(strip as HTMLElement).findByRole('link');
+    expect(link).toHaveTextContent('§1.1A Deal shows its RateCard as a table, as §1+2');
+    await user.click(link);
+    expect(scrollIntoView.mock.contexts.at(-1)).toBe(spec9('§1.1'));
+    // Its heading back in sight, the strip goes.
+    headBottom = 30;
+    box.dispatchEvent(new Event('scroll'));
+    await waitFor(() => expect(within(strip as HTMLElement).queryByRole('link')).toBeNull());
+    // What the view scrolls into sight, a link's target or a focused element, lands below the strip.
+    expect(box).toHaveClass('scroll-pt-9');
+  });
+
+  it('PLAIN-9.3: a spec that lands below the strip is where you are in "On this page"', async () => {
+    fakeLayout({ 'plain-functional-specs': 600, 'plain-s-1-1': 650, 'plain-s-1-2': 800 });
+    open({ text: TEXT_9, baseText: BASE_9 });
+    await screen.findByText('Rate cards on a Deal.');
+    const nav = screen.getByRole('navigation', { name: 'On this page' });
+    const box = module().closest<HTMLElement>('[data-slot="pane-scroll"]')!;
+    box.scrollTop = 800 - STRIP_PX;
+    box.dispatchEvent(new Event('scroll'));
+    await waitFor(() => expect(within(nav).getByRole('link', { current: 'location' })).toHaveAttribute('href', '#plain-s-1-2'));
+  });
+
+  it('PLAIN-9.4: a spec\'s acceptance tests follow its clauses in a box headed "Acceptance tests"', async () => {
+    open({ text: TEXT_9, baseText: BASE_9 });
+    await screen.findByText('Rate cards on a Deal.');
+    const tests = within(spec9('§1.1')).getByRole('region', { name: 'Acceptance tests' });
+    expect(tests).toHaveClass('rounded-md', 'border');
+    expect(within(tests).getByRole('heading', { level: 4 })).toHaveTextContent('Acceptance tests');
+    expect(tests).toHaveTextContent('A Deal with two rates shows two rows.');
+    expect(clause('A Deal shows its').compareDocumentPosition(tests) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const notes = within(spec9('§1.1')).getByRole('button', { name: /^Notes/ });
+    expect(tests.compareDocumentPosition(notes) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('PLAIN-9.5: a spec\'s notes are behind a button, closed when unchanged, open when one changed, then as you leave them', async () => {
+    const user = userEvent.setup();
+    open({ text: TEXT_9, baseText: BASE_9 });
+    await screen.findByText('Rate cards on a Deal.');
+    const same = within(spec9('§1.1')).getByRole('button', { name: 'Notes 1' });
+    expect(same).toHaveAttribute('aria-expanded', 'false');
+    expect(within(module()).queryByText('Parity: as the old app.')).toBeNull();
+    await user.click(same);
+    expect(same).toHaveAttribute('aria-expanded', 'true');
+    expect(within(module()).getByText('Parity: as the old app.')).toBeInTheDocument();
+    const changed = within(spec9('§1.2')).getByRole('button', { name: 'Notes 1' });
+    expect(changed).toHaveAttribute('aria-expanded', 'true');
+    expect(within(module()).getByText('Parity: inline, as in Ember.')).toBeInTheDocument();
+    // The changed note is a Mark while it shows, and none while it's folded away.
+    const rail = screen.getByRole('navigation', { name: 'Changes' });
+    await waitFor(() => expect(within(rail).getAllByRole('button')).toHaveLength(4));
+    await user.click(changed);
+    expect(within(module()).queryByText('Parity: inline, as in Ember.')).toBeNull();
+    await waitFor(() => expect(within(rail).getAllByRole('button')).toHaveLength(3));
+    await user.click(changed);
+    await waitFor(() => expect(within(rail).getAllByRole('button')).toHaveLength(4));
+    expect(within(module()).getByText('Parity: inline, as in Ember.').closest('[data-change]')).toHaveAttribute('data-mark');
+    await user.click(changed);
+    // With "Only what changed", unchanged notes go; changed ones stay.
+    await user.click(screen.getByRole('checkbox', { name: 'Only what changed' }));
+    expect(within(spec9('§1.1')).queryByRole('button', { name: /^Notes/ })).toBeNull();
+    expect(within(spec9('§1.2')).getByRole('button', { name: /^Notes/ })).toBeInTheDocument();
+  });
+
+  it('PLAIN-9.6: every change bar in the Module sits in one gutter, whatever its depth; a Concept card keeps its own', async () => {
+    const user = userEvent.setup();
+    open({ text: TEXT_9, baseText: BASE_9 });
+    await screen.findByText('Rate cards on a Deal.');
+    const bar = (text: string) => clause(text).querySelector<HTMLElement>(':scope > [data-change]')!;
+    // A bulleted clause's text sits its list's inset plus one indent in, the gutter 0.75rem left of the Module's edge.
+    expect(bar('Prices are kept in')).toHaveClass('before:left-(--bar-x)');
+    expect(bar('Prices are kept in').style.getPropertyValue('--bar-x')).toBe('-2rem');
+    expect(bar('Each row can be deleted').style.getPropertyValue('--bar-x')).toBe('-3.25rem');
+    expect(bar('A Deal with no rates').style.getPropertyValue('--bar-x')).toBe('-2.8125rem');
+    // A note and a definition have no bullet: their bar is 0.75rem left of their own edge, which is the Module's.
+    expect(within(spec9('§1.2')).getByText('Parity: inline, as in Ember.').closest('[data-change]')).toHaveClass('before:-left-3');
+    await user.hover(within(module()).getAllByRole('button', { name: 'Deal' })[0]!);
+    const card = await screen.findByRole('dialog', { name: 'Deal, defined in api' });
+    for (const el of card.querySelectorAll<HTMLElement>('[data-change]')) expect(el.style.getPropertyValue('--bar-x')).toBe('');
   });
 });
