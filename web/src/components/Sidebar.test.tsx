@@ -33,7 +33,7 @@ describe('sidebar rows', () => {
       expect(chip.parentElement!.firstElementChild).toBe(chip);
       expect(chip.nextElementSibling).toBe(field(id, 'age'));
       expect(chip.nextElementSibling!.nextElementSibling).toBe(field(id, 'context'));
-      expect(chip.querySelector('svg')).toHaveClass('size-2.5');
+      expect(chip.querySelector('svg')).toHaveClass('size-3');
     }
     for (const id of ['s2', 's3']) expect(field(id, 'subagents')).toBeNull();
     // At the default location the count is still first among the numbers, with the slot empty before it.
@@ -91,6 +91,35 @@ describe('sidebar rows', () => {
       expect(rowEl(id)).toHaveAccessibleName(new RegExp(`${label}.*1m`));
     }
     expect(rowEl('c')).not.toHaveAccessibleName(/Subagent/);
+  });
+
+  it("SIDE-9.7: the count is in Busy's text blue on every Status, the icon at the branch icon's size, and the strip stays the main thread's", () => {
+    const app = renderApp();
+    app.snapshot((['idle', 'busy', 'needs-you'] as const).map((status) => row({ id: status, status, subagents: { running: 2, finished: 0 } })));
+    for (const [status, strip] of [['idle', 'bg-idle'], ['busy', 'bg-busy'], ['needs-you', 'bg-needs-you']] as const) {
+      const chip = field(status, 'subagents')!;
+      expect(chip).toHaveClass('text-busy-text');
+      expect(chip.querySelector('svg')).toHaveClass('size-3');
+      expect(chip.closest('.text-meta')).not.toHaveClass('text-busy-text'); // the rest of the line stays quiet
+      expect(field(status, 'strip')).toHaveClass(strip);
+      expect(rowEl(status)).toHaveAttribute('data-status', status);
+    }
+  });
+
+  it('SIDE-9.8: a long-Idle row with a Subagent running is not dimmed, and dims again once none runs', () => {
+    const app = renderApp();
+    const old = { status: 'idle' as const, statusSince: NOW - 5 * 3_600_000 };
+    app.snapshot(
+      [row({ id: 'a', ...old, subagents: { running: 1, finished: 0 } }), row({ id: 'b', ...old })],
+      { state: 'ok' },
+      settings({ idleThresholdHours: 4 }),
+    );
+    expect(rowEl('a')).toHaveAttribute('data-dimmed', 'false');
+    expect(rowEl('b')).toHaveAttribute('data-dimmed', 'true');
+    const age = field('a', 'age')!.textContent;
+    app.emit({ type: 'sessions', upsert: [row({ id: 'a', ...old, subagents: { running: 0, finished: 1 } })], remove: [] });
+    expect(rowEl('a')).toHaveAttribute('data-dimmed', 'true');
+    expect(field('a', 'age')).toHaveTextContent(age!);
   });
 
   it('SIDE-2.1: a row shows title, Harness, Status, repo, where it works, and time since the status changed', () => {

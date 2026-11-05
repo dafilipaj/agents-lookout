@@ -70,8 +70,9 @@ export const CONTEXT_LEVEL_CLASS: Record<ContextLevel, string | null> = {
   danger: 'text-destructive-text',
 };
 
-/** SIDE-3.5: Idle for longer than the threshold. */
+/** SIDE-3.5: Idle for longer than the threshold; SIDE-9.8: never while a Subagent runs. */
 export function isLongIdle(row: SessionRow, now: number, thresholdHours: number): boolean {
+  if ((row.subagents?.running ?? 0) > 0) return false;
   return row.status === 'idle' && row.statusSince !== null && now - row.statusSince > thresholdHours * 3_600_000;
 }
 

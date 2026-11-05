@@ -166,8 +166,9 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
             </span>
           )}
           {running > 0 && (
-            <span data-field="subagents" role="img" aria-label={subagentLabel} title={subagentLabel} className="flex items-center gap-0.5">
-              <Bot aria-hidden className="size-2.5" />
+            // SIDE-9.7: Busy's blue, as the status line's count (VIEW-8.1); not a Status, so the strip stays.
+            <span data-field="subagents" role="img" aria-label={subagentLabel} title={subagentLabel} className="flex items-center gap-0.5 text-busy-text">
+              <Bot aria-hidden className="size-3" />
               {running}
             </span>
           )}

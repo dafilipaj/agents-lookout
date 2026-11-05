@@ -156,8 +156,8 @@ describe('Status colours', () => {
     for (const mode of MODES) {
       const t = themes[mode];
       for (const [kind, tone] of Object.entries(ROW_TONE)) {
-        // The title (the sidebar's foreground), the quieter text, and on a Needs you row what it waits for.
-        const texts = [{ token: 'sidebar-foreground', alpha: 1 }, colourOf(tone.quiet, 'text')!, ...(kind === 'needsYou' ? [{ token: 'needs-you-text', alpha: 1 }] : [])];
+        // The title (the sidebar's foreground), the quieter text, the Subagent count (SIDE-9.7), and on a Needs you row what it waits for.
+        const texts = [{ token: 'sidebar-foreground', alpha: 1 }, colourOf(tone.quiet, 'text')!, { token: 'busy-text', alpha: 1 }, ...(kind === 'needsYou' ? [{ token: 'needs-you-text', alpha: 1 }] : [])];
         for (const [state, under] of Object.entries(rowBackgrounds(themes, mode, tone))) {
           for (const text of texts) out.push({ what: `${mode} ${kind} ${state} ${text.token}`, ratio: contrast(paint(t, text.token, under, text.alpha), under) });
         }
@@ -187,11 +187,11 @@ describe('Status colours', () => {
     return measures.filter((m) => m.ratio < 4.5).map((m) => `${m.what}: ${m.ratio.toFixed(2)}`);
   }
 
-  it('SIDE-3.11 / SIDE-9.6: every text on a row, including the quiet Subagent count, keeps 4.5:1 or more at rest, under the pointer and selected, in both modes', () => {
+  it('SIDE-3.11 / SIDE-9.6 / SIDE-9.7: every text on a row, including the blue Subagent count, keeps 4.5:1 or more at rest, under the pointer and selected, in both modes', () => {
     // Only `hover:` is measured: any other variant (`dark:`, `focus:`) would paint a colour the check never sees.
     for (const tone of Object.values(ROW_TONE)) for (const c of Object.values(tone).join(' ').split(/\s+/).filter(Boolean)) expect(c).toMatch(/^(?:hover:)?[^:]+$/);
     const measures = rowContrasts(THEMES);
-    expect(measures).toHaveLength(2 * 3 * (3 + 2)); // light and dark × three states × the Needs you row's three texts and a plain row's two
+    expect(measures).toHaveLength(2 * 3 * (4 + 3)); // light and dark × three states × the Needs you row's four texts and a plain row's three
     expect(below(measures)).toEqual([]);
     // The check can fail: the muted grey of plain rows is 3.6:1 on the selected tint in dark mode.
     const tint = rowBackgrounds(THEMES, 'dark', ROW_TONE.needsYou).selected;
