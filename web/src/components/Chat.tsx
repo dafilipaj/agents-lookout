@@ -8,7 +8,7 @@ import { Chip } from '@/components/ui/chip';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Loading } from '@/components/ui/loading';
 import { AnswerContext, type TerminalLink, hasPreviews } from '@/lib/answers';
-import { type ChatItem, type QuestionEntry, type ToolCall, answerFor, chatItems, clockTime, toolsLabel } from '@/lib/chat';
+import { type ChatFold, type ChatItem, type ChatSeen, type ChatRow, type QuestionEntry, type ToolCall, answerFor, chatItems, clockTime, foldSteps, foldSummary, newSince, timeOf, toolsLabel, workedFor } from '@/lib/chat';
 import { type Echo, IN_TERMINAL, NOT_TAKEN, NO_ECHOES, isCommand } from '@/lib/echoes';
 import { FileLinksContext, SessionFilesContext } from '@/lib/files';
 import { linkify } from '@/lib/links';
@@ -23,6 +23,15 @@ import { Markdown } from './Markdown';
 
 /** At most this far from the bottom still counts as "at the bottom" (VIEW-1.5). */
 const BOTTOM_SLACK_PX = 48;
+/** VIEW-14.2: the room the latest-prompt strip takes at the chat's top; a jump lands below it. */
+export const PROMPT_STRIP_PX = 36;
+/** VIEW-13.2: how long a chat with nothing new yet waits for the server's next read before it settles on no divider. */
+const SEEN_SETTLE_MS = 3000;
+/** Where a jump puts its row: just below the strip. */
+const TOP_PX = JUMP_MARGIN_PX + PROMPT_STRIP_PX;
+
+/** VIEW-13.1, for SessionView. */
+export type { ChatSeen };
 const NONE: readonly ChatEntry[] = [];
 /** VIEW-1.13: a message you sent, as the chat shows it: waiting for its copy, or lost. */
 type ChatEcho = Pick<Echo, 'id' | 'text' | 'state'>;
@@ -63,16 +72,37 @@ export interface ChatProps {
   activity?: ReactNode;
   /** A Controllable Session's terminal preview: the way to it while the Transcript is slow to read (DS-6.2). */
   terminal?: TerminalLink | null;
+  /** VIEW-12.3: a turn runs, so the run at the chat's end is live. */
+  running?: boolean;
+  /** VIEW-13: what you saw when you last left this Session's view, and keeping it when you leave now. */
+  loadSeen?(sessionId: string): Promise<ChatSeen | null>;
+  saveSeen?(sessionId: string, seen: ChatSeen, keepalive: boolean): Promise<void>;
 }
 
 /** VIEW-1: the conversation from the Transcript. Mounted per Session. */
-export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFollowing, echoes = NO_ECHOES, outgoing = null, activity, terminal = null }: ChatProps) {
+export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFollowing, echoes = NO_ECHOES, outgoing = null, activity, terminal = null, running = false, loadSeen, saveSeen }: ChatProps) {
   const [loadingEarlier, setLoadingEarlier] = useState(false);
   const [earlierError, setEarlierError] = useState<string | null>(null);
   const entries = chat?.entries ?? NONE;
   const queue = chat?.queue ?? NONE;
   const before = chat?.before ?? null;
-  const items = useMemo(() => chatItems(entries), [entries]);
+  // VIEW-13.2: where the entries you haven't seen begin (an entry's cursor), and its time.
+  const [divider, setDivider] = useState<{ key: string; ts: string | null } | null>(null);
+  // A run of tool calls is cut at the divider, so calls you saw stay above it.
+  const items = useMemo(() => chatItems(entries, divider?.key ?? null), [entries, divider]);
+  // VIEW-12: runs of steps folded; a run never spans the divider. A prompt you sent that isn't in the
+  // Transcript yet starts a new turn, so the one before it is over (its answer doesn't fold).
+  const turnOpen = running && !ended && !echoes.some((e) => e.state === 'waiting');
+  const rows = useMemo(() => foldSteps(items, turnOpen, divider?.key ?? null), [items, turnOpen, divider]);
+  /** VIEW-12.4: the folds you opened, by their first item's key, while this view is open. */
+  const [openFolds, setOpenFolds] = useState<ReadonlySet<string>>(() => new Set());
+  const toggleFold = useCallback((key: string) => {
+    setOpenFolds((was) => {
+      const next = new Set(was);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
+  }, []);
   // VIEW-1.17: this Session's file links; none in a past Session's chat, which has no registry.
   const fileLinks = useContext(FileLinksContext);
   const files = useMemo(() => fileLinks?.session(sessionId) ?? null, [fileLinks, sessionId]);
@@ -106,6 +136,104 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
 
   useEffect(() => onFollowing(sessionId, following), [onFollowing, sessionId, following]);
 
+  // VIEW-13: what you saw when you last left this Session's view; undefined while it's read.
+  const loaded = !!chat?.loaded;
+  const [lastSeen, setLastSeen] = useState<ChatSeen | null | undefined>(loadSeen ? undefined : null);
+  useEffect(() => {
+    if (!loadSeen) return;
+    let alive = true;
+    // VIEW-13.4: a failed read is no record: no divider, the chat at the bottom.
+    loadSeen(sessionId).then(
+      (r) => alive && setLastSeen(r),
+      () => alive && setLastSeen(null),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [loadSeen, sessionId]);
+  // VIEW-13.2: the divider is placed once per opening, as soon as the chat and the record are both
+  // in, and stays put while the view is open.
+  // A chat cached from an earlier visit ends where you left it until the server's reset comes in, and
+  // a feed viewed again soon after is sent as it was, its new entries following on the next read. So
+  // the divider waits for the reset (a new epoch) or a failed read, then, while nothing new is in, up
+  // to SEEN_SETTLE_MS for what follows. A problem counts only when it came after (a cached chat keeps
+  // the last it had). Back from a hidden tab, the wait starts again without the reset: the chat kept
+  // up while hidden, unless the stream dropped, and then its reset comes in the wait.
+  const [gate, setGate] = useState<{ epoch: number | null; problem: unknown }>(() => ({ epoch: chat?.loaded ? chat.epoch : -1, problem: chat?.problem ?? null }));
+  const newProblem = !!chat?.problem && chat.problem !== gate.problem;
+  const fresh = loaded && (gate.epoch === null || (chat?.epoch ?? 0) !== gate.epoch || newProblem);
+  const [placed, setPlaced] = useState(false);
+  const [settled, setSettled] = useState(false);
+  const waiting = !placed && fresh && lastSeen !== undefined;
+  useEffect(() => {
+    if (!waiting) return;
+    const t = setTimeout(() => setSettled(true), SEEN_SETTLE_MS);
+    return () => clearTimeout(t);
+  }, [waiting]);
+  if (waiting) {
+    const at = lastSeen ? newSince(entries, lastSeen) : null;
+    if (at || !lastSeen || settled || newProblem) {
+      setPlaced(true);
+      setDivider(at);
+    }
+  }
+  /** VIEW-13.3: the chat opens at the divider once; a divider placed later (cameBack) doesn't scroll. */
+  const opened = useRef(false);
+  useLayoutEffect(() => {
+    if (opened.current || !placed) return;
+    opened.current = true;
+    // Placed a moment after opening: not when you've already scrolled away or jumped.
+    if (!divider || !atBottom.current || held.current) return;
+    const el = scrollRef.current;
+    const row = list.current?.querySelector<HTMLElement>('[data-new-divider]');
+    if (!el || !row) return;
+    const top = row.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop;
+    // What's new fits: the chat stays at the bottom, as before.
+    if (el.scrollHeight - top <= el.clientHeight) return;
+    atBottom.current = false;
+    setFollowing(false);
+    el.scrollTop = Math.max(0, top - TOP_PX);
+  }, [placed, divider]);
+
+  // VIEW-13.1: the chat's last entry is what you've seen when you leave: another Session, a reload,
+  // the tab closed or hidden. Coming back to a tab that was hidden moves the divider to what came since.
+  const latest = useRef<ChatSeen | null>(null);
+  useLayoutEffect(() => {
+    const e = entries.at(-1);
+    if (e && loaded) latest.current = { cursor: e.cursor, at: timeOf(e.ts) };
+  });
+  const cameBack = useEffectEvent((was: ChatSeen) => {
+    // VIEW-13.2: placed again against what you saw when you left (none, if nothing came since).
+    setLastSeen(was);
+    setGate({ epoch: null, problem: chat?.problem ?? null });
+    setSettled(false);
+    setPlaced(false);
+  });
+  useEffect(() => {
+    if (!saveSeen) return;
+    let away: ChatSeen | null = null;
+    const save = (keepalive: boolean): ChatSeen | null => {
+      const now = latest.current;
+      if (now) void saveSeen(sessionId, now, keepalive).catch(() => {});
+      return now;
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') away = save(true);
+      else if (away) {
+        cameBack(away);
+        away = null;
+      }
+    };
+    const onPageHide = () => void save(true);
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', onPageHide);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', onPageHide);
+      save(false);
+    };
+  }, [saveSeen, sessionId]);
+
   // Count entries that arrived at the bottom while you were scrolled up.
   // A reset (a new epoch) replaces the chat: only entries after the last one seen count.
   const epoch = chat?.epoch ?? 0;
@@ -116,6 +244,8 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
     if (!following && (seen.epoch === epoch || from >= 0)) setUnseen(unseen + (entries.length - 1 - from));
   }
 
+  /** VIEW-14.1: re-checks whether your latest prompt is out of view; set once the list exists. */
+  const checkPromptRef = useRef<() => void>(() => {});
   const onScroll = () => {
     const el = scrollRef.current;
     if (!el) return;
@@ -123,6 +253,7 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
     atBottom.current = bottom;
     setFollowing(bottom);
     if (bottom) setUnseen(0);
+    checkPromptRef.current();
   };
   /** You scroll yourself (wheel, touch, scroll bar, keys): a jump no longer holds the chat. */
   const release = () => {
@@ -151,6 +282,7 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
       const bottom = !held.current && el.scrollHeight - el.scrollTop - el.clientHeight <= BOTTOM_SLACK_PX;
       atBottom.current = bottom;
       setFollowing(bottom);
+      checkPromptRef.current();
     });
     ro.observe(el);
     if (content.current) ro.observe(content.current);
@@ -201,7 +333,7 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
   // Re-measured when what's rendered changes; sizes changing otherwise (rows expanding, the
   // activity row, the pane resizing) reach it through a ResizeObserver.
   const problemNow = chat?.problem ?? null;
-  const rendered = useMemo(() => ({ entries, queue, before, problemNow }), [entries, queue, before, problemNow]);
+  const rendered = useMemo(() => ({ entries, queue, before, problemNow, openFolds, divider }), [entries, queue, before, problemNow, openFolds, divider]);
   const canLoadEarlier = !!before && !ended && !!chat?.loaded;
 
   /**
@@ -217,12 +349,51 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
     setJumped(hold);
     atBottom.current = false;
     setFollowing(false);
-    const top = Math.max(0, row.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop - JUMP_MARGIN_PX);
+    // VIEW-14.2: below where the latest-prompt strip sits.
+    const top = Math.max(0, row.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop - TOP_PX);
     const reduce = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (typeof el.scrollTo === 'function') el.scrollTo({ top, behavior: reduce ? 'auto' : 'smooth' });
     else el.scrollTop = top;
     if (focus) row.focus({ preventScroll: true });
   }, []);
+
+  // VIEW-14.1: your latest prompt, and whether it's out of the chat's view.
+  const latestPrompt = useMemo(() => {
+    const echo = echoes.at(-1);
+    if (echo) return { key: `echo:${echo.id}`, text: echo.text, ts: null as string | null };
+    const it = items.findLast((i) => i.type === 'entry' && (i.entry.kind === 'user' || i.entry.kind === 'command'));
+    return it?.type === 'entry' && (it.entry.kind === 'user' || it.entry.kind === 'command') ? { key: it.key, text: it.entry.text, ts: it.entry.ts } : null;
+  }, [items, echoes]);
+  const promptRow = useCallback(() => (latestPrompt ? (list.current?.querySelector<HTMLElement>(`[data-prompt-row="${CSS.escape(latestPrompt.key)}"]`) ?? null) : null), [latestPrompt]);
+  const [promptOut, setPromptOut] = useState(false);
+  const checkPrompt = useCallback(() => {
+    const el = scrollRef.current;
+    const row = promptRow();
+    // No layout (a hidden or unmeasured chat) is no reason for a reminder.
+    if (!el || !row || !el.clientHeight) return setPromptOut(false);
+    const box = el.getBoundingClientRect();
+    const r = row.getBoundingClientRect();
+    setPromptOut(r.bottom <= box.top + PROMPT_STRIP_PX || r.top >= box.bottom);
+  }, [promptRow]);
+  useLayoutEffect(() => {
+    checkPromptRef.current = checkPrompt;
+    checkPrompt();
+  }, [checkPrompt, rows, openFolds]);
+  const jumpToPrompt = () => {
+    const el = scrollRef.current;
+    const row = promptRow();
+    if (!el || !row || !latestPrompt) return;
+    const hold = { cursor: latestPrompt.key };
+    held.current = hold;
+    atBottom.current = false;
+    setFollowing(false);
+    const top = Math.max(0, row.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop - TOP_PX);
+    const reduce = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (typeof el.scrollTo === 'function') el.scrollTo({ top, behavior: reduce ? 'auto' : 'smooth' });
+    else el.scrollTop = top;
+    // The strip goes once the prompt is in view: focus moves to the prompt, not to the page.
+    row.focus({ preventScroll: true });
+  };
   const step = useEffectEvent((dir: 1 | -1) => {
     const el = scrollRef.current;
     const box = list.current;
@@ -234,7 +405,8 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
     const rows = new Map([...box.querySelectorAll<HTMLElement>('[data-mark]')].map((r) => [r.dataset.mark!, r.getBoundingClientRect().top - base]));
     const tops = marks.map((m) => rows.get(m.cursor) ?? 0);
     const from = held.current ? marks.findIndex((m) => m.cursor === held.current!.cursor) : -1;
-    const next = stepMark(tops, el.scrollTop, dir, from >= 0 ? from : null);
+    // VIEW-14.2: Marks land below the strip, so the line they're measured from is lower by its room.
+    const next = stepMark(tops, el.scrollTop + PROMPT_STRIP_PX, dir, from >= 0 ? from : null);
     if (next !== null) jumpTo(marks[next]!.cursor, false);
     else if (dir === -1 && canLoadEarlier) void showEarlier();
   });
@@ -302,7 +474,7 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
     );
   } else {
     body = (
-      <ol ref={list} className="mx-auto flex w-full max-w-3xl flex-col gap-3.5 px-6 py-5" aria-label="Messages">
+      <ol ref={list} className="mx-auto flex w-full max-w-3xl flex-col gap-3.5 px-6 pt-11 pb-5" aria-label="Messages">
         {before && !ended && (
           <li className="flex flex-col items-center gap-1">
             <Button variant="ghost" size="sm" className="h-7 text-meta text-muted-foreground" disabled={loadingEarlier} onClick={() => void showEarlier()}>
@@ -311,19 +483,23 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
             {earlierError && <Alert layout="inline" title={earlierError} />}
           </li>
         )}
-        {items.map((item, i) => {
-          const mark = markCursors.has(item.key);
-          return (
-            // A Mark's entry takes focus after a jump from the rail.
-            <li
-              key={item.key}
-              data-mark={mark ? item.key : undefined}
-              tabIndex={mark ? -1 : undefined}
-              className={mark ? 'rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4 focus-visible:ring-offset-background' : undefined}
-            >
-              <Row item={item} label={label} startsTurn={startsTurn(items, i)} />
-            </li>
-          );
+        {rows.map((row, i) => {
+          const node =
+            row.type === 'fold' ? (
+              <li key={`fold:${row.key}`} data-fold={row.live ? 'live' : 'done'}>
+                <Fold fold={row} open={openFolds.has(row.key)} onToggle={toggleFold} label={label} startsTurn={startsTurn(rows, i)} />
+              </li>
+            ) : (
+              <ItemRow key={row.key} item={row} mark={markCursors.has(row.key)} label={label} startsTurn={startsTurn(rows, i)} />
+            );
+          // VIEW-13.2: above the first entry you haven't seen.
+          if (divider?.key !== row.key) return node;
+          return [
+            <li key="new-since" aria-hidden={false}>
+              <NewSince ts={divider.ts} />
+            </li>,
+            node,
+          ];
         })}
         {queue.map((q) => (
           <li key={`queue:${q.cursor}`} data-queued>
@@ -332,7 +508,7 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
         ))}
         {echoes.map((e) => (
           // VIEW-1.13: sent, not in the Transcript yet; its copy takes this place.
-          <li key={`echo:${e.id}`} data-echo={e.state}>
+          <li key={`echo:${e.id}`} data-echo={e.state} data-prompt-row={`echo:${e.id}`} tabIndex={-1} className="rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4 focus-visible:ring-offset-background">
             <Sending echo={e} />
           </li>
         ))}
@@ -360,7 +536,7 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
           onTouchMove={release}
           onPointerDown={releaseOnScrollBar}
           // VIEW-1.16: the scroll bar's track takes the chat's background, with no border.
-          className="h-full min-w-0 flex-1 overflow-y-auto"
+          className="h-full min-w-0 flex-1 scroll-pt-9 overflow-y-auto"
           aria-label="Chat"
           // SIDE-5 leaves the arrow keys to the chat when they come from inside it: they scroll it.
           data-scroll-keys
@@ -371,6 +547,7 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
             <div ref={tail}>{activity}</div>
           </div>
         </div>
+        {promptOut && latestPrompt && chat?.loaded && <PromptStrip text={latestPrompt.text} ts={latestPrompt.ts} onJump={jumpToPrompt} />}
         {chat?.loaded && (
           <ChatRail
             scrollRef={scrollRef}
@@ -400,11 +577,11 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
   );
 }
 
-/** The Harness's name heads its first reply after a prompt, tool calls in between or not. */
-function startsTurn(items: ChatItem[], i: number): boolean {
+/** The Harness's name heads its first reply after a prompt that shows, tool calls and folds in between or not. */
+function startsTurn(rows: readonly ChatRow[], i: number): boolean {
   for (let j = i - 1; j >= 0; j--) {
-    const prev = items[j]!;
-    if (prev.type === 'tools') continue; // tool calls before the first reply are part of the turn
+    const prev = rows[j]!;
+    if (prev.type === 'tools' || prev.type === 'fold') continue; // tool calls and folded steps are part of the turn
     // A subagent's result is handed to the agent like a prompt: its reply starts a turn.
     return prev.entry.kind === 'user' || prev.entry.kind === 'command' || prev.entry.kind === 'system';
   }
@@ -444,8 +621,9 @@ function Item({ item, label, startsTurn }: RowProps) {
       return (
         <div data-kind="assistant">
           {startsTurn && <Meta who={label} ts={e.ts} />}
-          <div className="text-prose leading-[1.65] break-words">
-            <Markdown text={e.text} />
+          {/* VIEW-11.1: `reading`, at most 42rem from the column's left edge. */}
+          <div className="max-w-[42rem] text-reading break-words">
+            <Markdown text={e.text} reading />
           </div>
         </div>
       );
@@ -474,6 +652,97 @@ function SubagentResult({ text, ts }: { text: string; ts: string | null }) {
           {time}
         </time>
       )}
+    </div>
+  );
+}
+
+/** One item of the chat as a list row; a Mark's entry takes focus after a jump from the rail. */
+function ItemRow({ item, mark, label, startsTurn }: { item: ChatItem; mark: boolean; label: string; startsTurn: boolean }) {
+  const prompt = item.type === 'entry' && (item.entry.kind === 'user' || item.entry.kind === 'command');
+  return (
+    <li
+      data-mark={mark ? item.key : undefined}
+      data-prompt-row={prompt ? item.key : undefined}
+      tabIndex={mark || prompt ? -1 : undefined}
+      className={mark || prompt ? 'rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4 focus-visible:ring-offset-background' : undefined}
+    >
+      <Row item={item} label={label} startsTurn={startsTurn} />
+    </li>
+  );
+}
+
+/**
+ * VIEW-12.2, 12.3: two or more steps as one row: how long they took (or "Working" while the turn
+ * runs) and their counts, the last update under it; opened, the steps as they were.
+ */
+function Fold({ fold, open, onToggle, label, startsTurn }: { fold: ChatFold; open: boolean; onToggle(key: string): void; label: string; startsTurn: boolean }) {
+  const { updates, calls, ms, hint } = foldSummary(fold);
+  const counts = [updates > 0 && `${updates} ${updates === 1 ? 'update' : 'updates'}`, calls > 0 && `${calls} tool ${calls === 1 ? 'call' : 'calls'}`].filter(Boolean).join(' · ');
+  const head = fold.live ? 'Working' : ms !== null ? `Worked for ${workedFor(ms)}` : null;
+  return (
+    <div data-kind="fold">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => onToggle(fold.key)}
+        className="-mx-1.5 flex w-[calc(100%+0.75rem)] min-w-0 flex-col items-start gap-0.5 rounded px-1.5 py-1 text-left hover:bg-accent/60"
+      >
+        <span className="flex min-w-0 items-center gap-2 text-body text-muted-foreground">
+          <ChevronRight aria-hidden className={cn('size-3.5 shrink-0 transition-transform', open && 'rotate-90')} />
+          <span>
+            {head && <span className="font-medium text-foreground/80">{head}</span>}
+            {head && counts ? ' · ' : ''}
+            {counts}
+          </span>
+        </span>
+        {!open && hint && (
+          <span className={cn(TRUNCATED, 'max-w-full pl-5.5 text-meta text-muted-foreground')} data-field="fold-hint">
+            {hint.replace(/`/g, '')}
+          </span>
+        )}
+      </button>
+      {open && (
+        <ol className="mt-2 ml-[7px] flex flex-col gap-3.5 border-l border-border pl-4" aria-label="Steps">
+          {fold.items.map((it, j) => (
+            <li key={it.key}>
+              {/* As unfolded: the first reply of a turn, after only tool calls, says who and when. */}
+              <Row item={it} label={label} startsTurn={startsTurn && fold.items.slice(0, j).every((x) => x.type === 'tools')} />
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+/** VIEW-13.2: where the entries you haven't seen begin. */
+function NewSince({ ts }: { ts: string | null }) {
+  const time = clockTime(ts);
+  return (
+    <div role="separator" aria-label={`New since you looked${time ? `, ${time}` : ''}`} data-new-divider className="flex items-center gap-2 text-meta font-semibold text-foreground">
+      <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-foreground" />
+      <span className="shrink-0">
+        New since you looked{time && ` · ${time}`}
+      </span>
+      <span aria-hidden className="h-px flex-1 bg-foreground/40" />
+    </div>
+  );
+}
+
+/** VIEW-14.1: your latest prompt, pinned to the chat's top while it's out of view; it takes no room. */
+function PromptStrip({ text, ts, onJump }: { text: string; ts: string | null; onJump(): void }) {
+  const time = clockTime(ts);
+  return (
+    <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center" data-slot="prompt-strip">
+      <button
+        type="button"
+        onClick={onJump}
+        className="pointer-events-auto flex w-full max-w-3xl min-w-0 items-baseline gap-1.5 border-b border-border bg-background px-6 py-2 text-left text-meta hover:bg-accent"
+        data-field="prompt-strip"
+      >
+        <span className="shrink-0 font-medium text-foreground/80">You{time ? `, ${time}` : ''}:</span>{' '}
+        <span className="min-w-0 truncate text-muted-foreground">{firstLine(text)}</span>
+      </button>
     </div>
   );
 }
@@ -530,7 +799,7 @@ function Held({ held }: { held: HeldMessage }) {
   return (
     <div className="flex flex-col items-end">
       <Meta who="You" ts={null} srLabel="waiting to send" />
-      <div className="max-w-[85%] rounded-lg border border-dashed border-primary/45 bg-primary-soft px-3.5 py-2 text-prose leading-[1.6] break-words whitespace-pre-wrap">
+      <div className="max-w-[85%] rounded-lg border border-dashed border-primary/45 bg-primary-soft px-3.5 py-2 text-reading break-words whitespace-pre-wrap">
         <LinkedText text={held.text} />
       </div>
       <div className="mt-1 flex items-center gap-1.5 text-meta text-muted-foreground" data-field="undo-send">
@@ -563,7 +832,7 @@ function Prompt({ text, ts, state }: { text: string; ts: string | null; state: '
       <Meta who="You" ts={ts} extra={queued ? 'queued' : null} srLabel={state === 'sending' ? 'sending' : null} />
       <div
         className={cn(
-          'max-w-[85%] rounded-lg bg-primary-soft px-3.5 py-2 text-prose leading-[1.6] break-words whitespace-pre-wrap',
+          'max-w-[85%] rounded-lg bg-primary-soft px-3.5 py-2 text-reading break-words whitespace-pre-wrap',
           queued && 'border border-dashed border-border bg-transparent text-muted-foreground',
         )}
       >

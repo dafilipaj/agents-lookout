@@ -39,6 +39,8 @@ function hidesAddress(href: string, node: Node | undefined): boolean {
 const InLink = createContext(false);
 /** Set inside a code block: its code gets web links but no file links (VIEW-1.17). */
 const InBlock = createContext(false);
+/** VIEW-11.1: the chat's replies, in `reading`: inline code steps down to `prose`, not `body`. */
+const Reading = createContext(false);
 
 /**
  * VIEW-1.17: how many of an inline code's first characters belong to an address that starts before
@@ -53,9 +55,10 @@ const ADDRESS_LEAD = 'dataAddressLead';
 function Code({ children, className, node }: ComponentProps<'code'> & ExtraProps) {
   const inLink = useContext(InLink);
   const inBlock = useContext(InBlock);
+  const reading = useContext(Reading);
   const lead = Number(node?.properties[ADDRESS_LEAD] ?? 0);
   return (
-    <code className={`rounded bg-muted px-1 py-px font-mono text-body ${className ?? ''}`}>
+    <code className={`rounded bg-muted px-1 py-px font-mono ${reading ? 'text-prose' : 'text-body'} ${className ?? ''}`}>
       {typeof children !== 'string' || inLink ? (
         children
       ) : inBlock ? (
@@ -303,12 +306,35 @@ const components: Components = {
   ),
 };
 
+/** VIEW-11.1: in `reading` text, headings read above it: a first-level one `reading-title`, the rest `reading`. */
+const readingComponents: Components = {
+  ...components,
+  h1: ({ children }) => <h3 className="mt-5 mb-2 text-reading-title font-semibold first:mt-0">{children}</h3>,
+  h2: ({ children, className, id }) =>
+    className?.includes('sr-only') ? (
+      <h2 id={id} className="sr-only">
+        {children}
+      </h2>
+    ) : (
+      <h3 className="mt-5 mb-2 text-reading font-semibold first:mt-0">{children}</h3>
+    ),
+  h3: ({ children }) => <h4 className="mt-4 mb-1.5 text-reading font-semibold first:mt-0">{children}</h4>,
+  table: ({ children }) => (
+    <div className="my-2 overflow-x-auto first:mt-0 last:mb-0">
+      <table className="w-fit max-w-full border-collapse text-prose">{children}</table>
+    </div>
+  ),
+};
+
 const plugins = [remarkGfm, remarkFilePaths];
 
-export const Markdown = memo(function Markdown({ text }: { text: string }) {
+/** `reading`: the chat's replies (VIEW-11.1), with headings, inline code and tables sized for `reading` text. */
+export const Markdown = memo(function Markdown({ text, reading = false }: { text: string; reading?: boolean }) {
   return (
-    <ReactMarkdown remarkPlugins={plugins} components={components} skipHtml urlTransform={safeUrl}>
-      {text}
-    </ReactMarkdown>
+    <Reading.Provider value={reading}>
+      <ReactMarkdown remarkPlugins={plugins} components={reading ? readingComponents : components} skipHtml urlTransform={safeUrl}>
+        {text}
+      </ReactMarkdown>
+    </Reading.Provider>
   );
 });

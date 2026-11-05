@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { ChatSeen, ChatSeenError } from './chat-seen.ts';
 import { type IncomingMessage, type Server, type ServerResponse, createServer } from 'node:http';
 import { MAX_ATTACHMENT_BYTES } from '../shared/attachments.ts';
 import { type Settings, SettingsError, type SettingsView } from '../shared/settings.ts';
@@ -91,6 +92,8 @@ export interface AppOptions {
   plain?: Pick<Plain, 'read' | 'setViewed' | 'viewedPaths' | 'prFiles'>;
   /** PLAIN-5.1, 5.4: the repos Lookout has a local clone of. */
   plainClones?: () => Promise<string[]>;
+  /** VIEW-13.1: what you saw of each Session's chat; optional, so a server without it answers 404. */
+  chatSeen?: Pick<ChatSeen, 'get' | 'set'>;
   /** VIEW-1.18: which of a batch of paths are files, for one Session's file links (VIEW-1.17). */
   files: {
     check(sessionId: string, body: unknown): Promise<PathAnswer[]>;
@@ -462,6 +465,28 @@ export function createApp(opts: AppOptions): LookoutApp {
         return json(res, 200, await opts.plain.read(plainSourceOf(q), q.get('path'), q.get('fresh') === '1'));
       } catch (err) {
         if (err instanceof PlainError) return json(res, err.status, { error: err.message });
+        throw err;
+      }
+    }
+    // VIEW-13.1: the last entry of a Session's chat you saw.
+    if (route === 'GET /api/chat-seen' && opts.chatSeen) {
+      try {
+        return json(res, 200, { seen: await opts.chatSeen.get(url.searchParams.get('session')) });
+      } catch (err) {
+        if (err instanceof ChatSeenError) return json(res, err.status, { error: err.message });
+        throw err;
+      }
+    }
+    // VIEW-13.1: kept as you leave the chat: a write, so every check a POST gets.
+    if (route === 'POST /api/chat-seen' && opts.chatSeen) {
+      const body = await readJson(req, res, MAX_OPEN_CHANGE_BODY, null);
+      if (body === NO_BODY) return;
+      const b = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
+      try {
+        await opts.chatSeen.set(b.session, b.cursor, b.at);
+        return json(res, 200, { ok: true });
+      } catch (err) {
+        if (err instanceof ChatSeenError) return json(res, err.status, { error: err.message });
         throw err;
       }
     }

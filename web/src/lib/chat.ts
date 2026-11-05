@@ -85,19 +85,109 @@ function unique(entries: readonly ChatEntry[]): ChatEntry[] {
 /** One row of the chat: an entry, or a run of consecutive tool calls folded into one (VIEW-1.2). */
 export type ChatItem = { type: 'entry'; key: string; entry: Exclude<ChatEntry, ToolCall> } | { type: 'tools'; key: string; calls: ToolCall[] };
 
-/** Folds each run of consecutive tool calls into one item; everything else stays as it is. */
-export function chatItems(entries: readonly ChatEntry[]): ChatItem[] {
+/**
+ * Folds each run of consecutive tool calls into one item; everything else stays as it is. A run is
+ * cut at `splitAt`, the entry the "New since you looked" divider sits above (VIEW-13.2).
+ */
+export function chatItems(entries: readonly ChatEntry[], splitAt: string | null = null): ChatItem[] {
   const out: ChatItem[] = [];
   for (const e of entries) {
     if (e.kind === 'tool_call') {
       const last = out.at(-1);
-      if (last?.type === 'tools') last.calls.push(e);
+      if (last?.type === 'tools' && e.cursor !== splitAt) last.calls.push(e);
       else out.push({ type: 'tools', key: e.cursor, calls: [e] });
     } else {
       out.push({ type: 'entry', key: e.cursor, entry: e });
     }
   }
   return out;
+}
+
+/** VIEW-12.1: a reply this short, in one plain paragraph, is a progress update. */
+export const UPDATE_MAX_CHARS = 170;
+
+/** VIEW-12.1: one paragraph, no list, code, table, heading or quote, at most UPDATE_MAX_CHARS. */
+export function isShortUpdate(text: string): boolean {
+  const t = text.trim();
+  if (!t || t.length > UPDATE_MAX_CHARS || /\n\s*\n/.test(t)) return false;
+  return !t.split('\n').some((line) => /^\s*(?:[-*+]\s|\d+[.)]\s|#{1,6}\s|>|\||```|~~~)/.test(line));
+}
+
+/** VIEW-12.2: two or more steps in a row, shown as one row; `live` while its turn runs (VIEW-12.3). */
+export type ChatFold = { type: 'fold'; key: string; items: ChatItem[]; live: boolean };
+export type ChatRow = ChatItem | ChatFold;
+
+/**
+ * VIEW-12.1, 12.2: the chat's rows with each run of two or more steps folded. A step is a run of
+ * tool calls or a short update; the turn's answer never is: a reply Fleet marks final, else the
+ * last reply before your next prompt or command, or the chat's last reply while no turn runs.
+ * No run spans `breakBefore`, the item the "New since you looked" divider sits above (VIEW-13.2).
+ */
+export function foldSteps(items: readonly ChatItem[], running: boolean, breakBefore: string | null = null): ChatRow[] {
+  const answers = new Set<number>();
+  let lastReply = -1;
+  const closeTurn = () => {
+    if (lastReply >= 0) answers.add(lastReply);
+    lastReply = -1;
+  };
+  items.forEach((it, i) => {
+    if (it.type !== 'entry') return;
+    const e = it.entry;
+    if (e.kind === 'user' || e.kind === 'command') closeTurn();
+    else if (e.kind === 'assistant') {
+      if (e.final) {
+        answers.add(i);
+        lastReply = -1;
+      } else lastReply = i;
+    }
+  });
+  if (!running) closeTurn();
+  const isStep = (it: ChatItem, i: number) => it.type === 'tools' || (it.entry.kind === 'assistant' && !answers.has(i) && isShortUpdate(it.entry.text));
+  const out: ChatRow[] = [];
+  let run: ChatItem[] = [];
+  const flush = (live: boolean) => {
+    if (run.length >= 2) out.push({ type: 'fold', key: run[0]!.key, items: run, live });
+    else out.push(...run);
+    run = [];
+  };
+  items.forEach((it, i) => {
+    // VIEW-13.2: the divider sits between two rows, so no fold spans it.
+    if (it.key === breakBefore) flush(false);
+    if (isStep(it, i)) run.push(it);
+    else {
+      flush(false);
+      out.push(it);
+    }
+  });
+  flush(running);
+  return out;
+}
+
+/** VIEW-12.2: a fold's counts, time span and hint: its last update, or its last tool call without one. */
+export function foldSummary(fold: ChatFold): { updates: number; calls: number; ms: number | null; hint: string } {
+  let updates = 0;
+  let calls = 0;
+  const times: number[] = [];
+  for (const it of fold.items) {
+    const stamps = it.type === 'tools' ? it.calls.map((c) => c.ts) : [it.entry.ts];
+    if (it.type === 'tools') calls += it.calls.length;
+    else updates += 1;
+    for (const ts of stamps) if (ts && !Number.isNaN(Date.parse(ts))) times.push(Date.parse(ts));
+  }
+  const update = fold.items.findLast((it) => it.type === 'entry');
+  const tools = fold.items.findLast((it) => it.type === 'tools');
+  const call = tools?.type === 'tools' ? tools.calls.at(-1) : undefined;
+  const hint = update?.type === 'entry' && update.entry.kind === 'assistant' ? update.entry.text.trim().split('\n')[0]! : call ? `${call.tool} · ${call.summary}` : '';
+  return { updates, calls, ms: times.length >= 2 ? Math.max(...times) - Math.min(...times) : null, hint };
+}
+
+/** VIEW-12.2: "55 min", "1 h 5 min", "less than a minute". */
+export function workedFor(ms: number): string {
+  const min = Math.floor(ms / 60_000);
+  if (min < 1) return 'less than a minute';
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  return min % 60 ? `${h} h ${min % 60} min` : `${h} h`;
 }
 
 /** "6 tool calls: Read ×3, Grep ×2, Bash": most used first, ties in order of first use. */
@@ -143,3 +233,30 @@ export function clockTime(ts: string | null): string | null {
   if (Number.isNaN(d.getTime())) return null;
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
+
+/** VIEW-13.1: the last entry the chat had when you left a Session's view. */
+export interface ChatSeen {
+  cursor: string;
+  /** Its time, ms since epoch; null when it has none. */
+  at: number | null;
+}
+
+/** An entry's time in ms, or null. */
+export function timeOf(ts: string | null): number | null {
+  if (!ts) return null;
+  const t = Date.parse(ts);
+  return Number.isNaN(t) ? null : t;
+}
+
+/**
+ * VIEW-13.2: where the "New since you looked" divider sits: above the first entry of the agent's
+ * after what you saw (found by its cursor, else by its time, a tie counting as new); null when
+ * there's none. `chatItems` starts an item at that entry, so the key is an item's.
+ */
+export function newSince(entries: readonly ChatEntry[], seen: ChatSeen): { key: string; ts: string | null } | null {
+  const i = entries.findIndex((e) => e.cursor === seen.cursor);
+  const after = i >= 0 ? entries.slice(i + 1) : seen.at !== null ? entries.filter((e) => (timeOf(e.ts) ?? -Infinity) >= seen.at!) : [];
+  const first = after.find((e) => e.kind !== 'user' && e.kind !== 'command');
+  return first ? { key: first.cursor, ts: first.ts } : null;
+}
+

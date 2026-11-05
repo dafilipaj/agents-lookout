@@ -41,7 +41,7 @@ import { clockTime } from '@/lib/chat';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { PromptCard } from './Answering';
-import { Chat, type HeldMessage } from './Chat';
+import { Chat, type ChatSeen, type HeldMessage } from './Chat';
 import { ChatActivity } from './ChatActivity';
 import { HarnessIcon } from './HarnessIcon';
 import { useSessionTitle } from './SessionTitle';
@@ -57,6 +57,9 @@ import { rowMember } from '@/lib/topics';
 
 export interface SessionViewProps {
   attachments: ComposerAttachments;
+  /** VIEW-13: what you saw of a Session's chat when you last left it, and keeping it as you leave. */
+  loadChatSeen?(sessionId: string): Promise<ChatSeen | null>;
+  saveChatSeen?(sessionId: string, seen: ChatSeen, keepalive: boolean): Promise<void>;
   /** VIEW-3.9: a sent message waits 3 s in the composer, with Undo (SIDE-7.7). */
   undoSend?: boolean;
   row: SessionRow;
@@ -135,6 +138,8 @@ export interface SessionViewProps {
 
 /** VIEW: the selected Session. Mounted per Session (`key`), so its local state is its own. */
 export function SessionView({
+  loadChatSeen,
+  saveChatSeen,
   undoSend = false,
   row,
   ended,
@@ -234,6 +239,8 @@ export function SessionView({
   // runs is queued behind it and keeps the turn's time. A failed send puts back the time it
   // replaced, unless a newer send has replaced it since.
   const sentAt = sentAtBySession.get(row.id) ?? null;
+  // VIEW-12.3: a turn runs, so the chat's last run of steps is live.
+  const running = !ended && turnRunning({ status: row.status, statusSince: row.statusSince, entries: chat?.entries ?? [], sentAt, now });
 
   // VIEW-1.13: your message shows at once, dimmed, until its copy from the Transcript reaches the
   // chat. Local state: this view is mounted per Session, so selecting another drops them. While the
@@ -353,6 +360,9 @@ export function SessionView({
             echoes={visible}
             outgoing={held && { ...held, onUndo: () => undoHeld.current() }}
             terminal={controls ? answering.terminal : null}
+            running={running}
+            loadSeen={loadChatSeen}
+            saveSeen={saveChatSeen}
             activity={
               <>
                 {permission && (

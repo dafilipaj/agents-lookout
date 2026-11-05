@@ -1,4 +1,5 @@
 import { Library } from './library.ts';
+import { ChatSeen } from './chat-seen.ts';
 import { randomBytes } from 'node:crypto';
 import { homedir } from 'node:os';
 import { existsSync } from 'node:fs';
@@ -278,6 +279,7 @@ settings.onChange(() => recommender.kick());
 // Registered before the app's own listener, so tabs hear the list dropped before the new email.
 settings.onChange((s) => work.setProductiveEmail(s.productiveEmail));
 
+const chatSeen = new ChatSeen();
 const app = createApp({
   attachmentsDir: join(homedir(), '.lookout', 'attachments'),
   // WORK-3.9: `LOOKOUT_AVATARS=off` (every World sets it) fetches none, so a Behaviour test never asks GitHub.
@@ -295,6 +297,7 @@ const app = createApp({
   work,
   changes,
   plain,
+  chatSeen,
   plainClones: () => plainPrs.clones(),
   sessions: {
     answer: (id, req) => viewer.answer(id, req),

@@ -128,6 +128,10 @@ export interface LookoutClient {
   earlierSummaries(topicId: string): Promise<TopicSummary[]>;
   /** TOPIC-13.1: seen up to that entry; `keepalive` when the page is going away. */
   seenTopic(topicId: string, upto: number, keepalive?: boolean): Promise<void>;
+  /** VIEW-13.1: the last entry of a Session's chat you saw, or null without a record. */
+  chatSeen(sessionId: string): Promise<{ cursor: string; at: number | null } | null>;
+  /** VIEW-13.1: keeps it as you leave; `keepalive` when the page is going away. */
+  setChatSeen(sessionId: string, seen: { cursor: string; at: number | null }, keepalive?: boolean): Promise<void>;
 }
 
 export interface HistoryQuery {
@@ -527,6 +531,11 @@ export function createHttpClient(): LookoutClient {
     topicActivity: async (topicId, before) =>
       (await call<{ entries: ActivityEntry[] }>(() => fetch(`/api/topics/${encodeURIComponent(topicId)}/activity${before === null ? '' : `?before=${before}`}`), 'Reading the activity')).entries,
     earlierSummaries: async (topicId) => (await call<{ summaries: TopicSummary[] }>(() => fetch(`/api/topics/${encodeURIComponent(topicId)}/summaries`), 'Reading earlier summaries')).summaries,
+    chatSeen: async (sessionId) =>
+      (await call<{ seen: { cursor: string; at: number | null } | null }>(() => fetch(`/api/chat-seen?${new URLSearchParams({ session: sessionId })}`), 'Reading what you saw')).seen,
+    setChatSeen: async (sessionId, seen, keepalive = false) => {
+      await call(() => send('POST', '/api/chat-seen', { session: sessionId, cursor: seen.cursor, at: seen.at }, true, undefined, keepalive), 'Saving what you saw');
+    },
     seenTopic: async (topicId, upto, keepalive = false) => {
       await call(() => send('PUT', `/api/topics/${encodeURIComponent(topicId)}/seen`, { upto }, true, undefined, keepalive), 'Saving what you saw');
     },

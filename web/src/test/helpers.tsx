@@ -103,6 +103,8 @@ interface RenderOptions {
   watchChanges?: LookoutClient['watchChanges'];
   openChange?: LookoutClient['openChange'];
   readPlain?: LookoutClient['readPlain'];
+  chatSeen?: LookoutClient['chatSeen'];
+  setChatSeen?: LookoutClient['setChatSeen'];
   setPlainViewed?: LookoutClient['setPlainViewed'];
   plainViewed?: LookoutClient['plainViewed'];
   plainPr?: LookoutClient['plainPr'];
@@ -296,6 +298,9 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
     dismissProposal: vi.fn(async () => {}),
     topicActivity: vi.fn(async (id: string, before: number | null) => (options.activity?.[id] ?? []).filter((e) => before === null || e.id < before).slice(0, 50)),
     earlierSummaries: vi.fn(async (id: string) => options.earlierSummaries?.[id] ?? []),
+    // VIEW-13: no record unless a test gives one.
+    chatSeen: vi.fn(options.chatSeen ?? (async () => null)),
+    setChatSeen: vi.fn(options.setChatSeen ?? (async () => {})),
     // TOPIC-13.1: seen only moves forward.
     seenTopic: vi.fn(async (id: string, upto: number) => {
       const seen = Math.max(topic(id).seenUpto, upto);

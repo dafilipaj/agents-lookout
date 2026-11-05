@@ -9,6 +9,7 @@ import type { ServerEvent } from '../shared/types.ts';
 import { createApp } from './app.ts';
 import { ChangesError } from './changes.ts';
 import { PlainError } from './plain.ts';
+import { ChatSeenError } from './chat-seen.ts';
 import { WorkMonitor } from './work.ts';
 import { Library } from './library.ts';
 
@@ -36,7 +37,14 @@ function setup() {
       return { repo: String(repo), number: Number(number), files: [{ path: 'plain/crm.plain', viewed: true }], error: null };
     }),
   };
+  const chatSeen = {
+    get: vi.fn(async (session: unknown) => (session === 'a' ? { cursor: 'c1', at: 1 } : null)),
+    set: vi.fn(async (session: unknown) => {
+      if (session === '../x') throw new ChatSeenError(400, 'Invalid session id.');
+    }),
+  };
   const app = createApp({
+    chatSeen,
     attachmentsDir: join(tmpdir(), `lookout-unused-attachments-${randomUUID()}`),
     guard: { allowedHosts: new Set(['localhost']), allowedOrigins: new Set(['http://localhost']), token: 'test' },
     monitor: { snapshot: () => ({ sessions: [], fleet: { state: 'ok' } }), watch: () => () => {} },
@@ -79,7 +87,7 @@ function setup() {
     req.emit('end');
     return { req, res, done, text: () => text, events: () => text.split('\n').filter((l) => l.startsWith('data: ')).map((l) => JSON.parse(l.slice(6)) as ServerEvent) };
   };
-  return { changes, plain, exchange };
+  return { changes, plain, chatSeen, exchange };
 }
 
 it("DIFF-3.6: a list is watched through the tab's live event stream, and its closing drops the watch", async () => {
@@ -184,4 +192,29 @@ it("PLAIN-5.1, 5.3, 5.4: a PR's Modules and a PR's Module are read by repo and n
   await none.done;
   expect(none.res.statusCode).toBe(404);
   expect(JSON.parse(none.text())).toEqual({ error: 'No local clone of nowhere.' });
+});
+
+it('VIEW-13.1: the last entry seen is read by Session, and kept only through every check a mutation gets', async () => {
+  const { chatSeen, exchange } = setup();
+  const read = exchange('GET', '/api/chat-seen?session=a');
+  await read.done;
+  expect(JSON.parse(read.text())).toEqual({ seen: { cursor: 'c1', at: 1 } });
+  const none = exchange('GET', '/api/chat-seen?session=b');
+  await none.done;
+  expect(JSON.parse(none.text())).toEqual({ seen: null });
+  const body = { session: 'a', cursor: 'c9', at: 5 };
+  for (const headers of [{ 'x-lookout-token': '' }, { origin: 'http://evil.example' }, { 'sec-fetch-site': 'cross-site' }] as Record<string, string>[]) {
+    const call = exchange('POST', '/api/chat-seen', body, headers);
+    await call.done;
+    expect(call.res.statusCode).toBe(403);
+  }
+  expect(chatSeen.set).not.toHaveBeenCalled();
+  const ok = exchange('POST', '/api/chat-seen', body);
+  await ok.done;
+  expect(ok.res.statusCode).toBe(200);
+  expect(chatSeen.set).toHaveBeenCalledWith('a', 'c9', 5);
+  const bad = exchange('POST', '/api/chat-seen', { session: '../x', cursor: 'c9', at: null });
+  await bad.done;
+  expect(bad.res.statusCode).toBe(400);
+  expect(JSON.parse(bad.text())).toEqual({ error: 'Invalid session id.' });
 });

@@ -501,6 +501,9 @@ export function App({ client }: { client: LookoutClient }) {
   const openChange = useCallback((sessionId: string, root: string, path: string) => client.openChange(sessionId, root, path), [client]);
   // PLAIN-3.1: a changed Module opens in the Spec view, as a new history entry (Back returns, PLAIN-3.2).
   const openSpec = useCallback((session: string, checkout: string, path: string) => navigate({ name: 'plain', session, checkout, path }), [navigate]);
+  // VIEW-13: the last entry of a Session's chat you saw.
+  const loadChatSeen = useCallback((sessionId: string) => client.chatSeen(sessionId), [client]);
+  const saveChatSeen = useCallback((sessionId: string, seen: { cursor: string; at: number | null }, keepalive: boolean) => client.setChatSeen(sessionId, seen, keepalive), [client]);
   const readPlain = useCallback((source: PlainSource, p: string, fresh: boolean) => client.readPlain(source, p, fresh), [client]);
   const setPlainViewed = useCallback((source: PlainSource, p: string, key: string, viewed: boolean) => client.setPlainViewed(source, p, key, viewed), [client]);
   // PLAIN-5: Work's "Specs" on a PR; a Module opens in the Spec view, and Back returns to what the main pane showed.
@@ -1213,6 +1216,8 @@ export function App({ client }: { client: LookoutClient }) {
                 onFollowing={onFollowing}
                 sentAt={sentAt}
                 onSentAt={updateSentAt}
+                loadChatSeen={loadChatSeen}
+                saveChatSeen={saveChatSeen}
                 onEnd={endSession}
                 onRename={renameSession}
                 models={harnesses}

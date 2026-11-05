@@ -6,6 +6,7 @@ import { MAX_CHAT_ENTRIES, clockTime } from '@/lib/chat';
 import { chatMarks, firstLine, railFraction, stepMark } from '@/lib/marks';
 import { RAIL_THROTTLE_MS } from '@/lib/rail';
 import { fakeResizeObserver, renderApp, row } from '@/test/helpers';
+import { PROMPT_STRIP_PX } from './Chat';
 
 // Synthetic entries only.
 let n = 0;
@@ -183,10 +184,10 @@ describe('VIEW-1.11 Marks', () => {
     reset([first, agent('reply'), second]);
     reducedMotion(false);
     await user.click((await marks())[1]!);
-    expect(scrollTo).toHaveBeenLastCalledWith({ top: 588, behavior: 'smooth' });
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 588 - PROMPT_STRIP_PX, behavior: 'smooth' });
     reducedMotion(true);
     await user.click((await marks())[0]!);
-    expect(scrollTo).toHaveBeenLastCalledWith({ top: 88, behavior: 'auto' });
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 88 - PROMPT_STRIP_PX, behavior: 'auto' });
   });
 
   it('VIEW-1.11: hovering or focusing a Mark shows the entry’s first line and time', async () => {
@@ -219,13 +220,13 @@ describe('VIEW-1.11 Marks', () => {
     await marks();
     screen.getByTestId('chat').scrollTop = 0; // scrolled to the top
     await user.keyboard(']');
-    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ top: 88 }));
+    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ top: 88 - PROMPT_STRIP_PX }));
     await user.keyboard(']');
-    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ top: 388 }));
+    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ top: 388 - PROMPT_STRIP_PX }));
     await user.keyboard(']');
-    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ top: 688 }));
+    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ top: 688 - PROMPT_STRIP_PX }));
     await user.keyboard('[[');
-    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ top: 388 }));
+    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ top: 388 - PROMPT_STRIP_PX }));
     const calls = scrollTo.mock.calls.length;
     await user.click(screen.getByRole('textbox'));
     await user.keyboard('[[]');
@@ -292,14 +293,14 @@ describe('VIEW-1.11 Marks', () => {
     screen.getByTestId('chat').scrollTop = 0;
     act(() => within(screen.getByTestId('chat')).getByRole('button', { expanded: false }).focus());
     await user.keyboard(']');
-    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ top: 88 }));
+    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ top: 88 - PROMPT_STRIP_PX }));
     await user.keyboard(']');
-    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ top: 388 }));
+    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ top: 388 - PROMPT_STRIP_PX }));
     await user.keyboard(']');
-    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ top: 688 }));
+    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ top: 688 - PROMPT_STRIP_PX }));
     await user.keyboard('{ArrowDown}'); // you scroll with the keys: back to going by scroll position
     await user.keyboard(']');
-    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ top: 88 }));
+    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ top: 88 - PROMPT_STRIP_PX }));
   });
 
   it('VIEW-1.11: clicking in the chat keeps a jump’s hold; pressing on its scroll bar releases it', async () => {
@@ -313,14 +314,14 @@ describe('VIEW-1.11 Marks', () => {
     await marks();
     screen.getByTestId('chat').scrollTop = 0;
     await user.keyboard(']]');
-    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ top: 388 }));
+    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ top: 388 - PROMPT_STRIP_PX }));
     fireEvent.pointerDown(screen.getByText('y')); // clicking or selecting text
     await user.keyboard(']');
-    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ top: 688 }));
+    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ top: 688 - PROMPT_STRIP_PX }));
     expect(screen.getByRole('button', { name: /Jump to latest/ })).toBeInTheDocument();
     fireEvent.pointerDown(screen.getByTestId('chat')); // the scroll bar
     await user.keyboard(']');
-    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ top: 88 }));
+    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ top: 88 - PROMPT_STRIP_PX }));
   });
 
   it('VIEW-1.11: `[`/`]` work when the layout needs Option or AltGr to type them, but not in a dialog', async () => {
@@ -341,7 +342,7 @@ describe('VIEW-1.11 Marks', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
 
     fireEvent.keyDown(document.body, { key: ']', altKey: true });
-    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ top: 88 }));
+    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ top: 88 - PROMPT_STRIP_PX }));
   });
 
   it('VIEW-1.11: a jump from the rail moves focus to the entry; the rail is a vertical toolbar whose tab stop follows `[`/`]`', async () => {
@@ -395,13 +396,13 @@ describe('VIEW-1.11 Marks', () => {
     const chat = screen.getByTestId('chat');
     chat.scrollTop = 0;
     await user.keyboard(']]');
-    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ top: 388 }));
+    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ top: 388 - PROMPT_STRIP_PX }));
     // Space presses a button in the chat, like Enter: the hold stays.
     const toggle = within(chat).getByRole('button', { expanded: false });
     fireEvent.keyDown(toggle, { key: ' ' });
     fireEvent.keyDown(toggle, { key: 'Enter' });
     await user.keyboard(']');
-    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ top: 688 }));
+    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ top: 688 - PROMPT_STRIP_PX }));
     // Clicking text leaves focus on the page; End then scrolls the chat to the bottom.
     fireEvent.pointerDown(screen.getByText('y'));
     fireEvent.keyDown(document.body, { key: 'End' });
@@ -410,7 +411,7 @@ describe('VIEW-1.11 Marks', () => {
     expect(screen.queryByRole('button', { name: /Jump to latest/ })).toBeNull();
     chat.scrollTop = 0;
     await user.keyboard(']'); // back to going by scroll position
-    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ top: 88 }));
+    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ top: 88 - PROMPT_STRIP_PX }));
   });
 
   it('VIEW-1.11: the Marks are re-measured when the rows below the list (the Working row) change the chat’s height', async () => {
@@ -452,7 +453,7 @@ describe('VIEW-1.11 Marks', () => {
     fireEvent.keyDown(document.body, { key: ']', metaKey: true });
     expect(scrollTo).not.toHaveBeenCalled();
     fireEvent.keyDown(document.body, { key: ']', ctrlKey: true, altKey: true });
-    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ top: 88 }));
+    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ top: 88 - PROMPT_STRIP_PX }));
   });
 
   it('VIEW-1.11: a jump counts as scrolling up (VIEW-1.5): the chat stops following new messages', async () => {

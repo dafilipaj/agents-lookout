@@ -3,7 +3,7 @@ title: Session view
 code: VIEW
 status: In Progress
 created: 2026-10-16
-updated: 2026-11-02
+updated: 2026-11-05
 ---
 
 # Session view
@@ -206,6 +206,40 @@ An agent can give each option of a question a preview: a mockup, a snippet, a di
 - [x] VIEW-10.8 Seen live with Claude Code: a one-question form with previews, and a form mixing questions with and without previews, answered from Lookout, then read back in the chat; also what jsdom can't check: in a narrow chat the box sits under the options, and with a wide preview the chat never scrolls sideways. (manual)
 
 VIEW-10's `(test)` criteria are covered by component tests of the question card and the chat, and by route tests against the fake `fleet`, whose `messages` fixtures carry `preview` and whose `answer --list` calls a preview form answerable ([contract](../../contracts/fleet-question-previews.md), C8): a Session (`eeeeeeee-…-106`) holds A's question with previews, answered, and waits on P1's form, a plain question and one with previews, from the 2026-10-28 captures. No World can draw a question form yet (TEST-1.4), so none is `(e2e)`. Reading and answering the layout in the terminal is the Fleet fork's half, tested there against real captures (contract C2 to C7). A past Session's chat (HIST-3.3) shows the box for a question in its entries, but tb-session's `show` gives only prompts and replies today, so in practice it's an ended Session's chat (VIEW-5.3) that shows one.
+
+### VIEW-11 Reading type
+
+The chat's text reads at a book's line length, as a Module does in the Spec view (PLAIN-9.1).
+
+- [x] VIEW-11.1 Your prompts and the agent's replies are in the `reading` step (DS-1.1, 16 / 26 px), at most 42rem wide from the left edge of the chat's column (48rem, VIEW-1), which stays where it is; your prompt keeps its place on the right. In a reply, a heading is `reading-title` (a first-level one) or `reading` semibold, inline code and a table are `prose`, a code block stays `meta`. Tool-call rows, Subagent results, notices, questions and the "Working…" row keep their sizes. (test)
+- [ ] VIEW-11.2 Seen in both modes, from a narrow main pane to a wide one: replies read at about 85 characters a line, a heading reads above its text, and nothing scrolls sideways. (manual)
+
+### VIEW-12 The work folds, the answer shows
+
+A turn's progress (tool calls and short updates) folds into one row, so its answer is the thing you see.
+
+- [x] VIEW-12.1 A step is a run of tool calls (VIEW-1.2) or a short update: a reply of the agent's that isn't the turn's answer and is one paragraph, with no list, code, table, heading or quote, of at most 170 characters. The turn's answer is a reply Fleet marks final, or else the last reply before your next prompt or command, or the chat's last reply while no turn runs or a message you sent hasn't reached the Transcript yet (VIEW-1.13: it starts the next turn). Your prompts and commands, answers, longer replies, questions (VIEW-1.9) and Subagent results (VIEW-1.3) are never steps. (test)
+- [x] VIEW-12.2 Two or more steps in a row show as one row, a fold: "Worked for 55 min · 9 updates · 41 tool calls" (the time from the run's first step to its last; "Worked for less than a minute" under one; without times, only the counts), and on a second, quieter line, the run's last update, or its last tool call when it has no update. Clicking it, or Enter or Space on it, opens it and shows the steps as before this requirement, and closes it again. A single step shows as before. (test)
+- [x] VIEW-12.3 While a turn runs (VIEW-1.10), the run at the end of the chat folds too, as "Working · 3 updates · 12 tool calls", its second line the latest update, both changing as steps arrive; it reads "Worked for …" once the turn ends. (test)
+- [x] VIEW-12.4 A fold's open or closed state is kept while the Session's view stays open, through new steps joining it and new messages arriving; a fold starts closed. No Mark (VIEW-1.11) is ever inside a fold, since prompts, questions and Subagent results never fold. (test)
+- [ ] VIEW-12.5 Seen in both modes on a long Session: a finished turn reads as your prompt, its folds and its answer; a fold reads as quieter than a reply and opens without moving what's above it. (manual)
+
+### VIEW-13 New since you looked
+
+The chat marks where the messages you haven't seen begin.
+
+- [x] VIEW-13.1 When you leave a Session's view (select another Session or page, or the tab is hidden, closed or reloaded), Lookout's server keeps the last entry the chat had then as seen: its cursor and time, in `~/.lookout/chat-seen.json` (mode `0600`, written whole to a new file then moved over the old one), by Session id. A record not used for 30 days goes. (test)
+- [x] VIEW-13.2 When you open the Session again and the agent has written since (a reply, a tool call, a question or a Subagent result after the seen entry, found by its cursor, or else by its time), a divider, "New since you looked" with the time of the first new entry, sits above that entry. It stays where it is while the view is open, as messages keep arriving, and moves only when you come back after leaving again (to none, when nothing came meanwhile; tool calls you saw stay above it). The chat as Lookout had it from your last visit doesn't count: the divider waits for the server's entries, and while nothing new is in, up to 3 seconds for its next read. With nothing new, or no record yet, there's none; your own prompts alone don't make one. The divider is a separator to screen readers. (test)
+- [x] VIEW-13.3 The chat opens with the divider just below its top edge when what's new is taller than the chat, and stays there, as a jump does (VIEW-1.5: "Jump to latest" shows); otherwise it opens at the bottom, as before. (test)
+- [x] VIEW-13.4 A failed read or save of the record never blocks the chat: it opens at the bottom with no divider. (test)
+
+### VIEW-14 Your latest prompt, in sight
+
+A reminder of what you last asked, while the agent works on it.
+
+- [x] VIEW-14.1 While your latest prompt in the chat (the last of your prompts and commands, or a message you sent that hasn't reached the Transcript yet, VIEW-1.13) is out of the chat's view, above or below, a strip pinned to the top of the chat names it: "You, 11:29 AM:" and its first line, cut to one line. Clicking it scrolls to the prompt, as a Mark's jump does (VIEW-1.11), and focus moves to the prompt. It takes no room in the chat, so it showing or hiding never moves the messages. (test)
+- [x] VIEW-14.2 A Mark you jump to, and anything the chat scrolls into view for a link or keyboard focus, lands below where the strip sits, not under it. (test)
+- [ ] VIEW-14.3 Seen in both modes while a long turn runs: the strip reads as a reminder, not a message, and never hides the line you jumped to. (manual)
 
 ## Non-goals
 
@@ -664,3 +698,7 @@ VIEW-10's `(test)` criteria are covered by component tests of the question card 
 - 2026-11-05: VIEW-1.16's scroll bar is every scroll area's now (DS-15): the `scrollbar-blend` utility became the base layer's rule; the chat looks the same.
 - 2026-11-05: VIEW-8.12 and VIEW-9.20 ticked: Dario checked and confirmed them.
 - 2026-11-05: VIEW-1.11's rail serves the Spec view too (PLAIN-8.5): `ChatRail` takes its landmark's name (Bookmarks here, Changes there), and `lib/marks.ts` three change kinds, drawn as short bars in the diff colours, with the change's spec or section in the Mark's name and tooltip. The chat's Marks, keys and tooltips are as they were.
+- 2026-11-05: Added VIEW-11 to VIEW-14 (Dario: ideas for the chat's readability and usability, research first). Four ideas drawn on a canvas (https://claude.ai/artifact/XKgHT9JZ2FWnGedzDYTonA), measured on a live Session first: 14 px at about 107 characters a line, and one 55-minute turn of 54 replies and 42 tool-call runs between 6 prompts. Dario chose reading type (idea 1), folding the work (idea 2) and, of idea 4, only the "New since you looked" divider; he added a strip naming your latest prompt while it's out of view (VIEW-14). Four questions, each as recommended: short updates fold and longer replies stay, so a mid-turn ask isn't hidden; the live run folds too, its hint live; the seen record is the server's; the chat opens at the divider when what's new is long.
+- 2026-11-05: VIEW-11 to VIEW-14 built. `Markdown` takes `reading` (headings `reading-title` and `reading`, inline code and tables `prose`); replies are `max-w-[42rem] text-reading`. `lib/chat.ts`: `isShortUpdate`, `foldSteps` (the turn's answer found from Fleet's `final`, else the last reply before a prompt, or the chat's last while idle) and `foldSummary`; `Chat.tsx` renders a fold as the chat's tool-calls disclosure. VIEW-1.2's tool-call rows now sit inside a fold when two or more steps run together; VIEW-1.5's chat opens at the divider when what's new is long (VIEW-13.3). `server/chat-seen.ts` and `GET`/`POST /api/chat-seen`; the chat saves on unmount, `pagehide` and a hidden tab (`keepalive`), and a tab shown again moves the divider to what came while it was hidden. The strip is absolutely placed over the chat, so it takes no room; Marks, the strip's own jump and stepping land `PROMPT_STRIP_PX` (36 px) lower, and the scroll box has `scroll-pt-9`. A fold is never split by a Mark (prompts, questions and Subagent results never fold), and a run never spans the divider. Ticked: every `(test)` criterion of VIEW-11 to 14. Open: VIEW-11.2, 12.5 and 14.3 `(manual)`, Dario's look.
+- 2026-11-05: VIEW-12.1, 13.2 and 14.1 amended after review: a sent message not in the Transcript yet ends the turn before it (`Chat` passes `running` only without a waiting echo); the divider waits for the server's entries (a new epoch since mount, or a problem), then up to `SEEN_SETTLE_MS` (3 s) while nothing new is in, since a feed viewed again within `PARK_MS` is re-sent as it was and its new entries follow on the next read; a tab back from hidden with nothing new drops the divider; the strip's jump focuses the prompt row (prompt and echo rows take `tabIndex={-1}`). `chat-seen.ts` keeps its sessions in a prototype-free object.
+- 2026-11-05: Second review. The divider's entry starts its own item (`chatItems(entries, splitAt)`), so tool calls you saw stay above it; `newSince` takes the entries alone and counts a time tie as new. Only a problem that came after opening counts for the wait; a tab back from hidden starts the wait again without needing a reset. The opening scroll to the divider is skipped once you've scrolled or jumped. An opened fold's first reply after only tool calls keeps its who-and-when line. The list's top padding is 44 px, so the strip never covers "Show earlier" or the first row. `chat-seen.ts` treats only a missing file as empty: a file that isn't JSON is moved aside to `.broken`, and one it can't read is never written over.
