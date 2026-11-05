@@ -1,10 +1,10 @@
 import type { PlainAnswer, PlainPrFiles } from '@shared/plain.ts';
 import type { PrSection, WorkPr, WorkSnapshot } from '@shared/work.ts';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import userEvent, { type UserEvent } from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SaveError } from '@/lib/client';
-import { renderApp, row, settings } from '@/test/helpers';
+import { openMore, renderApp, row, rowActionWords, rowMenu, settings } from '@/test/helpers';
 
 /** Synthetic PRs only: invented repos and titles. */
 const pr = (over: Partial<WorkPr> & { repo: string; number: number }): WorkPr => ({
@@ -59,28 +59,49 @@ const expand = (id: string) => {
   if (el.getAttribute('aria-expanded') !== 'true') fireEvent.click(el);
   return el;
 };
-const specsButton = (id: string) => expand(id).querySelector<HTMLElement>('[data-field="actions"] [data-action="specs"]');
+/** The open Specs submenu's list, or null. */
 const list = () => document.querySelector<HTMLElement>('[data-slot="pr-specs"]');
+/** DS-16: Specs under the expanded row's More, or null while the clones aren't known. */
+async function specsItem(id: string, user: UserEvent) {
+  const menu = await openMore(expand(id), user);
+  return menu.querySelector<HTMLElement>('[data-action="specs"]');
+}
+/** Opens the PR's Specs submenu from its More, and waits for it. */
+async function openSpecs(id: string, user: UserEvent) {
+  await waitFor(async () => {
+    if (!rowMenu()) await openMore(expand(id), user);
+    const item = rowMenu()!.querySelector<HTMLElement>('[data-action="specs"]');
+    if (!item) {
+      await user.keyboard('{Escape}');
+      throw new Error('no Specs yet');
+    }
+    await user.click(item);
+    expect(list()).not.toBeNull();
+  });
+}
 
 beforeEach(() => window.localStorage.clear());
 afterEach(() => vi.restoreAllMocks());
 
 describe("Work's Specs on a PR", () => {
-  it('PLAIN-5.1 (support): an expanded PR or Review request in a cloned repo has "Specs", listing its changed Modules with their Viewed marks', async () => {
+  it('PLAIN-5.1 (support): an expanded PR or Review request in a cloned repo has "Specs" under More, listing its changed Modules with their Viewed marks', async () => {
     const plainPr = vi.fn(async () => files());
     openApp('/s/alpha', { plainPr });
-    await userEvent.setup().keyboard('w');
-    await waitFor(() => expect(specsButton('shop#7')).not.toBeNull());
-    expect([...option('shop#7').querySelectorAll('[data-field="actions"] [data-action]')].map((b) => b.textContent)).toEqual(['Open on GitHub', 'Specs', 'Add to Topic']);
-    expect(specsButton('shop#8')).not.toBeNull(); // a Review request too
-    fireEvent.click(specsButton('shop#7')!);
+    const user = userEvent.setup();
+    await user.keyboard('w');
+    await openSpecs('shop#7', user);
     expect(plainPr).toHaveBeenCalledWith('shop', 7, true);
-    await waitFor(() => expect(list()?.querySelectorAll('button[data-file]')).toHaveLength(2));
-    const [crm, rates] = [...list()!.querySelectorAll<HTMLElement>('button[data-file]')];
+    await waitFor(() => expect(list()?.querySelectorAll('[data-file]')).toHaveLength(2));
+    const [crm, rates] = [...list()!.querySelectorAll<HTMLElement>('[data-file]')];
     expect(crm).toHaveAttribute('aria-label', 'plain/crm.plain, viewed, open the spec');
     expect(crm!.querySelector('[data-icon="viewed"]')).not.toBeNull();
     expect(rates).toHaveAttribute('aria-label', 'plain/rates.plain, open the spec');
-    expect(option('shop#7')).toHaveAttribute('aria-expanded', 'true'); // a click in the list isn't the row's
+    expect(option('shop#7')).toHaveAttribute('aria-expanded', 'true'); // a click in the menu isn't the row's
+    await user.keyboard('{Escape}');
+    // DS-16.2: Specs sits in the group that opens elsewhere, after Open on GitHub, with its key.
+    expect(await rowActionWords(option('shop#7'), user)).toEqual(['Open on GitHub', 'Specs', 'Add to Topic']);
+    expect(await rowActionWords(expand('shop#8'), user)).toEqual(['Review', 'Open on GitHub', 'Specs', 'Add to Topic']); // a Review request too
+    expect((await specsItem('shop#8', user))!.querySelector('kbd')).toHaveTextContent('S');
   });
 
   it('PLAIN-5.1 (support): a Module opens the Spec view at its PR URL; Back returns to what the main pane showed', async () => {
@@ -90,17 +111,16 @@ describe("Work's Specs on a PR", () => {
     openApp('/s/alpha', { plainPr: async () => files(), readPlain });
     const user = userEvent.setup();
     await user.keyboard('w');
-    await waitFor(() => expect(specsButton('shop#7')).not.toBeNull());
-    fireEvent.click(specsButton('shop#7')!);
-    await waitFor(() => expect(list()?.querySelector('button[data-file="plain/rates.plain"]')).not.toBeNull());
-    fireEvent.click(list()!.querySelector('button[data-file="plain/rates.plain"]')!);
+    await openSpecs('shop#7', user);
+    await waitFor(() => expect(list()?.querySelector('[data-file="plain/rates.plain"]')).not.toBeNull());
+    await user.click(list()!.querySelector<HTMLElement>('[data-file="plain/rates.plain"]')!);
     expect(window.location.pathname).toBe('/plain/pr/shop/7/plain%2Frates.plain');
     expect(readPlain).toHaveBeenCalledWith({ kind: 'pr', repo: 'shop', number: 7 }, 'plain/rates.plain', true);
     await user.click(await screen.findByRole('button', { name: 'Back' }));
     expect(window.location.pathname).toBe('/s/alpha');
   });
 
-  it('PLAIN-5.1 (support): S on the selected PR opens its Specs; Esc closes them and gives focus back to Work\'s list', async () => {
+  it("PLAIN-5.1 (support): S on the selected PR opens More with its Specs; Esc closes them and gives focus back to Work's list", async () => {
     const plainPr = vi.fn(async () => files());
     openApp('/s/alpha', { plainPr });
     const user = userEvent.setup();
@@ -112,14 +132,17 @@ describe("Work's Specs on a PR", () => {
       expect(list()).not.toBeNull();
     });
     expect(option('shop#7')).toHaveAttribute('aria-expanded', 'true');
+    expect(rowMenu()).not.toBeNull();
     expect(plainPr).toHaveBeenCalledWith('shop', 7, true);
-    await waitFor(() => expect(list()!.querySelectorAll('button[data-file]')).toHaveLength(2));
+    await waitFor(() => expect(list()!.querySelectorAll('[data-file]')).toHaveLength(2));
+    await waitFor(() => expect(list()!.closest('[data-slot="row-submenu"]')).toContainElement(document.activeElement as HTMLElement));
     await user.keyboard('{ArrowDown}');
     expect(document.activeElement).toHaveAttribute('data-file', 'plain/crm.plain');
     await user.keyboard('{Escape}');
     await waitFor(() => expect(list()).toBeNull());
+    await waitFor(() => expect(rowMenu()).toBeNull());
     expect(document.activeElement).toHaveAttribute('role', 'listbox');
-    expect(option('shop#7')).toHaveAttribute('aria-expanded', 'true'); // Esc closed the list, not the row
+    expect(option('shop#7')).toHaveAttribute('aria-expanded', 'true'); // Esc closed the menu, not the row
   });
 
   it('PLAIN-5.1 (support): Back returns to the view Work opened it from, another Spec view included', async () => {
@@ -129,10 +152,9 @@ describe("Work's Specs on a PR", () => {
     openApp('/plain/pr/shop/8/plain%2Fapi.plain', { plainPr: async () => files(), readPlain });
     const user = userEvent.setup();
     await user.keyboard('w');
-    await waitFor(() => expect(specsButton('shop#7')).not.toBeNull());
-    fireEvent.click(specsButton('shop#7')!);
-    await waitFor(() => expect(list()?.querySelector('button[data-file="plain/rates.plain"]')).not.toBeNull());
-    fireEvent.click(list()!.querySelector('button[data-file="plain/rates.plain"]')!);
+    await openSpecs('shop#7', user);
+    await waitFor(() => expect(list()?.querySelector('[data-file="plain/rates.plain"]')).not.toBeNull());
+    await user.click(list()!.querySelector<HTMLElement>('[data-file="plain/rates.plain"]')!);
     expect(window.location.pathname).toBe('/plain/pr/shop/7/plain%2Frates.plain');
     await user.click(await screen.findByRole('button', { name: 'Back' }));
     expect(window.location.pathname).toBe('/plain/pr/shop/8/plain%2Fapi.plain');
@@ -146,10 +168,9 @@ describe("Work's Specs on a PR", () => {
     const user = userEvent.setup();
     await user.keyboard('w');
     const openFrom = async (id: string) => {
-      await waitFor(() => expect(specsButton(id)).not.toBeNull());
-      fireEvent.click(specsButton(id)!);
-      await waitFor(() => expect(list()?.querySelector('button[data-file="plain/rates.plain"]')).not.toBeNull());
-      fireEvent.click(list()!.querySelector('button[data-file="plain/rates.plain"]')!);
+      await openSpecs(id, user);
+      await waitFor(() => expect(list()?.querySelector('[data-file="plain/rates.plain"]')).not.toBeNull());
+      await user.click(list()!.querySelector<HTMLElement>('[data-file="plain/rates.plain"]')!);
     };
     await openFrom('shop#7');
     expect(window.location.pathname).toBe('/plain/pr/shop/7/plain%2Frates.plain');
@@ -161,17 +182,16 @@ describe("Work's Specs on a PR", () => {
     expect(window.location.pathname).toBe('/s/alpha');
   });
 
-  it('PLAIN-5.1 (support): closing Specs by focusing another control leaves focus there', async () => {
+  it('PLAIN-5.1 (support), DS-16.3: closing Specs by clicking another control leaves focus there', async () => {
     openApp('/s/alpha', { plainPr: async () => files() });
     const user = userEvent.setup();
     await user.keyboard('w');
-    await waitFor(() => expect(specsButton('shop#7')).not.toBeNull());
     const outside = document.body.appendChild(document.createElement('input'));
     try {
-      fireEvent.click(specsButton('shop#7')!);
-      await waitFor(() => expect(list()?.querySelectorAll('button[data-file]')).toHaveLength(2));
+      await openSpecs('shop#7', user);
+      await waitFor(() => expect(list()?.querySelectorAll('[data-file]')).toHaveLength(2));
       await user.click(outside);
-      await waitFor(() => expect(list()).toBeNull());
+      await waitFor(() => expect(rowMenu()).toBeNull());
       expect(document.activeElement).toBe(outside);
     } finally {
       outside.remove();
@@ -180,25 +200,30 @@ describe("Work's Specs on a PR", () => {
 
   it('PLAIN-5.1 (support): a PR without spec changes says so', async () => {
     openApp('/s/alpha', { plainPr: async () => files({ files: [] }) });
-    await userEvent.setup().keyboard('w');
-    await waitFor(() => expect(specsButton('shop#7')).not.toBeNull());
-    fireEvent.click(specsButton('shop#7')!);
+    const user = userEvent.setup();
+    await user.keyboard('w');
+    await openSpecs('shop#7', user);
     await waitFor(() => expect(list()).toHaveTextContent('No spec changes in this PR'));
   });
 
-  it("PLAIN-5.4: without a clone of the PR's repo there's no button, and the row's tooltip says why; a failed fetch says why, with Retry", async () => {
+  it("PLAIN-5.4: without a clone of the PR's repo there's no Specs, and the row's tooltip says why; a failed fetch says why, with Retry", async () => {
     let fail = true;
     const plainPr = vi.fn(async () => {
       if (fail) throw new SaveError("Couldn't fetch #7: Could not resolve host: github.com", null, 502);
       return files();
     });
     openApp('/s/alpha', { plainPr });
-    await userEvent.setup().keyboard('w');
-    await waitFor(() => expect(specsButton('shop#7')).not.toBeNull());
-    expect(specsButton('lantern#12')).toBeNull();
+    const user = userEvent.setup();
+    await user.keyboard('w');
+    await openSpecs('shop#7', user);
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(rowMenu()).toBeNull());
+    expect(await specsItem('lantern#12', user)).toBeNull();
+    await user.keyboard('{Escape}');
     expect(option('lantern#12')).toHaveAttribute('title', 'No local clone of lantern');
     expect(option('shop#7')).not.toHaveAttribute('title');
-    fireEvent.click(specsButton('shop#7')!);
+    await waitFor(() => expect(rowMenu()).toBeNull());
+    await openSpecs('shop#7', user);
     const error = await waitFor(() => {
       const el = list()?.querySelector<HTMLElement>('[data-field="pr-specs-error"]');
       if (!el) throw new Error('no error shown yet');
@@ -206,8 +231,8 @@ describe("Work's Specs on a PR", () => {
     });
     expect(error).toHaveTextContent("Couldn't fetch #7: Could not resolve host: github.com");
     fail = false;
-    fireEvent.click(within(error).getByRole('button', { name: 'Retry' }));
-    await waitFor(() => expect(list()!.querySelectorAll('button[data-file]')).toHaveLength(2));
+    await user.click(within(error).getByRole('menuitem', { name: 'Retry' }));
+    await waitFor(() => expect(list()!.querySelectorAll('[data-file]')).toHaveLength(2));
     expect(plainPr).toHaveBeenLastCalledWith('shop', 7, true);
     expect(list()!.querySelector('[data-field="pr-specs-error"]')).toBeNull();
   });

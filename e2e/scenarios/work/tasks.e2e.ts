@@ -5,6 +5,7 @@ import { TB_PROD_INSTALL_COMMAND } from '../../../shared/defaults.ts';
 import { TASK_REASON, tasksQueryArgv } from '../../../server/work.ts';
 import type { TaskDecl, TbPrBoardDecl } from '../../world/builder.ts';
 import { type RunningWorld, expect, scenario, world } from '../../world/index.ts';
+import { actionWords, pickMore } from './row-menu.ts';
 
 /**
  * WORK's Tasks (slice C): the Work tab against the fake tb-prod (TEST-1.5), next to the fake tb-pr.
@@ -63,8 +64,6 @@ async function expand(row: Locator) {
   await expect(row).toHaveAttribute('aria-expanded', 'true');
 }
 
-/** An expanded row's buttons' words, in order (WORK-2.10, WORK-3.6). */
-const buttonWords = (row: Locator) => row.locator('[data-field="actions"] [role="button"]').allTextContents();
 
 /** Saves a Productive email on the Settings page, opened from the Session sidebar; Work stays as it is. */
 async function saveProductiveEmail(page: Page, email: string) {
@@ -241,14 +240,14 @@ scenario(
     // WORK-2.9: its description as plain text, from the same tb-prod read.
     await expect(row.locator('[data-field="description"]')).toHaveText('Every wick in the east wing first. - Trim to 6 mm - Check the oil Then the west wing.');
     expect(world.tbProd.calls().every((argv) => argv[0] === 'query' && argv[1] === 'tasks')).toBe(true);
-    expect(await buttonWords(row)).toEqual(['Open Session', 'Start Session', 'Open in Fantastic', 'Add to Topic']);
-    await row.getByTitle('Start Session (S)').click();
+    expect(await actionWords(page, row)).toEqual(['Open Session', 'Start Session', 'Open in Fantastic', 'Add to Topic']);
+    await pickMore(page, row, 'start');
     const dialog = page.getByRole('dialog', { name: 'New Session' });
     await expect(dialog.getByLabel('Prompt')).toHaveValue(WICKS);
     await page.keyboard.press('Escape');
     await expect(dialog).toHaveCount(0);
     const tab = page.context().waitForEvent('page');
-    await row.getByTitle('Open in Fantastic (O)').click();
+    await pickMore(page, row, 'open');
     await tab;
     await world.waitUntil('the new tab to ask for the Task', () => world.browserRequests().includes(WICKS));
     await row.getByTitle('Open Session', { exact: true }).click();
@@ -269,7 +268,7 @@ scenario(
     // Enter expands the selected row; a second Enter runs its first button (WORK-1.13).
     await row.click();
     await expect(row).toHaveAttribute('aria-expanded', 'true');
-    expect(await buttonWords(row)).toEqual(['Resume', 'Start Session', 'Open in Fantastic', 'Add to Topic']);
+    expect(await actionWords(page, row)).toEqual(['Resume', 'Start Session', 'Open in Fantastic', 'Add to Topic']);
     await page.keyboard.press('Escape');
     await expect(row).toHaveAttribute('aria-expanded', 'false');
     await page.keyboard.press('Enter');
@@ -333,7 +332,8 @@ scenario(
         )),
       );
     }
-    expect(measured.map((m) => m.word)).toEqual(['wick trim', 'wick notes', 'Open Session', 'Start Session', 'Open in Fantastic', 'Add to Topic', 'Open on GitHub', 'Add to Topic', 'Review', 'Open on GitHub', 'Add to Topic']);
+    // DS-16: each row's first action labelled, the rest under More.
+    expect(measured.map((m) => m.word)).toEqual(['wick trim', 'wick notes', 'Open Session', 'More', 'Open on GitHub', 'More', 'Review', 'More']);
     for (const m of measured) {
       expect(m.height, m.word).toBe(28);
       expect(m.icon, m.word).toEqual([20, 20]);
@@ -767,7 +767,7 @@ scenario(
     await world.step('the Task to show', () => expect(row).toBeVisible());
     await expand(row);
     const tab = page.context().waitForEvent('page');
-    await row.getByTitle('Open in Fantastic (O)').click();
+    await pickMore(page, row, 'open');
     expect(await tab).not.toBe(page);
     await world.waitUntil('the new tab to ask for the Task', () => world.browserRequests().includes(taskUrl('41000302')));
     expect(world.browserRequests()).toEqual([taskUrl('41000302')]);

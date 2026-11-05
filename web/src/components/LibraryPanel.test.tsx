@@ -1,7 +1,8 @@
 import type { LibraryPage, LibraryQuery, OutputItem, OutputSession } from '@shared/library.ts';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { NOW, launchView, renderApp, row } from '@/test/helpers';
+import { NOW, launchView, openMore, pickMoreNow, renderApp, row } from '@/test/helpers';
+import userEvent from '@testing-library/user-event';
 import { COPY_FEEDBACK_MS } from '@/lib/copy';
 
 const session = (over: Partial<OutputSession> = {}): OutputSession => ({ sessionId: 'writer', harness: 'claude', title: 'Report writer', projectPath: '/project', projectDisplay: '/project', repo: 'project', branch: null, headless: false, lastActiveAt: NOW, snippet: null, firstPrompt: null, blocked: null, pruned: false, event: 'write', ...over });
@@ -143,16 +144,16 @@ it('LIB-3.3: Open uses the file route, Markdown uses VS Code, external URLs use 
   const app = renderApp('/', { library: async () => ok([output(), output({ key: 'md', path: '/a b.md', type: 'markdown' }), output({ key: 'artifact', kind: 'artifact', url: 'https://example.invalid/page', source: { path: '/a.html', display: '/a.html', type: 'html', exists: true, createdAt: NOW, updatedAt: NOW, events: 1 } })]) }); await open(app);
   fireEvent.click(await within(panel()).findByRole('option', { name: /Harbor report HTML/ })); fireEvent.click(within(rows()[0]!).getByRole('button', { name: 'Open' })); expect(browser).toHaveBeenLastCalledWith('/api/library/file?path=%2Freport.html', '_blank', 'noopener,noreferrer');
   fireEvent.click(rows()[1]!); fireEvent.click(within(rows()[1]!).getByRole('button', { name: 'Open' })); expect(browser).toHaveBeenLastCalledWith('vscode://file/a%20b.md', '_self');
-  fireEvent.click(rows()[2]!); fireEvent.click(within(rows()[2]!).getByRole('button', { name: 'Open' })); expect(browser).toHaveBeenLastCalledWith('https://example.invalid/page', '_blank', 'noopener,noreferrer'); expect(within(rows()[2]!).getByRole('button', { name: 'Open file' })).toBeVisible(); browser.mockRestore();
+  fireEvent.click(rows()[2]!); fireEvent.click(within(rows()[2]!).getByRole('button', { name: 'Open' })); expect(browser).toHaveBeenLastCalledWith('https://example.invalid/page', '_blank', 'noopener,noreferrer'); expect(within(await openMore(rows()[2]!, userEvent.setup())).getByRole('menuitem', { name: 'Open file' })).toBeVisible(); browser.mockRestore();
 });
-it('LIB-3.4: Copy link copies an absolute path and reports success for 2 seconds or refusal', async () => {
+it('LIB-3.4: Copy link, under More, copies an absolute path, and the row reports success for 2 seconds or refusal', async () => {
   const write = vi.fn(async () => {}); Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: write } });
   const app = renderApp('/', { library: async () => ok([output()]) }); await open(app); fireEvent.click(await first());
   vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'], now: NOW });
-  fireEvent.click(within(panel()).getByRole('button', { name: 'Copy link' })); await act(async () => {}); expect(within(panel()).getByRole('button', { name: 'Copied' })).toBeVisible(); expect(write).toHaveBeenCalledWith('/report.html');
-  act(() => vi.advanceTimersByTime(COPY_FEEDBACK_MS - 1)); expect(within(panel()).getByRole('button', { name: 'Copied' })).toBeVisible();
-  act(() => vi.advanceTimersByTime(1)); expect(within(panel()).getByRole('button', { name: 'Copy link' })).toBeVisible();
-  write.mockRejectedValueOnce(new Error('refused')); fireEvent.click(within(panel()).getByRole('button', { name: 'Copy link' })); await act(async () => {}); expect(within(panel()).getByRole('button', { name: "Couldn't copy" })).toBeVisible();
+  pickMoreNow(rows()[0]!, 'copy'); await act(async () => {}); expect(within(rows()[0]!).getByText('Copied')).toBeVisible(); expect(write).toHaveBeenCalledWith('/report.html');
+  act(() => vi.advanceTimersByTime(COPY_FEEDBACK_MS - 1)); expect(within(rows()[0]!).getByText('Copied')).toBeVisible();
+  act(() => vi.advanceTimersByTime(1)); expect(within(rows()[0]!).queryByText('Copied')).toBeNull();
+  write.mockRejectedValueOnce(new Error('refused')); pickMoreNow(rows()[0]!, 'copy'); await act(async () => {}); expect(within(rows()[0]!).getByText("Couldn't copy")).toBeVisible();
 });
 it('LIB-3.5: Session chips select live Sessions, resume through History’s Starting row, Show blocked ones, and never act for pruned ones', async () => {
   let finish: ((v: Awaited<ReturnType<ReturnType<typeof renderApp>['client']['resume']>>) => void) | undefined;

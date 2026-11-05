@@ -1,21 +1,11 @@
 import type { NewMember } from '@shared/topics.ts';
-import { Layers, Plus } from 'lucide-react';
+import { Layers } from 'lucide-react';
 import { useContext } from 'react';
 import { Button } from '@/components/ui/button';
 import { chipVariants } from '@/components/ui/chip';
-import { RowAction, RowSettling } from '@/components/ui/icon-button';
+import { RowSettling } from '@/components/ui/icon-button';
 import { topicsOf, useTopics } from '@/lib/topics';
 import { cn } from '@/lib/utils';
-
-/**
- * TOPIC-2.1: "Add to Topic" on an expanded Work row, History result or Library row: a mouse target in
- * the row's buttons, as its other buttons are; `A` does the same from the keyboard.
- */
-export function AddToTopicAction({ members, label, enabled = true }: { members: readonly NewMember[]; label: string; enabled?: boolean }) {
-  const topics = useTopics();
-  if (!topics) return null;
-  return <RowAction data-action="add-to-topic" label="Add to Topic" icon={<Plus />} tip="Add to Topic (A)" enabled={enabled && members.length > 0} onPress={() => topics.addTo(members, label)} />;
-}
 
 /**
  * TOPIC-2.2: the same in the Session header and a past Session's view. A Session without a session id

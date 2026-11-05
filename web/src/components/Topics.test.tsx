@@ -6,7 +6,7 @@ import type { PrSection, TaskSection, WorkPr, WorkSnapshot, WorkTask } from '@sh
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { NOW, pressRowAction, renderApp, row, settings } from '@/test/helpers';
+import { NOW, pickMore, pressRowAction, renderApp, row, rowActionWords, settings } from '@/test/helpers';
 
 /** Synthetic Topics, Tasks and PRs only: invented titles, repos and ids. */
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -173,7 +173,9 @@ describe('the Topics tab (TOPIC-3)', () => {
     expect(details.querySelector('[data-field="past-sessions"]')).toHaveTextContent('+1 past');
     expect(details.querySelector('[data-field="prs"], [data-field="tasks"], [data-field="outputs"], [data-field="edges"]')).toBeNull();
     expect(within(details).queryByRole('textbox')).toBeNull();
-    expect([...details.querySelectorAll('[data-field="actions"] [data-action]')].map((b) => b.textContent)).toEqual(['Open', 'Open graph', 'Link to Topic…', 'Archive', 'Delete']);
+    expect(await rowActionWords(details, user)).toEqual(['Open', 'Open graph', 'Link to Topic…', 'Archive', 'Delete']);
+    // Its rows aren't listbox options, so Open and More are in the Tab order (DS-16.3).
+    expect([...details.querySelectorAll('[data-field="actions"] [role="button"]')].map((b) => b.getAttribute('tabindex'))).toEqual(['0', '0']);
     // Enter on the expanded Topic runs its first button, Open; a click on it only keeps it selected.
     await user.click(header('Proposals rates'));
     expect(window.location.pathname).toBe('/s/alpha');
@@ -185,6 +187,21 @@ describe('the Topics tab (TOPIC-3)', () => {
     await user.click(within(details).getByRole('button', { name: 'Open rates-port, Needs you' }));
     expect(window.location.pathname).toBe(`/s/${SESSION_ID}`);
     expect(app.client.resume).not.toHaveBeenCalled();
+  });
+
+  it('TOPIC-3.4, DS-16.3: Archive and Delete from the expanded Topic’s More give focus back to More when their dialog is cancelled', async () => {
+    openApp([topic(1, { title: 'Proposals rates' })]);
+    const user = await openTopics();
+    await user.click(header('Proposals rates'));
+    const details = item('Proposals rates').querySelector<HTMLElement>('[data-field="details"]')!;
+    const more = details.querySelector<HTMLElement>('[data-action="more"]')!;
+    for (const [action, dialog] of [['archive', 'Archive'], ['delete', 'Delete']] as const) {
+      await pickMore(details, action, user);
+      expect(await screen.findByRole('dialog', { name: new RegExp(dialog) })).toBeInTheDocument();
+      await user.keyboard('{Escape}');
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      expect(document.activeElement).toBe(more);
+    }
   });
 
   it('TOPIC-3.5: the Session sidebar’s filter also matches the titles of the Topics a live Session is in', async () => {
@@ -248,7 +265,7 @@ describe('a Topic (TOPIC-1)', () => {
     const app = openApp([topic(1, { title: 'Proposals rates', members: [member(PR_MEMBER)] }), topic(2, { title: 'Other' })]);
     const user = await openTopics();
     await user.click(header('Proposals rates'));
-    await user.click(within(item('Proposals rates')).getByRole('button', { name: 'Archive' }));
+    await pickMore(item('Proposals rates'), 'archive', user);
     // TOPIC-1.6: Archive asks how it ended, and waits for a pick.
     const asked = screen.getByRole('dialog', { name: 'Archive “Proposals rates”' });
     expect(within(asked).getByRole('button', { name: 'Archive' })).toBeDisabled();
@@ -261,7 +278,7 @@ describe('a Topic (TOPIC-1)', () => {
     expect(titles()).toEqual(['Proposals rates', 'Other']);
     expect(item('Proposals rates').querySelector('[data-field="counts"]')).toHaveTextContent('1 PR');
     await user.click(header('Proposals rates'));
-    await user.click(within(item('Proposals rates')).getByRole('button', { name: 'Unarchive' }));
+    await pickMore(item('Proposals rates'), 'archive', user);
     expect(app.client.updateTopic).toHaveBeenLastCalledWith(id(1), { state: 'open' });
     await user.click(screen.getByRole('checkbox', { name: 'Archived' }));
     expect(titles()).toEqual(['Proposals rates', 'Other']);
@@ -271,12 +288,12 @@ describe('a Topic (TOPIC-1)', () => {
     const app = openApp([topic(1, { title: 'Proposals rates', members: [member(SESSION), member(PR_MEMBER)] })]);
     const user = await openTopics();
     await user.click(header('Proposals rates'));
-    await user.click(within(item('Proposals rates')).getByRole('button', { name: 'Delete' }));
+    await pickMore(item('Proposals rates'), 'delete', user);
     const dialog = screen.getByRole('dialog', { name: 'Delete “Proposals rates”?' });
     expect(dialog).toHaveTextContent('No Session, PR, Task or Output is changed, closed or deleted.');
     await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
     expect(app.client.deleteTopic).not.toHaveBeenCalled();
-    await user.click(within(item('Proposals rates')).getByRole('button', { name: 'Delete' }));
+    await pickMore(item('Proposals rates'), 'delete', user);
     await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete Topic' }));
     expect(app.client.deleteTopic).toHaveBeenCalledWith(id(1));
     expect(app.client.removeMember).not.toHaveBeenCalled();
@@ -306,7 +323,7 @@ describe('members (TOPIC-2)', () => {
     await user.keyboard('w');
     const option = screen.getByTestId('work-panel').querySelector<HTMLElement>(`[data-task="${LIGHT.id}"]`)!;
     fireEvent.click(option);
-    await pressRowAction(user, option.querySelector<HTMLElement>('[data-action="add-to-topic"]')!);
+    await pickMore(option, 'add-to-topic', user);
     return screen.getByRole('dialog', { name: 'Add to Topic' });
   }
 
@@ -354,13 +371,13 @@ describe('members (TOPIC-2)', () => {
     await user.keyboard('h');
     const result = await within(screen.getByTestId('history-panel')).findByText('spec the rates', { selector: '[data-field="title"]' });
     await user.click(result);
-    await pressRowAction(user, result.closest<HTMLElement>('[role="option"]')!.querySelector<HTMLElement>('[data-action="add-to-topic"]')!);
+    await pickMore(result.closest<HTMLElement>('[role="option"]')!, 'add-to-topic', user);
     await user.click(within(screen.getByRole('dialog')).getByRole('option', { name: 'Rates' }));
     expect(app.client.addMember).toHaveBeenCalledWith(id(1), { kind: 'session', ref: { harness: 'codex', sessionId: 'past-one' }, snapshot: { harness: 'codex', title: 'spec the rates', directory: '~/Projects/work' } });
     await user.keyboard('l');
     const out = await within(screen.getByTestId('library-panel')).findByText('Rates doc');
     await user.click(out);
-    await pressRowAction(user, out.closest<HTMLElement>('[role="option"]')!.querySelector<HTMLElement>('[data-action="add-to-topic"]')!);
+    await pickMore(out.closest<HTMLElement>('[role="option"]')!, 'add-to-topic', user);
     await user.click(within(screen.getByRole('dialog')).getByRole('option', { name: /Rates/ }));
     // Both of its Sessions, the pruned one too: a member keeps its snapshot (TOPIC-4.2).
     expect(app.client.addMember).toHaveBeenCalledWith(id(1), { kind: 'session', ref: { harness: 'codex', sessionId: 'gone-one' }, snapshot: { harness: 'codex', title: 'spec the rates', directory: '~/Projects/work' } });
@@ -623,12 +640,12 @@ describe('recommendations (TOPIC-9)', () => {
     await user.keyboard('w');
     const option = () => screen.getByTestId('work-panel').querySelector<HTMLElement>(`[data-task="${LIGHT.id}"]`)!;
     fireEvent.click(option());
-    await pressRowAction(user, option().querySelector<HTMLElement>('[data-action="add-to-topic"]')!);
+    await pickMore(option(), 'add-to-topic', user);
     expect(within(screen.getByRole('dialog')).queryByRole('option', { name: /Ask Jev/ })).toBeNull();
     await user.keyboard('{Escape}');
     app.snapshot([row({ id: 'alpha' }), row({ id: SESSION_ID, title: 'rates-port', status: 'needs-you' })], { state: 'ok' }, settings({ recommendWithJev: true }));
     app.emit({ type: 'usage', usage: usage() });
-    await pressRowAction(user, option().querySelector<HTMLElement>('[data-action="add-to-topic"]')!);
+    await pickMore(option(), 'add-to-topic', user);
     await user.click(within(screen.getByRole('dialog')).getByRole('option', { name: /Ask Jev which Topic/ }));
     expect(app.client.recommend).toHaveBeenCalledWith({ action: 'judge-again', member: TASK_MEMBER });
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
@@ -644,7 +661,7 @@ describe('Edges (TOPIC-6)', () => {
     const app = openApp([topic(1, { title: 'Rates table' }), topic(2, { title: 'Proposals v2' }), topic(3, { title: 'CRM backlog' }), topic(4, { title: 'Old one', state: 'archived' })]);
     const user = await openTopics();
     await user.click(header('Rates table'));
-    await user.click(within(item('Rates table')).getByRole('button', { name: 'Link to Topic…' }));
+    await pickMore(item('Rates table'), 'link', user);
     const dialog = screen.getByRole('dialog', { name: 'Link to Topic' });
     expect(within(dialog).getAllByRole('option').map((o) => o.textContent)).toEqual(['Proposals v2', 'CRM backlog']);
     await user.click(within(dialog).getByRole('option', { name: 'Proposals v2' }));
@@ -656,7 +673,7 @@ describe('Edges (TOPIC-6)', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     // Again, from the other end: already linked, whichever way it goes; nothing is sent.
     await user.click(header('Proposals v2'));
-    await user.click(within(item('Proposals v2')).getByRole('button', { name: 'Link to Topic…' }));
+    await pickMore(item('Proposals v2'), 'link', user);
     const again = screen.getByRole('dialog', { name: 'Link to Topic' });
     expect(within(again).getByRole('option', { name: /Rates table/ })).toHaveTextContent('linked');
     await user.click(within(again).getByRole('option', { name: /Rates table/ }));

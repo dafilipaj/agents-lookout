@@ -1,13 +1,14 @@
 import { LAUNCH_TIMEOUT_MS } from '@shared/defaults.ts';
 import type { SessionRow, Status } from '@shared/types.ts';
 import type { ColumnMark, PrSection, TaskSection, WorkPr, WorkSessionLink, WorkSnapshot, WorkTask } from '@shared/work.ts';
-import { CircleCheck, CircleDashed, CircleQuestionMark, CircleX, ExternalLink, GitPullRequest, GitPullRequestDraft, History, LoaderCircle, Milestone, Play, TriangleAlert } from 'lucide-react';
+import { CircleCheck, CircleDashed, CircleQuestionMark, CircleX, ExternalLink, FileText, GitPullRequest, GitPullRequestDraft, History, LoaderCircle, Milestone, Play, TriangleAlert } from 'lucide-react';
 import { type FocusEvent, type KeyboardEvent, type MouseEvent, type ReactNode, type Ref, type RefObject, createContext, useCallback, useContext, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Avatar } from '@/components/ui/avatar';
 import { Chip } from '@/components/ui/chip';
 import { CommandBlock } from '@/components/ui/command-block';
-import { RowAction, RowActions, RowSettling, useRowSettle } from '@/components/ui/icon-button';
+import { RowAction, RowSettling, useRowSettle } from '@/components/ui/icon-button';
+import { RowActions, type RowMenuGroup, type RowMenuItem } from '@/components/ui/row-actions';
 import { Loading } from '@/components/ui/loading';
 import { SessionMarker } from '@/components/ui/session-marker';
 import { type PanelNav, WORK_FILTERS, WORK_FILTER_LABEL, type WorkFilter } from '@/lib/right-sidebar';
@@ -44,10 +45,10 @@ import {
 } from '@/lib/work';
 import { HarnessIcon } from './HarnessIcon';
 import { TaskStatusDot } from './TaskStatusDot';
-import { AddToTopicAction, TopicChips } from './TopicLinks';
-import { PrSpecsAction } from './PrSpecs';
+import { TopicChips } from './TopicLinks';
+import { PrSpecsList } from './PrSpecs';
 import { PrSpecsContext, useNoCloneReason, type PrSpecsApi } from '@/lib/pr-specs';
-import { useTopics } from '@/lib/topics';
+import { useAddToTopicItem, useTopics } from '@/lib/topics';
 
 export interface WorkPanelProps {
   work: WorkSnapshot | null;
@@ -145,10 +146,14 @@ export function WorkPanel({ work, sessions, filter, onFilter, now, focusKey, onS
   const open = expanded !== null && rows.some((r) => r.key === expanded) ? expanded : null;
   if (open !== expanded) setExpanded(null);
   const sessionsAvailable = work?.sessionLinks.state === 'ok';
-  // PLAIN-5.1: the PR row whose Specs list is open; it closes with its row.
+  // DS-16: the row whose "More" is open, and PLAIN-5.1: whether its Specs submenu is; both close with the row.
   const clones = usePrClones(specs, open);
+  const [menuFor, setMenuFor] = useState<string | null>(null);
   const [specsFor, setSpecsFor] = useState<string | null>(null);
-  const specsOpen = specsFor !== null && specsFor === open ? specsFor : null;
+  const menuOpen = menuFor !== null && menuFor === open ? menuFor : null;
+  const specsOpen = specsFor !== null && specsFor === menuOpen ? specsFor : null;
+  if (menuFor !== menuOpen) setMenuFor(menuOpen);
+  if (specsFor !== specsOpen) setSpecsFor(specsOpen);
   // WORK-2.10: the row whose Resume runs ("Resuming…") and its Session, and a failed open, under that
   // row's buttons. It says so until the Session is live in the Session list; a resume that answered
   // but isn't live LAUNCH-4.5's 15 s later has failed, and its "Starting…" row says why.
@@ -293,10 +298,11 @@ export function WorkPanel({ work, sessions, filter, onFilter, now, focusKey, onS
       e.preventDefault();
       if (!e.repeat) start(row);
     } else if (letter === 's' && row?.kind === 'pr' && specs && clones?.has(row.pr.repo.toLowerCase())) {
-      // PLAIN-5.1: S opens the selected PR's Specs, expanding it, as the button does.
+      // PLAIN-5.1: S opens the selected PR's "More" with its Specs open, expanding it.
       e.preventDefault();
       if (!e.repeat) {
         if (open !== row.key) expand(row.key);
+        setMenuFor(row.key);
         setSpecsFor(row.key);
       }
     } else if (letter === 'a' && row && topics) {
@@ -318,6 +324,11 @@ export function WorkPanel({ work, sessions, filter, onFilter, now, focusKey, onS
     },
     onAct: act,
     onSession: openSession,
+    menuOpen,
+    onMenu: (row, next) => {
+      setMenuFor(next ? row.key : null);
+      if (!next) setSpecsFor(null);
+    },
     specsOpen,
     onSpecs: (row, next) => setSpecsFor(next ? row.key : null),
   };
@@ -427,7 +438,10 @@ interface RowState {
   onRow(row: WorkRow, e: MouseEvent): void;
   onAct(row: WorkRow, action: RowActionKind): void;
   onSession(row: WorkRow, session: WorkSessionLink): void;
-  /** PLAIN-5.1: the row whose Specs list is open, and opening or closing it. */
+  /** DS-16: the row whose "More" is open, and opening or closing it. */
+  menuOpen: string | null;
+  onMenu(row: WorkRow, open: boolean): void;
+  /** PLAIN-5.1: the row whose Specs submenu is open, and opening or closing it. */
   specsOpen: string | null;
   onSpecs(row: WorkRow, open: boolean): void;
 }
@@ -725,8 +739,8 @@ interface DetailsProps {
   state: RowState;
   /** The row's own lines, before the chips. */
   children?: ReactNode;
-  /** Buttons of its own kind, after the row's (PLAIN-5.1's "Specs"), before "Add to Topic". */
-  extra?: ReactNode;
+  /** An action of its own kind under "More", after the row's (PLAIN-5.1's "Specs"), before "Add to Topic". */
+  extra?: RowMenuItem | null;
 }
 
 /**
@@ -736,6 +750,8 @@ interface DetailsProps {
  */
 function Details({ id, row, actions, sessions, state, children, extra }: DetailsProps) {
   const resuming = state.resuming === row.key;
+  const addToTopic = useAddToTopicItem(rowMembers(row), rowLabel(row));
+  const [first, ...rest] = actions;
   const failure = state.failure?.key === row.key ? state.failure.message : null;
   return (
     <RowSettling.Provider value={state.settling}>
@@ -747,30 +763,49 @@ function Details({ id, row, actions, sessions, state, children, extra }: Details
           </DetailLine>
         )}
         <TopicChips members={rowMembers(row)} labelClass="w-14" />
-        <RowActions>
-          {actions.map((action) => {
-            const { label, tip } = actionLabel(action, row);
-            const icon = action.kind === 'open' ? <ExternalLink /> : action.kind === 'session' && !action.session.live ? <History /> : <Play />;
-            return (
-              <RowAction
-                key={action.kind}
-                data-action={action.kind === 'session' ? (action.session.live ? 'open-session' : 'resume') : action.kind}
-                label={resuming && action.kind === 'session' ? 'Resuming…' : label}
-                icon={icon}
-                tip={tip}
-                enabled={state.resuming === null}
-                onPress={() => state.onAct(row, action)}
-              />
-            );
-          })}
-          {extra}
-          <AddToTopicAction members={rowMembers(row)} label={rowLabel(row)} />
-        </RowActions>
+        <RowActions
+          name={rowLabel(row)}
+          primary={
+            first === undefined
+              ? null
+              : {
+              'data-action': actionId(first),
+              label: resuming && first.kind === 'session' ? 'Resuming…' : actionLabel(first, row).label,
+              icon: actionIcon(first),
+              tip: actionLabel(first, row).tip,
+              enabled: state.resuming === null,
+              onPress: () => state.onAct(row, first),
+            }
+          }
+          more={[
+            ...rest.map(
+              (action): RowMenuItem => ({
+                id: actionId(action),
+                label: actionLabel(action, row).label,
+                icon: actionIcon(action),
+                group: ACTION_GROUP[action.kind],
+                shortcut: ACTION_KEY[action.kind],
+                enabled: state.resuming === null,
+                onSelect: () => state.onAct(row, action),
+              }),
+            ),
+            extra,
+            addToTopic,
+          ]}
+          open={state.menuOpen === row.key}
+          onOpenChange={(next) => state.onMenu(row, next)}
+        />
       </div>
       {failure && <Alert title={failure} className="mt-1" />}
     </RowSettling.Provider>
   );
 }
+
+/** DS-16.2: where a Work action goes under "More", and its key (WORK-6.4, WORK-5.1, WORK-5.2). */
+const ACTION_GROUP: Record<RowActionKind['kind'], RowMenuGroup> = { session: 'run', start: 'run', review: 'run', open: 'open' };
+const ACTION_KEY: Record<RowActionKind['kind'], string | undefined> = { session: undefined, start: 'S', review: 'R', open: 'O' };
+const actionId = (action: RowActionKind) => (action.kind === 'session' ? (action.session.live ? 'open-session' : 'resume') : action.kind);
+const actionIcon = (action: RowActionKind) => (action.kind === 'open' ? <ExternalLink /> : action.kind === 'session' && !action.session.live ? <History /> : <Play />);
 
 /** One labelled line of an expanded row: "PRs", "Sessions". */
 function DetailLine({ label, field, children }: { label: string; field: string; children: ReactNode }) {
@@ -981,6 +1016,18 @@ function PrRow({ row, group, pr, now, active, state }: PrRowProps) {
   const sessions = state.sessionsAvailable ? (pr.links?.sessions ?? []) : [];
   // PLAIN-5.4: a PR without a local clone has no "Specs"; its tooltip says why.
   const noClone = useNoCloneReason(pr.repo);
+  const specs = useContext(PrSpecsContext);
+  const specsItem: RowMenuItem | null =
+    specs?.api && specs.clones?.has(pr.repo.toLowerCase())
+      ? {
+          id: 'specs',
+          label: 'Specs',
+          icon: <FileText />,
+          group: 'open',
+          shortcut: 'S',
+          submenu: { label: `Specs in ${pr.repo} #${pr.number}`, content: <PrSpecsList pr={pr} />, open: state.specsOpen === row.key, onOpenChange: (next) => state.onSpecs(row, next) },
+        }
+      : null;
   const tip = [pr.links?.incomplete ? 'Links may be incomplete' : null, noClone].filter(Boolean).join('\n');
   return (
     <div
@@ -1043,7 +1090,7 @@ function PrRow({ row, group, pr, now, active, state }: PrRowProps) {
             ))}
           </div>
         )}
-        {expanded && <Details id={`${id}-details`} row={row} actions={actions} sessions={sessions} state={state} extra={<PrSpecsAction pr={pr} open={state.specsOpen === row.key} onOpenChange={(next) => state.onSpecs(row, next)} />} />}
+        {expanded && <Details id={`${id}-details`} row={row} actions={actions} sessions={sessions} state={state} extra={specsItem} />}
       </div>
     </div>
   );

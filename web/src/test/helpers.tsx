@@ -1,7 +1,7 @@
 import type { PathAnswer } from '@shared/files.ts';
 import { type Settings, type SettingsView, defaultSettings } from '@shared/settings.ts';
 import type { ChatPage, FleetHealth, HarnessOption, HistoryDetail, HistoryPage, HistoryPeek, LaunchRequest, LaunchView, ResumeResult, ServerEvent, SessionRow } from '@shared/types.ts';
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { UserEvent } from '@testing-library/user-event';
 import { expect, vi } from 'vitest';
 import { App } from '@/App';
@@ -420,4 +420,50 @@ export function sizeBoxByText(pre: Element, fits: string[]) {
   Object.defineProperty(pre, 'clientHeight', { configurable: true, get: () => 300 });
   Object.defineProperty(pre, 'scrollWidth', { configurable: true, get: () => 100 });
   Object.defineProperty(pre, 'clientWidth', { configurable: true, get: () => 300 });
+}
+
+/** DS-16: the open "More" menu of an expanded row, or null. */
+export const rowMenu = () => document.querySelector<HTMLElement>('[data-slot="row-menu"]');
+
+/** DS-16: opens an expanded row's "More" with a real click, and gives back its menu. */
+export async function openMore(row: HTMLElement, user: UserEvent): Promise<HTMLElement> {
+  const more = row.querySelector<HTMLElement>('[data-field="actions"] [data-action="more"]');
+  if (!more) throw new Error('the row has no More');
+  // A row a click just expanded holds its buttons back a moment (ROW_SETTLE_MS).
+  await waitFor(() => expect(more).not.toHaveAttribute('aria-disabled'));
+  await user.click(more);
+  return waitFor(() => {
+    const menu = rowMenu();
+    if (!menu) throw new Error('More did not open');
+    return menu;
+  });
+}
+
+/** DS-16: picks the action `data-action` from an expanded row's "More". */
+export async function pickMore(row: HTMLElement, action: string, user: UserEvent): Promise<void> {
+  const menu = await openMore(row, user);
+  const item = menu.querySelector<HTMLElement>(`[data-action="${action}"]`);
+  if (!item) throw new Error(`More has no ${action}: ${[...menu.querySelectorAll('[data-action]')].map((i) => i.getAttribute('data-action')).join(', ')}`);
+  await user.click(item);
+}
+
+/** DS-16: an expanded row's actions in order, the labelled one first, then More's items, by their words. */
+export async function rowActionWords(row: HTMLElement, user: UserEvent): Promise<string[]> {
+  const primary = row.querySelector<HTMLElement>('[data-field="actions"] [data-slot="row-action"]:not([data-action="more"])');
+  const first = primary ? [primary.querySelector('span')?.textContent ?? ''] : [];
+  if (!row.querySelector('[data-field="actions"] [data-action="more"]')) return first;
+  const menu = await openMore(row, user);
+  const rest = [...menu.querySelectorAll<HTMLElement>('[role="menuitem"]')].map((i) => i.querySelector('span')?.textContent ?? '');
+  await user.keyboard('{Escape}');
+  return [...first, ...rest];
+}
+
+/** DS-16: picks from an expanded row's "More" with plain events, for a test on fake timers. */
+export function pickMoreNow(row: HTMLElement, action: string): void {
+  const more = row.querySelector<HTMLElement>('[data-field="actions"] [data-action="more"]');
+  if (!more) throw new Error('the row has no More');
+  fireEvent.click(more, { detail: 1 });
+  const item = rowMenu()?.querySelector<HTMLElement>(`[data-action="${action}"]`);
+  if (!item) throw new Error(`More has no ${action}`);
+  fireEvent.click(item);
 }

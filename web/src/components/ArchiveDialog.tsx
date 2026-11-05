@@ -33,6 +33,7 @@ export function ArchiveDialog({
   open,
   onOpenChange,
   archive,
+  onCloseAutoFocus,
 }: {
   topic: Topic;
   topics: readonly Topic[];
@@ -40,13 +41,15 @@ export function ArchiveDialog({
   open: boolean;
   onOpenChange(open: boolean): void;
   archive(patch: ArchivePatch): Promise<unknown>;
+  /** Where focus goes when it closes: it has no trigger of its own to give focus back to. */
+  onCloseAutoFocus?(e: Event): void;
 }) {
   // While the archive is sent, Esc doesn't close it, so a refusal still shows (as Delete's dialog does).
   const [busy, setBusy] = useState(false);
   return (
     <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
       {open && (
-        <DialogContent className="gap-3 p-4 sm:max-w-md" showCloseButton={false} data-field="archive-dialog">
+        <DialogContent className="gap-3 p-4 sm:max-w-md" showCloseButton={false} data-field="archive-dialog" onCloseAutoFocus={onCloseAutoFocus}>
           <ArchiveBody topic={topic} topics={topics} looksDone={looksDone} onClose={() => onOpenChange(false)} archive={archive} busy={busy} setBusy={setBusy} />
         </DialogContent>
       )}

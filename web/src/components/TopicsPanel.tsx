@@ -159,6 +159,9 @@ export function TopicsPanel(props: TopicsPanelProps) {
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (!keyboardEnabled || e.nativeEvent.isComposing || e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
+    // A key in a dialog or menu a Topic opened (portaled, so outside the panel) reaches here through
+    // React's tree; it's that dialog's, never the list's (Esc there cancels it, not collapses the Topic).
+    if (!(e.target instanceof Node) || !rootRef.current?.contains(e.target)) return;
     const text = isTextField(e.target);
     const topic = shown.find((t) => t.id === current);
     const letter = e.shiftKey ? null : e.key.toLowerCase();

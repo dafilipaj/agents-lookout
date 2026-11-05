@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { REFRESH_FAILED, REFRESH_NOT_WATCHED, SaveError } from '@/lib/client';
 import { initialState, reducer } from '@/lib/store';
 import { ageLevel } from '@/lib/work';
-import { launchView, pressRowAction, renderApp, row, rowEl, settings } from '@/test/helpers';
+import { launchView, openMore, pickMore, pressRowAction, renderApp, row, rowActionWords, rowEl, settings } from '@/test/helpers';
 
 /** Synthetic PRs only: invented repos, numbers and titles. */
 const pr = (over: Partial<WorkPr> & { repo: string; number: number }): WorkPr => ({
@@ -1159,7 +1159,7 @@ describe('Tasks (WORK-2)', () => {
     expect(bare.querySelector('[data-field="description"]')).toBeNull();
     expect(bare.querySelector('[data-field="detail-prs"]')).toBeNull();
     expect(bare.querySelector('[data-field="session-chips"]')).toBeNull();
-    expect([...bare.querySelectorAll('[data-field="actions"] [data-action]')].map((b) => b.textContent)).toEqual(['Start Session', 'Open in Fantastic', 'Add to Topic']);
+    expect(await rowActionWords(bare, userEvent.setup())).toEqual(['Start Session', 'Open in Fantastic', 'Add to Topic']);
   });
 
   it('WORK-2.10 (support), WORK-3.6 (support): the buttons, in order: Open Session for a live Linked Session, else Resume, then Start Session or Review, then Open in Fantastic or Open on GitHub', async () => {
@@ -1168,14 +1168,23 @@ describe('Tasks (WORK-2)', () => {
     const pastTask = task({ ...BELLS, links: { prs: [], sessions: [session({ sessionId: 'past-old', modifiedAt: 1 }), session({ sessionId: 'past-new', modifiedAt: 3 })], incomplete: false } });
     const reviewed = pr({ ...REVIEW, links: { tasks: [], sessions: [session({ sessionId: 'past-review', reason: 'started on this PR' })], incomplete: false } });
     openApp('/s/alpha', withTasks({ tasks: [liveTask, pastTask] }, { mine: [DRAFT], reviewRequests: [reviewed] }));
-    await userEvent.setup().keyboard('w');
-    const words = (el: HTMLElement) => [...expandRow(el).querySelectorAll('[data-field="actions"] [data-action]')].map((b) => `${b.getAttribute('data-action')}:${b.textContent}:${b.getAttribute('title')}`);
+    const user = userEvent.setup();
+    await user.keyboard('w');
+    // DS-16: the first is the labelled button (its tooltip names its key); the rest are under More, each with its key.
+    const words = async (el: HTMLElement) => {
+      const row = expandRow(el);
+      const first = row.querySelector<HTMLElement>('[data-field="actions"] [data-slot="row-action"]:not([data-action="more"])')!;
+      const menu = await openMore(row, user);
+      const rest = [...menu.querySelectorAll<HTMLElement>('[role="menuitem"]')].map((i) => `${i.getAttribute('data-action')}:${i.querySelector('span')!.textContent}:${i.querySelector('kbd')?.textContent ?? ''}`);
+      await user.keyboard('{Escape}');
+      return [`${first.getAttribute('data-action')}:${first.querySelector('span')!.textContent}:${first.getAttribute('title')}`, ...rest];
+    };
     // TOPIC-2.1: Add to Topic comes last, on every row.
-    const add = 'add-to-topic:Add to Topic:Add to Topic (A)';
-    expect(words(taskOption(LIGHT.id))).toEqual(['open-session:Open Session:Open Session', 'start:Start Session:Start Session (S)', 'open:Open in Fantastic:Open in Fantastic (O)', add]);
-    expect(words(taskOption(BELLS.id))).toEqual(['resume:Resume:Resume', 'start:Start Session:Start Session (S)', 'open:Open in Fantastic:Open in Fantastic (O)', add]);
-    expect(words(option('anvil#2101'))).toEqual(['open:Open on GitHub:Open on GitHub (O)', add]);
-    expect(words(option('willow#2106'))).toEqual(['resume:Resume:Resume', 'review:Review:Review (R)', 'open:Open on GitHub:Open on GitHub (O)', add]);
+    const add = 'add-to-topic:Add to Topic:A';
+    expect(await words(taskOption(LIGHT.id))).toEqual(['open-session:Open Session:Open Session', 'start:Start Session:S', 'open:Open in Fantastic:O', add]);
+    expect(await words(taskOption(BELLS.id))).toEqual(['resume:Resume:Resume', 'start:Start Session:S', 'open:Open in Fantastic:O', add]);
+    expect(await words(option('anvil#2101'))).toEqual(['open:Open on GitHub:Open on GitHub (O)', add]);
+    expect(await words(option('willow#2106'))).toEqual(['resume:Resume:Resume', 'review:Review:R', 'open:Open on GitHub:O', add]);
   });
 
   it('WORK-3.6 (support): an expanded PR keeps its repo, number, chip, CI, age and Linked Task, the source its hover, and adds its Linked Sessions as chips; a Review request has no chip', async () => {
@@ -1192,7 +1201,7 @@ describe('Tasks (WORK-2)', () => {
     expect(row.querySelector('[data-field="linked-task"]')).toHaveAttribute('title', 'PR body');
     // Live first, then the latest past one (WORK-2.4's order).
     expect([...row.querySelectorAll('[data-field="session-chips"] [data-action="session"]')].map((c) => c.getAttribute('aria-label'))).toEqual(['Open review-anvil, Idle', 'Resume anvil-opener, past']);
-    expect([...row.querySelectorAll('[data-field="actions"] [data-action]')].map((b) => b.textContent)).toEqual(['Open Session', 'Open on GitHub', 'Add to Topic']);
+    expect(await rowActionWords(row, userEvent.setup())).toEqual(['Open Session', 'Open on GitHub', 'Add to Topic']);
     expect(expandRow(option('willow#2106')).querySelector('[data-field="chip"]')).toBeNull();
   });
 
@@ -1680,20 +1689,28 @@ describe('actions (WORK-5, WORK-6)', () => {
     await user.keyboard('w');
     // Collapsed: no buttons at all.
     for (const o of options()) expect(o.querySelectorAll('[data-action], [role="button"]')).toHaveLength(0);
-    const buttons = options().map((o) => expandRow(o).querySelector<HTMLElement>('[data-field="actions"] [data-action="open"]')!);
-    expect(buttons).toHaveLength(6);
-    expect(buttons.map((b) => b.textContent)).toEqual(['Open in Fantastic', 'Open in Fantastic', 'Open on GitHub', 'Open on GitHub', 'Open on GitHub', 'Open on GitHub']);
-    expect(buttons.map((b) => b.getAttribute('title'))).toEqual([
-      'Open in Fantastic (O)',
-      'Open in Fantastic (O)',
-      'Open on GitHub (O)',
-      'Open on GitHub (O)',
-      'Open on GitHub (O)',
-      'Open on GitHub (O)',
+    // DS-16: the labelled button when it's the row's first action, else under More; either way with its key, O.
+    const opens: string[] = [];
+    for (const o of options()) {
+      const labelled = expandRow(o).querySelector<HTMLElement>('[data-field="actions"] [data-action="open"]');
+      if (labelled) opens.push(`${labelled.querySelector('span')!.textContent} labelled ${labelled.getAttribute('title')}`);
+      else {
+        const item = (await openMore(o, user)).querySelector<HTMLElement>('[data-action="open"]')!;
+        opens.push(`${item.querySelector('span')!.textContent} under More (${item.querySelector('kbd')!.textContent})`);
+        await user.keyboard('{Escape}');
+      }
+    }
+    expect(opens).toEqual([
+      'Open in Fantastic under More (O)',
+      'Open in Fantastic under More (O)',
+      'Open on GitHub labelled Open on GitHub (O)',
+      'Open on GitHub labelled Open on GitHub (O)',
+      'Open on GitHub labelled Open on GitHub (O)',
+      'Open on GitHub under More (O)',
     ]);
-    await user.click(buttons[5]!);
+    await pickMore(options()[5]!, 'open', user);
     expect(opened).toEqual([[REVIEW.url, '_blank', 'noopener,noreferrer']]);
-    await user.click(expandRow(taskOption('41000102')).querySelector<HTMLElement>('[data-field="actions"] [data-action="open"]')!);
+    await pickMore(expandRow(taskOption('41000102')), 'open', user);
     expect(opened.at(-1)).toEqual([BELLS.url, '_blank', 'noopener,noreferrer']);
     expect(selectedRow()).toBe('41000102');
     expect(screen.queryByRole('dialog')).toBeNull();
@@ -1704,7 +1721,7 @@ describe('actions (WORK-5, WORK-6)', () => {
     const user = userEvent.setup();
     openApp('/', withTasks());
     await user.keyboard('w');
-    await user.click(taskButton('41000101', 'open')!);
+    await pickMore(expandRow(taskOption('41000101')), 'open', user);
     expect(opened).toEqual([['https://app.fantastic.productive.io/109-productive/tasks/41000101', '_blank', 'noopener,noreferrer']]);
     expect(opened[0]![0]).not.toMatch(/app\.productive\.io/);
   });
@@ -2165,8 +2182,10 @@ describe('Work on the design system', () => {
   it("WORK-6.5 (support), DS-7.1: an expanded row's buttons, which can't be focusable inside an option, are a word beside a 20 px icon in the labelled size, its word its name", async () => {
     openApp('/', withTasks({ tasks: [LIGHT] }, { mine: [DRAFT], reviewRequests: [REVIEW] }));
     await userEvent.setup().keyboard('w');
-    const words = ['Start Session', 'Open in Fantastic', 'Open on GitHub', 'Review'];
-    [taskButton(LIGHT.id, 'start'), taskButton(LIGHT.id, 'open'), rowButton('anvil#2101', 'open'), rowButton('willow#2106', 'review')].forEach((button, i) => {
+    // DS-16: each row's labelled button, and its More.
+    const words = ['Start Session', 'More', 'Open on GitHub', 'More', 'Review', 'More'];
+    const more = (row: HTMLElement) => row.querySelector<HTMLElement>('[data-field="actions"] [data-action="more"]');
+    [taskButton(LIGHT.id, 'start'), more(taskOption(LIGHT.id)), rowButton('anvil#2101', 'open'), more(option('anvil#2101')), rowButton('willow#2106', 'review'), more(option('willow#2106'))].forEach((button, i) => {
       expect(button!.tagName.toLowerCase()).toBe('span');
       expect(button).toHaveAttribute('role', 'button');
       expect(button).not.toHaveAttribute('tabindex');

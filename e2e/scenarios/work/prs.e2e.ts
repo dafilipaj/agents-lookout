@@ -3,6 +3,7 @@ import { TB_PR_INSTALL_COMMAND } from '../../../shared/defaults.ts';
 import { PR_REASON } from '../../../server/work.ts';
 import type { TbPrBoardDecl } from '../../world/builder.ts';
 import { expect, scenario, world } from '../../world/index.ts';
+import { actionWords } from './row-menu.ts';
 
 /**
  * WORK's PRs (slice B): the Work tab against the fake tb-pr (TEST-1.5). Invented repos, numbers and
@@ -149,14 +150,14 @@ scenario(
     await expect(mine.locator('[data-field="age"]')).toHaveText('1d');
     await expect(mine.locator('[data-field="ci"]')).toHaveAttribute('data-ci', 'passing');
     await expect(mine.locator('[data-field="chip"]')).toHaveText('draft');
-    expect(await mine.locator('[data-field="actions"] [role="button"]').allTextContents()).toEqual(['Open on GitHub', 'Add to Topic']);
+    expect(await actionWords(page, mine)).toEqual(['Open on GitHub', 'Add to Topic']);
     // The name stays the row's content; the details are its description.
     await expect(mine).toHaveAccessibleName(NAME.fresh);
     const review = prRow(page, NAME.review);
     await expand(review);
     await expect(mine).toHaveAttribute('aria-expanded', 'false');
     await expect(review.locator('[data-field="chip"]')).toHaveCount(0);
-    expect(await review.locator('[data-field="actions"] [role="button"]').allTextContents()).toEqual(['Review', 'Open on GitHub', 'Add to Topic']);
+    expect(await actionWords(page, review)).toEqual(['Review', 'Open on GitHub', 'Add to Topic']);
     // Enter on the expanded Review request runs its first button, Review.
     await page.keyboard.press('Enter');
     await expectReviewLauncher(page);

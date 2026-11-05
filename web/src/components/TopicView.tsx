@@ -11,6 +11,7 @@ import { CommandBlock } from '@/components/ui/command-block';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { IconButton, labelledButtonLook } from '@/components/ui/icon-button';
+import { RowActions } from '@/components/ui/row-actions';
 import { Loading } from '@/components/ui/loading';
 import { SessionMarker } from '@/components/ui/session-marker';
 import { Tabs } from '@/components/ui/tabs';
@@ -724,7 +725,7 @@ export function TopicActions({
   looksDone,
 }: {
   topic: Topic;
-  /** `header`: the view's header buttons; `row`: the tab's labelled buttons. */
+  /** `header`: the view's header buttons; `row`: the tab's expanded row, Open and "More" (DS-16). */
   look: 'header' | 'row';
   onOpen?(): void;
   /** TOPIC-10.2: "Start Session" goes first (TOPIC-5.1). */
@@ -742,24 +743,86 @@ export function TopicActions({
   const [confirming, setConfirming] = useState(false);
   const [archiving, setArchiving] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const button = (action: string, onClick: (e: MouseEvent<HTMLButtonElement>) => void, children: ReactNode) =>
-    look === 'header' ? (
-      <Button key={action} variant="outline" size="sm" className="h-7" data-action={action} onClick={onClick}>
-        {children}
-      </Button>
-    ) : (
-      <button key={action} type="button" className={labelledButtonLook()} data-action={action} onClick={onClick}>
-        {children}
-      </button>
-    );
+  // Archive's and Delete's dialogs have no trigger, so closing one gives focus back to what had it
+  // when it opened: the header's button, or the tab's "More" (DS-16.3).
+  const [returnTo, setReturnTo] = useState<Element | null>(null);
+  const ask = (open: (yes: boolean) => void) => {
+    setReturnTo(document.activeElement);
+    open(true);
+  };
+  const giveBack = (e: Event) => {
+    const el = returnTo;
+    if (el instanceof HTMLElement && el.isConnected && el !== document.body) {
+      e.preventDefault();
+      el.focus();
+    }
+  };
+  const button = (action: string, onClick: (e: MouseEvent<HTMLButtonElement>) => void, children: ReactNode) => (
+    <Button key={action} variant="outline" size="sm" className="h-7" data-action={action} onClick={onClick}>
+      {children}
+    </Button>
+  );
   // TOPIC-1.6: Archive asks how it ended; Unarchive doesn't ask.
   const archive = () => {
     onProblem(null);
-    if (topic.state === 'open') return setArchiving(true);
+    if (topic.state === 'open') return ask(setArchiving);
     updateTopic(topic.id, { state: 'open' }).catch((err: unknown) => onProblem(message(err, "Couldn't change it.")));
   };
+  const dialogs = (
+    <>
+      <ArchiveDialog topic={topic} topics={topics} looksDone={looksDone} open={archiving} onOpenChange={setArchiving} archive={(patch) => updateTopic(topic.id, patch)} onCloseAutoFocus={giveBack} />
+      <Dialog open={confirming} onOpenChange={(next) => !deleting && setConfirming(next)}>
+        <DialogContent className="sm:max-w-md" showCloseButton={false} onCloseAutoFocus={giveBack}>
+          <DialogTitle className="text-title">Delete “{topic.title}”?</DialogTitle>
+          <DialogDescription className="text-body leading-5">Its notes and the list of what's in it go. No Session, PR, Task or Output is changed, closed or deleted.</DialogDescription>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setConfirming(false)} disabled={deleting}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={deleting}
+              onClick={() => {
+                setDeleting(true);
+                onProblem(null);
+                deleteTopic(topic.id)
+                  .then(() => onDeleted?.())
+                  .catch((err: unknown) => onProblem(message(err, "Couldn't delete it.")))
+                  .finally(() => {
+                    setDeleting(false);
+                    setConfirming(false);
+                  });
+              }}
+            >
+              {deleting ? 'Deleting…' : 'Delete Topic'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+  // TOPIC-3.4, DS-16: in the tab's expanded row, Open is labelled and the rest are under More.
+  if (look === 'row')
+    return (
+      <>
+        <RowActions
+          className="mt-1"
+          focusable
+          name={topic.title}
+          primary={onOpen ? { 'data-action': 'open', label: 'Open', icon: <Maximize2 />, tip: 'Open', onPress: onOpen } : null}
+          more={[
+            { id: 'open-graph', label: 'Open graph', icon: <Network />, group: 'open', shortcut: 'G', onSelect: onOpenGraph },
+            { id: 'link', label: 'Link to Topic…', icon: <ArrowLeftRight />, group: 'topic', onSelect: () => onLinkTo(topic) },
+            { id: 'archive', label: topic.state === 'open' ? 'Archive' : 'Unarchive', icon: topic.state === 'open' ? <Archive /> : <ArchiveRestore />, group: 'manage', onSelect: archive },
+            { id: 'delete', label: 'Delete', icon: <Trash2 />, group: 'manage', destructive: true, onSelect: () => ask(setConfirming) },
+          ]}
+        />
+        {dialogs}
+      </>
+    );
   return (
-    <div className={cn('flex min-w-0 flex-wrap items-center gap-2', look === 'header' ? 'ml-auto justify-end' : 'mt-1')} data-field="actions">
+    <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2" data-field="actions">
       {onStartSession &&
         button(
           'start',
@@ -804,42 +867,13 @@ export function TopicActions({
       )}
       {button(
         'delete',
-        () => setConfirming(true),
+        () => ask(setConfirming),
         <>
           <Trash2 />
           Delete
         </>,
       )}
-      <ArchiveDialog topic={topic} topics={topics} looksDone={looksDone} open={archiving} onOpenChange={setArchiving} archive={(patch) => updateTopic(topic.id, patch)} />
-      <Dialog open={confirming} onOpenChange={(next) => !deleting && setConfirming(next)}>
-        <DialogContent className="sm:max-w-md" showCloseButton={false}>
-          <DialogTitle className="text-title">Delete “{topic.title}”?</DialogTitle>
-          <DialogDescription className="text-body leading-5">Its notes and the list of what's in it go. No Session, PR, Task or Output is changed, closed or deleted.</DialogDescription>
-          <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setConfirming(false)} disabled={deleting}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              disabled={deleting}
-              onClick={() => {
-                setDeleting(true);
-                onProblem(null);
-                deleteTopic(topic.id)
-                  .then(() => onDeleted?.())
-                  .catch((err: unknown) => onProblem(message(err, "Couldn't delete it.")))
-                  .finally(() => {
-                    setDeleting(false);
-                    setConfirming(false);
-                  });
-              }}
-            >
-              {deleting ? 'Deleting…' : 'Delete Topic'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {dialogs}
     </div>
   );
 }

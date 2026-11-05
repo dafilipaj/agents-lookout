@@ -310,6 +310,7 @@ const FAMILIES: Record<string, Family> = {
       'web/src/components/WorkPanel.tsx': { why: 'CI failing', uses: ['text-destructive'] },
       'web/src/components/SessionView.tsx': { why: 'a Stop that failed, and a failed copy', uses: ['text-destructive'] },
       'web/src/components/Markdown.tsx': { why: 'a failed copy', uses: ['text-destructive'] },
+      'web/src/components/ui/row-actions.tsx': { why: "Delete in an expanded row's More (DS-16.2)", uses: ['text-destructive-text'] },
       'web/src/components/Sidebar.tsx': { why: "the Settings button's dot: a Tool missing or behind (TOOLS-2.4)", uses: ['bg-destructive'] },
       'web/src/components/SettingsPage.tsx': { why: "the Tools link's dot, the Settings button's (TOOLS-2.4, SIDE-7.6)", uses: ['bg-destructive'] },
     },
@@ -1153,7 +1154,41 @@ describe('the labelled button size', () => {
       .flatMap(([path, text]) => twentyPx(text, path).map((s) => `${path}:${s}`));
     expect(found).toEqual([]);
     expect(twentyPx(SOURCES['web/src/components/ui/icon-button.tsx'] ?? '').length).toBeGreaterThan(0);
-    for (const path of ['web/src/components/WorkPanel.tsx', 'web/src/components/HistoryPanel.tsx']) expect(SOURCES[path], path).toMatch(/<RowAction\b/);
+    for (const path of ['web/src/components/WorkPanel.tsx', 'web/src/components/HistoryPanel.tsx']) expect(SOURCES[path], path).toMatch(/<RowActions?\b/);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// DS-16.4: an expanded row's actions only through RowActions
+
+/** Each `<RowAction>` that isn't a Session chip (`data-action="session"`), as `line:col RowAction`. */
+function loneRowActions(source: string, path = 'x.tsx'): string[] {
+  const file = parse(source, path);
+  const found: string[] = [];
+  const visit = (node: ts.Node) => {
+    if ((ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)) && node.tagName.getText() === 'RowAction') {
+      const action = node.attributes.properties.find((a): a is ts.JsxAttribute => ts.isJsxAttribute(a) && a.name.getText() === 'data-action');
+      const value = action?.initializer && ts.isStringLiteral(action.initializer) ? action.initializer.text : null;
+      if (value !== 'session') found.push(`${where(file, node.getStart())} RowAction`);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return found;
+}
+
+describe('row actions', () => {
+  it('DS-16.4: the guard catches a RowAction that is not a Session chip, however it is written', () => {
+    expect(loneRowActions(`<RowAction label="Open" />; <RowAction data-action="open">x</RowAction>; <RowAction data-action={kind} />`).map((s) => s.split(' ')[1])).toEqual(['RowAction', 'RowAction', 'RowAction']);
+    expect(loneRowActions(`<RowAction data-action="session" label={t} />; <RowActions primary={p} more={[]} name="x" />`)).toEqual([]);
+  });
+
+  it('DS-16.4: outside components/ui, a RowAction is only a Session chip; Work, History, Library and Topics draw their rows\' actions through RowActions', () => {
+    const found = Object.entries(SOURCES)
+      .filter(([path]) => /\.tsx$/.test(path) && !path.startsWith('web/src/components/ui/'))
+      .flatMap(([path, text]) => loneRowActions(text, path).map((s) => `${path}:${s}`));
+    expect(found).toEqual([]);
+    for (const path of ['WorkPanel', 'HistoryPanel', 'LibraryPanel', 'TopicView']) expect(SOURCES[`web/src/components/${path}.tsx`], path).toMatch(/<RowActions\b/);
   });
 });
 

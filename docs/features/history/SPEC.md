@@ -47,7 +47,7 @@ Once History is in Lookout, a stray click on a result resumes a past Session, wh
 - [x] HIST-3.3 The "Show" button on an expanded result that can't be resumed, because its start directory no longer exists, or Enter on it, opens it in the main pane read-only: its latest messages, and a note on why it can't be resumed. (test)
 - [ ] HIST-3.4 A resumed Session behaves like one LAUNCH started: the 15 s failure (LAUNCH-4.5), Claude Code's Trust prompt in the Starting view (LAUNCH-6) and telemetry (LAUNCH-5) apply. (manual)
 - [x] HIST-3.5 A click on a result, or Enter on a selected one that isn't expanded, selects and expands it and does nothing else: it never resumes, opens or shows a Session, and starts no process. A Session is resumed, opened or shown only by the expanded result's one button ("Resume", "Open" or "Show", by what the result is) or by Enter on the expanded result. (test)
-- [x] HIST-3.6 The button is labelled with its word and has a 20 px icon and a 28 px tall target. While a resume runs, the result stays expanded and says "Resuming…"; a failure shows under the button as an error Alert, as it does now. (manual)
+- [x] HIST-3.6 The button is labelled with its word and has a 20 px icon and a 28 px tall target; "Add to Topic" is under "More" beside it (DS-16). While a resume runs, the result stays expanded and says "Resuming…"; a failure shows under the button as an error Alert, as it does now. (manual)
 
 ## Non-goals
 
@@ -229,3 +229,4 @@ None.
 - 2026-10-30: From TOOLS-2.5: a tb-session that refuses a subcommand or flag History needs, after the 0.2 fallback (`legacy`), says "tb-session 0.1.0 is older than History needs (0.3.0)", the version from the Tools table, with the update command, instead of "tb-session failed"; only a tb-session that isn't there says it isn't installed.
 - 2026-10-30: Non-goals: tagging past Sessions stays out, and a Topic membership (TOPIC-2.1, "Add to Topic" on an expanded result) isn't one: it's a row in Lookout's own store, and the Session is untouched.
 - 2026-11-02: Design pass: HIST-1.1 amended, Esc in the empty search box leaves it for the History tab; the search box took focus as the tab opened, so the next `W`, `L`, `T` or `P` typed into it.
+- 2026-11-05: HIST-3.6 amended for DS-16: "Add to Topic" moves under "More"; the result's one labelled button is unchanged.

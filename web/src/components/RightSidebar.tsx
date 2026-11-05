@@ -76,8 +76,9 @@ export function RightSidebar({ width, onResize, tab, onTab, onClose, refresh, on
 
   const onKeyDown = (e: ReactKeyboardEvent<HTMLElement>) => {
     if (e.nativeEvent.isComposing || e.metaKey || e.ctrlKey || e.altKey) return;
-    // A panel handles its own keys.
-    if (!(e.target instanceof Element) || e.target.closest('[role="tabpanel"]')) return;
+    // A panel handles its own keys; a dialog a row opened (portaled, so outside the sidebar) its own too,
+    // though they reach here through React's tree: Esc there cancels it, never collapses the row.
+    if (!(e.target instanceof Element) || e.target.closest('[role="tabpanel"]') || !e.currentTarget.contains(e.target)) return;
     if (e.target.getAttribute('role') === 'tab' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
       e.preventDefault();
       const next = RIGHT_TABS[(RIGHT_TABS.indexOf(tab) + (e.key === 'ArrowRight' ? 1 : -1) + RIGHT_TABS.length) % RIGHT_TABS.length]!;

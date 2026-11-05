@@ -9,7 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Chip } from '@/components/ui/chip';
 import { CommandBlock } from '@/components/ui/command-block';
 import { EmptyState } from '@/components/ui/empty-state';
-import { IconButton, RowAction, RowActions, RowSettling, useRowSettle } from '@/components/ui/icon-button';
+import { IconButton, RowAction, RowSettling, useRowSettle } from '@/components/ui/icon-button';
+import { RowActions } from '@/components/ui/row-actions';
 import { Loading } from '@/components/ui/loading';
 import { SessionMarker } from '@/components/ui/session-marker';
 import { useCopy } from '@/lib/copy';
@@ -20,8 +21,8 @@ import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { SEARCH_DEBOUNCE_MS } from './HistoryPanel';
 import { HarnessIcon } from './HarnessIcon';
-import { AddToTopicAction, TopicChips } from './TopicLinks';
-import { outputSessionMembers, useTopics } from '@/lib/topics';
+import { TopicChips } from './TopicLinks';
+import { outputSessionMembers, useAddToTopicItem, useTopics } from '@/lib/topics';
 import { OUTPUT_ICON, TYPE_LABEL, openFile, openOutput } from '@/lib/outputs';
 
 const FILTER_LABEL: Record<LibraryType, string> = { pages: 'Pages', pdf: 'PDF', markdown: 'Markdown', image: 'Image', share: 'Share' };
@@ -345,6 +346,7 @@ interface RowProps {
 }
 function OutputRow({ item, now, query, active, expanded, sessions, enabled, onSession, onRow, onHover, register }: RowProps) {
   const copy = useCopy(item.kind === 'file' ? item.path! : item.url!);
+  const addToTopic = useAddToTopicItem(outputSessionMembers(item.sessions), item.title, enabled);
   const sorted = [...item.sessions].sort((a, b) => (b.lastActiveAt ?? 0) - (a.lastActiveAt ?? 0));
   const open = () => { if (enabled) openOutput(item); }, openSession = () => { if (enabled && sorted[0] && !sorted[0].pruned) onSession(sorted[0]); };
   useEffect(() => { register({ open, copy: () => { if (enabled) void copy.copy(); }, session: openSession }); return () => register(null); });
@@ -366,7 +368,7 @@ function OutputRow({ item, now, query, active, expanded, sessions, enabled, onSe
     <p className={cn('pl-5 text-meta text-muted-foreground', expanded ? 'break-all' : 'truncate')}>
       <Hit text={item.display} query={query} />
     </p>
-    <span role="status" aria-live="polite" className={expanded || !copy.said ? 'sr-only' : 'pl-5 text-meta text-muted-foreground'}>
+    <span role="status" aria-live="polite" className={!copy.said ? 'sr-only' : 'pl-5 text-meta text-muted-foreground'}>
       {copy.said}
     </span>
     {expanded && <div id={`${id}-details`} className="mt-1 flex min-w-0 flex-col gap-1.5 pl-5 text-meta text-muted-foreground">
@@ -380,12 +382,16 @@ function OutputRow({ item, now, query, active, expanded, sessions, enabled, onSe
       {item.source && <p>edited {stamp(item.source.updatedAt)}{item.source.updatedAt > item.updatedAt ? ', newer than published' : ''}
       </p>}
       {gone && <p>This file no longer exists.</p>}
-      <RowActions>
-        {!gone && <RowAction label="Open" icon={<ExternalLink />} tip="Open (O)" enabled={enabled} onPress={open} />}
-        {item.kind === 'artifact' && item.source?.exists && <RowAction label="Open file" icon={<ExternalLink />} tip="Open file" enabled={enabled} onPress={() => openFile(item.source!.path, item.source!.type)} />}
-        <RowAction label={copy.said || 'Copy link'} icon={<Copy />} tip="Copy link (C)" enabled={enabled} onPress={() => void copy.copy()} />
-        <AddToTopicAction members={outputSessionMembers(item.sessions)} label={item.title} enabled={enabled} />
-      </RowActions>
+      {/* DS-16: Open is what Enter runs; a gone file's row has only More. */}
+      <RowActions
+        name={item.title}
+        primary={gone ? null : { 'data-action': 'open', label: 'Open', icon: <ExternalLink />, tip: 'Open (O)', enabled, onPress: open }}
+        more={[
+          item.kind === 'artifact' && item.source?.exists && { id: 'open-file', label: 'Open file', icon: <ExternalLink />, group: 'open', enabled, onSelect: () => openFile(item.source!.path, item.source!.type) },
+          { id: 'copy', label: 'Copy link', icon: <Copy />, group: 'open', shortcut: 'C', enabled, onSelect: () => void copy.copy() },
+          addToTopic,
+        ]}
+      />
       <TopicChips members={outputSessionMembers(item.sessions)} />
       <div className="flex min-w-0 flex-wrap gap-1.5">
         {sorted.slice(0, 8).map((s, n) => {

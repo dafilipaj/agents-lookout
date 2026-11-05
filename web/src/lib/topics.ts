@@ -3,7 +3,9 @@ import { type MemberKind, type NewMember, type SummaryState, type Topic, type To
 export { historyMember, prMember, rowMember, sessionMember, taskMember } from '@shared/topics.ts';
 import type { SessionRow, Status } from '@shared/types.ts';
 import type { WorkPr, WorkSnapshot, WorkTask } from '@shared/work.ts';
-import { createContext, useContext } from 'react';
+import { Plus } from 'lucide-react';
+import { createContext, createElement, useContext } from 'react';
+import type { RowMenuItem } from '@/components/ui/row-actions';
 
 /**
  * TOPIC: what the browser joins to a Topic's members (TOPIC-4.1, TOPIC-4.2): the Session list's
@@ -191,6 +193,16 @@ export interface TopicsApi {
 
 export const TopicsContext = createContext<TopicsApi | null>(null);
 export const useTopics = () => useContext(TopicsContext);
+
+/**
+ * TOPIC-2.1, DS-16.2: "Add to Topic" under an expanded Work row's, History result's or Library row's
+ * "More", in its Topics group; `A` does the same from the keyboard. Null without Topics.
+ */
+export function useAddToTopicItem(members: readonly NewMember[], label: string, enabled = true): RowMenuItem | null {
+  const topics = useTopics();
+  if (!topics) return null;
+  return { id: 'add-to-topic', label: 'Add to Topic', icon: createElement(Plus), group: 'topic', shortcut: 'A', enabled: enabled && members.length > 0, onSelect: () => topics.addTo(members, label) };
+}
 
 /** TOPIC-1.6: the outcome chip's words, on an archived Topic. */
 export const OUTCOME_WORD: Record<TopicOutcome, string> = { done: 'done', parked: 'parked', dropped: 'dropped', superseded: 'superseded' };

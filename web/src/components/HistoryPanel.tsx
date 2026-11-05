@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Chip } from '@/components/ui/chip';
 import { CommandBlock } from '@/components/ui/command-block';
 import { EmptyState } from '@/components/ui/empty-state';
-import { IconButton, RowAction, RowActions, RowSettling, useRowSettle } from '@/components/ui/icon-button';
+import { IconButton, RowSettling, useRowSettle } from '@/components/ui/icon-button';
+import { RowActions } from '@/components/ui/row-actions';
 import { Loading } from '@/components/ui/loading';
 import { SessionMarker } from '@/components/ui/session-marker';
 import type { HistoryQuery } from '@/lib/client';
@@ -17,8 +18,8 @@ import { HARNESS_NAME } from '@/lib/sessions';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { HarnessIcon } from './HarnessIcon';
-import { AddToTopicAction, TopicChips } from './TopicLinks';
-import { historyMember, useTopics } from '@/lib/topics';
+import { TopicChips } from './TopicLinks';
+import { historyMember, useAddToTopicItem, useTopics } from '@/lib/topics';
 
 /** A field that takes typed letters (a search box, never the Headless checkbox). */
 const isTextTarget = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && !['checkbox', 'radio'].includes((t as HTMLInputElement).type)));
@@ -432,6 +433,7 @@ function Result({ index, item, status, since, active, expanded, peek, opening, b
   const state = live ? 'live' : item.blocked ? 'blocked' : 'resumable';
   const id = `history-${itemKey(item)}`;
   const button = BUTTON[state];
+  const addToTopic = useAddToTopicItem([historyMember(item)], item.title);
   return (
     <div
       id={id}
@@ -517,10 +519,11 @@ function Result({ index, item, status, since, active, expanded, peek, opening, b
             {!live && item.blocked && <p data-field="blocked">{BLOCK_REASON[item.blocked]}</p>}
             <Said item={item} peek={peek} />
             <TopicChips members={[historyMember(item)]} labelClass="w-10" />
-            <RowActions>
-              <RowAction data-action={state === 'live' ? 'open' : state === 'blocked' ? 'show' : 'resume'} label={opening ? 'Resuming…' : button.label} icon={button.icon} tip={button.tip} enabled={!busy} onPress={onOpen} />
-              <AddToTopicAction members={[historyMember(item)]} label={item.title} />
-            </RowActions>
+            <RowActions
+              name={item.title}
+              primary={{ 'data-action': state === 'live' ? 'open' : state === 'blocked' ? 'show' : 'resume', label: opening ? 'Resuming…' : button.label, icon: button.icon, tip: button.tip, enabled: !busy, onPress: onOpen }}
+              more={[addToTopic]}
+            />
           </div>
           {openError && <Alert title={openError} className="mt-1" />}
         </>
