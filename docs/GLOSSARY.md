@@ -22,7 +22,7 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Design system**: Lookout's shared look: the type scale and colour tokens in `web/src/index.css`, the components in `web/src/components/ui/`, and the rules for using them, written down in the DS spec and guarded by tests ([0009](decisions/0009-one-design-system-guarded-by-tests.md)).
 
-**Done**: A Session that reported its work finished, with nothing waiting on you, by running `fleet done` (optionally with a one-line note), and hasn't been prompted since. Fleet keeps the mark; a new prompt clears it. Nothing closes a Done Session: you read it and end it, or send it more work.
+**Done**: A Session that reported its work finished, with nothing waiting on you, by running `fleet done` (optionally with a one-line note), and hasn't been prompted since, nor gone on working (a tool call of its main thread after it). Only the Session itself can: Fleet refuses a Subagent's `fleet done`, and a `claude -p`'s from its shell. Fleet keeps the mark; a new prompt clears it. Nothing closes a Done Session: you read it and end it, or send it more work.
 
 **Edge**: A connection you draw from one Topic to another, with a direction and an optional label that reads from the first to the second. Shown on both Topics in the Topics tab and as a line in the graph. See TOPIC-6.
 
