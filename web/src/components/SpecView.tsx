@@ -1,14 +1,16 @@
 import { compareClauses, compareModules, definitionName, gist, parseClauses, PREDEFINED_CONCEPTS, wordDiff, type Clause, type Compared, type FunctionalSpec, type PlainAnswer, type PlainConcept, type PlainSource, type Touched } from '@shared/plain.ts';
-import { ArrowLeft } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react';
+import { ArrowLeft, ChevronDown, ChevronUp } from 'lucide-react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Checkbox } from '@/components/ui/checkbox';
-import { labelledButtonLook } from '@/components/ui/icon-button';
+import { IconButton, labelledButtonLook } from '@/components/ui/icon-button';
 import { Loading } from '@/components/ui/loading';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
 import { SaveError } from '@/lib/client';
+import { type ChangeKind, firstLine, JUMP_MARGIN_PX, type Mark, stepMark } from '@/lib/marks';
 import { plainRoute, routePath } from '@/lib/router';
 import { cn } from '@/lib/utils';
+import { ChatRail } from './ChatRail';
 import { PlainView } from './Shell';
 
 /** PLAIN-1.7: how often an open Module is read again. */
@@ -60,6 +62,10 @@ const sectionId = (key: string) => `plain-${key.replace(/[^a-z0-9]+/gi, '-')}`;
 const specAnchor = (id: string) => `plain-s-${id.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
 const defAnchor = (name: string) => `plain-def-${name.replace(/[^A-Za-z0-9]+/g, '-')}`;
 const moduleName = (path: string) => path.replace(/^.*\//, '').replace(/\.plain$/, '');
+const noop = () => {};
+const isTextField = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName));
+/** Keys that scroll the view, which let go of a jump's hold (VIEW-1.11). */
+const SCROLL_KEYS = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ']);
 
 /** PLAIN-1.5: a Module new since the base compares with nothing, so every clause is added. */
 const compare = (a: Pick<PlainAnswer, 'text' | 'baseText'>) => compareModules(a.text, a.baseText ?? (a.text !== null ? '' : null));
@@ -99,6 +105,10 @@ export function SpecView({ source, path, backTo, load, setViewed, onBack, onOpen
   const [saving, setSaving] = useState(false);
   const last = useRef<PlainAnswer | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
+  /** The view's scroll box, PlainView's, beside the rail of changes (PLAIN-8.5). */
+  const box = useRef<HTMLDivElement>(null);
+  /** PLAIN-8.6: the change last jumped to holds the place until you scroll yourself, as the chat's (VIEW-1.11). */
+  const held = useRef<string | null>(null);
   const here = routePath(plainRoute(src, path));
   const hrefOf = useCallback((p: string) => routePath(plainRoute(src, p)), [src]);
 
@@ -196,6 +206,7 @@ export function SpecView({ source, path, backTo, load, setViewed, onBack, onOpen
       const next = entryId();
       if (next === entry) return;
       entry = next;
+      held.current = null;
       box.scrollTop = scrollByEntry.get(next) ?? 0;
     };
     box.addEventListener('scroll', onScroll, { passive: true });
@@ -207,16 +218,197 @@ export function SpecView({ source, path, backTo, load, setViewed, onBack, onOpen
   }, [answer, here]);
   const name = moduleName(path);
 
+  // PLAIN-8.5: every change rendered is a Mark, in the order it is shown; read from the page after
+  // each render, so the Marks are always the changes on screen ("Only what changed", Highlight).
+  const [marks, setMarks] = useState<readonly Mark[]>([]);
+  const marksRef = useRef(marks);
+  useLayoutEffect(() => {
+    // A node React kept from an earlier render may still carry its old cursor: every one is cleared first.
+    for (const el of scroller.current?.querySelectorAll<HTMLElement>('[data-mark]') ?? []) delete el.dataset.mark;
+    const els = highlight && scroller.current ? [...scroller.current.querySelectorAll<HTMLElement>('[data-change]')] : [];
+    const next = els.map((el, i): Mark => {
+      el.dataset.mark = `c${i}`;
+      return { cursor: `c${i}`, kind: el.dataset.change as ChangeKind, text: firstLine(gist(el.dataset.changeText ?? '') || (el.textContent ?? '')), ts: null, where: el.closest<HTMLElement>('[data-where]')?.dataset.where };
+    });
+    const prev = marksRef.current;
+    if (prev.length === next.length && prev.every((m, i) => m.kind === next[i]!.kind && m.text === next[i]!.text && m.where === next[i]!.where)) return;
+    // The cursors now name other changes: a hold on one would step from the wrong place.
+    held.current = null;
+    marksRef.current = next;
+    setMarks(next);
+  }, [highlight, onlyChanged, answer, compared]);
+
+  const [jumped, setJumped] = useState<{ cursor: string } | null>(null);
+  const [at, setAt] = useState<number | null>(null);
+  const [active, setActive] = useState<string | null>(null);
+  useLayoutEffect(() => {
+    marksRef.current = marks;
+  });
+  /** Where each change sits in the scrolled content, in the Marks' order. */
+  const changeTops = useCallback(() => {
+    const el = box.current;
+    if (!el) return [];
+    const base = el.getBoundingClientRect().top - el.scrollTop;
+    return marksRef.current.map((m) => (scroller.current?.querySelector(`[data-mark="${m.cursor}"]`)?.getBoundingClientRect().top ?? 0) - base);
+  }, []);
+  /** PLAIN-8.2, 8.6: the outline's current entry and the change you're at, from the scroll position. */
+  const place = useCallback(() => {
+    const el = box.current;
+    if (!el || !scroller.current) return;
+    const top = el.getBoundingClientRect().top + JUMP_MARGIN_PX + 1;
+    let current: string | null = null;
+    for (const a of scroller.current.querySelectorAll<HTMLElement>('[data-outline]')) {
+      if (a.getBoundingClientRect().top <= top) current = a.id;
+      else break;
+    }
+    setActive(current);
+    const ms = marksRef.current;
+    const heldAt = held.current ? ms.findIndex((m) => m.cursor === held.current) : -1;
+    if (heldAt >= 0) return setAt(heldAt);
+    const line = el.scrollTop + JUMP_MARGIN_PX + 1;
+    let passed: number | null = null;
+    changeTops().forEach((t, i) => {
+      if (t <= line) passed = i;
+    });
+    setAt(passed);
+  }, [changeTops]);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    let frame = 0;
+    const onScroll = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        place();
+      });
+    };
+    // Scrolling yourself lets go of the change last jumped to (VIEW-1.11's hold).
+    const release = () => {
+      held.current = null;
+    };
+    // A key that scrolls the view, from inside it or the page; not Space or Enter pressing a button.
+    const onKey = (e: KeyboardEvent) => {
+      if (!SCROLL_KEYS.has(e.key)) return;
+      const t = e.target;
+      if (!(t instanceof Node) || (t !== document.body && !el.contains(t)) || isTextField(t)) return;
+      if (e.key === ' ' && t instanceof Element && t.closest('button, summary, [role="button"], [role="checkbox"]')) return;
+      release();
+    };
+    const onPointer = (e: PointerEvent) => {
+      if (e.target === el) release();
+    };
+    // The outline, the Changes card and § links move the view themselves.
+    const onClick = (e: Event) => {
+      if (e.target instanceof Element && e.target.closest('a[href^="#"]')) release();
+    };
+    el.addEventListener('click', onClick, true);
+    el.addEventListener('scroll', onScroll, { passive: true });
+    el.addEventListener('wheel', release, { passive: true });
+    el.addEventListener('touchmove', release, { passive: true });
+    el.addEventListener('pointerdown', onPointer);
+    window.addEventListener('keydown', onKey);
+    place();
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      el.removeEventListener('scroll', onScroll);
+      el.removeEventListener('wheel', release);
+      el.removeEventListener('touchmove', release);
+      el.removeEventListener('pointerdown', onPointer);
+      el.removeEventListener('click', onClick, true);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [place, answer]);
+  useEffect(() => place(), [place, marks]);
+
+  /** PLAIN-8.5, 8.6: scroll a change to just below the top edge; from the rail, focus moves to it. */
+  const jumpTo = useCallback(
+    (cursor: string, focus: boolean) => {
+      const el = box.current;
+      const target = scroller.current?.querySelector<HTMLElement>(`[data-mark="${cursor}"]`);
+      if (!el || !target) return;
+      held.current = cursor;
+      setJumped({ cursor });
+      setAt(marksRef.current.findIndex((m) => m.cursor === cursor));
+      const top = Math.max(0, target.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop - JUMP_MARGIN_PX);
+      const reduce = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (typeof el.scrollTo === 'function') el.scrollTo({ top, behavior: reduce ? 'auto' : 'smooth' });
+      else el.scrollTop = top;
+      if (focus) {
+        target.tabIndex = -1;
+        target.focus({ preventScroll: true });
+      }
+    },
+    [],
+  );
+  const step = useCallback(
+    (dir: 1 | -1) => {
+      const el = box.current;
+      const ms = marksRef.current;
+      if (!el || ms.length === 0) return;
+      const from = held.current ? ms.findIndex((m) => m.cursor === held.current) : -1;
+      const next = stepMark(changeTops(), el.scrollTop, dir, from >= 0 ? from : null);
+      if (next !== null) jumpTo(ms[next]!.cursor, false);
+    },
+    [changeTops, jumpTo],
+  );
+  // PLAIN-8.6: `[` and `]`, as in the chat: not in a text field or a dialog; Option or AltGr is allowed.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.isComposing || e.defaultPrevented || (e.key !== '[' && e.key !== ']')) return;
+      if (e.metaKey || (e.ctrlKey && !e.altKey)) return;
+      const t = e.target;
+      if (t instanceof HTMLElement && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName))) return;
+      // Not while a dialog is open, the Concept card (PLAIN-2.2) included, wherever focus is.
+      if ((t instanceof Element && t.closest('[role="dialog"]')) || document.querySelector('[role="dialog"][aria-modal="true"], [data-slot="concept-card"]')) return;
+      e.preventDefault();
+      step(e.key === ']' ? 1 : -1);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [step]);
+
+  const changed = !!answer && !!compared && compared.diffed && answer.text !== answer.baseText;
+
+  // PLAIN-8.6: in a narrow pane Back is its arrow and "Only what changed" is "Changed only", so the header fits on one line.
   const header = (
-    <div className="flex min-w-0 flex-1 items-center gap-3">
-      <button type="button" className={cn(labelledButtonLook(), 'h-7 shrink-0 text-meta font-normal')} onClick={onBack} data-field="spec-back">
+    <div className="@container/header flex min-w-0 flex-1 items-center gap-3">
+      <button type="button" className={cn(labelledButtonLook(), 'h-7 shrink-0 text-meta font-normal')} onClick={onBack} data-field="spec-back" title={backTo ? `Back to ${backTo}` : 'Back'}>
         <ArrowLeft aria-hidden className="size-3.5" />
-        <span className="max-w-48 truncate">{backTo ? `Back to ${backTo}` : 'Back'}</span>
+        <span className="max-w-48 truncate @max-[40rem]/header:sr-only">{backTo ? `Back to ${backTo}` : 'Back'}</span>
       </button>
       <h1 className="min-w-0 flex-1 truncate text-title font-semibold tracking-tight">
         {name}
         <span className="font-normal text-muted-foreground">.plain</span>
       </h1>
+      {highlight && marks.length > 0 && (
+        <div className="flex shrink-0 items-center gap-0.5 text-meta" data-field="spec-stepper">
+          <IconButton label="Previous change" shortcut="[" onClick={() => step(-1)}>
+            <ChevronUp aria-hidden />
+          </IconButton>
+          <span className="min-w-16 text-center tabular-nums" data-field="spec-at">
+            {at === null ? `${marks.length} ${marks.length === 1 ? 'change' : 'changes'}` : `${at + 1} of ${marks.length}`}
+          </span>
+          <IconButton label="Next change" shortcut="]" onClick={() => step(1)}>
+            <ChevronDown aria-hidden />
+          </IconButton>
+        </div>
+      )}
+      {changed && (
+        <label className="flex shrink-0 items-center gap-1.5 text-meta">
+          <Checkbox
+            checked={onlyChanged}
+            onChange={(e) => {
+              setOnlyChanged(e.target.checked);
+              if (e.target.checked) setHighlight(true);
+            }}
+            data-field="spec-only-changed"
+            aria-label="Only what changed"
+          />
+          <span aria-hidden className="@max-[40rem]/header:hidden">Only what changed</span>
+          <span aria-hidden className="hidden @max-[40rem]/header:inline">Changed only</span>
+        </label>
+      )}
       <label className={cn('flex shrink-0 items-center gap-1.5 text-meta', !answer && 'opacity-50')} title="Viewed (V)">
         <Checkbox checked={!!answer?.viewed} disabled={!answer || saving} onChange={() => void toggleViewed()} aria-keyshortcuts="V" data-field="spec-viewed" />
         Viewed
@@ -225,7 +417,13 @@ export function SpecView({ source, path, backTo, load, setViewed, onBack, onOpen
   );
 
   return (
-    <PlainView aria-label={`Spec ${name}`} header={header} data-view="spec">
+    <PlainView
+      aria-label={`Spec ${name}`}
+      header={header}
+      data-view="spec"
+      scrollRef={box}
+      rail={<ChatRail label="Changes" scrollRef={box} listRef={scroller} marks={marks} version={marks} jumped={jumped} canLoadEarlier={false} loadingEarlier={false} onEarlier={noop} onJump={jumpTo} />}
+    >
       <div ref={scroller} className="@container px-5 py-4">
         {error && <Alert className="mb-3" title={error} />}
         {!answer && !error && <Loading label={`Reading ${name}.plain…`} />}
@@ -237,10 +435,7 @@ export function SpecView({ source, path, backTo, load, setViewed, onBack, onOpen
             highlight={highlight}
             onlyChanged={onlyChanged}
             onHighlight={setHighlight}
-            onOnlyChanged={(v) => {
-              setOnlyChanged(v);
-              if (v) setHighlight(true);
-            }}
+            active={active}
             onOpenModule={onOpenModule}
             hrefOf={hrefOf}
           />
@@ -267,7 +462,7 @@ function Module({
   highlight,
   onlyChanged,
   onHighlight,
-  onOnlyChanged,
+  active,
   onOpenModule,
   hrefOf,
 }: {
@@ -277,11 +472,13 @@ function Module({
   highlight: boolean;
   onlyChanged: boolean;
   onHighlight(v: boolean): void;
-  onOnlyChanged(v: boolean): void;
+  /** PLAIN-8.2: the id of the section or spec at the top of the view. */
+  active: string | null;
   onOpenModule(path: string): void;
   hrefOf(path: string): string;
 }) {
   const mod = compared.module;
+  const [allSpecs, setAllSpecs] = useState(false);
   const own = useMemo(() => new Set((mod.sections.definitions ?? []).flatMap((n) => (definitionName(n.text) ? [definitionName(n.text)!.name] : []))), [mod]);
   const specIds = useMemo(() => new Set(mod.specs.map((s) => s.id)), [mod]);
   const [card, setCard] = useState<{ name: string; el: HTMLElement } | null>(null);
@@ -302,6 +499,8 @@ function Module({
     } else closeSoon();
   };
   const ctx: Ctx = { own, specIds, answer, justChanged, highlight, onlyChanged, onTerm };
+  // PLAIN-8.5: the description is a change too: rewritten, or added with a new Module, removed with a deleted one.
+  const descState: Clause['state'] = !compared.diffed ? 'same' : compared.oldDescription !== null ? 'changed' : !mod.description ? 'same' : answer.text === null ? 'removed' : answer.baseText === null ? 'added' : 'same';
 
   const total = compared.stats.added + compared.stats.changed + compared.stats.removed;
   const unchanged = answer.text !== null && answer.text === answer.baseText;
@@ -313,40 +512,70 @@ function Module({
   const touched = new Set(compared.touchedSections);
   const visible = (k: string) => !onlyChanged || touched.has(k);
 
+  // PLAIN-8.2: the changed specs, or every spec in a Module with none; "Show all" lists them all.
+  const specsChanged = mod.specs.filter(specTouched);
+  const listAll = !onlyChanged && (allSpecs || specsChanged.length === 0);
+  const listed = listAll ? mod.specs : specsChanged;
+  const activeSpec = active && mod.specs.some((s) => specAnchor(s.id) === active) ? active : null;
+  const current = activeSpec && !listed.some((s) => specAnchor(s.id) === activeSpec) ? sectionId('functional specs') : active;
   const nav = (
-    <nav aria-label="Module" data-slot="spec-nav" className="flex shrink-0 flex-col gap-0.5 text-meta @min-[640px]:sticky @min-[640px]:top-0 @min-[640px]:w-48 @min-[640px]:self-start">
-      {showCard && <NavLink href="changes" label="Changes" touched />}
+    <nav
+      aria-label="On this page"
+      data-slot="spec-nav"
+      className="flex shrink-0 flex-col gap-0.5 text-meta @min-[640px]:sticky @min-[640px]:top-0 @min-[640px]:col-start-3 @min-[640px]:row-start-1 @min-[640px]:max-h-[calc(100dvh-6rem)] @min-[640px]:self-start @min-[640px]:overflow-y-auto @min-[640px]:pl-8"
+    >
+      <p aria-hidden className="mb-1 pl-2.5 text-caption font-medium text-muted-foreground">
+        On this page
+      </p>
+      {showCard && <NavLink href="changes" label="Changes" current={current === 'changes'} />}
       {sectionKeys.map((k) => (
-        <NavLink key={k} href={sectionId(k)} label={NAV_TITLES[k] ?? k} count={(mod.sections[k] ?? []).filter((n) => n.state !== 'removed').length} touched={touched.has(k)} />
+        <NavLink key={k} href={sectionId(k)} label={NAV_TITLES[k] ?? k} count={(mod.sections[k] ?? []).filter((n) => n.state !== 'removed').length} touched={touched.has(k)} current={current === sectionId(k)} />
       ))}
-      {hasSpecs && <NavLink href={sectionId('functional specs')} label="Functional specs" count={live.length} touched={touched.has('functional specs')} />}
-      {mod.specs.length > 0 && (
-        <ol className="ml-2 flex max-h-[50vh] flex-col overflow-y-auto border-l border-border pl-2">
-          {mod.specs
-            .filter((s) => !onlyChanged || s.state !== 'same')
-            .map((s) => (
-              <li key={s.id}>
-                <a href={`#${specAnchor(s.id)}`} onClick={jump(specAnchor(s.id))} className={cn('flex min-w-0 gap-1.5 rounded-sm px-1.5 py-0.5 hover:bg-accent', s.state !== 'same' && 'font-medium')} data-state={s.state}>
-                  <span className="shrink-0 tabular-nums text-muted-foreground">{s.id}</span>
-                  <span className="min-w-0 truncate">{s.clauses[0] ? gist(s.clauses[0].text) : ''}</span>
-                </a>
-              </li>
-            ))}
+      {hasSpecs && <NavLink href={sectionId('functional specs')} label="Functional specs" count={live.length} touched={touched.has('functional specs')} current={current === sectionId('functional specs')} />}
+      {listed.length > 0 && (
+        <ol className="flex flex-col">
+          {listed.map((s) => (
+            <li key={s.id}>
+              <a
+                href={`#${specAnchor(s.id)}`}
+                onClick={jump(specAnchor(s.id))}
+                aria-current={current === specAnchor(s.id) ? 'location' : undefined}
+                className={cn('flex min-w-0 items-baseline gap-1.5 border-l-2 py-1 pr-1.5 pl-4 hover:bg-accent', current === specAnchor(s.id) ? 'border-foreground' : 'border-border')}
+                data-state={s.state}
+              >
+                <span className="shrink-0 tabular-nums text-muted-foreground">{s.id}</span>
+                <span className="line-clamp-2 min-w-0 flex-1">{s.clauses[0] ? gist(s.clauses[0].text) : ''}</span>
+                <SpecMark spec={s} />
+              </a>
+            </li>
+          ))}
         </ol>
+      )}
+      {!onlyChanged && specsChanged.length > 0 && specsChanged.length < mod.specs.length && (
+        <button type="button" className="mt-1 self-start pl-2.5 text-muted-foreground underline-offset-2 hover:underline" onClick={() => setAllSpecs((v) => !v)} data-field="spec-all">
+          {allSpecs ? 'Show changed specs only' : `Show all ${mod.specs.length} specs`}
+        </button>
       )}
     </nav>
   );
 
   return (
-    <div className="flex min-w-0 flex-col gap-4 @min-[640px]:flex-row @min-[640px]:items-start @min-[640px]:gap-6" data-highlight={highlight || undefined} data-only-changed={onlyChanged || undefined}>
+    <div
+      // PLAIN-8.1: the column is the chat's width, centred while the outline fits on its right; with less room it moves left, then narrows.
+      className="flex min-w-0 flex-col gap-4 @min-[640px]:grid @min-[640px]:grid-cols-[minmax(0,1fr)_minmax(0,48rem)_minmax(15rem,1fr)] @min-[640px]:items-start @min-[640px]:gap-0"
+      data-highlight={highlight || undefined}
+      data-only-changed={onlyChanged || undefined}
+      data-slot="spec-layout"
+    >
       {nav}
-      <article className="flex min-w-0 max-w-[72rem] flex-1 flex-col gap-5" data-slot="spec-module">
+      {/* PLAIN-8.1: a long code span or word wraps, so nothing widens the pane. */}
+      <article className="flex min-w-0 flex-col gap-5 [overflow-wrap:anywhere] @min-[640px]:col-start-2 @min-[640px]:row-start-1" data-slot="spec-module">
         <header className="flex flex-col gap-1.5">
           <p className="text-meta text-muted-foreground" data-field="spec-where">
             {answer.path} · {answer.checkout.where ? `${answer.checkout.repo} · ${answer.checkout.where}` : answer.checkout.repo}
           </p>
           {(mod.description || compared.oldDescription) && (
-            <p className="text-prose" data-field="spec-description">
+            <p data-field="spec-description" data-where="Description" {...changeProps(descState, highlight, mod.description || (compared.oldDescription ?? ''))} className={cn('text-prose', changeProps(descState, highlight, '').className, descState === 'removed' && highlight && 'text-muted-foreground line-through')}>
               {compared.oldDescription !== null && highlight ? <Rewritten old={compared.oldDescription} now={mod.description} ctx={ctx} /> : <Inline text={mod.description} ctx={ctx} />}
             </p>
           )}
@@ -373,7 +602,7 @@ function Module({
         {answer.changedSinceViewed && !answer.viewed && <Alert tone="info" title="Changed since you viewed it" data-field="spec-changed-since" />}
 
         {showCard && (
-          <section id="changes" aria-label="Changes" className="flex flex-col gap-2 rounded-md border border-border p-3" data-slot="spec-changes">
+          <section id="changes" aria-label="Changes" className="flex flex-col gap-2 rounded-md border border-border p-3" data-slot="spec-changes" data-outline>
             <h2 className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-body font-semibold">
               Changes
               <span className="text-meta font-normal text-muted-foreground">against {answer.base} ({answer.baseName})</span>
@@ -387,26 +616,30 @@ function Module({
               <p className="text-meta text-muted-foreground">No clause of this Module differs.</p>
             ) : (
               <ul className="flex flex-col text-meta">
-                {compared.stats.touched.map((t, i) => (
-                  <li key={`${t.where}-${i}`} className="flex gap-2">
-                    <a href={`#${touchedAnchor(t, specIds)}`} onClick={jump(touchedAnchor(t, specIds))} className="min-w-24 underline-offset-2 hover:underline">
-                      {t.where.replace(/ (tests|notes)$/, '')}
+                {touchedRows(compared.stats.touched, mod.specs).map((r) => (
+                  <li key={r.where} className="grid grid-cols-[minmax(4.5rem,auto)_minmax(0,1fr)_auto] items-baseline gap-2 border-t border-border py-1 first:border-t-0">
+                    <a href={`#${touchedAnchor(r.where, specIds)}`} onClick={jump(touchedAnchor(r.where, specIds))} className="font-medium underline-offset-2 hover:underline">
+                      {r.label}
                     </a>
-                    <span className="text-muted-foreground">{touchedWhat(t)}</span>
+                    <span className="truncate">{r.gist}</span>
+                    <span className="flex gap-1.5 tabular-nums">
+                      {r.newSpec ? (
+                        <span className="text-diff-added-text">new spec</span>
+                      ) : r.removedSpec ? (
+                        <span className="text-diff-removed-text">spec removed</span>
+                      ) : (
+                        <Counts added={r.added} changed={r.changed} removed={r.removed} />
+                      )}
+                      {r.parts && <span className="text-muted-foreground">· {r.parts}</span>}
+                    </span>
                   </li>
                 ))}
               </ul>
             )}
-            <div className="flex gap-4 text-meta">
-              <label className="flex items-center gap-1.5">
-                <Checkbox checked={highlight} onChange={(e) => onHighlight(e.target.checked)} data-field="spec-highlight" />
-                Highlight changes
-              </label>
-              <label className="flex items-center gap-1.5">
-                <Checkbox checked={onlyChanged} onChange={(e) => onOnlyChanged(e.target.checked)} data-field="spec-only-changed" />
-                Only what changed
-              </label>
-            </div>
+            <label className="flex items-center gap-1.5 text-meta">
+              <Checkbox checked={highlight} onChange={(e) => onHighlight(e.target.checked)} data-field="spec-highlight" />
+              Highlight changes
+            </label>
           </section>
         )}
 
@@ -421,7 +654,7 @@ function Module({
         )}
 
         {sectionKeys.filter(visible).map((k) => (
-          <section key={k} id={sectionId(k)} aria-label={SECTION_TITLES[k] ?? k} className="flex flex-col gap-2" data-touched={touched.has(k) || undefined}>
+          <section key={k} id={sectionId(k)} aria-label={SECTION_TITLES[k] ?? k} className="flex flex-col gap-2" data-touched={touched.has(k) || undefined} data-outline data-where={SECTION_TITLES[k] ?? k}>
             <SectionTitle title={SECTION_TITLES[k] ?? k} count={(mod.sections[k] ?? []).filter((n) => n.state !== 'removed').length} />
             {k === 'definitions' ? <Definitions nodes={mod.sections[k] ?? []} ctx={ctx} /> : <ClauseList nodes={mod.sections[k] ?? []} ctx={ctx} />}
             {mod.sectionNotes[k] && <Notes nodes={mod.sectionNotes[k]} ctx={ctx} />}
@@ -429,7 +662,7 @@ function Module({
         ))}
 
         {hasSpecs && visible('functional specs') && (
-          <section id={sectionId('functional specs')} aria-label="Functional specs" className="flex flex-col gap-3" data-touched={touched.has('functional specs') || undefined}>
+          <section id={sectionId('functional specs')} aria-label="Functional specs" className="flex flex-col gap-3" data-touched={touched.has('functional specs') || undefined} data-outline data-where="Functional specs">
             <SectionTitle title="Functional specs" count={live.length} />
             {mod.sectionNotes['functional specs'] && <Notes nodes={mod.sectionNotes['functional specs']} ctx={ctx} />}
             {mod.specs
@@ -458,18 +691,87 @@ function jump(id: string) {
   return (e: MouseEvent<HTMLAnchorElement>) => {
     if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     e.preventDefault();
-    document.getElementById(id)?.scrollIntoView({ block: 'start' });
+    document.getElementById(id)?.scrollIntoView?.({ block: 'start' });
   };
 }
 
-function NavLink({ href, label, count, touched }: { href: string; label: string; count?: number; touched?: boolean }) {
+function NavLink({ href, label, count, touched, current }: { href: string; label: string; count?: number; touched?: boolean; current?: boolean }) {
   return (
-    <a href={`#${href}`} onClick={jump(href)} className={cn('flex items-center gap-1.5 rounded-sm px-1.5 py-0.5 hover:bg-accent', touched && 'font-medium')} data-touched={touched || undefined}>
+    <a
+      href={`#${href}`}
+      onClick={jump(href)}
+      aria-current={current ? 'location' : undefined}
+      className={cn('flex items-center gap-1.5 border-l-2 px-2 py-1 hover:bg-accent', touched && 'font-medium', current ? 'border-foreground' : 'border-border')}
+      data-touched={touched || undefined}
+    >
       <span className="min-w-0 flex-1 truncate">{label}</span>
       {count !== undefined && <span className="tabular-nums text-muted-foreground">{count}</span>}
-      {touched && <span aria-label="changed" className="size-1.5 shrink-0 rounded-full bg-foreground" />}
+      {touched && <span aria-label="changed" className="text-muted-foreground">~</span>}
     </a>
   );
+}
+
+/** PLAIN-8.3: a bar at a changed clause's left edge, coloured by its change (`before:bg-…`). */
+const BAR = "relative before:absolute before:top-1 before:bottom-1 before:-left-3 before:w-[3px] before:rounded-full before:content-['']";
+const BAR_COLOUR: Partial<Record<Clause['state'], string>> = { added: 'before:bg-diff-added-text', removed: 'before:bg-diff-removed-text', changed: 'before:bg-muted-foreground' };
+
+/** PLAIN-8.3, 8.5: a changed clause's container: its bar, and the attributes that make it a Mark. */
+function changeProps(state: Clause['state'], highlight: boolean, text: string, bulleted = false): { className?: string; 'data-change'?: string; 'data-change-text'?: string } {
+  if (!highlight || state === 'same') return {};
+  // A bulleted clause's bar sits left of its bullet.
+  return { className: cn(BAR, BAR_COLOUR[state], bulleted && 'before:-left-6'), 'data-change': state, 'data-change-text': text };
+}
+
+/** A clause's, note's or spec's changes as `+2 ~1 −1`, the zeros left out. */
+function Counts({ added = 0, changed = 0, removed = 0 }: { added?: number; changed?: number; removed?: number }) {
+  return (
+    <>
+      {added > 0 && <span className="text-diff-added-text">+{added}</span>}
+      {changed > 0 && <span className="text-muted-foreground">~{changed}</span>}
+      {removed > 0 && <span className="text-diff-removed-text">−{removed}</span>}
+    </>
+  );
+}
+
+function countStates(nodes: readonly Clause[], into = { added: 0, changed: 0, removed: 0 }) {
+  for (const n of nodes) {
+    if (n.state !== 'same') into[n.state] += 1;
+    countStates(n.children, into);
+  }
+  return into;
+}
+
+const specTouched = (s: FunctionalSpec) => s.state !== 'same' || hasChange(s.clauses) || hasChange(s.tests) || hasChange(s.notes);
+
+/** PLAIN-8.2: a spec's mark in the outline: `+` new, `−` removed, `~` changed. */
+function SpecMark({ spec }: { spec: FunctionalSpec }) {
+  if (spec.state === 'added') return <span aria-label="new" className="shrink-0 text-diff-added-text">+</span>;
+  if (spec.state === 'removed') return <span aria-label="removed" className="shrink-0 text-diff-removed-text">−</span>;
+  if (specTouched(spec)) return <span aria-label="changed" className="shrink-0 text-muted-foreground">~</span>;
+  return null;
+}
+
+/** PLAIN-8.4: the Changes card's rows, one per spec or section, its parts' counts summed. */
+function touchedRows(touched: readonly Touched[], specs: readonly FunctionalSpec[]) {
+  const rows = new Map<string, { where: string; label: string; gist: string; added: number; changed: number; removed: number; newSpec: boolean; removedSpec: boolean; tests: boolean; notes: boolean }>();
+  for (const t of touched) {
+    const where = t.where.replace(/ (tests|notes)$/, '');
+    let r = rows.get(where);
+    if (!r) {
+      const spec = specs.find((s) => s.id === where);
+      const label = spec ? where : where === 'description' ? 'Description' : (SECTION_TITLES[where] ?? (where === 'functional specs' ? 'Functional specs' : where));
+      r = { where, label, gist: spec?.clauses[0] ? gist(spec.clauses[0].text) : '', added: 0, changed: 0, removed: 0, newSpec: false, removedSpec: false, tests: false, notes: false };
+      rows.set(where, r);
+    }
+    r.added += t.added ?? 0;
+    r.changed += t.changed ?? 0;
+    r.removed += t.removed ?? 0;
+    r.newSpec ||= !!t.newSpec;
+    r.removedSpec ||= !!t.removedSpec;
+    if (t.where.endsWith(' tests')) r.tests = true;
+    if (t.where.endsWith(' notes')) r.notes = true;
+  }
+  return [...rows.values()].map((r) => ({ ...r, parts: [r.tests && 'tests', r.notes && 'notes'].filter(Boolean).join(', ') }));
 }
 
 function SectionTitle({ title, count }: { title: string; count: number }) {
@@ -481,18 +783,10 @@ function SectionTitle({ title, count }: { title: string; count: number }) {
   );
 }
 
-function touchedAnchor(t: Touched, specIds: ReadonlySet<string>): string {
-  const where = t.where.replace(/ (tests|notes)$/, '');
-  if (t.where === 'description') return 'changes';
+function touchedAnchor(where: string, specIds: ReadonlySet<string>): string {
+  if (where === 'description') return 'changes';
   if (specIds.has(where)) return specAnchor(where);
   return sectionId(where);
-}
-
-function touchedWhat(t: Touched): string {
-  if (t.newSpec) return 'new spec';
-  if (t.removedSpec) return 'spec removed';
-  const what = [t.added && `${t.added} added`, t.changed && `${t.changed} changed`, t.removed && `${t.removed} removed`].filter(Boolean).join(', ');
-  return t.where.endsWith(' tests') ? `acceptance tests: ${what}` : t.where.endsWith(' notes') ? `notes: ${what}` : what;
 }
 
 /** PLAIN-2.5: an import or requires name as a link to its Module, from the importing Module's folder. */
@@ -530,15 +824,15 @@ function resolveFrom(from: string, name: string): string {
 function stateClass(state: Clause['state'], ctx: Ctx, text: string): string {
   return cn(
     'rounded-sm px-1 -mx-1',
-    ctx.highlight && state === 'added' && 'bg-diff-added-soft',
-    ctx.highlight && state === 'removed' && 'bg-diff-removed-soft text-muted-foreground line-through',
+    ctx.highlight && state === 'removed' && 'text-muted-foreground line-through',
     ctx.justChanged.has(text) && 'bg-muted',
   );
 }
 
+/** PLAIN-8.3: a clause's state, named to screen readers only: the bar shows it. */
 function Tag({ state, ctx }: { state: Clause['state']; ctx: Ctx }) {
   if (!ctx.highlight || state === 'same') return null;
-  return <span className={cn('mr-1.5 text-caption font-medium uppercase', state === 'added' && 'text-diff-added-text', state === 'removed' && 'text-diff-removed-text', state === 'changed' && 'text-muted-foreground')}>{state}</span>;
+  return <span className="sr-only">{state} </span>;
 }
 
 /** PLAIN-1.8: a section's or a spec's `>` notes, quieter than its clauses, marked as clauses are. */
@@ -548,7 +842,7 @@ function Notes({ nodes, ctx }: { nodes: readonly Clause[]; ctx: Ctx }) {
   return (
     <div className="flex flex-col gap-1 border-l-2 border-border pl-3 text-meta text-muted-foreground" data-slot="spec-notes">
       {shown.map((n, i) => (
-        <p key={`${i}-${n.text.slice(0, 40)}`} data-state={n.state} data-just-changed={ctx.justChanged.has(n.text) || undefined}>
+        <p key={`${i}-${n.text.slice(0, 40)}`} data-state={n.state} data-just-changed={ctx.justChanged.has(n.text) || undefined} {...changeProps(n.state, ctx.highlight, n.text)}>
           <span className={stateClass(n.state, ctx, n.text)}>
             <Tag state={n.state} ctx={ctx} />
             <ClauseBody n={n} ctx={ctx} />
@@ -568,10 +862,12 @@ function ClauseList({ nodes, ctx, className }: { nodes: readonly Clause[]; ctx: 
     <ul className={cn('flex list-disc flex-col gap-1 pl-5 text-prose marker:text-muted-foreground', className)}>
       {shown.map((n, i) => (
         <li key={`${i}-${n.text.slice(0, 40)}`} data-state={n.state} data-just-changed={ctx.justChanged.has(n.text) || undefined}>
-          <span className={stateClass(n.state, ctx, n.text)}>
-            <Tag state={n.state} ctx={ctx} />
-            <ClauseBody n={n} ctx={ctx} />
-          </span>
+          <div {...changeProps(n.state, ctx.highlight, n.text, true)}>
+            <span className={stateClass(n.state, ctx, n.text)}>
+              <Tag state={n.state} ctx={ctx} />
+              <ClauseBody n={n} ctx={ctx} />
+            </span>
+          </div>
           {n.children.length > 0 && <ClauseList nodes={n.children} ctx={ctx} className="mt-1" />}
         </li>
       ))}
@@ -622,9 +918,11 @@ function Definitions({ nodes, ctx }: { nodes: readonly Clause[]; ctx: Ctx }) {
               {d?.name ?? ''}
             </dt>
             <dd className="flex flex-col gap-1 text-prose">
-              <span className={stateClass(n.state, ctx, n.text)}>
-                {n.state === 'changed' && old !== undefined && ctx.highlight ? <Rewritten old={old} now={d?.body ?? n.text} ctx={ctx} /> : <Inline text={d?.body ?? n.text} ctx={ctx} />}
-              </span>
+              <div {...changeProps(n.state, ctx.highlight, n.text)}>
+                <span className={stateClass(n.state, ctx, n.text)}>
+                  {n.state === 'changed' && old !== undefined && ctx.highlight ? <Rewritten old={old} now={d?.body ?? n.text} ctx={ctx} /> : <Inline text={d?.body ?? n.text} ctx={ctx} />}
+                </span>
+              </div>
               {n.children.length > 0 && <ClauseList nodes={n.children} ctx={ctx} />}
             </dd>
           </div>
@@ -636,12 +934,17 @@ function Definitions({ nodes, ctx }: { nodes: readonly Clause[]; ctx: Ctx }) {
 
 function Spec({ spec, ctx }: { spec: FunctionalSpec; ctx: Ctx }) {
   return (
-    <article id={specAnchor(spec.id)} aria-label={spec.id} data-state={spec.state} className={cn('flex flex-col gap-1.5 rounded-md px-3 py-2', spec.state !== 'same' && 'border border-border')}>
+    <article id={specAnchor(spec.id)} aria-label={spec.id} data-state={spec.state} className="flex flex-col gap-1.5 py-1" data-outline data-where={spec.id}>
       <h3 className="flex min-w-0 items-baseline gap-2 text-body font-semibold">
         <span className="tabular-nums">{spec.id}</span>
-        <span className="min-w-0 truncate font-normal text-muted-foreground">{spec.clauses[0] ? gist(spec.clauses[0].text) : ''}</span>
-        {spec.state === 'added' && ctx.highlight && <span className="text-caption font-medium uppercase text-diff-added-text">new spec</span>}
-        {spec.state === 'removed' && ctx.highlight && <span className="text-caption font-medium uppercase text-diff-removed-text">spec removed</span>}
+        <span className="min-w-0 flex-1 truncate font-normal text-muted-foreground">{spec.clauses[0] ? gist(spec.clauses[0].text) : ''}</span>
+        {spec.state === 'added' && ctx.highlight && <span className="text-meta font-medium text-diff-added-text">new spec</span>}
+        {spec.state === 'removed' && ctx.highlight && <span className="text-meta font-medium text-diff-removed-text">spec removed</span>}
+        {spec.state !== 'added' && spec.state !== 'removed' && ctx.highlight && specTouched(spec) && (
+          <span className="flex gap-1.5 text-meta font-medium tabular-nums" data-field="spec-counts">
+            <Counts {...countStates([...spec.clauses, ...spec.tests, ...spec.notes])} />
+          </span>
+        )}
       </h3>
       <ClauseList nodes={spec.clauses} ctx={ctx} />
       {spec.notes.length > 0 && <Notes nodes={spec.notes} ctx={ctx} />}

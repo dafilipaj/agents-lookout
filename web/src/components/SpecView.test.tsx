@@ -1,5 +1,5 @@
 import type { PlainAnswer } from '@shared/plain.ts';
-import { act, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SaveError } from '@/lib/client';
@@ -71,7 +71,7 @@ function open(over: Partial<PlainAnswer> = {}, options: Parameters<typeof render
 }
 
 const module = () => document.querySelector<HTMLElement>('[data-slot="spec-module"]')!;
-const clause = (text: string) => within(module()).getByText((_, el) => el?.tagName === 'LI' && (el.textContent ?? '').replace(/^(added|removed|changed)/, '').startsWith(text));
+const clause = (text: string) => within(module()).getByText((_, el) => el?.tagName === 'LI' && (el.textContent ?? '').replace(/^(added|removed|changed) /, '').startsWith(text));
 
 afterEach(() => vi.useRealTimers());
 
@@ -104,9 +104,9 @@ describe('the Spec view', () => {
     await screen.findByText('Rate cards on a Deal.');
     const sections = within(module()).getAllByRole('region').map((r) => r.getAttribute('aria-label'));
     expect(sections).toEqual(['Changes', 'Definitions', 'Implementation requirements', 'Functional specs']);
-    const nav = screen.getByRole('navigation', { name: 'Module' });
+    const nav = screen.getByRole('navigation', { name: 'On this page' });
     const links = within(nav).getAllByRole('link').map((a) => a.textContent);
-    expect(links.slice(0, 4)).toEqual(['Changes', 'Definitions1', 'Implementation reqs1', 'Functional specs2']);
+    expect(links.slice(0, 4)).toEqual(['Changes', 'Definitions1~', 'Implementation reqs1~', 'Functional specs2~']);
     expect(within(nav).getByRole('link', { name: /^Definitions/ })).toHaveAttribute('data-touched');
   });
 
@@ -127,7 +127,7 @@ describe('the Spec view', () => {
     const card = screen.getByRole('region', { name: 'Changes' });
     expect(within(card).getByText(/against abc1234/)).toBeInTheDocument();
     expect(card.querySelector('[data-field="spec-tally"]')).toHaveTextContent('1 added1 changed1 removed');
-    expect(within(card).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['definitions1 removed', 'implementation reqs1 changed', '§1.21 added']);
+    expect(within(card).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['Definitions−1', 'Implementation requirements~1', '§1.2A rate can be edited inline+1']);
 
     expect(clause('A rate can be deleted')).toHaveAttribute('data-state', 'added');
     const rewritten = clause('Prices are kept in');
@@ -291,7 +291,7 @@ describe('scroll and saves', () => {
     const user = userEvent.setup();
     open();
     await screen.findByText('Rate cards on a Deal.');
-    const box = () => document.querySelector<HTMLElement>('[data-slot="spec-module"]')!.closest('[data-shell-row="body"]') as HTMLElement;
+    const box = () => document.querySelector<HTMLElement>('[data-slot="spec-module"]')!.closest('[data-slot="pane-scroll"]') as HTMLElement;
     box().scrollTop = 640;
     box().dispatchEvent(new Event('scroll'));
     await user.click(within(document.querySelector<HTMLElement>('[data-field="spec-imports"]')!).getByRole('link', { name: 'productive' }));
@@ -359,5 +359,261 @@ describe('back and Viewed', () => {
     open({ changedSinceViewed: true });
     expect(await screen.findByText('Changed since you viewed it')).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: 'Viewed' })).not.toBeChecked();
+  });
+});
+
+/**
+ * jsdom has no layout: the view's scroll box is at 0, and each element named in `tops` (by its id,
+ * or its Mark's cursor) sits that far down its content; scrollTo is recorded and moves the box.
+ */
+function fakeLayout(tops: Record<string, number>) {
+  vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+    const scrolled = document.querySelector<HTMLElement>('[data-slot="pane-scroll"]')?.scrollTop ?? 0;
+    const key = this.getAttribute('data-mark') ?? this.id;
+    const top = key in tops ? tops[key]! - scrolled : 0;
+    return { top, bottom: top + 20, left: 0, right: 0, width: 0, height: 20, x: 0, y: top, toJSON: () => ({}) } as DOMRect;
+  });
+  const scrollTo = vi.fn(function (this: HTMLElement, o: ScrollToOptions) {
+    this.scrollTop = o.top ?? 0;
+  });
+  Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: scrollTo });
+  return { scrollTo };
+}
+
+const CHANGES = { c0: 300, c1: 500, c2: 900 };
+
+describe('reading and stepping through a change', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete (HTMLElement.prototype as { scrollTo?: unknown }).scrollTo;
+  });
+
+  it("PLAIN-8.1: the text is one column of the chat's width, centred with the outline on its right, and a long code span wraps", async () => {
+    open();
+    await screen.findByText('Rate cards on a Deal.');
+    expect(document.querySelector('[data-slot="spec-layout"]')).toHaveClass('@min-[640px]:grid-cols-[minmax(0,1fr)_minmax(0,48rem)_minmax(15rem,1fr)]');
+    expect(module()).toHaveClass('@min-[640px]:col-start-2', '[overflow-wrap:anywhere]');
+    expect(screen.getByRole('navigation', { name: 'On this page' })).toHaveClass('@min-[640px]:col-start-3');
+  });
+
+  it('PLAIN-8.2: "On this page" lists the sections and the changed specs, every spec on request, and marks where you are', async () => {
+    const user = userEvent.setup();
+    fakeLayout({ changes: 0, 'plain-definitions': 200, 'plain-implementation-reqs': 400, 'plain-functional-specs': 600, 'plain-s-1-1': 650, 'plain-s-1-2': 800 });
+    open();
+    await screen.findByText('Rate cards on a Deal.');
+    const nav = screen.getByRole('navigation', { name: 'On this page' });
+    const specLinks = () => within(nav).getAllByRole('link').filter((a) => a.getAttribute('href')?.startsWith('#plain-s-'));
+    expect(specLinks().map((a) => a.textContent)).toEqual(['§1.2A rate can be edited inline~']);
+    await user.click(within(nav).getByRole('button', { name: 'Show all 2 specs' }));
+    expect(specLinks().map((a) => a.textContent)).toEqual(['§1.1A Deal shows its RateCard as a table, as §1', '§1.2A rate can be edited inline~']);
+
+    const box = module().closest<HTMLElement>('[data-slot="pane-scroll"]')!;
+    box.scrollTop = 660;
+    box.dispatchEvent(new Event('scroll'));
+    await waitFor(() => expect(within(nav).getByRole('link', { current: 'location' })).toHaveAttribute('href', '#plain-s-1-1'));
+    // Listed no more, the spec at the top marks its section.
+    await user.click(within(nav).getByRole('button', { name: 'Show changed specs only' }));
+    await waitFor(() => expect(within(nav).getByRole('link', { current: 'location' })).toHaveAttribute('href', '#plain-functional-specs'));
+    box.scrollTop = 210;
+    box.dispatchEvent(new Event('scroll'));
+    await waitFor(() => expect(within(nav).getByRole('link', { current: 'location' })).toHaveAttribute('href', '#plain-definitions'));
+  });
+
+  it('PLAIN-8.2: a Module with no change lists every spec', async () => {
+    open({ text: BASE });
+    await screen.findByText('Rate cards on a Deal.');
+    const nav = screen.getByRole('navigation', { name: 'On this page' });
+    expect(within(nav).getAllByRole('link').filter((a) => a.getAttribute('href')?.startsWith('#plain-s-'))).toHaveLength(2);
+    expect(within(nav).queryByRole('button', { name: /^Show all/ })).toBeNull();
+  });
+
+  it('PLAIN-8.3: a changed clause has a bar in its colour, its state for screen readers only; a changed spec counts its changes', async () => {
+    open();
+    await screen.findByText('Rate cards on a Deal.');
+    const added = clause('A rate can be deleted');
+    expect(added.querySelector('[data-change]')).toHaveAttribute('data-change', 'added');
+    expect(added.querySelector('[data-change]')).toHaveClass('before:bg-diff-added-text');
+    expect(within(added).getByText('added')).toHaveClass('sr-only');
+    expect(added.querySelector('.bg-diff-added-soft')).toBeNull();
+    expect(clause('Prices are kept in').querySelector('[data-change]')).toHaveClass('before:bg-muted-foreground');
+    expect(module().querySelector('[data-state="removed"] [data-change]')).toHaveClass('before:bg-diff-removed-text');
+    const spec = within(module()).getByRole('article', { name: '§1.2' });
+    expect(spec).not.toHaveClass('border');
+    expect(spec.querySelector('[data-field="spec-counts"]')).toHaveTextContent('+1');
+  });
+
+  it('PLAIN-8.4: the Changes card has one row per spec, its clauses, tests and notes counted together', async () => {
+    open({ text: TEXT.replace('- A rate can be deleted by :Mystery:.', '- A rate can be deleted by :Mystery:.\n> Parity: as the old app.') });
+    await screen.findByText('Rate cards on a Deal.');
+    const card = screen.getByRole('region', { name: 'Changes' });
+    const rows = within(card).getAllByRole('listitem').map((li) => li.textContent);
+    expect(rows).toHaveLength(3);
+    expect(rows[2]).toBe('§1.2A rate can be edited inline+2· notes');
+  });
+
+  it('PLAIN-8.5: each change is a Mark on the rail, in order, named by its kind, place and first line; a click jumps there and focuses it', async () => {
+    const user = userEvent.setup();
+    const { scrollTo } = fakeLayout(CHANGES);
+    open();
+    await screen.findByText('Rate cards on a Deal.');
+    const rail = screen.getByRole('navigation', { name: 'Changes' });
+    await waitFor(() => expect(within(rail).getAllByRole('button')).toHaveLength(3));
+    expect(within(rail).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual([
+      'Removed in Definitions: Rate is one price.',
+      'Rewritten in Implementation requirements: Prices are kept in cents, never as floats',
+      'Added in §1.2: A rate can be deleted by Mystery',
+    ]);
+    await user.click(within(rail).getByRole('button', { name: /^Added/ }));
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 888, behavior: 'smooth' });
+    expect(document.activeElement).toHaveAttribute('data-mark', 'c2');
+    expect(document.querySelector('[data-field="spec-at"]')).toHaveTextContent('3 of 3');
+    await user.click(screen.getByRole('checkbox', { name: 'Highlight changes' }));
+    expect(screen.queryByRole('navigation', { name: 'Changes' })).toBeNull();
+    expect(document.querySelector('[data-field="spec-stepper"]')).toBeNull();
+  });
+
+  it('PLAIN-8.5: a change gone on a later read takes its Mark with it; the description is a change when rewritten, added or removed', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    fakeLayout({ c0: 100, c1: 300, c2: 500, c3: 900 });
+    const rewritten = answer({ text: TEXT.replace('description: Rate cards on a Deal.', 'description: Rate cards on a Deal, per currency.') });
+    const readPlain = vi.fn(async () => rewritten);
+    renderApp(URL, { readPlain }).snapshot([row({ id: 'a', title: 'fix-deal-rates' })]);
+    await screen.findByText('per currency.', { exact: false });
+    const description = document.querySelector<HTMLElement>('[data-field="spec-description"]')!;
+    await waitFor(() => expect(description).toHaveAttribute('data-change', 'changed'));
+    await waitFor(() => expect(description).toHaveAttribute('data-mark', 'c0'));
+    readPlain.mockImplementation(async () => answer());
+    await act(async () => vi.advanceTimersByTimeAsync(SPEC_POLL_MS));
+    await waitFor(() => expect(within(screen.getByRole('navigation', { name: 'Changes' })).getAllByRole('button')).toHaveLength(3));
+    expect(document.querySelector('[data-field="spec-description"]')).not.toHaveAttribute('data-mark');
+    expect(document.querySelectorAll('[data-mark="c0"]')).toHaveLength(1);
+  });
+
+  it('PLAIN-8.5: a new Module\'s description is added, a deleted one\'s removed', async () => {
+    const fresh = open({ baseText: null });
+    await screen.findByText('Rate cards on a Deal.');
+    expect(document.querySelector('[data-field="spec-description"]')).toHaveAttribute('data-change', 'added');
+    fresh.app.unmount();
+    open({ text: null });
+    await screen.findByText('This Module was deleted since the Branch point.');
+    expect(document.querySelector('[data-field="spec-description"]')).toHaveAttribute('data-change', 'removed');
+  });
+
+  it('PLAIN-8.5: after a jump from the rail, the arrow keys scroll the view rather than switching Sessions', async () => {
+    const user = userEvent.setup();
+    fakeLayout(CHANGES);
+    const readPlain = vi.fn(async () => answer());
+    renderApp(URL, { readPlain }).snapshot([row({ id: 'a', title: 'fix-deal-rates' }), row({ id: 'b', title: 'other' })]);
+    await screen.findByText('Rate cards on a Deal.');
+    const rail = screen.getByRole('navigation', { name: 'Changes' });
+    await waitFor(() => expect(within(rail).getAllByRole('button')).toHaveLength(3));
+    await user.click(within(rail).getByRole('button', { name: /^Added/ }));
+    expect(document.activeElement).toHaveAttribute('data-mark', 'c2');
+    await user.keyboard('{ArrowDown}');
+    expect(window.location.pathname).toBe(URL);
+  });
+
+  it('PLAIN-8.6: [ and ] step through the changes, as in the chat; the header says where you are and holds "Only what changed"', async () => {
+    const user = userEvent.setup();
+    const { scrollTo } = fakeLayout(CHANGES);
+    open();
+    await screen.findByText('Rate cards on a Deal.');
+    const at = () => document.querySelector('[data-field="spec-at"]');
+    await waitFor(() => expect(at()).toHaveTextContent('3 changes'));
+    fireEvent.keyDown(document.body, { key: ']' });
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 288, behavior: 'smooth' });
+    expect(at()).toHaveTextContent('1 of 3');
+    fireEvent.keyDown(document.body, { key: ']' });
+    expect(at()).toHaveTextContent('2 of 3');
+    fireEvent.keyDown(document.body, { key: '[' });
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 288, behavior: 'smooth' });
+    await user.click(screen.getByRole('button', { name: 'Next change' }));
+    expect(at()).toHaveTextContent('2 of 3');
+    // ⌘[ is the browser's Back, not a step.
+    fireEvent.keyDown(document.body, { key: ']', metaKey: true });
+    expect(at()).toHaveTextContent('2 of 3');
+
+    const card = screen.getByRole('region', { name: 'Changes' });
+    expect(within(card).queryByRole('checkbox', { name: 'Only what changed' })).toBeNull();
+    await user.click(screen.getByRole('checkbox', { name: 'Only what changed' }));
+    expect(within(module()).queryByText(/A Deal shows its/)).toBeNull();
+  });
+
+  it('PLAIN-8.6: the hold on a change survives Space pressing Next at the bottom, and goes with an outline link or Back', async () => {
+    const user = userEvent.setup();
+    const { scrollTo } = fakeLayout({ ...CHANGES, 'plain-definitions': 200 });
+    // The view can't scroll past 400: the last two changes land at the same position.
+    scrollTo.mockImplementation(function (this: HTMLElement, o: ScrollToOptions) {
+      this.scrollTop = Math.min(o.top ?? 0, 400);
+    });
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value(this: HTMLElement) {
+        const box = document.querySelector<HTMLElement>('[data-slot="pane-scroll"]')!;
+        box.scrollTop = this.id === 'plain-definitions' ? 200 : 0;
+      },
+    });
+    open();
+    await screen.findByText('Rate cards on a Deal.');
+    const at = () => document.querySelector('[data-field="spec-at"]');
+    await waitFor(() => expect(at()).toHaveTextContent('3 changes'));
+    for (let i = 0; i < 3; i++) fireEvent.keyDown(document.body, { key: ']' });
+    expect(at()).toHaveTextContent('3 of 3');
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Next change' }), { key: ' ' });
+    fireEvent.keyDown(document.body, { key: '[' });
+    expect(at()).toHaveTextContent('2 of 3');
+
+    await user.click(within(screen.getByRole('navigation', { name: 'On this page' })).getByRole('link', { name: /^Definitions/ }));
+    fireEvent.keyDown(document.body, { key: ']' });
+    expect(at()).toHaveTextContent('1 of 3');
+    delete (HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+  });
+
+  it('PLAIN-8.5, 8.6: a deleted description is a change; a read that renumbers the changes lets go of the hold; Space on a link scrolls', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    fakeLayout({ c0: 100, c1: 300, c2: 500, c3: 900 });
+    const emptied = answer({ text: TEXT.replace('description: Rate cards on a Deal.\n', '') });
+    const readPlain = vi.fn(async () => emptied);
+    renderApp(URL, { readPlain }).snapshot([row({ id: 'a', title: 'fix-deal-rates' })]);
+    await waitFor(() => expect(document.querySelector('[data-field="spec-description"]')).toHaveAttribute('data-change', 'changed'));
+    const at = () => document.querySelector('[data-field="spec-at"]');
+    await waitFor(() => expect(at()).toHaveTextContent('4 changes'));
+    fireEvent.keyDown(document.body, { key: ']' });
+    fireEvent.keyDown(document.body, { key: ']' });
+    expect(at()).toHaveTextContent('2 of 4');
+    // The description comes back: every change after it moves up one cursor.
+    readPlain.mockImplementation(async () => answer());
+    await act(async () => vi.advanceTimersByTimeAsync(SPEC_POLL_MS));
+    await waitFor(() => expect(at()).not.toHaveTextContent('of 4'));
+    fireEvent.keyDown(document.body, { key: ']' });
+    expect(at()).toHaveTextContent('of 3');
+
+    fireEvent.keyDown(document.body, { key: ']' });
+    const held = at()!.textContent;
+    fireEvent.keyDown(within(screen.getByRole('navigation', { name: 'On this page' })).getAllByRole('link')[0]!, { key: ' ', shiftKey: true });
+    const box = module().closest<HTMLElement>('[data-slot="pane-scroll"]')!;
+    box.scrollTop = 0;
+    box.dispatchEvent(new Event('scroll'));
+    await waitFor(() => expect(at()!.textContent).not.toBe(held));
+  });
+
+  it("PLAIN-8.6: [ and ] don't step while a Concept's card is open", async () => {
+    const user = userEvent.setup();
+    fakeLayout(CHANGES);
+    open();
+    await screen.findByText('Rate cards on a Deal.');
+    await user.hover(within(module()).getByRole('button', { name: 'Deal' }));
+    await screen.findByRole('dialog');
+    fireEvent.keyDown(document.body, { key: ']' });
+    expect(document.querySelector('[data-field="spec-at"]')).toHaveTextContent('3 changes');
+  });
+
+  it('PLAIN-8.6: in a narrow pane the header shortens Back and "Only what changed" to fit', async () => {
+    open();
+    await screen.findByText('Rate cards on a Deal.');
+    expect(screen.getByRole('button', { name: 'Back to fix-deal-rates' }).querySelector('span')).toHaveClass('@max-[40rem]/header:sr-only');
+    const only = screen.getByRole('checkbox', { name: 'Only what changed' }).closest('label')!;
+    expect(within(only).getByText('Only what changed')).toHaveClass('@max-[40rem]/header:hidden');
+    expect(within(only).getByText('Changed only')).toHaveClass('hidden', '@max-[40rem]/header:inline');
   });
 });

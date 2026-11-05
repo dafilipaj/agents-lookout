@@ -279,7 +279,8 @@ const FAMILIES: Record<string, Family> = {
     tokens: ['diff-added-text', 'diff-removed-text', 'diff-added-soft', 'diff-removed-soft'],
     files: {
       'web/src/components/ChangesCount.tsx': { why: "a Session's lines added and removed, on its row, in the status line and in its list of changed files (DIFF-1.1, DS-2.5)", uses: ['text-diff-added-text', 'text-diff-removed-text'] },
-      'web/src/components/SpecView.tsx': { why: "a Module's added, removed and rewritten clauses and words, and the Changes card's tally (PLAIN-1.6, DS-2.5)", uses: ['bg-diff-added-soft', 'bg-diff-removed-soft', 'text-diff-added-text', 'text-diff-removed-text'] },
+      'web/src/components/ChatRail.tsx': { why: "a Module's added and removed clauses as Marks on the rail (PLAIN-8.5)", uses: ['bg-diff-added-text', 'bg-diff-removed-text'] },
+      'web/src/components/SpecView.tsx': { why: "a Module's added, removed and rewritten clauses and words, their bars, its specs' counts and marks, and the Changes card's tally (PLAIN-1.6, PLAIN-8.3, DS-2.5)", uses: ['bg-diff-added-soft', 'bg-diff-added-text', 'bg-diff-removed-soft', 'bg-diff-removed-text', 'text-diff-added-text', 'text-diff-removed-text'] },
     },
   },
   warning: {

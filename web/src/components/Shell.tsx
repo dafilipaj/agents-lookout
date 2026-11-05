@@ -1,4 +1,4 @@
-import type { ComponentPropsWithoutRef, HTMLAttributes, ReactNode } from 'react';
+import type { ComponentPropsWithoutRef, HTMLAttributes, ReactNode, Ref } from 'react';
 import { cn } from '@/lib/utils';
 
 /**
@@ -62,13 +62,35 @@ export function ShellView({ className, ...rest }: ComponentPropsWithoutRef<'div'
  * A main-pane view with no dock (nothing selected, loading, Settings): its header cell carries the
  * top line on, empty unless `header` is given, and its content scrolls down to the bottom.
  */
-export function PlainView({ header, children, ...rest }: { header?: ReactNode; children: ReactNode } & ComponentPropsWithoutRef<'div'>) {
+export function PlainView({
+  header,
+  rail,
+  scrollRef,
+  children,
+  ...rest
+}: { header?: ReactNode; rail?: ReactNode; scrollRef?: Ref<HTMLDivElement>; children: ReactNode } & ComponentPropsWithoutRef<'div'>) {
   return (
     <ShellView {...rest}>
       <PaneHeader aria-hidden={header ? undefined : true}>{header}</PaneHeader>
-      <ShellCell row="body" toBottom className="overflow-y-auto">
-        {children}
-      </ShellCell>
+      {rail ? (
+        // PLAIN-8.5: a rail beside the scroll bar, as the chat's (VIEW-1.11): the content scrolls, the rail doesn't.
+        <ShellCell row="body" toBottom className="@container flex">
+          <div
+            ref={scrollRef}
+            className="h-full min-w-0 flex-1 overflow-y-auto"
+            data-slot="pane-scroll"
+            // SIDE-5 leaves the arrow keys to the view when they come from inside it: they scroll it, as the chat's.
+            data-scroll-keys
+          >
+            {children}
+          </div>
+          {rail}
+        </ShellCell>
+      ) : (
+        <ShellCell row="body" toBottom className="overflow-y-auto">
+          {children}
+        </ShellCell>
+      )}
     </ShellView>
   );
 }

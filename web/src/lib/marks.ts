@@ -1,8 +1,12 @@
 import type { ChatEntry } from '@shared/types.ts';
 import { clockTime } from './chat';
 
-/** VIEW-1.11: what a Mark stands for: a prompt you sent, a subagent's result, or a question. */
-export type MarkKind = 'prompt' | 'subagent' | 'question';
+/**
+ * VIEW-1.11: what a Mark stands for: a prompt you sent, a subagent's result, or a question; in the
+ * Spec view (PLAIN-8.5), an added, removed or rewritten clause.
+ */
+export type MarkKind = 'prompt' | 'subagent' | 'question' | ChangeKind;
+export type ChangeKind = 'added' | 'removed' | 'changed';
 
 export interface Mark {
   /** The entry's cursor; its chat row carries it as `data-mark`. */
@@ -11,12 +15,17 @@ export interface Mark {
   /** The entry's first line, bounded. */
   text: string;
   ts: string | null;
+  /** PLAIN-8.5: the spec or section a change is in, said after its kind. */
+  where?: string;
 }
 
 export const MARK_KIND_LABEL: Record<MarkKind, string> = {
   prompt: 'Your prompt',
   subagent: 'Subagent result',
   question: 'Question',
+  added: 'Added',
+  removed: 'Removed',
+  changed: 'Rewritten',
 };
 
 const MAX_LINE = 120;
@@ -45,7 +54,7 @@ export function firstLine(text: string): string {
 /** The Mark's accessible name: what it is, when, and its first line. */
 export function markName(m: Mark): string {
   const time = clockTime(m.ts);
-  return `${MARK_KIND_LABEL[m.kind]}${time ? ` at ${time}` : ''}: ${m.text}`;
+  return `${MARK_KIND_LABEL[m.kind]}${m.where ? ` in ${m.where}` : ''}${time ? ` at ${time}` : ''}: ${m.text}`;
 }
 
 /** Where a Mark sits on the rail, as a fraction of the chat's full scroll height (0 at the top). */

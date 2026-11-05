@@ -26,10 +26,10 @@ A Module shown whole in the main pane, with its change since the base marked in 
 
 - [x] PLAIN-1.1 The Spec view opens at its own URL, `/plain/<Session id>/<Checkout id>/<module path>`, where the Checkout id names a Checkout Lookout knows (PLAIN-6.1), or `/plain/pr/<repo>/<number>/<module path>` for a PR's Module (PLAIN-5), and the path is one encoded segment, so a reload keeps it, ⌘-click opens it in a new browser tab and Back returns to where it was opened from. It takes the main pane; the right sidebar stays as it was. (test)
 - [x] PLAIN-1.2 Its header names the Module (`crm.plain`), its path in the Checkout, its description, and the Checkout (repo and Worktree or branch, as DIFF-3.2 heads a Checkout); its `import` and `requires` Modules are listed, each a link that opens that Module in the Spec view (PLAIN-2.5). (test)
-- [x] PLAIN-1.3 Its sections are those of `/p-plain:page` (p-plain 0.6.1), in the same order: definitions, implementation reqs, test reqs, functional specs with their nested acceptance tests, and the Module's notes. A section nav beside the content lists them with their counts, and the touched ones are marked; in a main pane narrower than 640 px it sits above the content (as DS-13.1's side nav). (test)
+- [x] PLAIN-1.3 Its sections are those of `/p-plain:page` (p-plain 0.6.1), in the same order: definitions, implementation reqs, test reqs, functional specs with their nested acceptance tests, and the Module's notes. A section nav beside the content ("On this page", PLAIN-8.2) lists them with their counts, and the touched ones are marked; in a main pane narrower than 640 px it sits above the content (as DS-13.1's side nav). (test)
 - [x] PLAIN-1.4 Inside the Module, a `:Concept:` defined in it links to its definition, a `§N.M` to that functional spec, and a predefined Concept (`:UnitTests:`, `:ConformanceTests:`, `:AcceptanceTest:`, `:AcceptanceTests:`, `:Implementation:`) is marked as predefined by plain. Code spans stay code. (test)
 - [x] PLAIN-1.5 The text is the Module as it is in the Checkout's working tree, uncommitted edits included. The base is the Checkout's Branch point, the one DIFF counts from (DIFF-2.3), so the view and DIFF's `+ −` agree. A Module new since the Branch point shows every clause as added; a deleted one shows its base text, every clause removed; an unchanged one shows no marks and no Changes card. (test)
-- [x] PLAIN-1.6 Changed clauses are marked in place as `/p-plain:page` marks them: added, removed, and rewritten with the word-level change inside the clause. The Changes card at the top counts added, changed and removed clauses, links to each touched one, and has "Highlight changes" (on) and "Only what changed" (off), which hides every untouched clause and section. (test)
+- [x] PLAIN-1.6 Changed clauses are marked in place, as `/p-plain:page` tells them apart: added, removed, and rewritten with the word-level change inside the clause (drawn as PLAIN-8.3 says). The Changes card at the top counts added, changed and removed clauses, links to each touched spec or section (PLAIN-8.4), and has "Highlight changes" (on); "Only what changed" (off, in the header since PLAIN-8.6) hides every untouched clause and section. (test)
 - [x] PLAIN-1.7 While the view is open, the Module and its base are read again every 3 s; when either differs, the view updates in place and keeps its scroll position, and the clauses that changed since the last read are briefly marked as just changed (as DIFF-3.8). (test)
 - [x] PLAIN-1.8 A file that can't be read (gone from the Checkout and the base, not a `.plain` file, larger than 1 MB) shows an Alert (DS-4) saying why, with no content. Text the parser can't place in a section is shown under "Not in a section" as plain text, so nothing in the Module is hidden. (test)
 - [x] PLAIN-1.9 Seen in both modes from a 480 px main pane to a wide one, on `crm.plain` (1240 lines) with a change in each kind of section: the marks read as `/p-plain:page`'s do, with the design system's colours (DS-2.5's `diff-added` and `diff-removed` families), the nav never hides the content, and scrolling stays smooth. (manual)
@@ -77,6 +77,18 @@ Slice 2: a PR's Modules, your own and a Review request alike, read from GitHub's
 - [x] PLAIN-6.1 The server reads only from Checkouts it knows: a live Session's Checkout from DIFF (DIFF-2), or a PR's fetched commits (PLAIN-5.2). The URL's `checkout` is an id Lookout issued for one of those, never a path, and a PR is named by its repo (letters, digits, `.`, `_`, `-`) and number, which Lookout turns into a clone it knows; a `path` that leaves the Checkout (`..`, an absolute path, a symlink out of it) or isn't `.plain` is refused. (test)
 - [x] PLAIN-6.2 Reading a Module runs only `git` (`show`, `merge-base`, `rev-parse`, `diff --name-only`, `config --get remote.origin.url`, and PLAIN-5.2's `fetch`, `for-each-ref` and `update-ref` of its own `refs/lookout/pr/*`), with the clone's hooks and fsmonitor off and no password prompt, PLAIN-5.2's `gh pr view`, and file reads. Nothing in a Module is executed, fetched or rendered as HTML: its text is shown as text, its links (PLAIN-1.4, PLAIN-2.5) are Lookout's own. (test)
 
+### PLAIN-8 Reading and stepping through a change
+
+The Module reads as one centred column, as the chat does. Its outline sits beside it, and its changes are marks you step through, as the chat's bookmarks are.
+
+- [x] PLAIN-8.1 The Module's text is one column at most 48rem wide, the chat's width (VIEW-1), centred in the main pane while the pane has room for it and the outline (PLAIN-8.2) on its right; in a narrower pane it moves left only as far as the outline needs, then narrows. Nothing in it widens the pane: a long code span or word wraps, so the main pane never scrolls sideways. (test)
+- [x] PLAIN-8.2 The section nav (PLAIN-1.3) is "On this page", on the column's right. It lists the sections with their counts and, under Functional specs, the changed specs, each with its id, its gist (up to two lines) and its mark: `+` new, `−` removed, `~` changed. "Show all N specs" lists every spec, and a Module with no change lists every spec from the start. The entry for the section or spec at the top of the view is marked (`aria-current="location"`) and follows scrolling; an unlisted spec marks Functional specs. (test)
+- [x] PLAIN-8.3 A changed clause, note or definition is marked by a bar at its left edge, not by a word: `diff-added` for added, `diff-removed` for removed, `muted-foreground` for rewritten. Its state is named to screen readers only. An added clause has no fill; a removed one is struck through in `muted-foreground`; a rewritten one keeps its inserted and deleted words marked (PLAIN-1.6). A changed spec has no border, and its heading carries its counts (`+2 ~1 −1`). (test)
+- [x] PLAIN-8.4 The Changes card has one row per touched spec or section, not one per part of it: its id or name, its gist, and its counts summed over its clauses, acceptance tests and notes, naming tests and notes when they are among them. A new or removed spec says so. (test)
+- [x] PLAIN-8.5 Each change is a mark on a rail beside the view's scroll bar, at its place in the Module's full height. A change is an added, removed or rewritten clause, note or definition, or the description (rewritten, or added or removed with its Module). The rail is the chat's (VIEW-1.11), each mark a short bar in its change's colour. Clicking a mark scrolls to its change and moves focus there, where the arrow keys scroll the view, as in the chat; hovering or focusing it shows the change's first line, its kind and its spec or section. The rail is hidden when nothing changed, when "Highlight changes" is off, and when the view is too narrow, as the chat's is. (test)
+- [x] PLAIN-8.6 `[` and `]` jump to the previous and next change, as in the chat (VIEW-1.11): only with focus outside a text field and no dialog open, with the change landing just below the view's top edge. The header shows where you are ("3 of 28": the change last jumped to, or the last one scrolled past; "28 changes" before the first), with Previous and Next change buttons. "Only what changed" moves from the Changes card to the header, so both stay in reach while you scroll; in a pane too narrow for the header, Back shows its arrow alone and the box reads "Changed only". The place you jumped to is kept until you scroll yourself, follow a link in the view or go Back; Space pressing a button doesn't count as scrolling, and a read that changes which changes there are lets go. (test)
+- [x] PLAIN-8.7 Seen in both modes, from a 480 px main pane to a wide one, on `crm.plain` with PR #3338's change: the column lines up with the chat's, the outline sits beside it, nothing scrolls sideways, the bars and the rail read as one change, and `[`/`]` step through every change in order. (manual)
+
 ## Non-goals
 
 - **Talking back to the Session from the view** (select a clause, "Ask the Session about this"). In the Backlog.
@@ -92,26 +104,20 @@ Slice 2: a PR's Modules, your own and a Review request alike, read from GitHub's
 ## UX
 
 ```
-┌ Session sidebar ┬ main pane ─────────────────────────────────────────┬ right ┐
-│                 │ ← Back to fix-deal-rates     crm.plain   [ ] Viewed │       │
-│                 │ plain/crm.plain · fantastic-productive · crm-rates  │       │
-│                 │ Deals on a pipeline board, proposals, companies …   │       │
-│                 │ imports productive, view-config  requires shell     │       │
-│                 ├──────────────┬──────────────────────────────────────┤       │
-│                 │ Changes  •   │ Changes against 1a2b3c4 (Branch pt)  │       │
-│                 │ Definitions 42│ 2 added · 1 changed · 0 removed     │       │
-│                 │ Impl reqs  •  │ [x] Highlight  [ ] Only what changed│       │
-│                 │ Test reqs     │                                     │       │
-│                 │ Functional •  │ Definitions                         │       │
-│                 │               │ :RateCard: is a list of …           │       │
-│                 │               │   used by a ┌──────────────────────┐│       │
-│                 │               │  :Deal:  ───│ Deal · productive    ││       │
-│                 │               │             │ is an opportunity …  ││       │
-│                 │               │             │ Open productive      ││       │
-│                 │               │             └──────────────────────┘│       │
-└─────────────────┴───────────────┴─────────────────────────────────────┴───────┘
+┌ Session sidebar ┬ main pane ──────────────────────────────────────────────────────────┬ right ┐
+│                 │ ← Back   crm.plain       [↑] 3 of 28 [↓]  [ ] Only what changed  [ ] Viewed │   │
+│                 │            plain/crm.plain · fantastic-productive · #3338    │ On this page   ┆│   │
+│                 │            Deals on a pipeline board, proposals … §16.       │ Changes        ┆│   │
+│                 │            ┌ Changes against develop ──── 16 added … ┐       │ Definitions 13 ┆│   │
+│                 │            │ §16.5.28  People tab add button +9 ~3 −3 │       │ Functional 156 ┆│   │
+│                 │            │ §16.5.28.1 Kinds a reader may add  new   │       │ ┃§16.5.28 …   ~ ━│   │
+│                 │            └ [x] Highlight changes ───────────────────┘       │  §16.5.28.1 … + ┆│   │
+│                 │            §16.5.28 A client Company's People tab… +4 ~3 −1  │                ━│   │
+│                 │          ▌ • A client Company's People tab offers ~~Add~~ one │                ┆│   │
+│                 │          ▌   • With one kind allowed it reads "Add contact" … │                ━│   │
+│                 │            ←───────── 48rem column, centred ────────→        │   rail of marks ┘│   │
+└─────────────────┴───────────────────────────────────────────────────────────────────────────┴───────┘
 ```
-
 - Type and colour from the design system: clause text in `body`, the header's path and Checkout in `meta`, added and removed from DS-2.5's diff families (the same green and red as DIFF's `+ −`), a rewritten clause's inserted and deleted words likewise. Nothing in Status colours (DS-3).
 - A term from another Module is underlined dotted in the text colour; a local one is a plain link to its definition; a predefined one is `muted-foreground`.
 - Keyboard: Tab moves through the header's links, the Viewed box, the nav and the terms; `V` toggles Viewed; Esc closes a popover, then does what Esc does in the main pane.
@@ -134,6 +140,8 @@ Each with its own requirement and Changelog line, in the slice that needs it:
 
 - **DS** (slice 1): DS-2.5's diff family is used by PLAIN too, and gains two tints for an added and a removed clause's background, with their contrast checked as DS-2.2's are; the colour guard's row lists PLAIN's files.
 - **DIFF** (slice 1): DIFF-3.1 and DIFF-4.1, a `.plain` file opens the Spec view and "Open in VS Code" is its second action (PLAIN-3.1); DIFF-3.7, a `.plain` file's Viewed mark is PLAIN-4's (PLAIN-3.3).
+- **VIEW** (PLAIN-8): VIEW-1.11's rail takes a change's marks too, for the Spec view; the chat's are as they were.
+- **DS** (PLAIN-8): the colour guard lets the rail use the diff family for a change's mark.
 - **WORK** (slice 2): WORK-6, the "Specs" button on an expanded PR or Review request row (PLAIN-5.1).
 
 ### Key decisions
@@ -144,6 +152,9 @@ Each with its own requirement and Changelog line, in the slice that needs it:
 - **The main pane, at its own URL** (Dario, 2026-11-04): a 1,200-line Module needs the width, and a URL gives reload, new tab and Back.
 - **The base is DIFF's Branch point, imports from the same tree** (Dario, 2026-11-04): the view and DIFF's count never disagree, and a Concept's popover shows the definition as this branch has it.
 - **Viewed is explicit and persisted** (Dario, 2026-11-04): opening a long Module isn't reading it, and a review spans reloads; DIFF-3.7's marks, kept until a reload, are too short-lived for that.
+- **Reading and stepping (PLAIN-8): option A of three drawn, with B's change stepper** (Dario, 2026-11-05, https://claude.ai/artifact/QtSAwRw2w1WjkjFHcfz5eN): the column centred as the chat's, the outline on its right, bars instead of words. C, the outline as a sidebar-style panel, took the most width and added a fourth column.
+- **A change is a bookmark** (Dario, 2026-11-05): "On this page" is the Module's structure, which the chat doesn't have; stepping through changes is what the chat's bookmarks do, so it is the same rail and the same `[`/`]`, not a third kind of navigation with its own keys.
+- **A rewritten clause's colour is `muted-foreground`** (2026-11-05): DS-2.5's diff family has added and removed only, and a third hue would read as a Status (DS-3.6); the words inside it carry the green and red.
 - **No gate on opening a PR** (Dario, 2026-11-04): Lookout can't enforce it; the harness rule puts gates in the CLIs and hooks.
 
 ## Open questions
@@ -161,3 +172,8 @@ None.
 - 2026-11-05: Codex review of slice 2, round 2 (the last; 1 major, 3 minor), fixed without a further round. A clone's fetches and sweeps run one at a time, so a sweep can't delete the refs of a fetch that started after it; the fetch's ssh keeps git's own order (`GIT_SSH_COMMAND`, then `core.sshCommand`, then `GIT_SSH`), adding `BatchMode=yes` only to a plain `ssh` (PLAIN-5.2). Back is kept per PR Spec view, so Back through a PR opened from another PR's Spec view steps through both; closing Specs gives focus back to Work's list only when it was lost, never taken from another control (PLAIN-5.1).
 - 2026-11-05: PLAIN-5.1 amended for DS-16: "Specs" is a submenu of the row's "More", no longer a button with its own list; `S` opens it there.
 - 2026-11-05: PLAIN-1.9 ticked: Dario checked and confirmed it.
+- 2026-11-05: Added PLAIN-8, reading and stepping through a change (Dario: the view sits on the left while the chat and Topics are centred, its nav has a style of its own, and it could read better). Drawn as three options on a canvas (https://claude.ai/artifact/QtSAwRw2w1WjkjFHcfz5eN); Dario chose A with B's stepper, and agreed that stepping through changes is the chat's bookmarks (VIEW-1.11): the same rail and `[`/`]`. Found on 4747: a long code span widened the pane, which scrolled 51 px sideways (PLAIN-8.1). PLAIN-1.3 and 1.6 amended; VIEW and DS amended ("Other specs to amend").
+- 2026-11-05: PLAIN-8 built. `SpecView.tsx`: the layout is a three-column grid (`1fr`, `48rem`, `15rem`–`1fr`), so the column is centred until the outline needs the room; "On this page" follows the scroll position; bars are `before:` on the clause's own block, so a parent's bar doesn't run down its nested clauses. Every change on screen is read from the page after a render (`data-change`), so the Marks follow "Only what changed" and Highlight. `ChatRail` takes a landmark name and change kinds (`lib/marks.ts`), and `PlainView` an optional rail beside its scroll box (`Shell.tsx`). Ticked: PLAIN-8.1 to 8.6. Open: PLAIN-8.7 `(manual)`, Dario's look.
+- 2026-11-05: Codex review of PLAIN-8, round 1 (Sol, high: 3 major, 4 minor), all fixed. Each read clears every Mark's cursor before giving them out again, so a node React kept can't carry a stale one. The view's scroll box carries `data-scroll-keys`, so after a jump from the rail the arrow keys scroll it, not the Session list (SIDE-5). The header fits a 480 px pane (PLAIN-8.6). Space pressing a button keeps the hold; a link in the view, Back and Forward let go of it. `[`/`]` don't step while the Concept card is open. A new or deleted Module's description is an added or removed change (PLAIN-8.5).
+- 2026-11-05: Codex review of PLAIN-8, round 2 (the last; 3 minor), fixed without a further round. A description deleted from a Module is a rewritten change. A read that gives the changes other cursors lets go of the hold, which would otherwise step from the wrong change. Space on a link scrolls the view, so it lets go of the hold too; only a button's Space keeps it (PLAIN-8.6).
+- 2026-11-05: PLAIN-8.7 ticked: Dario checked and confirmed it.

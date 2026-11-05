@@ -21,6 +21,8 @@ export interface ChatRailProps {
   onEarlier(): void;
   /** Jumps to a Mark's entry; `focus` moves focus to the entry (a jump from the rail). */
   onJump(cursor: string, focus: boolean): void;
+  /** The landmark's name: the chat's Bookmarks, or a Module's Changes (PLAIN-8.5). */
+  label?: string;
 }
 
 /**
@@ -39,6 +41,7 @@ export const ChatRail = memo(function ChatRail({
   loadingEarlier,
   onEarlier,
   onJump,
+  label = 'Bookmarks',
 }: ChatRailProps) {
   const fractions = useMarkFractions(scrollRef, listRef, marks, version);
   // Hover and focus are kept apart: a click moves focus to the entry, and the tooltip stays while
@@ -78,7 +81,7 @@ export const ChatRail = memo(function ChatRail({
   const tip = placed.find((m) => m.cursor === shown) ?? null;
 
   return (
-    <nav aria-label="Bookmarks" className="relative hidden w-4 shrink-0 @md:block" data-testid="chat-rail">
+    <nav aria-label={label} className="relative hidden w-4 shrink-0 @md:block" data-testid="chat-rail">
       {canLoadEarlier && (
         <IconButton
           label="Load earlier messages"
@@ -134,6 +137,7 @@ export const ChatRail = memo(function ChatRail({
           <span className="block truncate">{tip.text || MARK_KIND_LABEL[tip.kind]}</span>
           <span className="block text-caption text-muted-foreground">
             {MARK_KIND_LABEL[tip.kind]}
+            {tip.where && ` · ${tip.where}`}
             {clockTime(tip.ts) && ` · ${clockTime(tip.ts)}`}
           </span>
         </div>
@@ -142,7 +146,7 @@ export const ChatRail = memo(function ChatRail({
   );
 });
 
-/** A dot for your prompts, a diamond for subagent results, a triangle for questions. */
+/** A dot for your prompts, a diamond for subagent results, a triangle for questions; a bar for a Module's change (PLAIN-8.5). */
 export function MarkShape({ kind, className }: { kind: MarkKind; className?: string }) {
   return (
     <span
@@ -152,6 +156,10 @@ export function MarkShape({ kind, className }: { kind: MarkKind; className?: str
         kind === 'prompt' && 'size-2 rounded-full bg-muted-foreground',
         kind === 'subagent' && 'size-[7px] rotate-45 rounded-[1px] bg-muted-foreground',
         kind === 'question' && 'h-2 w-[9px] bg-needs-you [clip-path:polygon(50%_0,100%_100%,0_100%)]',
+        (kind === 'added' || kind === 'removed' || kind === 'changed') && 'h-[3px] w-2.5 rounded-full',
+        kind === 'added' && 'bg-diff-added-text',
+        kind === 'removed' && 'bg-diff-removed-text',
+        kind === 'changed' && 'bg-muted-foreground',
         className,
       )}
     />
