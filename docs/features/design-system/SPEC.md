@@ -161,6 +161,14 @@ Lookout's mark is the Lens: a ring and an off-centre dot (0014). It's the brand,
 - [x] DS-14.2 The favicon (`web/public/favicon.svg`) is the Lens on a 32 px tile, `rx=8`, in `#18181b`: the mark in `#fafafa` at a 2.6 px stroke, scaled 0.9167 from `translate(5 5)`. No amber: it's Needs you's colour, kept free for a Needs you mark on the favicon later. (test)
 - [ ] DS-14.3 Seen in both modes: the favicon reads as the Lens in a light and a dark browser tab strip, and the sidebar's mark (SIDE-8.2) reads as the brand, quieter than any Status marker. (manual)
 
+### DS-15 One scroll bar
+
+The chat's scroll bar (VIEW-1.16) everywhere: with scroll bars always shown, Chrome on macOS draws a lighter track with a line on each side, which the Spec view, a Topic's view and the graph still had.
+
+- [x] DS-15.1 Every element's scroll bar is thin, its thumb the muted foreground at half strength, its track transparent, set once on `*` in `index.css`'s base layer. Nothing else in UI source styles a scroll bar (`scrollbar-width`, `scrollbar-color`, `scrollbar-gutter`, `::-webkit-scrollbar` or a `scrollbar-…` class), so a new view gets it without asking. (test)
+- [ ] DS-15.2 Seen with "Show scroll bars: Always", in light and dark mode: the Spec view, a Topic's view, the Topic graph, both sidebars and the chat show the same thin thumb and no track or border. (manual)
+
+
 ## Non-goals
 
 - **Narrow widths** (the review's suggestion 2): columns that collapse below about 1024 px, a header that folds its buttons, a status line that drops whole parts. Dario uses Lookout full screen; it's in the Backlog.
@@ -474,3 +482,4 @@ None.
 - 2026-11-03: The `ok` family also marks a Done Session: its row's Done chip (SIDE-2.17, the Chip's `ok` tone) and its Done card in the chat (VIEW-5.17).
 - 2026-11-04: Added DS-14, Lookout's own mark, the Lens (Plan item 36, decision 0014): `LookoutMark` and a new favicon without amber. Dario chose the Lens from five concepts. Built the same day: `ui/lookout-mark.tsx`, the favicon, the guard's exception (`icons.test.ts`), tests in `shared.test.tsx` (DS-14.1, DS-14.2); seen in Chromium in both modes at 1440 px with the server's build. DS-14.3 waits for Dario's look.
 - 2026-11-04: DS-2.5 gains two tints for the Spec view's added and removed clauses (PLAIN-1.6), with their contrast in DS-2.5's test; the diff family's guard row lists `SpecView.tsx`.
+- 2026-11-05: Added DS-15, one scroll bar (Dario: the Spec view's, a single Topic's and the graph's scroll bars had a border the chat's doesn't). VIEW-1.16's `scrollbar-blend` utility moves to the base layer's `*` rule, so every scroll area has it, and a guard test fails on any other scroll bar styling. Built the same day; DS-15.2 waits on Dario's look.

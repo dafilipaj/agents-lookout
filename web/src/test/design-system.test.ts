@@ -1208,6 +1208,22 @@ function tabsAndNavs(source: string, path = 'x.tsx'): string[] {
   return found;
 }
 
+describe('scroll bars', () => {
+  it("DS-15.1: every element's scroll bar is thin with a transparent track, set once in index.css's base layer, and nothing else styles one", () => {
+    const base = /@layer base\s*\{\s*(?:\/\*[\s\S]*?\*\/\s*)?\*\s*\{([^}]*)\}/.exec(css)?.[1] ?? '';
+    expect(base).toMatch(/scrollbar-width:\s*thin;/);
+    expect(base).toMatch(/scrollbar-color:\s*color-mix\(in oklab, var\(--muted-foreground\) 50%, transparent\) transparent;/);
+    // In CSS, a class name or an inline style.
+    const scrollBarStyles = (text: string) => text.match(/scrollbar-(?:width|color|gutter|blend|thin|none)|scrollbar(?:Width|Color|Gutter)|::-webkit-scrollbar/g) ?? [];
+    expect(scrollBarStyles(`.a::-webkit-scrollbar{} <div className="scrollbar-none" style={{ scrollbarWidth: 'none', scrollbarColor: x, scrollbarGutter: 'stable' }} />`)).toEqual(['::-webkit-scrollbar', 'scrollbar-none', 'scrollbarWidth', 'scrollbarColor', 'scrollbarGutter']);
+    const others = Object.entries(SOURCES).flatMap(([path, text]) => {
+      const hits = scrollBarStyles(text);
+      return path === 'web/src/index.css' ? (hits.length === 2 ? [] : [`${path}: ${hits.join(', ')}`]) : hits.map((h) => `${path}: ${h}`);
+    });
+    expect(others).toEqual([]);
+  });
+});
+
 describe('sub-pages and tabs', () => {
   it('DS-13.3: the guard catches a tab strip and a current page however they are written, and lets other roles through', () => {
     expect(tabsAndNavs(`<div role="tablist" />; <div role={'tablist'} />; <a aria-current="page" />; <a aria-current={on ? 'page' : undefined} />`).map((s) => s.split(' ')[1])).toEqual(['tablist', 'tablist', 'aria-current=page', 'aria-current=page']);

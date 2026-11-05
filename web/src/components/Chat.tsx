@@ -360,7 +360,7 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
           onTouchMove={release}
           onPointerDown={releaseOnScrollBar}
           // VIEW-1.16: the scroll bar's track takes the chat's background, with no border.
-          className="scrollbar-blend h-full min-w-0 flex-1 overflow-y-auto"
+          className="h-full min-w-0 flex-1 overflow-y-auto"
           aria-label="Chat"
           // SIDE-5 leaves the arrow keys to the chat when they come from inside it: they scroll it.
           data-scroll-keys
