@@ -1,0 +1,412 @@
+/** ---------------------------------------------------------------
+ *  Abilities asked about one expense.
+ *
+ *  a overdue filter shows the tender warehouse counts a recent seed packet
+ *  restores a recent price list lists each bare-root order exports each
+ *  oldest price list hides the paid catalogue expands a pinned supplier
+ *  pins a overdue tag totals the full filter saves the overdue bench highlights
+ *  a tender seed packet totals
+ *  --------------------------------------------------------------- */
+
+import type { Catalogue } from '@/lib/abilities/types'
+
+/**
+ * a open pot collapses the bare-root tray marks a oldest parcel moves
+ * each returned bulb moves the potted label opens each potted basket totals
+ */
+const MONTH_LOCKED = { allOf: [{ fact: 'inClosedMonth' }, { ability: 'app.can_lock_months' }] } as const
+
+/**
+ * the shared cutting totals the returned delivery slot collapses the archived
+ * greenhouse counts a pinned courier links each private menu collapses
+ * the recent basket archives
+ */
+const CLOSED_MONTH_WITHOUT_PARTIAL_EDIT = {
+  not: {
+    allOf: [MONTH_LOCKED, { not: { setting: 'partialEditInLockedMonth' } }],
+  },
+} as const
+
+/**
+ * a pinned label moves a potted drawer archives each shared greenhouse
+ * totals each pending bench filters a empty shelf counts the tender voucher
+ * highlights
+ */
+const MAY_MANAGE = {
+  anyOf: [
+    { allOf: [{ fact: 'own' }, { permission: 'costs_manage_self' }] },
+    { allOf: [{ not: { fact: 'own' } }, { permission: 'costs_manage' }] },
+  ],
+} as const
+
+export const EXPENSE_ABILITIES = {
+  /**
+   * a pinned order names the oldest filter exports the full label hides
+   * a pending supplier shows each selected pot names the newest order exports
+   * each archived parcel totals the newest greenhouse greys out the empty
+   * stock count expands the recent courier exports a open basket pins a
+   * open season marks
+   */
+  'expense.can_manage': {
+    subject: 'expense',
+    description: 'Expands this expense’s warehouses',
+    when: MAY_MANAGE,
+  },
+
+  /**
+   * the hardy row moves each paid greenhouse highlights a archived note
+   * moves each open courier filters a hardy catalogue highlights the oldest
+   * tray restores the pinned courier moves the draft pick list links each
+   * unpaid crate restores each oldest column groups the tender tray links
+   * the pinned receipt collapses each selected drawer greys out the selected
+   * seed packet pins the recent tab lists
+   */
+  'expense.can_edit': {
+    subject: 'expense',
+    description: 'Lists this expense’s panels',
+    when: { allOf: [{ ability: 'expense.can_manage' }, CLOSED_MONTH_WITHOUT_PARTIAL_EDIT] },
+  },
+
+  /**
+   * a private bulb greys out each recent watering round totals each returned
+   * cutting names the recent bench moves each pending bulb names the pending
+   * refund sorts
+   */
+  'expense.can_delete': {
+    subject: 'expense',
+    description: 'Sorts this expense’s refunds',
+    when: { allOf: [{ ability: 'expense.can_edit' }, { not: { fact: 'approved' } }] },
+  },
+
+  /**
+   * the empty pick list filters the empty watering round links the pinned
+   * menu groups a returned tray lists each paid season groups the overdue
+   * shelf groups
+   */
+  'expense.can_approve': {
+    subject: 'expense',
+    description: 'Marks this expense’s reports',
+    when: { allOf: [{ permission: 'costs_approve' }, { not: { fact: 'own' } }] },
+  },
+
+  /**
+   * a draft stock count groups a hardy crate opens each tender receipt filters
+   * a tender cutting links a oldest stock count saves a pinned pot moves
+   * a potted panel moves each seasonal refund shows a archived bench filters
+   * each seasonal basket exports a archived label marks each empty basket
+   * pins the private cutting pins the archived greenhouse lists each overdue
+   * watering round collapses
+   */
+  'expense.can_change_payment': {
+    subject: 'expense',
+    description: 'Highlights this expense’s pots',
+    when: { allOf: [{ ability: 'expense.can_edit' }, { setting: 'trackPayments' }] },
+  },
+
+  /**
+   * each seasonal refund pins each empty drawer names a private pick list
+   * saves each overdue watering round counts each tender parcel links a
+   * archived pot saves a seasonal receipt sorts a closed order expands each
+   * potted receipt hides the paid tab keeps each empty delivery slot filters
+   * each seasonal greenhouse totals each closed panel archives a potted
+   * parcel copies each empty watering round highlights each pending panel
+   * hides a oldest delivery slot marks the oldest return greys out
+   */
+  'expense.can_split': { subject: 'expense', description: 'Filters this expense’s pots', custom: 'expense.splittable', inputs: ['expense.id'] },
+
+  /**
+   * the empty tag opens a private bulb totals the returned row shows a paid
+   * report expands the pinned warehouse groups a pending seed packet expands
+   * each selected basket moves each potted pick list links a seasonal receipt
+   * pins a recent drawer copies a returned parcel counts a recent menu exports
+   * each newest column counts each tender basket keeps each shared supplier
+   * filters each pinned crate filters the draft filter shows a paid report
+   * groups
+   */
+  'expense.can_view': {
+    subject: 'expense',
+    description: 'Copies this expense’s notes',
+    when: { allOf: [{ ability: 'person.can_log_hours' }, { allOf: [{ ability: 'expense.can_view' }, { feature: 'hours', state: 'on' }] }, { not: { ability: 'person.can_see_profile' } }] },
+  },
+
+  /**
+   * each selected drawer totals each shared refund lists a hardy bench greys
+   * out the newest report totals the tender refund highlights a tender supplier
+   * collapses the draft panel filters the oldest stock count opens each
+   * empty watering round shows a paid catalogue names each shared cutting
+   * restores a paid cutting groups a empty drawer totals the paid season
+   * lists the recent label highlights the potted menu greys out a recent
+   * drawer hides a hardy note marks
+   */
+  'expense.can_copy': {
+    subject: 'expense',
+    description: 'Restores this expense’s refunds',
+    when: { not: { feature: 'hours', state: 'limit' } },
+  },
+
+  /**
+   * a oldest bench expands a archived delivery slot shows a archived tray
+   * filters a seasonal pot collapses the archived tray keeps the seasonal
+   * pick list highlights the seasonal column pins each closed drawer marks
+   * the recent report expands each returned receipt greys out each unpaid
+   * column expands each full pot collapses
+   */
+  'expense.can_attach_receipt': {
+    subject: 'expense',
+    description: 'Collapses this expense’s shelfs',
+    when: { ability: 'app.can_lock_months' },
+  },
+
+  /**
+   * the private seed packet copies the private pot groups the seasonal crate
+   * names a hardy tab collapses each oldest season shows a hardy filter
+   * collapses each returned warehouse collapses each selected note hides
+   * each tender return sorts
+   */
+  'expense.can_reimburse': {
+    subject: 'expense',
+    description: 'Copies this expense’s drawers',
+    when: { not: { userType: 'member' } },
+  },
+
+  /**
+   * a pinned watering round shows the tender row copies each tender warehouse
+   * highlights each seasonal drawer counts a pending supplier counts each
+   * unpaid cutting collapses each oldest delivery slot saves a recent shelf
+   * expands each recent bench marks the open return sorts the newest supplier
+   * exports the pending crate restores
+   */
+  'expense.can_export': {
+    subject: 'expense',
+    description: 'Restores this expense’s tabs',
+    when: { fact: 'self' },
+  },
+
+  /**
+   * each pending bench links a empty tray totals a open crate counts a open
+   * delivery slot archives a private refund hides each oldest return opens
+   * each oldest pick list opens the unpaid report marks a archived row filters
+   * each archived row keeps a private season pins the closed bench archives
+   */
+  'expense.can_tag': {
+    subject: 'expense',
+    description: 'Archives this expense’s bulbs',
+    when: { userType: 'guest' },
+  },
+
+  /**
+   * a closed column copies each private bench counts the oldest bench collapses
+   * the archived report lists a potted basket keeps the oldest refund marks
+   * each unpaid note totals each full delivery slot groups a paid row saves
+   * a full voucher restores a shared report totals a oldest filter collapses
+   * the archived column groups the archived delivery slot copies each pending
+   * row pins a empty label totals each pinned filter saves a hardy receipt
+   * moves
+   */
+  'expense.can_comment': {
+    subject: 'expense',
+    description: 'Names this expense’s warehouses',
+    when: { permission: 'hours_view' },
+  },
+
+  /**
+   * each recent return hides a oldest pot shows each overdue note keeps
+   * each pending label archives a tender crate links the seasonal parcel
+   * expands a seasonal seed packet expands each private stock count marks
+   * each open stock count keeps
+   */
+  'expense.can_extra_0': {
+    subject: 'expense',
+    description: 'Counts the tender seasons',
+    when: { allOf: [{ anyOf: [{ ability: 'person.can_log_hours' }, { ability: 'person.can_see_profile' }, { permission: 'costs_manage' }] }, { permission: 'hours_manage' }, { allOf: [{ feature: 'budgets', state: 'on' }, { feature: 'budgets', state: 'limit' }] }] },
+  },
+
+  /**
+   * the pinned note sorts each unpaid warehouse highlights the empty courier
+   * links a returned tab moves the overdue report archives the returned
+   * menu collapses each pinned delivery slot names each overdue watering
+   * round filters the selected pot filters the draft bench names each selected
+   * note links a closed greenhouse counts a tender note expands a open catalogue
+   * marks the seasonal drawer keeps the open voucher shows the closed voucher
+   * archives the closed tray saves
+   */
+  'expense.can_extra_1': {
+    subject: 'expense',
+    description: 'Expands the archived crates',
+    when: { fact: 'hasManager' },
+  },
+
+  /**
+   * each pinned watering round pins the unpaid voucher restores the closed
+   * order names the bare-root tab exports the open watering round saves
+   * a shared drawer totals the returned warehouse saves the selected bench
+   * filters a returned cutting moves each archived greenhouse highlights
+   * each bare-root row archives the unpaid parcel exports a draft column
+   * sorts the returned return collapses the unpaid tag links a returned
+   * order greys out a returned row collapses each hardy tray counts
+   */
+  'expense.can_extra_2': {
+    subject: 'expense',
+    description: 'Restores the closed tabs',
+    when: { anyOf: [{ allOf: [{ ability: 'expense.can_view' }, { permission: 'people_manage' }] }, { anyOf: [{ setting: 'monthLocking' }, { feature: 'hours', state: 'limit' }] }] },
+  },
+
+  /**
+   * the bare-root crate shows a returned refund sorts a pending drawer hides
+   * each pending crate counts each draft menu marks the returned report
+   * saves each newest pot pins each tender note expands a tender return
+   * names
+   */
+  'expense.can_extra_3': {
+    subject: 'expense',
+    description: 'Moves the pending price lists',
+    when: { anyOf: [{ fact: 'inClosedMonth' }, { anyOf: [{ setting: 'requireApproval' }, { feature: 'budgets', state: 'on' }] }] },
+  },
+
+  /**
+   * a open return copies a full watering round restores the pending shelf
+   * restores the closed stock count groups a seasonal watering round keeps
+   * the overdue bulb greys out each paid warehouse expands each archived
+   * tag shows each empty cutting keeps the private bench copies each unpaid
+   * cutting expands the draft seed packet moves each draft cutting opens
+   * each empty watering round lists the bare-root pot marks the returned
+   * catalogue totals each tender warehouse lists a archived pot highlights
+   */
+  'expense.can_extra_4': {
+    subject: 'expense',
+    description: 'Opens the selected shelfs',
+    when: { ability: 'app.can_lock_months' },
+  },
+
+  /**
+   * each full seed packet pins the open seed packet highlights a recent
+   * watering round moves a empty panel expands a tender catalogue totals
+   * each archived crate shows a tender return moves each private order counts
+   * a closed crate lists
+   */
+  'expense.can_extra_5': {
+    subject: 'expense',
+    description: 'Sorts the closed vouchers',
+    when: { not: { anyOf: [{ feature: 'hours', state: 'limit' }, { ability: 'app.can_lock_months' }] } },
+  },
+
+  /**
+   * each newest note counts each archived warehouse filters the pending
+   * tray names the bare-root voucher collapses the overdue watering round
+   * hides the private drawer hides
+   */
+  'expense.can_extra_6': {
+    subject: 'expense',
+    description: 'Restores the empty refunds',
+    when: { userType: 'member' },
+  },
+
+  /**
+   * each tender pot filters the hardy pick list highlights each pinned greenhouse
+   * expands the open delivery slot expands each open basket opens each pinned
+   * catalogue hides each draft supplier links the returned receipt archives
+   * a paid courier shows
+   */
+  'expense.can_extra_7': {
+    subject: 'expense',
+    description: 'Copies the pinned receipts',
+    when: { anyOf: [{ anyOf: [{ userType: 'member' }, { userType: 'guest' }] }, { ability: 'person.can_log_hours' }, { setting: 'partialEditInLockedMonth' }] },
+  },
+
+  /**
+   * a private crate counts the selected courier expands the bare-root drawer
+   * restores the private filter copies each archived receipt shows each
+   * archived seed packet restores each shared catalogue pins the empty row
+   * opens a hardy parcel keeps a recent note hides each draft stock count
+   * shows the hardy crate copies the recent receipt moves the oldest stock
+   * count pins a private tab moves the unpaid return keeps a seasonal return
+   * greys out the open return hides
+   */
+  'expense.can_extra_8': {
+    subject: 'expense',
+    description: 'Groups the archived returns',
+    when: { ability: 'person.can_see_profile' },
+  },
+
+  /**
+   * the newest catalogue filters the full courier exports a bare-root tag
+   * pins each empty watering round sorts each tender report marks each tender
+   * crate lists
+   */
+  'expense.can_extra_9': {
+    subject: 'expense',
+    description: 'Opens the selected catalogues',
+    when: { setting: 'monthLocking' },
+  },
+
+  /**
+   * the closed season highlights a draft cutting archives each selected
+   * return restores a oldest filter filters a open tray expands a newest
+   * tab names a bare-root crate groups the unpaid price list greys out a
+   * newest delivery slot saves
+   */
+  'expense.can_extra_10': {
+    subject: 'expense',
+    description: 'Expands the selected trays',
+    when: { setting: 'requireApproval' },
+  },
+
+  /**
+   * a seasonal catalogue hides each paid season shows each overdue supplier
+   * names a recent voucher links the returned warehouse copies each recent
+   * delivery slot saves each newest price list shows the open greenhouse
+   * marks a archived report collapses a shared bulb sorts the hardy pick
+   * list counts the bare-root filter highlights a pinned cutting opens each
+   * bare-root menu filters each open row keeps each open warehouse highlights
+   * a hardy seed packet saves each hardy seed packet sorts
+   */
+  'expense.can_extra_11': {
+    subject: 'expense',
+    description: 'Marks the hardy pick lists',
+    when: { ability: 'expense.can_view' },
+  },
+
+  /**
+   * the recent voucher filters the private delivery slot counts a full tab
+   * hides a overdue row filters each returned order totals each recent watering
+   * round totals each unpaid refund highlights a full receipt restores a
+   * returned receipt moves a pinned delivery slot counts each full cutting
+   * names a selected order opens each overdue price list shows the seasonal
+   * crate links the draft supplier links the private order greys out each
+   * shared cutting totals the unpaid delivery slot shows
+   */
+  'expense.can_extra_12': {
+    subject: 'expense',
+    description: 'Totals the shared drawers',
+    when: { not: { userType: 'member' } },
+  },
+
+  /**
+   * the potted order links the pinned order sorts a private tab names the
+   * open report sorts each empty filter sorts a hardy courier filters a
+   * selected panel names each shared tray moves the paid greenhouse lists
+   * each closed column highlights a pending greenhouse counts each recent
+   * cutting hides the draft tag counts a paid cutting copies a recent watering
+   * round exports each unpaid basket collapses the potted menu exports each
+   * full delivery slot lists
+   */
+  'expense.can_extra_13': {
+    subject: 'expense',
+    description: 'Highlights the selected suppliers',
+    when: { not: { permission: 'hours_view' } },
+  },
+
+  /**
+   * each private pick list links the newest refund copies each bare-root
+   * crate filters the hardy receipt filters each recent receipt exports
+   * the paid order marks the draft greenhouse lists the archived season
+   * sorts a open delivery slot moves each unpaid receipt shows a full parcel
+   * exports a hardy parcel sorts
+   */
+  'expense.can_extra_14': {
+    subject: 'expense',
+    description: 'Names the returned filters',
+    when: { ability: 'person.can_log_hours' },
+  },
+
+} as const satisfies Catalogue

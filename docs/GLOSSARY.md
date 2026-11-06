@@ -2,6 +2,10 @@
 
 Each concept is defined once, here. Specs use these terms capitalized and with exactly this meaning. Add a new concept in the same change that first uses it.
 
+**Abilities catalogue**: The files in a Checkout that define its Ability keys, each with a description and a rule (`abilities/catalogue/*.ts` and `abilities/catalogue.ts`, outside `node_modules`). Lookout reads them as text and never runs them. See the PLAIN spec.
+
+**Ability key**: The name of one thing a user may do in fantastic-productive, written `<scope>.can_<name>` (`person.can_manage_time`), as a Module names it in code spans. See the PLAIN spec.
+
 **Acceptance criterion**: A checkable condition under a Requirement, ID'd `<CODE>-n.m`, verified by a test or by looking at the running app.
 
 **Attachment**: A file you drop or paste into a Session's composer that Lookout copies, because the browser can't see its path (from Finder, or the clipboard): saved under `~/.lookout/attachments/<YYYY-MM-DD>/` and put into your message by its absolute path, so the Harness reads it with its own tools. Deleted after 14 days. A file dragged with its real path (from VS Code) isn't one: its own path goes in. See VIEW-9.
@@ -76,7 +80,7 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Session host**: The tmux session a Session runs in. Lookout never shows tmux itself.
 
-**Spec view**: A Module shown whole in the main pane, with its change since its base marked in place and other Modules' Concepts on hover. See the PLAIN spec.
+**Spec view**: A Module shown whole in the main pane, with its change since its base marked in place, and other Modules' Concepts, the specs a `§` names and the Ability keys it names explained on hover. See the PLAIN spec.
 
 **Start directory**: A directory listed in Settings where Lookout can start new Sessions. `~/Projects/work` by default.
 

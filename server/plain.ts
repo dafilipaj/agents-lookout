@@ -3,7 +3,8 @@ import { constants } from 'node:fs';
 import { mkdir, open, readFile, realpath, rename, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join, posix, sep } from 'node:path';
-import { clauseLines, definitionName, parseModule, type Clause, type PlainAnswer, type PlainConcept, type PlainPrFiles, type PlainSource } from '../shared/plain.ts';
+import { abilityKeysIn, clauseLines, definitionName, parseModule, type AbilityEntry, type Clause, type PlainAbility, type PlainAnswer, type PlainConcept, type PlainPrFiles, type PlainSource, type PlainSpecRef } from '../shared/plain.ts';
+import { isCatalogueFile, namedAbilities, parseCatalogue } from './abilities.ts';
 import type { RunError, Runner } from './exec.ts';
 import type { KnownCheckout } from './changes.ts';
 
@@ -16,6 +17,17 @@ const GIT_TIMEOUT_MS = 10_000;
 const TOUCH_MS = 24 * 60 * 60 * 1000;
 /** How deep imports are followed: far past any real chain, short of a runaway one. */
 const MAX_MODULES = 200;
+/** PLAIN-7.2, 7.6: how many files a lookup reads: far past fantastic-productive's 54 Modules and 27 catalogue files. */
+const MAX_LOOKUP_FILES = 400;
+/**
+ * PLAIN-7.9: how long a working tree's list of Modules and catalogue files is reused. A view reads every
+ * few seconds, the files' text is read fresh each time, and a new file is rare, so it shows within this.
+ */
+const WORKTREE_LIST_MS = 15_000;
+/** PLAIN-7.1: a `§` reference, one id of a range included. */
+const SPEC_REF = /§\d+(?:\.\d+)*/g;
+/** PLAIN-7.2: a Module's spec marker, as `parseModule` reads it: on one line, never across a line break. */
+const SPEC_MARK = /^>[^\S\n]?spec:[^\S\n]*(§\d+(?:\.\d+)*)[^\S\n]*$/gm;
 
 export class PlainError extends Error {
   readonly status: number;
@@ -93,6 +105,11 @@ export class Plain {
   private saving: Promise<void> = Promise.resolve();
   /** A commit's file never changes: `<root>\0<sha>\0<path>` → its text, or null. */
   private baseCache = new Map<string, string | null>();
+  /** PLAIN-7: a commit's file list never changes: `<root>\0<sha>` → its Modules and catalogue files, read once. */
+  private listCache = new Map<string, Promise<string[]>>();
+  private worktreeLists = new Map<string, { at: number; listed: Promise<string[]> }>();
+  /** PLAIN-7.6: a catalogue file's entries, by `<path>` and the text they were read from. */
+  private catalogueCache = new Map<string, { text: string; entries: Map<string, AbilityEntry> }>();
 
   constructor(opts: PlainOptions) {
     this.opts = opts;
@@ -110,7 +127,11 @@ export class Plain {
     const baseText = await this.baseText(c, p);
     if (text === null && baseText === null) throw new PlainError(404, src.kind === 'pr' ? `${p} isn't in this PR or at its base.` : `${p} isn't in this Checkout or at its Branch point.`);
 
-    const { concepts, missing } = await this.resolve(c, realRoot, p, text ?? baseText!);
+    const [{ concepts, missing }, specs, { abilities, catalogue }] = await Promise.all([
+      this.resolve(c, realRoot, p, text ?? baseText!),
+      this.specRefs(c, realRoot, p, text, baseText),
+      this.abilities(c, realRoot, text, baseText),
+    ]);
     const key = viewedKey(c.commonDir, p, text, baseText);
     const store = await this.load();
     const marks = store.marks[modKey(c.commonDir, p)] ?? [];
@@ -131,6 +152,9 @@ export class Plain {
       fetchError,
       concepts,
       missing,
+      specs,
+      abilities,
+      catalogue,
       key,
       viewed: !!mark,
       changedSinceViewed: !mark && marks.length > 0,
@@ -277,7 +301,7 @@ export class Plain {
       text = null;
     }
     if (text !== null && Buffer.byteLength(text) > MAX_MODULE_BYTES) throw new PlainError(413, `${p} is larger than 1 MB ${at}.`);
-    if (this.baseCache.size > 500) this.baseCache.clear();
+    if (this.baseCache.size > 2000) this.baseCache.clear();
     this.baseCache.set(k, text);
     return text;
   }
@@ -340,6 +364,168 @@ export class Plain {
       add(m.path.replace(/\.plain$/, ''), head ? definitionsOf(head) : [], base ? definitionsOf(base) : [], exported);
     }
     return { concepts, missing };
+  }
+
+  /**
+   * PLAIN-7.2, 7.3, 7.9: the specs of other Modules this one names by `§`, from every `.plain` file under
+   * its folder, at the working tree (a PR's head) and the base. Only a Module holding one is parsed.
+   */
+  private async specRefs(c: PlainTree, realRoot: string | null, p: string, text: string | null, baseText: string | null): Promise<Record<string, PlainSpecRef>> {
+    const texts = [text, baseText].filter((t): t is string => t !== null);
+    const own = new Set(texts.flatMap((t) => [...t.matchAll(SPEC_MARK)].map((m) => m[1]!)));
+    const wanted = new Set(texts.flatMap((t) => t.match(SPEC_REF) ?? []).filter((id) => !own.has(id)));
+    const out: Record<string, PlainSpecRef> = {};
+    if (!wanted.size) return out;
+    const dir = posix.dirname(p);
+    const under = (f: string) => f !== p && f.endsWith('.plain') && (dir === '.' || f.startsWith(`${dir}/`));
+    const [head, base] = await Promise.all([this.listHead(c, dir === '.' ? [] : [dir]), this.listAt(c, c.baseSha)]);
+    const paths = [...new Set([...head.filter(under), ...base.filter(under)])].sort().slice(0, MAX_LOOKUP_FILES);
+    await Promise.all([this.prefetch(c, c.baseSha, paths), c.headSha === null ? null : this.prefetch(c, c.headSha, paths)]);
+    for (const path of paths) {
+      if (![...wanted].some((id) => !out[id])) break;
+      const [h, b] = await Promise.all([this.headText(c, realRoot, path).catch(() => null), this.baseText(c, path).catch(() => null)]);
+      const ids = new Set([h, b].flatMap((t) => (t === null ? [] : [...t.matchAll(SPEC_MARK)].map((m) => m[1]!))).filter((id) => wanted.has(id) && !out[id]));
+      if (!ids.size) continue;
+      const hm = h === null ? null : parseModule(h);
+      const bm = b === null ? null : parseModule(b);
+      for (const id of ids) {
+        const hs = hm?.specs.find((s) => s.id === id) ?? null;
+        const bs = bm?.specs.find((s) => s.id === id) ?? null;
+        // The marker matched, yet the parser found no spec there (inside an unclosed front matter, say).
+        const some = hs ?? bs;
+        if (!some) continue;
+        out[id] = { module: path, lines: hs ? clauseLines(hs.clauses) : null, baseLines: bs ? clauseLines(bs.clauses) : null, tests: some.tests.length, notes: some.notes.length };
+      }
+    }
+    return out;
+  }
+
+  /**
+   * PLAIN-7.5 to 7.8: the ability keys this Module names, and those their rules name, from the
+   * Checkout's catalogue at the working tree (a PR's head) and the base.
+   */
+  private async abilities(c: PlainTree, realRoot: string | null, text: string | null, baseText: string | null): Promise<{ abilities: Record<string, PlainAbility>; catalogue: boolean }> {
+    const keys = new Set([text, baseText].flatMap((t) => (t === null ? [] : abilityKeysIn(t))));
+    if (!keys.size) return { abilities: {}, catalogue: false };
+    const [headFiles, baseFiles] = await Promise.all([
+      this.listHead(c, [':(glob)**/abilities/catalogue/*.ts', ':(glob)**/abilities/catalogue.ts']).then((l) => l.filter(isCatalogueFile).slice(0, MAX_LOOKUP_FILES)),
+      this.listAt(c, c.baseSha).then((l) => l.filter(isCatalogueFile).slice(0, MAX_LOOKUP_FILES)),
+    ]);
+    await Promise.all([this.prefetch(c, c.baseSha, baseFiles), c.headSha === null ? null : this.prefetch(c, c.headSha, headFiles)]);
+    const read = async (files: readonly string[], at: 'head' | 'base') => {
+      const all = new Map<string, AbilityEntry>();
+      for (const f of files) {
+        const t = at === 'head' ? await this.headText(c, realRoot, f).catch(() => null) : await this.baseText(c, f).catch(() => null);
+        if (t === null) continue;
+        const k = `${c.root}\u0000${at === 'head' ? (c.headSha ?? 'wt') : c.baseSha}\u0000${f}`;
+        let hit = this.catalogueCache.get(k);
+        if (!hit || hit.text !== t) {
+          let entries: Map<string, AbilityEntry>;
+          try {
+            entries = parseCatalogue(t, f);
+          } catch {
+            // A file the reader can't follow (nested too deep, say) explains nothing, and fails nothing else.
+            entries = new Map();
+          }
+          hit = { text: t, entries };
+          if (this.catalogueCache.size > 200) this.catalogueCache.clear();
+          this.catalogueCache.set(k, hit);
+        }
+        for (const [key, e] of hit.entries) if (!all.has(key)) all.set(key, e);
+      }
+      return all;
+    };
+    const [head, base] = await Promise.all([read(headFiles, 'head'), read(baseFiles, 'base')]);
+    const abilities: Record<string, PlainAbility> = {};
+    const add = (key: string) => {
+      if (abilities[key]) return;
+      const h = head.get(key) ?? null;
+      const b = base.get(key) ?? null;
+      if (h || b) abilities[key] = { head: h, base: b };
+    };
+    for (const key of keys) add(key);
+    // PLAIN-7.5: an ability a rule names shows its own description beside it.
+    for (const key of keys) for (const e of [abilities[key]?.head, abilities[key]?.base]) for (const n of namedAbilities(e?.rule ?? null)) add(n);
+    return { abilities, catalogue: headFiles.length > 0 || baseFiles.length > 0 };
+  }
+
+  /**
+   * PLAIN-7.9: a commit's files read in one `git cat-file --batch`, into the cache `commitText` reads,
+   * rather than one `git show` each. A file it can't give is left for `commitText`, which says why.
+   */
+  private async prefetch(c: PlainTree, commit: string, paths: readonly string[]): Promise<void> {
+    const key = (p: string) => `${c.root}\u0000${commit}\u0000${p}`;
+    const want = paths.filter((p) => !this.baseCache.has(key(p)) && !/[\n\r]/.test(p));
+    if (!want.length) return;
+    let out: string;
+    try {
+      out = await this.opts.runner('git', ['-C', c.root, '-c', 'core.hooksPath=/dev/null', '-c', 'core.fsmonitor=false', 'cat-file', '--batch'], { timeoutMs: GIT_TIMEOUT_MS, stdin: want.map((p) => `${commit}:${p}\n`).join(''), encoding: 'latin1' });
+    } catch {
+      return;
+    }
+    // Each object is `<oid> <type> <size>\n<bytes>\n`, or `<name> missing\n`; latin1 keeps the bytes.
+    const buf = Buffer.from(out, 'latin1');
+    let at = 0;
+    if (this.baseCache.size + want.length > 2000) this.baseCache.clear();
+    for (const p of want) {
+      const nl = buf.indexOf(10, at);
+      if (nl < 0) return;
+      const header = buf.subarray(at, nl).toString('latin1');
+      at = nl + 1;
+      if (header.endsWith(' missing')) {
+        this.baseCache.set(key(p), null);
+        continue;
+      }
+      const m = /^[0-9a-f]+ (\w+) (\d+)$/.exec(header);
+      if (!m) return;
+      const size = Number(m[2]);
+      const body = buf.subarray(at, at + size);
+      at += size + 1;
+      if (m[1] === 'blob' && size <= MAX_MODULE_BYTES) this.baseCache.set(key(p), body.toString('utf8'));
+    }
+  }
+
+  /** PLAIN-7: the files a Checkout's working tree has, tracked or new and not ignored, under these pathspecs; a PR's at its head. */
+  private async listHead(c: PlainTree, pathspecs: readonly string[]): Promise<string[]> {
+    if (c.headSha !== null) return this.listAt(c, c.headSha);
+    const k = `${c.root}\u0000${pathspecs.join('\u0000')}`;
+    const now = Date.now();
+    const hit = this.worktreeLists.get(k);
+    if (hit && now - hit.at < WORKTREE_LIST_MS) return hit.listed;
+    const listed: Promise<string[]> = this.opts
+      .runner('git', ['-C', c.root, '-c', 'core.hooksPath=/dev/null', '-c', 'core.fsmonitor=false', 'ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', ...pathspecs], { timeoutMs: GIT_TIMEOUT_MS })
+      .then(
+        (out) => [...new Set(out.split('\0').filter(Boolean))],
+        () => {
+          if (this.worktreeLists.get(k)?.listed === listed) this.worktreeLists.delete(k);
+          return [];
+        },
+      );
+    if (this.worktreeLists.size > 50) this.worktreeLists.clear();
+    this.worktreeLists.set(k, { at: now, listed });
+    return listed;
+  }
+
+  /**
+   * PLAIN-7: a commit's Modules and catalogue files, the only paths a lookup asks for, read once:
+   * concurrent first calls share one `ls-tree`, and a failed one is tried again next time.
+   */
+  private listAt(c: PlainTree, commit: string): Promise<string[]> {
+    const k = `${c.root}\u0000${commit}`;
+    const hit = this.listCache.get(k);
+    if (hit) return hit;
+    const listed: Promise<string[]> = this.opts
+      .runner('git', ['-C', c.root, '-c', 'core.hooksPath=/dev/null', '-c', 'core.fsmonitor=false', 'ls-tree', '-r', '-z', '--name-only', commit], { timeoutMs: GIT_TIMEOUT_MS })
+      .then(
+        (out) => out.split('\0').filter((f) => f.endsWith('.plain') || isCatalogueFile(f)),
+        () => {
+          if (this.listCache.get(k) === listed) this.listCache.delete(k);
+          return [];
+        },
+      );
+    if (this.listCache.size > 50) this.listCache.clear();
+    this.listCache.set(k, listed);
+    return listed;
   }
 
   /** Read once: concurrent first calls share one load, so there is only ever one store. */

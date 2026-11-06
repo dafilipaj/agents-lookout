@@ -48,7 +48,7 @@ import { type HarnessState, type LaunchDraft, initialDraft } from '@/lib/launch'
 import { shownEffort } from '@/lib/effort-switch';
 import { type ModelTarget, shownModel } from '@/lib/model-switch';
 import { SWITCH_RUNNING, type SwitchState, type SwitchWhat, restartedWhy, switchFailure, switchKey } from '@/lib/status-switch';
-import { parseRoute, routePath, useRoute, type Route } from '@/lib/router';
+import { parseRoute, routePath, specHash, useRoute, type Route } from '@/lib/router';
 import { HARNESS_NAME } from '@/lib/sessions';
 import { cn } from '@/lib/utils';
 import { listKnown, shownLaunches, useLookout } from '@/lib/store';
@@ -1156,7 +1156,7 @@ export function App({ client }: { client: LookoutClient }) {
                 load={readPlain}
                 setViewed={setPlainViewed}
                 onBack={() => navigate({ name: 'session', id: route.session })}
-                onOpenModule={(path) => navigate({ name: 'plain', session: route.session, checkout: route.checkout, path })}
+                onOpenModule={(path, at) => navigate({ name: 'plain', session: route.session, checkout: route.checkout, path }, { hash: at ? specHash(at) : undefined })}
               />
             ) : route.name === 'plain-pr' ? (
               <SpecView
@@ -1167,12 +1167,12 @@ export function App({ client }: { client: LookoutClient }) {
                 load={readPlain}
                 setViewed={setPlainViewed}
                 onBack={() => navigate(prOpeners.current.get(routePath(route)) ?? { name: 'home' })}
-                onOpenModule={(path) => {
+                onOpenModule={(path, at) => {
                   // An imported Module of the same PR keeps this view's opener.
                   const to: Route = { name: 'plain-pr', repo: route.repo, number: route.number, path };
                   const opener = prOpeners.current.get(routePath(route));
                   if (opener && !prOpeners.current.has(routePath(to))) prOpeners.current.set(routePath(to), opener);
-                  navigate(to);
+                  navigate(to, { hash: at ? specHash(at) : undefined });
                 }}
               />
             ) : route.name === 'past' ? (

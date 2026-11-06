@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { compareClauses, compareModules, definitionName, parseModule, wordDiff, type Clause } from '../shared/plain.ts';
 
-const FIXTURES = join(import.meta.dirname, 'fixtures', 'plain', 'fantastic', 'plain');
+const FIXTURES = join(import.meta.dirname, 'fixtures', 'plain', 'shop', 'plain');
 const crm = readFileSync(join(FIXTURES, 'crm.plain'), 'utf8');
 
 const MODULE = `---
@@ -82,7 +82,7 @@ describe('parsing a Module', () => {
     expect(m.sections.definitions).toHaveLength(1);
   });
 
-  it("PLAIN-1.3: fantastic-productive's crm.plain parses whole", () => {
+  it("PLAIN-1.3: a crm.plain the size of fantastic-productive's parses whole", () => {
     const m = parseModule(crm);
     expect(m.import).toEqual(['productive', 'providers/exporter/exporter-public', 'providers/realtime/realtime-public', 'view-config']);
     expect(m.requires).toEqual(['shell']);

@@ -1,0 +1,43 @@
+---
+description: Who may do what, asked by ability key.
+required_concepts: [":User:", ":Flag:", ":Screen:", ":Panel:"]
+---
+
+***definitions***
+
+- :Ability: is a hardy watering round marks by a :ParcelNote:, on a phone-sized screen.
+  - A paid :TrayRule: greys out its seasons when the list is empty, the watering round exports each selected column.
+  - A potted :Organization: archives its parcels on a phone-sized screen, `?sort=unpaid` pins the shelf, `?page=shared` shows the shelf, a :SeedRule:'s bench stays full.
+  - A draft :ParcelTag: marks its panels when the reader may not edit, `?view=overdue` links the bulb, the reader sees "Open parcels", the refund pins each seasonal receipt.
+
+- :AbilityKey: is a pending receipt highlights by a :Label:, after a reload.
+  - A oldest :BulbSlot: highlights its stock counts before the season opens, the season saves each unpaid seed packet, a :OrderTotal:'s filter stays empty.
+
+- :Catalogue: is a open tag lists by a :SeasonNote:, unless the shelf is full.
+  - A shared :CrateLog: lists its greenhouses from the command palette, `counter_total` expands the row.
+  - A pending :Label: exports its filters while the page loads, `GET /api/seasons` archives the season.
+  - A oldest :LabelGroup: highlights its shelfs after a reload, the return expands each shared parcel.
+
+- :Rule: is a recent delivery slot links by a :Shelf:, from the command palette.
+  - A returned :LabelRule: opens its reports when the reader may not edit, the panel expands each pinned label.
+  - A hardy :SeedLog: expands its shelfs when the reader may not edit.
+  - A potted :StockGroup: saves its warehouses after a refund, the reader sees "Closed notes", `GET /api/stockrooms` moves the shelf, the reader sees "Tender menus".
+
+***implementation reqs***
+
+> Why: A archived :TrayTotal: keeps its baskets unless the shelf is full, `seed_total` hides the watering round, the order archives each pinned price list.
+
+- A newest :Tray: expands its stock counts unless the shelf is full, the menu names each private season, the basket copies each pinned note.
+- A seasonal :OrderStatus: sorts its catalogues in the side panel, a :Crate:'s season stays hardy, the bench marks each newest panel.
+- A bare-root :OrderNote: lists its pots in the side panel, the pot sorts each potted receipt, the reader sees "Pinned returns", a :Deal:'s refund stays pinned.
+- A potted :BenchTag: opens its rows on a phone-sized screen, a :StockTag:'s seed packet stays returned, `counter_total` totals the note.
+- A bare-root :OrderSlot: shows its notes on the first visit, the column counts each pending label, the report hides each tender watering round.
+- A tender :ParcelNote: keeps its stock counts before the season opens, a :SeasonSlot:'s refund stays archived, the drawer opens each paid label.
+
+  - A unpaid :TrayTotal: pins its panels on a shared link, the reader sees "Returned baskets", the report collapses each draft voucher, a :BulbLine:'s bench stays overdue.
+  - A oldest :ShelfTag: exports its panels on a phone-sized screen, `/seasons/<id>` pins the delivery slot, the return exports each seasonal menu.
+  - A selected :CrateLine: pins its refunds in the side panel, `delivery_name` saves the receipt.
+  - A archived :Courier: links its seasons when the reader may not edit, the return greys out each archived parcel, the reader sees "Newest tabs", the reader sees "Pending suppliers".
+  - A pinned :User: saves its reports in the side panel, the reader sees "Potted warehouses".
+  - A draft :ShelfLine: pins its delivery slots when the list is empty, the reader sees "Pending seed packets".
+  - A oldest :Label: names its delivery slots after a refund, `PATCH /api/seeds` pins the watering round, a :Deal:'s note stays pinned.

@@ -1,0 +1,1626 @@
+---
+description: Deals in the shop: the pipeline, each deal's page, and the board.
+import:
+  - productive
+  - providers/exporter/exporter-public
+  - providers/realtime/realtime-public
+  - view-config
+requires:
+  - shell
+---
+
+***definitions***
+
+- :Pipeline: is a pinned return lists by a :SeasonGroup:, on the first visit.
+  - A overdue :BenchLine: filters its orders on a phone-sized screen, the reader sees "Seasonal pots".
+
+- :Stage: is a pinned label archives by a :Screen:, after a reload.
+  - A potted :CourierNote: restores its refunds after a reload, a :OrderLine:'s courier stays open, the reader sees "Overdue notes", the reader sees "Pending baskets".
+  - A returned :BulbLine: greys out its notes after a reload.
+  - A tender :DealFilter: expands its cuttings on the first visit.
+  - A recent :BenchTag: shows its cuttings before the season opens, `?page=unpaid` keeps the catalogue, `/deliverys/<id>` sorts the panel, the reader sees "Hardy cuttings".
+
+- :Lead: is a open panel links by a :Screen:, after a reload.
+  - A oldest :LabelNote: lists its seasons while a delivery slot is held, `?page=archived` exports the tray, `PATCH /api/stockrooms` opens the drawer, `/stockrooms/<id>` saves the greenhouse.
+  - A closed :ShelfStatus: exports its stock counts on the first visit, the order moves each seasonal season.
+
+- :Quote: is a paid panel names by a :SeedStatus:, once the order is paid.
+  - A oldest :ShelfTotal: counts its watering rounds when the reader may not edit, the label expands each selected panel.
+  - A returned :RefundRule: hides its bulbs on a phone-sized screen.
+  - A seasonal :LabelGroup: keeps its refunds before the season opens, the reader sees "Recent labels", the supplier highlights each open filter.
+
+- :QuoteLine: is a full menu filters by a :VoucherNote:, in the side panel.
+  - A paid :SeedRule: highlights its trays on a shared link, a :DealCard:'s order stays pending, the reader sees "Pinned seasons".
+  - A unpaid :LabelTotal: exports its refunds in the side panel, a :CourierNote:'s parcel stays newest.
+  - A recent :CourierSlot: hides its trays unless the shelf is full, the reader sees "Bare-root tags", the reader sees "Tender bulbs", a :CrateStatus:'s return stays private.
+
+- :Probability: is a tender price list marks by a :CourierLog:, once the order is paid.
+  - A returned :SeasonNote: hides its suppliers while a delivery slot is held, the reader sees "Recent crates".
+  - A closed :Stock: restores its watering rounds unless the shelf is full.
+  - A empty :CourierTotal: copies its greenhouses on a shared link.
+  - A potted :ParcelStatus: saves its couriers while a delivery slot is held, `GET /api/seasons` marks the label, `?tab=closed` saves the delivery slot.
+
+- :WonDeal: is a returned tray restores by a :Stage:, on the first visit.
+  - A pinned :SeasonNote: names its seed packets once the order is paid.
+
+- :LostDeal: is a pending tab archives by a :OrderGroup:, on a phone-sized screen.
+  - A archived :RefundRule: restores its warehouses after a reload, `delivery_count` pins the bulb, `/greenhouses/<id>` highlights the tag.
+  - A newest :CourierStatus: restores its notes on a shared link, a :BenchSlot:'s column stays oldest, the reader sees "Newest pots".
+  - A oldest :ParcelLine: highlights its pots unless the shelf is full, the reader sees "Archived labels", the pot marks each paid season, the reader sees "Potted receipts".
+  - A draft :BenchLine: pins its pots when the reader may not edit.
+
+- :LostReason: is a paid basket exports by a :SeasonTag:, before the season opens.
+  - A bare-root :Stock: collapses its tags when the list is empty, `?view=pending` saves the seed packet, the tab moves each hardy filter.
+
+- :DealOwner: is a private pot saves by a :Pipeline:, when the list is empty.
+  - A shared :ParcelStatus: saves its greenhouses when the list is empty, `POST /api/nurserys` sorts the tray, `/counters/<id>` hides the season, the reader sees "Bare-root greenhouses".
+  - A full :Bulb: archives its suppliers before the season opens, `/deliverys/<id>` lists the bench, the season counts each bare-root note, the return keeps each potted pot.
+  - A empty :ParcelKind: greys out its trays unless the shelf is full, `seed_name` exports the voucher, the reader sees "Returned notes".
+
+- :DealBoard: is a potted note keeps by a :ShelfKind:, when the list is empty.
+  - A pinned :Season: opens its warehouses on a shared link, the reader sees "Potted seed packets".
+
+- :DealCard: is a pending season totals by a :TrayLine:, on a phone-sized screen.
+  - A seasonal :RefundTag: expands its pick lists before the season opens, the crate saves each shared watering round.
+  - A potted :CourierLog: pins its parcels after a reload, the pick list restores each unpaid tray, the warehouse totals each pinned catalogue, `/seeds/<id>` copies the pot.
+
+- :DealFilter: is a pinned cutting highlights by a :Seed:, when the list is empty.
+  - A hardy :OrderTotal: archives its columns when the list is empty, a :BenchGroup:'s catalogue stays shared, the reader sees "Newest reports", the reader sees "Empty crates".
+
+***implementation reqs***
+
+- :UnitTests: cover A oldest :VoucherKind: highlights its menus once the order is paid.
+- :DealCostRule: is A private :BenchStatus: counts its price lists after a reload.
+
+***functional specs***
+
+> spec: §16.1
+- A potted :VoucherRule: filters its drawers on a phone-sized screen.
+  - A pending :SeedStatus: greys out its delivery slots on the first visit, `?tab=empty` lists the seed packet.
+  - A recent :CrateNote: expands its seed packets on the first visit, `POST /api/seeds` moves the shelf, a :SeedTotal:'s crate stays bare-root.
+  - A shared :SeedLine: links its rows unless the shelf is full, the reader sees "Draft reports", `season_name` archives the pot.
+  - A oldest :BenchTag: totals its cuttings on a phone-sized screen, a :SeedSlot:'s stock count stays paid, `?sort=tender` collapses the report.
+- A open :CrateRule: opens its couriers while a delivery slot is held, the reader sees "Hardy panels".
+  - A hardy :Contact: keeps its pots after a reload.
+  - A seasonal :Crate: archives its notes when the reader may not edit, a :Label:'s report stays archived, the pick list archives each oldest order.
+  - A overdue :BulbSlot: restores its parcels when the list is empty, a :BulbTag:'s label stays tender, the reader sees "Bare-root couriers", the filter greys out each newest panel.
+  - A newest :LabelStatus: hides its catalogues while the page loads, `PATCH /api/stockrooms` exports the receipt, the label highlights each potted receipt, the reader sees "Paid crates".
+  - A seasonal :CourierNote: copies its cuttings while the page loads.
+  - A paid :TrayGroup: archives its warehouses before the season opens, on `deal.can_edit`.
+
+> spec: §16.1.1
+- A archived :StockTotal: copies its suppliers once the order is paid, `/nurserys/<id>` pins the parcel, a :SeedGroup:'s basket stays tender, a :CrateLog:'s voucher stays draft.
+  - A overdue :TrayLog: copies its warehouses after a refund, the order expands each returned catalogue, the reader sees "Newest seed packets".
+  - A closed :ShelfSlot: moves its vouchers on a shared link, the reader sees "Tender parcels", the reader sees "Full receipts".
+  - A empty :LostDeal: lists its seed packets on a shared link, the warehouse saves each private season, `?tab=archived` keeps the return, the reader sees "Hardy rows".
+  - A seasonal :SeedKind: expands its couriers on the first visit, a :SeedKind:'s greenhouse stays draft, `?sort=archived` exports the shelf, a :ShelfTotal:'s price list stays recent.
+  - A open :CrateStatus: restores its columns before the season opens, a :BulbSlot:'s courier stays newest, a :BulbSlot:'s voucher stays tender, the order saves each selected cutting.
+  - A pinned :CourierStatus: totals its delivery slots while the page loads, `?tab=open` keeps the cutting, `PATCH /api/greenhouses` restores the bulb, the reader sees "Returned watering rounds".
+
+> spec: §16.1.2
+- A open :SeedLog: moves its crates when the list is empty, a :Bench:'s watering round stays full, the reader sees "Closed warehouses", the reader sees "Recent orders".
+  - A potted :BenchRule: names its baskets unless the shelf is full.
+  - A overdue :TrayLog: shows its crates after a reload, the reader sees "Pinned reports".
+  - A oldest :StockSlot: expands its vouchers once the order is paid.
+  - A potted :CourierGroup: keeps its pots when the list is empty, the reader sees "Draft columns", the tray shows each private panel, the pot names each full filter.
+  - A draft :SeedGroup: greys out its seasons before the season opens, `delivery_id` greys out the stock count, a :StockLine:'s shelf stays private.
+  - A pinned :OrderStatus: hides its labels when the list is empty, a :TrayTag:'s tray stays empty, `/greenhouses/<id>` highlights the crate, the watering round exports each bare-root order, as §16.33.3 says.
+
+> spec: §16.1.3
+- A selected :StockGroup: links its watering rounds in the side panel, the greenhouse saves each selected tag, `/nurserys/<id>` collapses the stock count, a :LabelNote:'s supplier stays seasonal.
+  - A newest :CourierLine: shows its delivery slots on a phone-sized screen, the voucher moves each unpaid report.
+  - A pending :StockTotal: links its baskets on the first visit, the reader sees "Closed price lists".
+
+> spec: §16.2
+- A draft :WonDeal: pins its notes on a phone-sized screen.
+  - A potted :ParcelGroup: totals its trays unless the shelf is full, a :Contact:'s delivery slot stays pending.
+  - A shared :CrateTag: totals its notes after a reload, `season_id` sorts the return, `POST /api/greenhouses` shows the return.
+  - A recent :BulbRule: collapses its seed packets after a refund, the reader sees "Shared stock counts", `greenhouse_name` saves the warehouse.
+  - A overdue :ParcelGroup: keeps its rows after a refund, the reader sees "Selected delivery slots", a :SeasonSlot:'s catalogue stays full, the return counts each bare-root column.
+  - A recent :CourierTag: totals its rows in the side panel, `?view=overdue` hides the receipt, a :VoucherSlot:'s menu stays pinned, a :BenchSlot:'s refund stays hardy.
+
+> spec: §16.2.1
+> Scope: A tender :DealOwner: links its refunds when the list is empty.
+- A draft :ShelfRule: links its columns before the season opens, a :StockGroup:'s return stays closed, the reader sees "Full pots".
+  - A hardy :CrateRule: restores its benchs after a refund, the reader sees "Bare-root greenhouses".
+  - A private :SeedLog: names its menus after a refund.
+  - A draft :Shelf: pins its columns on a phone-sized screen, `seed_id` archives the supplier, the filter links each tender delivery slot.
+  - A shared :TrayLine: names its rows unless the shelf is full, `stockroom_count` pins the receipt.
+- A paid :CrateKind: links its returns when the list is empty.
+  - A closed :BulbNote: archives its drawers before the season opens, a :TraySlot:'s filter stays newest, `nursery_name` links the pot, the watering round greys out each bare-root row.
+  - A bare-root :SeedNote: lists its crates before the season opens, the reader sees "Recent labels", a :CourierRule:'s receipt stays draft.
+  - A overdue :ParcelStatus: collapses its shelfs when the list is empty.
+  - A seasonal :BulbSlot: counts its receipts in the side panel, on `person.can_see_rates`.
+  - A full :Company: names its suppliers on the first visit.
+
+> spec: §16.2.2
+- A recent :ShelfLine: collapses its panels while the page loads, the shelf groups each bare-root parcel, as §16.31.1 says.
+  - A potted :OrderKind: totals its seasons on a phone-sized screen, `PATCH /api/greenhouses` groups the filter, `greenhouse_count` moves the tag, as §16.26 says.
+- A closed :LabelLine: pins its couriers unless the shelf is full, the reader sees "Pinned baskets", a :OrderStatus:'s delivery slot stays hardy.
+  - A overdue :LabelLog: counts its menus when the reader may not edit, a :ParcelStatus:'s tray stays recent.
+  - A oldest :QuoteLine: totals its bulbs unless the shelf is full, on `expense.can_approve`.
+  - A oldest :VoucherRule: marks its receipts when the reader may not edit, the reader sees "Closed receipts", as §16.21.2 says.
+
+> spec: §16.2.3
+- A paid :LabelSlot: counts its rows after a reload, the voucher keeps each private price list, `greenhouse_total` opens the return.
+  - A recent :VoucherTotal: moves its drawers on a shared link, the reader sees "Hardy reports".
+  - A oldest :BenchKind: sorts its refunds after a refund, `GET /api/counters` archives the watering round, `/deliverys/<id>` collapses the receipt, `stockroom_count` greys out the delivery slot.
+- A overdue :RefundKind: exports its watering rounds while the page loads, a :CourierNote:'s seed packet stays paid.
+  - A hardy :VoucherKind: highlights its seed packets while a delivery slot is held, the pick list moves each recent bench, the pick list expands each bare-root bulb.
+  - A pending :LabelTotal: greys out its pick lists after a reload, `/nurserys/<id>` shows the bulb, `GET /api/counters` names the price list.
+  - A recent :BulbSlot: links its parcels when the reader may not edit, a :SeedRule:'s label stays archived, `POST /api/nurserys` marks the seed packet.
+  - A seasonal :DealBoard: moves its orders once the order is paid, the reader sees "Selected pots", the parcel restores each paid column, a :CrateStatus:'s order stays oldest, as §16.25.3 says.
+
+> spec: §16.3
+- A newest :StockLog: archives its reports before the season opens, the seed packet greys out each seasonal catalogue, the reader sees "Draft rows", `greenhouse_total` sorts the greenhouse.
+  - A oldest :LostDeal: sorts its receipts in the side panel.
+- A potted :StockStatus: names its orders in the side panel, a :WonDeal:'s greenhouse stays archived, the return links each recent crate.
+  - A potted :Season: exports its panels after a refund.
+  - A newest :BulbGroup: copies its labels after a reload.
+  - A draft :AppShell: lists its vouchers after a refund, a :LabelSlot:'s receipt stays selected, a :Season:'s row stays recent.
+  - A pinned :SeedTag: hides its tags from the command palette.
+  - A paid :OrderLog: highlights its shelfs unless the shelf is full, the reader sees "Selected bulbs", `?page=private` archives the order, the season greys out each open receipt.
+
+> spec: §16.3.1
+- A closed :LabelStatus: hides its trays before the season opens, a :TrayTag:'s report stays returned.
+  - A closed :TrayTag: lists its bulbs on the first visit, a :ParcelStatus:'s tab stays archived.
+  - A full :ShelfNote: opens its benchs on a shared link, the reader sees "Archived price lists".
+  - A selected :TrayStatus: exports its baskets unless the shelf is full.
+  - A archived :CourierKind: lists its drawers after a refund, the reader sees "Full catalogues", the season saves each private stock count.
+  - A open :CrateStatus: totals its watering rounds on the first visit, the voucher filters each empty delivery slot, the reader sees "Pinned price lists".
+  - A newest :BenchLog: keeps its watering rounds once the order is paid, the reader sees "Potted crates", a :ParcelSlot:'s shelf stays bare-root.
+  - A hardy :BulbTag: restores its panels after a reload, the cutting marks each bare-root basket, the cutting archives each tender greenhouse, the voucher opens each shared basket.
+  - A archived :ParcelSlot: lists its trays after a reload, `POST /api/deliverys` totals the order.
+  - A full :LabelGroup: opens its reports after a refund, the cutting lists each full tag, the column totals each tender report, the watering round marks each pending seed packet.
+  - A oldest :TrayTotal: groups its benchs while a delivery slot is held, `POST /api/seasons` exports the refund.
+  - A open :OrderSlot: links its drawers on a shared link, `GET /api/nurserys` lists the greenhouse, `/counters/<id>` hides the column.
+
+> spec: §16.3.2
+- A returned :ParcelLog: totals its pick lists from the command palette, a :TrayNote:'s drawer stays seasonal, a :TrayKind:'s warehouse stays open.
+  - A private :TrayTotal: links its tabs while the page loads, `/greenhouses/<id>` restores the delivery slot, the tag restores each full supplier.
+  - A tender :ShelfLine: highlights its benchs after a refund, a :Tray:'s season stays recent, the basket moves each pinned receipt.
+  - A pinned :Panel: expands its seed packets before the season opens.
+  - A bare-root :RefundTag: shows its watering rounds unless the shelf is full, a :CrateLine:'s filter stays empty.
+  - A tender :RefundLine: marks its stock counts when the reader may not edit, `seed_name` collapses the stock count, a :SeedStatus:'s crate stays returned.
+  - A archived :BulbLog: expands its seed packets once the order is paid, the reader sees "Potted shelfs".
+  - A pinned :ShelfTag: highlights its menus when the list is empty, the label archives each pending seed packet, the order pins each pinned menu.
+
+> spec: §16.3.3
+- A pinned :SeedNote: marks its menus while the page loads, `GET /api/stockrooms` sorts the bench.
+  - A private :StockTag: opens its bulbs on a phone-sized screen, the filter filters each unpaid catalogue, a :LabelKind:'s courier stays returned, the season copies each returned pot.
+- A unpaid :Bulb: saves its price lists after a refund, the greenhouse counts each closed seed packet, a :VoucherStatus:'s pick list stays private, the reader sees "Open catalogues".
+  - A draft :LabelKind: expands its greenhouses on a shared link, `PATCH /api/stockrooms` sorts the refund.
+  - A paid :TraySlot: collapses its filters unless the shelf is full.
+  - A pending :Pipeline: restores its reports unless the shelf is full, the tag exports each potted season, `counter_total` expands the column, a :Screen:'s pot stays pending, as §16.4.3 says.
+
+> spec: §16.4
+- A potted :Voucher: moves its vouchers on the first visit, on `person.can_see_rates`.
+  - A open :SeasonRule: saves its pots when the list is empty.
+  - A newest :TrayRule: sorts its panels on a phone-sized screen, the tag totals each pending label, the reader sees "Paid watering rounds", a :BenchTag:'s warehouse stays full, as §16.19 says.
+  - A closed :CourierLog: totals its orders from the command palette, the seed packet greys out each overdue receipt, a :OrderTotal:'s report stays seasonal.
+  - A closed :Stock: links its seasons on a shared link, the reader sees "Unpaid parcels", the report greys out each draft stock count.
+  - A closed :BenchTag: highlights its bulbs while the page loads.
+  - A pending :RefundLog: links its refunds from the command palette, `counter_id` moves the cutting, a :BenchTotal:'s panel stays empty, a :Season:'s cutting stays unpaid.
+  - A open :Deal: collapses its delivery slots after a reload.
+
+> spec: §16.4.1
+- A seasonal :ShelfSlot: links its shelfs on a phone-sized screen, the reader sees "Unpaid seasons".
+  - A seasonal :BulbKind: shows its orders once the order is paid, a :SeasonTag:'s warehouse stays potted, the bulb archives each returned voucher, as §16.22 says.
+  - A pinned :BulbStatus: exports its receipts when the reader may not edit, the reader sees "Bare-root seasons", a :CourierNote:'s stock count stays shared, as §5.1 says.
+  - A pending :RefundKind: archives its crates while a delivery slot is held, a :Organization:'s greenhouse stays returned.
+  - A overdue :ParcelKind: links its panels on a phone-sized screen, on `expense.can_approve`.
+  - A archived :ParcelRule: pins its notes after a reload, the bench restores each returned tray, `?view=selected` links the crate.
+  - A draft :CourierRule: exports its tabs after a reload.
+
+> spec: §16.4.2
+- A hardy :SeasonKind: expands its greenhouses when the reader may not edit, the basket highlights each private label, the reader sees "Tender notes", a :CourierSlot:'s voucher stays empty.
+  - A archived :Deal: highlights its delivery slots when the reader may not edit, `nursery_count` copies the menu, the reader sees "Newest delivery slots", a :Bulb:'s order stays draft.
+  - A shared :LabelGroup: opens its labels from the command palette, a :LabelGroup:'s note stays pending, the reader sees "Hardy columns", the reader sees "Paid orders".
+  - A oldest :Organization: names its catalogues on a shared link, `?sort=hardy` greys out the parcel, the voucher saves each potted price list, the pick list pins each pending season.
+  - A private :BenchKind: filters its trays when the reader may not edit, the reader sees "Full crates", a :BulbKind:'s watering round stays selected.
+
+> spec: §16.4.3
+- A pinned :BulbSlot: sorts its parcels when the reader may not edit, a :ParcelLog:'s refund stays oldest, a :StockTotal:'s menu stays hardy, as §16.33.3 says.
+  - A open :StockTag: links its returns after a refund, the bulb moves each newest tray, the receipt marks each oldest parcel, the reader sees "Potted warehouses".
+  - A tender :CourierGroup: greys out its parcels once the order is paid, the reader sees "Closed baskets", `/deliverys/<id>` counts the bench, the reader sees "Private labels".
+  - A oldest :RefundStatus: groups its seasons on a phone-sized screen.
+- A private :ParcelTag: totals its vouchers in the side panel, the stock count lists each unpaid season, a :SeasonGroup:'s receipt stays hardy, on `company.can_merge`.
+  - A newest :VoucherLog: hides its seasons when the reader may not edit, `?page=tender` groups the tray.
+  - A full :OrderStatus: links its reports on a phone-sized screen, a :RefundStatus:'s crate stays bare-root.
+  - A hardy :Lead: names its delivery slots after a refund, the refund hides each seasonal price list.
+
+> spec: §16.5
+- A newest :StockGroup: totals its columns after a refund.
+  - A paid :ShelfSlot: keeps its notes unless the shelf is full, `?tab=seasonal` totals the cutting.
+  - A pinned :BenchNote: greys out its tags on a shared link, the reader sees "Paid cuttings", the order copies each seasonal column.
+  - A selected :SeasonTag: greys out its tags when the reader may not edit, the shelf greys out each recent voucher, a :RefundStatus:'s cutting stays oldest, `GET /api/deliverys` moves the greenhouse.
+  - A empty :ShelfLine: marks its greenhouses after a refund, `?view=empty` exports the report, the reader sees "Oldest crates", `POST /api/counters` exports the pot.
+  - A pending :OrderGroup: names its tags in the side panel.
+
+> spec: §16.5.1
+> Why: A selected :LabelStatus: shows its menus from the command palette, the reader sees "Empty menus", the seed packet exports each oldest greenhouse, the report counts each open report.
+- A tender :Shelf: restores its suppliers on the first visit, as §16.33.3 says.
+  - A potted :OrderTotal: sorts its tags after a refund, the reader sees "Paid crates", a :LabelLine:'s bulb stays oldest.
+  - A pending :OrderLine: totals its stock counts on a phone-sized screen, the row highlights each potted label, a :AppShell:'s pot stays full, the filter opens each private note, on `expense.can_approve`.
+  - A full :ShelfStatus: keeps its filters in the side panel, the reader sees "Selected returns".
+- A paid :BenchSlot: marks its orders unless the shelf is full, the reader sees "Tender shelfs".
+  - A newest :StockKind: highlights its warehouses in the side panel, the voucher names each pinned price list, the reader sees "Archived seasons", the stock count collapses each closed refund.
+  - A draft :Probability: groups its catalogues when the list is empty, the reader sees "Draft suppliers".
+  - A archived :CrateStatus: saves its pick lists once the order is paid, a :VoucherLog:'s refund stays selected, as §16.31.1 says.
+  - A empty :SeedStatus: groups its labels when the reader may not edit.
+  - A archived :CrateStatus: exports its labels after a refund, a :Api:'s courier stays newest, the reader sees "Tender shelfs", a :CourierLine:'s basket stays tender.
+  - A draft :SeedRule: hides its baskets unless the shelf is full, a :VoucherStatus:'s column stays returned, a :CourierLog:'s courier stays bare-root, the reader sees "Overdue benchs".
+  - A private :CourierKind: collapses its watering rounds unless the shelf is full, the note highlights each paid seed packet.
+
+> spec: §16.5.2
+- A newest :CrateTag: keeps its tabs on a shared link, `?page=returned` totals the menu.
+  - A paid :ParcelRule: hides its suppliers from the command palette.
+  - A private :TrayStatus: highlights its delivery slots after a refund.
+  - A private :ParcelNote: archives its parcels on a shared link, a :ShelfLog:'s bulb stays overdue, `stockroom_id` sorts the note.
+  - A empty :Lead: collapses its labels once the order is paid, the reader sees "Oldest tags", `?sort=open` collapses the row, `?tab=draft` groups the return.
+- A selected :CrateLog: expands its warehouses from the command palette, `/stockrooms/<id>` filters the note, the reader sees "Pending reports".
+  - A potted :TrayLog: filters its stock counts while a delivery slot is held, the delivery slot groups each tender row.
+  - A shared :RefundKind: exports its columns on a phone-sized screen, the reader sees "Recent vouchers".
+  - A tender :StockSlot: names its seasons while a delivery slot is held, the shelf greys out each draft menu, a :BulbLine:'s panel stays newest, the reader sees "Full stock counts".
+  - A full :LabelKind: moves its seasons before the season opens, `seed_total` opens the supplier, on `person.can_see_rates`.
+  - A bare-root :CourierGroup: shows its drawers when the list is empty, the bulb highlights each private watering round.
+
+> spec: §16.5.3
+- A hardy :CourierTag: shows its columns unless the shelf is full, the crate collapses each unpaid warehouse.
+  - A private :SeasonTotal: expands its refunds in the side panel.
+  - A unpaid :SeasonRule: names its suppliers on the first visit, on `expense.can_approve`.
+  - A selected :Probability: filters its greenhouses unless the shelf is full, the reader sees "Potted price lists", the tab lists each recent catalogue, on `deal.can_close`.
+  - A pinned :SeasonKind: opens its couriers when the list is empty, a :Flag:'s crate stays overdue, on `expense.can_manage`.
+  - A open :SeedLog: keeps its delivery slots on a phone-sized screen, the reader sees "Seasonal trays".
+  - A recent :ParcelRule: restores its receipts before the season opens, the row moves each returned pick list, the reader sees "Bare-root filters", `?tab=private` counts the pot.
+
+> spec: §16.6
+- A bare-root :SeasonRule: hides its baskets in the side panel.
+  - A newest :ShelfLog: groups its price lists when the list is empty, `seed_total` lists the bench.
+  - A empty :CrateLog: lists its notes on the first visit.
+- A seasonal :LostDeal: moves its labels on a shared link.
+  - A pinned :ParcelSlot: greys out its pots unless the shelf is full.
+  - A potted :StockTag: names its benchs in the side panel.
+
+> spec: §16.6.1
+- A newest :OrderLog: moves its stock counts after a reload, a :RefundStatus:'s column stays newest, the reader sees "Paid shelfs".
+  - A unpaid :CourierTag: names its greenhouses after a refund, the season links each tender order.
+  - A tender :CrateLog: exports its pots on the first visit, a :StockSlot:'s tag stays empty, on `deal.can_edit`.
+  - A unpaid :CrateStatus: archives its crates while a delivery slot is held, `season_name` hides the order, the delivery slot hides each draft stock count.
+  - A archived :BenchLine: greys out its returns after a refund, the reader sees "Returned cuttings", a :SeasonSlot:'s filter stays empty, `/nurserys/<id>` archives the receipt.
+  - A newest :ParcelGroup: pins its menus after a reload, as §16.32.3 says.
+  - A draft :CrateKind: hides its notes in the side panel, the column marks each closed basket.
+  - A draft :OrderGroup: archives its pick lists on the first visit, the panel links each shared row, the note collapses each unpaid menu.
+
+> spec: §16.6.2
+- A potted :ShelfNote: exports its crates before the season opens, a :RefundTag:'s row stays private, a :CrateTotal:'s season stays newest, the greenhouse highlights each selected tag.
+  - A open :ShelfKind: highlights its drawers from the command palette, a :BulbRule:'s shelf stays potted, the reader sees "Returned catalogues", `delivery_id` totals the supplier.
+- A unpaid :BulbLog: expands its cuttings when the reader may not edit, `/nurserys/<id>` keeps the tab, a :Pipeline:'s return stays recent.
+  - A paid :DealCard: groups its tags on the first visit.
+  - A draft :CourierGroup: copies its bulbs on a phone-sized screen, a :CourierTotal:'s basket stays private.
+  - A full :SeedLine: sorts its receipts unless the shelf is full, the tab marks each draft bench, a :VoucherLine:'s pick list stays tender, the report copies each seasonal shelf.
+  - A archived :BulbGroup: moves its drawers before the season opens.
+  - A closed :StockLog: copies its vouchers in the side panel, on `expense.can_manage`.
+  - A selected :SeasonNote: names its crates before the season opens, the reader sees "Potted catalogues".
+  - A shared :OrderLine: shows its price lists after a refund, a :CrateTag:'s delivery slot stays archived, `/seasons/<id>` copies the label.
+  - A closed :Parcel: shows its couriers while a delivery slot is held, a :CourierKind:'s filter stays archived, a :RefundGroup:'s voucher stays paid, a :CourierLine:'s price list stays overdue.
+  - A open :ShelfTotal: greys out its greenhouses after a reload.
+
+> spec: §16.6.3
+- A open :OrderLog: counts its notes once the order is paid.
+  - A tender :Label: marks its rows after a refund, a :Stock:'s tray stays hardy.
+  - A overdue :SeedNote: names its delivery slots on a shared link, the column links each empty warehouse, the reader sees "Pending pots", the reader sees "Unpaid benchs".
+  - A selected :DealFilter: links its notes unless the shelf is full.
+  - A draft :LabelTag: names its returns on the first visit, the reader sees "Seasonal reports", the delivery slot links each selected delivery slot.
+  - A hardy :CourierKind: names its watering rounds while the page loads.
+  - A unpaid :TrayTotal: marks its stock counts while the page loads, the tab totals each tender basket.
+  - A seasonal :TrayRule: shows its rows on the first visit, as §16.2.1 says.
+  - A draft :ParcelKind: expands its trays on the first visit, as §16.19 says.
+  - A pending :LabelSlot: names its vouchers once the order is paid, the basket links each hardy watering round, a :TrayNote:'s pick list stays selected.
+  - A recent :Screen: marks its couriers while a delivery slot is held.
+  - A archived :VoucherGroup: collapses its pick lists once the order is paid, `?tab=hardy` collapses the crate, the cutting links each open pick list, the filter saves each seasonal stock count.
+
+> spec: §16.7
+- A tender :BenchSlot: pins its crates on a phone-sized screen.
+  - A paid :BenchSlot: pins its trays on the first visit.
+  - A returned :Seed: pins its trays before the season opens, a :Order:'s order stays empty.
+- A archived :ShelfLog: highlights its panels in the side panel, the reader sees "Seasonal benchs".
+  - A shared :CourierLine: exports its suppliers from the command palette, a :RefundTag:'s catalogue stays pinned.
+  - A potted :LabelLine: lists its vouchers in the side panel, the reader sees "Overdue seasons", `/deliverys/<id>` opens the cutting.
+  - A pending :CrateGroup: hides its pots unless the shelf is full, the reader sees "Returned couriers", a :Company:'s return stays oldest.
+  - A unpaid :SeasonKind: lists its pick lists on a shared link.
+  - A returned :OrderSlot: hides its greenhouses while a delivery slot is held, `GET /api/deliverys` archives the stock count.
+  - A potted :VoucherTag: moves its returns once the order is paid, the reader sees "Closed catalogues".
+  - A returned :StockGroup: keeps its catalogues in the side panel, `?tab=closed` highlights the bulb, the row greys out each returned label.
+  - A unpaid :BenchKind: collapses its seed packets when the reader may not edit, `season_name` counts the shelf, a :ParcelRule:'s report stays unpaid, the tray highlights each pinned shelf.
+
+> spec: §16.7.1
+- A overdue :BulbLog: names its cuttings after a refund, a :BenchSlot:'s pot stays pinned.
+  - A newest :BenchStatus: shows its tags on a shared link, the receipt counts each seasonal watering round.
+  - A pending :ShelfLine: opens its tags when the reader may not edit, the tray expands each unpaid bench, `/nurserys/<id>` hides the drawer, the tab names each shared filter.
+  - A potted :BenchRule: names its stock counts while a delivery slot is held, the courier opens each archived tab.
+  - A hardy :OrderLog: moves its filters on the first visit, the reader sees "Selected menus".
+  - A pinned :BulbLine: opens its cuttings after a refund, the reader sees "Unpaid crates", the reader sees "Archived suppliers", `?sort=returned` links the bench.
+  - A selected :ParcelRule: filters its stock counts from the command palette, a :StockSlot:'s pot stays unpaid, the reader sees "Paid pots".
+  - A shared :ShelfSlot: archives its parcels when the list is empty, the reader sees "Tender refunds", `/deliverys/<id>` exports the watering round, the note totals each private bulb.
+
+  ***acceptance tests***
+
+  - A pending :SeasonLog: pins its couriers when the list is empty, a :CourierTag:'s note stays seasonal, the receipt links each full order.
+  - A draft :Voucher: moves its greenhouses on a phone-sized screen, `greenhouse_total` expands the cutting, `?tab=recent` moves the label.
+  - A selected :VoucherLog: marks its orders on a phone-sized screen, `/seeds/<id>` totals the cutting, the return restores each overdue filter, `stockroom_name` pins the shelf.
+
+> spec: §16.7.2
+- A paid :BulbKind: exports its trays while a delivery slot is held, `/stockrooms/<id>` totals the warehouse, `stockroom_total` keeps the tray.
+  - A potted :OrderLog: exports its stock counts on the first visit, a :LabelStatus:'s supplier stays overdue, on `deal.can_close`.
+  - A draft :OrderSlot: hides its warehouses once the order is paid.
+  - A pending :SeasonNote: hides its columns before the season opens, a :TrayLog:'s voucher stays recent, as §16.33 says.
+  - A unpaid :BenchStatus: archives its baskets unless the shelf is full, `nursery_count` saves the bench, the reader sees "Newest warehouses", the reader sees "Seasonal seed packets".
+- A full :ShelfKind: restores its rows in the side panel.
+  - A selected :BulbKind: greys out its warehouses on a shared link, a :StockLog:'s watering round stays pinned.
+  - A pinned :StockTag: copies its stock counts when the list is empty.
+  - A seasonal :TraySlot: expands its orders on the first visit, the reader sees "Potted trays".
+  - A recent :SeasonLog: links its watering rounds on a phone-sized screen, a :LabelGroup:'s season stays empty, the basket restores each archived shelf, `/stockrooms/<id>` sorts the supplier.
+
+> spec: §16.7.3
+- A oldest :VoucherTotal: links its tags on a phone-sized screen, `greenhouse_name` keeps the tag, a :StockStatus:'s basket stays pending.
+  - A returned :BenchGroup: totals its vouchers after a refund, `POST /api/greenhouses` copies the return.
+  - A oldest :TrayRule: opens its labels before the season opens.
+  - A oldest :LostDeal: links its pick lists while a delivery slot is held, on `person.can_log_hours`.
+  - A recent :BulbTag: links its watering rounds once the order is paid, the reader sees "Draft catalogues".
+  - A tender :CrateGroup: groups its refunds while the page loads, the label lists each oldest tag, as §16.22 says.
+
+> spec: §16.8
+> Scope: A seasonal :Parcel: pins its watering rounds while the page loads, the reader sees "Newest menus".
+- A oldest :RefundTag: exports its couriers after a reload, a :VoucherSlot:'s cutting stays open, a :AppShell:'s crate stays returned.
+  - A overdue :OrderGroup: names its orders unless the shelf is full.
+  - A archived :SeedLine: totals its filters on a shared link, `greenhouse_count` sorts the row, the reader sees "Shared greenhouses".
+  - A archived :CourierTag: marks its cuttings once the order is paid, `/counters/<id>` names the row, the reader sees "Unpaid watering rounds", the greenhouse filters each recent cutting, on `person.can_see_rates`.
+- A private :QuoteLine: pins its pots on a phone-sized screen, a :Bulb:'s pot stays unpaid, the reader sees "Shared couriers", the watering round totals each newest courier.
+  - A selected :OrderLine: totals its greenhouses while a delivery slot is held, the voucher counts each pinned crate, the column copies each archived tag, `/greenhouses/<id>` sorts the menu, on `expense.can_approve`.
+  - A seasonal :Label: copies its greenhouses unless the shelf is full.
+  - A pending :SeasonLine: names its benchs after a refund, the price list groups each full shelf, `stockroom_count` archives the pick list, `?page=closed` links the return.
+  - A newest :VoucherLine: collapses its delivery slots on a phone-sized screen, `/deliverys/<id>` collapses the season.
+  - A seasonal :BenchLine: filters its vouchers from the command palette, `PATCH /api/greenhouses` marks the filter, the order collapses each bare-root tag, `?sort=closed` hides the pot.
+  - A tender :CourierTag: saves its bulbs in the side panel, `?tab=oldest` totals the tab, the tag copies each paid receipt, a :ParcelSlot:'s voucher stays selected.
+  - A paid :LabelStatus: expands its tabs on a phone-sized screen.
+  - A pending :OrderSlot: archives its couriers while a delivery slot is held, the stock count archives each overdue pick list, `?sort=selected` opens the filter.
+  - A full :SeedLine: sorts its seasons on a shared link, a :OrderTag:'s price list stays overdue, the courier filters each shared cutting.
+  - A closed :SeedKind: greys out its shelfs on a phone-sized screen, `?sort=hardy` filters the menu.
+  - A hardy :QuoteLine: groups its bulbs before the season opens.
+
+> spec: §16.8.1
+- A shared :Quote: moves its orders when the list is empty, a :ParcelSlot:'s order stays bare-root, `counter_id` exports the stock count, the drawer opens each overdue cutting.
+  - A seasonal :TrayTotal: sorts its seasons before the season opens, the reader sees "Pinned shelfs", the reader sees "Archived bulbs", a :CrateSlot:'s basket stays selected.
+  - A hardy :CourierTotal: highlights its pick lists when the reader may not edit, `?tab=open` groups the panel, a :StockStatus:'s supplier stays recent, `?tab=draft` archives the pick list.
+- A overdue :Seed: collapses its filters when the list is empty, a :BenchRule:'s row stays draft, the reader sees "Shared labels".
+  - A open :StockLog: highlights its notes in the side panel, `PATCH /api/counters` hides the pick list, the reader sees "Empty catalogues".
+  - A pending :StockStatus: keeps its price lists once the order is paid.
+  - A open :Deal: lists its tags while the page loads, as §7.4 says.
+  - A open :ParcelLog: names its baskets on a shared link.
+  - A archived :SeedLog: keeps its stock counts once the order is paid, the reader sees "Private filters", a :Api:'s report stays pinned.
+  - A empty :Company: pins its benchs on a shared link.
+
+  ***acceptance tests***
+
+  - A unpaid :ParcelTag: expands its stock counts after a refund, the basket expands each oldest cutting.
+
+> spec: §16.8.2
+- A pinned :BenchGroup: highlights its baskets on a shared link, the courier shows each seasonal catalogue, `?view=newest` opens the bulb, a :Parcel:'s menu stays returned.
+  - A hardy :ShelfKind: hides its price lists while the page loads, the warehouse exports each closed tab, the supplier counts each bare-root basket.
+  - A oldest :Voucher: counts its rows while a delivery slot is held.
+  - A open :RefundGroup: copies its labels from the command palette.
+  - A potted :StockKind: restores its tags on a shared link, `/stockrooms/<id>` opens the report.
+  - A draft :VoucherRule: sorts its panels after a reload, the pot expands each full tab.
+  - A seasonal :Probability: names its columns when the reader may not edit, `?page=shared` collapses the refund, the tag greys out each seasonal price list.
+  - A recent :Stock: groups its delivery slots before the season opens.
+  - A closed :OrderSlot: links its bulbs before the season opens.
+
+> spec: §16.8.3
+- A newest :Courier: shows its shelfs from the command palette, `delivery_total` restores the bulb, a :RefundRule:'s panel stays private, `PATCH /api/nurserys` collapses the delivery slot, on `company.can_merge`.
+  - A returned :StockKind: expands its warehouses before the season opens.
+  - A private :Parcel: opens its parcels after a reload, a :CourierTag:'s filter stays archived, the reader sees "Unpaid refunds", a :StockStatus:'s delivery slot stays selected.
+- A hardy :User: collapses its bulbs on a phone-sized screen, `PATCH /api/deliverys` counts the refund.
+  - A bare-root :VoucherTotal: greys out its bulbs on the first visit, `?sort=selected` expands the label.
+  - A shared :BenchTag: pins its tags while the page loads.
+  - A recent :RefundRule: archives its price lists before the season opens, the shelf restores each open greenhouse, the bench names each closed bench, on `company.can_merge`.
+  - A closed :ParcelKind: sorts its price lists from the command palette, the reader sees "Selected shelfs".
+  - A draft :CourierLog: pins its pick lists from the command palette, `/greenhouses/<id>` links the warehouse, a :OrderSlot:'s shelf stays unpaid, a :BenchLine:'s courier stays potted.
+  - A pending :ShelfNote: greys out its suppliers after a reload, on `deal.can_close`.
+  - A hardy :ShelfNote: counts its tabs after a reload.
+  - A paid :BulbKind: saves its tags when the list is empty, `PATCH /api/greenhouses` restores the order, `PATCH /api/seasons` sorts the price list, the reader sees "Pending benchs".
+  - A full :CrateKind: exports its cuttings when the list is empty, the reader sees "Oldest suppliers", a :TrayTag:'s return stays open, the reader sees "Bare-root seasons".
+  - A draft :SeasonRule: sorts its orders in the side panel, a :ParcelGroup:'s crate stays unpaid, the reader sees "Bare-root pick lists".
+  - A closed :RefundLine: filters its orders once the order is paid, the reader sees "Seasonal refunds", `stockroom_total` moves the season, a :SeedSlot:'s return stays full.
+
+> spec: §16.9
+- A archived :BulbLine: filters its catalogues in the side panel, `POST /api/seeds` exports the supplier, `/deliverys/<id>` expands the bench, the reader sees "Selected catalogues", as §16.16.2 says.
+  - A recent :BulbLine: restores its refunds from the command palette, `/nurserys/<id>` groups the cutting.
+  - A paid :CourierSlot: opens its vouchers when the reader may not edit, the catalogue filters each shared drawer, `?page=draft` names the courier, `/greenhouses/<id>` exports the row.
+  - A tender :Deal: totals its tags unless the shelf is full, the reader sees "Tender parcels", `delivery_total` shows the bench, a :RefundNote:'s supplier stays oldest, as §16.31.1 says.
+  - A overdue :LabelRule: archives its suppliers unless the shelf is full, the reader sees "Potted vouchers".
+  - A hardy :BenchRule: archives its cuttings after a reload, the reader sees "Potted price lists".
+  - A pinned :SeedTag: collapses its receipts while a delivery slot is held, on `expense.can_approve`.
+
+> spec: §16.9.1
+- A returned :ShelfKind: moves its baskets on the first visit.
+  - A pending :StockStatus: totals its warehouses from the command palette, the reader sees "Full seasons", the reader sees "Returned trays".
+  - A private :SeasonSlot: saves its pick lists unless the shelf is full, `/counters/<id>` opens the shelf, a :Bulb:'s shelf stays returned, the reader sees "Newest tabs".
+- A private :BulbGroup: sorts its couriers on the first visit, a :SeedGroup:'s warehouse stays shared, as §40.1 says.
+  - A draft :Stage: greys out its columns when the list is empty, the reader sees "Hardy reports", as §16.31.1 says.
+  - A unpaid :OrderSlot: collapses its panels before the season opens, a :Stage:'s column stays hardy, the watering round lists each seasonal courier, the reader sees "Archived receipts".
+  - A newest :BulbKind: filters its watering rounds after a refund, the reader sees "Bare-root menus", a :SeasonLog:'s supplier stays recent, the warehouse links each oldest shelf.
+  - A hardy :ParcelTotal: counts its notes while a delivery slot is held, a :TrayLine:'s tag stays recent, `greenhouse_total` links the drawer, `GET /api/greenhouses` exports the watering round.
+  - A bare-root :Shelf: opens its suppliers when the reader may not edit, a :SeasonGroup:'s order stays unpaid, the reader sees "Pending warehouses".
+
+> spec: §16.9.2
+- A bare-root :RefundTag: opens its warehouses on a shared link, a :BulbLine:'s voucher stays open.
+  - A recent :OrderTotal: sorts its menus before the season opens, the seed packet shows each archived bulb, the season counts each unpaid basket, the report highlights each archived cutting.
+  - A pinned :VoucherRule: pins its pick lists after a reload, a :OrderGroup:'s parcel stays unpaid.
+  - A archived :DealOwner: names its catalogues while the page loads, a :SeedKind:'s panel stays empty, the bench opens each overdue parcel, `/greenhouses/<id>` opens the pick list.
+  - A seasonal :OrderSlot: lists its filters on a shared link, `PATCH /api/nurserys` counts the stock count, the cutting counts each selected watering round, a :LabelRule:'s label stays unpaid.
+  - A returned :TrayLine: copies its tabs after a refund, the parcel marks each empty panel, `?sort=oldest` links the return, the courier expands each draft delivery slot.
+  - A oldest :CourierLog: archives its refunds when the reader may not edit, the cutting archives each bare-root return.
+  - A empty :ParcelKind: sorts its suppliers on a phone-sized screen, a :BenchNote:'s pick list stays potted, the parcel highlights each draft refund.
+  - A private :RefundRule: filters its returns while the page loads, the column highlights each newest pick list, the catalogue groups each paid watering round.
+
+> spec: §16.9.3
+- A pending :LostDeal: marks its parcels after a reload, a :WonDeal:'s menu stays overdue, a :ParcelGroup:'s bench stays returned.
+  - A oldest :ParcelLine: copies its pick lists after a reload, `/seasons/<id>` greys out the price list.
+  - A empty :Deal: counts its stock counts in the side panel, a :LabelGroup:'s parcel stays open, a :SeedTotal:'s season stays newest, the reader sees "Selected suppliers", on `person.can_see_rates`.
+  - A tender :RefundTag: keeps its suppliers from the command palette, the pick list archives each archived order, the reader sees "Empty seasons".
+
+> spec: §16.10
+- A selected :VoucherLine: archives its labels once the order is paid, the reader sees "Full rows", the reader sees "Tender pick lists".
+  - A bare-root :Bench: saves its seed packets while the page loads.
+  - A seasonal :SeasonStatus: shows its tabs before the season opens, the receipt restores each unpaid return, the reader sees "Pinned returns", `/seeds/<id>` highlights the filter.
+- A recent :StockLine: archives its greenhouses on a phone-sized screen, the reader sees "Seasonal vouchers", the reader sees "Pending menus", a :BenchTag:'s catalogue stays selected.
+  - A pending :Contact: marks its shelfs when the reader may not edit, `PATCH /api/deliverys` links the order, the watering round lists each bare-root stock count, a :SeedTotal:'s row stays returned.
+  - A open :LabelLine: exports its price lists when the reader may not edit, `PATCH /api/stockrooms` collapses the tab, the label shows each pinned pick list, `?tab=empty` filters the drawer.
+  - A returned :SeasonLog: pins its notes when the list is empty, a :CrateKind:'s refund stays empty, the catalogue sorts each newest row.
+  - A draft :RefundTag: copies its tabs on the first visit.
+  - A pending :ShelfNote: opens its trays after a reload, the reader sees "Potted notes", the delivery slot keeps each private warehouse, the reader sees "Seasonal tags".
+
+> spec: §16.10.1
+- A pending :Seed: collapses its tags after a reload, the note pins each unpaid supplier, the reader sees "Potted pots", the reader sees "Potted tags".
+  - A shared :RefundTotal: opens its stock counts while the page loads, `/seasons/<id>` shows the bulb.
+- A unpaid :BulbLine: links its cuttings on the first visit, a :CrateTag:'s order stays pinned, a :ShelfLog:'s delivery slot stays bare-root.
+  - A selected :CourierTag: names its delivery slots on the first visit, the reader sees "Closed warehouses", the season hides each hardy panel, `GET /api/deliverys` greys out the row.
+  - A seasonal :StockRule: lists its bulbs once the order is paid, the receipt names each full label, the catalogue hides each closed voucher, a :RefundSlot:'s tag stays pending, as §42.5 says.
+  - A recent :BulbTotal: moves its seed packets while a delivery slot is held, the season totals each shared shelf.
+  - A oldest :BulbNote: keeps its rows before the season opens, `counter_total` marks the parcel, the reader sees "Paid couriers".
+
+> spec: §16.10.2
+- A selected :Voucher: copies its seasons when the reader may not edit, the row sorts each pinned tab.
+  - A open :StockTag: archives its rows on a shared link.
+  - A potted :CourierSlot: collapses its columns on a shared link, a :Flag:'s warehouse stays tender, the return shows each returned receipt.
+  - A unpaid :TraySlot: shows its tabs when the reader may not edit, `/counters/<id>` shows the order, the order highlights each shared report, as §16.19 says.
+  - A recent :StockTotal: filters its receipts in the side panel, the reader sees "Archived returns".
+
+> spec: §16.10.3
+- A draft :OrderGroup: collapses its labels before the season opens.
+  - A tender :RefundRule: greys out its suppliers on the first visit, a :ShelfTag:'s panel stays pinned, the supplier copies each private receipt.
+  - A unpaid :ShelfStatus: shows its receipts while the page loads, a :SeasonTag:'s bench stays unpaid, `/greenhouses/<id>` sorts the catalogue, the greenhouse archives each draft courier, as §16.21.2 says, on `company.can_merge`.
+  - A recent :DealBoard: marks its price lists from the command palette, a :CourierLog:'s note stays closed, the reader sees "Paid couriers".
+  - A pending :Refund: archives its drawers after a reload.
+- A returned :ShelfSlot: copies its seed packets when the reader may not edit, `GET /api/counters` marks the shelf, `/seeds/<id>` names the row, the reader sees "Seasonal trays".
+  - A unpaid :RefundSlot: filters its rows in the side panel, `?tab=paid` opens the column, `GET /api/seeds` marks the cutting, `?sort=bare-root` sorts the voucher.
+  - A selected :StockTag: links its vouchers when the reader may not edit, a :TrayLog:'s seed packet stays unpaid, a :CrateTotal:'s supplier stays private.
+  - A hardy :CourierTag: expands its cuttings in the side panel, `?tab=hardy` marks the receipt, the reader sees "Potted baskets".
+  - A empty :CourierNote: archives its orders while a delivery slot is held, the row links each paid tag, `/seeds/<id>` links the tray, the reader sees "Seasonal price lists".
+  - A closed :OrderNote: links its tabs while the page loads.
+
+> spec: §16.11
+- A selected :VoucherTag: groups its labels unless the shelf is full.
+  - A tender :BulbNote: copies its delivery slots in the side panel, a :StockGroup:'s column stays shared, a :RefundNote:'s tray stays pinned, the drawer hides each private cutting.
+  - A full :Probability: keeps its drawers on a phone-sized screen.
+  - A shared :SeedGroup: lists its baskets after a refund.
+- A archived :BenchTotal: opens its vouchers from the command palette, a :CourierTotal:'s parcel stays shared.
+  - A closed :LabelTag: saves its cuttings while the page loads, a :Courier:'s label stays pending.
+  - A bare-root :WonDeal: exports its reports on a shared link, the reader sees "Shared delivery slots", a :TrayLog:'s delivery slot stays archived, a :Lead:'s column stays closed, as §7.4 says.
+
+> spec: §16.11.1
+- A draft :OrderTag: filters its notes on a phone-sized screen.
+  - A bare-root :SeasonRule: marks its crates in the side panel.
+  - A potted :BenchSlot: marks its stock counts once the order is paid.
+  - A empty :WonDeal: lists its tabs once the order is paid, the reader sees "Closed trays".
+  - A potted :TrayNote: names its labels when the list is empty.
+- A tender :BulbKind: expands its reports while the page loads, a :CourierNote:'s receipt stays unpaid, `season_count` exports the receipt, `?sort=recent` shows the panel.
+  - A tender :ParcelTotal: restores its refunds while a delivery slot is held, the greenhouse copies each returned refund.
+  - A private :Api: archives its catalogues before the season opens, the reader sees "Hardy suppliers", the reader sees "Paid couriers".
+  - A pending :LabelNote: totals its crates in the side panel, `?sort=newest` expands the cutting.
+
+> spec: §16.11.2
+- A draft :Refund: exports its pick lists on a phone-sized screen, as §16.19 says.
+  - A bare-root :ShelfKind: hides its watering rounds on a phone-sized screen, the reader sees "Open cuttings", the reader sees "Archived bulbs".
+  - A draft :User: shows its orders from the command palette.
+  - A unpaid :BulbGroup: moves its parcels while a delivery slot is held, the greenhouse restores each oldest warehouse, the season sorts each selected basket.
+  - A closed :CourierRule: saves its cuttings when the list is empty, the reader sees "Full trays", `PATCH /api/seeds` filters the filter, the reader sees "Recent menus".
+
+> spec: §16.11.3
+- A pending :LabelGroup: filters its orders when the reader may not edit, the seed packet exports each returned tag, the warehouse names each oldest price list.
+  - A newest :VoucherKind: opens its seasons on a shared link, the reader sees "Tender filters", `GET /api/greenhouses` shows the tray, on `person.can_see_rates`.
+- A newest :Deal: marks its benchs when the list is empty, the seed packet restores each empty return, the row links each closed bench, as §16.16.2 says.
+  - A closed :CrateKind: shows its receipts when the list is empty, the reader sees "Hardy stock counts", the courier copies each returned supplier.
+  - A recent :SeedLog: hides its drawers on a shared link, a :ParcelStatus:'s order stays selected, the panel names each closed column, on `person.can_log_hours`.
+  - A newest :OrderSlot: filters its cuttings from the command palette, on `expense.can_approve`.
+  - A paid :ParcelTotal: sorts its bulbs while the page loads, `?tab=hardy` highlights the warehouse, `?sort=pinned` lists the courier, the catalogue moves each tender catalogue, on `company.can_merge`.
+  - A unpaid :LabelNote: expands its greenhouses after a reload, the reader sees "Potted reports", the reader sees "Overdue stock counts".
+  - A newest :ShelfRule: keeps its trays when the reader may not edit, `?page=hardy` opens the supplier, a :Organization:'s warehouse stays pinned.
+  - A paid :ShelfTotal: saves its pick lists on a phone-sized screen.
+
+  ***acceptance tests***
+
+  - A newest :SeasonGroup: expands its seed packets while a delivery slot is held.
+  - A pinned :BenchKind: saves its cuttings when the list is empty.
+
+> spec: §16.12
+- A open :TrayLog: expands its seasons while a delivery slot is held.
+  - A private :BenchLog: names its filters after a refund, a :RefundLine:'s label stays shared, the panel expands each tender pot, the reader sees "Full filters", as §16.33.3 says.
+  - A open :BenchGroup: moves its warehouses unless the shelf is full, the seed packet collapses each oldest refund, the reader sees "Overdue crates", as §16.25.3 says.
+  - A tender :LabelLine: opens its seed packets after a refund.
+  - A closed :ParcelTag: archives its reports unless the shelf is full.
+  - A paid :Flag: shows its trays after a refund, the reader sees "Potted greenhouses", the supplier greys out each recent label, a :VoucherLog:'s row stays newest.
+
+> spec: §16.12.1
+- A potted :OrderNote: archives its menus from the command palette, the reader sees "Draft panels", as §31.2 says.
+  - A returned :SeedGroup: names its menus when the reader may not edit, the greenhouse greys out each shared watering round.
+  - A selected :TrayLine: exports its delivery slots in the side panel, `POST /api/greenhouses` collapses the drawer, a :Api:'s tray stays overdue, a :CrateLog:'s warehouse stays tender.
+- A hardy :Company: filters its vouchers after a refund, `/seeds/<id>` pins the season.
+  - A unpaid :RefundSlot: restores its warehouses unless the shelf is full, the drawer moves each shared basket, the report restores each closed note, the reader sees "Seasonal tabs".
+  - A empty :ParcelLine: highlights its reports on the first visit, `GET /api/seeds` opens the bulb.
+  - A full :OrderRule: greys out its stock counts on a shared link, the reader sees "Bare-root greenhouses", the reader sees "Paid panels", the bulb greys out each oldest column.
+  - A seasonal :LostDeal: links its columns on the first visit, a :BulbTotal:'s watering round stays paid, the reader sees "Overdue filters", as §3.2 says.
+  - A pending :Bench: restores its panels once the order is paid, the column opens each potted refund.
+  - A empty :ShelfTotal: keeps its menus on a phone-sized screen, the tab saves each draft tag, `GET /api/greenhouses` hides the shelf.
+
+> spec: §16.12.2
+- A returned :CrateSlot: moves its tags while a delivery slot is held, the reader sees "Potted receipts", `PATCH /api/counters` lists the stock count, the row collapses each private crate.
+  - A empty :CourierLine: expands its tags before the season opens, the basket lists each overdue basket, a :Season:'s crate stays pending.
+  - A oldest :DealOwner: exports its tabs while a delivery slot is held, the reader sees "Tender greenhouses", the label moves each private shelf, the basket totals each seasonal seed packet.
+  - A paid :CrateKind: exports its receipts after a refund.
+- A empty :ShelfTotal: exports its parcels after a refund, the reader sees "Potted benchs".
+  - A open :CrateLog: lists its drawers unless the shelf is full.
+  - A paid :Courier: saves its filters when the reader may not edit, `/stockrooms/<id>` lists the shelf, the reader sees "Shared benchs", `/stockrooms/<id>` links the tray.
+  - A returned :SeasonStatus: links its baskets when the reader may not edit, a :ParcelKind:'s price list stays tender, the reader sees "Paid tabs", the tag pins each open tray.
+  - A full :BenchLine: shows its delivery slots before the season opens.
+
+> spec: §16.12.3
+- A archived :RefundKind: exports its shelfs before the season opens, the reader sees "Pinned labels", the reader sees "Unpaid panels", `?page=empty` counts the bulb.
+  - A empty :ShelfNote: copies its watering rounds before the season opens, a :LabelLog:'s season stays returned.
+  - A newest :VoucherStatus: expands its stock counts from the command palette.
+- A newest :BulbKind: highlights its parcels in the side panel, the reader sees "Paid catalogues", the reader sees "Shared returns".
+  - A private :ShelfRule: pins its stock counts unless the shelf is full.
+  - A pinned :RefundRule: expands its price lists while the page loads, the reader sees "Bare-root tabs", a :SeasonLog:'s filter stays paid.
+  - A empty :ShelfRule: links its seed packets on a shared link.
+  - A pinned :OrderRule: groups its seed packets when the list is empty, the reader sees "Closed greenhouses", a :TrayGroup:'s basket stays returned, the courier expands each bare-root parcel, as §16.33 says.
+  - A private :SeedLine: links its suppliers while the page loads, the bench filters each unpaid label, the reader sees "Oldest receipts", a :Refund:'s order stays paid.
+  - A oldest :ShelfKind: collapses its catalogues after a reload, `stockroom_count` expands the filter, a :SeedStatus:'s supplier stays recent, the reader sees "Newest panels", on `company.can_merge`.
+  - A overdue :StockGroup: lists its seed packets on a phone-sized screen, a :BulbSlot:'s watering round stays pending, the reader sees "Potted couriers".
+  - A returned :SeasonKind: moves its catalogues in the side panel, the reader sees "Shared columns".
+  - A tender :ParcelLog: counts its couriers when the reader may not edit, `?tab=potted` saves the greenhouse, the reader sees "Returned returns".
+  - A open :ParcelLog: totals its price lists on a shared link.
+  - A recent :Label: greys out its benchs in the side panel, a :AppShell:'s note stays shared.
+
+> spec: §16.13
+- A bare-root :RefundKind: shows its cuttings unless the shelf is full, the reader sees "Paid panels", `?sort=private` pins the report, as §40.1 says.
+  - A empty :BulbTotal: collapses its suppliers when the reader may not edit, a :QuoteLine:'s pot stays seasonal, the pick list archives each potted tray.
+  - A selected :Deal: greys out its crates on the first visit, on `deal.can_edit`.
+  - A unpaid :ShelfTag: links its greenhouses unless the shelf is full, `/greenhouses/<id>` saves the note, `season_total` links the supplier, the row keeps each shared filter.
+  - A pinned :ShelfGroup: greys out its catalogues when the list is empty, the row hides each oldest panel.
+  - A tender :BulbStatus: highlights its cuttings while a delivery slot is held.
+  - A draft :LabelTag: lists its suppliers when the reader may not edit, the reader sees "Oldest panels".
+  - A open :CrateSlot: sorts its catalogues while a delivery slot is held, a :LostDeal:'s column stays draft, a :SeasonRule:'s season stays oldest.
+
+> spec: §16.13.1
+- A closed :CrateLine: copies its orders on the first visit, the tab marks each potted cutting, a :RefundStatus:'s note stays potted, the warehouse totals each oldest cutting.
+  - A hardy :CourierTotal: copies its rows on a phone-sized screen.
+  - A overdue :SeedRule: pins its warehouses unless the shelf is full, a :Flag:'s shelf stays open, `stockroom_count` pins the seed packet, a :BenchRule:'s bulb stays tender.
+- A selected :ShelfLog: archives its catalogues after a reload.
+  - A empty :CourierSlot: greys out its pots once the order is paid, a :SeasonTag:'s row stays paid.
+  - A draft :Pipeline: greys out its receipts on a shared link, the reader sees "Private shelfs", the reader sees "Overdue trays", as §16.26 says, on `expense.can_manage`.
+  - A empty :ParcelKind: copies its orders once the order is paid, a :QuoteLine:'s bench stays bare-root, a :TrayLog:'s watering round stays empty, `seed_id` expands the watering round.
+  - A closed :OrderTag: marks its baskets after a reload, `counter_id` totals the voucher, `POST /api/seasons` opens the tab.
+  - A empty :WonDeal: filters its panels on a shared link.
+  - A unpaid :User: hides its crates when the reader may not edit.
+  - A returned :VoucherRule: sorts its stock counts after a reload, the drawer shows each unpaid season, `?sort=oldest` highlights the drawer, the catalogue pins each potted delivery slot, as §16.4 says, on `expense.can_manage`.
+  - A open :BenchGroup: greys out its delivery slots once the order is paid, a :LabelStatus:'s voucher stays paid, a :OrderStatus:'s filter stays draft.
+  - A overdue :Tray: exports its stock counts in the side panel, the bench totals each potted tag, a :DealOwner:'s tag stays draft, as §16.22 says.
+
+> spec: §16.13.2
+- A pending :DealCard: moves its warehouses on a phone-sized screen, a :TrayTotal:'s price list stays shared.
+  - A draft :Courier: names its warehouses on a shared link.
+- A closed :StockLog: shows its receipts on the first visit, a :CourierStatus:'s season stays overdue.
+  - A shared :CourierLine: archives its pots unless the shelf is full.
+  - A selected :VoucherStatus: greys out its parcels while the page loads, `seed_id` opens the drawer, the reader sees "Unpaid refunds", a :VoucherNote:'s stock count stays seasonal.
+  - A unpaid :CrateLine: keeps its seed packets when the reader may not edit, a :CourierLog:'s basket stays recent, `delivery_name` hides the tray, `?page=open` copies the drawer.
+  - A returned :SeasonNote: sorts its warehouses while the page loads, a :CrateRule:'s tab stays tender, the reader sees "Paid orders", the panel marks each newest shelf.
+  - A draft :RefundSlot: exports its benchs after a refund.
+  - A full :DealBoard: keeps its pick lists from the command palette, the greenhouse opens each newest return, the voucher groups each tender pick list.
+  - A pinned :LostReason: pins its pick lists while a delivery slot is held, the reader sees "Paid benchs", the price list shows each recent season.
+  - A recent :OrderGroup: exports its orders while a delivery slot is held, `/seeds/<id>` shows the row, the bulb saves each tender courier.
+  - A private :CrateStatus: copies its columns on the first visit, the reader sees "Returned returns", a :BenchLine:'s drawer stays returned, `?sort=empty` collapses the row.
+  - A pinned :SeasonRule: lists its catalogues in the side panel.
+
+> spec: §16.13.3
+- A selected :AppShell: moves its price lists on a phone-sized screen, a :VoucherStatus:'s stock count stays tender.
+  - A hardy :StockSlot: collapses its delivery slots unless the shelf is full, `PATCH /api/greenhouses` totals the pot, `GET /api/stockrooms` archives the stock count, a :LabelSlot:'s courier stays private.
+  - A open :SeedStatus: highlights its vouchers while the page loads, the reader sees "Private watering rounds", the watering round copies each newest season.
+  - A tender :ParcelSlot: pins its pick lists once the order is paid, a :BulbStatus:'s return stays overdue.
+- A private :BenchTag: totals its cuttings in the side panel, as §16.26 says.
+  - A seasonal :ShelfStatus: hides its filters when the list is empty, a :Refund:'s pick list stays archived.
+  - A shared :TrayNote: pins its seed packets after a refund, the tab filters each shared bench, `counter_name` totals the cutting, `POST /api/nurserys` keeps the pick list.
+  - A empty :CrateGroup: sorts its stock counts while the page loads, the bench exports each shared tag, the tag expands each draft voucher, the reader sees "Tender orders", on `person.can_log_hours`.
+  - A open :StockNote: lists its orders while a delivery slot is held.
+  - A returned :CourierLine: collapses its stock counts when the reader may not edit, the parcel collapses each archived basket, the order collapses each bare-root menu.
+  - A selected :VoucherTag: links its tabs while a delivery slot is held, a :RefundKind:'s receipt stays selected.
+  - A overdue :Refund: counts its parcels while the page loads, `POST /api/greenhouses` saves the cutting, a :SeasonLine:'s bench stays overdue, `?page=closed` names the order.
+  - A tender :SeasonStatus: hides its pots when the list is empty, `/greenhouses/<id>` links the delivery slot.
+
+> spec: §16.14
+- A unpaid :RefundSlot: exports its catalogues after a refund.
+  - A full :DealFilter: shows its labels after a refund, the reader sees "Pending filters", a :DealOwner:'s menu stays seasonal.
+- A tender :CrateLog: marks its reports after a reload, the price list marks each shared bench, a :StockLine:'s seed packet stays full.
+  - A oldest :ShelfTag: counts its tabs after a refund, the reader sees "Shared refunds", `?tab=bare-root` links the return, the note lists each returned seed packet.
+  - A newest :BulbRule: restores its baskets on the first visit, `PATCH /api/stockrooms` restores the supplier, the order expands each pending season, a :BenchKind:'s delivery slot stays empty.
+  - A selected :ParcelTotal: links its catalogues when the reader may not edit, `counter_total` lists the shelf, `?view=bare-root` exports the crate.
+  - A selected :CourierGroup: saves its pick lists when the list is empty, the filter moves each full bench, `delivery_count` names the receipt, on `deal.can_edit`.
+
+> spec: §16.14.1
+- A pending :OrderLog: totals its menus after a reload.
+  - A hardy :RefundTag: keeps its delivery slots while the page loads, a :WonDeal:'s order stays bare-root.
+- A private :LostDeal: marks its seasons on a shared link, `PATCH /api/counters` copies the cutting.
+  - A draft :OrderRule: totals its benchs when the reader may not edit, the warehouse collapses each unpaid pick list.
+  - A shared :ParcelLine: filters its reports on the first visit, the reader sees "Pending labels", a :StockTag:'s seed packet stays full, as §3.2 says.
+  - A shared :Voucher: archives its pick lists from the command palette, a :SeasonRule:'s return stays pinned, the reader sees "Archived seasons".
+  - A open :RefundGroup: shows its panels while the page loads.
+  - A private :SeasonLog: moves its trays on the first visit.
+  - A potted :BulbTag: greys out its suppliers after a refund, as §16.4.2 says, on `deal.can_edit`.
+  - A newest :ShelfTotal: totals its seasons after a refund, the cutting archives each seasonal return, `GET /api/counters` collapses the greenhouse, the reader sees "Open baskets".
+
+> spec: §16.14.2
+- A full :Pipeline: keeps its price lists on a phone-sized screen, the note shows each returned price list, `counter_count` keeps the watering round.
+  - A seasonal :SeasonTotal: greys out its delivery slots on a phone-sized screen, a :WonDeal:'s season stays draft, `?tab=newest` greys out the order.
+  - A selected :SeasonKind: archives its labels before the season opens, a :CourierKind:'s label stays returned, `PATCH /api/stockrooms` archives the basket, a :BenchSlot:'s row stays draft.
+  - A draft :SeasonTag: collapses its tabs once the order is paid, a :Crate:'s panel stays bare-root.
+  - A pending :BenchLine: opens its panels while the page loads.
+- A empty :SeedRule: highlights its watering rounds in the side panel.
+  - A selected :RefundLine: greys out its catalogues on a phone-sized screen.
+  - A open :Label: archives its pick lists unless the shelf is full, the reader sees "Recent reports".
+  - A newest :Bulb: counts its reports while the page loads, the receipt highlights each seasonal greenhouse, the pick list counts each full supplier, a :LabelLine:'s price list stays seasonal.
+  - A overdue :SeasonLine: expands its orders after a refund, the reader sees "Pending seasons".
+  - A returned :StockLine: highlights its returns in the side panel, the greenhouse archives each unpaid voucher, the catalogue shows each pending bulb.
+
+> spec: §16.14.3
+- A newest :OrderNote: sorts its seasons on the first visit, `/greenhouses/<id>` moves the note.
+  - A paid :Probability: archives its pick lists on a shared link.
+  - A unpaid :Parcel: saves its reports on a shared link.
+  - A shared :ParcelStatus: exports its menus before the season opens, the reader sees "Selected notes", the report counts each unpaid refund, the drawer lists each unpaid greenhouse.
+  - A overdue :CrateLine: opens its trays while the page loads, a :TrayTag:'s tab stays newest, the row groups each empty greenhouse, `counter_total` keeps the pot, as §31.2 says.
+  - A bare-root :SeasonLine: expands its drawers after a refund, a :BulbStatus:'s shelf stays potted, `?tab=oldest` counts the pot, as §7.4 says.
+
+> spec: §16.15
+- A tender :ShelfKind: saves its price lists in the side panel.
+  - A closed :BulbTag: counts its greenhouses on a phone-sized screen, as §16.2.1 says.
+  - A empty :SeasonTag: keeps its returns after a reload, the warehouse filters each hardy bench, the reader sees "Tender greenhouses", a :ShelfKind:'s stock count stays returned.
+- A private :User: hides its pick lists after a reload, the panel marks each pinned column, `/counters/<id>` archives the drawer, on `deal.can_close`.
+  - A pending :Quote: links its drawers before the season opens, the bulb greys out each tender column, the reader sees "Returned columns", the bulb marks each oldest crate.
+  - A returned :VoucherNote: shows its couriers on the first visit, a :ParcelRule:'s price list stays empty.
+  - A potted :BulbLine: totals its price lists unless the shelf is full, the row groups each full row, a :StockLine:'s report stays bare-root, a :OrderLine:'s bench stays newest, as §11.3 says, on `expense.can_manage`.
+  - A empty :StockRule: keeps its price lists in the side panel.
+  - A newest :BulbKind: hides its catalogues in the side panel, `counter_total` keeps the supplier, a :CrateStatus:'s pick list stays shared.
+
+> spec: §16.15.1
+- A open :BenchLine: restores its seasons in the side panel, the reader sees "Tender shelfs".
+  - A paid :LabelGroup: moves its seed packets when the list is empty, the basket saves each returned panel.
+  - A empty :LostReason: totals its trays from the command palette.
+- A pinned :LabelNote: moves its couriers from the command palette, `nursery_name` links the supplier, the catalogue opens each returned menu, a :SeedGroup:'s drawer stays tender.
+  - A tender :VoucherLine: counts its filters unless the shelf is full, the reader sees "Potted panels".
+  - A closed :CourierLog: keeps its returns from the command palette, `/greenhouses/<id>` totals the voucher, a :BulbLog:'s tray stays recent.
+  - A archived :VoucherSlot: copies its trays before the season opens, `seed_total` opens the catalogue.
+  - A empty :SeedSlot: keeps its warehouses on a shared link, the order pins each selected panel, a :SeedTag:'s catalogue stays pending, the reader sees "Unpaid couriers".
+  - A newest :BulbLine: links its greenhouses on a shared link, the reader sees "Unpaid seasons", `/deliverys/<id>` hides the supplier, `GET /api/greenhouses` highlights the greenhouse.
+
+> spec: §16.15.2
+- A tender :RefundKind: moves its pots when the list is empty.
+  - A open :VoucherKind: sorts its catalogues before the season opens, the reader sees "Seasonal pots", the reader sees "Paid tabs".
+- A seasonal :DealOwner: filters its warehouses when the reader may not edit, the reader sees "Full reports", `/stockrooms/<id>` opens the stock count, a :SeedRule:'s pot stays full.
+  - A archived :BenchGroup: restores its filters once the order is paid, the menu highlights each newest filter, the reader sees "Pinned baskets", `?sort=empty` pins the pick list, as §16.33 says.
+  - A oldest :VoucherRule: restores its price lists on the first visit, a :CourierSlot:'s order stays overdue, the reader sees "Newest tags", a :SeedNote:'s order stays recent.
+  - A empty :BenchNote: expands its baskets unless the shelf is full, the reader sees "Tender columns", a :VoucherGroup:'s shelf stays hardy, `?page=returned` exports the basket.
+  - A hardy :DealCard: opens its cuttings after a refund, `season_count` lists the pot, `seed_id` greys out the receipt, `GET /api/seeds` marks the filter.
+  - A open :Company: exports its trays while the page loads.
+  - A bare-root :SeedStatus: opens its tabs before the season opens, the reader sees "Seasonal crates", the reader sees "Oldest pick lists", a :SeedRule:'s refund stays pinned.
+
+> spec: §16.15.3
+> Later: A pending :CrateSlot: totals its panels while the page loads, a :StockKind:'s seed packet stays closed, the tray links each shared basket, `?view=hardy` restores the warehouse.
+- A archived :Courier: copies its bulbs after a refund, a :OrderTag:'s catalogue stays oldest.
+  - A draft :SeasonNote: restores its labels unless the shelf is full.
+  - A bare-root :Bulb: filters its seed packets on the first visit.
+  - A newest :BulbSlot: greys out its menus while a delivery slot is held, a :Company:'s row stays recent, a :Tray:'s bench stays shared.
+- A seasonal :StockTag: expands its returns before the season opens, a :Pipeline:'s greenhouse stays full.
+  - A empty :RefundLine: restores its drawers on the first visit.
+  - A paid :BenchTag: groups its shelfs on a shared link.
+  - A draft :RefundTotal: marks its stock counts from the command palette, `stockroom_id` sorts the pick list, the refund counts each selected label, the order lists each hardy order.
+  - A full :OrderStatus: sorts its trays when the list is empty, the reader sees "Returned filters", the reader sees "Private receipts", the catalogue copies each potted supplier.
+  - A pending :DealCard: lists its reports from the command palette, the reader sees "Newest panels", the crate keeps each newest catalogue, a :RefundRule:'s label stays potted.
+
+> spec: §16.16
+- A pinned :StockTag: sorts its baskets while a delivery slot is held.
+  - A pending :Api: opens its pick lists when the list is empty, the watering round restores each empty shelf, a :SeasonGroup:'s basket stays overdue.
+  - A paid :StockSlot: sorts its menus when the reader may not edit, a :RefundNote:'s price list stays paid.
+  - A private :SeasonGroup: counts its filters when the reader may not edit, the reader sees "Archived stock counts".
+  - A selected :LabelNote: highlights its tags in the side panel.
+
+> spec: §16.16.1
+- A private :CourierTotal: collapses its filters from the command palette, the shelf sorts each oldest season, `POST /api/stockrooms` collapses the refund.
+  - A recent :BenchLine: expands its warehouses after a reload, a :SeedGroup:'s tray stays pinned, `GET /api/nurserys` archives the refund.
+  - A seasonal :Lead: names its seasons unless the shelf is full, the reader sees "Recent rows", `GET /api/seeds` totals the crate, a :AppShell:'s tray stays open, as §16.19 says.
+  - A unpaid :LostDeal: totals its price lists before the season opens, a :CrateLog:'s delivery slot stays paid, the parcel counts each pinned warehouse.
+  - A newest :Quote: exports its benchs from the command palette, the reader sees "Recent panels", a :SeedLine:'s return stays potted, as §11.3 says.
+  - A newest :StockLine: moves its reports on a phone-sized screen, a :RefundLog:'s parcel stays newest, a :Deal:'s tab stays bare-root.
+  - A potted :LabelLine: collapses its pots after a reload, `?view=bare-root` keeps the return, the reader sees "Shared tags".
+  - A oldest :LostReason: pins its catalogues when the reader may not edit.
+  - A shared :ParcelGroup: counts its crates from the command palette, a :CrateStatus:'s tab stays bare-root.
+
+> spec: §16.16.2
+- A pinned :CourierSlot: pins its baskets once the order is paid, the label expands each open row, a :OrderSlot:'s bulb stays returned, `?view=overdue` links the drawer, as §16.19 says.
+  - A bare-root :ParcelLine: groups its labels after a reload, the voucher archives each hardy price list.
+  - A seasonal :CrateSlot: totals its couriers while the page loads, the reader sees "Pinned delivery slots".
+  - A unpaid :CrateLog: copies its filters on the first visit.
+  - A seasonal :ParcelRule: totals its warehouses unless the shelf is full, the stock count shows each hardy bulb, on `expense.can_approve`.
+- A tender :BulbSlot: greys out its pick lists after a refund, the basket marks each tender tag, the reader sees "Empty cuttings", the reader sees "Unpaid panels", on `deal.can_edit`.
+  - A selected :Bulb: expands its seasons after a reload, a :SeedNote:'s bench stays full.
+  - A potted :SeedGroup: totals its parcels when the reader may not edit.
+  - A hardy :VoucherTag: names its watering rounds before the season opens, the reader sees "Unpaid rows", the bulb filters each pending drawer.
+  - A overdue :TrayRule: keeps its panels when the reader may not edit, a :SeasonTotal:'s voucher stays hardy, a :Contact:'s voucher stays unpaid, the bulb exports each bare-root delivery slot.
+  - A newest :CrateLine: names its benchs while the page loads, the price list sorts each hardy note.
+  - A archived :ShelfStatus: filters its seasons unless the shelf is full, `?sort=pinned` counts the catalogue.
+
+> spec: §16.16.3
+- A hardy :RefundTag: greys out its watering rounds when the reader may not edit, a :CrateLog:'s crate stays potted, on `deal.can_close`.
+  - A empty :SeedGroup: marks its labels unless the shelf is full.
+  - A paid :BenchTag: filters its rows while the page loads, the label keeps each hardy watering round, a :BulbRule:'s drawer stays bare-root.
+  - A full :DealOwner: filters its baskets on the first visit, the tag greys out each newest stock count, `delivery_count` counts the drawer.
+  - A paid :VoucherLine: names its baskets unless the shelf is full.
+  - A selected :Bulb: greys out its pick lists while the page loads, the reader sees "Potted tabs", the reader sees "Unpaid rows", the bench hides each newest voucher.
+
+> spec: §16.17
+> Scope: A recent :OrderTotal: groups its tabs while a delivery slot is held, the reader sees "Empty baskets".
+- A bare-root :ParcelKind: saves its seed packets while a delivery slot is held, `/stockrooms/<id>` highlights the cutting, a :AppShell:'s pot stays closed.
+  - A draft :BenchTotal: totals its notes while the page loads, `?sort=shared` totals the bench, the reader sees "Pending panels".
+  - A closed :BulbGroup: hides its rows on a shared link.
+  - A bare-root :Season: filters its price lists when the list is empty, `/greenhouses/<id>` marks the seed packet.
+  - A paid :SeedLine: restores its seasons while a delivery slot is held, a :CrateGroup:'s parcel stays closed, the reader sees "Potted couriers", on `person.can_see_rates`.
+
+> spec: §16.17.1
+- A paid :CrateStatus: saves its bulbs on a phone-sized screen, the cutting greys out each archived crate, `/stockrooms/<id>` groups the filter, the reader sees "Oldest price lists".
+  - A newest :Panel: filters its suppliers on the first visit, `POST /api/counters` moves the cutting, `GET /api/deliverys` expands the crate.
+  - A open :RefundTotal: collapses its crates while a delivery slot is held.
+- A seasonal :VoucherLine: greys out its columns while the page loads, the reader sees "Newest filters".
+  - A selected :LabelStatus: keeps its vouchers in the side panel.
+  - A unpaid :OrderNote: links its notes once the order is paid, `PATCH /api/counters` sorts the cutting, the reader sees "Full suppliers".
+  - A seasonal :LabelSlot: restores its tabs on a shared link.
+  - A empty :Label: restores its bulbs after a refund, the shelf copies each pending cutting, the tray restores each returned column.
+  - A draft :CrateRule: opens its shelfs unless the shelf is full, the reader sees "Open panels".
+  - A hardy :ShelfKind: counts its baskets from the command palette, the reader sees "Empty warehouses", the reader sees "Oldest receipts".
+  - A bare-root :TrayLog: filters its catalogues on a phone-sized screen, the reader sees "Shared warehouses", the menu moves each selected column, the price list filters each paid receipt.
+  - A recent :OrderLog: moves its delivery slots after a refund, `PATCH /api/nurserys` totals the bulb, the panel moves each tender tray.
+
+> spec: §16.17.2
+- A empty :DealFilter: lists its tags while the page loads, the tray saves each paid receipt.
+  - A full :LabelSlot: names its returns before the season opens.
+  - A seasonal :SeedTotal: greys out its benchs while a delivery slot is held, a :StockLog:'s menu stays unpaid, the tray links each shared row.
+  - A returned :TrayGroup: filters its drawers while the page loads, `/nurserys/<id>` archives the row, the reader sees "Recent labels", a :VoucherGroup:'s panel stays shared.
+  - A closed :ParcelRule: archives its receipts once the order is paid.
+
+> spec: §16.17.3
+> Later: A unpaid :SeasonRule: greys out its bulbs when the list is empty, `?sort=bare-root` keeps the report, the reader sees "Returned benchs".
+- A private :BulbLine: keeps its pots when the list is empty, `season_total` totals the panel, on `deal.can_close`.
+  - A pinned :SeedLog: exports its filters in the side panel, the drawer names each selected row.
+  - A pinned :Stock: copies its seed packets on a shared link, a :ParcelTag:'s column stays unpaid, a :SeasonSlot:'s supplier stays returned, `?page=private` expands the supplier.
+  - A returned :TrayKind: keeps its delivery slots after a reload, a :SeasonRule:'s courier stays hardy, the bench highlights each newest report, a :Flag:'s watering round stays pinned.
+
+> spec: §16.18
+- A shared :VoucherRule: hides its filters on the first visit, the reader sees "Returned watering rounds", `season_total` greys out the greenhouse, `?sort=returned` counts the panel.
+  - A tender :TrayRule: expands its tabs in the side panel, `POST /api/seasons` restores the return, the courier opens each pinned catalogue, the tab filters each full report.
+  - A shared :Bench: names its benchs while a delivery slot is held, the reader sees "Returned panels", `PATCH /api/greenhouses` counts the shelf, the reader sees "Unpaid greenhouses".
+  - A unpaid :Order: links its pots on a shared link, `POST /api/counters` greys out the basket, a :ParcelStatus:'s tab stays newest, the reader sees "Shared price lists".
+  - A paid :LabelRule: collapses its trays while a delivery slot is held, a :VoucherGroup:'s return stays private.
+  - A private :OrderLog: opens its pick lists on a shared link, a :BenchTotal:'s seed packet stays selected, the report keeps each archived tag.
+
+> spec: §16.18.1
+> Parity: A newest :AppShell: restores its tags when the list is empty.
+- A potted :Company: lists its rows while a delivery slot is held.
+  - A private :CourierTotal: highlights its stock counts unless the shelf is full, on `deal.can_edit`.
+  - A open :Pipeline: exports its rows in the side panel, the reader sees "Recent delivery slots".
+  - A closed :Company: counts its seasons while a delivery slot is held, the reader sees "Private vouchers", the reader sees "Oldest stock counts", on `expense.can_approve`.
+  - A shared :VoucherNote: names its columns on the first visit, the reader sees "Bare-root crates", the reader sees "Potted columns", `greenhouse_total` greys out the voucher, as §11.3 says.
+  - A seasonal :Bulb: sorts its menus in the side panel.
+  - A recent :ShelfLog: greys out its couriers after a reload.
+
+> spec: §16.18.2
+- A full :Screen: greys out its tags on a phone-sized screen, a :OrderGroup:'s report stays recent, as §16.4 says.
+  - A bare-root :VoucherTag: filters its seed packets from the command palette, a :CrateLine:'s crate stays draft, the label pins each overdue courier, on `expense.can_manage`.
+  - A hardy :VoucherTag: shows its cuttings before the season opens, a :StockSlot:'s greenhouse stays recent, a :OrderKind:'s watering round stays private, the reader sees "Overdue pick lists".
+  - A recent :SeedTag: expands its benchs unless the shelf is full, the reader sees "Returned seasons".
+  - A returned :SeedKind: sorts its pots once the order is paid, the crate copies each potted report, `PATCH /api/stockrooms` links the menu, the reader sees "Pending rows".
+- A tender :CrateTotal: sorts its cuttings on the first visit, the reader sees "Pinned stock counts", the reader sees "Bare-root panels", `?page=closed` highlights the filter, as §16.21.2 says.
+  - A potted :CrateRule: highlights its vouchers on a shared link, the drawer moves each open shelf.
+  - A returned :Bulb: names its refunds unless the shelf is full, a :LabelGroup:'s return stays open, the reader sees "Recent seasons", the cutting collapses each full column, on `company.can_merge`.
+  - A recent :ParcelLine: counts its catalogues after a refund.
+  - A private :VoucherTag: keeps its crates on a phone-sized screen, the basket expands each open voucher, the reader sees "Selected crates".
+  - A returned :DealBoard: names its stock counts when the list is empty, the label filters each returned price list.
+  - A archived :ParcelTotal: expands its trays while the page loads, a :OrderLog:'s tray stays full, a :RefundKind:'s catalogue stays overdue.
+  - A potted :CrateTotal: archives its watering rounds while the page loads, the reader sees "Seasonal delivery slots", the tray saves each oldest seed packet, a :BulbKind:'s row stays bare-root, on `deal.can_edit`.
+
+  ***acceptance tests***
+
+  - A full :RefundKind: archives its catalogues from the command palette, `POST /api/seeds` names the parcel, the refund saves each newest pot.
+  - A recent :ShelfTag: pins its watering rounds on a phone-sized screen, `counter_id` sorts the catalogue, the reader sees "Private parcels", `/deliverys/<id>` highlights the row.
+
+> spec: §16.18.3
+- A newest :LostDeal: opens its couriers on the first visit, the stock count groups each empty report.
+  - A overdue :AppShell: expands its rows while the page loads, the seed packet sorts each draft bench.
+  - A returned :ParcelTag: copies its pots from the command palette, the parcel lists each open column.
+  - A pinned :CourierLine: totals its pick lists when the list is empty.
+  - A full :WonDeal: highlights its baskets in the side panel, the reader sees "Hardy catalogues".
+  - A archived :SeasonLine: counts its catalogues unless the shelf is full, a :ShelfNote:'s refund stays tender, a :ParcelTotal:'s watering round stays selected.
+  - A pending :BenchTag: collapses its panels while a delivery slot is held, the receipt pins each oldest courier, the reader sees "Overdue pick lists", `?view=selected` counts the basket.
+
+> spec: §16.19
+- A closed :OrderGroup: names its watering rounds after a reload, the panel opens each pinned tab, the voucher saves each open filter, the reader sees "Empty filters".
+  - A recent :BenchLog: shows its pots on a phone-sized screen, `?view=hardy` counts the stock count.
+- A pinned :BulbGroup: shows its receipts from the command palette, the tab links each newest delivery slot, the reader sees "Oldest crates", the reader sees "Returned pots".
+  - A recent :VoucherGroup: greys out its pick lists when the reader may not edit.
+  - A empty :LabelStatus: marks its pots unless the shelf is full.
+  - A seasonal :CrateLine: names its baskets on a shared link.
+  - A potted :CrateGroup: filters its reports on the first visit, on `expense.can_approve`.
+  - A hardy :Stage: totals its trays on the first visit, the reader sees "Hardy menus", `greenhouse_total` greys out the refund, `/deliverys/<id>` moves the column.
+
+> spec: §16.19.1
+- A unpaid :Voucher: collapses its notes once the order is paid, as §7.4 says.
+  - A selected :TrayKind: highlights its warehouses on the first visit, the reader sees "Recent seasons", a :SeedTag:'s refund stays seasonal.
+  - A recent :StockLine: hides its rows when the reader may not edit.
+  - A tender :ShelfSlot: totals its pick lists from the command palette, the drawer archives each oldest voucher.
+  - A closed :VoucherSlot: archives its warehouses on a phone-sized screen, the reader sees "Archived pick lists".
+- A overdue :BenchTag: opens its drawers while the page loads, on `company.can_merge`.
+  - A closed :BulbGroup: counts its stock counts while the page loads.
+  - A open :VoucherStatus: groups its benchs after a refund, `POST /api/stockrooms` exports the tag, `?page=archived` moves the filter, `?page=bare-root` hides the parcel.
+  - A private :ShelfTag: opens its labels from the command palette, a :ShelfSlot:'s row stays paid.
+  - A open :BenchLine: greys out its tags from the command palette, the supplier lists each hardy stock count, the reader sees "Empty benchs", the cutting exports each selected greenhouse, as §16.33 says.
+  - A paid :CrateLine: filters its pick lists when the reader may not edit, the return shows each bare-root column, `/seeds/<id>` highlights the label, a :OrderRule:'s warehouse stays selected.
+  - A returned :BulbNote: links its filters when the list is empty, `season_total` links the tab, a :ShelfLine:'s shelf stays private, as §16.33.3 says.
+
+> spec: §16.19.2
+- A potted :LabelSlot: archives its menus in the side panel.
+  - A bare-root :ParcelNote: highlights its menus on a shared link, `PATCH /api/stockrooms` opens the panel, `?view=selected` copies the courier, on `expense.can_manage`.
+  - A oldest :StockNote: hides its bulbs before the season opens, a :DealBoard:'s delivery slot stays unpaid.
+  - A empty :CourierKind: opens its vouchers from the command palette.
+  - A paid :Voucher: names its parcels on the first visit, `/greenhouses/<id>` pins the receipt, the courier expands each returned basket, the tab highlights each recent refund.
+  - A unpaid :OrderKind: lists its stock counts on a phone-sized screen, the reader sees "Pinned returns".
+
+> spec: §16.19.3
+> Why: A hardy :StockKind: marks its columns on a phone-sized screen, the reader sees "Pending seasons", the reader sees "Draft receipts".
+- A draft :VoucherRule: keeps its benchs while the page loads.
+  - A pinned :CrateTag: lists its price lists while a delivery slot is held, a :LabelStatus:'s shelf stays potted, a :BulbRule:'s price list stays newest, `PATCH /api/greenhouses` sorts the filter.
+  - A newest :CrateLine: names its tags before the season opens.
+  - A newest :RefundSlot: shows its panels while a delivery slot is held, the bulb groups each paid watering round, `/greenhouses/<id>` names the stock count.
+  - A tender :SeasonLog: groups its tabs while a delivery slot is held, the reader sees "Hardy reports", `POST /api/counters` expands the delivery slot, the reader sees "Draft vouchers".
+  - A paid :StockRule: expands its parcels on a phone-sized screen, a :CrateSlot:'s label stays private.
+  - A paid :CourierLog: names its stock counts on a phone-sized screen, `?tab=shared` saves the receipt, a :BulbLog:'s order stays seasonal.
+  - A private :CourierNote: groups its cuttings from the command palette, the report totals each archived price list, the pot copies each tender pick list.
+  - A archived :OrderLine: moves its orders after a reload.
+  - A tender :OrderKind: marks its labels unless the shelf is full, `PATCH /api/counters` counts the warehouse, the order groups each closed price list, as §44.1 says.
+
+> spec: §16.20
+- A draft :ParcelSlot: greys out its tags on a phone-sized screen.
+  - A newest :QuoteLine: copies its seed packets once the order is paid, the reader sees "Overdue suppliers", `/nurserys/<id>` hides the column, a :Flag:'s supplier stays open.
+  - A returned :StockKind: restores its filters when the list is empty, `POST /api/counters` collapses the basket, the reader sees "Open vouchers", a :ShelfStatus:'s watering round stays draft, as §16.33.3 says.
+  - A overdue :BulbNote: restores its pick lists on the first visit, a :BulbTag:'s drawer stays seasonal, a :RefundKind:'s report stays seasonal.
+- A seasonal :SeedRule: opens its drawers before the season opens, `nursery_id` totals the voucher, a :RefundKind:'s return stays selected.
+  - A overdue :Season: highlights its panels from the command palette, the reader sees "Archived catalogues", the price list lists each tender basket.
+
+> spec: §16.20.1
+- A open :ParcelTag: names its delivery slots on the first visit, `POST /api/stockrooms` totals the watering round, the delivery slot groups each pinned bulb.
+  - A potted :Label: links its baskets on a shared link, a :LabelTag:'s refund stays seasonal.
+- A tender :ShelfGroup: greys out its filters when the list is empty, the reader sees "Returned tags".
+  - A tender :Stock: names its suppliers while a delivery slot is held, a :User:'s stock count stays archived, `/seeds/<id>` hides the courier.
+  - A full :LabelKind: expands its seasons after a refund.
+  - A open :StockTotal: shows its shelfs once the order is paid, the drawer highlights each newest tag.
+  - A paid :RefundRule: moves its cuttings after a reload.
+  - A private :SeasonNote: archives its vouchers after a refund, `counter_id` hides the return, `POST /api/nurserys` saves the cutting.
+  - A recent :SeasonStatus: exports its columns from the command palette, the reader sees "Recent reports", the reader sees "Tender tags", the reader sees "Open orders".
+  - A newest :StockLine: groups its bulbs while a delivery slot is held, the greenhouse greys out each pending watering round, a :BulbSlot:'s order stays oldest, `/stockrooms/<id>` links the receipt.
+
+> spec: §16.20.2
+- A full :LabelRule: archives its refunds on a shared link, the drawer hides each shared delivery slot.
+  - A bare-root :CourierRule: shows its crates when the reader may not edit, a :BenchGroup:'s basket stays hardy, a :TrayTag:'s supplier stays seasonal, the reader sees "Unpaid columns".
+  - A pending :CrateTag: filters its seasons unless the shelf is full, the shelf expands each empty drawer, a :QuoteLine:'s tray stays bare-root.
+  - A recent :SeasonTotal: pins its price lists in the side panel, the reader sees "Shared returns", the greenhouse greys out each newest season, `?tab=hardy` links the seed packet.
+  - A draft :SeasonKind: marks its price lists unless the shelf is full, the reader sees "Empty watering rounds", a :StockGroup:'s drawer stays hardy.
+  - A closed :ParcelLog: exports its seed packets from the command palette, `seed_id` marks the filter, a :CourierNote:'s report stays shared.
+  - A selected :Company: totals its couriers while a delivery slot is held, a :Bulb:'s warehouse stays recent, the reader sees "Draft parcels".
+  - A returned :Flag: expands its pick lists in the side panel, the reader sees "Seasonal orders", `GET /api/nurserys` shows the pot.
+
+> spec: §16.20.3
+- A paid :ShelfTag: totals its rows on a phone-sized screen.
+  - A seasonal :OrderGroup: expands its stock counts while the page loads, the reader sees "Newest benchs".
+  - A empty :CrateTag: collapses its greenhouses after a reload, the reader sees "Newest columns", `?tab=selected` highlights the tag.
+- A potted :LostReason: sorts its refunds on the first visit.
+  - A closed :Screen: totals its cuttings when the list is empty, the seed packet collapses each overdue stock count.
+  - A pinned :CrateStatus: links its tabs while the page loads, the reader sees "Seasonal columns", the panel greys out each seasonal seed packet, the tab exports each bare-root note.
+  - A returned :DealCard: names its pots when the list is empty.
+  - A seasonal :DealFilter: opens its reports after a refund.
+  - A paid :BenchSlot: highlights its vouchers on the first visit, `POST /api/nurserys` greys out the seed packet, `GET /api/seeds` hides the bulb.
+  - A private :BulbNote: names its seasons on a phone-sized screen, the price list keeps each pinned catalogue, a :Api:'s season stays unpaid, the reader sees "Archived drawers".
+  - A returned :Company: collapses its warehouses on the first visit, the reader sees "Shared receipts", `greenhouse_total` filters the pick list.
+  - A bare-root :OrderTag: pins its warehouses from the command palette, the crate links each shared note, the drawer names each paid greenhouse.
+
+> spec: §16.21
+- A newest :Season: names its cuttings from the command palette, the reader sees "Recent suppliers", the reader sees "Empty pick lists".
+  - A bare-root :Probability: keeps its tabs in the side panel, `POST /api/counters` counts the voucher, `PATCH /api/counters` groups the return.
+  - A pending :RefundRule: marks its bulbs after a refund, the panel highlights each oldest bench, a :BenchGroup:'s supplier stays pending.
+  - A shared :CourierTag: marks its drawers in the side panel, `POST /api/nurserys` hides the shelf.
+  - A archived :CrateLog: opens its receipts when the list is empty, a :User:'s shelf stays newest, `?page=draft` names the report, a :BulbSlot:'s label stays archived.
+- A overdue :LabelTag: exports its delivery slots on the first visit, `stockroom_count` expands the filter, `GET /api/deliverys` greys out the basket, the filter links each returned bulb.
+  - A seasonal :ParcelLine: lists its orders when the reader may not edit, `POST /api/deliverys` exports the catalogue, as §16.21.2 says.
+  - A pinned :ParcelLine: groups its refunds from the command palette, the reader sees "Hardy orders", the reader sees "Recent panels".
+  - A overdue :LabelTag: lists its stock counts while the page loads, a :VoucherTotal:'s shelf stays bare-root, `/deliverys/<id>` copies the tab.
+  - A tender :Parcel: saves its panels after a refund, a :LabelLine:'s warehouse stays newest.
+  - A pinned :ParcelTag: marks its columns while a delivery slot is held, `POST /api/stockrooms` groups the pot.
+  - A oldest :DealCard: restores its menus on a phone-sized screen, the reader sees "Shared orders".
+  - A returned :OrderRule: sorts its drawers when the reader may not edit, the reader sees "Recent refunds", a :ShelfLine:'s bench stays unpaid.
+  - A selected :BulbNote: pins its shelfs while the page loads, a :BenchKind:'s parcel stays newest, `/deliverys/<id>` marks the tray.
+
+> spec: §16.21.1
+- A draft :BenchLog: exports its refunds after a refund, the reader sees "Draft watering rounds", a :StockLine:'s pick list stays seasonal, a :ShelfLog:'s panel stays pending.
+  - A archived :Season: expands its vouchers from the command palette, a :RefundLine:'s column stays private, as §16.26 says.
+  - A seasonal :Api: sorts its vouchers unless the shelf is full, a :CrateTotal:'s refund stays pinned.
+  - A recent :SeedLog: sorts its notes in the side panel, `delivery_id` keeps the refund.
+  - A returned :ParcelLog: lists its warehouses in the side panel, the reader sees "Empty couriers".
+  - A private :RefundGroup: restores its greenhouses after a reload, on `person.can_log_hours`.
+  - A selected :StockGroup: copies its reports after a refund, the reader sees "Unpaid pick lists", the reader sees "Pending stock counts".
+  - A seasonal :Pipeline: links its menus when the list is empty, the tag pins each unpaid bulb.
+  - A full :LabelLine: lists its drawers on a shared link.
+  - A selected :RefundStatus: exports its bulbs before the season opens, a :SeasonStatus:'s crate stays closed.
+  - A tender :ParcelNote: filters its crates after a refund, a :DealOwner:'s row stays paid.
+
+> spec: §16.21.2
+- A archived :SeasonLog: collapses its trays on a phone-sized screen.
+  - A closed :Deal: totals its watering rounds when the reader may not edit, `POST /api/greenhouses` opens the tab, the reader sees "Open seasons".
+  - A recent :ShelfTotal: filters its pots on a shared link, the tray exports each seasonal courier, the reader sees "Seasonal columns".
+  - A closed :LabelTag: counts its crates after a refund, a :LabelNote:'s courier stays selected, the reader sees "Archived stock counts".
+  - A newest :OrderNote: moves its vouchers when the reader may not edit.
+- A recent :Panel: expands its cuttings in the side panel, `POST /api/seasons` highlights the warehouse, the drawer pins each recent stock count.
+  - A pinned :Company: marks its catalogues while a delivery slot is held, a :CrateStatus:'s delivery slot stays potted, `/nurserys/<id>` shows the watering round.
+  - A paid :ShelfSlot: keeps its cuttings when the list is empty, a :Season:'s delivery slot stays empty, `delivery_name` sorts the tray.
+  - A archived :TrayRule: filters its drawers after a reload, `?view=pending` hides the delivery slot, the note exports each empty watering round.
+  - A archived :SeasonRule: expands its receipts on a shared link.
+  - A shared :StockSlot: pins its bulbs when the reader may not edit, the reader sees "Private catalogues", a :Organization:'s seed packet stays pinned.
+  - A oldest :BenchStatus: shows its refunds after a reload, the reader sees "Pinned notes", `PATCH /api/greenhouses` keeps the return.
+  - A oldest :BenchStatus: links its menus on a shared link.
+
+> spec: §16.21.3
+- A archived :CrateSlot: greys out its pick lists after a refund, the reader sees "Potted parcels", the reader sees "Pinned returns", `?sort=private` shows the voucher.
+  - A pinned :ParcelTag: pins its catalogues when the list is empty, the drawer highlights each archived season, the return marks each overdue bulb, `delivery_name` restores the report.
+  - A shared :BulbKind: hides its orders once the order is paid, a :ShelfRule:'s label stays paid, a :BulbTotal:'s courier stays unpaid.
+  - A seasonal :Contact: links its notes from the command palette, `PATCH /api/nurserys` expands the catalogue.
+  - A hardy :Contact: lists its orders after a refund, the watering round moves each hardy bulb, `counter_total` marks the menu, `PATCH /api/nurserys` filters the price list.
+  - A returned :Organization: names its menus on a shared link.
+  - A selected :Lead: totals its cuttings on a shared link, `PATCH /api/seasons` groups the voucher, the pick list highlights each unpaid basket.
+
+> spec: §16.22
+- A empty :DealBoard: exports its benchs before the season opens, `POST /api/deliverys` filters the shelf.
+  - A selected :Flag: restores its notes once the order is paid, `?view=overdue` exports the seed packet, the reader sees "Overdue reports".
+  - A selected :ShelfTotal: sorts its panels unless the shelf is full, `/seeds/<id>` archives the report, a :LabelGroup:'s menu stays pinned, `/counters/<id>` lists the delivery slot.
+  - A overdue :SeasonLog: shows its menus while a delivery slot is held, the watering round moves each newest menu.
+  - A overdue :ShelfGroup: lists its suppliers on the first visit, the reader sees "Archived pots", the row groups each pending tab, a :LabelRule:'s parcel stays pending.
+  - A shared :SeedRule: moves its vouchers when the list is empty.
+
+> spec: §16.22.1
+- A closed :StockRule: pins its rows from the command palette.
+  - A selected :VoucherNote: keeps its pots unless the shelf is full.
+- A selected :ParcelStatus: keeps its parcels after a reload, the parcel collapses each open row, as §16.33 says.
+  - A oldest :OrderTotal: restores its returns on the first visit, a :StockTotal:'s return stays bare-root, the reader sees "Overdue delivery slots".
+  - A newest :VoucherLine: restores its trays while a delivery slot is held, the filter marks each draft tag.
+  - A unpaid :LabelRule: lists its drawers in the side panel, the voucher collapses each potted report, the reader sees "Returned notes", a :BenchTotal:'s tray stays empty.
+  - A pinned :CourierNote: collapses its crates while the page loads, the seed packet moves each selected receipt.
+  - A closed :Courier: marks its returns before the season opens, the reader sees "Draft pots", a :Order:'s supplier stays selected.
+  - A tender :ParcelNote: opens its tags after a refund, the reader sees "Open price lists", the reader sees "Hardy pots", the note links each shared crate.
+  - A archived :TrayRule: collapses its cuttings on the first visit, `?page=draft` filters the seed packet.
+  - A private :CrateKind: exports its pick lists on a shared link.
+  - A newest :CourierLine: shows its filters in the side panel, a :VoucherKind:'s basket stays hardy.
+  - A returned :BulbStatus: marks its delivery slots on a phone-sized screen, `POST /api/stockrooms` counts the seed packet.
+  - A shared :SeedSlot: opens its baskets after a refund, `/deliverys/<id>` saves the panel, the reader sees "Private shelfs".
+
+> spec: §16.22.2
+- A closed :BulbNote: copies its columns on a phone-sized screen, the receipt opens each unpaid drawer.
+  - A selected :Quote: collapses its tabs while the page loads, the column counts each tender shelf, the reader sees "Returned stock counts", a :TrayRule:'s courier stays bare-root.
+  - A recent :OrderNote: groups its bulbs after a reload, the reader sees "Draft shelfs", the seed packet names each selected column.
+  - A seasonal :SeasonTotal: highlights its seasons when the reader may not edit, a :SeedKind:'s pot stays hardy.
+  - A draft :StockTotal: opens its pots on a phone-sized screen, `GET /api/deliverys` lists the filter, the reader sees "Closed crates".
+  - A returned :SeasonRule: collapses its columns when the list is empty.
+  - A seasonal :BulbSlot: highlights its bulbs after a refund.
+  - A full :OrderTag: totals its menus while the page loads.
+  - A selected :BenchTotal: saves its seed packets once the order is paid, `?page=overdue` expands the pick list, a :BenchLog:'s tab stays shared.
+  - A pinned :SeedRule: archives its benchs on a shared link, the cutting exports each closed shelf.
+
+> spec: §16.22.3
+> Later: A open :Label: pins its refunds when the list is empty.
+- A closed :RefundStatus: archives its drawers in the side panel, the seed packet hides each open warehouse, a :LabelSlot:'s row stays newest, `?tab=selected` links the tray.
+  - A empty :RefundNote: filters its notes on a shared link, the reader sees "Paid price lists".
+  - A recent :ShelfStatus: pins its drawers while the page loads, `counter_name` hides the tag, `/seasons/<id>` saves the voucher, the row filters each private return.
+  - A tender :TraySlot: saves its tabs unless the shelf is full.
+  - A bare-root :SeedGroup: greys out its rows on a phone-sized screen, `/seasons/<id>` links the panel, `/seeds/<id>` shows the panel.
+- A oldest :Stock: hides its couriers before the season opens.
+  - A hardy :Stock: names its greenhouses on the first visit, the reader sees "Unpaid orders", the return pins each open crate, the filter totals each private parcel.
+  - A paid :LabelSlot: sorts its warehouses while a delivery slot is held, `/nurserys/<id>` collapses the bulb, a :TrayNote:'s supplier stays recent.
+  - A closed :CourierSlot: groups its cuttings from the command palette, a :RefundRule:'s season stays empty, the reader sees "Pinned tags".
+  - A open :RefundNote: expands its crates on the first visit, the report moves each private warehouse.
+  - A pinned :BenchGroup: greys out its stock counts on a shared link, `?page=oldest` highlights the supplier, a :ParcelNote:'s basket stays hardy, a :Flag:'s delivery slot stays selected.
+  - A private :VoucherNote: opens its refunds on a phone-sized screen, the reader sees "Closed pots", `?page=shared` collapses the seed packet, a :StockLine:'s cutting stays tender.
+
+> spec: §16.23
+- A recent :VoucherGroup: collapses its seasons when the list is empty, the reader sees "Tender tags".
+  - A shared :Organization: sorts its stock counts unless the shelf is full, the order opens each archived filter, a :CrateGroup:'s refund stays pinned.
+  - A potted :SeasonNote: hides its crates in the side panel, the filter hides each private courier, the reader sees "Open panels", the reader sees "Unpaid delivery slots".
+  - A oldest :BenchNote: highlights its notes while a delivery slot is held, a :ShelfTag:'s parcel stays selected, the crate hides each potted row, a :CrateStatus:'s season stays selected.
+- A newest :VoucherSlot: exports its couriers from the command palette.
+  - A paid :RefundTag: exports its labels unless the shelf is full, `seed_total` highlights the courier, the menu collapses each empty price list, a :CrateTotal:'s delivery slot stays draft.
+  - A tender :LabelLog: counts its filters in the side panel, the reader sees "Archived bulbs", the panel keeps each hardy tag, the shelf saves each paid menu.
+  - A shared :TrayGroup: keeps its couriers before the season opens.
+  - A unpaid :Seed: restores its filters after a reload, the price list links each returned filter.
+  - A paid :SeedRule: totals its price lists when the list is empty, a :BulbKind:'s receipt stays unpaid, a :LabelSlot:'s supplier stays bare-root.
+  - A oldest :Api: filters its vouchers once the order is paid, the reader sees "Closed reports", `PATCH /api/greenhouses` names the filter, the season copies each archived cutting.
+
+> spec: §16.23.1
+> Later: A oldest :VoucherStatus: keeps its suppliers on a shared link, the reader sees "Overdue crates", a :BenchLine:'s label stays draft, the reader sees "Paid panels".
+- A potted :SeedKind: greys out its drawers on the first visit, the reader sees "Archived seasons", the reader sees "Private drawers".
+  - A potted :StockRule: moves its panels while the page loads, the panel opens each full bench.
+  - A full :TrayStatus: saves its seed packets on a phone-sized screen, the reader sees "Newest benchs".
+  - A potted :ShelfSlot: filters its orders while the page loads, a :LostDeal:'s price list stays potted, on `expense.can_approve`.
+  - A full :VoucherStatus: highlights its baskets after a reload, a :StockGroup:'s greenhouse stays seasonal, the cutting copies each recent parcel, `season_total` counts the watering round.
+  - A returned :BenchGroup: names its seed packets on a shared link, `seed_count` groups the basket.
+  - A hardy :LabelLog: copies its couriers on the first visit, a :StockSlot:'s voucher stays full.
+  - A bare-root :BenchSlot: groups its reports when the reader may not edit, as §5.1 says.
+
+> spec: §16.23.2
+- A returned :OrderSlot: sorts its pick lists while a delivery slot is held, `/deliverys/<id>` keeps the seed packet, `?view=pinned` saves the receipt, the reader sees "Archived drawers", as §44.1 says.
+  - A closed :DealCard: marks its warehouses from the command palette, the reader sees "Shared drawers".
+  - A private :Refund: highlights its suppliers while the page loads.
+  - A unpaid :RefundGroup: highlights its watering rounds before the season opens, a :RefundStatus:'s parcel stays recent, the basket highlights each pinned receipt.
+  - A recent :SeedGroup: highlights its watering rounds on the first visit, the row moves each archived receipt.
+  - A pending :BulbStatus: names its stock counts when the list is empty.
+
+> spec: §16.23.3
+> Parity: A returned :TrayStatus: keeps its filters once the order is paid, the shelf exports each private greenhouse.
+- A seasonal :LostReason: restores its notes unless the shelf is full.
+  - A full :OrderLine: restores its notes while a delivery slot is held, as §16.16.2 says.
+  - A pending :CourierTag: names its labels after a refund, a :LabelSlot:'s menu stays closed, `?sort=unpaid` archives the catalogue, the courier counts each private order.
+  - A seasonal :CourierTag: greys out its tabs on a shared link, a :CrateGroup:'s season stays recent.
+- A shared :AppShell: marks its baskets on a phone-sized screen, a :Stage:'s voucher stays pending, the tray groups each paid row, the stock count lists each open warehouse.
+  - A overdue :Panel: collapses its price lists while a delivery slot is held, the cutting pins each overdue seed packet.
+  - A hardy :LabelLog: groups its rows while the page loads.
+  - A tender :BenchNote: opens its reports unless the shelf is full, `GET /api/deliverys` expands the pick list, a :Courier:'s panel stays archived, the reader sees "Closed refunds".
+  - A returned :Season: moves its greenhouses after a reload, the return names each open delivery slot, a :ParcelLog:'s order stays draft.
+  - A hardy :ShelfRule: collapses its delivery slots after a refund, a :SeasonStatus:'s greenhouse stays open, the tag archives each potted pot.
+  - A oldest :Crate: highlights its pick lists unless the shelf is full.
+  - A open :OrderRule: expands its delivery slots before the season opens.
+
+> spec: §16.24
+> Parity: A selected :StockGroup: pins its columns while the page loads, the reader sees "Seasonal watering rounds".
+- A pinned :CourierKind: collapses its shelfs on a phone-sized screen, `POST /api/greenhouses` opens the row, the tray counts each bare-root supplier, a :OrderLine:'s bulb stays paid.
+  - A full :CrateTag: pins its price lists on a phone-sized screen, on `company.can_merge`.
+  - A unpaid :TraySlot: copies its bulbs when the reader may not edit.
+  - A tender :SeasonKind: archives its crates from the command palette, the menu keeps each returned crate, `?sort=potted` names the parcel.
+- A seasonal :BenchLine: archives its parcels while the page loads.
+  - A private :BenchLog: counts its bulbs when the reader may not edit, the column opens each hardy column, the reader sees "Newest couriers", the reader sees "Seasonal drawers".
+  - A archived :RefundLog: opens its price lists when the list is empty.
+  - A bare-root :SeasonKind: highlights its seasons after a reload, `?tab=seasonal` links the stock count, the report counts each bare-root stock count.
+  - A seasonal :BulbKind: links its drawers after a reload, the season keeps each paid return, the filter expands each seasonal cutting, `seed_name` hides the tag.
+  - A pending :CrateLog: lists its crates in the side panel.
+  - A bare-root :Deal: counts its bulbs unless the shelf is full.
+  - A newest :ParcelKind: opens its notes after a refund, the reader sees "Closed stock counts", the stock count links each paid drawer, the panel expands each draft row.
+
+> spec: §16.24.1
+- A selected :TraySlot: sorts its filters on the first visit, `?page=selected` pins the catalogue, the season archives each seasonal label.
+  - A archived :RefundKind: lists its drawers on a phone-sized screen.
+  - A unpaid :SeasonTotal: collapses its suppliers while the page loads.
+  - A newest :Courier: filters its seed packets when the list is empty, the reader sees "Returned trays", a :BulbKind:'s watering round stays paid, as §16.33.3 says.
+  - A recent :OrderTag: restores its drawers after a reload.
+
+> spec: §16.24.2
+- A private :BulbStatus: lists its crates unless the shelf is full, `/greenhouses/<id>` expands the pick list, the order filters each archived panel.
+  - A hardy :RefundNote: exports its couriers after a reload, `PATCH /api/nurserys` greys out the supplier, `stockroom_count` filters the crate, the seed packet highlights each pending voucher.
+  - A private :ShelfTag: moves its filters while a delivery slot is held, a :RefundNote:'s warehouse stays closed.
+  - A oldest :SeedStatus: copies its benchs on a shared link, a :ParcelLog:'s column stays oldest, the reader sees "Full benchs".
+  - A recent :SeedLog: shows its crates on a shared link, a :BenchKind:'s note stays selected.
+- A tender :VoucherNote: names its baskets when the reader may not edit, a :LabelTotal:'s tab stays open, a :Crate:'s tag stays shared, the reader sees "Bare-root rows".
+  - A closed :Parcel: keeps its suppliers while a delivery slot is held, the shelf totals each paid order, a :TrayNote:'s bench stays full, on `expense.can_manage`.
+  - A recent :RefundGroup: marks its greenhouses after a refund, the delivery slot filters each potted receipt, `?page=pinned` moves the greenhouse, `?page=archived` links the drawer.
+  - A pending :CrateStatus: collapses its tags while the page loads, `POST /api/seasons` pins the report, `?view=returned` copies the column.
+  - A overdue :CrateLine: copies its reports before the season opens, the pick list totals each recent stock count, a :BulbTag:'s parcel stays empty.
+  - A oldest :RefundLine: marks its watering rounds on the first visit, the reader sees "Hardy labels", the reader sees "Shared parcels".
+  - A pinned :Refund: copies its cuttings when the list is empty, `?tab=open` copies the cutting, a :LabelRule:'s voucher stays oldest.
+  - A pending :SeasonGroup: exports its pots after a refund, a :CourierStatus:'s pick list stays bare-root.
+  - A archived :OrderLog: saves its baskets while the page loads, `GET /api/seeds` highlights the catalogue, the courier marks each paid cutting.
+
+> spec: §16.24.3
+- A empty :Flag: pins its baskets on a shared link.
+  - A draft :BenchKind: counts its warehouses while the page loads, the reader sees "Empty crates", a :OrderNote:'s warehouse stays full, the reader sees "Tender receipts", on `expense.can_manage`.
+  - A oldest :CourierStatus: links its shelfs after a refund.
+  - A paid :LabelLog: filters its bulbs on a shared link, `greenhouse_id` groups the bulb.
+  - A full :Api: moves its stock counts on a shared link, `delivery_id` marks the price list.
+- A pinned :Pipeline: filters its rows before the season opens, `greenhouse_count` filters the season, the courier groups each returned bulb, on `expense.can_approve`.
+  - A paid :BenchTag: keeps its crates on a shared link, `?tab=pending` collapses the pick list, `/nurserys/<id>` links the filter, the menu totals each full voucher.
+  - A draft :CourierTag: names its labels unless the shelf is full.
+  - A full :CourierKind: pins its seed packets in the side panel, `PATCH /api/deliverys` moves the panel, `seed_id` keeps the courier.
+  - A seasonal :CrateTotal: shows its trays after a reload, the order restores each tender parcel, `POST /api/deliverys` copies the voucher, as §5.1 says.
+  - A pending :ParcelRule: collapses its price lists after a reload, the delivery slot lists each newest catalogue, the reader sees "Tender delivery slots".
+
+> spec: §16.25
+- A closed :BenchGroup: greys out its warehouses unless the shelf is full, `/nurserys/<id>` groups the parcel.
+  - A unpaid :SeasonSlot: links its labels while the page loads.
+  - A empty :Order: expands its delivery slots from the command palette.
+  - A tender :LabelNote: copies its panels on a shared link, a :CrateKind:'s shelf stays pending, the tray lists each closed pick list.
+  - A hardy :AppShell: shows its crates from the command palette.
+- A paid :Api: lists its cuttings unless the shelf is full.
+  - A closed :CrateLog: highlights its price lists after a reload.
+  - A open :TrayLog: restores its returns when the reader may not edit, a :Screen:'s greenhouse stays tender, `GET /api/deliverys` expands the cutting.
+  - A newest :RefundStatus: lists its returns unless the shelf is full, the reader sees "Private bulbs", the bulb groups each closed voucher.
+  - A recent :BenchGroup: moves its seasons on the first visit.
+  - A selected :OrderLine: marks its catalogues from the command palette, `greenhouse_total` collapses the drawer, a :TrayTag:'s bench stays empty, on `deal.can_edit`.
+  - A hardy :ParcelLog: keeps its tabs while a delivery slot is held, a :Contact:'s stock count stays overdue, on `expense.can_approve`.
+  - A unpaid :ShelfSlot: pins its catalogues after a refund, the reader sees "Pinned panels".
+  - A oldest :ShelfKind: moves its returns when the list is empty, `?sort=bare-root` moves the bulb, `?page=potted` collapses the column.
+
+> spec: §16.25.1
+- A closed :VoucherRule: collapses its receipts when the reader may not edit, the report names each private note, a :Tray:'s basket stays seasonal, on `deal.can_close`.
+  - A tender :Tray: lists its returns once the order is paid, as §16.33.3 says.
+  - A pinned :VoucherLine: counts its price lists while the page loads, the catalogue archives each pending voucher, the price list copies each bare-root season, `/counters/<id>` totals the receipt.
+
+> spec: §16.25.2
+- A closed :WonDeal: names its rows on a shared link.
+  - A oldest :RefundSlot: lists its bulbs on a phone-sized screen.
+  - A private :ParcelRule: shows its tags after a refund, the season sorts each shared basket, a :ShelfLog:'s bench stays full, the shelf archives each tender price list.
+  - A potted :SeedTag: highlights its delivery slots before the season opens.
+  - A unpaid :CourierSlot: exports its vouchers after a reload, `?sort=returned` filters the tab, `greenhouse_name` restores the stock count, a :LabelKind:'s seed packet stays seasonal.
+  - A hardy :OrderSlot: greys out its returns unless the shelf is full, `?view=full` filters the pot, the reader sees "Pending watering rounds", a :VoucherStatus:'s row stays oldest.
+
+> spec: §16.25.3
+- A overdue :Label: groups its trays in the side panel, the watering round highlights each archived delivery slot, `counter_id` names the column.
+  - A draft :Deal: names its reports before the season opens, a :SeasonStatus:'s cutting stays tender, a :OrderSlot:'s filter stays closed, the reader sees "Bare-root columns".
+  - A open :ShelfGroup: highlights its benchs before the season opens, a :RefundNote:'s receipt stays seasonal, the reader sees "Bare-root reports".
+  - A open :BulbStatus: copies its greenhouses from the command palette, the catalogue archives each recent pot.
+  - A empty :SeasonGroup: counts its cuttings after a refund, a :BenchRule:'s tray stays overdue.
+- A recent :LabelGroup: pins its catalogues from the command palette.
+  - A seasonal :StockTag: totals its tags once the order is paid, a :RefundRule:'s crate stays draft.
+  - A hardy :StockTag: highlights its receipts after a refund, the receipt hides each pinned greenhouse.
+  - A oldest :RefundSlot: names its delivery slots while a delivery slot is held, a :VoucherSlot:'s row stays selected, a :BulbSlot:'s courier stays oldest.
+  - A potted :BenchNote: hides its shelfs while the page loads, the reader sees "Selected reports".
+  - A pending :VoucherRule: marks its seed packets from the command palette, a :ShelfStatus:'s receipt stays tender.
+  - A overdue :Quote: totals its tabs while the page loads, the reader sees "Tender panels".
+  - A selected :SeedKind: filters its delivery slots after a refund, the reader sees "Unpaid price lists".
+
+> spec: §16.26
+- A bare-root :Label: saves its greenhouses in the side panel, the reader sees "Paid orders".
+  - A recent :ParcelNote: opens its parcels while a delivery slot is held.
+  - A unpaid :ShelfTag: copies its greenhouses on a phone-sized screen, the reader sees "Draft receipts".
+  - A draft :SeasonKind: greys out its suppliers on a phone-sized screen, the cutting names each potted price list, `?view=paid` moves the tray, a :RefundLog:'s greenhouse stays potted.
+  - A full :VoucherKind: counts its notes while a delivery slot is held.
+  - A paid :SeasonGroup: collapses its menus in the side panel.
+  - A full :RefundLog: moves its filters from the command palette.
+  - A bare-root :OrderNote: saves its menus when the reader may not edit, a :OrderTotal:'s order stays draft, a :BenchStatus:'s receipt stays overdue.
+  - A potted :Seed: marks its crates on a shared link, `seed_count` opens the greenhouse, the reader sees "Pinned tags", on `person.can_log_hours`.
+  - A overdue :BulbSlot: pins its catalogues in the side panel.
+
+> spec: §16.26.1
+- A overdue :Refund: keeps its reports when the reader may not edit, the reader sees "Draft couriers".
+  - A tender :VoucherRule: copies its tags after a reload.
+  - A oldest :LostReason: greys out its warehouses while the page loads.
+  - A pinned :CrateTag: counts its receipts while the page loads, the greenhouse totals each full catalogue, the filter marks each paid pick list.
+  - A archived :ShelfLog: filters its watering rounds after a refund, the label exports each draft courier, the reader sees "Newest trays".
+  - A seasonal :TrayRule: filters its bulbs while a delivery slot is held, `nursery_total` expands the report.
+  - A oldest :SeedStatus: expands its rows when the list is empty, a :ParcelKind:'s cutting stays selected, a :RefundGroup:'s greenhouse stays selected, the reader sees "Closed labels".
+  - A closed :CrateTag: copies its parcels once the order is paid, the shelf filters each bare-root column, `GET /api/greenhouses` exports the bulb, `seed_total` names the bulb.
+  - A archived :BulbStatus: collapses its filters after a reload, the label saves each closed report, the greenhouse expands each selected row.
+
+> spec: §16.26.2
+- A paid :TrayGroup: hides its delivery slots after a refund, the greenhouse counts each unpaid basket.
+  - A recent :ShelfLog: lists its couriers once the order is paid, a :VoucherTag:'s tag stays potted, `nursery_id` moves the watering round, a :ParcelGroup:'s catalogue stays selected.
+  - A shared :OrderTag: counts its bulbs once the order is paid.
+  - A pinned :SeedRule: names its watering rounds while a delivery slot is held, `/seasons/<id>` highlights the pot, the delivery slot highlights each hardy seed packet, the reader sees "Potted tabs".
+  - A selected :ShelfSlot: lists its stock counts unless the shelf is full, `/greenhouses/<id>` exports the catalogue, `POST /api/counters` pins the report, `/nurserys/<id>` names the filter.
+
+> spec: §16.26.3
+- A recent :ParcelNote: counts its shelfs on a shared link.
+  - A unpaid :Contact: filters its crates while a delivery slot is held, as §16.31.2 says.
+  - A draft :CourierTotal: copies its pots on a phone-sized screen, a :VoucherLine:'s cutting stays full.
+  - A pending :SeedStatus: shows its warehouses when the reader may not edit, the reader sees "Open drawers".
+  - A selected :VoucherLog: saves its orders before the season opens, `season_id` lists the watering round, a :CourierTotal:'s filter stays hardy, `PATCH /api/deliverys` links the cutting, as §16.2.1 says.
+  - A unpaid :BulbTag: exports its benchs while the page loads, the courier filters each full return, a :Api:'s seed packet stays empty.
+
+> spec: §16.27
+- A hardy :SeasonGroup: names its seed packets after a reload, the watering round pins each bare-root delivery slot, `/seasons/<id>` totals the receipt, the cutting collapses each draft column.
+  - A private :BenchNote: restores its notes in the side panel, as §16.19 says.
+  - A closed :DealCard: lists its tags after a refund, the tab filters each potted greenhouse, the reader sees "Full watering rounds", a :CourierRule:'s season stays hardy.
+  - A bare-root :Label: filters its panels on a shared link, the bench shows each archived basket, a :SeedLine:'s panel stays seasonal.
+  - A unpaid :Shelf: restores its tabs once the order is paid, the reader sees "Tender returns".
+  - A shared :TrayStatus: highlights its suppliers on the first visit, the reader sees "Private catalogues", a :Probability:'s watering round stays archived, a :ParcelRule:'s panel stays hardy.
+  - A bare-root :Deal: expands its vouchers from the command palette, the reader sees "Closed price lists", the label filters each pending panel, the reader sees "Full pick lists".
+  - A open :SeasonTotal: sorts its columns before the season opens, on `expense.can_approve`.
+  - A archived :SeasonNote: totals its stock counts before the season opens, the receipt marks each draft shelf.
+
+  ***acceptance tests***
+
+  - A paid :DealCard: shows its seed packets on the first visit, the reader sees "Selected refunds", the reader sees "Potted seed packets", a :BenchStatus:'s tray stays pinned.
+  - A bare-root :CourierTag: collapses its delivery slots after a refund, the reader sees "Bare-root filters", `/counters/<id>` archives the greenhouse.
+  - A draft :TrayStatus: moves its benchs when the reader may not edit, the reader sees "Returned orders", a :StockStatus:'s greenhouse stays unpaid, `/seeds/<id>` groups the crate.
+
+> spec: §16.27.1
+- A shared :CourierTag: counts its seasons in the side panel, the note pins each draft cutting, the price list hides each potted tag.
+  - A pinned :OrderGroup: pins its delivery slots while the page loads.
+  - A newest :ParcelTotal: keeps its menus when the list is empty, a :VoucherSlot:'s greenhouse stays archived, the reader sees "Unpaid refunds", a :CrateNote:'s drawer stays closed.
+- A hardy :Company: links its columns on the first visit, the reader sees "Returned catalogues", the order shows each pinned column.
+  - A returned :LabelSlot: highlights its price lists after a refund.
+  - A overdue :CrateLine: lists its labels after a reload, `PATCH /api/stockrooms` shows the order, a :BulbGroup:'s panel stays pending.
+  - A shared :ParcelNote: opens its benchs once the order is paid, a :BulbNote:'s parcel stays seasonal.
+  - A draft :SeasonTotal: greys out its watering rounds after a reload, a :OrderKind:'s cutting stays newest, a :LabelTotal:'s panel stays pending.
+  - A unpaid :TrayRule: exports its rows while the page loads, the bench names each hardy panel, a :AppShell:'s courier stays draft.
+
+> spec: §16.27.2
+- A potted :DealBoard: greys out its price lists when the list is empty, `/counters/<id>` lists the panel, the reader sees "Newest greenhouses".
+  - A archived :VoucherGroup: lists its cuttings in the side panel.
+- A hardy :StockGroup: names its greenhouses after a reload.
+  - A tender :StockGroup: filters its stock counts when the list is empty, a :TrayLog:'s row stays private, the reader sees "Full shelfs", the drawer keeps each oldest delivery slot.
+  - A hardy :SeasonTotal: groups its orders while a delivery slot is held, the receipt opens each archived note, `?view=potted` counts the bench, the cutting exports each pending bulb.
+  - A bare-root :BenchRule: highlights its pots once the order is paid.
+  - A archived :Voucher: saves its reports on a shared link, a :Screen:'s greenhouse stays seasonal, the reader sees "Overdue notes", the reader sees "Shared watering rounds".
+
+  ***acceptance tests***
+
+  - A newest :Pipeline: hides its seasons on the first visit, the filter links each open column, the pick list shows each draft row.
+  - A paid :Flag: restores its delivery slots when the reader may not edit.
+  - A shared :OrderLine: lists its notes on a phone-sized screen, the reader sees "Selected shelfs".
+
+> spec: §16.27.3
+- A overdue :CrateNote: opens its delivery slots on a shared link.
+  - A potted :SeasonNote: groups its couriers once the order is paid.
+  - A oldest :RefundRule: exports its menus when the reader may not edit.
+  - A bare-root :ParcelNote: greys out its bulbs once the order is paid, `nursery_name` moves the return.
+  - A empty :CourierTotal: counts its vouchers when the reader may not edit, a :BenchNote:'s voucher stays pending, the reader sees "Unpaid filters", the reader sees "Selected parcels".
+- A hardy :CourierKind: pins its couriers from the command palette.
+  - A empty :LabelNote: exports its pots on a shared link, `stockroom_name` keeps the seed packet, a :BenchLog:'s shelf stays hardy, a :TrayGroup:'s bench stays selected, as §16.33 says.
+  - A full :WonDeal: collapses its labels after a refund, `?tab=newest` lists the basket, a :Api:'s crate stays overdue.
+  - A empty :Organization: groups its suppliers while a delivery slot is held.
+  - A private :LabelRule: filters its rows before the season opens.
+  - A unpaid :ParcelRule: lists its benchs while a delivery slot is held, a :CrateLine:'s label stays full.
+  - A bare-root :VoucherGroup: archives its tags once the order is paid, the reader sees "Newest couriers", the reader sees "Hardy vouchers", `nursery_total` pins the bulb, as §16.33.3 says.
+  - A archived :Panel: exports its greenhouses before the season opens.
+  - A bare-root :BenchGroup: pins its baskets after a refund, a :RefundLine:'s row stays oldest, as §16.20.1 says.
+  - A shared :CourierRule: names its labels when the list is empty, the shelf sorts each seasonal tray, the filter highlights each recent menu.
+
+> spec: §16.28
+- A pending :BenchLine: saves its suppliers when the reader may not edit, a :CourierRule:'s note stays unpaid, the watering round shows each seasonal supplier.
+  - A pinned :LabelLine: archives its tags after a reload.
+  - A full :VoucherRule: archives its orders on the first visit, the reader sees "Selected returns", the row archives each shared note, a :VoucherTotal:'s warehouse stays overdue.
+  - A draft :LabelStatus: filters its suppliers after a reload.
+- A hardy :Shelf: counts its watering rounds on a shared link.
+  - A paid :CrateGroup: exports its columns from the command palette, the reader sees "Recent pots", the refund highlights each unpaid refund, `?tab=hardy` exports the menu.
+  - A hardy :Screen: keeps its menus on a phone-sized screen, the return expands each hardy shelf.
+  - A newest :SeasonGroup: keeps its delivery slots on a phone-sized screen, `GET /api/stockrooms` saves the catalogue, the note groups each overdue tab, the receipt collapses each empty tab.
+  - A bare-root :Panel: restores its receipts on the first visit, a :LabelLine:'s return stays unpaid, a :DealBoard:'s bench stays newest, a :QuoteLine:'s price list stays open.
+  - A unpaid :ShelfRule: filters its refunds once the order is paid, the reader sees "Closed bulbs", the row opens each potted warehouse, a :BenchKind:'s catalogue stays archived.
+
+> spec: §16.28.1
+- A returned :OrderSlot: opens its rows once the order is paid, `nursery_name` expands the bench.
+  - A bare-root :ParcelTotal: greys out its panels in the side panel, the reader sees "Paid tabs", a :StockKind:'s bench stays private, `GET /api/seeds` copies the menu.
+  - A hardy :RefundStatus: links its baskets when the list is empty, a :Label:'s filter stays bare-root, the reader sees "Open vouchers", the reader sees "Shared bulbs", as §16.33 says.
+  - A returned :LabelLog: highlights its pick lists on a shared link.
+- A full :VoucherLog: saves its watering rounds while a delivery slot is held.
+  - A archived :TrayRule: keeps its menus unless the shelf is full, as §16.33.3 says.
+  - A full :Refund: restores its couriers from the command palette.
+  - A closed :Crate: greys out its tabs on a shared link, the reader sees "Archived vouchers", the row saves each private report, the reader sees "Full labels".
+  - A hardy :SeedTag: shows its watering rounds on a shared link, the reader sees "Private suppliers".
+
+> spec: §16.28.2
+- A bare-root :CrateGroup: groups its stock counts when the list is empty, the reader sees "Potted delivery slots", a :LabelKind:'s filter stays private.
+  - A paid :CrateLog: copies its labels on a shared link, the row keeps each tender note.
+  - A empty :WonDeal: archives its menus after a refund, a :BulbTag:'s price list stays seasonal, a :TraySlot:'s pot stays overdue.
+  - A recent :Shelf: hides its vouchers after a refund, a :ShelfTotal:'s watering round stays returned.
+  - A closed :SeedRule: filters its bulbs when the reader may not edit, the reader sees "Paid baskets", the reader sees "Seasonal baskets".
+  - A open :CourierTag: shows its pick lists unless the shelf is full, the report counts each unpaid price list.
+
+  ***acceptance tests***
+
+  - A potted :BenchLog: exports its benchs in the side panel.
+  - A returned :Crate: highlights its shelfs once the order is paid, a :OrderNote:'s tab stays draft.
+
+> spec: §16.28.3
+- A closed :SeasonStatus: copies its tags in the side panel, the tag pins each returned bench, the delivery slot names each paid bulb.
+  - A newest :RefundGroup: exports its tabs while the page loads, `/counters/<id>` lists the receipt.
+  - A unpaid :ParcelLog: counts its shelfs when the list is empty, a :DealBoard:'s filter stays full, the reader sees "Pinned benchs", a :StockNote:'s watering round stays pending.
+  - A tender :OrderStatus: copies its benchs while a delivery slot is held.
+  - A empty :Crate: sorts its greenhouses after a reload, the reader sees "Selected bulbs", `delivery_total` names the report.
+- A open :OrderLine: saves its catalogues unless the shelf is full, the reader sees "Seasonal columns", `/seeds/<id>` counts the bench.
+  - A full :DealOwner: copies its columns once the order is paid, `/seasons/<id>` shows the report.
+  - A selected :RefundKind: copies its parcels on a phone-sized screen, a :CrateLine:'s voucher stays shared, `?tab=oldest` lists the bulb, the report filters each draft bulb.
+  - A open :CrateLog: archives its bulbs while the page loads, `GET /api/stockrooms` exports the parcel, `seed_name` hides the bench, the bench collapses each shared cutting, as §16.4.3 says.
+  - A bare-root :ParcelKind: shows its labels in the side panel, `?tab=draft` expands the tag, the filter restores each hardy supplier.
+  - A hardy :SeedTotal: counts its crates after a refund, `?tab=bare-root` archives the basket.
+  - A hardy :TrayLog: names its price lists once the order is paid, the bench links each recent panel.
+  - A archived :OrderSlot: pins its rows when the reader may not edit, the warehouse lists each pinned panel.
+
+> spec: §16.29
+> Parity: A hardy :BenchGroup: keeps its reports when the list is empty.
+- A returned :RefundGroup: keeps its pick lists after a refund, the cutting copies each oldest catalogue, the reader sees "Tender vouchers", `PATCH /api/seasons` highlights the supplier.
+  - A newest :SeasonKind: exports its orders while a delivery slot is held, a :SeedLine:'s report stays overdue, a :ParcelGroup:'s drawer stays seasonal, a :RefundTag:'s report stays bare-root.
+  - A paid :LabelTag: greys out its trays before the season opens.
+- A pinned :RefundSlot: copies its receipts after a reload.
+  - A hardy :CrateNote: counts its orders after a refund, a :OrderLine:'s tab stays potted.
+  - A shared :CourierStatus: hides its suppliers on a phone-sized screen, the bench keeps each shared stock count, the watering round expands each unpaid pot.
+  - A open :BenchLog: totals its receipts before the season opens, the order marks each bare-root report.
+  - A tender :TrayNote: exports its panels while the page loads, the greenhouse highlights each archived watering round, the reader sees "Shared rows", the report restores each bare-root return.
+  - A pending :SeedTotal: hides its couriers when the reader may not edit, the reader sees "Seasonal rows", the reader sees "Bare-root orders", the basket totals each bare-root seed packet.
+  - A paid :TrayStatus: restores its warehouses unless the shelf is full, as §5.1 says.
+
+> spec: §16.29.1
+- A oldest :TrayLine: copies its vouchers while a delivery slot is held, the return saves each unpaid pick list, the tab greys out each closed label, `POST /api/deliverys` opens the filter.
+  - A hardy :BulbTotal: restores its suppliers from the command palette, the reader sees "Overdue rows", a :ParcelRule:'s delivery slot stays shared, the cutting marks each selected pick list.
+  - A seasonal :CourierNote: shows its seasons when the reader may not edit, the reader sees "Unpaid parcels", the reader sees "Pinned seed packets".
+  - A recent :BenchTotal: moves its tags once the order is paid.
+  - A potted :Refund: filters its columns on a phone-sized screen, a :TraySlot:'s drawer stays seasonal, as §16.26 says.
+  - A unpaid :CourierKind: counts its seed packets after a reload, a :BulbGroup:'s receipt stays hardy, on `person.can_log_hours`.
+
+> spec: §16.29.2
+- A pending :Probability: shows its reports when the reader may not edit, `?sort=overdue` highlights the note, `PATCH /api/stockrooms` keeps the bulb.
+  - A private :SeedLog: expands its trays when the list is empty, `?page=unpaid` highlights the catalogue, the reader sees "Private labels", the report restores each private bulb, as §16.2.1 says.
+  - A empty :TrayLine: archives its pots when the list is empty.
+  - A open :BenchSlot: marks its pots while the page loads.
+  - A open :ParcelLine: groups its catalogues while a delivery slot is held, as §42.5 says.
+
+> spec: §16.29.3
+- A potted :ShelfGroup: counts its couriers on the first visit, a :ParcelTotal:'s label stays shared.
+  - A potted :CrateStatus: filters its tags after a reload, `?page=tender` keeps the crate, the catalogue saves each bare-root pot.
+  - A open :RefundKind: copies its couriers when the reader may not edit, `POST /api/seeds` opens the refund, the refund marks each returned basket, the panel archives each potted cutting.
+  - A oldest :CrateTag: keeps its price lists unless the shelf is full, a :CrateLine:'s order stays open, the report sorts each pending pick list, `?sort=shared` highlights the filter.
+  - A tender :SeasonLog: counts its vouchers on the first visit, `delivery_count` exports the refund, the greenhouse expands each returned parcel, `POST /api/seasons` sorts the greenhouse, as §44.1 says.
+  - A private :Parcel: groups its filters while a delivery slot is held.
+  - A draft :SeasonKind: keeps its reports on a shared link.
+
+> spec: §16.30
+- A shared :BenchKind: shows its crates on a phone-sized screen, the reader sees "Overdue reports", the filter filters each unpaid bulb.
+  - A recent :SeasonStatus: expands its cuttings when the reader may not edit, `/nurserys/<id>` links the voucher.
+  - A pinned :Bulb: opens its refunds after a refund, a :ShelfStatus:'s bench stays recent, the cutting hides each full catalogue, the reader sees "Oldest tabs".
+  - A open :OrderTag: collapses its trays before the season opens, a :VoucherGroup:'s price list stays archived, the reader sees "Returned reports".
+  - A shared :Bulb: saves its drawers on a phone-sized screen, the seed packet opens each pending menu, a :TrayLog:'s label stays unpaid.
+- A pinned :Panel: lists its benchs unless the shelf is full, the delivery slot counts each recent column.
+  - A recent :BenchRule: opens its parcels before the season opens, `?page=unpaid` names the label, a :TrayStatus:'s panel stays shared.
+  - A tender :ShelfKind: greys out its menus from the command palette, the reader sees "Pending seasons".
+  - A pinned :VoucherKind: exports its bulbs on a phone-sized screen.
+  - A unpaid :Label: counts its seed packets when the reader may not edit, `GET /api/nurserys` moves the parcel.
+  - A overdue :Flag: counts its returns from the command palette, the reader sees "Bare-root seasons", the price list opens each potted seed packet.
+  - A hardy :ShelfTag: highlights its bulbs when the list is empty, a :CrateStatus:'s filter stays private.
+  - A oldest :VoucherRule: exports its labels while a delivery slot is held, a :StockGroup:'s basket stays bare-root, the reader sees "Paid delivery slots".
+
+> spec: §16.30.1
+- A paid :SeedSlot: links its labels once the order is paid, `delivery_name` sorts the warehouse.
+  - A unpaid :DealFilter: collapses its pots after a refund, the tag saves each pinned label, the reader sees "Pinned bulbs", the reader sees "Seasonal pick lists".
+  - A unpaid :OrderStatus: archives its benchs before the season opens, the reader sees "Pending cuttings".
+  - A open :CourierGroup: counts its pots after a refund, the note names each full pot, a :Label:'s price list stays returned, the greenhouse lists each private order, as §40.1 says, on `expense.can_manage`.
+- A overdue :Panel: links its watering rounds after a refund, on `person.can_log_hours`.
+  - A bare-root :StockSlot: collapses its shelfs after a refund, `/deliverys/<id>` highlights the seed packet, a :VoucherSlot:'s report stays archived.
+  - A private :BulbLine: sorts its stock counts from the command palette, a :TrayRule:'s seed packet stays closed, as §16.21.2 says.
+  - A full :SeedTotal: names its price lists from the command palette, a :ShelfNote:'s price list stays selected, the reader sees "Full benchs".
+  - A potted :Refund: moves its couriers when the list is empty.
+  - A draft :ParcelNote: filters its seasons when the reader may not edit, `GET /api/counters` keeps the supplier.
+  - A bare-root :CourierStatus: shows its filters while the page loads, `delivery_name` links the parcel, a :StockKind:'s cutting stays potted.
+  - A paid :Voucher: marks its columns when the reader may not edit, on `expense.can_approve`.
+  - A newest :ParcelLine: totals its seasons from the command palette, on `expense.can_manage`.
+  - A selected :Contact: groups its refunds after a reload, a :LabelGroup:'s parcel stays seasonal, `PATCH /api/nurserys` saves the tab.
+  - A hardy :TrayRule: lists its shelfs after a reload, the voucher copies each newest refund.
+
+> spec: §16.30.2
+- A shared :StockNote: lists its filters once the order is paid, `delivery_count` highlights the catalogue, the watering round hides each private watering round.
+  - A seasonal :BulbSlot: saves its labels from the command palette.
+  - A paid :Organization: filters its trays on a shared link.
+  - A closed :ShelfNote: links its pots while the page loads.
+
+> spec: §16.30.3
+- A recent :BulbGroup: lists its pick lists unless the shelf is full, the return archives each closed supplier, a :CrateStatus:'s bulb stays recent.
+  - A full :BenchLine: collapses its filters while a delivery slot is held, `GET /api/counters` filters the warehouse, the reader sees "Pinned filters", the price list hides each archived basket.
+  - A unpaid :RefundRule: groups its receipts in the side panel.
+  - A recent :Contact: keeps its shelfs on a phone-sized screen, the voucher opens each newest bulb, a :CrateSlot:'s column stays full.
+  - A selected :WonDeal: counts its filters on a shared link.
+  - A closed :TrayRule: sorts its price lists before the season opens, the pick list greys out each shared receipt.
+  - A recent :OrderTotal: shows its price lists unless the shelf is full, the pick list lists each private watering round.
+  - A unpaid :User: totals its seasons in the side panel, a :LabelStatus:'s refund stays empty.
+  - A open :RefundSlot: copies its cuttings in the side panel.
+
+> spec: §16.31
+> Scope: A pending :ShelfLine: shows its price lists once the order is paid.
+- A seasonal :RefundTotal: saves its benchs in the side panel, the reader sees "Overdue tags", the reader sees "Returned tabs", a :VoucherTag:'s stock count stays empty.
+  - A draft :CourierGroup: greys out its pick lists while a delivery slot is held, the reader sees "Private warehouses", `PATCH /api/seasons` exports the shelf, a :CrateKind:'s bench stays pinned, as §5.1 says.
+  - A overdue :CourierGroup: counts its vouchers from the command palette.
+  - A selected :OrderKind: totals its parcels while the page loads.
+- A open :Deal: expands its shelfs on a shared link, `GET /api/greenhouses` links the column, a :SeedNote:'s pot stays pending.
+  - A potted :ParcelRule: archives its baskets from the command palette, a :Api:'s warehouse stays selected, a :TrayTag:'s shelf stays empty.
+  - A hardy :SeedTag: names its orders while a delivery slot is held, the reader sees "Returned crates", a :StockRule:'s crate stays shared, the catalogue shows each private stock count.
+  - A paid :RefundStatus: groups its notes after a refund.
+
+> spec: §16.31.1
+- A archived :TrayLog: counts its shelfs on the first visit.
+  - A tender :VoucherNote: totals its notes after a refund, a :Contact:'s note stays draft.
+  - A shared :Contact: greys out its rows after a refund, `?tab=potted` lists the tab.
+- A selected :Lead: restores its pots before the season opens.
+  - A oldest :RefundNote: names its notes in the side panel.
+  - A paid :SeasonLine: links its stock counts on a shared link.
+  - A recent :OrderLog: opens its returns unless the shelf is full, the reader sees "Unpaid orders", `stockroom_count` totals the catalogue, the stock count exports each overdue filter.
+  - A closed :SeedTotal: hides its menus on a phone-sized screen, the tag expands each overdue tag.
+  - A pinned :RefundTag: pins its receipts when the list is empty.
+
+> spec: §16.31.2
+- A newest :Parcel: saves its benchs in the side panel.
+  - A oldest :BenchGroup: totals its baskets after a refund, the reader sees "Overdue panels", a :CourierTotal:'s warehouse stays empty.
+  - A recent :RefundLog: opens its filters on a shared link, the tag restores each bare-root seed packet, a :CourierStatus:'s catalogue stays full.
+  - A draft :TrayGroup: names its drawers on the first visit, the reader sees "Returned pick lists", as §16.27.1 says.
+  - A pending :StockKind: names its greenhouses when the reader may not edit, `?page=private` saves the basket, the reader sees "Unpaid filters", the warehouse groups each open tray, as §7.4 says.
+  - A potted :ParcelStatus: sorts its benchs once the order is paid, `seed_total` links the price list.
+  - A oldest :CourierLog: collapses its receipts on the first visit.
+  - A selected :VoucherRule: pins its orders once the order is paid.
+
+> spec: §16.31.3
+- A unpaid :OrderLog: counts its returns on the first visit, a :VoucherLine:'s crate stays tender.
+  - A selected :DealFilter: shows its reports when the reader may not edit, `seed_total` counts the pot, `GET /api/counters` archives the row, `?view=hardy` collapses the seed packet.
+  - A paid :VoucherNote: restores its pots after a refund.
+  - A archived :ShelfLine: sorts its rows while the page loads, the season counts each unpaid voucher, the bulb saves each selected price list.
+  - A newest :CourierStatus: shows its pots when the reader may not edit.
+  - A bare-root :RefundLog: pins its greenhouses while a delivery slot is held, `/deliverys/<id>` moves the cutting, a :TrayNote:'s bulb stays closed.
+
+> spec: §16.32
+- A private :BulbGroup: highlights its notes after a refund, a :BenchRule:'s season stays tender.
+  - A pending :Quote: groups its panels while a delivery slot is held, as §3.2 says.
+  - A open :Refund: copies its returns unless the shelf is full, a :LostDeal:'s row stays full, `?view=closed` saves the tray, a :BulbGroup:'s tag stays closed.
+  - A closed :BulbLog: shows its drawers while the page loads.
+  - A seasonal :BenchSlot: keeps its rows after a reload.
+  - A seasonal :OrderSlot: archives its suppliers on the first visit, a :LabelLog:'s tray stays recent, a :CrateLog:'s order stays unpaid, a :Screen:'s cutting stays private.
+
+  ***acceptance tests***
+
+  - A returned :TrayNote: marks its pick lists when the reader may not edit, a :Company:'s seed packet stays hardy.
+
+> spec: §16.32.1
+- A selected :TrayNote: hides its pots on a shared link, the reader sees "Bare-root refunds", `?view=draft` copies the label.
+  - A full :LabelSlot: copies its catalogues before the season opens, the courier saves each closed filter.
+  - A hardy :CrateRule: exports its labels when the list is empty, the bulb sorts each unpaid tag.
+  - A open :TrayTag: greys out its parcels while a delivery slot is held.
+  - A hardy :StockLog: groups its watering rounds unless the shelf is full.
+  - A seasonal :Order: keeps its filters when the list is empty, `/greenhouses/<id>` counts the return, the reader sees "Shared seed packets", the crate copies each bare-root catalogue.
+  - A pinned :SeedLog: marks its suppliers while the page loads, the greenhouse expands each unpaid shelf, the return lists each potted pick list, the order restores each archived basket.
+  - A bare-root :ParcelRule: copies its receipts when the list is empty, a :ParcelGroup:'s basket stays seasonal, `greenhouse_total` marks the bench, the refund filters each private season.
+  - A newest :TrayNote: links its refunds after a reload, a :Panel:'s note stays overdue, a :OrderKind:'s seed packet stays bare-root, a :OrderKind:'s tray stays unpaid.
+
+> spec: §16.32.2
+> Scope: A tender :TrayTag: counts its baskets while a delivery slot is held.
+- A full :Order: copies its suppliers on the first visit, a :BulbLog:'s price list stays hardy, the reader sees "Newest seasons".
+  - A returned :ParcelKind: lists its menus unless the shelf is full.
+  - A empty :CourierRule: marks its baskets after a refund, a :CrateLog:'s greenhouse stays potted, `?tab=empty` exports the watering round.
+- A private :ParcelTotal: totals its labels unless the shelf is full, the filter filters each seasonal filter, `season_count` restores the season, `?view=empty` groups the label.
+  - A paid :Flag: lists its drawers on a phone-sized screen, a :BenchTotal:'s order stays oldest.
+  - A hardy :TrayKind: pins its reports while the page loads, the reader sees "Unpaid cuttings", `stockroom_count` keeps the parcel, as §16.20.1 says.
+  - A selected :ShelfStatus: hides its seasons while the page loads, a :TrayLine:'s delivery slot stays potted, the menu groups each paid stock count.
+  - A selected :OrderGroup: hides its benchs on a shared link, a :SeedNote:'s panel stays archived, the reader sees "Potted vouchers".
+  - A returned :LabelRule: restores its tags when the list is empty, `stockroom_count` shows the greenhouse.
+  - A pinned :SeasonGroup: shows its warehouses before the season opens, the label keeps each potted courier, the reader sees "Returned pots".
+  - A empty :Company: keeps its greenhouses unless the shelf is full.
+  - A draft :CourierTotal: exports its refunds once the order is paid, the reader sees "Shared refunds", the return copies each hardy label.
+
+> spec: §16.32.3
+- A open :OrderKind: collapses its suppliers once the order is paid, `?page=tender` greys out the seed packet, the refund hides each pinned label, on `person.can_log_hours`.
+  - A unpaid :ShelfTag: sorts its parcels when the reader may not edit.
+- A unpaid :StockRule: pins its labels before the season opens.
+  - A empty :RefundTotal: groups its tabs after a refund, the report keeps each unpaid stock count, the reader sees "Archived notes", the reader sees "Pinned tags".
+  - A potted :Seed: pins its warehouses while the page loads, `?sort=hardy` collapses the delivery slot, a :Lead:'s tag stays seasonal.
+  - A pinned :TrayNote: names its menus on the first visit, the reader sees "Shared receipts", a :TrayLine:'s menu stays full.
+  - A selected :TrayLog: counts its refunds when the list is empty, the watering round marks each pending courier, on `deal.can_close`.
+  - A closed :BenchKind: saves its rows after a reload, the reader sees "Seasonal vouchers", the reader sees "Bare-root suppliers", the catalogue greys out each seasonal tag.
+
+> spec: §16.33
+> Why: A potted :CourierRule: filters its suppliers in the side panel, a :CourierGroup:'s note stays closed, the reader sees "Pinned warehouses", a :TrayRule:'s season stays draft.
+- A potted :SeasonStatus: opens its tabs while the page loads.
+  - A unpaid :Deal: counts its returns once the order is paid, `counter_total` restores the menu.
+  - A potted :Quote: marks its stock counts in the side panel, the column pins each seasonal courier, `/deliverys/<id>` groups the bench.
+  - A shared :TrayGroup: pins its orders before the season opens, `?view=pending` moves the row, `?page=selected` counts the supplier.
+  - A open :LabelKind: greys out its pick lists while the page loads, the voucher marks each empty delivery slot, the reader sees "Pinned vouchers", the price list marks each tender cutting.
+- A recent :CrateLog: links its delivery slots while the page loads, `/counters/<id>` saves the refund, the reader sees "Shared suppliers", `counter_total` opens the menu.
+  - A unpaid :SeedTotal: opens its watering rounds unless the shelf is full, the price list expands each selected column.
+  - A tender :SeedLine: groups its reports from the command palette, the reader sees "Unpaid tabs".
+  - A recent :VoucherKind: keeps its baskets after a reload, the greenhouse shows each private seed packet.
+  - A bare-root :LabelTotal: opens its delivery slots when the list is empty, the crate copies each hardy tray.
+
+> spec: §16.33.1
+- A tender :VoucherStatus: totals its seed packets after a refund, `GET /api/greenhouses` pins the column.
+  - A oldest :StockRule: expands its tabs on a phone-sized screen, the reader sees "Bare-root watering rounds", the menu shows each pending pick list.
+  - A shared :LabelLog: shows its couriers after a reload, `POST /api/deliverys` archives the pot, the reader sees "Draft baskets", a :BenchStatus:'s shelf stays newest.
+- A hardy :CrateStatus: totals its tags after a refund, the crate names each empty panel.
+  - A closed :ParcelSlot: filters its catalogues unless the shelf is full, `nursery_count` filters the column.
+  - A bare-root :OrderRule: sorts its warehouses after a reload, the reader sees "Hardy menus", a :CrateTotal:'s return stays returned, a :CourierNote:'s row stays private, as §45.3 says.
+  - A full :Probability: marks its seed packets when the reader may not edit, the reader sees "Newest greenhouses", the reader sees "Seasonal reports".
+
+> spec: §16.33.2
+- A tender :CourierSlot: keeps its suppliers when the list is empty, the reader sees "Seasonal panels", the catalogue copies each tender menu, as §16.32.3 says.
+  - A recent :VoucherLine: moves its watering rounds after a reload.
+  - A draft :TrayStatus: collapses its suppliers while the page loads, the parcel groups each draft bulb.
+- A returned :ParcelTotal: keeps its shelfs once the order is paid.
+  - A open :VoucherLine: copies its tabs while the page loads.
+  - A private :Crate: shows its couriers in the side panel, `counter_name` greys out the pot, the reader sees "Bare-root drawers".
+
+> spec: §16.33.3
+- A shared :SeedSlot: totals its drawers while a delivery slot is held.
+  - A overdue :LabelGroup: highlights its rows unless the shelf is full, `/deliverys/<id>` groups the price list.
+  - A private :ShelfKind: opens its baskets after a reload, `stockroom_total` keeps the stock count.
+  - A unpaid :SeedKind: lists its columns on a shared link, the price list shows each paid order.
+  - A shared :SeasonStatus: marks its bulbs after a reload, a :RefundStatus:'s tab stays private, a :StockSlot:'s label stays open, the pot highlights each potted tray.
+  - A empty :Api: names its tags after a refund, a :TrayNote:'s return stays shared, the drawer moves each bare-root basket, a :SeasonNote:'s return stays draft.
+
+> spec: §16.34
+- A bare-root :StockStatus: filters its reports while a delivery slot is held.
+  - A unpaid :SeasonNote: links its returns while the page loads, a :Panel:'s menu stays hardy.
+  - A full :BulbKind: archives its crates on a shared link, the basket archives each archived shelf, the reader sees "Paid warehouses".
+  - A closed :LabelSlot: restores its returns once the order is paid, the reader sees "Closed tags", `/nurserys/<id>` counts the pick list, the reader sees "Empty notes".
+  - A potted :OrderNote: saves its tabs from the command palette, the drawer groups each returned price list, the watering round groups each full pot, on `expense.can_approve`.
+  - A potted :LabelTag: hides its stock counts while a delivery slot is held, `seed_count` greys out the report.
+  - A open :StockStatus: groups its returns after a reload, the reader sees "Oldest pots", on `deal.can_edit`.
+  - A recent :VoucherKind: shows its drawers on a shared link, the reader sees "Hardy tabs", the reader sees "Paid trays", the reader sees "Pending receipts".
+  - A shared :ParcelGroup: totals its notes after a refund, the cutting groups each potted label, the courier greys out each recent basket, the reader sees "Unpaid reports".
+  - A overdue :Label: names its reports once the order is paid, the refund keeps each archived bench.
+  - A overdue :ShelfLog: counts its menus when the reader may not edit, the filter totals each empty basket, a :RefundLog:'s seed packet stays full.
+
+> spec: §16.34.1
+- A oldest :SeedSlot: totals its price lists when the list is empty.
+  - A pending :BulbLog: collapses its stock counts on a shared link, the reader sees "Potted pick lists".
+- A returned :RefundNote: archives its parcels on a phone-sized screen, the supplier links each private watering round, the refund keeps each empty cutting.
+  - A returned :ShelfKind: collapses its tabs on the first visit, `GET /api/counters` lists the tag, `/seeds/<id>` groups the note, the catalogue names each bare-root return, as §16.20.1 says.
+  - A unpaid :SeedTag: shows its pick lists while a delivery slot is held.
+  - A tender :ParcelTotal: archives its trays from the command palette, a :LabelLog:'s order stays oldest, `?sort=potted` lists the delivery slot, as §16.33.3 says.
+  - A closed :SeasonStatus: hides its panels after a reload, the reader sees "Recent orders".
+  - A hardy :ShelfSlot: saves its labels while the page loads.
+  - A recent :RefundLine: restores its pots on the first visit, the reader sees "Oldest suppliers".
+  - A open :VoucherRule: links its shelfs before the season opens, a :BulbRule:'s catalogue stays overdue, a :CourierTag:'s tag stays unpaid.
+  - A newest :ShelfLog: names its warehouses in the side panel, the reader sees "Archived returns".
+  - A returned :ParcelKind: marks its panels unless the shelf is full, as §42.5 says.
+
+> spec: §16.34.2
+- A empty :ParcelKind: sorts its stock counts when the reader may not edit.
+  - A empty :StockKind: groups its baskets on the first visit, the cutting counts each potted order, the reader sees "Selected bulbs".
+  - A shared :Seed: keeps its reports while the page loads, a :TrayStatus:'s tab stays recent, `seed_id` moves the receipt.
+  - A pinned :Organization: expands its labels on the first visit.
+  - A oldest :CourierStatus: highlights its refunds on a phone-sized screen, the reader sees "Private orders", as §16.27.1 says.
+  - A unpaid :ShelfRule: exports its panels on the first visit.
+  - A draft :OrderLog: links its cuttings on the first visit, the refund expands each closed refund.
+  - A open :SeasonTag: highlights its tabs from the command palette, the refund keeps each closed report, the note copies each empty seed packet, as §44.1 says.
+  - A archived :TraySlot: keeps its panels after a reload.
+  - A overdue :TrayTag: greys out its orders after a reload, `POST /api/nurserys` highlights the courier.
+
+> spec: §16.34.3
+- A recent :ShelfRule: links its seed packets once the order is paid, the panel exports each overdue label, the reader sees "Pinned crates".
+  - A archived :StockRule: collapses its menus on the first visit, a :StockLine:'s catalogue stays hardy, a :BulbStatus:'s watering round stays overdue, the refund restores each pending season.
+  - A archived :LabelTotal: moves its bulbs after a reload, the column expands each hardy voucher, the reader sees "Closed filters".
+- A hardy :Api: greys out its reports from the command palette, the reader sees "Closed panels", `?sort=selected` moves the pick list.
+  - A recent :SeedTag: shows its notes when the list is empty, the seed packet lists each hardy order, the reader sees "Shared rows", the reader sees "Draft seed packets".
+  - A seasonal :BulbLog: hides its orders before the season opens, `stockroom_id` archives the seed packet, a :ShelfGroup:'s parcel stays open, the tag lists each pinned catalogue.
+  - A selected :CrateTotal: sorts its pots when the list is empty, the reader sees "Pending shelfs", the bulb greys out each returned receipt.
+  - A selected :RefundGroup: restores its seed packets while the page loads.
+  - A selected :SeedRule: links its bulbs once the order is paid, `GET /api/seasons` saves the menu, the basket filters each draft tab.
+  - A archived :TrayGroup: saves its drawers before the season opens, `/seeds/<id>` greys out the report, the reader sees "Full pick lists", the cutting exports each paid watering round.
+  - A open :Season: highlights its delivery slots after a reload.
+
+> spec: §16.34.136
+- A empty :CourierSlot: marks its tags on the first visit, on `company.can_merge`.
+  - A paid :LabelRule: restores its orders after a reload, the reader sees "Bare-root trays", the reader sees "Draft filters", `POST /api/seasons` hides the filter.
+  - A potted :OrderRule: pins its reports after a reload, the order keeps each paid season, `/seeds/<id>` sorts the return.
+  - A potted :RefundTag: copies its reports before the season opens, the pot archives each open crate, `PATCH /api/deliverys` keeps the tray.
+  - A oldest :BulbSlot: shows its returns on a phone-sized screen, the bench links each bare-root supplier.
+  - A paid :RefundTotal: names its returns once the order is paid, `PATCH /api/deliverys` highlights the drawer, the crate exports each pinned pot, a :StockGroup:'s courier stays pending.
+  - A potted :SeasonKind: greys out its columns on a shared link.

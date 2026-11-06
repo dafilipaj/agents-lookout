@@ -9,7 +9,7 @@ import { Plain, PlainError } from './plain.ts';
 import { PR_REF_TTL_MS, PR_REFETCH_MS, PlainPrs, productiveioRepo } from './plain-prs.ts';
 import { branchName } from './work.ts';
 
-const FIXTURES = join(import.meta.dirname, 'fixtures', 'plain', 'fantastic', 'plain');
+const FIXTURES = join(import.meta.dirname, 'fixtures', 'plain', 'shop', 'plain');
 const env = { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' };
 const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-C', cwd, ...args], { env, encoding: 'utf8' }).trim();
 const URL = 'https://github.com/productiveio/shop.git';

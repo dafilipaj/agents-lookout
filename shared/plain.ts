@@ -514,6 +514,53 @@ export interface PlainConcept {
   baseLines: string[] | null;
 }
 
+/** PLAIN-7.2: a functional spec of another Module that this one names by `§`, at head and base. */
+export interface PlainSpecRef {
+  /** The Module it's in, as a path in the Checkout (`plain/time.plain`). */
+  module: string;
+  /** Its clauses, as `clauseLines` writes them; null when the working tree (or the base) hasn't it. */
+  lines: string[] | null;
+  baseLines: string[] | null;
+  /** How many acceptance tests and notes it has, which a card counts and doesn't show. */
+  tests: number;
+  notes: number;
+}
+
+/** PLAIN-7.5: a condition of an ability's rule, as fantastic-productive's catalogue writes it. */
+export type AbilityRule =
+  | { allOf: AbilityRule[] }
+  | { anyOf: AbilityRule[] }
+  | { not: AbilityRule }
+  | { kind: AbilityLeafKind; name: string; state?: string };
+export type AbilityLeafKind = 'permission' | 'feature' | 'addon' | 'flag' | 'userType' | 'fact' | 'actor' | 'setting' | 'custom' | 'ability';
+export const ABILITY_LEAF_KINDS: readonly AbilityLeafKind[] = ['permission', 'feature', 'addon', 'flag', 'userType', 'fact', 'actor', 'setting', 'custom', 'ability'];
+
+/** PLAIN-7.5, 7.6: one catalogue entry. */
+export interface AbilityEntry {
+  /** The catalogue file, as a path in the Checkout, and the entry's line in it. */
+  file: string;
+  line: number;
+  description: string;
+  /** The comment written above the entry, without its stars; empty when there is none. */
+  doc: string;
+  /** Its `when` as conditions; null when it can't be read as such (PLAIN-7.6). */
+  rule: AbilityRule | null;
+  /** Its `when` as written. */
+  source: string;
+}
+
+/** PLAIN-7.5, 7.7: a key's entry at the working tree (or a PR's head) and at the base. */
+export interface PlainAbility {
+  head: AbilityEntry | null;
+  base: AbilityEntry | null;
+}
+
+const KEY = '[a-z][A-Za-z_]*\\.can_[a-z0-9_]+';
+/** PLAIN-7.5: an ability key, as `abilities.plain` names them, inside a code span. */
+export const ABILITY_KEY = new RegExp(`^${KEY}$`);
+/** PLAIN-7.5: the ability keys a text names, each as a code span of its own. */
+export const abilityKeysIn = (text: string): string[] => [...text.matchAll(new RegExp(`\`(${KEY})\``, 'g'))].map((m) => m[1]!);
+
 /** PLAIN: what `GET /api/plain` answers for one Module of a Checkout. */
 /**
  * PLAIN-1.1, PLAIN-5: where a Module is read from: a live Session's Checkout, by the id DIFF gave it,
@@ -540,6 +587,12 @@ export interface PlainAnswer {
   concepts: Record<string, PlainConcept>;
   /** PLAIN-2.4: import and requires paths with no Module in the Checkout or its base. */
   missing: string[];
+  /** PLAIN-7.2: the specs of other Modules this one names by `§`, by id (`§6.12`). */
+  specs: Record<string, PlainSpecRef>;
+  /** PLAIN-7.5: the ability keys this Module names, and those their rules name, by key. */
+  abilities: Record<string, PlainAbility>;
+  /** PLAIN-7.8: whether the Checkout has an abilities catalogue, at the working tree or the base. */
+  catalogue: boolean;
   /** PLAIN-4.2: this text and base's Viewed key. */
   key: string;
   viewed: boolean;

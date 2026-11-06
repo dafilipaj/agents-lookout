@@ -121,6 +121,9 @@ export function routePath(route: Route): string {
   }
 }
 
+/** PLAIN-7.2: a spec's anchor in the Spec view, and the URL hash that opens a Module at it. */
+export const specHash = (id: string) => `plain-s-${id.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
+
 const NAVIGATE = 'lookout:navigate';
 
 function subscribe(cb: () => void) {
@@ -134,13 +137,15 @@ function subscribe(cb: () => void) {
 
 const getPath = () => window.location.pathname;
 
-export type Navigate = (route: Route, opts?: { replace?: boolean }) => void;
+export type Navigate = (route: Route, opts?: { replace?: boolean; hash?: string }) => void;
 
 export function useRoute(): [Route, Navigate] {
   const path = useSyncExternalStore(subscribe, getPath);
   const navigate = useCallback<Navigate>((route, opts) => {
-    const next = routePath(route);
-    if (next === window.location.pathname) return;
+    const to = routePath(route);
+    if (to === window.location.pathname) return;
+    // PLAIN-7.2: a place in the page, which the path never carries.
+    const next = opts?.hash ? `${to}#${opts.hash}` : to;
     if (opts?.replace) window.history.replaceState(null, '', next);
     else window.history.pushState(null, '', next);
     window.dispatchEvent(new Event(NAVIGATE));

@@ -3,7 +3,7 @@ title: "Spec view: a .plain module and its change, with imported concepts on hov
 code: "PLAIN"
 status: "In Progress"
 created: "2026-11-04"
-updated: "2026-11-05"
+updated: "2026-11-06"
 ---
 
 # Spec view
@@ -18,7 +18,7 @@ In fantastic-productive, two in three PRs change a spec: 465 of the 694 commits 
 
 ## Requirements
 
-Rendering and resolution are `(test)` against fixtures (fantastic-productive's Modules, copied into the test tree); the flows across the server and the UI are `(e2e)` in a World with a real repo ([0007](../../decisions/0007-behaviour-tests-from-spec-requirements.md)); the look is `(manual)`.
+Rendering and resolution are `(test)` against fixtures (invented Modules with the shape and size of fantastic-productive's, in `server/fixtures/plain/shop/`; this repo is public, so no Productive text is copied into it); the flows across the server and the UI are `(e2e)` in a World with a real repo ([0007](../../decisions/0007-behaviour-tests-from-spec-requirements.md)); the look is `(manual)`.
 
 ### PLAIN-1 The Spec view
 
@@ -43,7 +43,7 @@ A Concept used in the Module but defined in another one shows that definition on
 - [x] PLAIN-2.3 When that definition differs between the base and the working tree, the popover says "Changed in this branch" and shows its change marked as PLAIN-1.6 marks a clause. (test)
 - [x] PLAIN-2.4 A Concept whose Module isn't there (an import path with no file, such as fantastic-productive's `providers/…` Modules, which are fetched and never committed) can't be told apart from one defined nowhere, so a Concept found in no visible Module shows "Not in the Modules this one reads here; it may be defined in `providers/exporter/exporter-public`, which isn't in this Checkout" when some of its Modules are missing, and "Not defined in any Module this one reads" when none are. Neither breaks the rest of the view. (test)
 - [x] PLAIN-2.5 "Open <module>" and the header's import links open that Module in the Spec view, in the same Checkout, at the same base, as a new history entry, so Back returns to the Module and scroll position you came from. (test)
-- [x] PLAIN-2.6 Resolution is done on the server, once per read of the Module (PLAIN-1.7), and a Module's imports are read from the same working tree and base as the Module itself. With fantastic-productive's `crm.plain` and its imports, a read takes under 500 ms on this Mac. (test)
+- [x] PLAIN-2.6 Resolution is done on the server, once per read of the Module (PLAIN-1.7), and a Module's imports are read from the same working tree and base as the Module itself. With a `crm.plain` the size of fantastic-productive's (165 KB, 137 specs) and its imports, a read takes under 500 ms on this Mac. (test)
 
 ### PLAIN-3 Open from a Session's changed files
 
@@ -77,7 +77,22 @@ Slice 2: a PR's Modules, your own and a Review request alike, read from GitHub's
 ### PLAIN-6 Safety
 
 - [x] PLAIN-6.1 The server reads only from Checkouts it knows: a live Session's Checkout from DIFF (DIFF-2), or a PR's fetched commits (PLAIN-5.2). The URL's `checkout` is an id Lookout issued for one of those, never a path, and a PR is named by its repo (letters, digits, `.`, `_`, `-`) and number, which Lookout turns into a clone it knows; a `path` that leaves the Checkout (`..`, an absolute path, a symlink out of it) or isn't `.plain` is refused. (test)
-- [x] PLAIN-6.2 Reading a Module runs only `git` (`show`, `merge-base`, `rev-parse`, `diff --name-only`, `config --get remote.origin.url`, and PLAIN-5.2's `fetch`, `for-each-ref` and `update-ref` of its own `refs/lookout/pr/*`), with the clone's hooks and fsmonitor off and no password prompt, PLAIN-5.2's `gh pr view`, and file reads. Nothing in a Module is executed, fetched or rendered as HTML: its text is shown as text, its links (PLAIN-1.4, PLAIN-2.5) are Lookout's own. (test)
+- [x] PLAIN-6.2 Reading a Module runs only `git` (`show`, `merge-base`, `rev-parse`, `diff --name-only`, PLAIN-7's `ls-files`, `ls-tree` and `cat-file --batch` (paths in, file contents out), `config --get remote.origin.url`, and PLAIN-5.2's `fetch`, `for-each-ref` and `update-ref` of its own `refs/lookout/pr/*`), with the clone's hooks and fsmonitor off and no password prompt, PLAIN-5.2's `gh pr view`, and file reads. Nothing in a Module is executed, fetched or rendered as HTML: its text is shown as text, its links (PLAIN-1.4, PLAIN-2.5) are Lookout's own. (test)
+
+### PLAIN-7 References explained in place
+
+A `§N.M` reference and an ability key show what they point at on hover or focus, as another Module's Concept does (PLAIN-2), so a reviewer reads the clause without leaving it. Nothing here is written by an AI: every card shows the repo's own text.
+
+- [x] PLAIN-7.1 A `§N.M` that names a functional spec of this Module still scrolls to it when clicked (PLAIN-1.4), and hovering it, or focusing it with Tab, opens a card (PLAIN-2.2's popover, the same open and close rules) with the spec's id, its gist (PLAIN-8.2's) as the card's title, its clauses whole with their nested bullets, a line counting its acceptance tests and notes, which the card doesn't show, and "Go to §N.M". (test)
+- [x] PLAIN-7.2 A `§N.M` that names a functional spec of another Module, any `.plain` file under the folder holding this Module, is a link that opens that Module in the Spec view at that spec, as PLAIN-2.5 opens one (same Checkout, same base, a new history entry), and has the same card, naming the Module, with "Open <module> at §N.M". In a range, `§6.12–§6.15`, each id is its own reference. (test)
+- [x] PLAIN-7.3 When the spec a card shows differs between the base and the working tree, the card says "Changed in this branch", "Added in this branch" or "Removed in this branch", and its clauses are marked as PLAIN-1.6 marks them. (test)
+- [x] PLAIN-7.4 A `§N.M` that no Module under that folder has, at the working tree or the base, stays plain text, with the tooltip "No functional spec §N.M in this repo's Modules". (test)
+- [x] PLAIN-7.5 An ability key in a code span (`<scope>.can_<name>`, as fantastic-productive's `abilities.plain` names them) that the Checkout's abilities catalogue holds stays code and is focusable; hovering or focusing it opens a card with the key, its description, the comment written above its entry, and its rule in words: "All of", "Any of" and "Not" as nested lists, and each condition by its kind and name (permission, plan feature, addon, flag, user type, fact, fact about the reader, organization setting, custom rule, ability). An ability a rule names shows its own description beside it. The card ends with the file and line the entry is in. (test)
+- [x] PLAIN-7.6 The catalogue is every `abilities/catalogue/*.ts` and `abilities/catalogue.ts` file in the Checkout outside `node_modules`, read at the working tree (a PR's head) and at the base. An entry is a `'<key>': { … }` with a `description` and a `when`; a `when` that names a constant declared in the same file is read through it. A rule that can't be read as conditions is shown as its source text, under "Rule as written". Nothing in a catalogue is executed. (test)
+- [x] PLAIN-7.7 When a key's entry differs between the base and the working tree, its card says "Changed in this branch", with the base's description and rule under "Before", or "Added in this branch"; a key only the base has says "Removed in this branch" and shows the base's entry. (test)
+- [x] PLAIN-7.8 A key the catalogue doesn't hold, in a Checkout that has one, is focusable and its card says "Not in this Checkout's abilities catalogue". In a Checkout with no catalogue, a key stays plain code. (test)
+- [x] PLAIN-7.9 References are resolved on the server, once per read (PLAIN-1.7), with the Module, from the same working tree and base. With that `crm.plain`, its `§` references in other Modules and its ability keys in a catalogue as big as fantastic-productive's, a read takes under 500 ms on this Mac, as PLAIN-2.6's. (test)
+- [x] PLAIN-7.10 Seen in both modes on `time.plain` with PR #3382's change: the `§` and ability cards read as the Concept cards do, a clause full of references doesn't look busier than before, and a card never covers the reference it opened from. (manual)
 
 ### PLAIN-8 Reading and stepping through a change
 
@@ -108,7 +123,9 @@ The Module reads at a book's line length, and each functional spec reads as one 
 - **Talking back to the Session from the view** (select a clause, "Ask the Session about this"). In the Backlog.
 - **Editing a Module.** "Open in VS Code" (PLAIN-3.1) is where you edit.
 - **Comments on clauses**, or posting a review to GitHub.
-- **Ability-key links** (`/p-plain:page`'s `--ability-url`): Lookout doesn't know a repo's catalogue URL.
+- **Ability-key links** (`/p-plain:page`'s `--ability-url`): Lookout doesn't know a repo's catalogue URL. A key is explained from the Checkout's own catalogue instead (PLAIN-7.5).
+- **Explaining a rule's conditions themselves** (what a permission, fact or plan feature means): a card names them as the catalogue does.
+- **A summary of a change in plainer words, and checking a port against its port doc**: Plan item 38, after PLAIN-7.
 - **Gating a PR on Viewed** (PLAIN-4.4). A gate belongs in `/p-dev:open-pr` if anywhere.
 - **Checking a Module**: syntax errors, Concept collisions, missing `required_concepts`. That is `/p-plain:plain`'s and codeplain's job.
 - **Fetching provider Modules** from other repos (fantastic-productive's `providers.json`). PLAIN-2.4 says they're missing.
@@ -140,11 +157,12 @@ The Module reads at a book's line length, and each functional spec reads as one 
 
 ## Technical approach
 
-- **Parser and diff** in `shared/plain/`, in TypeScript, ported from p-plain 0.6.1's `page-template.html` (its `parse`, `lcs`, `wordDiff`, `diffContainer`), with tests on fantastic-productive's Modules copied into the test fixtures. The output is a tree of sections and clauses, each with its state (`same`, `added`, `removed`, `changed` with its old text).
+- **Parser and diff** in `shared/plain/`, in TypeScript, ported from p-plain 0.6.1's `page-template.html` (its `parse`, `lcs`, `wordDiff`, `diffContainer`), with tests on invented Modules shaped and sized like fantastic-productive's. The output is a tree of sections and clauses, each with its state (`same`, `added`, `removed`, `changed` with its old text).
 - **Resolution** on the server (`server/plain.ts`): read the Module and its base with `git show <ref>:<path>` (the working tree for the head of a Checkout), walk `import` transitively and `requires` one level for `exported_concepts`, and answer the Module's tree with a map of every visible Concept to `{ module, text, baseText | null, state }`. One endpoint, `GET /api/plain?checkout=&path=`, answers the lot; the client renders it.
 - **Checkout ids** come from DIFF's answer (each candidate Checkout gets an opaque id for its path); a PR is named by its repo and number, which the server maps to a clone it knows (`server/plain-prs.ts`), so the URL never carries a path (PLAIN-6.1).
 - **Viewed** in `~/.lookout/plain-viewed.json`, as `{ key: { at } }`, written atomically, read once at start.
 - **Work** (slice 2) gets the PR's base branch from `tb-pr` 0.4.0's `base_branch` (confirmed in its `--json`); for a PR Work hasn't read, `gh pr view --json baseRefName`, through the repo flag.
+- **References** (PLAIN-7) in `server/plain.ts` and `server/abilities.ts`: the `.plain` files under the Module's folder are listed (`git ls-files` at the working tree, reused for 15 s so a view's polls don't rescan the tree; `git ls-tree` at a commit, cached per commit) and only the Modules holding a referenced `§` are parsed; the catalogue files are listed the same way and read with a small tokenizer for object literals (strings, keys, arrays, a same-file constant), never evaluated. The answer gains `specs` (another Module's referenced specs, at head and base) and `abilities` (each key's entry at head and base, and those its rules name).
 - **Building blocks**: git and the existing Fleet `diff` answer; `tb-pr` for slice 2. No new CLI (0005, 0010).
 - Decisions: [0005](../../decisions/0005-building-blocks-live-outside-lookout.md), [0010](../../decisions/0010-single-consumer-rules-stay-with-the-consumer.md), [0009](../../decisions/0009-one-design-system-guarded-by-tests.md).
 
@@ -173,6 +191,7 @@ Each with its own requirement and Changelog line, in the slice that needs it:
 - **The column's left edge stays the chat's** (Dario, 2026-11-05): the text stops short of the 48rem column's right edge rather than a narrower column centred on its own.
 - **42rem, not 36rem** (Dario, 2026-11-05, after seeing it): 36rem (74 characters a line, measured on `crm.plain`) left the text small in the middle of a wide pane. 42rem measures 86, past the research's 75 and WCAG 1.4.8's 80, traded for a fuller column; the gap before "On this page" is 6rem instead of 12.
 - **A rewritten clause's colour is `muted-foreground`** (2026-11-05): DS-2.5's diff family has added and removed only, and a third hue would read as a Status (DS-3.6); the words inside it carry the green and red.
+- **References before summaries** (Dario, 2026-11-06): what makes a Module hard to read is mostly what a clause points at, a `§` list or a gate's key, not its words; explaining those from the repo's own text costs no AI and can't be wrong. A paraphrase per clause (the first idea for PLAIN-7) doubles the reading and can drop a condition. Summaries and the port check follow (Plan item 38).
 - **No gate on opening a PR** (Dario, 2026-11-04): Lookout can't enforce it; the harness rule puts gates in the CLIs and hooks.
 
 ## Open questions
@@ -202,3 +221,7 @@ None.
 - 2026-11-05: Dario tested and confirmed the feature (Plan item 31); PLAIN-9.7 ticked. PLAIN-3.1 and 5.1 are `(e2e)` and stay open until a World has a real repo to open a `.plain` change from.
 - 2026-11-05: Added PLAIN-3.4 and 3.5 (Dario: "plain specs are hard to find in the list of files with diff"): a Module's row in DIFF's list is tinted in a new `spec` colour (DS-2.6) with a `ScrollText` icon, and the Modules come first in their Checkout. Chosen from three sketches (tint only; tint and icon; tint, icon and first), as recommended. DIFF-3.1's order amended.
 - 2026-11-05: PLAIN-3.5 confirmed by Dario ("I can find it now").
+- 2026-11-06: Added PLAIN-7, references explained in place (Dario: Modules are hard to read and need knowledge of the system; of three ideas, references first). A `§` to this or another Module and an ability key open a card with the repo's own text; Non-goals, Technical approach and PLAIN-6.2 (`ls-files`, `ls-tree`, `cat-file --batch`) amended. In Progress.
+- 2026-11-06: PLAIN-7.10 ticked: Dario checked and confirmed it ("Works good").
+- 2026-11-06: Code review fixes: a malformed spec marker, a self-referencing catalogue constant and a rule changed only through its constant handled; the working tree's file list reused for 15 s (Technical approach). Ability key and Abilities catalogue added to the Glossary.
+- 2026-11-06: The test fixtures were fantastic-productive's own Modules, copied into this public repo; they're replaced with invented Modules and catalogue files of the same shape and size, and the copies are removed from the history. PLAIN-2.6 and 7.9 now name the size rather than the file.

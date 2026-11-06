@@ -1,4 +1,4 @@
-import { compareClauses, compareModules, definitionName, gist, parseClauses, PREDEFINED_CONCEPTS, wordDiff, type Clause, type Compared, type FunctionalSpec, type PlainAnswer, type PlainConcept, type PlainSource, type Touched } from '@shared/plain.ts';
+import { ABILITY_KEY, compareClauses, compareModules, definitionName, gist, parseClauses, PREDEFINED_CONCEPTS, wordDiff, type AbilityEntry, type AbilityLeafKind, type AbilityRule, type Clause, type Compared, type FunctionalSpec, type PlainAbility, type PlainAnswer, type PlainConcept, type PlainSource, type PlainSpecRef, type Touched } from '@shared/plain.ts';
 import { ArrowLeft, ChevronDown, ChevronRight, ChevronUp, ListChecks } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react';
 import { Alert } from '@/components/ui/alert';
@@ -8,7 +8,7 @@ import { Loading } from '@/components/ui/loading';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
 import { SaveError } from '@/lib/client';
 import { type ChangeKind, firstLine, JUMP_MARGIN_PX, type Mark, stepMark } from '@/lib/marks';
-import { plainRoute, routePath } from '@/lib/router';
+import { plainRoute, routePath, specHash } from '@/lib/router';
 import { cn } from '@/lib/utils';
 import { ChatRail } from './ChatRail';
 import { PlainView } from './Shell';
@@ -27,6 +27,9 @@ const INDENT_REM = 1.25;
 
 /** PLAIN-2.5: each Spec view's scroll position by its history entry, so Back returns where it was. */
 const scrollByEntry = new Map<string, number>();
+
+/** PLAIN-8.6, 9.3: the scroll position that puts `target` just below the view's top edge and its strip. */
+const belowStrip = (box: HTMLElement, target: HTMLElement) => Math.max(0, target.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop - JUMP_MARGIN_PX - STRIP_PX);
 
 /** The current history entry's own id, given to it the first time a Spec view shows in it. */
 function entryId(): string {
@@ -57,14 +60,14 @@ export interface SpecViewProps {
   setViewed(source: PlainSource, path: string, key: string, viewed: boolean): Promise<void>;
   /** PLAIN-3.2: back to where it was opened from. */
   onBack(): void;
-  /** PLAIN-2.5: another Module of the same Checkout or PR, as a new history entry. */
-  onOpenModule(path: string): void;
+  /** PLAIN-2.5: another Module of the same Checkout or PR, as a new history entry; PLAIN-7.2: at one of its specs. */
+  onOpenModule(path: string, at?: string): void;
 }
 
 const SECTION_TITLES: Record<string, string> = { definitions: 'Definitions', 'implementation reqs': 'Implementation requirements', 'test reqs': 'Test requirements' };
 const NAV_TITLES: Record<string, string> = { definitions: 'Definitions', 'implementation reqs': 'Implementation reqs', 'test reqs': 'Test reqs' };
 const sectionId = (key: string) => `plain-${key.replace(/[^a-z0-9]+/gi, '-')}`;
-const specAnchor = (id: string) => `plain-s-${id.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
+const specAnchor = specHash;
 const defAnchor = (name: string) => `plain-def-${name.replace(/[^A-Za-z0-9]+/g, '-')}`;
 const moduleName = (path: string) => path.replace(/^.*\//, '').replace(/\.plain$/, '');
 const noop = () => {};
@@ -202,7 +205,14 @@ export function SpecView({ source, path, backTo, load, setViewed, onBack, onOpen
     if (!restored.current) {
       restored.current = true;
       const at = scrollByEntry.get(entry);
-      if (at) box.scrollTop = at;
+      // An entry scrolled back to the top keeps the top, not the spec it was opened at.
+      if (at !== undefined) box.scrollTop = at;
+      else if (window.location.hash.startsWith('#plain-s-')) {
+        // PLAIN-7.2: opened at a spec, which lands below the strip as a jump does (PLAIN-9.3). A spec's
+        // anchor is letters, digits and `-` only (`specHash`), so the hash needs no decoding.
+        const target = document.getElementById(window.location.hash.slice(1));
+        if (target) box.scrollTop = belowStrip(box, target);
+      }
     }
     const onScroll = () => scrollByEntry.set(entry, box.scrollTop);
     // Back or Forward between two entries of the same Module keeps this view: it moves to the
@@ -322,7 +332,12 @@ export function SpecView({ source, path, backTo, load, setViewed, onBack, onOpen
     const onClick = (e: Event) => {
       if (e.target instanceof Element && e.target.closest('a[href^="#"]')) release();
     };
+    // So does a card's "Go to §N.M" (PLAIN-7.1), from its popover outside the view.
+    const onCardClick = (e: Event) => {
+      if (e.target instanceof Element && e.target.closest('[data-slot="concept-card"] a[href^="#"]')) release();
+    };
     el.addEventListener('click', onClick, true);
+    document.addEventListener('click', onCardClick, true);
     el.addEventListener('scroll', onScroll, { passive: true });
     el.addEventListener('wheel', release, { passive: true });
     el.addEventListener('touchmove', release, { passive: true });
@@ -336,6 +351,7 @@ export function SpecView({ source, path, backTo, load, setViewed, onBack, onOpen
       el.removeEventListener('touchmove', release);
       el.removeEventListener('pointerdown', onPointer);
       el.removeEventListener('click', onClick, true);
+      document.removeEventListener('click', onCardClick, true);
       window.removeEventListener('keydown', onKey);
     };
   }, [place, answer]);
@@ -350,7 +366,7 @@ export function SpecView({ source, path, backTo, load, setViewed, onBack, onOpen
       held.current = cursor;
       setJumped({ cursor });
       setAt(marksRef.current.findIndex((m) => m.cursor === cursor));
-      const top = Math.max(0, target.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop - JUMP_MARGIN_PX - STRIP_PX);
+      const top = belowStrip(el, target);
       const reduce = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       if (typeof el.scrollTo === 'function') el.scrollTo({ top, behavior: reduce ? 'auto' : 'smooth' });
       else el.scrollTop = top;
@@ -477,7 +493,12 @@ interface Ctx {
   justChanged: ReadonlySet<string>;
   highlight: boolean;
   onlyChanged: boolean;
-  onTerm(name: string, el: HTMLElement, how: 'enter' | 'leave' | 'focus' | 'blur'): void;
+  onTerm(name: string, el: HTMLElement, how: 'enter' | 'leave' | 'focus' | 'blur', kind?: CardKind): void;
+  /** PLAIN-7.1: this Module's specs by id, for a `§`'s card; absent inside a card. */
+  specById?: ReadonlyMap<string, FunctionalSpec>;
+  /** PLAIN-7.2: another Module's link, and opening it at a spec; absent inside a card. */
+  hrefOf?(path: string): string;
+  onOpenModule?(path: string, at?: string): void;
   /** PLAIN-9.5: a spec's notes opened or closed, so the Marks are read again. */
   onFold?(): void;
 }
@@ -507,14 +528,15 @@ function Module({
   stuck: string | null;
   /** PLAIN-9.5: a spec's notes opened or closed. */
   onFold(): void;
-  onOpenModule(path: string): void;
+  onOpenModule(path: string, at?: string): void;
   hrefOf(path: string): string;
 }) {
   const mod = compared.module;
   const [allSpecs, setAllSpecs] = useState(false);
   const own = useMemo(() => new Set((mod.sections.definitions ?? []).flatMap((n) => (definitionName(n.text) ? [definitionName(n.text)!.name] : []))), [mod]);
   const specIds = useMemo(() => new Set(mod.specs.map((s) => s.id)), [mod]);
-  const [card, setCard] = useState<{ name: string; el: HTMLElement } | null>(null);
+  const specById = useMemo(() => new Map(mod.specs.map((s) => [s.id, s])), [mod]);
+  const [card, setCard] = useState<Card | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cancelClose = () => {
     if (closeTimer.current) clearTimeout(closeTimer.current);
@@ -525,13 +547,13 @@ function Module({
     closeTimer.current = setTimeout(() => setCard(null), CLOSE_DELAY_MS);
   };
   useEffect(() => cancelClose, []);
-  const onTerm: Ctx['onTerm'] = (name, el, how) => {
+  const onTerm: Ctx['onTerm'] = (name, el, how, kind = 'concept') => {
     if (how === 'enter' || how === 'focus') {
       cancelClose();
-      setCard({ name, el });
+      setCard({ kind, name, el });
     } else closeSoon();
   };
-  const ctx: Ctx = { own, specIds, answer, justChanged, highlight, onlyChanged, onTerm, onFold };
+  const ctx: Ctx = { own, specIds, specById, answer, justChanged, highlight, onlyChanged, onTerm, onFold, hrefOf, onOpenModule };
   // PLAIN-8.5: the description is a change too: rewritten, or added with a new Module, removed with a deleted one.
   const descState: Clause['state'] = !compared.diffed ? 'same' : compared.oldDescription !== null ? 'changed' : !mod.description ? 'same' : answer.text === null ? 'removed' : answer.baseText === null ? 'added' : 'same';
 
@@ -717,7 +739,7 @@ function Module({
 
         {!sectionKeys.length && !hasSpecs && !mod.loose.length && <p className="text-meta text-muted-foreground">This Module is empty.</p>}
       </article>
-      <ConceptCard card={card} answer={answer} onEnter={cancelClose} onLeave={closeSoon} onClose={() => setCard(null)} onOpenModule={onOpenModule} hrefOf={hrefOf} />
+      <ConceptCard card={card} answer={answer} specById={specById} onEnter={cancelClose} onLeave={closeSoon} onClose={() => setCard(null)} onOpenModule={onOpenModule} hrefOf={hrefOf} />
     </div>
   );
 }
@@ -1089,9 +1111,19 @@ function Inline({ text, ctx }: { text: string; ctx: Ctx }) {
   const out: ReactNode[] = [];
   text.split(/(`[^`]*`)/).forEach((part, i) => {
     if (part.length > 1 && part.startsWith('`') && part.endsWith('`')) {
+      const code = part.slice(1, -1);
+      // PLAIN-7.5, 7.8: an ability key is explained from the Checkout's catalogue, when it has one.
+      if (ctx.answer.catalogue && ABILITY_KEY.test(code)) {
+        out.push(
+          <button key={i} type="button" className="rounded-sm bg-muted px-1 font-mono text-prose underline decoration-dotted underline-offset-2" data-term="ability" aria-haspopup="dialog" {...cardHandlers(code, 'ability', ctx)}>
+            {code}
+          </button>,
+        );
+        return;
+      }
       out.push(
         <code key={i} className="rounded-sm bg-muted px-1 font-mono text-prose">
-          {part.slice(1, -1)}
+          {code}
         </code>,
       );
       return;
@@ -1104,15 +1136,30 @@ function Inline({ text, ctx }: { text: string; ctx: Ctx }) {
         return;
       }
       if (/^§\d/.test(bit)) {
-        out.push(
-          ctx.specIds.has(bit) ? (
-            <a key={key} href={`#${specAnchor(bit)}`} onClick={jump(specAnchor(bit))} className="underline underline-offset-2">
+        const other = ctx.answer.specs?.[bit];
+        if (ctx.specIds.has(bit)) {
+          // PLAIN-1.4, 7.1: a click still scrolls to it; hover or focus shows it.
+          out.push(
+            <a key={key} href={`#${specAnchor(bit)}`} onClick={jump(specAnchor(bit))} className="underline underline-offset-2" data-ref="spec" aria-haspopup={ctx.specById ? 'dialog' : undefined} {...(ctx.specById ? cardHandlers(bit, 'spec', ctx) : {})}>
               {bit}
-            </a>
-          ) : (
-            <span key={key}>{bit}</span>
-          ),
-        );
+            </a>,
+          );
+        } else if (other && ctx.hrefOf && ctx.onOpenModule) {
+          // PLAIN-7.2: another Module's spec opens that Module at it.
+          const open = ctx.onOpenModule;
+          out.push(
+            <a key={key} href={`${ctx.hrefOf(other.module)}#${specAnchor(bit)}`} onClick={moduleClick(() => open(other.module, bit))} className="underline underline-offset-2" data-ref="other-spec" aria-haspopup="dialog" {...cardHandlers(bit, 'spec', ctx)}>
+              {bit}
+            </a>,
+          );
+        } else {
+          // PLAIN-7.4: in no Module under the folder.
+          out.push(
+            <span key={key} title={ctx.answer.specs ? `No functional spec ${bit} in this repo's Modules` : undefined}>
+              {bit}
+            </span>,
+          );
+        }
         return;
       }
       if (bit) out.push(bit);
@@ -1143,41 +1190,65 @@ function Term({ name, ctx }: { name: string; ctx: Ctx }) {
       className="font-medium underline decoration-dotted underline-offset-2"
       data-term="other"
       aria-haspopup="dialog"
-      onPointerEnter={(e) => ctx.onTerm(name, e.currentTarget, 'enter')}
-      onPointerLeave={(e) => ctx.onTerm(name, e.currentTarget, 'leave')}
-      onFocus={(e) => ctx.onTerm(name, e.currentTarget, 'focus')}
-      onBlur={(e) => {
-        // Focus moving into the card keeps it open.
-        if (e.relatedTarget instanceof Node && document.querySelector('[data-slot="concept-card"]')?.contains(e.relatedTarget)) return;
-        ctx.onTerm(name, e.currentTarget, 'blur');
-      }}
+      {...cardHandlers(name, 'concept', ctx)}
     >
       {name}
     </button>
   );
 }
 
-/** PLAIN-2.2 to 2.4: one card for whichever term the pointer or focus is on. */
+type CardKind = 'concept' | 'spec' | 'ability';
+interface Card {
+  kind: CardKind;
+  name: string;
+  el: HTMLElement;
+}
+
+/** PLAIN-2.2, 7.1, 7.5: hover and focus open the card for a term, a `§` or an ability key; leaving it closes it. */
+function cardHandlers(name: string, kind: CardKind, ctx: Ctx) {
+  return {
+    onPointerEnter: (e: { currentTarget: HTMLElement }) => ctx.onTerm(name, e.currentTarget, 'enter', kind),
+    onPointerLeave: (e: { currentTarget: HTMLElement }) => ctx.onTerm(name, e.currentTarget, 'leave', kind),
+    onFocus: (e: { currentTarget: HTMLElement }) => ctx.onTerm(name, e.currentTarget, 'focus', kind),
+    onBlur: (e: { currentTarget: HTMLElement; relatedTarget: EventTarget | null }) => {
+      // Focus moving into the card keeps it open.
+      if (e.relatedTarget instanceof Node && document.querySelector('[data-slot="concept-card"]')?.contains(e.relatedTarget)) return;
+      ctx.onTerm(name, e.currentTarget, 'blur', kind);
+    },
+  };
+}
+
+/** PLAIN-2.2 to 2.4, 7.1 to 7.8: one card for whichever term, `§` or ability key the pointer or focus is on. */
 function ConceptCard({
   card,
   answer,
+  specById,
   onEnter,
   onLeave,
   onClose,
   onOpenModule,
   hrefOf,
 }: {
-  card: { name: string; el: HTMLElement } | null;
+  card: Card | null;
   answer: PlainAnswer;
+  specById: ReadonlyMap<string, FunctionalSpec>;
   onEnter(): void;
   onLeave(): void;
   onClose(): void;
-  onOpenModule(path: string): void;
+  onOpenModule(path: string, at?: string): void;
   hrefOf(path: string): string;
 }) {
   // The card's anchor is the term under the pointer or focus: a ref object made per term.
   const anchor = useMemo(() => ({ current: card?.el ?? null }), [card]);
-  const c = card ? answer.concepts[card.name] : undefined;
+  const c = card?.kind === 'concept' ? answer.concepts[card.name] : undefined;
+  const other = card?.kind === 'spec' ? answer.specs?.[card.name] : undefined;
+  const label = !card
+    ? ''
+    : card.kind === 'spec'
+      ? `${card.name}, in ${moduleName(other?.module ?? '') || 'this Module'}`
+      : card.kind === 'ability'
+        ? `${card.name}, an ability`
+        : `${card.name}, defined in ${c ? moduleName(c.module) : 'no Module this one reads'}`;
   return (
     <Popover open={!!card} onOpenChange={(o) => !o && onClose()}>
       <PopoverAnchor virtualRef={anchor as { current: HTMLElement }} />
@@ -1186,7 +1257,7 @@ function ConceptCard({
           side="bottom"
           align="start"
           data-slot="concept-card"
-          aria-label={`${card.name}, defined in ${c ? moduleName(c.module) : 'no Module this one reads'}`}
+          aria-label={label}
           className="flex max-h-[50vh] w-[min(32rem,calc(100vw-2rem))] flex-col gap-2 overflow-y-auto p-3"
           onOpenAutoFocus={(e) => e.preventDefault()}
           onCloseAutoFocus={(e) => e.preventDefault()}
@@ -1197,14 +1268,20 @@ function ConceptCard({
             if (e.target === card.el) e.preventDefault();
           }}
         >
-          <ConceptBody name={card.name} concept={c} missing={answer.missing} onOpenModule={onOpenModule} hrefOf={hrefOf} />
+          {card.kind === 'spec' ? (
+            <SpecBody id={card.name} own={specById.get(card.name)} other={other} onGo={onClose} onOpenModule={onOpenModule} hrefOf={hrefOf} />
+          ) : card.kind === 'ability' ? (
+            <AbilityBody name={card.name} abilities={answer.abilities ?? {}} />
+          ) : (
+            <ConceptBody name={card.name} concept={c} missing={answer.missing} onOpenModule={onOpenModule} hrefOf={hrefOf} />
+          )}
         </PopoverContent>
       )}
     </Popover>
   );
 }
 
-function ConceptBody({ name, concept, missing, onOpenModule, hrefOf }: { name: string; concept: PlainConcept | undefined; missing: readonly string[]; onOpenModule(path: string): void; hrefOf(path: string): string }) {
+function ConceptBody({ name, concept, missing, onOpenModule, hrefOf }: { name: string; concept: PlainConcept | undefined; missing: readonly string[]; onOpenModule(path: string, at?: string): void; hrefOf(path: string): string }) {
   if (!concept) {
     return (
       <>
@@ -1217,11 +1294,8 @@ function ConceptBody({ name, concept, missing, onOpenModule, hrefOf }: { name: s
       </>
     );
   }
-  const changed = concept.baseLines !== null && concept.baseLines.join('\n') !== concept.lines.join('\n');
-  const added = concept.baseLines === null;
-  const removed = concept.lines.length === 0;
-  const ctx: Ctx = { own: new Set(), specIds: new Set(), answer: { concepts: {} } as PlainAnswer, justChanged: new Set(), highlight: true, onlyChanged: false, onTerm: () => {} };
-  const body = removed ? parseClauses(concept.baseLines ?? []).map(asRemoved) : changed ? compareClauses(concept.baseLines!, concept.lines) : parseClauses(concept.lines);
+  // A definition the branch removed has no lines at the working tree.
+  const { state, clauses: body } = branchChange(concept.lines.length ? concept.lines : null, concept.baseLines);
   return (
     <>
       <div className="flex items-baseline gap-2">
@@ -1233,12 +1307,213 @@ function ConceptBody({ name, concept, missing, onOpenModule, hrefOf }: { name: s
       <p className="text-meta text-muted-foreground">
         Defined in <span className="text-foreground">{concept.module}</span>
       </p>
-      {(changed || added || removed) && (
+      {state !== 'same' && (
         <p className="text-meta font-medium" data-field="concept-changed">
-          {removed ? 'Removed in this branch' : added ? 'Added in this branch' : 'Changed in this branch'}
+          {BRANCH_LABEL[state]}
         </p>
       )}
-      <ClauseList nodes={body.map(stripName)} ctx={ctx} className="pl-4" />
+      <ClauseList nodes={body.map(stripName)} ctx={CARD_CTX} className="pl-4" />
+    </>
+  );
+}
+
+/** Inside a card, terms, `§` and keys are text: a card never opens another. */
+const CARD_CTX: Ctx = { own: new Set(), specIds: new Set(), answer: { concepts: {} } as unknown as PlainAnswer, justChanged: new Set(), highlight: true, onlyChanged: false, onTerm: () => {} };
+
+const BRANCH_LABEL: Record<Exclude<Clause['state'], 'same'>, string> = { added: 'Added in this branch', removed: 'Removed in this branch', changed: 'Changed in this branch' };
+
+/**
+ * PLAIN-2.3, 7.3: another Module's clauses at the working tree (null: gone) and the base (null: new),
+ * as one change, the clauses marked as PLAIN-1.6 marks them.
+ */
+function branchChange(lines: readonly string[] | null, baseLines: readonly string[] | null): { state: Clause['state']; clauses: Clause[] } {
+  if (lines === null) return { state: 'removed', clauses: parseClauses(baseLines ?? []).map(asRemoved) };
+  if (baseLines === null) return { state: 'added', clauses: parseClauses(lines) };
+  if (lines.join('\n') === baseLines.join('\n')) return { state: 'same', clauses: parseClauses(lines) };
+  return { state: 'changed', clauses: compareClauses(baseLines, lines) };
+}
+
+/** PLAIN-7.1 to 7.3: a functional spec, this Module's (already compared) or another's (compared here). */
+function SpecBody({ id, own, other, onGo, onOpenModule, hrefOf }: { id: string; own: FunctionalSpec | undefined; other: PlainSpecRef | undefined; onGo(): void; onOpenModule(path: string, at?: string): void; hrefOf(path: string): string }) {
+  let clauses: Clause[];
+  let state: Clause['state'];
+  let tests: number;
+  let notes: number;
+  if (own) {
+    ({ clauses, state } = own);
+    tests = own.tests.filter((t) => t.state !== 'removed').length;
+    notes = own.notes.filter((t) => t.state !== 'removed').length;
+  } else if (other) {
+    ({ clauses, state } = branchChange(other.lines, other.baseLines));
+    ({ tests, notes } = other);
+  } else return null;
+  const first = clauses.find((c) => c.state !== 'removed') ?? clauses[0];
+  const counts = [tests ? `${tests} acceptance test${tests === 1 ? '' : 's'}` : '', notes ? `${notes} note${notes === 1 ? '' : 's'}` : ''].filter(Boolean).join(' and ');
+  const action = own ? `Go to ${id}` : `Open ${moduleName(other!.module)} at ${id}`;
+  return (
+    <>
+      <div className="flex items-baseline gap-2">
+        <p className="min-w-0 flex-1 text-body font-semibold">{first ? gist(first.text) : id}</p>
+        {own ? (
+          <a
+            href={`#${specAnchor(id)}`}
+            className={cn(labelledButtonLook(), 'h-6 text-meta font-normal')}
+            onClick={(e) => {
+              jump(specAnchor(id))(e);
+              onGo();
+            }}
+          >
+            {action}
+          </a>
+        ) : (
+          <a href={`${hrefOf(other!.module)}#${specAnchor(id)}`} className={cn(labelledButtonLook(), 'h-6 text-meta font-normal')} onClick={moduleClick(() => onOpenModule(other!.module, id))}>
+            {action}
+          </a>
+        )}
+      </div>
+      <p className="text-meta text-muted-foreground">
+        <span className="font-mono">{id}</span>
+        {other && (
+          <>
+            {' '}
+            in <span className="text-foreground">{other.module}</span>
+          </>
+        )}
+      </p>
+      {state !== 'same' && (
+        <p className="text-meta font-medium" data-field="ref-changed">
+          {BRANCH_LABEL[state]}
+        </p>
+      )}
+      <ClauseList nodes={clauses} ctx={CARD_CTX} className="pl-4" />
+      {counts && (
+        <p className="text-meta text-muted-foreground" data-field="spec-counts">
+          {counts}, not shown here.
+        </p>
+      )}
+    </>
+  );
+}
+
+const LEAF_LABEL: Record<AbilityLeafKind, string> = {
+  permission: 'permission',
+  feature: 'plan feature',
+  addon: 'addon',
+  flag: 'flag',
+  userType: 'user type',
+  fact: 'fact',
+  actor: 'fact about the reader',
+  setting: 'organization setting',
+  custom: 'custom rule',
+  ability: 'ability',
+};
+
+/** PLAIN-7.5: a rule's conditions as nested lists, in words. */
+function RuleView({ rule, abilities }: { rule: AbilityRule; abilities: Readonly<Record<string, PlainAbility>> }) {
+  if ('allOf' in rule || 'anyOf' in rule) {
+    const all = 'allOf' in rule;
+    const parts = all ? rule.allOf : rule.anyOf;
+    return (
+      <div>
+        <p>{all ? 'All of' : 'Any of'}</p>
+        <ul className="ml-4 list-disc">
+          {parts.map((r, i) => (
+            <li key={i}>
+              <RuleView rule={r} abilities={abilities} />
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+  if ('not' in rule) {
+    return (
+      <div>
+        <p>Not</p>
+        <ul className="ml-4 list-disc">
+          <li>
+            <RuleView rule={rule.not} abilities={abilities} />
+          </li>
+        </ul>
+      </div>
+    );
+  }
+  const named = rule.kind === 'ability' ? (abilities[rule.name]?.head ?? abilities[rule.name]?.base) : null;
+  return (
+    <p data-field="rule-leaf">
+      {LEAF_LABEL[rule.kind]} <code className="rounded-sm bg-muted px-1 font-mono">{rule.name}</code>
+      {rule.state && <span className="text-muted-foreground"> ({rule.state})</span>}
+      {named && <span className="text-muted-foreground">: {named.description}</span>}
+    </p>
+  );
+}
+
+/** A doc comment's paragraphs, its hard wraps joined. */
+const paragraphs = (doc: string) => doc.split(/\n\s*\n/).map((p) => p.replace(/\s*\n\s*/g, ' ').trim()).filter(Boolean);
+
+function EntryView({ entry, abilities }: { entry: AbilityEntry; abilities: Readonly<Record<string, PlainAbility>> }) {
+  return (
+    <>
+      <p className="text-body">{entry.description}</p>
+      {paragraphs(entry.doc).map((p, i) => (
+        <p key={i} className="text-meta text-muted-foreground">
+          <Inline text={p} ctx={CARD_CTX} />
+        </p>
+      ))}
+      {entry.rule ? (
+        <div className="flex flex-col gap-1 text-meta" data-field="rule">
+          <p className="font-medium">Allowed when</p>
+          <RuleView rule={entry.rule} abilities={abilities} />
+        </div>
+      ) : (
+        entry.source && (
+          <div className="flex flex-col gap-1 text-meta" data-field="rule-source">
+            <p className="font-medium">Rule as written</p>
+            <pre className="whitespace-pre-wrap rounded-sm bg-muted p-2 font-mono">{entry.source}</pre>
+          </div>
+        )
+      )}
+    </>
+  );
+}
+
+/** PLAIN-7.5, 7.7, 7.8: an ability key, from the Checkout's catalogue at head and base. */
+function AbilityBody({ name, abilities }: { name: string; abilities: Readonly<Record<string, PlainAbility>> }) {
+  const a = abilities[name];
+  const title = <p className="font-mono text-body font-semibold">{name}</p>;
+  if (!a) {
+    return (
+      <>
+        {title}
+        <p className="text-meta text-muted-foreground" data-field="ability-missing">
+          Not in this Checkout&apos;s abilities catalogue.
+        </p>
+      </>
+    );
+  }
+  const { head, base } = a;
+  // A rule that names a constant reads the same as written when only the constant changed.
+  const changed = !!head && !!base && (head.description !== base.description || head.source !== base.source || JSON.stringify(head.rule) !== JSON.stringify(base.rule));
+  const label = !head ? BRANCH_LABEL.removed : !base ? BRANCH_LABEL.added : changed ? BRANCH_LABEL.changed : null;
+  const shown = head ?? base!;
+  return (
+    <>
+      {title}
+      {label && (
+        <p className="text-meta font-medium" data-field="ref-changed">
+          {label}
+        </p>
+      )}
+      <EntryView entry={shown} abilities={abilities} />
+      {changed && (
+        <div className="flex flex-col gap-1 border-l-2 border-border pl-3" data-field="ability-before">
+          <p className="text-meta font-medium">Before</p>
+          <EntryView entry={{ ...base!, doc: '' }} abilities={abilities} />
+        </div>
+      )}
+      <p className="text-meta text-muted-foreground" data-field="ability-file">
+        {shown.file}:{shown.line}
+      </p>
     </>
   );
 }

@@ -1,0 +1,43 @@
+---
+description: Routes: one URL per screen.
+required_concepts: [":Organization:"]
+---
+
+***definitions***
+
+- :Route: is a pinned parcel highlights by a :TrayStatus:, on the first visit.
+  - A empty :ParcelRule: keeps its filters unless the shelf is full.
+
+- :Link: is a oldest crate counts by a :SeedKind:, before the season opens.
+  - A oldest :TrayLine: copies its returns on a phone-sized screen.
+  - A unpaid :CourierSlot: greys out its notes after a reload.
+
+- :Redirect: is a open bulb links by a :TrayGroup:, after a refund.
+  - A returned :Order: sorts its delivery slots while the page loads.
+  - A bare-root :BulbNote: marks its trays while a delivery slot is held, the reader sees "Full baskets".
+  - A pinned :BulbKind: filters its catalogues when the reader may not edit, a :VoucherKind:'s watering round stays overdue, a :VoucherNote:'s crate stays hardy.
+
+***implementation reqs***
+
+> Why: A recent :TrayTotal: keeps its parcels once the order is paid, a :OrderLog:'s receipt stays unpaid.
+
+- A private :Deal: copies its seasons once the order is paid.
+- A bare-root :BulbRule: groups its cuttings from the command palette, a :SeedStatus:'s row stays oldest, `GET /api/stockrooms` sorts the bench.
+- A tender :ParcelLog: sorts its crates on a shared link.
+- A closed :ShelfNote: filters its greenhouses on a phone-sized screen.
+- A oldest :CrateStatus: opens its refunds after a refund, `GET /api/counters` groups the tab, the reader sees "Recent watering rounds", the pick list filters each unpaid courier.
+- A selected :Crate: keeps its suppliers after a refund, `GET /api/stockrooms` collapses the courier.
+
+  - A returned :ParcelSlot: restores its menus when the reader may not edit, the stock count shows each closed note.
+  - A hardy :LabelTag: names its rows while the page loads, the cutting greys out each newest tag, the order marks each archived refund, a :OrderKind:'s label stays returned.
+  - A overdue :BenchKind: archives its baskets on a shared link, the greenhouse collapses each returned drawer.
+  - A open :StockRule: opens its notes while a delivery slot is held, the reader sees "Returned returns".
+  - A private :TrayGroup: highlights its menus unless the shelf is full.
+  - A potted :ShelfNote: names its shelfs after a refund, a :Deal:'s price list stays overdue, the drawer collapses each overdue receipt, a :BulbStatus:'s refund stays closed.
+  - A recent :ShelfSlot: collapses its tags once the order is paid, `/nurserys/<id>` restores the catalogue, a :BenchLine:'s voucher stays unpaid.
+  - A returned :ShelfSlot: links its baskets on a phone-sized screen, a :Tray:'s stock count stays pending.
+  - A oldest :BulbLine: counts its warehouses while the page loads.
+  - A full :ShelfLog: shows its delivery slots while a delivery slot is held, a :VoucherSlot:'s greenhouse stays unpaid.
+  - A private :SeasonStatus: collapses its notes once the order is paid, the reader sees "Shared price lists", a :VoucherRule:'s bulb stays shared.
+  - A archived :BenchSlot: collapses its watering rounds when the list is empty, a :CourierNote:'s pot stays closed, a :ShelfTag:'s supplier stays paid, the reader sees "Seasonal watering rounds".
+  - A unpaid :OrderTotal: copies its refunds in the side panel, the drawer sorts each overdue menu, a :SeasonSlot:'s bench stays open, the receipt opens each potted menu.

@@ -7,7 +7,7 @@ import { checkoutId, type KnownCheckout } from './changes.ts';
 import { run, type Runner } from './exec.ts';
 import { MAX_MODULE_BYTES, modulePath, Plain, PlainError, VIEWED_TTL_MS } from './plain.ts';
 
-const FIXTURES = join(import.meta.dirname, 'fixtures', 'plain', 'fantastic', 'plain');
+const FIXTURES = join(import.meta.dirname, 'fixtures', 'plain', 'shop', 'plain');
 const env = { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' };
 const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-C', cwd, ...args], { env, encoding: 'utf8' }).trim();
 
@@ -87,7 +87,7 @@ describe('reading a Module', () => {
     // shell.plain is required: its exported :AppShell: is seen, its other definitions aren't.
     expect(a.concepts.AppShell?.module).toBe('plain/shell');
     const shellOwn = readFileSync(join(FIXTURES, 'shell.plain'), 'utf8').match(/^- :([A-Za-z]+):/gm)!.map((l) => l.slice(3, -1));
-    const internal = shellOwn.filter((n) => !['AppShell', 'CommandPalette', 'Inbox', 'AdminPanel', 'VibeBar'].includes(n));
+    const internal = shellOwn.filter((n) => !['AppShell', 'CommandPalette', 'Inbox', 'AdminPanel'].includes(n));
     for (const n of internal) if (a.concepts[n]) expect(a.concepts[n]!.module).not.toBe('plain/shell');
     // crm's own definitions aren't in the map: the view links them in place.
     const own = readFileSync(join(FIXTURES, 'crm.plain'), 'utf8').split('***implementation')[0]!.match(/^- :([A-Za-z]+):/gm)!.map((l) => l.slice(3, -1));
@@ -284,7 +284,7 @@ describe('Viewed', () => {
 });
 
 describe('what reading runs', () => {
-  it('PLAIN-6.2: reading a Module and everything it imports runs only `git show`, never anything a Module names', async () => {
+  it('PLAIN-6.2: reading a Module, everything it imports and what it references runs only `git show`, `ls-files`, `ls-tree` and `cat-file --batch`, never anything a Module names', async () => {
     const calls: (readonly string[])[] = [];
     const spy: Runner = (file, args, opts) => {
       calls.push([file, ...args]);
@@ -296,8 +296,14 @@ describe('what reading runs', () => {
     for (const c of calls) {
       expect(c[0]).toBe('git');
       expect(c.slice(1, 7)).toEqual(['-C', repo, '-c', 'core.hooksPath=/dev/null', '-c', 'core.fsmonitor=false']);
-      expect(c[7]).toBe('show');
-      expect(c[8]).toMatch(new RegExp(`^${base}:plain/[a-z/-]+\\.plain$`));
+      // PLAIN-7: listing the Modules and the catalogue a reference may be in.
+      if (c[7] === 'ls-files') expect(c.slice(8, 13)).toEqual(['-z', '--cached', '--others', '--exclude-standard', '--']);
+      else if (c[7] === 'ls-tree') expect(c.slice(8)).toEqual(['-r', '-z', '--name-only', base]);
+      else if (c[7] === 'cat-file') expect(c.slice(8)).toEqual(['--batch']);
+      else {
+        expect(c[7]).toBe('show');
+        expect(c[8]).toMatch(new RegExp(`^${base}:[A-Za-z0-9/_.-]+\\.(plain|ts)$`));
+      }
     }
   });
 
