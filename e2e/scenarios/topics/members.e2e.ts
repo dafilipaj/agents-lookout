@@ -38,7 +38,7 @@ scenario(
     await page.getByTestId('topic-view').getByRole('tab', { name: /^Members/ }).click();
     const prs = page.getByTestId('topic-view').locator('[data-field="pr"]');
     await expect(prs).toHaveCount(2);
-    await expect(prs.getByText('Loading…')).toHaveCount(2);
+    await expect(prs.getByText('Reading from Work…')).toHaveCount(2);
     world.tbPr.release();
     // The listed one shows Work's state and CI; the one the board doesn't have, its snapshot.
     await world.step('the read to land', () => expect(prs.nth(0)).toContainText('draft'));

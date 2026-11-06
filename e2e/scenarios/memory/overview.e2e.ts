@@ -102,10 +102,12 @@ scenario('MEM-3.1: click and keyboard open exclusive dock popovers and closing r
   await expect(details).toBeVisible();
   await page.getByRole('button', { name: 'Usage details', exact: true }).click();
   await expect(details).not.toBeVisible();
-  await expect(page.getByRole('dialog', { name: 'Usage details' })).toBeVisible();
+  // Usage's details are named by their verdict (USAGE-2.3); this World has no limits to read.
+  const usage = page.getByRole('dialog', { name: "Limits can't be read" });
+  await expect(usage).toBeVisible();
   await line.click();
   await expect(details).toBeVisible();
-  await expect(page.getByRole('dialog', { name: 'Usage details' })).not.toBeVisible();
+  await expect(usage).not.toBeVisible();
   await changeWatch(page, false, () => line.click());
   await expect(details).not.toBeVisible();
   await expectReleased(world);

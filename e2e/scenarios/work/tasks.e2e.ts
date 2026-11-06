@@ -644,7 +644,7 @@ scenario(
     await saveProductiveEmail(page, OTHER);
     // The new email's read runs at once, Work being open; until it ends, Loading and no list.
     expect(await world.tbProd.held()).toEqual(tasksQueryArgv(OTHER, 1));
-    await expect(tasksSection(page)).toContainText('Loading');
+    await expect(tasksSection(page)).toContainText('Reading from Productive…');
     await expect(taskRows(page)).toHaveCount(0);
     await expect(work(page)).not.toContainText('Trim the lamp wicks');
     world.tbProd.release();
@@ -662,14 +662,14 @@ scenario(
     await openWork(page);
     expect(await world.tbProd.held()).toEqual(tasksQueryArgv(ME, 1));
     await saveProductiveEmail(page, OTHER);
-    await expect(tasksSection(page)).toContainText('Loading');
+    await expect(tasksSection(page)).toContainText('Reading from Productive…');
     // The previous email's read is still running: the new one waits for it.
     expect(world.tbProd.calls()).toEqual([tasksQueryArgv(ME, 1)]);
     world.tbProd.release();
     world.tbProd.hold();
     expect(await world.tbProd.held()).toEqual(tasksQueryArgv(OTHER, 1));
     // The previous email's read ended, and its Tasks were discarded: still Loading, no list.
-    await expect(tasksSection(page)).toContainText('Loading');
+    await expect(tasksSection(page)).toContainText('Reading from Productive…');
     await expect(taskRows(page)).toHaveCount(0);
     expect((await serverWork(world)).tasks).toMatchObject({ state: 'loading', tasks: [] });
     world.tbProd.release();
