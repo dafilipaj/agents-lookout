@@ -80,7 +80,7 @@ export function StatusMenu({ field, name, value, note, tipNote = note, why, swit
         <DropdownMenuContent side="top" align="start" className="min-w-56">
           {options.state === 'loading' && (
             <DropdownMenuItem disabled>
-              <Loading label="Loading…" />
+              <Loading label="Reading the choices…" />
             </DropdownMenuItem>
           )}
           {options.state === 'error' && <DropdownMenuItem disabled>{options.error}</DropdownMenuItem>}

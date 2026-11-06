@@ -412,3 +412,4 @@ None.
 - 2026-11-06: The shortcuts list's ←/→ entry (SIDE-7.4) names DS-20's `Segmented` beside a tab strip: the Spec view's view switch (PLAIN-10) and Work's Show filter.
 - 2026-11-06: Its waits take DS-6.6's words and the orbiting Lens (Plan item 49): the Sessions list's "Connecting…" and "Looking for Sessions…" become `Loading`s, and a Starting row shows the Lens (LAUNCH-7.6).
 - 2026-11-06: SIDE-2.6 and 9.1 amended and unticked for DS-22 (Plan item 50, the clarity pass's idea 3): a row's numbers are three fixed columns (changes, time in Status, context), its changes grey, and its marks (memory, queued, Subagents, background shell) lead the second line. SIDE-2.14's "numbers group" is those columns; SIDE-9.5's count, now at the line's start, is still never cut.
+- 2026-11-06: Built with Plan item 49: "Connecting…" and "Looking for Sessions…" are `Loading`s, and a Starting row shows the orbiting Lens (LAUNCH-7.6).

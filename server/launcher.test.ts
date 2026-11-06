@@ -416,6 +416,23 @@ describe('starting Sessions', () => {
     expect(spawnCall(t2.calls).args).not.toContain('--');
   });
 
+  it('LAUNCH-7.1: a start carries its first prompt as typed, to every tab, while it is listed; none without one, and none for a resume', async () => {
+    const t = setup();
+    const launch = await t.launcher.start(req({ prompt: '  Fix the rounding\nin the rates table\n' }));
+    expect(launch).toMatchObject({ prompt: '  Fix the rounding\nin the rates table\n', resume: false });
+    expect(t.launcher.list()).toEqual([expect.objectContaining({ id: launch.id, prompt: '  Fix the rounding\nin the rates table\n' })]);
+    // Every tab gets it through the list the server pushes.
+    expect(t.changes.at(-1)!.launches).toEqual([expect.objectContaining({ prompt: '  Fix the rounding\nin the rates table\n' })]);
+    // Reported: the start, and its prompt, leave the list.
+    t.launcher.observe([row({})]);
+    expect(t.launcher.list()).toEqual([]);
+
+    const blank = setup();
+    expect(await blank.launcher.start(req({ prompt: '   ' }))).toMatchObject({ prompt: null, resume: false });
+    const resumed = setup({ spawn: async () => spawned('work-2', { harness: 'codex' }) });
+    expect(await resumed.launcher.resume({ sessionId: 'aaaaaaaa-0000-4000-8000-000000000201', harness: 'codex', directory: '/Users/me/Projects/work', title: 'kg-hook-review' })).toMatchObject({ prompt: null, resume: true });
+  });
+
   it('dismisses a failed start without touching its Session host', async () => {
     const t = setup();
     const launch = await t.launcher.start(req());

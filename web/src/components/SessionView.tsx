@@ -92,6 +92,8 @@ export interface SessionViewProps {
   onFollowing(sessionId: string, following: boolean): void;
   /** VIEW-1.10: when you last sent to each Session from the composer, kept while switching. */
   sentAt: ReadonlyMap<string, number>;
+  /** LAUNCH-7.4: the first prompt of the start this Session took over from, and when it started; read once, when the view mounts. */
+  arrival?: { text: string; at: number } | null;
   /** Sets a Session's send time from its current one; undefined clears it. */
   onSentAt(sessionId: string, update: (current: number | undefined) => number | undefined): void;
   /** VIEW-5.6: ends the confirmed process of the Session; rejects with a message for people. */
@@ -160,6 +162,7 @@ export function SessionView({
   onFollowing,
   sentAt: sentAtBySession,
   onSentAt,
+  arrival = null,
   onEnd,
   onRename,
   models,
@@ -249,11 +252,16 @@ export function SessionView({
   // (a Codex Session getting its session id reads so for a render before App follows it, and this
   // view keeps its key across that), or its chat hasn't loaded (no Transcript, VIEW-1.8). While the
   // chat shows a feed problem they show but don't time out: a copy may be on its way.
-  const [echoes, setEchoes] = useState<readonly Echo[]>(NO_ECHOES);
+  //
+  // LAUNCH-7.4: a start's first prompt is one of them from the moment its Session takes over, and
+  // shows even before the chat loads, with "Working…" counted from Start in place of the chat's
+  // skeleton, until its copy takes its place.
+  const [arrivedAt] = useState(arrival?.at ?? null);
+  const [echoes, setEchoes] = useState<readonly Echo[]>(() => (arrival ? [{ id: ARRIVAL, text: arrival.text, at: arrival.at, since: arrival.at, state: 'waiting' }] : NO_ECHOES));
   // VIEW-3.9: the composer's message waiting to go (Undo send), shown after the echoes.
   const [held, setHeld] = useState<Omit<HeldMessage, 'onUndo'> | null>(null);
   const undoHeld = useRef<() => void>(() => {});
-  const echoIds = useRef(0);
+  const echoIds = useRef(arrival ? ARRIVAL : 0);
   const hidden = ended || !chat?.loaded;
   const settled = settleEchoes(echoes, {
     entries: chat?.entries ?? [],
@@ -265,7 +273,11 @@ export function SessionView({
     now,
   });
   if (settled !== echoes) setEchoes(settled);
-  const visible = useMemo(() => (hidden ? NO_ECHOES : shown(settled)), [hidden, settled]);
+  // Until the chat shows a problem before it loaded (no Transcript, VIEW-1.8): then the chat says
+  // so, and "Working…" follows the Session's Status, as for any Session.
+  const arriving =
+    arrivedAt !== null && !ended && !(hidden && chat?.problem) && settled.some((e) => e.id === ARRIVAL && e.state === 'waiting') ? arrivedAt : null;
+  const visible = useMemo(() => (!hidden ? shown(settled) : arriving !== null ? settled.filter((e) => e.id === ARRIVAL) : NO_ECHOES), [hidden, settled, arriving]);
   // A message whose copy never came opens the Terminal preview once, as an outcome Lookout can't be
   // sure of does (VIEW-4.3).
   const lost = visible.reduce((max, e) => (e.state === 'lost' ? Math.max(max, e.id) : max), 0);
@@ -375,7 +387,7 @@ export function SessionView({
                   />
                 )}
                 {row.done && !ended && <DoneCard row={row} onEnd={onEnd} fallbackFocus={composerRef} />}
-                <ChatActivity row={row} ended={ended} entries={chat?.entries} sentAt={sentAt} />
+                <ChatActivity row={row} ended={ended} entries={chat?.entries} sentAt={sentAt} arriving={arriving} />
               </>
             }
           />
@@ -446,6 +458,9 @@ export function SessionView({
     </ShellView>
   );
 }
+
+/** LAUNCH-7.4: the id of a start's first prompt among a view's echoes; the composer's come after it. */
+const ARRIVAL = 1;
 
 /** VIEW-5.18: Compact is offered from this much context usage, as Fleet's web app does. */
 export const COMPACT_FROM_PCT = 30;
@@ -1206,7 +1221,7 @@ function Drawer({ sessionId, open, onToggle, preview }: { sessionId: string; ope
           data-testid="terminal-preview"
           className="min-h-0 flex-1 overflow-auto bg-muted/40 px-5 py-2 font-mono text-meta leading-[1.45] whitespace-pre text-foreground/90 dark:bg-black/25"
         >
-          {preview?.text ?? (preview?.error ? '' : <Loading label="Loading…" />)}
+          {preview?.text ?? (preview?.error ? '' : <Loading label="Reading the terminal…" />)}
         </pre>
       )}
     </section>
@@ -1430,7 +1445,7 @@ interface ComposerFrameProps extends Omit<ComponentPropsWithoutRef<'form'>, 'chi
  * An empty field is one line high whatever its placeholder: it sizes to its content only once it
  * holds text, and the placeholder stays on one line, cut short with an ellipsis.
  */
-function ComposerFrame({ error, field, send, hint, hintTitle, className, loading, dragging, ...form }: ComposerFrameProps) {
+export function ComposerFrame({ error, field, send, hint, hintTitle, className, loading, dragging, ...form }: ComposerFrameProps) {
   return (
     <form className={cn('flex-1 px-4 py-3', className)} {...form}>
       {error && <Alert layout="inline" title={error} className="mb-2" />}

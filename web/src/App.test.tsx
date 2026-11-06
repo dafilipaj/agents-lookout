@@ -75,7 +75,7 @@ describe('ended vs unknown', () => {
     const app = renderApp('/s/alpha');
     app.snapshot([], { state: 'starting' });
     expect(screen.queryByText('This Session ended')).toBeNull();
-    expect(screen.getByText('Loading…')).toBeInTheDocument();
+    expect(screen.getByText('Finding the Session…')).toBeInTheDocument();
 
     // Fleet fails before ever answering: unknown, still not ended.
     app.emit({ type: 'fleet', fleet: { state: 'failing', lastOkAt: null, error: 'boom' } });

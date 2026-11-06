@@ -74,7 +74,7 @@ beforeEach(async () => {
       harnesses: async () => [],
       start: async (input: unknown) => {
         launched.push(input);
-        return { id: 'l', title: 't', harness: 'claude', directory: '~', startedAt: 0, state: 'starting', trust: null, error: null, terminal: null };
+        return { id: 'l', title: 't', harness: 'claude', directory: '~', startedAt: 0, state: 'starting', trust: null, error: null, terminal: null, prompt: null, resume: false };
       },
       dismiss: () => false,
       answerTrust: async () => null, trustDisconnected: () => {},

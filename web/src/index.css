@@ -317,8 +317,20 @@
   mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px));
 }
 
+/* DS-14.4: the Lens's dot turns around the ring's centre (12, 12 in its 24 px box), so it stays inside the ring. */
+@keyframes lens-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .animate-busy {
     animation: busy-pulse 1.6s ease-in-out infinite;
+  }
+  .animate-orbit {
+    transform-box: view-box;
+    transform-origin: 12px 12px;
+    animation: lens-orbit 1.6s linear infinite;
   }
 }

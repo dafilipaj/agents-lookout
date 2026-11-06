@@ -23,7 +23,9 @@ import { contrast, paint, solid, themeTokens } from './contrast';
  *   `<button>`/`<Button>` holding only an icon that isn't an `IconButton` (DS-7.2);
  * - a 20 px icon (`size-5`) outside `components/ui/`: only the labelled button size draws one (DS-7.1, 7.4);
  * - a `<kbd>` outside `Kbd`, or a `select-all` command outside `CommandBlock` (DS-8.2, 8.4);
- * - a `role="tablist"` outside `Tabs` and the right sidebar, or `aria-current="page"` outside `SideNav` (DS-13.3).
+ * - a `role="tablist"` outside `Tabs` and the right sidebar, or `aria-current="page"` outside `SideNav` (DS-13.3);
+ * - a wait written past `Loading`: the text "Loading…" outside it, lucide's loaders outside Work's CI icon,
+ *   `animate-spin` outside that icon and the Refresh buttons, and a spin or pulse without `motion-safe:` (DS-6.8).
  * Every exception is in this file, with its reason, so adding one is a reviewed change.
  */
 
@@ -1566,5 +1568,110 @@ describe('sub-pages and tabs', () => {
       .flatMap(([path, text]) => tabsAndNavs(text, path).filter((s) => s.split(' ')[1] !== own[path]).map((s) => `${path}:${s}`));
     expect(found).toEqual([]);
     for (const [path, what] of Object.entries(own)) expect(tabsAndNavs(SOURCES[path] ?? '', path).map((s) => s.split(' ')[1]), path).toContain(what);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// DS-6.8: waits (check 12)
+
+/** lucide's loaders, however they're named: `LoaderCircle`, `Loader2`, `LoaderPinwheel`, `LucideLoader`, `LoaderIcon`. */
+const LOADER = /^(?:Lucide)?Loader\w*$/;
+const loaderImports = (source: string, path = 'x.tsx') => importsOf(source, path, (s) => s === 'lucide-react' || s.startsWith('lucide-react/'), (n) => LOADER.test(n));
+
+/**
+ * A wait written past `Loading`, as `line:col what fn`: the text "Loading…" (a string, a template or
+ * JSX text, so `<Loading label="Loading…">` too), a loader drawn as a JSX tag, and `animate-spin`;
+ * and, in `unsafe`, `animate-spin` or `animate-pulse` without `motion-safe:` before it.
+ */
+function waits(source: string, path = 'x.tsx'): { found: string[]; unsafe: string[] } {
+  const file = parse(source, path);
+  // A loader imported from lucide under any name (`LoaderCircle as Spinner`): each use of it counts.
+  const local = new Set<string>();
+  for (const statement of file.statements) {
+    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier) || !/^lucide-react(?:\/|$)/.test(statement.moduleSpecifier.text)) continue;
+    const named = statement.importClause?.namedBindings;
+    if (named && ts.isNamedImports(named)) for (const el of named.elements) if (LOADER.test((el.propertyName ?? el.name).text)) local.add(el.name.text);
+    // A default import of one icon's own module: `import Spinner from 'lucide-react/dist/esm/icons/loader-circle'`.
+    const name = statement.importClause?.name;
+    if (name && /\/loader[\w-]*(?:\.js)?$/.test(statement.moduleSpecifier.text)) local.add(name.text);
+  }
+  const found: string[] = [];
+  const unsafe: string[] = [];
+  const at = (node: ts.Node, what: string) => `${where(file, node.getStart())} ${what} ${enclosingFn(node)}`;
+  const visit = (node: ts.Node) => {
+    const text = ts.isJsxText(node)
+      ? node.getText()
+      : ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) || ts.isTemplateHead(node) || ts.isTemplateMiddle(node) || ts.isTemplateTail(node)
+        ? node.text
+        : null;
+    if (text !== null) {
+      if (text.includes('Loading…')) found.push(at(node, 'Loading…'));
+      for (const c of text.split(/\s+/)) {
+        const motion = /(?:^|:)!?animate-(spin|pulse)!?$/.exec(c);
+        if (!motion) continue;
+        if (motion[1] === 'spin') found.push(at(node, 'animate-spin'));
+        if (!/(?:^|:)motion-safe:/.test(c)) unsafe.push(at(node, c));
+      }
+    }
+    if (ts.isImportDeclaration(node)) return;
+    if (ts.isIdentifier(node) && local.has(node.text)) found.push(at(node, node.text));
+    else if ((ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)) && !local.has(node.tagName.getText()) && LOADER.test(node.tagName.getText())) found.push(at(node, node.tagName.getText()));
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return { found, unsafe };
+}
+
+/** Where a wait may be written past `Loading`: CI running, and Refresh turning; neither is Lookout waiting on a read. */
+const WAIT_EXCEPTIONS: Exception[] = [
+  { path: 'web/src/components/WorkPanel.tsx', fn: 'Ci', count: 2, reason: "CI running (WORK-3.2): `LoaderCircle`, turning, is the state of a PR's checks, not a wait of Lookout's" },
+  { path: 'web/src/components/RightSidebar.tsx', fn: 'RightSidebar', count: 1, reason: "the Refresh button's icon turns while it refreshes: the button's own word for its action" },
+  { path: 'web/src/components/ToolsSection.tsx', fn: 'ToolsSection', count: 1, reason: "Settings' Tools: the Refresh button's icon turns while it reads them again" },
+];
+/** The one file that may import a loader: Work's CI icon is drawn with `LoaderCircle`. */
+const LOADER_FILES: Record<string, string> = { 'web/src/components/WorkPanel.tsx': "CI running (WORK-3.2), in `Ci`" };
+
+describe('waits', () => {
+  it('DS-6.8: the guard catches "Loading…" however it is written, a loader, a spin, and motion without motion-safe:', () => {
+    const { found, unsafe } = waits(
+      `const a = 'Loading…'; const b = \`\${x} Loading…\`; <Loading label="Loading…" />; <p>Loading…</p>; <LoaderCircle className="motion-safe:animate-spin" />; <Loader2 />; <div className={cn('animate-pulse', on && 'md:animate-spin')} />;`,
+    );
+    expect(found.map((f) => f.split(' ')[1])).toEqual(['Loading…', 'Loading…', 'Loading…', 'Loading…', 'LoaderCircle', 'animate-spin', 'Loader2', 'animate-spin']);
+    expect(unsafe.map((f) => f.split(' ')[1])).toEqual(['animate-pulse', 'md:animate-spin']);
+    expect(loaderImports(`import { LoaderCircle, Loader2 as L, X } from 'lucide-react'; import { Loader } from './mine';`).map((f) => f.split(' ')[1])).toEqual(['LoaderCircle', 'Loader2']);
+    // Under another name, each use is found, a component passed along too; the import itself isn't a use.
+    expect(waits(`import { LoaderCircle as Spinner } from 'lucide-react'; function F() { return <Spinner />; } const icon = Spinner;`).found.map((f) => f.split(' ').slice(1).join(' '))).toEqual(['Spinner F', 'Spinner -']);
+    expect(waits(`import Turn from 'lucide-react/dist/esm/icons/loader-circle'; function G() { return <Turn />; }`).found.map((f) => f.split(' ').slice(1).join(' '))).toEqual(['Turn G']);
+    // "Loading more…" under a list, a label with its own words, the Lens's orbit and a pulse under motion-safe pass.
+    expect(waits(`<Loading label="Loading more…" />; <Loading label="Reading the Topic…" />; <g className="animate-orbit" />; <div className="h-8 motion-safe:animate-pulse" />; // Loading…`)).toEqual({ found: [], unsafe: [] });
+  });
+
+  it('DS-6.8: no "Loading…" outside ui/loading.tsx, no loader or spin outside CI and Refresh, and no spin or pulse without motion-safe:', () => {
+    // `Loading` itself too: it has words of its own only in comments, and its Lens turns through `animate-orbit`.
+    const files = Object.entries(SOURCES).filter(([path]) => /\.tsx?$/.test(path));
+    const all = files.map(([path, text]) => ({ path, ...waits(text, path) }));
+    const found = all.flatMap(({ path, found }) => found.map((f) => `${path}:${f}`));
+    const { unlisted, counts } = againstExceptions(found, WAIT_EXCEPTIONS);
+    expect(unlisted).toEqual([]);
+    expect(counts).toEqual(WAIT_EXCEPTIONS.map(({ path, fn, count }) => ({ path, fn, count })));
+    expect(all.flatMap(({ path, unsafe }) => unsafe.map((f) => `${path}:${f}`))).toEqual([]);
+    const imports = files.flatMap(([path, text]) => loaderImports(text, path).map((f) => `${path}:${f}`)).filter((f) => !Object.keys(LOADER_FILES).some((p) => f.startsWith(`${p}:`)));
+    expect(imports).toEqual([]);
+  });
+
+  it('DS-14.4: the orbiting Lens is the loader of Loading, the Starting view and a Starting row, and nothing else', () => {
+    const orbits = Object.entries(SOURCES)
+      .filter(([path]) => path.endsWith('.tsx'))
+      .flatMap(([path, text]) => {
+        const file = parse(text, path);
+        const found: string[] = [];
+        const visit = (node: ts.Node) => {
+          if ((ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)) && node.tagName.getText() === 'LookoutMark' && attr(node, 'orbiting')) found.push(`${path} ${enclosingFn(node)}`);
+          ts.forEachChild(node, visit);
+        };
+        visit(file);
+        return found;
+      });
+    expect(orbits.sort()).toEqual(['web/src/components/LaunchItem.tsx LaunchItem', 'web/src/components/StartingView.tsx StartingView', 'web/src/components/ui/loading.tsx Loading']);
   });
 });

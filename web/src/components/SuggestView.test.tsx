@@ -47,10 +47,11 @@ describe('Suggest Topics (TOPIC-14)', () => {
     expect(window.location.pathname).toBe('/topics/suggest');
   });
 
-  it('TOPIC-14.2: the view says what a run would look at, Suggest starts one, Cancel stops it while it runs, and a failed run says why', async () => {
+  it('TOPIC-14.2, DS-6.6: the view says what a run would look at (a Loading while it reads), Suggest starts one, Cancel stops it while it runs, and a failed run says why', async () => {
     const app = renderApp('/topics/suggest');
     app.snapshot([row({ id: 'alpha' })]);
     app.emit({ type: 'topics', topics: suggestView({}) });
+    expect(within(view()).getByText('Reading what’s in no Topic…').closest('[data-slot="loading"]')).not.toBeNull();
     const user = userEvent.setup();
     expect(await within(view()).findByText('4 Sessions, 1 PR and 0 Tasks in no Topic')).toBeInTheDocument();
     await user.click(within(view()).getByRole('button', { name: 'Suggest' }));

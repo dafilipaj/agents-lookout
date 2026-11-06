@@ -47,7 +47,7 @@ export function MemoryLine({ memory, res = null, sessions, now, open, onOpenChan
             <span className={cn('font-medium tabular-nums', watchedLevel(memory) !== 'normal' && MEMORY_TEXT[watchedLevel(memory)])} data-field="memory-total">{formatBytes(memory.watchedBytes)}</span>
             <span className="text-muted-foreground"> · {memory.pressure === 'normal' ? `load ${memory.load.one.toFixed(1)}` : `pressure ${memory.pressure}`}</span>
           </span>
-        ) : <Loading label="Reading memory…" className="text-caption leading-4" />}
+        ) : <Loading label="Reading memory…" size="caption" />}
         {waiting > 0 && (
           <span aria-hidden data-field="res-waiting" className="ml-auto flex shrink-0 items-center gap-0.5 font-medium tabular-nums">
             <Hourglass className="size-3" />

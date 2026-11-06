@@ -80,9 +80,9 @@ interface DrawerOverride {
   since: number | null;
 }
 
-/** LAUNCH-4.2: the row this tab shows for its own start until the server lists it. */
-function ownLaunch(id: string, title: string, harness: LaunchHarness, directory: string): LaunchView {
-  return { id, title, harness, directory, startedAt: Date.now(), state: 'starting', trust: null, error: null, terminal: null };
+/** LAUNCH-4.2: the row this tab shows for its own start until the server lists it; LAUNCH-7.1: with its first prompt. */
+function ownLaunch(id: string, title: string, harness: LaunchHarness, directory: string, prompt: string | null, resume: boolean): LaunchView {
+  return { id, title, harness, directory, startedAt: Date.now(), state: 'starting', trust: null, error: null, terminal: null, prompt, resume };
 }
 
 /** The server's title for a start (LAUNCH-3.3): its name, else "<Harness> in <folder>". */
@@ -391,16 +391,24 @@ export function App({ client }: { client: LookoutClient }) {
   // "Starting…" row is still selected: whatever you moved to meanwhile stays. Replaced, so Back
   // doesn't return to a start that's gone; before paint, so the start never shows as unlisted.
   const takeOver = selectedLaunchId ? state.started.get(selectedLaunchId) : undefined;
+  // LAUNCH-7.4: and the start's first prompt goes with it, to the Session view, as a message you sent.
+  const arriving = selectedLaunchId ? state.arrivals.get(selectedLaunchId) : undefined;
+  const [arrival, setArrival] = useState<{ sessionId: string; text: string; at: number } | null>(null);
   useLayoutEffect(() => {
-    if (takeOver) navigate({ name: 'session', id: takeOver }, { replace: true });
-  }, [takeOver, navigate]);
+    if (!takeOver) return;
+    setArrival(arriving ? { sessionId: takeOver, text: arriving.prompt, at: arriving.startedAt } : null);
+    navigate({ name: 'session', id: takeOver }, { replace: true });
+  }, [takeOver, arriving, navigate]);
+  // It's the view's to keep from there (VIEW-1.13): once you select something else, it goes.
+  const arrivalShown = arrival && (selectedId === arrival.sessionId || state.aliases.get(arrival.sessionId) === selectedId) ? arrival : null;
+  if (arrival && !arrivalShown && !(route.name === 'launch' && takeOver === arrival.sessionId)) setArrival(null);
 
   const start = useCallback(
     async (req: LaunchRequest) => {
       const id = crypto.randomUUID();
       // Which launcher this start came from, read now: Esc may close it, and reset the ref, before the answer.
       const fromWork = launchedFromWork.current || launchedFromTopic.current !== null;
-      const pending = requestLaunch(ownLaunch(id, startTitle(req), req.harness, req.directory));
+      const pending = requestLaunch(ownLaunch(id, startTitle(req), req.harness, req.directory, req.prompt.trim() === '' ? null : req.prompt, false));
       let launch: LaunchView;
       try {
         launch = await client.launch(req, id);
@@ -628,7 +636,7 @@ export function App({ client }: { client: LookoutClient }) {
       if (live) return navigate({ name: 'session', id: item.sessionId });
       if (item.blocked) return navigate({ name: 'past', harness: item.harness, id: item.sessionId });
       const id = crypto.randomUUID();
-      const pending = requestLaunch(ownLaunch(id, item.title, item.harness, item.projectPath ?? ''));
+      const pending = requestLaunch(ownLaunch(id, item.title, item.harness, item.projectPath ?? '', null, true));
       let result: ResumeResult;
       try {
         result = await client.resume(item.harness, item.sessionId, id);
@@ -1217,6 +1225,7 @@ export function App({ client }: { client: LookoutClient }) {
                 onFollowing={onFollowing}
                 sentAt={sentAt}
                 onSentAt={updateSentAt}
+                arrival={arrivalShown}
                 loadChatSeen={loadChatSeen}
                 saveChatSeen={saveChatSeen}
                 onEnd={endSession}

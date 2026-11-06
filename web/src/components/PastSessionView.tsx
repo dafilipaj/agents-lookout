@@ -53,7 +53,7 @@ export function PastSessionView({ harness, sessionId, now, load }: Props) {
   if (!current) {
     return (
       <PlainView>
-        <Loading label="Loading…" className="p-8" />
+        <Loading label="Reading the Session…" className="p-8" />
       </PlainView>
     );
   }

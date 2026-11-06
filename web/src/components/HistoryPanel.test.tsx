@@ -501,7 +501,7 @@ describe('an expanded result (HIST-2.9 to HIST-2.11, HIST-3.5)', () => {
     expect(gone.querySelector('[data-field="actions"]')).toHaveTextContent('Show');
   });
 
-  it('HIST-2.10: the first prompt and last message are read when a result is expanded, once per Session, with "Loading…" meanwhile; a new search clears them', async () => {
+  it('HIST-2.10: the first prompt and last message are read when a result is expanded, once per Session, with "Reading what it said…" meanwhile; a new search clears them', async () => {
     let answer: (p: HistoryPeek) => void = () => {};
     const pastPeek = vi.fn(() => new Promise<HistoryPeek>((r) => (answer = r)));
     const history = vi.fn(async () => ok([LIVE, CODEX]));
@@ -514,9 +514,9 @@ describe('an expanded result (HIST-2.9 to HIST-2.11, HIST-3.5)', () => {
     await user.click(screen.getByText('kg-hook-review', { selector: '[data-field="title"]' }));
     expect(pastPeek).toHaveBeenCalledTimes(1);
     expect(pastPeek).toHaveBeenCalledWith('codex', 'codex-1');
-    expect(details(options()[1]!)).toHaveTextContent('Loading…');
+    expect(details(options()[1]!)).toHaveTextContent('Reading what it said…');
     await act(async () => answer(peekOf()));
-    expect(details(options()[1]!)).not.toHaveTextContent('Loading…');
+    expect(details(options()[1]!)).not.toHaveTextContent('Reading what it said…');
     expect(details(options()[1]!)!.querySelector('[data-field="last-message"]')).toHaveTextContent('The hook only runs on');
     // Another, then back: the first one's read is kept.
     await user.click(screen.getByText('fix-deal-rates', { selector: '[data-field="title"]' }));
@@ -550,7 +550,7 @@ describe('an expanded result (HIST-2.9 to HIST-2.11, HIST-3.5)', () => {
     const old = details(options()[1]!)!;
     await waitFor(() => expect(old.querySelector('[data-field="first-prompt"]')).toHaveTextContent('Review PR 641.'));
     expect(old.querySelector('[data-field="last-message"]')).toBeNull();
-    expect(old).not.toHaveTextContent('Loading…');
+    expect(old).not.toHaveTextContent('Reading what it said…');
   });
 
   it('HIST-2.11: a new query, the headless toggle or a Harness toggle collapses the expanded result, and Enter before the new search answers resumes nothing', async () => {
@@ -846,12 +846,14 @@ describe('History on the design system', () => {
     expect(options()[0]).toHaveAccessibleName(/^fix-deal-rates\s*live/);
   });
 
-  it('DS-6.3: results and "Loading more…" are a Loading', async () => {
+  it('DS-6.3, DS-6.6: results and "Loading more…" are a Loading; it reads History, or searches it with a query', async () => {
     const app = renderApp('/', { history: () => new Promise<HistoryPage>(() => {}) });
     app.snapshot([]);
-    await openHistory(app);
-    const loading = panel().querySelector<HTMLElement>('[data-slot="loading"]')!;
-    expect(within(loading).getByRole('status')).toHaveTextContent('Loading…');
+    const user = await openHistory(app);
+    const loading = () => panel().querySelector<HTMLElement>('[data-slot="loading"]')!;
+    expect(within(loading()).getByRole('status')).toHaveTextContent(/^Reading History…$/);
+    await user.type(screen.getByRole('searchbox', { name: 'Search past Sessions' }), 'rates');
+    await waitFor(() => expect(within(loading()).getByRole('status')).toHaveTextContent(/^Searching History…$/));
   });
 
   it("DS-8.1, DS-8.2, DS-4.3: History's empty states are an EmptyState; tb-session missing is an error Alert with its words and a CommandBlock", async () => {

@@ -104,6 +104,14 @@ describe("Work's Specs on a PR", () => {
     expect((await specsItem('shop#8', user))!.querySelector('kbd')).toHaveTextContent('S');
   });
 
+  it('DS-6.6: while it reads, the Specs submenu says whom it waits on: "Fetching #7 from GitHub…"', async () => {
+    openApp('/s/alpha', { plainPr: () => new Promise<PlainPrFiles>(() => {}) });
+    const user = userEvent.setup();
+    await user.keyboard('w');
+    await openSpecs('shop#7', user);
+    expect((await screen.findByText('Fetching #7 from GitHub…')).closest('[data-slot="loading"]')).not.toBeNull();
+  });
+
   it('PLAIN-5.1 (support): a Module opens the Spec view at its PR URL; Back returns to what the main pane showed', async () => {
     const readPlain = vi.fn(async (): Promise<PlainAnswer> => {
       throw new SaveError('stop', null, 404);

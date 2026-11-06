@@ -282,12 +282,14 @@ export function HistoryPanel({ focusKey, sessions, now, search, peek, onOpen, na
   };
 
   const activeId = items[active] ? `history-${itemKey(items[active])}` : undefined;
+  // DS-6.6: what it reads, searching or not.
+  const reading = q ? 'Searching History…' : 'Reading History…';
   let body;
-  if (results.state === 'loading') body = <Loading label="Loading…" className="items-center px-4 py-8 text-center" />;
+  if (results.state === 'loading') body = <Loading label={reading} className="items-center px-4 py-8 text-center" />;
   else if (results.state === 'error') body = <Alert title="Couldn't search History" detail={results.message} className="mx-2.5 my-3" />;
   else if (results.state === 'not-installed') body = <NotInstalled command={results.command} />;
   else if (results.state === 'too-old') body = <NotInstalled command={results.command} tooOld={results.reason} />;
-  else if (items.length === 0 && (results.loadingMore || (results.hasMore && results.auto < AUTO_FILL_PAGES))) body = <Loading label="Loading…" className="items-center px-4 py-8 text-center" />;
+  else if (items.length === 0 && (results.loadingMore || (results.hasMore && results.auto < AUTO_FILL_PAGES))) body = <Loading label={reading} className="items-center px-4 py-8 text-center" />;
   else if (items.length === 0 && results.hasMore) body = <LoadMore onClick={() => loadMore()} hint="None of the newest past Sessions can be shown here; older ones may." />;
   else if (items.length === 0) body = <EmptyState role="status" title={q ? `Nothing matches “${q}”` : 'No past Sessions'} />;
   else {
@@ -559,7 +561,7 @@ function Line({ label, field, children }: { label: string; field: string; childr
 
 /**
  * HIST-2.9, HIST-2.10: the first prompt (from the row, else the read) and the last message with who
- * said it, each its first three lines. "Loading…" while the read runs; a failed read is a line of its
+ * said it, each its first three lines. "Reading what it said…" while the read runs; a failed read is a line of its
  * own, and the button still works. tb-session 0.2 can't tail, so its last message is left out.
  */
 function Said({ item, peek }: { item: HistoryItem; peek: Peek | null }) {
@@ -568,7 +570,7 @@ function Said({ item, peek }: { item: HistoryItem; peek: Peek | null }) {
   return (
     <>
       {first && <Line label="First" field="first-prompt">{quote(first)}</Line>}
-      {(!peek || peek.state === 'loading') && <Loading label="Loading…" />}
+      {(!peek || peek.state === 'loading') && <Loading label="Reading what it said…" />}
       {peek?.state === 'error' && <p data-field="peek-error">Couldn't read its messages: {peek.message}</p>}
       {peek?.state === 'ok' && peek.peek.last && (
         <Line label="Last" field="last-message">

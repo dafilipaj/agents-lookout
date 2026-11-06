@@ -311,7 +311,7 @@ export class Launcher {
     if (req.name) args.push('--name', req.name);
     if (req.prompt) args.push('--', req.prompt);
     const title = req.name || `${HARNESS_LABEL[req.harness]} in ${basename(expandHome(req.directory))}`;
-    const launch = await this.spawn({ id, title, harness: req.harness, directory: req.directory, resumes: null, name: req.name }, args);
+    const launch = await this.spawn({ id, title, harness: req.harness, directory: req.directory, resumes: null, name: req.name, prompt: req.prompt || null }, args);
     // LAUNCH-1.2: remember the choices. A failed write doesn't fail the start.
     this.opts.settings
       .update({ lastLaunch: {
@@ -347,7 +347,7 @@ export class Launcher {
     const args = [
       '--local', 'spawn', '--resume', req.sessionId, '--harness', req.harness, '--dir', req.directory, '--backend', 'tmux', '--json',
     ];
-    return this.spawn({ id, title: req.title, harness: req.harness, directory: req.directory, resumes: req.sessionId, name: '' }, args);
+    return this.spawn({ id, title: req.title, harness: req.harness, directory: req.directory, resumes: req.sessionId, name: '', prompt: null }, args);
   }
 
   /**
@@ -363,7 +363,7 @@ export class Launcher {
 
   /** Shows the "Starting…" row, runs `fleet spawn … --json`, and follows the start (LAUNCH-4). */
   private async spawn(
-    init: { id: string; title: string; harness: LaunchHarness; directory: string; resumes: string | null; name: string },
+    init: { id: string; title: string; harness: LaunchHarness; directory: string; resumes: string | null; name: string; prompt: string | null },
     args: string[],
   ): Promise<LaunchView> {
     const launch: Launch = {
@@ -382,6 +382,8 @@ export class Launcher {
       trustEpoch: 0,
       error: null,
       terminal: null,
+      prompt: init.prompt,
+      resume: init.resumes !== null,
       tmuxSession: null,
       resumes: init.resumes,
       elsewhere: false,
@@ -721,6 +723,8 @@ function view(l: Launch): LaunchView {
     trust: l.trust,
     error: l.error,
     terminal: l.terminal,
+    prompt: l.prompt,
+    resume: l.resume,
   };
 }
 

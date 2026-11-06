@@ -209,7 +209,7 @@ describe('one grid (SIDE-8.1)', () => {
       'loading',
       async () => {
         renderApp('/s/a').snapshot([], { state: 'starting' });
-        await screen.findByText('Loading…');
+        await screen.findByText('Finding the Session…');
       },
     ],
     [
@@ -255,7 +255,7 @@ describe('one grid (SIDE-8.1)', () => {
       'past Session loading',
       async () => {
         renderApp('/h/claude/gone-1', { pastSession: () => new Promise<HistoryDetail>(() => {}) }).snapshot([]);
-        await screen.findByText('Loading…');
+        await screen.findByText('Reading the Session…');
       },
     ],
     [
@@ -278,7 +278,7 @@ describe('one grid (SIDE-8.1)', () => {
         const app = renderApp('/l/l-1');
         app.snapshot([row({ id: 'a' })]);
         app.emit({ type: 'launches', launches: [launchView({ id: 'l-1', title: 'fix-rates' })], started: [] });
-        await screen.findByText('Waiting for Fleet to report the Session…');
+        await screen.findAllByText('Claude Code is starting in work…');
       },
     ],
     [
@@ -298,7 +298,7 @@ describe('one grid (SIDE-8.1)', () => {
       'start, before the first snapshot',
       async () => {
         renderApp('/l/l-1');
-        await screen.findByText('Loading…');
+        await screen.findByText('Finding the start…');
       },
     ],
     [

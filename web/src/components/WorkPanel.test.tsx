@@ -1287,7 +1287,7 @@ describe('Tasks (WORK-2)', () => {
   it('Tasks says “Loading” until its first read for the saved email ends, and “No open tasks” only after a read that succeeded', async () => {
     const app = openApp('/', snap({}, {}, tasks({ state: 'loading', fetchedAt: null, tasks: [] })));
     await userEvent.setup().keyboard('w');
-    expect(tasksRegion()).toHaveTextContent(/Tasks\s*· Loading…/);
+    expect(tasksRegion()).toHaveTextContent(/Tasks\s*· Reading from Productive…/);
     expect(within(tasksRegion()).queryByText('No open tasks')).toBeNull();
     expect(tasksRegion().querySelector('[data-field="count"]')).toBeNull();
     app.emit({ type: 'work', work: withTasks({ tasks: [] }) });
@@ -1418,7 +1418,7 @@ describe('Tasks (WORK-2)', () => {
     expect(within(tasksRegion()).getAllByRole('option')).toHaveLength(2);
     // The server dropped the list for the new email (tested there): Loading, no rows, no count.
     app.emit({ type: 'work', work: snap({}, {}, tasks({ state: 'loading', fetchedAt: null, tasks: [] })) });
-    expect(tasksRegion()).toHaveTextContent(/Loading…/);
+    expect(tasksRegion()).toHaveTextContent(/Reading from Productive…/);
     expect(within(tasksRegion()).queryByRole('option')).toBeNull();
     expect(tasksRegion().querySelector('[data-field="count"]')).toBeNull();
     const NEW = task({ id: '41000301', title: 'Ring the fog bell' });
@@ -2172,11 +2172,14 @@ describe('Work on the design system', () => {
     expect(within(alert).getByText(TB_PROD_SIGN_IN_COMMAND)).toHaveAttribute('data-slot', 'command-block');
   });
 
-  it("DS-6.3: a section's header shows a Loading while it reads", async () => {
-    openApp('/', snap({}, {}, tasks({ state: 'loading', fetchedAt: null, tasks: [] })));
+  it("DS-6.3, DS-6.6: a section's header shows a Loading while it reads, naming whom it reads from", async () => {
+    const app = openApp('/', snap({}, {}, tasks({ state: 'loading', fetchedAt: null, tasks: [] })));
     await userEvent.setup().keyboard('w');
     const loading = tasksRegion().querySelector<HTMLElement>('header [data-slot="loading"]')!;
-    expect(within(loading).getByRole('status')).toHaveTextContent('Loading…');
+    expect(within(loading).getByRole('status')).toHaveTextContent(/^Reading from Productive…$/);
+    app.emit({ type: 'work', work: snap({ state: 'loading', fetchedAt: null }, {}, tasks({ state: 'loading', fetchedAt: null, tasks: [] })) });
+    const prs = document.querySelector<HTMLElement>('[aria-labelledby="work-prs-heading"] header [data-slot="loading"]')!;
+    expect(within(prs).getByRole('status')).toHaveTextContent(/^Reading from GitHub…$/);
   });
 
   it("WORK-6.5 (support), DS-7.1: an expanded row's buttons, which can't be focusable inside an option, are a word beside a 20 px icon in the labelled size, its word its name", async () => {

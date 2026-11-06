@@ -240,7 +240,7 @@ export function TopicsPanel(props: TopicsPanelProps) {
   );
 
   let body: ReactNode;
-  if (!view) body = <Loading label="Loading…" className="items-center px-4 py-8 text-center" />;
+  if (!view) body = <Loading label="Reading Topics…" className="items-center px-4 py-8 text-center" />;
   else if (view.state === 'error') body = null;
   else if (all.length === 0) {
     body = (

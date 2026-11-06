@@ -64,7 +64,7 @@ export function PrSpecsList({ pr }: { pr: WorkPr }) {
   const shownError = error ?? answer?.error ?? null;
   return (
     <div data-slot="pr-specs">
-      {!answer && !shownError && <Loading label={`Fetching #${pr.number}`} className="p-2" />}
+      {!answer && !shownError && <Loading label={`Fetching #${pr.number} from GitHub…`} className="p-2" />}
       {shownError && (
         <Alert title={shownError} className="m-1" data-field="pr-specs-error">
           <DropdownMenuItem

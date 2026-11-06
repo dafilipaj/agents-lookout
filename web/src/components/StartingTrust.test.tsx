@@ -37,7 +37,7 @@ it('LAUNCH-6.9: named region, polite single announcement, no autofocus, descript
   const l = trust();
   const { rerender } = render(<StartingView launch={launchView({ id: 'l-trust' })} loaded now={0} onTrust={answer} />);
   const region = screen.getByRole('status');
-  expect(region).toHaveTextContent('Waiting for Fleet to report the Session…');
+  expect(region).toHaveTextContent('Claude Code is starting in work…');
   rerender(<StartingView launch={l} loaded now={0} onTrust={answer} />);
   expect(screen.getByRole('status')).toBe(region); // same mounted region, new text
   expect(region).toHaveTextContent('Claude Code asks whether you trust this folder');
@@ -55,7 +55,8 @@ it('LAUNCH-6.9: named region, polite single announcement, no autofocus, descript
   expect(answer).toHaveBeenLastCalledWith('accept', ID);
   rerender(<StartingView launch={trust({ answering: 'accept' })} loaded now={0} onTrust={answer} />);
   expect(screen.getByRole('button', { name: 'Trusting…' })).toHaveFocus();
-  for (const b of screen.getAllByRole('button')) { expect(b).toHaveAttribute('aria-disabled', 'true'); expect(b).not.toBeDisabled(); }
+  // The card's buttons; the dock's Send waits, disabled, for the Session (LAUNCH-7.2).
+  for (const b of within(screen.getByRole('region', { name: 'Claude Code asks whether you trust this folder' })).getAllByRole('button')) { expect(b).toHaveAttribute('aria-disabled', 'true'); expect(b).not.toBeDisabled(); }
   expect(screen.getByRole('status')).toBe(region);
   expect(region).toHaveTextContent('Trusting…');
   await user.keyboard('{Enter} ');
@@ -81,7 +82,7 @@ it('LAUNCH-6.4: only a click sends the displayed id, disables both immediately, 
   expect(screen.getByRole('button', { name: 'Cancel' })).toHaveAttribute('aria-disabled', 'true');
   app.emit({ type: 'launches', launches: [launchView({ id: 'l-trust' })], started: [] });
   await act(async () => pending.resolve(launchView({ id: 'l-trust' })));
-  expect(screen.getByText('Waiting for Fleet to report the Session…')).toBeInTheDocument();
+  expect(within(screen.getByTestId('starting-view')).getByRole('status')).toHaveTextContent('Claude Code is starting in work…');
   app.emit({ type: 'sessions', upsert: [row({ id: 'live' })], remove: [] });
   app.emit({ type: 'launches', launches: [], started: [{ launchId: 'l-trust', sessionId: 'live' }] });
   await waitFor(() => expect(window.location.pathname).toBe('/s/live'));
@@ -94,7 +95,7 @@ it('LAUNCH-6.4: an HTTP acceptance before SSE shows waiting and never restores t
   app.emit({ type: 'launches', launches: [trust()], started: [] });
   await userEvent.setup().click(screen.getByRole('button', { name: 'Trust folder' }));
   await act(async () => pending.resolve(launchView({ id: 'l-trust' })));
-  expect(screen.getByText('Waiting for Fleet to report the Session…')).toBeInTheDocument();
+  expect(within(screen.getByTestId('starting-view')).getByRole('status')).toHaveTextContent('Claude Code is starting in work…');
   // Even a buffered read of the same prompt must not restore its buttons.
   app.emit({ type: 'launches', launches: [trust()], started: [] });
   expect(screen.queryByRole('button', { name: 'Trust folder' })).toBeNull();

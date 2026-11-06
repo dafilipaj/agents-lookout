@@ -66,7 +66,7 @@ export function MainPane({ selectedId, live, lastKnown, list, now, preview, draw
   if (!live && list === 'loading') {
     return (
       <PlainView>
-        <Loading label="Loading…" className="p-8" />
+        <Loading label={selectedId ? 'Finding the Session…' : 'Looking for Sessions…'} className="p-8" />
       </PlainView>
     );
   }

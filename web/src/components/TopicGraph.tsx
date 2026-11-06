@@ -74,7 +74,7 @@ export function TopicGraph(props: TopicGraphProps) {
   const all = view?.state === 'ok' ? view.topics : [];
 
   let body;
-  if (!view) body = <Loading label="Loading…" className="items-center px-4 py-8 text-center" />;
+  if (!view) body = <Loading label="Reading Topics…" className="items-center px-4 py-8 text-center" />;
   else if (view.state === 'error') body = <Alert title="Topics can't be opened" detail={`${view.reason ?? ''} ${view.path}`.trim()} className="m-5" data-field="topics-error" />;
   else if (!all.length) {
     body = (

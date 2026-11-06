@@ -303,7 +303,7 @@ export function LibraryPanel({ focusKey, visible, sessions, now, search, status,
         {install.command}
       </CommandBlock>
     </Alert> : <>
-      {busy && <Loading label={indexing ? 'Indexing Transcripts…' : 'Loading…'} className={cn('items-center px-4 py-3', results && 'absolute right-2 bottom-2 z-10 rounded-md bg-sidebar')} />}
+      {busy && <Loading label={indexing ? 'Indexing Transcripts…' : 'Reading the Library…'} className={cn('items-center px-4 py-3', results && 'absolute right-2 bottom-2 z-10 rounded-md bg-sidebar')} />}
       <div ref={scroll} onScroll={() => { const el = scroll.current; if (el && el.scrollTop + el.clientHeight >= el.scrollHeight - 200) load.current(); }} className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
         {!busy && !error && results && items.length === 0 && !moreBusy && !last?.hasMore && <EmptyState role="status" title={results.pages[0]?.unfilteredEmpty ? 'Nothing produced yet' : q ? `Nothing matches “${q}”` : 'Nothing matches'} hint={hidden ? `${hidden} gone Outputs are hidden. Turn off Hide gone to show them.` : undefined} />}
         <div ref={list} role="listbox" aria-label="Outputs" tabIndex={0} aria-activedescendant={items[index] ? `library-${encodeURIComponent(key(items[index]!))}` : undefined} className="outline-none focus-visible:ring-2 focus-visible:ring-ring/30">

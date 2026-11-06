@@ -33,6 +33,11 @@ export interface LookoutState {
   /** Launches Fleet now reports: launch id → the Session it became. */
   started: ReadonlyMap<string, string>;
   /**
+   * LAUNCH-7.4: a start Fleet now reports leaves the list, and its first prompt and start time
+   * with it; they're kept here, by launch id, for the Session view it hands over to.
+   */
+  arrivals: ReadonlyMap<string, { prompt: string; startedAt: number }>;
+  /**
    * LAUNCH-4.2: starts this tab asked for that the server hasn't listed yet, so their row and view
    * show the moment you press Start. `answered`: the request is done; the next list settles it.
    */
@@ -121,6 +126,7 @@ export const initialState: LookoutState = {
   settings: { ...defaultSettings(), productiveEmailSuggestion: null },
   launches: [],
   started: new Map(),
+  arrivals: new Map(),
   requested: new Map(),
   orphans: [],
   clientId: null,
@@ -194,6 +200,7 @@ export function reducer(state: LookoutState, action: Action): LookoutState {
         settings: e.settings,
         launches: e.launches,
         started,
+        arrivals: withArrivals(state, e.started),
         requested: settleRequested(state.requested, e.launches, started),
         orphans,
         clientId: e.clientId,
@@ -286,7 +293,7 @@ export function reducer(state: LookoutState, action: Action): LookoutState {
         for (const s of e.started) next.set(s.launchId, s.sessionId);
         started = next;
       }
-      return { ...state, launches: e.launches, started, requested: settleRequested(state.requested, e.launches, started) };
+      return { ...state, launches: e.launches, started, arrivals: withArrivals(state, e.started), requested: settleRequested(state.requested, e.launches, started) };
     }
   }
 }
@@ -319,6 +326,17 @@ function settleRequested(
   const listed = new Set(launches.map((l) => l.id));
   const next = new Map([...requested].filter(([id, r]) => !r.answered && !listed.has(id) && !started.has(id)));
   return next.size === requested.size ? requested : next;
+}
+
+/** LAUNCH-7.4: the first prompts of the starts Fleet now reports, read from the list they leave. */
+function withArrivals(state: LookoutState, started: readonly { launchId: string }[]): LookoutState['arrivals'] {
+  let next: Map<string, { prompt: string; startedAt: number }> | null = null;
+  for (const { launchId } of started) {
+    if (state.arrivals.has(launchId)) continue;
+    const l = state.launches.find((l) => l.id === launchId) ?? state.requested.get(launchId)?.launch;
+    if (l?.prompt) (next ??= new Map(state.arrivals)).set(launchId, { prompt: l.prompt, startedAt: l.startedAt });
+  }
+  return next ?? state.arrivals;
 }
 
 /** Every launch to show: the server's, then this tab's own it doesn't list yet (LAUNCH-4.2). */

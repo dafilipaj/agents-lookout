@@ -92,25 +92,25 @@ describe('Loading in its places', () => {
   it('DS-6.3: the main pane, a starting and a past Session\'s view, the terminal preview and the usage strip and its details are a Loading', async () => {
     // The main pane before the Session list is known.
     const first = renderApp('/s/a');
-    expect(within(loadingIn(main())!).getByRole('status')).toHaveTextContent('Loading…');
+    expect(within(loadingIn(main())!).getByRole('status')).toHaveTextContent('Finding the Session…');
     first.unmount();
 
     // A starting Session's view before the first snapshot.
     const starting = renderApp('/l/l-1');
-    expect(within(loadingIn(main())!).getByRole('status')).toHaveTextContent('Loading…');
+    expect(within(loadingIn(main())!).getByRole('status')).toHaveTextContent('Finding the start…');
     starting.unmount();
 
     // A past Session's view while it's read.
     const past = renderApp('/h/claude/p-1', { pastSession: () => new Promise<HistoryDetail>(() => {}) });
     past.snapshot([]);
-    expect(within(loadingIn(main())!).getByRole('status')).toHaveTextContent('Loading…');
+    expect(within(loadingIn(main())!).getByRole('status')).toHaveTextContent('Reading the Session…');
     past.unmount();
 
     // The terminal preview before its first lines, and the usage strip and details before a reading.
     const app = renderApp('/s/a');
     app.snapshot([row({ id: 'a' })]);
     fireEvent.click(screen.getByRole('button', { name: /^Terminal/ }));
-    expect(within(loadingIn(screen.getByTestId('terminal-preview'))!).getByRole('status')).toHaveTextContent('Loading…');
+    expect(within(loadingIn(screen.getByTestId('terminal-preview'))!).getByRole('status')).toHaveTextContent('Reading the terminal…');
     const strip = within(sidebar()).getByRole('button', { name: /usage/i });
     expect(within(loadingIn(strip)!).getByRole('status')).toHaveTextContent('Reading usage…');
     await userEvent.setup().click(strip);
@@ -118,12 +118,22 @@ describe('Loading in its places', () => {
     expect(within(loadingIn(details)!).getByRole('status')).toHaveTextContent('Reading usage…');
   });
 
+  it('DS-6.6: the Sessions list’s waits are Loadings with their words: "Connecting…", then "Looking for Sessions…" until Fleet first answers', () => {
+    const app = renderApp('/');
+    const list = () => sidebar().querySelector<HTMLElement>('[data-shell-row="body"] [data-slot="loading"]');
+    expect(within(list()!).getByRole('status')).toHaveTextContent(/^Connecting…$/);
+    app.snapshot([], { state: 'starting' });
+    expect(within(list()!).getByRole('status')).toHaveTextContent(/^Looking for Sessions…$/);
+    app.emit({ type: 'fleet', fleet: { state: 'ok' } });
+    expect(list()).toBeNull();
+  });
+
   it('DS-6.3: a status-line menu reads its choices with a Loading', async () => {
     const app = renderApp('/s/a', { harnesses: () => new Promise<HarnessOption[]>(() => {}) });
     app.snapshot([row({ id: 'a', model: 'claude-opus-5-5' })]);
     await userEvent.setup().click(within(statusLine()).getByRole('button', { name: /^Model: / }));
     const menu = await screen.findByRole('menu', { name: /^Model: / });
-    expect(within(loadingIn(menu)!).getByRole('status')).toHaveTextContent('Loading…');
+    expect(within(loadingIn(menu)!).getByRole('status')).toHaveTextContent('Reading the choices…');
   });
 
   it('DS-6.4: with no live Session and no Starting row the main pane says "No Sessions running", and "Start a Session" opens the launcher, as N does', async () => {
@@ -140,7 +150,7 @@ describe('Loading in its places', () => {
 
   it('DS-6.4: before the first snapshot the main pane loads, so the hint does not flash before "No Sessions running"', () => {
     const app = renderApp('/');
-    expect(within(main()).getByRole('status')).toHaveTextContent('Loading…');
+    expect(within(main()).getByRole('status')).toHaveTextContent('Looking for Sessions…');
     expect(within(main()).queryByText('Select a Session')).toBeNull();
     expect(within(main()).queryByText('No Sessions running')).toBeNull();
     app.snapshot([]);

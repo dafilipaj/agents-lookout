@@ -1,8 +1,9 @@
 import type { LaunchView } from '@shared/types.ts';
-import { CircleX, LoaderCircle, X } from 'lucide-react';
+import { CircleX, X } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { IconButton } from '@/components/ui/icon-button';
+import { LookoutMark } from '@/components/ui/lookout-mark';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { HarnessIcon } from './HarnessIcon';
@@ -49,7 +50,10 @@ export function LaunchItem({ launch, now, selected, onSelect, onDismiss }: Props
         {trust ? <SessionMarker state="live" status="needs-you" className="size-4.5" /> : failed ? (
           <CircleX aria-label="Didn't start" className="mx-px size-4 shrink-0 text-destructive" />
         ) : (
-          <LoaderCircle aria-label="Starting" className="mx-px size-4 shrink-0 animate-spin text-muted-foreground" />
+          // LAUNCH-7.6: the orbiting Lens where a Session's marker sits: Lookout looking, not a Status.
+          <span role="img" aria-label="Starting" className="mx-px flex size-4 shrink-0 text-muted-foreground" data-field="lens">
+            <LookoutMark orbiting className="size-4" />
+          </span>
         )}
         <span className="min-w-0 flex-1 truncate text-body leading-5 font-medium" title={launch.title}>
           {launch.title}

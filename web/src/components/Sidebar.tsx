@@ -9,6 +9,7 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { CommandBlock } from '@/components/ui/command-block';
 import { EmptyState } from '@/components/ui/empty-state';
+import { Loading } from '@/components/ui/loading';
 import { IconButton } from '@/components/ui/icon-button';
 import { Kbd } from '@/components/ui/kbd';
 import { LookoutMark } from '@/components/ui/lookout-mark';
@@ -215,9 +216,10 @@ export function Sidebar(props: SidebarProps) {
 
   const stale = fleet.state === 'failing' || (loaded && !connected);
   const body = (() => {
-    if (!loaded) return <EmptyState title="Connecting…" />;
+    // DS-6.6: waits, so `Loading`s, centred where an empty list's words sit.
+    if (!loaded) return <Loading label="Connecting…" className="items-center px-4 py-8 text-center" />;
     if (fleet.state === 'not-installed') return <NotInstalled command={fleet.installCommand} />;
-    if (fleet.state === 'starting' && sessions.length === 0) return <EmptyState title="Looking for Sessions…" />;
+    if (fleet.state === 'starting' && sessions.length === 0) return <Loading label="Looking for Sessions…" className="items-center px-4 py-8 text-center" />;
     if (fleet.state === 'failing' && fleet.lastOkAt === null && sessions.length === 0) {
       return <EmptyState title="Fleet isn't answering" hint={fleet.error} />;
     }

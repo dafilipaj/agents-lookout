@@ -88,9 +88,13 @@ export function SuggestView({ view, sessions, now, ...props }: SuggestViewProps)
       }
     >
       <div className="mx-auto flex w-full max-w-3xl min-w-0 flex-col gap-3 px-4 py-4">
-        <p className="text-meta text-muted-foreground" data-field="suggest-preview">
-          {preview ? previewWords(preview) : 'Reading what’s in no Topic…'}
-        </p>
+        {preview ? (
+          <p className="text-meta text-muted-foreground" data-field="suggest-preview">
+            {previewWords(preview)}
+          </p>
+        ) : (
+          <Loading label="Reading what’s in no Topic…" />
+        )}
         {problem && <Alert title={problem} data-field="suggest-problem" />}
         {state?.error && !running && (
           <Alert title="No Topics were suggested" detail={state.error.reason} data-field="suggest-error">

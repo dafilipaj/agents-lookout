@@ -216,6 +216,10 @@ export interface LaunchView {
   error: string | null;
   /** The last lines of its terminal, once failed or a Trust prompt's answer is uncertain. */
   terminal: string[] | null;
+  /** LAUNCH-7.1: the first prompt, as typed; null for a resume or a start without one. */
+  prompt: string | null;
+  /** LAUNCH-7.3: a resume of a past Session (HIST-3.1), which says "resuming". */
+  resume: boolean;
 }
 
 /** LAUNCH-6: the screen the person is asked to judge; never logged or summarized. */

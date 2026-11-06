@@ -106,7 +106,7 @@ export function TopicView(props: TopicViewProps) {
 
   if (!view || view.state === 'error' || !topic) {
     let body: ReactNode;
-    if (!view) body = <Loading label="Loading…" className="items-center px-4 py-8 text-center" />;
+    if (!view) body = <Loading label="Reading the Topic…" className="items-center px-4 py-8 text-center" />;
     else if (view.state === 'error') body = <Alert title="Topics can't be opened" detail={`${view.reason ?? ''} ${view.path}`.trim()} className="m-5" data-field="topics-error" />;
     else {
       body = (
@@ -398,7 +398,7 @@ function Activity({ topic, activity, ...rest }: EntryProps & { topic: Topic; act
     <div className="flex min-w-0 flex-col gap-1.5" data-field="activity">
       {activity.error && <Alert title={activity.error} data-field="activity-error" />}
       {activity.entries.length === 0 && activity.loading ? (
-        <Loading label="Loading…" />
+        <Loading label="Reading activity…" />
       ) : (
         <ul className="flex min-w-0 flex-col gap-1">
           {activity.entries.map((e) => (
@@ -549,7 +549,7 @@ function EarlierSummaries({ topic, count, now, load }: { topic: Topic; count: nu
         Earlier summaries ({count})
       </Button>
       {open && error && <Alert title={error} />}
-      {open && !list && !error && <Loading label="Loading…" />}
+      {open && !list && !error && <Loading label="Reading earlier summaries…" />}
       {open &&
         list?.map((s, i) => (
           <div key={s.writtenAt} className="flex min-w-0 flex-col gap-1 border-l-2 border-border pl-3" data-field="earlier-summary">
@@ -1032,10 +1032,11 @@ function Edges({ topic, view, act, linkTopics, editEdge, unlinkTopics }: { topic
 
 /** TOPIC-4.1, TOPIC-4.2: Work's state for a PR or Task member, or why it isn't there. */
 function State({ state }: { state: 'loading' | 'gone' | 'listed' }) {
+  // DS-6.6: Work's lists are what's read.
   if (state === 'loading')
     return (
-      <span className="shrink-0 text-muted-foreground" data-field="member-loading">
-        Loading…
+      <span className="shrink-0" data-field="member-loading">
+        <Loading label="Reading from Work…" />
       </span>
     );
   if (state === 'gone') {

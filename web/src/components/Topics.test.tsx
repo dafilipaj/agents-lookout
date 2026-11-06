@@ -103,7 +103,7 @@ describe('the Topics tab (TOPIC-3)', () => {
     const app = renderApp('/');
     const user = userEvent.setup();
     await user.keyboard('t');
-    expect(within(panel()).getByText('Loading…')).toBeInTheDocument();
+    expect(within(panel()).getByText('Reading Topics…')).toBeInTheDocument();
     app.snapshot([]);
     expect(within(panel()).getByText('No Topics yet')).toBeInTheDocument();
     expect(within(panel()).getAllByRole('button', { name: /New Topic/ })).toHaveLength(2);
@@ -474,6 +474,8 @@ describe('what a member is doing now (TOPIC-4)', () => {
     await openView(user, 'Rates', 'Members');
     const details = topicView;
     expect(details().querySelectorAll('[data-field="member-loading"]')).toHaveLength(2);
+    // DS-6.6: a Loading, saying what it reads.
+    for (const el of details().querySelectorAll('[data-field="member-loading"]')) expect(el.querySelector('[data-slot="loading"]')).toHaveTextContent(/^Reading from Work…$/);
     app.emit({ type: 'work', work: work({ mine: [] }, { tasks: [] }) });
     const chips = details().querySelectorAll('[data-field="not-in-work"]');
     expect(chips).toHaveLength(2);

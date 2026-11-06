@@ -154,16 +154,47 @@ describe('Loading', () => {
 
   it('DS-6.1: it counts from `since` when given, and shows no hint where the place gives none', () => {
     const T = 2_000_000;
-    clocked(T, { label: 'Loading…', since: T - 20_000 });
+    clocked(T, { label: 'Reading the Topic…', since: T - 20_000 });
     expect(document.querySelector('[data-field="elapsed"]')).toHaveTextContent('· 20s');
     expect(document.querySelector('[data-field="hint"]')).toBeNull();
     expect(screen.getByRole('status').closest('[data-slot="loading"]')).toHaveClass('text-meta', 'text-muted-foreground');
   });
 
+  it('DS-6.5: the orbiting Lens comes before the words, 6 px from them, in their colour, at their icon size: 12 px beside caption, 14 beside meta, 16 beside body', () => {
+    const { container } = render(
+      <>
+        <Loading label="caption" size="caption" />
+        <Loading label="meta" />
+        <Loading label="body" size="body" />
+      </>,
+    );
+    const [caption, meta, body] = [...container.querySelectorAll<HTMLElement>('[data-slot="loading"]')];
+    for (const [loading, text, lens] of [[caption, 'text-caption', 'size-3'], [meta, 'text-meta', 'size-3.5'], [body, 'text-body', 'size-4']] as const) {
+      expect(loading).toHaveClass(text, 'text-muted-foreground');
+      const line = loading!.firstElementChild!;
+      expect(line).toHaveClass('items-center', 'gap-1.5');
+      expect(line.firstElementChild).toHaveAttribute('data-slot', 'lookout-mark');
+      expect(line.firstElementChild).toHaveAttribute('data-orbiting', 'true');
+      expect(line.firstElementChild).toHaveClass(lens);
+      expect(line.firstElementChild!.getAttribute('class')).not.toMatch(/text-(?!muted)/); // the words' colour, from currentColor
+    }
+  });
+
+  it('DS-6.7: a place can show its hint earlier, when it knows when its wait becomes a failure; a label can carry a tooltip and leave announcing to the place', () => {
+    const T = 3_000_000;
+    const at = clocked(T, { label: 'Claude Code is starting in work…', since: T, hintAfter: 10_000, hint: 'Taking longer than usual.', title: '~/Projects/work', live: false });
+    at(T + 9_999);
+    expect(document.querySelector('[data-field="hint"]')).toBeNull();
+    at(T + 10_000);
+    expect(document.querySelector('[data-field="hint"]')).toHaveTextContent('Taking longer than usual.');
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.getByTitle('~/Projects/work')).toHaveTextContent('Claude Code is starting in work…');
+  });
+
   it('DS-6.1: it keeps no timer of its own', () => {
     const setInterval = vi.spyOn(window, 'setInterval');
     const setTimeout = vi.spyOn(window, 'setTimeout');
-    render(<Loading label="Loading…" />);
+    render(<Loading label="Reading the Topic…" />);
     expect(setInterval).not.toHaveBeenCalled();
     expect(setTimeout).not.toHaveBeenCalled();
     vi.restoreAllMocks();
@@ -337,6 +368,27 @@ describe("Lookout's mark", () => {
     const dot = svg.querySelectorAll('circle')[1]!;
     expect(dot).toHaveAttribute('fill', 'currentColor');
     expect(dot).toHaveAttribute('stroke', 'none');
+  });
+
+  it('DS-14.4: orbiting, the dot turns around the ring’s centre, one turn every 1.6 s at a steady speed, only when motion is welcome; still otherwise', () => {
+    const { container } = render(<><LookoutMark /><LookoutMark orbiting /></>);
+    const [still, orbiting] = [...container.querySelectorAll('svg')];
+    expect(still).not.toHaveAttribute('data-orbiting');
+    expect(still!.querySelector('g')).toBeNull();
+    expect(circles(orbiting!)).toEqual(LENS); // the same Lens
+    expect(orbiting!.querySelector('g.animate-orbit > circle')).toBe(orbiting!.querySelectorAll('circle')[1]);
+    const [css] = Object.values(import.meta.glob<string>('../../index.css', { query: '?raw', import: 'default', eager: true }));
+    const rule = /\.animate-orbit\s*\{([^}]*)\}/.exec(css!)!;
+    expect(rule[1]).toMatch(/animation:\s*lens-orbit 1\.6s linear infinite;/);
+    expect(rule[1]).toMatch(/transform-box:\s*view-box;/);
+    expect(rule[1]).toMatch(/transform-origin:\s*12px 12px;/);
+    // Only inside the no-preference block: with reduced motion it's the still Lens.
+    const media = css!.lastIndexOf('@media (prefers-reduced-motion: no-preference)', rule.index);
+    const between = css!.slice(media, rule.index);
+    expect(media).toBeGreaterThanOrEqual(0);
+    expect((between.match(/\{/g) ?? []).length - (between.match(/\}/g) ?? []).length).toBe(1); // still inside it
+    expect(css!.match(/animate-orbit/g)).toHaveLength(1);
+    expect(css).toMatch(/@keyframes lens-orbit\s*\{\s*to\s*\{\s*transform:\s*rotate\(360deg\);/);
   });
 
   it('DS-14.2: the favicon is the Lens in near-white on a 32 px near-black tile, with no amber', () => {

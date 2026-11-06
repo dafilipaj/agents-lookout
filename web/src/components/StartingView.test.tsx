@@ -1,7 +1,7 @@
 import type { HistoryItem, LaunchRequest, LaunchView, ResumeResult } from '@shared/types.ts';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NOW, launchView, pressResult, renderApp, row } from '@/test/helpers';
 
 type App = ReturnType<typeof renderApp>;
@@ -285,11 +285,11 @@ describe('selecting a start (LAUNCH-4.2, 4.6, 4.7)', () => {
       expect(within(header).getByRole('img', { name: label })).toHaveAttribute('data-harness', harness);
       expect(header).toHaveTextContent(label);
       expect(header.querySelector('[data-field="status"]')).toHaveTextContent(/^Starting…$/);
-      const facts = view().querySelector('dl')!;
-      expect(facts).not.toHaveTextContent('Harness'); // the header says it
-      expect(facts).toHaveTextContent('Directory~/Projects/work');
-      expect(facts).toHaveTextContent(/Started\ds ago/);
-      expect(within(view()).getByRole('status')).toHaveTextContent('Waiting for Fleet to report the Session…');
+      // LAUNCH-7.3: where it's starting, once, under your prompt; the header says the Harness.
+      const loading = view().querySelector<HTMLElement>('[data-field="arriving"] [data-slot="loading"]')!;
+      expect(loading).toHaveTextContent(`${label} is starting in work…`);
+      expect(loading.querySelector('[title="~/Projects/work"]')).not.toBeNull();
+      expect(within(view()).getByRole('status')).toHaveTextContent(`${label} is starting in work…`);
 
       // The `launches` event arrives: still one row, still selected.
       app.emit({ type: 'launches', launches: [launchView({ id: 'l-1', title, harness })], started: [] });
@@ -324,8 +324,8 @@ describe('selecting a start (LAUNCH-4.2, 4.6, 4.7)', () => {
     expect(within(view()).getByRole('alert')).toHaveTextContent(/^Fleet hasn't reported it after 15 s. Its Session host is still running.$/);
     const terminal = within(view()).getByRole('region', { name: "Its terminal's last lines" });
     expect(terminal.querySelector('pre')!.textContent).toBe('Quick safety check\n❯ 1. Yes, I trust this folder\n  2. No, exit');
-    expect(within(view()).queryByText('Waiting for Fleet to report the Session…')).toBeNull();
-    expect(view().querySelector('dl')).toHaveTextContent('Directory~/Projects/work');
+    expect(view().querySelector('[data-field="arriving"]')).toBeNull();
+    expect(view().querySelector('[data-field="started"]')).toHaveTextContent(/^Started in ~\/Projects\/work \S+ ago$/);
   });
 
   it('LAUNCH-4.5, LAUNCH-4.6: a failed row stays compact while selected (the view has the detail), and shows the error and lines when it isn’t', async () => {
@@ -480,5 +480,210 @@ describe('dismissing the selected failed start (LAUNCH UX)', () => {
     app.emit({ type: 'launches', launches: [], started: [] });
     expect(window.location.pathname).toBe('/s/a');
     expect(screen.getByRole('main')).toHaveFocus();
+  });
+});
+
+describe('the Session, arriving (LAUNCH-7)', () => {
+  afterEach(() => vi.useRealTimers());
+  const header = () => within(view()).getByRole('banner', { name: 'Starting Session' });
+  const firstPrompt = () => view().querySelector<HTMLElement>('[data-field="first-prompt"]');
+
+  it('LAUNCH-7.2: Start shows your first prompt at once (LAUNCH-7.1), as a message you sent, in the Session view’s layout: the Lens in the header, the composer disabled, the status line empty; another tab shows it too', async () => {
+    const slow = slowLaunches();
+    const app = renderApp('/s/a', { launch: slow.launch });
+    app.snapshot([row({ id: 'a' })]);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'New Session' }));
+    await screen.findByRole('dialog');
+    await waitFor(() => expect(screen.getByRole('button', { name: /^Start/ })).toBeEnabled());
+    await user.type(screen.getByLabelText('Prompt'), 'Fix the rounding{Enter}so totals match');
+    await user.click(screen.getByRole('button', { name: /^Start/ }));
+    // Before the server answers: the tab's own row carries the prompt (LAUNCH-7.1).
+    expect(slow.pending[0]!.req.prompt).toBe('Fix the rounding\nso totals match');
+    expect(firstPrompt()).toHaveTextContent('Fix the rounding so totals match');
+    expect(firstPrompt()!.querySelector('[data-kind="user"]')).toBeNull(); // not the Transcript's copy
+    expect(firstPrompt()).toHaveTextContent(/^You/);
+    // The header: the orbiting Lens where the Status marker will be, then the name, the Harness and "Starting…".
+    const row0 = header().firstElementChild!;
+    expect(row0.firstElementChild).toHaveAttribute('data-slot', 'lookout-mark');
+    expect(row0.firstElementChild).toHaveAttribute('data-orbiting', 'true');
+    expect(header().querySelector('[data-field="status"]')).toHaveTextContent(/^Starting…$/);
+    // The dock: the composer disabled, saying when you can type; the status line empty.
+    const box = within(view()).getByRole('textbox', { name: 'Message' });
+    expect(box).toBeDisabled();
+    expect(box).toHaveAttribute('placeholder', "You can type once it's ready");
+    expect(within(view()).getByRole('button', { name: 'Send' })).toBeDisabled();
+    expect(view().querySelector('[data-field="status-line"]')).toHaveTextContent(/^$/);
+    for (const cell of view().children) expect(cell.getAttribute('data-shell-row')).toMatch(/^(header|body|dock)$/);
+
+    // Another tab, or a reload, gets it with the start.
+    const other = renderApp('/l/l-9');
+    other.snapshot([]);
+    other.emit({ type: 'launches', launches: [launchView({ id: 'l-9', prompt: 'Line one\nLine two' })], started: [] });
+    expect(screen.getAllByTestId('starting-view').at(-1)!.querySelector('[data-field="first-prompt"]')).toHaveTextContent('Line one Line two');
+  });
+
+  it('LAUNCH-7.3, DS-6.7: under your prompt a Loading counts from Start; from 10 s it says a start fails at 15 s; three skeleton bars follow; its words are announced once, through the start’s one region', () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'], now: NOW });
+    const app = renderApp('/l/l-1');
+    app.snapshot([]);
+    app.emit({ type: 'launches', launches: [launchView({ id: 'l-1', startedAt: NOW - 2_000, prompt: 'Fix the rounding' })], started: [] });
+    const arriving = view().querySelector<HTMLElement>('[data-field="arriving"]')!;
+    expect(firstPrompt()!.compareDocumentPosition(arriving) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const loading = arriving.querySelector<HTMLElement>('[data-slot="loading"]')!;
+    expect(loading.querySelector('[data-slot="lookout-mark"]')).toHaveAttribute('data-orbiting', 'true');
+    expect(loading.querySelector('[data-field="elapsed"]')).toBeNull();
+    act(() => vi.advanceTimersByTime(2_000));
+    expect(loading.querySelector('[data-field="elapsed"]')).toHaveTextContent('· 4s');
+    act(() => vi.advanceTimersByTime(5_000));
+    expect(loading.querySelector('[data-field="hint"]')).toBeNull();
+    act(() => vi.advanceTimersByTime(1_000)); // 10 s after Start
+    expect(loading.querySelector('[data-field="hint"]')).toHaveTextContent('Taking longer than usual. At 15 s, its terminal shows here.');
+    const bars = [...arriving.querySelectorAll('.bg-muted')];
+    expect(bars).toHaveLength(3);
+    for (const bar of bars) expect(bar).toHaveClass('motion-safe:animate-pulse');
+    // One region says it; the Loading's words aren't a second one.
+    const regions = within(view()).getAllByRole('status');
+    expect(regions).toHaveLength(1);
+    expect(regions[0]).toHaveTextContent(/^Claude Code is starting in work…$/);
+    expect(loading.querySelector('[aria-live]')).toBeNull();
+  });
+
+  it('LAUNCH-7.3: a resume says "resuming", and shows the header and its Loading only', () => {
+    const app = renderApp('/l/l-r');
+    app.snapshot([]);
+    app.emit({ type: 'launches', launches: [launchView({ id: 'l-r', title: 'kg-hook-review', harness: 'codex', resume: true, directory: '/Users/me/Projects/work' })], started: [] });
+    expect(firstPrompt()).toBeNull();
+    expect(view().querySelector('[data-field="arriving"] [data-slot="loading"]')).toHaveTextContent('Codex is resuming in work…');
+  });
+
+  it('LAUNCH-7.4: when the Session takes over, your first prompt stays where it was, as a sent message, with "Working…" counted from Start in place of the chat’s skeleton, until the Transcript’s copy takes its place', async () => {
+    const app = renderApp('/l/l-1');
+    app.snapshot([row({ id: 'other' })]);
+    const startedAt = Date.now() - 6_000;
+    app.emit({ type: 'launches', launches: [launchView({ id: 'l-1', title: 'fix-rates', startedAt, prompt: 'Fix the rounding' })], started: [] });
+    expect(firstPrompt()).toHaveTextContent('Fix the rounding');
+    const column = firstPrompt()!.parentElement!.className;
+
+    report(app, 'l-1', row({ id: 's-new', title: 'fix-rates', status: 'idle', statusSince: startedAt + 1_000, ownHost: true }));
+    await waitFor(() => expect(window.location.pathname).toBe('/s/s-new'));
+    const chat = screen.getByTestId('chat');
+    const echo = chat.querySelector<HTMLElement>('[data-echo="waiting"]')!;
+    expect(echo).toHaveTextContent('Fix the rounding');
+    expect(chat.querySelector('ol[aria-label="Messages"] > li:first-child')).toBe(echo); // where it was: the column's first message
+    expect(chat.querySelector('ol[aria-label="Messages"]')!.className).toBe(column); // in the same column
+    expect(within(chat).queryByLabelText('Loading the chat')).toBeNull(); // no skeleton
+    const activity = screen.getByTestId('chat-activity');
+    expect(activity).toHaveAttribute('data-activity', 'working');
+    expect(Number(activity.querySelector('[data-field="elapsed"]')!.textContent!.replace('s', ''))).toBeGreaterThanOrEqual(6); // from Start
+    expect(screen.getByRole('textbox', { name: 'Message' })).toBeEnabled();
+
+    // The chat loads with the Transcript's copy: it takes the echo's place.
+    const copy = { kind: 'user' as const, cursor: 'c1', ts: new Date(startedAt + 2_000).toISOString(), text: 'Fix the rounding', queued: false };
+    app.emit({ type: 'chat', sessionId: 's-new', op: 'reset', entries: [copy], before: null, queue: [] });
+    await waitFor(() => expect(chat.querySelector('[data-echo]')).toBeNull());
+    expect(chat.querySelector('[data-kind="user"]')).toHaveTextContent('Fix the rounding');
+
+    // Selected again later, it's the chat's own: nothing handed over twice.
+    await userEvent.setup().click(screen.getByText('other', { selector: '[data-field="title"]' }));
+    await userEvent.setup().click(screen.getByText('fix-rates', { selector: '[data-field="title"]' }));
+    expect(screen.getByTestId('chat').querySelector('[data-echo]')).toBeNull();
+  });
+
+  it('LAUNCH-7.4: a start without a prompt (a resume) hands nothing over: the chat’s skeleton, as for any Session', async () => {
+    const app = renderApp('/l/l-r');
+    app.snapshot([row({ id: 'other' })]);
+    app.emit({ type: 'launches', launches: [launchView({ id: 'l-r', resume: true })], started: [] });
+    report(app, 'l-r', row({ id: 's-r', title: 'resumed' }));
+    await waitFor(() => expect(window.location.pathname).toBe('/s/s-r'));
+    expect(within(screen.getByTestId('chat')).getByLabelText('Loading the chat')).toBeInTheDocument();
+    expect(screen.getByTestId('chat').querySelector('[data-echo]')).toBeNull();
+  });
+
+  it('LAUNCH-7.4: if the chat can’t be read before it loads, it says so, and "Working…" follows the Session’s Status again', async () => {
+    const app = renderApp('/l/l-1');
+    app.snapshot([row({ id: 'other' })]);
+    app.emit({ type: 'launches', launches: [launchView({ id: 'l-1', startedAt: Date.now() - 3_000, prompt: 'Fix the rounding' })], started: [] });
+    report(app, 'l-1', row({ id: 's-new', title: 'fix-rates', status: 'idle' }));
+    await waitFor(() => expect(window.location.pathname).toBe('/s/s-new'));
+    expect(screen.getByTestId('chat-activity')).toHaveAttribute('data-activity', 'working');
+    app.emit({ type: 'chat', sessionId: 's-new', op: 'problem', problem: { kind: 'missing', message: 'no transcript found for session s-new' } });
+    expect(await screen.findByText('No Transcript found')).toBeInTheDocument();
+    expect(screen.getByTestId('chat').querySelector('[data-echo]')).toBeNull();
+    expect(screen.getByTestId('chat-activity')).not.toHaveAttribute('data-activity'); // Idle: nothing
+  });
+
+  it('LAUNCH-7.4: the hand-over is for the view it took over; after another start, its Session shows its own chat', async () => {
+    const app = renderApp('/l/l-1');
+    app.snapshot([row({ id: 'other' })]);
+    app.emit({ type: 'launches', launches: [launchView({ id: 'l-1', prompt: 'Fix the rounding' }), launchView({ id: 'l-2', title: 'second', prompt: 'Next thing' })], started: [] });
+    app.emit({ type: 'sessions', upsert: [row({ id: 's-new', title: 'fix-rates' })], remove: [] });
+    app.emit({ type: 'launches', launches: [launchView({ id: 'l-2', title: 'second', prompt: 'Next thing' })], started: [{ launchId: 'l-1', sessionId: 's-new' }] });
+    await waitFor(() => expect(window.location.pathname).toBe('/s/s-new'));
+    expect(screen.getByTestId('chat').querySelector('[data-echo]')).toHaveTextContent('Fix the rounding');
+    const user = userEvent.setup();
+    await user.click(startingRow('second'));
+    expect(window.location.pathname).toBe('/l/l-2');
+    await user.click(screen.getByText('fix-rates', { selector: '[data-field="title"]' }));
+    expect(screen.getByTestId('chat').querySelector('[data-echo]')).toBeNull();
+    expect(within(screen.getByTestId('chat')).getByLabelText('Loading the chat')).toBeInTheDocument();
+  });
+
+  it('LAUNCH-7.3, LAUNCH-4.5: after a Trust prompt the hint counts 10 s from the answer, as the 15 s run again from it', () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'], now: NOW });
+    const app = renderApp('/l/l-1');
+    app.snapshot([]);
+    const trust = { id: 't1', lines: null, answerable: true, detail: null, answering: null, message: null };
+    app.emit({ type: 'launches', launches: [launchView({ id: 'l-1', startedAt: NOW, prompt: 'Fix it' })], started: [] });
+    act(() => vi.advanceTimersByTime(5_000)); // the Trust prompt shows 5 s after Start
+    app.emit({ type: 'launches', launches: [launchView({ id: 'l-1', startedAt: NOW, state: 'trust', trust, prompt: 'Fix it' })], started: [] });
+    act(() => vi.advanceTimersByTime(30_000)); // answered 35 s after Start
+    app.emit({ type: 'launches', launches: [launchView({ id: 'l-1', startedAt: NOW, prompt: 'Fix it' })], started: [] });
+    const loading = () => view().querySelector<HTMLElement>('[data-field="arriving"] [data-slot="loading"]')!;
+    expect(loading().querySelector('[data-field="elapsed"]')).toHaveTextContent('· 35s'); // counted from Start
+    act(() => vi.advanceTimersByTime(9_000)); // 44 s: not 10 s plus the 30 s wait, but 10 s from the answer
+    expect(loading().querySelector('[data-field="hint"]')).toBeNull();
+    act(() => vi.advanceTimersByTime(1_000));
+    expect(loading().querySelector('[data-field="hint"]')).not.toBeNull();
+  });
+
+  it('LAUNCH-7.5: a Trust prompt’s card and a failure take the Loading’s place under your prompt; the header’s Lens becomes Needs you’s marker or the red CircleX; a failure says where and when above its error', () => {
+    const app = renderApp('/l/l-1');
+    app.snapshot([]);
+    const trust = { id: 't1', lines: ['Accessing workspace:', '/Users/me/Projects/work'], answerable: true, detail: null, answering: null, message: null };
+    app.emit({ type: 'launches', launches: [launchView({ id: 'l-1', state: 'trust', trust, prompt: 'Fix the rounding' })], started: [] });
+    const card = within(view()).getByRole('region', { name: 'Claude Code asks whether you trust this folder' });
+    expect(firstPrompt()!.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(view().querySelector('[data-field="arriving"]')).toBeNull();
+    expect(header().querySelector('[data-slot="lookout-mark"]')).toBeNull();
+    expect(within(header()).getByRole('img', { name: 'Needs you' })).toBeInTheDocument();
+    expect(within(view()).getByRole('button', { name: 'Send' })).toHaveAttribute('data-variant', 'secondary'); // Trust folder is the one primary
+
+    app.emit({ type: 'launches', launches: [launchView({ id: 'l-1', state: 'failed', error: "Fleet hasn't reported it after 15 s.", terminal: ['❯ 1. Yes'], prompt: 'Fix the rounding', startedAt: Date.now() - 18_000 })], started: [] });
+    const failure = view().querySelector<HTMLElement>('[data-field="failure"]')!;
+    expect(firstPrompt()!.compareDocumentPosition(failure) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(failure.firstElementChild).toHaveTextContent(/^Started in ~\/Projects\/work 1[78]s ago$/); // on the app's one-second clock
+    expect(within(failure).getByRole('alert')).toHaveTextContent("Fleet hasn't reported it after 15 s.");
+    expect(header().querySelector('.text-destructive')).not.toBeNull();
+    expect(header().querySelector('[data-slot="lookout-mark"]')).toBeNull();
+    expect(within(view()).queryByRole('textbox', { name: 'Message' })).toBeNull(); // nothing to type to: its content runs to the bottom
+  });
+
+  it('LAUNCH-7.6: a Starting row shows the orbiting Lens where a Session’s marker sits; a failed or Trust row keeps its marker', () => {
+    const app = renderApp('/');
+    app.snapshot([row({ id: 'a' })]);
+    const trust = { id: 't1', lines: null, answerable: true, detail: null, answering: null, message: null };
+    app.emit({
+      type: 'launches',
+      launches: [launchView({ id: 'l-1', title: 'starting' }), launchView({ id: 'l-2', title: 'stuck', state: 'failed', error: 'x' }), launchView({ id: 'l-3', title: 'asks', state: 'trust', trust })],
+      started: [],
+    });
+    const lens = (title: string) => startingRow(title).querySelector('[data-slot="lookout-mark"]');
+    expect(within(startingRow('starting')).getByRole('img', { name: 'Starting' })).toContainElement(lens('starting') as HTMLElement);
+    expect(lens('starting')).toHaveAttribute('data-orbiting', 'true');
+    expect(lens('stuck')).toBeNull();
+    expect(within(startingRow('stuck')).getByLabelText("Didn't start")).toBeInTheDocument();
+    expect(lens('asks')).toBeNull();
+    expect(within(startingRow('asks')).getByRole('img', { name: 'Needs you' })).toBeInTheDocument();
   });
 });

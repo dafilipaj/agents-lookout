@@ -74,6 +74,8 @@ export function launchView(over: Partial<LaunchView> & { id: string }): LaunchVi
     trust: null,
     error: null,
     terminal: null,
+    prompt: null,
+    resume: false,
     ...over,
   };
 }

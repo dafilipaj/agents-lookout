@@ -80,7 +80,7 @@ it('LIB-2.4: debounces text search within one second, shows Loading and marks ti
   const app = renderApp('/', { library: (q) => q.query ? new Promise((r) => { finish = r; }) : Promise.resolve(ok([output()])) }); await open(app);
   fireEvent.change(screen.getByRole('searchbox', { name: 'Filter Outputs' }), { target: { value: 'report' } });
   await waitFor(() => expect(app.client.library).toHaveBeenLastCalledWith(expect.objectContaining({ query: 'report' })), { timeout: 900 });
-  expect(within(panel()).getByText('Loading…')).toBeVisible();
+  expect(within(panel()).getByText('Reading the Library…')).toBeVisible();
   await act(async () => finish!(ok([output()])));
   expect(panel().querySelectorAll('mark.bg-highlight')).toHaveLength(2);
 });
@@ -187,7 +187,7 @@ it('LIB-2.8: a slow migration says Indexing Transcripts until the first answer a
   let finish: ((p: LibraryPage) => void) | undefined;
   const app = renderApp('/', { library: () => new Promise((r) => { finish = r; }), libraryStatus: async () => ({ indexing: true }) });
   await open(app);
-  expect(within(panel()).getByText('Loading…')).toBeVisible();
+  expect(within(panel()).getByText('Reading the Library…')).toBeVisible();
   expect(await within(panel()).findByText('Indexing Transcripts…')).toBeVisible();
   await act(async () => finish!(ok([output()])));
   expect(within(panel()).queryByText('Indexing Transcripts…')).toBeNull();

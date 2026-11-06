@@ -458,7 +458,8 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
         {problem.message} · retrying
       </ChatProblem>
     );
-  } else if (!chat?.loaded) {
+  } else if (!chat?.loaded && echoes.length === 0) {
+    // A start's first prompt (LAUNCH-7.4) shows before the chat loads, in the list below, instead.
     body = ended ? (
       <Notice icon={MessagesSquare} title="No chat">
         The Session ended before its chat loaded.
@@ -475,11 +476,11 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
     );
   } else {
     body = (
-      <ol ref={list} className="mx-auto flex w-full max-w-3xl flex-col gap-3.5 px-6 pt-11 pb-5" aria-label="Messages">
+      <ol ref={list} className={CHAT_COLUMN} aria-label="Messages">
         {before && !ended && (
           <li className="flex flex-col items-center gap-1">
             <Button variant="quiet" size="default" disabled={loadingEarlier} onClick={() => void showEarlier()}>
-              {loadingEarlier ? <Loading label="Loading…" /> : 'Show earlier'}
+              {loadingEarlier ? <Loading label="Reading earlier messages…" /> : 'Show earlier'}
             </Button>
             {earlierError && <Alert layout="inline" title={earlierError} />}
           </li>
@@ -825,7 +826,7 @@ function Held({ held }: { held: HeldMessage }) {
  * (VIEW-3.3); a sending one is your message before its copy from the Transcript arrives, and a lost
  * one never got a copy (VIEW-1.13): both dimmed.
  */
-function Prompt({ text, ts, state }: { text: string; ts: string | null; state: 'sent' | 'queued' | 'sending' | 'lost' }) {
+export function Prompt({ text, ts, state }: { text: string; ts: string | null; state: 'sent' | 'queued' | 'sending' | 'lost' }) {
   const queued = state === 'queued';
   const echo = state === 'sending' || state === 'lost';
   return (
@@ -1055,6 +1056,14 @@ function ChatProblem({ title, children }: { title: string; children: ReactNode }
   );
 }
 
+/** The chat's column: its width, padding and gaps. A start's view draws its first prompt in it too, so nothing moves when its Session takes over (LAUNCH-7.4). */
+export const CHAT_COLUMN = 'mx-auto flex w-full max-w-3xl flex-col gap-3.5 px-6 pt-11 pb-5';
+
+/** DS-6.2: one of the skeleton's bars; it pulses only when motion is welcome (DS-6.5). Also a start's (LAUNCH-7.3). */
+export function SkeletonBar({ width }: { width: number }) {
+  return <div className="h-8 rounded-lg bg-muted motion-safe:animate-pulse" style={{ width: `${width}%` }} />;
+}
+
 /**
  * DS-6.2: the skeleton, and under it what's being done and for how long; from 15 s, that the
  * terminal preview still works, with a way to it for a Controllable Session.
@@ -1065,7 +1074,7 @@ function Skeleton({ terminal }: { terminal: TerminalLink | null }) {
       <div className="space-y-4" aria-busy="true" aria-label="Loading the chat">
         {[70, 45, 85, 35].map((w, i) => (
           <div key={i} className={cn('flex', i % 2 === 0 && 'justify-end')}>
-            <div className="h-8 animate-pulse rounded-lg bg-muted" style={{ width: `${w}%` }} />
+            <SkeletonBar width={w} />
           </div>
         ))}
       </div>

@@ -454,7 +454,8 @@ interface SectionHeaderProps {
   count: number | null;
   fetchedAt: number | null;
   now: number;
-  loading: boolean;
+  /** DS-6.6: while read, what's read ("Reading from GitHub…"); null otherwise. */
+  loading: string | null;
   stale: boolean;
 }
 
@@ -486,7 +487,7 @@ function SectionHeader({ id, title, count, fetchedAt, now, loading, stale }: Sec
       {loading && (
         <>
           <span aria-hidden>·</span>{' '}
-          <Loading label="Loading…" />
+          <Loading label={loading} />
         </>
       )}
       {stale && (
@@ -544,7 +545,7 @@ function TasksSection({ tasks, now: clock, selected, rowState, listRef, onListFo
   const failed = tasks.state === 'not-installed' || tasks.state === 'signed-out' || tasks.state === 'error';
   return (
     <section aria-labelledby="work-tasks-heading" data-section="tasks" className="flex flex-col">
-      <SectionHeader id="work-tasks-heading" title="Tasks" count={list ? tasks.tasks.length : null} fetchedAt={tasks.fetchedAt} now={now} loading={tasks.state === 'loading'} stale={tasks.stale} />
+      <SectionHeader id="work-tasks-heading" title="Tasks" count={list ? tasks.tasks.length : null} fetchedAt={tasks.fetchedAt} now={now} loading={tasks.state === 'loading' ? 'Reading from Productive…' : null} stale={tasks.stale} />
       {/* WORK-2.6: no email, no read; Settings opens in the main pane, Work staying open. */}
       {tasks.state === 'no-email' && (
         <p className="px-3 py-2 text-meta text-muted-foreground" data-field="no-email">
@@ -908,7 +909,7 @@ function PrsSection({ prs, blockedUntil, now: clock, selected, rowState, listRef
   const frees = prs.state === 'error' && blockedUntil !== null && blockedUntil > now ? `That's in ${backIn(blockedUntil - now)}.` : null;
   return (
     <section aria-labelledby="work-prs-heading" data-section="prs" className="flex flex-col">
-      <SectionHeader id="work-prs-heading" title="PRs" count={lists ? count : null} fetchedAt={prs.fetchedAt} now={now} loading={prs.state === 'loading'} stale={prs.stale} />
+      <SectionHeader id="work-prs-heading" title="PRs" count={lists ? count : null} fetchedAt={prs.fetchedAt} now={now} loading={prs.state === 'loading' ? 'Reading from GitHub…' : null} stale={prs.stale} />
       {prs.taskIds === false && <p className="px-3 pb-1 text-meta text-muted-foreground" data-field="task-link-version">Task links need a newer tb-pr.</p>}
       {prs.state !== 'ok' && prs.state !== 'loading' && (
         <Problem

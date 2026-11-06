@@ -12,6 +12,8 @@ export interface ChatActivityProps {
   entries: readonly ChatEntry[] | undefined;
   /** When you last sent from the composer (VIEW-1.10's optimistic start). */
   sentAt: number | null;
+  /** LAUNCH-7.4: when the start began, while its first prompt waits for its copy: working since then. */
+  arriving?: number | null;
 }
 
 /**
@@ -20,9 +22,9 @@ export interface ChatActivityProps {
  * screen reader hears "Working…" once, not every second; it stays mounted (empty while there's
  * nothing to say) so the first change is announced too.
  */
-export function ChatActivity({ row, ended, entries, sentAt }: ChatActivityProps) {
+export function ChatActivity({ row, ended, entries, sentAt, arriving = null }: ChatActivityProps) {
   const now = useNow(1000);
-  const activity = activityOf({
+  const found = activityOf({
     status: row.status,
     waitingFor: row.waitingFor,
     statusSince: row.statusSince,
@@ -31,6 +33,7 @@ export function ChatActivity({ row, ended, entries, sentAt }: ChatActivityProps)
     sentAt,
     now,
   });
+  const activity = arriving !== null && !ended && found?.kind !== 'needs-you' ? { kind: 'working' as const, since: arriving } : found;
   const label = !activity ? '' : activity.kind === 'working' ? 'Working…' : `Needs you${activity.waitingFor ? ` · ${activity.waitingFor}` : ''}`;
   const since = activity?.kind === 'working' ? activity.since : null;
   // DS-10.1: the dot pulses for 10 s after the Turn began, then holds steady, as a Busy marker does.
