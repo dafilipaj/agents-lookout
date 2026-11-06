@@ -3,7 +3,7 @@ title: "Design system"
 code: "DS"
 status: "In Progress"
 created: "2026-10-22"
-updated: "2026-11-05"
+updated: "2026-11-06"
 ---
 
 # Design system
@@ -54,12 +54,13 @@ New tokens, each with a light and a dark value, and one meaning per family.
 The design review's suggestion 3, as decided with Dario.
 
 - [x] DS-3.1 Harness logos are drawn in the text colour around them (monochrome), in the sidebar's rows, the usage strip and History's filter and results. They keep the brand colour in two places: the main pane's header (a live, a starting and a past Session's) and the new Session modal (the launcher). (test)
-- [x] DS-3.2 A usage bar on the strip keeps its fill `foreground/55` at every level, which stays 3:1 or more against the track in both modes. The level shows as a 3 px edge at the fill's end: `warning` at 80% to 94%, `destructive` at 95% or more, none below 80%, set off from the fill by a 1 px gap in the sidebar's colour (3:1 or more against the fill in both modes), since the edge's own lightness is within 2:1 of the fill's and only the gap makes it a separate mark. The fill is `overflow-hidden`, so the edge follows its rounded end. The warning triangle and critical octagon (USAGE-1.2) stay. The usage details popover keeps its solid bars. (test)
+- [x] DS-3.2 A usage bar on the strip keeps its fill `foreground/55` at every level, which stays 3:1 or more against the track in both modes. The level shows as a 3 px edge at the fill's end: `warning` at 80% to 94%, `destructive` at 95% or more, none below 80%, set off from the fill by a 1 px gap in the sidebar's colour (3:1 or more against the fill in both modes), since the edge's own lightness is within 2:1 of the fill's and only the gap makes it a separate mark. The fill is `overflow-hidden`, so the edge follows its rounded end. The warning triangle and critical octagon (USAGE-1.2) stay. The usage details popover draws its bars as meters, the level as the same edge (DS-19.1). (test)
 - [x] DS-3.3 Staleness uses the info tone, never amber: Work's "Possibly out of date" (WORK-7.5), Work's "old" chip (WORK-7.3), the sidebar's banners for a stale Fleet list and a lost server (SIDE-6.2), Work's "Session links are unavailable", and the terminal preview's "… · retrying", and the usage strip's "stale · …" on a reading marked old. (test)
 - [x] DS-3.4 History's and Library's search hits are marked with the `highlight` token, not Needs you's amber. (test)
 - [x] DS-3.5 A sidebar row's context usage, its number and its ring, takes the status line's colours (VIEW-5.5): the row's quiet colour up to 40%, `warning-text` above 40%, `destructive-text` above 60%, from the same `contextLevel`. Its text keeps 4.5:1 on every row state (SIDE-3.11). (test)
 - [x] DS-3.6 Status colours show only a Status, or something its Status spec ties to one (UX, "Colour by meaning"): Work's "milestone" chip and PR "ready" chip are neutral; chat and Markdown links are underlined in the surrounding text colour; Work's CI-running spinner and the chat rail's finished-Subagent Mark are `muted-foreground`; History's live marker and a live Linked Session's marker in Work show the Session's real Status (DS-5.2, DS-5.3), never a stand-in colour. (test)
 - [x] DS-3.7 Seen in both modes at 1440 px with several Sessions and a limit at 95% or more: the brightest things on screen are the Status markers, strips and the Needs you tint, and nothing is amber that neither needs you nor warns of a limit. (manual)
+- [ ] DS-3.8 Needs you's amber marks a question on the chat rail only while it waits for your answer: the guard pins `ChatRail.tsx`'s `needs-you` class to the pending question's Mark, and an answered, declined or abandoned one is `muted-foreground` (VIEW-1.21). (test)
 
 ### DS-4 One Alert
 
@@ -83,12 +84,17 @@ The design review's suggestion 9. A shape means the same thing in every list.
 
 ### DS-6 Loading that admits time passes
 
-The design review's suggestion 4.
+The design review's suggestion 4. On 2026-11-06 (clarity pass, idea 10, Plan item 49) Dario found the Starting view unfinished and a PR's Specs submenu showing a bare "Fetching #3426", and asked for a small animation wherever Lookout waits. `Loading` was words only, in 31 places; 16 of them said only "Loading…", against DS-6.1's "what it's doing"; a Topic member's state, Suggest's preview line and the Sessions list's "Connecting…" and "Looking for Sessions…" were written by hand; and the Starting view and a Starting row spun lucide's `LoaderCircle` without its words, the view's even under reduced motion, as the chat's skeleton pulses. Now every wait is a `Loading` with the orbiting Lens (DS-14.4) and its own words.
 
 - [x] DS-6.1 `Loading` in `components/ui/loading.tsx` shows what it's doing ("Reading the Transcript…") at once. From 3 s it adds how long it has taken ("· 4s"), every second. From 15 s it shows a hint, when the place gives one. The label is in a polite `role="status"` region, announced once; the seconds are outside it (as VIEW-1's "Working…" row does). (test)
 - [x] DS-6.2 The chat's skeleton stays, with a `Loading` under it: "Reading the Transcript…", and from 15 s "This is taking a while. The terminal preview still works.", with a Show terminal button, for a Controllable Session; a View only one has no preview, so no hint. (test)
 - [x] DS-6.3 Every other "Loading…" is a `Loading`: History's results and "Loading more…", Work's section headers, the main pane, a starting and a past Session's view, the terminal preview, the usage strip and its details ("Reading usage…"), and the status-line menus. (test)
 - [x] DS-6.4 With no live Session and no Starting row, the main pane says "No Sessions running" with a "Start a Session" button that opens the launcher, as `N` does, instead of "Select a Session" and keys to move through an empty list. Under the button the hint lists `N` and `H` `W` `L` (the panels; History is where past Sessions are resumed) from the one shortcuts list (SIDE-7.4), then an "All shortcuts" button that opens the Keyboard shortcuts dialog. With Sessions, the hint stays (VIEW-5.4). (test)
+- [ ] DS-6.5 `Loading` shows the orbiting Lens (DS-14.4) before its words, in `muted-foreground`, at the size of an icon beside its text (DS-7): 14 px beside `meta`, 12 px beside `caption`, 16 px beside `body`. It orbits only while the wait lasts, and holds still under reduced motion; so does every skeleton's pulse (DS-6.2's included), which runs only under `motion-safe`. (test)
+- [ ] DS-6.6 Every `Loading` says what it reads or waits for, in the words of the UX table "Loading words", never "Loading…" alone; "Loading more…" under a list stays. The waits written by hand become `Loading`s with their words: a Topic member's state (`TopicView.tsx` `State`), Suggest's preview line, and the Sessions list's "Connecting…" and "Looking for Sessions…"; a PR's Specs submenu reads "Fetching #3426 from GitHub…". The Starting view's and a Starting row's `LoaderCircle` become the Lens (LAUNCH-7). (test)
+- [ ] DS-6.7 A place can show its hint earlier than 15 s, when it knows when a wait becomes a failure: the Starting view's at 10 s, since a start fails at 15 s (LAUNCH-4.5, LAUNCH-7.3). (test)
+- [ ] DS-6.8 The guard (Technical approach, check 12) fails on a `Loading` whose label is "Loading…"; the text "Loading…" outside `ui/loading.tsx`; `LoaderCircle` outside Work's CI icon, where it means "CI running" (WORK-3.2); `animate-spin` outside that icon and a Refresh button's icon while it refreshes (the right sidebar's, Settings' Tools); and `animate-spin` or `animate-pulse` without `motion-safe:`. (test)
+- [ ] DS-6.9 Seen in both modes at 1440 px and with the right sidebar at 280 px, with each place made slow: the Lens reads as Lookout looking, quieter than any Status marker and never as one; its words say what is read; nothing moves with reduced motion. (manual)
 
 ### DS-7 Icon buttons
 
@@ -144,6 +150,7 @@ Once colour meant only Status (DS-3), Lookout read as flat and grey (Dario, 2026
 - [x] DS-12.5 Needs you grows with the rest. A sidebar row's Needs you tint is 16% at rest, 22% under the pointer and 28% selected (was 12, 20 and 26), and light `needs-you-text` darkens to `oklch(0.48 0.13 55)`, so the "waiting for" line keeps 4.5:1 on the selected tint over the new sidebar (SIDE-3.11's test). The header's Status tag for Needs you is solid: a `needs-you` fill under a new `needs-you-foreground`, 4.5:1 or more in both modes; the Busy, Idle and Unknown tags stay as they are (VIEW-5.9). (test)
 - [x] DS-12.6 With one or more Controllable Sessions Needing you, a "Needs you" header with their count sits above them in the Session sidebar, in `needs-you-text`, built and spaced as the "View only" header. It isn't a Session: ↑/↓, j/k, ⌘1–9, ⌘J and the filter skip it as they skip "View only", it hides when the filter leaves no Needs you row, and screen readers get it the way they get "View only". While the pointer is over the sidebar (SIDE-3.4) it neither comes nor goes, so the rows under the pointer don't move: one that wasn't there waits for the pointer to leave, and one that was keeps its room, empty and hidden from screen readers, once its last Session stops Needing you; its count stays live. A View only Session that Needs you stays under "View only". (test)
 - [x] DS-12.7 Seen in both modes at 1440 px, with Sessions in every Status and the chat showing a question card: the Needs you rows, their header and the header's tag are still the most prominent things on screen (DS-3.7 still holds); a Primary button or your own message never reads as Busy's blue beside a Busy marker; and the sidebar and the chat read as two planes. (manual)
+- [ ] DS-12.8 Primary also marks where your keys are and your prompts on the chat rail: the edge of the column that has the keys, in `ring` (SIDE-11.3), and a prompt's Mark, in `primary` (VIEW-1.21). The colour guard (DS-2.3) pins them: `ChatRail.tsx` to `bg-primary` on a prompt's Mark, and the edge's file to its one `ring` class. (test)
 
 ### DS-13 Sub-pages and tabs
 
@@ -161,6 +168,7 @@ Lookout's mark is the Lens: a ring and an off-centre dot (0014). It's the brand,
 - [x] DS-14.1 `LookoutMark` (`ui/lookout-mark.tsx`) draws the Lens in a 24 px viewBox with lucide's grammar: a ring, `circle cx=12 cy=12 r=8.5`, stroked at 2 px with round caps and joins, and a solid dot, `circle cx=14.25 cy=9.75 r=2.75`. Its stroke and fill are `currentColor`, so it takes the text colour around it and never a Status, Warning, Destructive or Primary token; its size comes from its `className`; it's hidden from screen readers. The icon guard (0008) lists its file among those that may draw an `<svg>`. (test)
 - [x] DS-14.2 The favicon (`web/public/favicon.svg`) is the Lens on a 32 px tile, `rx=8`, in `#18181b`: the mark in `#fafafa` at a 2.6 px stroke, scaled 0.9167 from `translate(5 5)`. No amber: it's Needs you's colour, kept free for a Needs you mark on the favicon later. (test)
 - [x] DS-14.3 Seen in both modes: the favicon reads as the Lens in a light and a dark browser tab strip, and the sidebar's mark (SIDE-8.2) reads as the brand, quieter than any Status marker. (manual)
+- [ ] DS-14.4 The Lens can orbit: `LookoutMark` with `orbiting` turns its dot around the ring's centre, one turn every 1.6 s at a steady speed, as the clarity pass's mockups drew it, only under `prefers-reduced-motion: no-preference`; with reduced motion it's the still Lens. It's the loader of `Loading` (DS-6.5), the Starting view and a Starting row (LAUNCH-7), and nothing else: the still Lens stays the brand (SIDE-8.2, the favicon). (test)
 
 ### DS-15 One scroll bar
 
@@ -187,6 +195,56 @@ In the right sidebar's lists, rows of two to four lines followed each other with
 - [x] DS-17.2 In a browser, with the rule's real CSS, the line is drawn between two rows of Work's Tasks list (the one list with a Behaviour World; History's and the others' rows carry the same marks, DS-17.1), 1 px tall from 30 px in, and is gone on both sides of the selected row. (e2e)
 - [x] DS-17.3 Seen in each of the four tabs, in light and dark mode, with an expanded row and a long list: where one row ends is plain at a glance, and the lines don't compete with the selected row. (manual)
 
+### DS-18 Buttons by role
+
+Lookout had 66 `Button`s in six variants and five heights: outline alone came in 20, 24, 28, 32 and 36 px, and 29 of the 66 set their own height in `className`, which no guard checked (DS-7.2 checks icon buttons only). Nearly everything was outline, so in the Session header Stop, Add to Topic and End Session had the same shape, weight and size, and nothing said which button mattered or which was safe. Primary sat in 15 places, almost all in dialogs, Settings and Topics; on the screens used all day only Send and Start. And one action had several icons: "Open" was `Play` in History, `Maximize2` on a Topic and `ExternalLink` in the Library; Review and Start Session both drew `Play`. Now a button's role sets its look, its place sets one of three heights, and each action has one icon. Decided by Dario on 2026-11-06 (clarity pass, idea 4, Plan item 46): End Session stays visible, and menu items have icons too.
+
+- [ ] DS-18.1 `Button` (`ui/button.tsx`) has five roles as its `variant`, each with one look (UX, "Buttons"): `primary` (indigo fill), `soft` (a `primary-soft` fill, its label and icon in a new `primary-text`), `secondary` (outline), `quiet` (no fill or border until the pointer is over it) and `danger` (`quiet`'s look in `destructive-text`). Two looks are kept for one use each: `destructive`, a red fill, only for the confirming button of a dialog that ends or deletes something, and `link`, a button inside a line of text. shadcn's grey `secondary` fill goes. `labelledButtonLook` (`ui/icon-button.tsx`), which `RowAction` and the listed hand-made buttons draw with, takes the same roles. (test)
+- [ ] DS-18.2 `index.css` defines `primary-text`, the Primary family's text shade (`oklch(0.52 0.2 281)` light, `oklch(0.74 0.14 281)` dark): on `primary-soft` over the background, the sidebar and `sidebar-accent` it keeps 4.5:1 or more in both modes, where dark `primary` measures 2.5 to 3.1:1. `destructive-text` keeps 4.5:1 on the same three planes. The colour guard's Primary row pins `bg-primary-soft` and `text-primary-text` to `button.tsx` and `icon-button.tsx` for buttons, beside its existing pins (DS-12.4). (test)
+- [ ] DS-18.3 A `Button` has three sizes, named by place: `line`, 24 px, `meta` text and a 14 px icon, inside a line of text, a card's line or the status line; `default`, 28 px, `body` text and a 16 px icon, in headers, rows, panels, toolbars and the chat; `form`, 32 px, `body` text and a 16 px icon, in dialogs and Settings' forms. shadcn's `xs`, `sm`, `lg` and 36 px `default` go; icon sizes stay inside `components/ui/` (DS-7). The labelled row button keeps its 28 px with a 20 px icon (DS-7.1). (test)
+- [ ] DS-18.4 A surface has at most one `primary` button: a view, a dialog, or a form with its own Save (each of Settings' sections is one). A row's first action is `soft` (DS-16.1), and so is a past Session view's Resume; a row's "More" is `quiet`, with its word. Component tests render each view and dialog in the Places list (Technical approach, "Buttons") and count its `primary` buttons. (test)
+- [ ] DS-18.5 A danger action stays where you use it: End Session in the Session header, last, after a divider (a 1 px line in `border`, 16 px tall, 4 px either side), as `danger` with its icon and word (the word gives way below 26 rem, as today); Delete last in its menu, after its divider (DS-16.2). Its confirming button in the dialog it opens is the red fill, `destructive` (VIEW-5.6, TOPIC's Delete). In the header, Stop and Esc are `secondary`, Add to Topic and Copy session ID `quiet`. (test)
+- [ ] DS-18.6 Each action has one icon, in one table, `lib/actions.ts` (UX, "Actions"), with its word and its key when it has one. A `RowActions` first action and a menu item name their action, never an icon of their own, so their icon and word come from the table; a `Button` that runs a table action draws its icon with `ActionIcon`; the Keyboard shortcuts dialog shows a shortcut's icon before its label when it runs a table action. Opening something inside Lookout (a Session, a Topic view, the Spec view) and leaving Lookout (GitHub, Fantastic, a file in its app, a URL) have different icons. Every item of an action menu has its icon; a menu of choices (the model, Effort and Status menus) doesn't. (test)
+- [ ] DS-18.7 The guard (Technical approach, check 9) fails on: a `Button` or `labelledButtonLook` whose `className` sets a height, minimum or maximum height, padding or text size; `variant="destructive"` outside the listed confirm dialogs; a hand-made `<button>` outside `components/ui/` that isn't in the list of allowed ones, each with its reason (rows, tabs, chips, Marks, the status line's menus, inline links); a `RowMenuItem` or `RowActions` first action with an `icon` of its own; and a `Button` whose text is a table action's word without that action's `ActionIcon`. (test)
+- [ ] DS-18.8 Seen in both modes at 1440 px and with the right sidebar at 280 px: in the Session header, Stop, Add to Topic and End Session read as three kinds of action, and End Session as the one to be careful with; an expanded row's Soft action reads as its next step without competing with a Needs you tint or a Busy marker; no button reads as a Status; and a row's actions, a header's and a dialog's sit on the heights the place gives. (manual)
+
+### DS-19 One anatomy for details popovers
+
+Usage's and Memory's details popovers open from the sidebar's footer in one frame (22 rem, no padding) and differed in everything inside it: one header per Harness against one verdict line; "updated 1m ago" against "3s ago"; 6 px solid bars against 4 px ones; blocks between dividers and a key–value list against tiles, a "Worth a look" box and an uppercase "Who uses it". Memory's was redesigned on 2026-11-06 (MEM-3.2 to 3.9) and Dario likes it. Now its pieces are the system's, Memory's popover is built from them unchanged, and Usage is rebuilt from them (USAGE-2.3 to 2.8). Decided by Dario on 2026-11-06 (clarity pass, idea 5, Plan item 47).
+
+- [ ] DS-19.1 `components/ui/details.tsx` holds the pieces of a details popover, moved from `MemoryLine.tsx` with their classes as they are: `Verdict` (a dot in its level's colour, `MEMORY_GLYPH`'s, the verdict in `body` medium, the reading's age at its end in `caption`: "4s ago", or "stale · 1m" in `info-text`); `Tiles` and `Tile` (up to three, each a label in `caption`, a value in `body` medium `tabular-nums` with its level's icon and text colour when it isn't normal, and a line in `caption`); `WorthALook` (a neutral box, `border` and `muted/40`, titled "Worth a look" in `meta` medium, one line each with its icon, and nothing at all when it has no lines); `SectionLabel` (`caption`, medium, uppercase, `tracking-wide`, `muted-foreground`, with an optional note at its right in normal case); and `Meter` (a name, a value and a mark on one line, a 4 px bar under it on a `foreground/10` track, its fill one of three tones, `foreground/55`, `/30` or `/15`, with an optional level edge drawn as DS-3.2 draws the strip's, and an optional `caption` line under it). Memory's popover is built from them and renders the same elements and classes as before. (test)
+- [ ] DS-19.2 The guard (Technical approach, check 10) fails on `uppercase` outside `ui/details.tsx`, except the chat's message tag `Chip` (listed, with its reason); and on a bar or track drawn by hand, a `rounded-full` element with a `bg-foreground/<n>` fill and an `h-1` or `h-1.5` height, outside `ui/details.tsx` and the usage strip's bar (DS-3.2). A question's header in the chat (`Answering.tsx`, `Chat.tsx`) is a `SectionLabel`. (test)
+- [ ] DS-19.3 Only `lib/time.ts` formats an age: `formatAge` with "ago" or "stale ·" around it where the place needs words. `lib/usage.ts`'s `formatAgeAgo` and `formatAgeShort` go, so "just now" reads "12s ago". The guard fails on a function named `format…Age…` or `…Ago` outside `lib/time.ts`. (test)
+- [ ] DS-19.4 Seen in both modes at 1440 px with both popovers opened one after the other, a limit at 100% and a Session growing: they read as one family, the same verdict line, tiles, box, labels and bars, and Memory's looks as it did before. (manual)
+
+### DS-20 One of a few ways to show the same thing
+
+Work's Show filter (WORK-1.5) is the one control that picks one of a few ways to show the same list: three hand-made buttons with `aria-pressed` in a bordered track (`WorkPanel.tsx`), each its own Tab stop, and not on the guard's list of hand-made buttons (DS-18.7). The Spec view's view switch (PLAIN-10) is a second. Now it's one component, with one look and one way to use it from the keyboard. Decided by Dario on 2026-11-06 (clarity pass, idea 9, Plan item 48).
+
+- [ ] DS-20.1 `Segmented` (`ui/segmented.tsx`) is a `radiogroup`, named after what it chooses, of two to four text choices side by side in one track, each a `radio` with an optional tooltip; a choice can be disabled, its tooltip saying why. Its look is Work's Show filter's, moved as it is (UX, "Segmented"): the chosen choice is `foreground`, medium, raised on `accent` (`sidebar-accent` in a sidebar), never in Primary; the others `muted-foreground`, `foreground` under the pointer. What a choice does is the page's. (test)
+- [ ] DS-20.2 Only the chosen choice is in the Tab order. ←/→ choose the previous or next, wrapping and skipping a disabled one, and Home and End the first and last, focus following, as on a `Tabs` strip (DS-13.2); the shortcuts list's ←/→ entry names it (SIDE-7.4). (test)
+- [ ] DS-20.3 Work's Show filter (WORK-1.5) and the Spec view's view switch (PLAIN-10.1) are `Segmented`s. The guard (Technical approach, check 11) fails on `role="radiogroup"` outside `ui/segmented.tsx`, except the launcher's Harness choice (`Launcher.tsx`, radio cards with an icon in a form). (test)
+
+### DS-21 One anatomy for an expanded row
+
+DS-16 settled an expanded row's buttons and DS-17 where a row ends; what's inside still had no shared order. Seen live on 2026-11-06, five kinds of expanded row (a Session in History, a Task and a PR in Work, an Artifact in Library, a Topic in Topics) had five layouts: the title cut on a Task and a PR, whole elsewhere; labels in a left column on three kinds, "Problem" above a Task's text, none on a Topic; Linked Sessions as three boxed chips on a Task and a PR, ten chips and "+7 older" on an Artifact, one chip and "+13 past" on a Topic; another link as inline text, a chip or plain text; the Artifact's actions in the middle; its URL twice and its source path wrapping mid-word. Two of a Task's three chips read "Fantastic-productive PR 3…". Now one order, one way to draw a link, and the rare facts out of the row. Decided by Dario on 2026-11-06: option A of three drawn (clarity pass, idea 8, Plan item 50); a detail view per kind (option B) only if A's counts hide too much.
+
+- [ ] DS-21.1 `ui/row-details.tsx` holds an expanded row's parts, and every expanded row in Work, History, Library and Topics is built from them, in one order: its title, whole (wrapped, never cut); its state, one line in `meta` with the kind's facts joined by " · "; a summary, at most three lines of the kind's own text, left out when it has none; its links (DS-21.2); and its actions last (`RowActions`, DS-16). No part has a label in a column beside it. What each kind puts in each part is UX "Expanded rows". (test)
+- [ ] DS-21.2 A row's links are counts on one line, one per kind of link it has ("3 Sessions", "1 PR", "1 Task", "2 Topics"), each a disclosure button. When the row expands, its first count is open if it holds three or fewer, so a Task with its three Sessions shows them at once, and the others are closed. Opening one lists its links in place under the counts, one per line, at most three, then "Show all 17"; opening another closes it. A link's line is the same in every row: a Session's Status marker (DS-5.1) or the kind's icon, its name (a Session's by SIDE-10), and its state at the end in `meta` ("live", its age, "past"). It does what WORK-4.10's chip did, with the same accessible name and hover. Boxed chips, grey chips and links as inline text go. (test)
+- [ ] DS-21.3 Facts you rarely need leave the row, and nothing shows twice: an Artifact's link and its source file are "Copy link" and "Show source file" under More (DS-16); dates, a Session's start directory and an Output's full path are in the state line's tooltip. A fact that's an exception stays, in words: a past Session that can't be resumed and why (HIST-3.3), a source file newer than its last publish (LIB-3.2), a fetch or read that failed. (test)
+- [ ] DS-21.4 The guard (Technical approach, check 13) fails on an expanded row in `WorkPanel.tsx`, `HistoryPanel.tsx`, `LibraryPanel.tsx` or `TopicsPanel.tsx` that isn't built from `ui/row-details.tsx`, and on `SessionChip` outside a Topic view's member list (`TopicView.tsx`). (test)
+- [ ] DS-21.5 Seen in both modes at 1440 px and with the right sidebar at 280 px, on a Task with three Linked Sessions and a PR, a Review request, a past Session, an Artifact touched by 17 Sessions and a Topic with past members: the five read as one family, a title is whole, the counts say what's linked, and an open list doesn't push the actions out of reach. (manual)
+
+### DS-22 Quiet rows, loud exceptions
+
+A Session row's second line held up to seven coded values with no labels: a memory mark, a queued mark, the Subagent count, the changed lines in green and red, a background shell, the time in its Status and the context, each sized to its value, so a value's place didn't say what it was (the Subagent count took the memory mark's place). Its colours showed when nothing was wrong: on 2026-11-06 the amber memory mark was on four of five live rows (+56 MB, +267 MB, +393 MB and +2.8 GB in 10 minutes), and on both live rows while this was written (+89 MB and +310 MB), since MEM-2.5 calls 30 MB growing; amber is "act on it" (DS-3), so the one Session running away didn't stand out. Every row with changes was green and red. Now routine values are grey in fixed columns, and an exception has colour and words at the front of the line. Decided by Dario on 2026-11-06 (clarity pass, idea 3, Plan item 50).
+
+- [ ] DS-22.1 A Session row's numbers sit in three fixed columns at the end of its second line, in this order: its changes, its time in its Status, its context (UX "Quiet rows"). Each is right-aligned, `tabular-nums`, of a fixed width, and empty when there's no value, so a value's place says what it is and the columns line up from row to row. They're never cut (SIDE-2.14). (test)
+- [ ] DS-22.2 Routine values are in the row's quiet colour: the changes are grey on the row, their green and red staying in the status line and the changed-files list, where they read as a diff (DIFF-1.1 amended); context is grey up to 40%. (test)
+- [ ] DS-22.3 An exception has its colour and an icon or words, never colour alone, and leads the second line, before the location and the Session's words, which truncate first: memory running away (MEM-4.1: `TrendingUp` and "+2.8 GB" in `warning-text`), a job queued in `res` (RES-3.1), Subagents running (SIDE-9.7: `Bot` and the count in `busy-text`) and a background shell (SIDE-2.6), in that order, as today's numbers group has them. Context past 40% keeps its column, in its level's colour with its ring (DS-3.5). (test)
+- [ ] DS-22.4 A component test renders a row with routine values only (changes, an age, context at 40%, memory growing under MEM-4.1's threshold) and finds no coloured text besides the Status's marker, strip and tag; with each exception on, finds it in its place and colour; and finds the columns in their order and widths in every Status. SIDE-3.11's contrast test covers the grey changes. (test)
+- [ ] DS-22.5 Seen in both modes with five or more live Sessions, at 280 px and wider: a row says in half a second whether it needs you, the columns line up, and the one exception on the list is the thing you see. (manual)
+
 ## Non-goals
 
 - **Narrow widths** (the review's suggestion 2): columns that collapse below about 1024 px, a header that folds its buttons, a status line that drops whole parts. Dario uses Lookout full screen; it's in the Backlog.
@@ -196,7 +254,7 @@ In the right sidebar's lists, rows of two to four lines followed each other with
 - A Storybook, a separate package, or a published component library. The design system is the code in `web/src`, this spec and its tests.
 - Retuning the Status hues or the contrast rules SIDE-3.11, VIEW-5.9 and WORK-3.5 already test. DS-12 tints the neutrals, darkens light `needs-you-text` by 0.02 and light `warning-text` by 0.009 for contrast; no Status changes hue.
 - More hues: a colour per project or repo, Harness brand colours in lists (DS-3.1 stands), links in Primary. Each would compete with Status in a list or with the text around a link.
-- Line heights, spacing and row heights beyond icon buttons. They're consistent enough today.
+- Line heights, spacing and row heights beyond buttons (DS-7, DS-18). They're consistent enough today.
 - The review's smaller findings not listed in DS's requirements: the View only row's grey marker, the composer's Needs you border, the flagged usage line's dimming, the composer hint, the chat's measure, the header's Status tag shape, the launcher's layout, Settings' three Save buttons, a `?` shortcut overlay. Each can come back as its own item.
 - A theme switch or other themes. Dark mode follows the system, as now.
 - New icons or shapes. DS reuses lucide and the Status shapes, within 0008; the one new shape is Lookout's mark (DS-14, 0014).
@@ -305,12 +363,52 @@ SessionMarker                Loading                          IconButton
 - **No amber Alert.** What used to be amber is now info (staleness) or a Needs you card, which is a Status, not an Alert.
 - **SessionMarker** sits in a box the size its list gives (18 px in the sidebar, SIDE-3.8; 14 px in History and Work), so titles line up whichever shape shows.
 - **Loading**: the label in `meta` `muted-foreground`; the elapsed time after a ` · ` in `tabular-nums`; the hint under it in `meta`, with an action when there is one.
+- **Loading's Lens (DS-6.5, DS-14.4)**: before the label, 6 px from it, at the text's icon size; its dot one turn every 1.6 s, linear, around the ring's centre (12, 12 in its box), so it stays inside the ring.
+
+#### Loading words (DS-6.6)
+
+| Place | Today | Words |
+| --- | --- | --- |
+| The main pane before Fleet's first list, a Session selected (`MainPane.tsx`) | Loading… | Finding the Session… |
+| A Starting row's view before the first list (`StartingView.tsx`) | Loading… | Finding the start… |
+| A past Session's view (`PastSessionView.tsx`) | Loading… | Reading the Session… |
+| The chat's Show earlier (`Chat.tsx`) | Loading… | Reading earlier messages… |
+| The terminal preview (`SessionView.tsx`) | Loading… | Reading the terminal… |
+| The status line's menus (`StatusMenu.tsx`) | Loading… | Reading the choices… |
+| Work's Tasks and PRs headers (`WorkPanel.tsx`) | Loading… | Reading from Productive…, Reading from GitHub… |
+| History's results, and a page of them filling an empty list (`HistoryPanel.tsx`) | Loading… | Searching History… with a query, Reading History… without |
+| A History row's "what it said" (`HistoryPanel.tsx`) | Loading… | Reading what it said… |
+| The Library (`LibraryPanel.tsx`) | Loading… | Reading the Library… (a Topic view's words already) |
+| Topics and the Topic graph (`TopicsPanel.tsx`, `TopicGraph.tsx`) | Loading… | Reading Topics… |
+| A Topic view (`TopicView.tsx`) | Loading… | Reading the Topic… |
+| A Topic's activity, its earlier summaries (`TopicView.tsx`) | Loading… | Reading activity…, Reading earlier summaries… |
+| A Topic member's state (`TopicView.tsx` `State`, by hand) | Loading… | Reading from Work… |
+| A PR's Specs submenu (`PrSpecs.tsx`) | Fetching #3426 | Fetching #3426 from GitHub… |
+| Suggest's preview line (`SuggestView.tsx`, by hand) | Reading what's in no Topic… | the same, as a `Loading` |
+| The Sessions list before the first list (`Sidebar.tsx`, as `EmptyState`s) | Connecting…, Looking for Sessions… | the same, as `Loading`s |
+
+Not waits, so not `Loading`s: Work's CI icon while CI runs (`LoaderCircle`, WORK-3.2), Refresh's turning icon while it refreshes, a button's own word while its action runs ("Sending…", "Archiving…"), and the chat's "Working…" (a Status, VIEW-1.10, DS-10).
 - **IconButton**: ghost by default, `muted-foreground` at rest, `accent` under the pointer; its focus ring is the Button's.
 - **EmptyState**: centred, the title in `body` medium, the hint in `meta` `muted-foreground`, an optional 20 px icon above, an optional action below.
 - **Chip**: `rounded-full px-1.5`, `caption` medium, `leading-4`, a 1 px border (transparent unless the tone has one) so every chip is one height. Neutral: `bg-muted`, foreground. Muted: a `border` border, `muted-foreground` (a draft PR). Info: `info-soft`, `info-text`. Ok: an `ok/40` border, `ok` (an approved PR). A Status tone: its header tag's colours (VIEW-5.9's `STATUS_TAG_CLASS`), solid for Needs you, `-soft` and `-text` for the others.
 - **Kbd**: `caption` mono, `rounded border border-border px-1`, at least 20 px wide, 16 px tall (a 14 px line and the border), so it sits in a `caption` or `meta` line without growing it.
 - **CommandBlock**: `rounded-md border border-border bg-background p-2`, `caption` mono, wrapped anywhere, `select-all`.
 - **SideNav (DS-13.1)**: a 160 px column, links 28 px tall in `body`, `rounded-md px-2`, 2 px apart, 24 px from the content; narrow, a row of the same links with 4 px between them and 16 px under it. The dot is TOOLS-2.4's.
+- **Expanded rows (DS-21)**: what each kind puts in each part, in order; actions are always last, as DS-16 has them.
+
+| Kind | State | Summary | Links |
+| --- | --- | --- | --- |
+| Task (Work) | project · status · due · its one Linked PR's number, state and CI | its description, three lines | Sessions, PRs (when more than one), Topics |
+| PR or Review request (Work) | repo #number · state chip (Mine) · CI · age | none | Task, Sessions, Topics |
+| Session (History) | repo · branch · last active · "live", or why it can't be resumed | its first prompt and its last message, three lines each, with who said it | Topics |
+| Output (Library) | kind · folder · updated 2h ago · published 24 times · "newer than published" | none | Sessions, with what each did ("wrote it"), Topics |
+| Topic (Topics) | its members · updated | its notes, three lines, rendered | Sessions, live first, then past |
+
+  The title is in `body`, medium, as the collapsed row's. Counts sit 8 px apart, each "3 Sessions" with a chevron that turns when open; a link's line is 24 px, its state in `meta` `muted-foreground` at its end.
+
+- **Quiet rows (DS-22)**: the columns' widths, measured at 12 px Inter `tabular-nums` on 2026-11-06: changes 64 px ("+2.7k −392"; "+9.9k −999" fits, a wider one grows its own row's column), time 26 px ("59m"), context 44 px (the ring and "100%"), 6 px apart: 146 px, where the numbers group took 147 to 149 px on the live rows. An exception at the front is its icon and its value (`TrendingUp` and "+2.8 GB", `Bot` and "2"), 4 px from the next, and never cut.
+
+- **Segmented (DS-20)**: Work's Show filter today, moved as it is: a track with a 1 px `input` border on `background/60` (`input/20` in dark), `rounded-md`, 2 px inside; choices in `meta`, `rounded`, `px-1.5`, as wide as their word (Work's fill the track's width, as now); the chosen one `accent` (`sidebar-accent` in a sidebar), `foreground`, medium, `shadow-xs`.
 - **Tabs (DS-13.2)**: a 32 px strip on a 1 px `border` bottom line; tabs in `body`, `px-2` each and side by side, so labels are 16 px apart; the count or note after the label in `meta` (`muted-foreground`); the selected tab's 2 px line sits on the strip's line. The dot is TOPIC-13.2's.
 
 ```
@@ -318,6 +416,61 @@ SideNav, wide                         Tabs
  General   ┌ Idle threshold ────┐      Overview   Members 46 •  Activity 3 new
  Tools •   │ [ 4 ] hours  Save  │      ════════
            └────────────────────┘     ─────────────────────────────────────────
+```
+
+### Buttons (DS-18)
+
+| Role | Looks | For | Limit |
+|---|---|---|---|
+| `primary` | `primary` fill, `primary-foreground` | the action the surface exists for: Send, Start, a question's submit, a dialog's confirm, Save | one per surface |
+| `soft` | `primary-soft` fill, `primary-text` label and icon | the next step in a dense place: a row's first action, a past Session's Resume | one per row |
+| `secondary` | 1 px `border`, `background`, `foreground` | a real alternative: Stop, Esc, Cancel, a Session chip | |
+| `quiet` | no fill or border; `muted-foreground`, `accent` under the pointer | frequent, low-stakes actions in headers and toolbars: Add to Topic, More, Copy, Show more | |
+| `danger` | `quiet`'s look in `destructive-text` | End Session, Delete, where they're used: last, after a divider | |
+| `destructive` | `destructive` fill | only the confirming button of a dialog that ends or deletes | |
+| `link` | underlined text | a button inside a line of text ("All shortcuts") | |
+
+| Size | Height | Text | Icon | Where |
+|---|---|---|---|---|
+| `line` | 24 px | `meta` | 14 px | inside a line of text, a card's line, the status line (Compact, Show terminal) |
+| `default` | 28 px | `body` | 16 px | headers, rows, panels, toolbars, the composer, an empty state |
+| `form` | 32 px | `body` | 16 px | dialogs and Settings' forms |
+
+#### Actions (DS-18.6)
+
+| Action | Icon | Was |
+|---|---|---|
+| Open, inside Lookout (a live Session, a Topic view, the Spec view) | `ArrowRight` | `Play`, `Maximize2` |
+| Open, leaving Lookout (GitHub, Fantastic, a file in its app, a URL) | `ExternalLink` | as before |
+| Open in VS Code | `Code` | as before |
+| Resume | `History` | as before |
+| Show read-only | `Eye` | as before |
+| Start Session | `Play` | as before |
+| Review | `ScanEye` | `Play` |
+| Specs | `FileText` | as before |
+| Add to Topic | `Layers` | `Layers`, `Plus` |
+| Link to Topic | `ArrowLeftRight` | as before |
+| Open graph | `Network` | `Network`, `Maximize2` |
+| Copy (a link, a path, a session ID, code) | `Copy` | as before |
+| Archive, Unarchive | `Archive`, `ArchiveRestore` | as before |
+| Delete | `Trash2` | as before |
+| Stop | `CircleStop` | as before |
+| Esc | `OctagonX` | as before |
+| End Session | `Power` | as before |
+| Show terminal | `SquareTerminal` | `TerminalSquare`, its old name |
+| Refresh | `RefreshCw` | as before |
+| Retry | `RotateCw` | as before |
+| Suggest | `Sparkles` | `Sparkles`, `RefreshCw` |
+| More | `Ellipsis` | as before |
+
+```
+Session header
+ Fix rates rounding   Busy · 8m      [■ Stop]  (⊕ Add to Topic)  (⧉) │ (⏻ End Session)
+                                      secondary  quiet            quiet   danger
+
+An expanded row
+ [→ Open Session ↵]  (… More)
+   soft                quiet
 ```
 
 ### Places
@@ -344,8 +497,28 @@ DS changes only `web/src`. Nothing on the server changes, so every check is a un
 6. **The marker everywhere (DS-5.1, 5.4).** `Circle` and `CircleDot` (and their `…Icon` and `Lucide…` names, or a namespace import of lucide) imported only in `Answering.tsx`; `StatusMarker` imported only in `session-marker.tsx` and `SessionView.tsx` (the Status marker beside the header's title, one Session's, not a list's; the Status tag, VIEW-5.9, is a separate span). Component tests render a sidebar row, a History result in each state and a Work row with live and past Links, and check that each marker is a `SessionMarker` (`data-session-marker` with `data-state` and, when live, `data-status`).
 7. **Icon buttons (DS-7.2).** `size="icon…"` on a `Button` only inside `components/ui/`; no `size-`, `h-`, `w-`, `min-…` or `max-…` class, with any variant, on an `IconButton`; and a `<button>` or `<Button>` whose children are only icons (lucide's, `HarnessIcon`, `MarkShape`, also in a conditional, besides `aria-hidden` elements) only in three pinned places: Copy session ID and a code block's copy button, which show "Copied" beside the icon for 2 s, and a Mark on the chat's rail, a 12 px target by design on a 16 px rail (VIEW-1.11).
 8. **One key, one command (DS-8.2, 8.4).** A `<kbd>` only in `kbd.tsx`, and `select-all` only in `command-block.tsx`.
+9. **Buttons by role (DS-18.7).** On every `<Button>` and `labelledButtonLook(…)` call outside `components/ui/`: no `h-`, `min-h-`, `max-h-`, `p-`, `px-`, `py-`, `pt-`, `pr-`, `pb-`, `pl-`, `ps-`, `pe-` or `text-<step>` class, so the size decides; `variant="destructive"` only in the confirming button of End Session's and a Topic's Delete dialogs. A `<button>` outside `components/ui/` only in a pinned list of functions, each with its reason and count, as check 2 pins its functions: a list's rows and chips, a tab strip, the chat rail's Marks (VIEW-1.11), the status line's menus (DS-7.3), an inline link, a question's options. `RowMenuItem` and `RowActions`' first action take an `action` id, so an `icon` on either fails; a `<Button>` whose text is a word in `lib/actions.ts` fails without that action's `ActionIcon`. Its exceptions live in the test with a reason each.
+10. **Details popovers (DS-19.2, 19.3).** `uppercase` in a class string only in `ui/details.tsx` and the chat's message tag (`Chat.tsx`, one use); a `rounded-full` element with a `bg-foreground/<n>` fill and an `h-1` or `h-1.5` height only in `ui/details.tsx` and `UsageStrip.tsx`'s strip bar; a function or `const` named `format…Age…` or `…Ago` only in `lib/time.ts`.
+
+11. **One of a few (DS-20.3).** `role="radiogroup"` only in `ui/segmented.tsx` and `Launcher.tsx`'s Harness choice.
+12. **Waits (DS-6.8).** A `<Loading>` whose `label` is the string "Loading…"; the text "Loading…" outside `ui/loading.tsx`; `LoaderCircle` outside `WorkPanel.tsx`'s `Ci`; `animate-spin` outside `Ci` and the Refresh buttons (`RightSidebar.tsx`, `ToolsSection.tsx`); and `animate-spin` or `animate-pulse` without `motion-safe:`.
+13. **Expanded rows (DS-21.4).** An expanded row's details in `WorkPanel.tsx`, `HistoryPanel.tsx`, `LibraryPanel.tsx` and `TopicsPanel.tsx` render `RowDetails`; `SessionChip` only in `TopicView.tsx`'s member list; `SessionChips` gone.
+14. **Quiet rows (DS-22.4).** A component test, not a source check: `SessionItem` with routine values has no `text-diff-*`, `text-warning-text` or `text-destructive-text` element, and its three columns in order.
 
 The icons guard keeps its rules: `SessionMarker` draws with lucide and `StatusMarker`, and `SessionItem.tsx` draws the context gauge, a chart, so it's named in the icons guard (MEM's sparkline went with MEM-3.3's 2026-11-06 change). It reads a key glyph inside `<Kbd>` as it reads one inside `<kbd>` (the launcher's ⌘↵).
+
+### Expanded rows and quiet rows (DS-21, DS-22)
+
+- **`ui/row-details.tsx`:** `RowDetails` with `title`, `state` (facts, joined), `summary`, `links` (`{ kind, count, items }[]`) and `actions` (a `RowActions`), drawing them in DS-21.1's order; `LinkLine` for one link, with the action and accessible name WORK-4.10's chip had. Work's `SessionChips`, the Library's chips and an expanded Topic's chips move onto `LinkLine`.
+- **Moved to More (DS-21.3):** "Show source file" joins LIB's More, beside "Copy link"; the Artifact's URL and source path leave the expanded row.
+- **The columns (DS-22.1):** `SessionItem`'s numbers group becomes three fixed-width spans (`w-16`, `w-6.5`, `w-11`, right-aligned) after the slot; the marks (memory, Subagents, queued, background shell) move to the slot's start, `shrink-0`.
+
+### Buttons
+
+- **Names:** the variants `default`, `outline` and `ghost` become `primary`, `secondary` and `quiet`; `soft` and `danger` are new; shadcn's grey `secondary` goes (its one use, Jump to latest, becomes `secondary`). The sizes `xs`, `sm`, `default` and `lg` become `line`, `default` and `form`. Every `Button` outside `components/ui/` moves in the same change, by its place: a dialog's or Settings' form's buttons are `form`; the status line's Compact (20 px today), a question card's Show terminal and the chat skeleton's are `line`; the rest `default`.
+- **Hand-made buttons:** 43 today. Those that copy a button's look become `Button`s: Markdown's code Copy (`secondary`, `line`, beside its "Copied"). The rest go on the guard's list with their reason: a list's rows and chips (Servers, Topics, Memory), the right sidebar's and `Tabs`' tabs (DS-13.3), the chat rail's Marks, the status line's menus (DS-7.3), the Session title's rename (VIEW-5.12), inline links (Spec view, Topic view), a question's options, the chat's folded steps and Spec view sections (disclosures) and the Topic graph's node chip.
+- **Places counted by DS-18.4:** the Session view (Send), a question card (its submit), the launcher (Start), the empty main pane (Start a Session), the Starting view (Trust), Settings' each section (Save), the Topic graph's and the Topic picker's dialogs, the Archive dialog, Suggest Topics (Accept), and Topics' new-Topic form (Make).
+- **`lib/actions.ts`:** `ACTIONS: Record<ActionId, { word: string; icon: LucideIcon; key?: string }>` and `ActionIcon({ id })`. `RowActions`' first action and `RowMenuItem` take `action: ActionId` (and a word only where the row's differs, as "Open Session"); `lib/shortcuts.ts` entries that run an action name it, so the Keyboard shortcuts dialog draws its icon.
 
 ### Tokens
 
@@ -362,6 +535,7 @@ The icons guard keeps its rules: `SessionMarker` draws with lucide and `StatusMa
 - **SessionMarker's Status** for History and Work comes from the Session sidebar's list already in the browser (the store's `SessionRow`s by session ID), not from a new server field. History's `isLive` already looks there.
 - **Pulse (DS-10):** `StatusMarker` takes the Status's `since`, and `SessionMarker` passes it through (the sidebar row and the header give the row's `statusSince`; History the live Session's; Work's marker for several Linked Sessions the latest Busy one's). `lib/pulse.ts`'s `usePulse(since, now)`: while `now - since` is under 10 s it adds `animate-busy`, with the animation's delay set negative by the age (from the real time at that moment, not the clock's last tick, so a Session's two markers pulse in step) when the pulse first shows and kept for that `since`, so a re-render or a tick doesn't restart or shift it. The marker reads the app's one-second clock (`ClockContext`), so the class goes at the first tick after 10 s. No `since`, no pulse. `ChatActivity`'s dot does the same with the Turn's start, on its own clock. `index.css` animates `animate-busy` only under `prefers-reduced-motion: no-preference`, as before.
 - **Loading (DS-6):** takes `label`, `since` and an optional `hint` (with an action). It ticks on the app's one-second clock (`now`) rather than its own timer.
+- **Loading's Lens and its words (DS-6.5 to 6.7):** `Loading` draws `LookoutMark orbiting` and takes `hintAfter` (15 s by default); the orbit is a CSS rotation of the dot's group inside `@media (prefers-reduced-motion: no-preference)`, as the chat's countdown ring does it. The Starting view passes `since` (the start's `startedAt`) and `hintAfter` 10 s.
 - **Terminal preview (DS-11):** `lib/terminal-height.ts` holds a pure `drawerHeight(paneHeight, kept)` and the keep and read, as `lib/right-sidebar.ts` does for the width. One `localStorage` entry (key `lookout.terminal`) holds a map from the Session's id (`SessionRow.id`) to its height. Read and write are inside `try`; anything odd is the default, and an entry that isn't a positive number is left out. A Session with no entry uses the default. The height is the whole preview's (its top border, the 28 px Terminal row, the text's padding and lines), so its minimum, the Terminal row plus four 17.4 px lines, is 115 px; the maximum is 70% of the main pane (the Session view, measured with a `ResizeObserver`, the window's height until then) and no more than the content row's height less the chat's 96 px (the content row measured the same way), so the handle's value and a drag start from what the layout shows, and a kept height is shown clamped to both but kept as it was. When the Session list is known (`listKnown`) and loads or changes, App prunes the entries for ids not in it (in a layout effect, before paint), so the map doesn't grow; a Codex Session that got its session id (the store's `aliases`) keeps its entry under the new id. The drawer reads the entry through `useSyncExternalStore`, so a keep or a prune shows at once. It swaps `h-64` for that height as a style on the preview, which keeps `min-h-0` and shrinks before the chat's `min-h-24` (SIDE-8.1); the handle, shown while the preview is open, is a `role="separator"` with `aria-orientation="horizontal"`, `aria-valuenow`, `aria-valuemin` and `aria-valuemax`. ↑/↓ on it are handled there (`preventDefault`), so the Session sidebar's window handler doesn't also move the selection; a drag keeps the height when the pointer is let go, and drops it if the drag is cancelled. When `localStorage` throws, `terminal-height.ts` keeps the last map in memory and reads it back, so the handle works for the page's life; a write that goes through clears it.
 - **Sub-pages and tabs (DS-13):** `side-nav.tsx` takes `label`, `items` (`{id, label, href, dot?}`), the open `id` and `onOpen(id)`; a plain click (no modifier, the main button) calls `onOpen` and prevents the default, any other click is the browser's. Narrow is a container query on the main pane (`@container`, under 640 px), not the window, since the side columns take their own width; the page declares the container outside its padding, so the query measures the pane. Each tab panel is a Tab stop (`tabIndex 0`, the focus ring), so Tab goes into one that holds only text. `tabs.tsx` takes `label`, `tabs` (`{id, label, count?, note?, dot?}`), the selected `id`, `onSelect(id)` and one child per tab, rendered in its panel; ids are `tab-<label>-<id>` and `panel-<label>-<id>`. Both are controlled: the page keeps the open part in its route.
 - **Session listbox (DS-9):** `SessionItem` gets `id="session-<id>"` (`sessionOptionId`); the listbox in `Sidebar.tsx` gets `tabIndex={0}`, `aria-activedescendant` (none while a Starting row or nothing is selected, or the filter hides the selected Session) and `focus-visible` ring classes, inset, with `outline-none`. A click on a row focuses the list, its nearest focusable ancestor, without the ring. The app's key handler already moves the selection when focus isn't in a text field, so nothing else changes.
@@ -428,6 +602,9 @@ Each lands with the code it covers, with a Changelog line in that spec:
 - **SIDE** (DS-12): the Needs you row tints (SIDE-3.7, 3.9) and the "Needs you" header (SIDE-1.5, 3.1, and SIDE-5's keys skipping it), with SIDE-3.11's values.
 - **VIEW** (DS-12): the Needs you Status tag is solid (VIEW-5.9); your own message's colour and a chosen option's (VIEW-1, UX).
 - **SIDE** (DS-13): Settings in two sub-pages (SIDE-7.6) and the shortcut list's "Switch tab" (SIDE-7.4). **TOOLS**: its list is Settings › Tools (TOOLS-1.4, 2.4). **TOPIC** (DS-13): the Topic view's tabs (TOPIC-10.7, 10.8) and what moves into them (TOPIC-10.5, 11.10, 12.3, 13.2).
+- **WORK**, **PLAIN** and **SIDE** (DS-20): Work's Show filter (WORK-1.5) and the Spec view's view switch (PLAIN-10.1) are `Segmented`s; the shortcut list's ←/→ entry names it (SIDE-7.4).
+- **WORK**, **HIST**, **LIB**, **TOPIC** (DS-21): WORK-2.9, 3.6 and 4.10, HIST-2.9, LIB-3.2 and 3.6, TOPIC-3.4: each kind's expanded row in DS-21's parts, links as counts. **SIDE**, **DIFF**, **MEM**, **RES** (DS-22): SIDE-2.6, 9.1 and 9.7, DIFF-1.1, MEM-4.1 and RES-3.1: the columns, grey changes, the marks first, the memory mark's threshold.
+- **LAUNCH** (DS-6, DS-14.4): the Starting view and a Starting row draw the orbiting Lens (LAUNCH-7). **SIDE**, **VIEW**, **HIST**, **WORK**, **LIB**, **TOPIC**, **PLAIN** (DS-6.6): their `Loading`s take the table's words.
 
 ### Key decisions
 
@@ -455,10 +632,25 @@ Each lands with the code it covers, with a Changelog line in that spec:
 - **Sub-pages for Settings, tabs for a Topic** (Dario, 2026-11-02): Settings' parts are separate places you go to, so they're links in a side nav, as in a system's settings; a Topic is one thing in parts, and a side nav's 160 px would cost the Topic view too much at 480 px, so it gets a tab row. Two pieces, each guarded, so neither is drawn again by hand. The right sidebar's icon tabs stay its own: they also open and close it.
 - **Drawing an Edge is Primary; a selected node or a "new" dot isn't** (Dario, 2026-11-02, when the guard's fixed cache showed them): the line, target and handle are what you act on, like the composer's drop target; a selection is where you are, and "new" is information, so both are `foreground`. The Subagents popover's Busy and Idle text is the status line's count's meaning (DS-3.6), so `SubagentsButton.tsx` is listed with it.
 - **The selected tab is `foreground`, not Primary**: DS-12.4 keeps Primary for what you act on, and a selected tab is where you are, like a selected row.
+- **A button's look comes from its role, not from colour (DS-18)**: Dario's impression was "we rarely use coloured buttons"; more colour would compete with Status again (DS-3.7), so the hierarchy comes from fill, border and weight, and colour stays for Primary's one button and Soft's next step.
+- **Soft, a new role (DS-18.1)**: a dense list needs its next step marked without a second loud indigo block on every row; the tint is Primary's family, so it reads as "you act here" and not as a Status.
+- **End Session stays visible, as `danger` behind a divider (DS-18.5)**: Dario ends Sessions often, so hiding it in a menu would cost a click every time; red text and a divider set it apart from Add to Topic without a red block in the header.
+- **Memory's popover is the model, unchanged (DS-19)**: Dario likes it as redesigned; moving its pieces as they are makes the system's details popover the one he chose, and the next popover starts from it.
+- **Sizes named by place (DS-18.3)**: like the type steps, a size says where it belongs, so the right one is the one whose name fits; three heights replace five.
+- **The guard checks how a button is built (DS-18.7)**: value guards let 29 height overrides through (0015); a `className` that can't set a height leaves only the three sizes.
+- **One icon per action, by construction (DS-18.6)**: a menu item names its action and gets its icon from the table, so a second icon for the same action can't be written.
 
 ## Open questions
 
 None.
+
+- **One component for one of a few ways to show a thing (DS-20)**: the Spec view's switch would have been a second hand-made copy of Work's filter. A `radiogroup` with arrows, as `Tabs`, rather than pressed buttons: one Tab stop, and the same keys as a tab strip.
+
+- **The Lens as the one loader (DS-6.5, DS-14.4)**: Dario asked for a small animation where Lookout waits; a mark of Lookout's own, looking, says "Lookout is fetching this" where a generic spinner says only "busy", and one loader everywhere is one thing to learn. It orbits only while a wait lasts, and a wait that lasts gets words and a hint (DS-6.1), so it never runs on its own like DS-10's pulse.
+- **Words name the source** (DS-6.6): "Reading from GitHub…" tells you whom you're waiting on, and that a slow wait isn't Lookout's fault.
+- **Links as counts (DS-21, option A)** (Dario, 2026-11-06): the shortest rows, every kind the same five parts, and you stay on the Session you're reading, which a detail view (option B) wouldn't let you. If you open a Task's Sessions count most of the time, B is the next step for Task and PR. Topics keep their view.
+- **Grey changes on the row (DS-22.2)**: the size of a Session's change helps you choose which to review next, so it stays, grey; read as a diff, in the status line and the list, it keeps its colours.
+- **Exceptions lead the line (DS-22.3)**: you read a line from its start, so what needs you is first, and it has words or an icon as well as colour, never colour alone (DS-3).
 
 ## Changelog
 
@@ -516,3 +708,14 @@ None.
 - 2026-11-05: The colour guard's Busy family lists `SessionItem.tsx`: a sidebar row's running Subagent count is in `busy-text`, as the status line's (SIDE-9.7, VIEW-8.1), a meaning its Status spec ties to Busy (DS-3.6). It keeps 4.5:1 on every row state (SIDE-3.11).
 - 2026-11-05: Added DS-2.6, the `spec` family (`spec`, `spec-text`), a violet for a `.plain` Module's row in DIFF's list (PLAIN-3.4); guarded, with its contrast measured.
 - 2026-11-06: MEM's breakdown drops its sparkline (MEM-3.3), so `MemoryLine.tsx` leaves the icons guard's chart files.
+- 2026-11-06: Added DS-12.8 (Primary marks where your keys are, in `ring`, and your prompts' Marks, in `primary`) and DS-3.8 (a question's Mark is amber only while it waits), for SIDE-11 and VIEW-1.21 (Plan item 45, the clarity pass's ideas 2 and 7). The spec is In Progress again until they're built.
+- 2026-11-06: Added DS-18, buttons by role (Plan item 46, the clarity pass's idea 4, decided by Dario): five roles, a new `primary-text`, three heights named by place, at most one Primary per surface, End Session visible as `danger` after a divider, one icon per action from `lib/actions.ts` (menu items included), and a guard on how a button is built. Non-goals no longer leave buttons out.
+- 2026-11-06: DS-18 grilled with Dario, eight questions, every one as recommended: the role and size names; `body` text at 28 px, headers included; Soft in `primary-soft` with `primary-text`; Danger as red text after a divider, a red fill only in its confirm; a surface is a view, a dialog or a form with its own Save; a row's More is `quiet`; the action table's five icon changes; Markdown's Copy becomes a `Button` and the other hand-made buttons are listed with a reason.
+- 2026-11-06: Added DS-19, one anatomy for details popovers (Plan item 47, the clarity pass's idea 5, decided by Dario): Memory's pieces move to `ui/details.tsx` as they are, Usage is rebuilt from them (USAGE-2.3 to 2.8), age formatting lives only in `lib/time.ts`, and the guard checks hand-written uppercase labels and bars. DS-3.2's last sentence amended: the usage details popover's bars become meters with the same level edge.
+- 2026-11-06: DS-19 and USAGE-2.3 to 2.8 grilled with Dario, seven questions, every one as recommended: the verdict names the worst window ("getting close", "nearly used up", "used up", "and 1 more"); its age is the oldest provider's, each section keeps its own; three tiles, Claude Code, Codex and Jev; the strip's wording follows the one age formatter; a tile's last line wraps (MEM-3.10); the guard's scope as drafted; Jev's details as rows.
+- 2026-11-06: Added DS-20, one of a few ways to show the same thing (Plan item 48, the clarity pass's idea 9): `Segmented`, Work's Show filter's look as a `radiogroup`, for it and the Spec view's view switch (PLAIN-10), with guard check 11.
+- 2026-11-06: DS-20 grilled with Dario with PLAIN-10, as recommended: one `Segmented`, a `radiogroup` with `Tabs`' keys, for the Spec view's switch and Work's Show filter. Plan item 50's requirements become DS-21 and DS-22.
+- 2026-11-06: Added DS-6.5 to 6.9 and DS-14.4, loading that's alive (Plan item 49, the clarity pass's idea 10, widened by Dario to every wait): the orbiting Lens in `Loading`, words for each place's wait (UX "Loading words"), the hand-made waits onto `Loading`, an earlier hint where a wait becomes a failure, and guard check 12. Found while writing it: the chat's skeleton pulses and the Starting view's spinner turns under reduced motion.
+- 2026-11-06: DS-6.5 to 6.9 and DS-14.4 grilled with Dario with LAUNCH-7, every question as recommended: one loader, the Lens, in every `Loading`; the words name the source ("Reading from GitHub…"); check 12 fails motion without `motion-safe:` too.
+- 2026-11-06: Added DS-21, one anatomy for an expanded row, and DS-22, quiet rows, loud exceptions (Plan item 50, the clarity pass's ideas 8 and 3, decided by Dario: option A, links as counts; fixed columns, grey changes, exceptions in colour and words): `ui/row-details.tsx`, UX "Expanded rows" and "Quiet rows", guard checks 13 and 14.
+- 2026-11-06: DS-21 and DS-22 grilled with Dario, seven questions, every one as recommended: the memory flag at 1 GB in 10 minutes, or 30 MB under warn or critical pressure (recorded 13:20 to 13:40: 37 of 84 readings of two working Sessions over 30 MB, from +58 to +892 MB, none at 1 GB; one constant, raised to 1.5 GB if it flags working Sessions); a canvas of a quiet row and an expanded row at 280 px, light and dark, before any code; the four marks lead the second line; the first count opens when it holds three or fewer; the title whole; a Topic view keeps its member chips; History says only when a Session can't be resumed, a wider diff grows its own row's column, a single Linked PR stays on the Task's state line.

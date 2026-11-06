@@ -1,9 +1,9 @@
 ---
 title: Library
 code: LIB
-status: Done
+status: In Progress
 created: 2026-10-23
-updated: 2026-10-30
+updated: 2026-11-06
 ---
 
 # Library
@@ -52,11 +52,11 @@ An Output is a file, an Artifact or a Backyard Share that a Session, or one of i
 Select, then act, as History's and Work's rows (HIST-3.5, WORK-1.12).
 
 - [x] LIB-3.1 A click on a row, or Enter on a selected one, selects and expands it in place and does nothing else: no file, tab or Session is opened, resumed or started. One row is expanded at a time; Esc collapses it and leaves it selected; the list scrolls to keep the expanded row in view; the main pane keeps showing the current Session (HIST-2.11, HIST-3.5, WORK-1.12). An expanded row carries `aria-expanded` and its details. (test)
-- [x] LIB-3.2 An expanded row shows the full path or URL; for an Artifact with a folded source file, that file's path and when it was last edited, and, when that is after the Artifact's last publish, that the file is newer than the published version; for a Share its source path when `events` has it; when the Output was first made and last updated, and how many times. Every Session that touched it is a chip as WORK-4.10 (Harness icon, title, Status colour; most recent touch first, at most 8, then "+N older"), whose hover says what it did: "wrote it", "edited it", "published it" or "uploaded it" (its last touch word, LIB-2.11). (test)
+- [ ] LIB-3.2 An expanded row is built as DS-21 says. Its state is its kind, its folder, when it was last updated and how many times, and "newer than published" for an Artifact whose folded source file was edited after its last publish; its full path or URL, its source file's path (a Share's when `events` has it), when it was first made and when the file was last edited are the state's tooltip, and "Copy link" and "Show source file" are under More. Every Session that touched it is a line under its Sessions count (DS-21.2, WORK-4.10's line; most recent touch first), whose state says what it did: "wrote it", "edited it", "published it" or "uploaded it" (its last touch word, LIB-2.11). (test)
 - [x] LIB-3.3 Its first button is **Open**: for an existing `.md` it opens the file in VS Code (`vscode://file/<absolute path>`, VIEW-1.17); for an existing `.html`, `.htm`, `.pdf` or image it opens a new browser tab served by Lookout's read-only file route, with the file's media type and `Content-Security-Policy: sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox` on every answer, errors included, so the page runs in an opaque origin where scripts run, storage APIs don't, links in it open as ordinary tabs, and its own requests to Lookout are refused (`Origin: null`); for an Artifact or Share it opens its URL in a new tab with no referrer (VIEW-1.12). An Artifact row whose folded source file exists has **Open file** as its second button, which opens that file by the same rule for its Type. The route serves only a path one of the server's reads listed since it started and never runs a command (Technical approach, Opening). A gone file has no Open button and says it's gone. Open's tooltip names `O`. (e2e)
 - [x] LIB-3.4 **Copy link**, under "More" (DS-16), copies the URL, or the absolute path for a file, and the row reads "Copied" for 2 s, or "Couldn't copy" when the browser refuses (VIEW-1.14). Its tooltip names `C`. (test)
 - [x] LIB-3.5 Each Session chip (LIB-3.2) is **Open** when the Session is live (selects it, never starts a second process), **Resume** when it can be resumed (through History's resume route, with its "Starting…" row and 15 s failure, HIST-3.1), or **Show** when it can't (read-only, with why, HIST-3.3); its accessible name says which and the Status, as WORK-4.10's ("Resume fix-eval, past"). A pruned Session's chip is text, not a button (LIB-2.6). The first chip's tooltip names `S`. (e2e)
-- [x] LIB-3.6 The Open button and "More" (Open file, Copy link and Add to Topic, DS-16) sit on one line with DS-7.4's spacing, the Session chips under them, and the expanded row's layout holds at a 280 px sidebar, light and dark. (manual)
+- [ ] LIB-3.6 The expanded row's actions, Open and "More" (Open file, Copy link, Show source file and Add to Topic, DS-16), come last, after its counts (DS-21.1), on one line with DS-7.4's spacing, and the layout holds at a 280 px sidebar, light and dark. (manual)
 - [x] LIB-3.7 `O`, `C` and `S`, with focus in Library and not in a text field, with no modifier, act on the selected row, expanded or not, once per press: `O` opens the Output exactly as its Open button does (nothing when the file is gone), `C` copies its link as Copy link does, `S` runs the first Session chip (Open, Resume or Show; nothing for a pruned one). They don't move the selection, stand down while a modal is open, and work with Caps Lock on (WORK-6.4's rules). The row's screen-reader description says "O opens it, C copies its link, S opens its Session". (test)
 
 ## Non-goals
@@ -274,3 +274,7 @@ None.
 - 2026-11-02: Design pass: LIB-1.1 amended, Esc in the empty text filter leaves it for the tab, as HIST-1.1 now says (`focusTab` in `lib/right-sidebar.ts`).
 - 2026-11-05: DS-16: an expanded Output's Open stays a labelled button; Open file, Copy link and Add to Topic move under "More", and "Copied" shows on the row (LIB-3.4, LIB-3.6 amended).
 - 2026-11-05: LIB-2.1 amended for DS-17: each day is a `group` of the listbox named by its heading, so a screen reader announces it (its heading was a paragraph inside the listbox); rows are separated by DS-17.1's hairlines.
+- 2026-11-06: SIDE-10.2 (Plan item 44): a live Session is named by the Session list, its Session name (Glossary), over the title tb-session gives it; a past Session keeps tb-session's, which follows the same order.
+- 2026-11-06: SIDE-11.1 (Plan item 45): the panel no longer takes focus when it mounts or the page loads with it open, only from its key, its tab or a click; with nothing focused the keys are the Session list's.
+- 2026-11-06: Its waits take DS-6.6's words and the orbiting Lens (Plan item 49): "Reading the Library…".
+- 2026-11-06: LIB-3.2 and 3.6 amended and unticked for DS-21 (Plan item 50): the expanded row in DS-21's parts; its path, URL and dates move to the state's tooltip, "Show source file" joins More, its Sessions are a count, and its actions come last. In Progress again.

@@ -80,6 +80,8 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Session host**: The tmux session a Session runs in. Lookout never shows tmux itself.
 
+**Session name**: What a Session is called, the same everywhere: the name you gave it, else its Harness's own title, else its first prompt. Fleet chooses it (`display_title`). See SIDE-10.
+
 **Spec view**: A Module shown whole in the main pane, with its change since its base marked in place, and other Modules' Concepts, the specs a `§` names and the Ability keys it names explained on hover. See the PLAIN spec.
 
 **Start directory**: A directory listed in Settings where Lookout can start new Sessions. `~/Projects/work` by default.

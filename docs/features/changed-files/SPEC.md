@@ -3,7 +3,7 @@ title: "Changed files"
 code: "DIFF"
 status: "In Progress"
 created: "2026-10-31"
-updated: "2026-11-05"
+updated: "2026-11-06"
 ---
 
 # Changed files
@@ -26,7 +26,7 @@ What Fleet answers is checked in the fork's tests against [the contract](../../c
 
 A live Session's Changes, summed over its Checkouts (DIFF-2), as lines added and removed and files changed.
 
-- [ ] DIFF-1.1 A Session whose Changes have added or removed lines shows `+<added> −<removed>` in its row's numbers group, after the Subagent count and before the age (`[sa]2  +120 −30  5m  23%`), so SIDE-9.1's Subagent count stays first. Added lines are green (`diff-added-text`) and removed lines red (`diff-removed-text`), in the row, the status line and the list alike (DS-2.5). With no lines changed (no Changes, only binary files, only renames or mode changes), outside git, or when Fleet can't tell, the row shows nothing: never `+0 −0`. (e2e)
+- [ ] DIFF-1.1 A Session whose Changes have added or removed lines shows `+<added> −<removed>` in its row's first column (DS-22.1), before the age (`[sa]2 [br] fix/rates   +120 −30  5m  23%`). On the row it's in the row's quiet colour (DS-22.2); in the status line and the list, added lines are green (`diff-added-text`) and removed lines red (`diff-removed-text`) (DS-2.5). With no lines changed (no Changes, only binary files, only renames or mode changes), outside git, or when Fleet can't tell, the column is empty: never `+0 −0`. (e2e)
 - [x] DIFF-1.2 A count of 1000 or more is shortened as `1.2k` (one decimal below 10k, none from 10k: `12k`); the exact numbers are in the tooltip, with the number of files. (test)
 - [ ] DIFF-1.3 The status line (VIEW-5.5) shows the count after the repo, Worktree or branch, followed by the number of files: `+120 −30 · 4 files`, or `· 2 files` alone when no lines changed. It shows whenever at least one file changed, and it's a button that opens the list (DIFF-3). (e2e)
 - [x] DIFF-1.4 The row's accessible name reads the count with the other numbers, in the order shown: "120 lines added, 30 removed" (SIDE-2.15). The status line button's name adds the files: "120 lines added, 30 removed in 4 files, show changed files", or "2 files changed, show changed files". (test)
@@ -172,3 +172,4 @@ None.
 - 2026-11-03: Added DIFF-3.7, a Viewed mark on a file you opened that goes when the file changes again, and DIFF-3.8, a tint on a file that just changed while the list is open. Both after Fleet's upstream reviewer (its per-file Viewed and its border on a file the agent just changed), without a diff viewer in Lookout.
 - 2026-11-04: A `.plain` file in the list opens in the Spec view, with "Open in VS Code" as its second action, and its Viewed mark is PLAIN-4's (DIFF-3.7, DIFF-4.1; PLAIN-3.1, 3.3). Each Checkout in the list carries an id (PLAIN-6.1).
 - 2026-11-05: DIFF-3.1: a `.plain` Module is listed first in its Checkout, tinted, with an icon (PLAIN-3.4); the other files keep their path order.
+- 2026-11-06: DIFF-1.1 amended for DS-22 (Plan item 50, the clarity pass's idea 3): on the row the count is grey, in the first of three fixed columns; its green and red stay in the status line and the list, where it reads as a diff.

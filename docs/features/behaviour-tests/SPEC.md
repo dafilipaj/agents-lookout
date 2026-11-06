@@ -3,7 +3,7 @@ title: Behaviour tests
 code: TEST
 status: In Progress
 created: 2026-10-17
-updated: 2026-10-29
+updated: 2026-11-06
 ---
 
 # Behaviour tests
@@ -86,6 +86,7 @@ What a Behaviour test runs in. A World is built fresh for each Behaviour test an
 - [x] TEST-3.5 Everything else is information, never a failure: a `(manual)` criterion that a test names, an unticked criterion that already has tests, and an unticked `(test)` or `(e2e)` criterion without tests. It lists the first two. (test)
 - [x] TEST-3.6 It prints, per feature, each criterion with its tag, tick and the tests naming it, followed by the violations. `--feature <CODE>` narrows the output for a review, `--json` prints it machine-readable, and the exit code is 0 or 1. (test)
 - [x] TEST-3.7 It finishes within 10 s and starts no World. (manual)
+- [ ] TEST-3.8 It reads the requirement ids named in `docs/design/GUIDE.md` (a requirement such as `DS-18`, or a criterion such as `DS-12.4`), and fails when one is an id no spec has or one that is struck through, as for a test (TEST-3.4) ([0015](../../decisions/0015-design-guidelines-by-task.md)). (test)
 
 ### TEST-4 Before each push
 
@@ -443,3 +444,4 @@ None.
 - 2026-10-30: TEST-4.4 added (Dario): a push that changes only `docs/`, `AGENTS.md` or `CLAUDE.md` runs req-check alone, skipping the unit and Behaviour tests, which read nothing there. `scripts/pre-push.test.mjs` now pushes a real commit through the hook's stdin, and tests TEST-4.4 both ways.
 - 2026-11-02: lsof moves from a symlink to a shim, and every World gets a fake `tb-devctl`: Lookout's Local server reads (PORTS-1.1) are answered from `.ports()`, Fleet's lsof calls still reach the real one.
 - 2026-11-06: TEST-4.5 added (Dario, PLAN item 37): with `res` installed, the pre-push hook's unit and Behaviour tests queue through it, so a push no longer runs its tests beside other Sessions' runs. Without `res`, nothing changes.
+- 2026-11-06: TEST-3.8 added ([0015](../../decisions/0015-design-guidelines-by-task.md), Plan item 43): `req-check` also reads the requirement ids the design guide names, and fails on one that doesn't exist or is struck through, so the guide can't point at something gone.

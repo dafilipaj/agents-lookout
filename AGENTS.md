@@ -4,7 +4,7 @@ A personal UI for watching and controlling agent Sessions (Claude Code, Codex) a
 
 ## Specs come first
 
-How specs work: `docs/README.md`. Terms: `docs/GLOSSARY.md`. What's next, in order: `docs/PLAN.md`.
+How specs work: `docs/README.md`. Terms: `docs/GLOSSARY.md`. What's next, in order: `docs/PLAN.md`. Before any UI change, read `docs/design/GUIDE.md`: how to build each piece, by task ([0015](docs/decisions/0015-design-guidelines-by-task.md)).
 
 - Don't build a user-visible feature unless its spec (`docs/features/<slug>/SPEC.md`) is `Ready` or `In Progress`. Fixes and refactors don't need a spec.
 - Build only what the requirements say. Anything under Non-goals is out, even if it looks easy.
@@ -27,3 +27,4 @@ How specs work: `docs/README.md`. Terms: `docs/GLOSSARY.md`. What's next, in ord
 - Reusable logic belongs in a Building block in cli-toolbox, not in this repo ([0005](docs/decisions/0005-building-blocks-live-outside-lookout.md)).
 - UI icons come only from `lucide-react`, sized and stroked like their neighbours and coloured with theme tokens; never emoji or Unicode symbols. Exceptions: `HarnessIcon`, `StatusMarker`, the chat rail's Marks, keyboard glyphs in shortcut hints, Work's `TaskStatusDot`, a person's `Avatar` and Lookout's own mark, `LookoutMark` ([0008](docs/decisions/0008-lucide-icons-only.md), [0012](docs/decisions/0012-task-status-dots-and-author-avatars.md), [0014](docs/decisions/0014-the-lens-lookouts-own-mark.md)).
 - UI sizes and colours come from the design system: the five type steps and colour tokens by meaning, from `index.css`, with no raw colours or Tailwind sizes. New UI reuses `components/ui/`, and a missing piece is added to the system in the same change ([0009](docs/decisions/0009-one-design-system-guarded-by-tests.md)).
+- A UI change follows `docs/design/GUIDE.md`, updates its entry when it adds or changes a pattern, and adds a guard for how pieces are put together where one can be written ([0015](docs/decisions/0015-design-guidelines-by-task.md)).

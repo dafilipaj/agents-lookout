@@ -147,12 +147,6 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
 - **How:** Fleet's `brief` has the format and the file (`~/.local/state/fleet/briefs/<session_id>.md`), but the CLI only reads and edits it: writing one is a `claude -p` call in Fleet's web server, which Lookout doesn't run. Either Lookout writes it (its own `claude -p`, keeping Fleet's format) or a fork commit adds generation to the CLI. Decide in a TOPIC slice after slice 1.
 - **Added:** 2026-10-30, by Dario, from the Fleet review.
 
-## Suggest a name for a Session (VIEW-5.12)
-
-- **What:** a "Suggest" action by the header's rename (VIEW-5.12) that fills in a name from what the Session is working on, which you can edit before saving.
-- **How:** Fleet's `name <target>` (without `--apply`) suggests one, from the brief and the opening prompts, in an `<area>-<what>` form; Lookout then renames through `rename --require-empty` as today. Check its cost and latency (a model call) first.
-- **Added:** 2026-10-30, by Dario, from the Fleet review.
-
 ## Continue a Session's work in a new one (LAUNCH)
 
 - **What:** "New session from here": a new Session in the same folder whose first prompt hands over this one's work (what it did, its PRs and branch, what's next), for when a Session's context is full or the work branches.
@@ -201,9 +195,35 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
 - **Why it's here:** a Non-goal of PLAIN's first version (grill, 2026-11-04): reading and Viewed come first. It fits with "review comments sent to the Session as a prompt" (DIFF) above.
 - **Added:** 2026-11-04, by Dario, from PLAIN's grill.
 
+## A `/design` route: every piece in both modes (DS)
+
+- **What:** one page inside Lookout that shows each piece of the design system (buttons by role, Alerts, markers, rows, popovers, Loading and empty states) in light and dark mode side by side, from the real components.
+- **Why:** drift becomes visible there: Usage's and Memory's popovers side by side would have shown the difference before the clarity pass did. 0009 rejected Storybook for the cost of a separate package; a route is one page in the app.
+- **Why not now:** it shows drift but doesn't stop it; the guide and the guards do ([0015](decisions/0015-design-guidelines-by-task.md)).
+- **Added:** 2026-11-06, from the clarity pass (idea 6, optional, later).
+
+## Words on the right sidebar's tabs (WORK)
+
+- **What:** the right sidebar's tabs show a word each (Work, History, Library, Topics, Servers) instead of an icon, with the open one's word as today. Their counts say what they count.
+- **Why:** a briefcase, a book, layers and a server stack have to be learned, and the "1" on Topics doesn't say what it counts. Apart from a handful of universal icons, people need a text label, and a tooltip doesn't fix that (NN/g, icon usability). Five short words fit in 360 px if the icons go. They're the one exception to the design guide's principle 8 today.
+- **Why not now:** seen in the clarity pass of 2026-11-06, but not one of its ten ideas.
+- **Added:** 2026-11-06, from the clarity pass's grill (0015).
+
+## Marks that crowd on the chat rail (VIEW)
+
+- **What:** on a long Session's rail, Marks close together overlap (four in about 30 px at the top, seen 2026-11-06). Marks closer than about 10 px could be nudged apart, keeping their order, with each still scrolling to its own entry.
+- **Why not now:** small, and separate from their colours (VIEW-1.21).
+- **Added:** 2026-11-06, from the clarity pass (idea 7).
+
 ## Dropped
 
 Discussed and decided against. Each keeps why, so it isn't proposed again without something new.
+
+### Suggest a name for a Session (VIEW-5.12)
+
+- **What:** a "Suggest" action by the header's rename that fills in a name from what the Session is working on, through Fleet's `name <target>` (a model call).
+- **Why dropped:** the Harnesses already name their Sessions: Claude Code writes its own title into the Transcript (`ai-title`) and Codex names its threads (31 named in `session_index.jsonl` on 2026-11-06). SIDE-10 makes that title the Session name, so a suggestion would cost a model call for a name most Sessions already have.
+- **Added:** 2026-10-30, by Dario, from the Fleet review. **Dropped:** 2026-11-06, by Dario, in SIDE-10's grill.
 
 ### A count of waiting Review requests on the Work button (WORK)
 

@@ -3,7 +3,7 @@ title: Start Sessions
 code: LAUNCH
 status: In Progress
 created: 2026-10-16
-updated: 2026-10-27
+updated: 2026-11-06
 ---
 
 # Start Sessions
@@ -46,7 +46,7 @@ A start or a resume in a folder Claude Code doesn't trust yet waits at Claude Co
 - [x] LAUNCH-4.3 A multi-line first prompt arrives intact, line breaks included. (manual)
 - [x] LAUNCH-4.4 If starting fails, the launcher stays open, shows the error, and keeps everything you entered. (test)
 - [x] LAUNCH-4.5 If the Session hasn't appeared after 15 s, not counting the time it waits on its Trust prompt (LAUNCH-6.2), the "Starting…" row turns into an error, and the Session host is left running so you can look. The error and the last lines of its terminal show in the row while it isn't selected; selected, the row stays compact and the starting view shows them (LAUNCH-4.6). (manual)
-- [x] LAUNCH-4.6 While a "Starting…" row is selected, the main pane shows the start: its name, Harness, start directory and the time since Start; then, once it failed (LAUNCH-4.5), the error and its terminal's last lines in place of the waiting note. (test)
+- [ ] LAUNCH-4.6 While a "Starting…" row is selected, the main pane shows the start as the Session it will become (LAUNCH-7): its name and Harness in the header, your first prompt, and where it's starting and for how long; then, once it failed (LAUNCH-4.5), the error and its terminal's last lines in place of the wait. (test)
 - [x] LAUNCH-4.7 "Starting…" rows count as rows for ↑/↓, j/k and ⌘1–9 (SIDE-5.1, SIDE-5.2), in the order shown, above the Sessions. A failed one takes no ⌘ number (it stays until dismissed); ↑/↓ and j/k still reach it. ⌘J skips them all, except one waiting at its Trust prompt (LAUNCH-6.14). (test)
 - [x] LAUNCH-4.8 A Session starts with the Effort and the Skip permissions choice you picked, for this Session only: it doesn't change the Harness's saved defaults. After its first reply the status line shows that Effort (VIEW-5.5), and a Claude Code Session started with Skip permissions shows Claude Code's bypass mode in its terminal. (manual)
 
@@ -76,6 +76,18 @@ Claude Code asks whether you trust a folder it hasn't run in before, and registe
 
 LAUNCH-6.1 to 6.12 and 6.14 are covered by unit tests of the launcher and the Starting view, and route tests against the fake `fleet`, which answers `trust` as [the contract](../../contracts/fleet-trust.md) says. They're retagged `(e2e)` once the Fake Harness for Claude Code draws a Trust prompt and registers only after "Yes" (TEST-1.4). LAUNCH-6 is built once Lookout's Fleet pin has the fork's `trust` commit.
 
+### LAUNCH-7 The Session, arriving
+
+For the few seconds a start takes, the main pane showed a 14 px spinner in the header's corner and a grey "Waiting for Fleet to report the Session…" above the directory and "Started 4s ago": words about Lookout's plumbing, motion far from where you look, nothing about how long a start takes, and a jump from a list of facts to a chat when the Session arrived. Dario found it unfinished and chose option B of three drawn, with A's Lens as its loader (2026-11-06, clarity pass, idea 10, Plan item 49): the Starting view is the Session's own layout with your first prompt already in it.
+
+- [ ] LAUNCH-7.1 A start's `LaunchView` carries its first prompt (`prompt`), as you typed it, or none for a resume (HIST-3.1) or a start without one; every tab gets it with the start, so a reload or another tab shows it too. The server keeps it only while the start is listed. (test)
+- [ ] LAUNCH-7.2 While a start is Starting, the main pane has the Session view's layout: its header (the orbiting Lens, DS-14.4, where the Status marker will be, then the name, the Harness and the "Starting…" tag, VIEW-5.1), its chat column with your first prompt as a message you sent that the Transcript doesn't have yet (VIEW-1.13's look), and its dock with the composer disabled, reading "You can type once it's ready", and its status line empty. (test)
+- [ ] LAUNCH-7.3 Under your prompt, where the reply will be, a `Loading` (DS-6) says "Claude Code is starting in work…" (the Harness, and the directory's name, its full path in the tooltip), or "Claude Code is resuming in work…" for a resume, counted from Start: the seconds from 3 s, and from 10 s "Taking longer than usual. At 15 s, its terminal shows here." (DS-6.7). Three of the chat's skeleton bars (DS-6.2) follow it. Its words are announced once, through LAUNCH-6.9's one region. (test)
+- [ ] LAUNCH-7.4 When Fleet reports the Session and it takes over the selection (LAUNCH-4.2), the Session view keeps your first prompt where it was, as a sent message (VIEW-1.13), with the "Working…" row (VIEW-1.10) counted from Start, in place of the chat's skeleton (DS-6.2), until the Transcript's copy takes its place. The header, the column and the dock don't move. (test)
+- [ ] LAUNCH-7.5 A Trust prompt's card (LAUNCH-6.3) and a failure's error and terminal lines (LAUNCH-4.5) take the `Loading`'s place under your prompt, and the header's Lens becomes Needs you's marker or the red `CircleX`, as today. A failure says "Started in <directory, in full> 18s ago" above its error. (test)
+- [ ] LAUNCH-7.6 A Starting row in the sidebar shows the orbiting Lens where a Session's marker sits, for `LoaderCircle`; a failed or Trust row keeps its marker. (test)
+- [ ] LAUNCH-7.7 Seen in both modes at 1440 px and with the right sidebar at 280 px, starting a Session with a two-line first prompt from the launcher and resuming one from History: the Starting view reads as the Session arriving, the Lens as Lookout looking and not as a Status, the swap to the Session doesn't jump, and nothing moves with reduced motion. (manual)
+
 ## Non-goals
 
 - Picking, searching or creating Worktrees. You start in the repo, tell the agent what you're working on, and it moves to the right Worktree itself. Picking existing Worktrees may become its own feature later.
@@ -89,6 +101,8 @@ LAUNCH-6.1 to 6.12 and 6.14 are covered by unit tests of the launcher and the St
 - More of the Trust prompt than the terminal shows: the permissions behind "… and 2 more", reading the folder's `.claude/settings.json`, or the "Security guide" as a link.
 - Codex's Trust prompt, for now: a Codex start completes while it waits there, as before (Known gaps).
 - Other screens a Harness shows before it starts: Claude Code's bypass mode acceptance (Known gaps), login, update prompts.
+- Typing while a Session starts, to send before it exists: the composer waits, disabled, until it's ready (LAUNCH-7.2).
+- Steps of a start (option C: terminal opened, Harness starting, ready): the server knows two stages only, and more would be invented.
 
 ## UX
 
@@ -113,15 +127,19 @@ LAUNCH-6.1 to 6.12 and 6.14 are covered by unit tests of the launcher and the St
 
 ```
 ┌───────────────┬──────────────────────────────────────────────────────┐
-│ / filter  + ⚙ │ ◌ fix-rates · Claude Code                 Starting…  │
+│ / filter  + ⚙ │ ⊙ Fix rates rounding · ✳ Claude Code      Starting…  │
 ├───────────────┼──────────────────────────────────────────────────────┤
-│ ◌ fix-rates   │ Directory  ~/Projects/work                           │
-│   Starting…   │ Started    4s ago                                    │
-│ ◆ kg-hook-…   │ Waiting for Fleet to report the Session…             │
+│ ⊙ Fix rates…  │          ┌ Fix the rounding in the rates table so ┐  │
+│   Starting…   │          └ totals match Ember                     ┘  │
+│ ◆ kg-hook-…   │ ⊙ Claude Code is starting in work… · 4s              │
+│               │ ▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒                          │
+│               │ ▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒                                   │
+├───────────────┼──────────────────────────────────────────────────────┤
+│               │ You can type once it's ready                         │
 └───────────────┴──────────────────────────────────────────────────────┘
 ```
 
-- Starting view (LAUNCH-4.6): a header like a Session's (spinner, name, Harness, "Starting…"), then the start directory (wrapped, never cut) and the time since Start. Once failed: "Didn't start" in the header, then the error and the terminal's last lines in full, scrollable. Each fact shows once. It has no dock: its content runs to the bottom (SIDE-8).
+- Starting view (LAUNCH-4.6, LAUNCH-7): the Session view's layout, `⊙` the orbiting Lens (DS-14.4): the header (the Lens, name, Harness, "Starting…"), your first prompt in the chat column, a `Loading` with the chat's skeleton bars where the reply will be, and the dock with the composer disabled. Once failed: "Didn't start" in the header, then, under your prompt, "Started in <directory> 18s ago", the error and the terminal's last lines in full, scrollable. Each fact shows once.
 - A failed row, while selected, is compact: its name, "Didn't start · folder · age" and Dismiss; the view carries the error and the lines. Unselected, it shows them itself (LAUNCH-4.5): the error is the design system's inline error (DS-4), wrapped, never cut, and not announced again (`quiet`: the starting view said it while selected). Dismiss is a 24 px icon button (DS-7).
 - A failed start is dismissed from its sidebar row. Dismissing the selected one selects the next start below it (else the one above); with no other start left, nothing is selected (the empty main pane). Focus then goes to the Dismiss button of the start that took its place, if it failed too, else to the main pane.
 - The "Starting…" rows are a plain list, not options: a failed row holds a Dismiss button, which an option can't. The selected row has `aria-current`.
@@ -184,6 +202,7 @@ LAUNCH-6.1 to 6.12 and 6.14 are covered by unit tests of the launcher and the St
 - **Harnesses and models:** from `fleet --local harness list --json`, cached for 10 minutes. Each entry is `{ id, label, command, installed, models: [{ id, label }] }`; the first model, id `''`, is the Harness's own default (`--model` is then left out). Model ids are letters, digits and `._[]-/:` only (Fleet's rule). pi is dropped.
 - **Start directories:** only one from the Settings list is accepted, so the server never starts anything elsewhere. One that's added must exist; `~` is expanded by the server.
 - **Settings:** start directories live in the server's settings file (the same one as SIDE-7). So does the last-used choice for LAUNCH-1.2.
+- **The Session, arriving (LAUNCH-7):** `LaunchView` gains `prompt: string | null`, from the validated request (`validate`), null for a resume. The Starting view is drawn from the Session view's shell (`PaneHeader`, the chat column, the dock) rather than its own, so the swap keeps every edge. When the Session takes over (LAUNCH-4.2), App hands the start's prompt and `startedAt` to the Session view as a pending message (VIEW-1.13), kept until the Transcript has it, as a composer send is.
 - **Selecting a start (LAUNCH-4.2, 4.6):** a selected "Starting…" row is in the URL, `/l/<launch id>`, like a Session (SIDE-4.2).
   - The tab picks the launch id (a UUID) and sends it as `launchId` with `POST /api/launch` (and HIST's resume). So the moment you press Start, it shows that row itself and selects it, before `fleet spawn` returns. The server uses that id, and refuses a malformed one (400) or one it already has (409); without one it makes one up.
   - The tab's own row stands until the server's `launches` list names it. Once the server has listed it, its list is the truth: a late answer never brings back a start dismissed meanwhile.
@@ -223,6 +242,7 @@ LAUNCH-6.1 to 6.12 and 6.14 are covered by unit tests of the launcher and the St
 - **⌘J reaches a start waiting at its Trust prompt** (Dario, 2026-10-27): it shows Needs you's marker and waits on you, so skipping it would hide the one thing that needs you; the other "Starting…" rows never Need you and stay skipped (LAUNCH-6.14).
 - **Codex gets the same card in a second slice, after Claude Code's ships** (Dario, 2026-10-27): the card and the take-over hold are the same work for both Harnesses, but the fork must record Codex's screens first (contract C10). Until then a Codex start at its Trust prompt completes as Idle and can't be answered from Lookout.
 - **Tagged `(test)` until the Fake Harness draws a Trust prompt**, as VIEW-4's answers are: a Behaviour test would need TEST-1.4 first, and the route and component tests against the contract's fake check the same behaviour now.
+- **The Session, arriving (LAUNCH-7)** (Dario, 2026-11-06): option B of three drawn, with A's Lens as its loader (https://claude.ai/artifact/25pLxAvGUQHR6c9A9tAx5L). Its own layout with your prompt fixes the jump and makes the wait the start of the work; the Lens is a small animation of Lookout's own; the hint at 10 s makes the 15 s failure expected. The motion lasts 15 s at most, so it keeps DS-10's rule.
 
 ### Known gaps
 
@@ -273,3 +293,5 @@ Resolved while building (2026-10-16): `fleet spawn` (the CLI) never answered a t
 - 2026-10-31: The launcher's footer said "your input is kept" in a launcher opened from Work or a Topic view too, whose draft goes when it closes (LAUNCH-1.3); there it now says "your input is discarded".
 - 2026-11-03: Fleet's fork rebased on upstream: a tmux `fleet spawn` of Codex now answers Codex's Trust prompt itself. Known gaps say so; whether Lookout keeps that is Open question 1.
 - 2026-11-05: LAUNCH-4.5 ticked: Dario checked and confirmed it.
+- 2026-11-06: Added LAUNCH-7, the Session arriving (the clarity pass's idea 10, Plan item 49, option B with A's Lens, decided by Dario): the Starting view in the Session view's layout with your first prompt, a `Loading` with the orbiting Lens, a hint at 10 s, and the first prompt kept as a sent message when the Session takes over. LAUNCH-4.6 amended and unticked; UX, Technical approach, Non-goals and Key decisions amended. DS-6.5 to 6.9 and DS-14.4 added for it.
+- 2026-11-06: LAUNCH-7 grilled with Dario with DS-6.5 to 6.9, seven questions, every one as recommended: the Lens in every `Loading`; words that name the source; your first prompt kept as a sent message, with "Working…", when the Session takes over; the seconds once, under your prompt; a resume shows the header and its `Loading` only; the dock and three skeleton bars as drawn; guard check 12 includes motion without `motion-safe:`.

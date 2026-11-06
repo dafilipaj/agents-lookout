@@ -3,7 +3,7 @@ title: History
 code: HIST
 status: In Progress
 created: 2026-10-16
-updated: 2026-10-30
+updated: 2026-11-06
 ---
 
 # History
@@ -36,7 +36,7 @@ Once History is in Lookout, a stray click on a result resumes a past Session, wh
 - [x] HIST-2.6 Subagent Sessions and Sessions without a single prompt never appear. (test)
 - [x] HIST-2.7 ↑/↓ and j/k move through the results without resuming, opening or selecting any Session, and collapse the expanded result as they leave it. Enter on a selected result that isn't expanded expands it; on an expanded one it runs its button (HIST-3.5). (test)
 - [x] HIST-2.8 Claude Code and Codex filter buttons, each showing its Harness's logo, sit next to the headless toggle. Both are on by default; either can be switched off, but never both at once. The choice is remembered across reloads. (test)
-- [x] HIST-2.9 An expanded result shows, besides its title, Harness, repo, branch and age: its start directory in full (the home directory as `~`), the date and time it was last active (not its Harness or branch again: its row shows them; no model: tb-session doesn't give one); its first prompt and its last message, each its first three lines, with who said the last one; and whether it can be resumed and, if not, why (BLOCK_REASON's words, HIST-3.3). A live result says it's live. (test)
+- [ ] HIST-2.9 An expanded result is built as DS-21 says. Its state adds, to its row's title, Harness, repo, branch and age, the date and time it was last active, and "live" for a live result or, for one that can't be resumed, why (BLOCK_REASON's words, HIST-3.3); its start directory in full (the home directory as `~`) is the state's tooltip; its summary is its first prompt and its last message, each its first three lines, with who said the last one; its Topics are a count (DS-21.2). No model: tb-session doesn't give one. (test)
 - [x] HIST-2.10 The first prompt and the last message are read when a result is expanded, not for every result: one `tb-session show` for that Session (Technical approach, Expanded result). While it's read, the result shows "Loading…"; a failed read shows an error line and the buttons still work. With tb-session 0.2, which can't tail, the last message is left out and the first prompt only is shown. (test)
 - [x] HIST-2.11 One result is expanded at a time; expanding another collapses the first. Esc, with focus in History's list or search box, collapses the expanded result and leaves it selected. An expanded result grows in the panel and the list scrolls to keep it in view; the main pane keeps showing the current Session. (test)
 - [x] HIST-2.12 With an empty query, the results are grouped by the day they were last active, in the browser's local time: "Today", "Yesterday", then the date ("Nov 3, 2026"), as the Library's (LIB-2.1), each day a `group` of the listbox named by its heading, with no count. A result with no last-active time is under "No date". While a query is typed the list is best match first (HIST-2.2), so it has no headings, nor have a search's results still shown while the cleared query's are read. A day keeps its rows when its heading changes ("Today" becoming "Yesterday" at midnight) or a newer result arrives above it, so an open menu stays open. ↑/↓ and j/k run across the days as through one list. (test)
@@ -234,3 +234,7 @@ None.
 - 2026-11-05: Added HIST-2.12, day groups without a query (DS-17, Dario's choice of hairlines and day groups for History and Library).
 - 2026-11-05: HIST-2.12 amended from Codex's review of DS-17: a search's results shown while the cleared query is read get no headings (they're best match first), and a day is keyed by its calendar date, so its rows stay mounted at midnight.
 - 2026-11-05: HIST-3.4 ticked: Dario checked and confirmed it.
+- 2026-11-06: SIDE-10.2 (Plan item 44): a live Session is named by the Session list, its Session name (Glossary), over the title tb-session gives it; a past Session keeps tb-session's, which follows the same order.
+- 2026-11-06: SIDE-11.1 (Plan item 45): the panel no longer takes focus when it mounts or the page loads with it open, only from its key, its tab or a click; with nothing focused the keys are the Session list's.
+- 2026-11-06: Its waits take DS-6.6's words and the orbiting Lens (Plan item 49): "Searching History…" with a query, "Reading History…" without, "Reading what it said…".
+- 2026-11-06: HIST-2.9 amended and unticked for DS-21 (Plan item 50): the expanded result in DS-21's parts; its start directory moves to the state's tooltip, and "can be resumed" shows only when it can't, with why.

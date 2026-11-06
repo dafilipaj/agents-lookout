@@ -3,7 +3,7 @@ title: Local servers
 code: PORTS
 status: In Progress
 created: 2026-10-16
-updated: 2026-11-02
+updated: 2026-11-06
 ---
 
 # Local servers
@@ -122,3 +122,4 @@ Servers tab (P)
 - 2026-11-02: Design pass on the running app (Dario's walk-through): PORTS-3.2's row keeps the port and name whole and cuts the directory from its start; PORTS-3.1's icon-only tabs wear their count on the icon's corner.
 - 2026-11-04: Dario asked for slice 2 ("I lack buttons to be able to stop servers from the Servers tab") and answered its first Open question: every Stop is confirmed in a dialog. PORTS-4.6 added, the UX gains the row's Stop button, a Key decision replaces the Open question.
 - 2026-11-05: PORTS-3.6 ticked: Dario checked and confirmed it.
+- 2026-11-06: SIDE-11.1 (Plan item 45): the panel no longer takes focus when it mounts or the page loads with it open, only from its key, its tab or a click; with nothing focused the keys are the Session list's.

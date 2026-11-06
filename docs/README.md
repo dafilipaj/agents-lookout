@@ -10,6 +10,8 @@ docs/
   GLOSSARY.md            concepts, each defined once
   BACKLOG.md             ideas for later that aren't specced yet, and the dropped ones
   PLAN.md                what's next, in order: spec changes, bugs and fixes
+  design/
+    GUIDE.md             how to build each piece of the UI, by task; read before any UI change
   features/
     README.md            index of features and their status
     <slug>/SPEC.md       one folder per feature; mockups and screenshots sit next to SPEC.md

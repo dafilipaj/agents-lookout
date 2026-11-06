@@ -1,9 +1,9 @@
 ---
 title: Usage at a glance
 code: USAGE
-status: Done
+status: In Progress
 created: 2026-10-16
-updated: 2026-11-03
+updated: 2026-11-06
 ---
 
 # Usage at a glance
@@ -19,15 +19,21 @@ Limits show up only when an agent stalls. Claude's usage page and Codex's `/stat
 ## Requirements
 
 ### USAGE-1 Always visible
-- [x] USAGE-1.1 A compact strip at the bottom of the Session sidebar shows, for Claude and for Codex, the 5-hour window: the Harness mark, a bar with **% used**, and the time to reset. On a second line under it come the weekly limit as a percentage, then how old the numbers are (USAGE-1.3), for example `weekly 42% · updated just now`: the tightest weekly window, per-model weekly windows included. Its tooltip ("Weekly limit 42%") and the screen-reader description say "weekly" too. A per-model 5-hour window counts as a 5-hour window, so the tightest one shows. A 5-hour window whose reset has passed shows 0% with no time to reset until the new read, with the weekly limit still on the second line. Only a Harness that reported no 5-hour window at all shows its tightest weekly window with the bar, % used and time to reset instead, labelled `w` before the bar, with the same tooltip, so it never passes for a 5-hour window; its second line then says only how old the numbers are. (test)
+- [ ] USAGE-1.1 A compact strip at the bottom of the Session sidebar shows, for Claude and for Codex, the 5-hour window: the Harness mark, a bar with **% used**, and the time to reset. On a second line under it come the weekly limit as a percentage, then how old the numbers are (USAGE-1.3), for example `weekly 42% · 12s ago` (DS-19.3): the tightest weekly window, per-model weekly windows included. Its tooltip ("Weekly limit 42%") and the screen-reader description say "weekly" too. A per-model 5-hour window counts as a 5-hour window, so the tightest one shows. A 5-hour window whose reset has passed shows 0% with no time to reset until the new read, with the weekly limit still on the second line. Only a Harness that reported no 5-hour window at all shows its tightest weekly window with the bar, % used and time to reset instead, labelled `w` before the bar, with the same tooltip, so it never passes for a 5-hour window; its second line then says only how old the numbers are. (test)
 - [x] USAGE-1.2 A window at 80% or more is marked as a warning (a triangle icon); at 95% or more, as critical (an octagon icon). In the strip each of the two numbers gets its own mark, beside it: the 5-hour window's by its % used, the weekly limit's after its % on the second line (`weekly 85% ⚠` in the mock-up). So a weekly limit at 85% marks the second line, not the bar. The marks are recognizable without colour. (test)
 - [x] USAGE-1.3 The numbers refresh on their own: Claude every 60 s; Codex every 60 s too when Fleet reads its ChatGPT plan (USAGE-1.5), otherwise whenever one of its Transcripts records new limits. The strip says how old they are. (manual)
-- [x] USAGE-1.5 Codex's numbers from a live read of its ChatGPT plan read like Claude's: `updated 1m ago`, and `stale · …` once they are more than 5 minutes old. Numbers from its Transcripts keep `as of last turn · 17m`. Fleet says which in each provider's `source`; a Fleet that doesn't (older forks) means Transcripts for Codex and a live read for Claude. (test)
+- [ ] USAGE-1.5 Codex's numbers from a live read of its ChatGPT plan read like Claude's: `1m ago`, worded as Memory words a sample's age (DS-19.3), and `stale · 6m` once they are more than 5 minutes old. Numbers from its Transcripts read `last turn · 17m`. Fleet says which in each provider's `source`; a Fleet that doesn't (older forks) means Transcripts for Codex and a live read for Claude. (test)
 - [x] USAGE-1.4 The strip shows whether Jev is ready (tb-jev installed, with credentials) or not set up. Nothing Lookout does here costs a billed call. (test)
 
 ### USAGE-2 Details
 - [x] USAGE-2.1 Clicking the strip opens details: each provider's plan, and every window (5-hour, weekly, per-model weekly, extra usage) with its bar, % used and reset time, tightest first. Jev shows its version and where its key comes from. (manual)
 - [x] USAGE-2.2 A provider whose numbers can't be read says why: not installed, not signed in, no data yet, or an error. It never shows stale numbers as current. (test)
+- [ ] USAGE-2.3 The details open on a verdict line (DS-19.1): "All limits fine" while every window is under 80%; else the worst window by name, "Codex's weekly limit is getting close" (80% to 94%), "… is nearly used up" (95% to 99%) or "… is used up" (100%), with "and 1 more" when other windows share its level. Its dot is the level's colour. Its age is the oldest provider's, worded as USAGE-1.5 says. With no provider readable it reads "Limits can't be read". The verdict names the popover. (test)
+- [ ] USAGE-2.4 Under it, three tiles: Claude Code, Codex and Jev. A Harness's tile shows its tightest window's % used, with its mark and level colour when it's 80% or more (USAGE-1.2), and under it the window and the time to reset ("5h · in 2h28", "weekly · Mon"); one that can't be read shows "—" and its reason in short ("not signed in"). Jev's tile shows "ready" or "not set up", and its version under it. (test)
+- [ ] USAGE-2.5 "Worth a look" lists each window and each extra usage at 80% or more, tightest first, one line each with its mark: "Codex weekly at 100%, resets Mon 10:35 (in 2d 22h)". With none it isn't there. (test)
+- [ ] USAGE-2.6 Then a section per provider under a `SectionLabel`: its name, its monochrome mark (DS-3.1), and at its right its plan and its age ("Team · Max 5x · 1m ago"). Its windows, tightest first, are `Meter`s: the window's name, its % and mark, a 4 px bar with the level as its edge (DS-3.2), and "resets 14:10 · in 2h28" under it, or "reset · refreshing" in its place. Extra usage is a `Meter` too when it has a limit; credits and a provider's reason (USAGE-2.2) are lines under the label. Jev's section comes last: its label with "ready" or "not set up" at its right, then Version, Key from, API and Config as rows, the name at the left and the value at the right, cut short at its start with the whole in its tooltip, then the command that fixes an old tb-jev (TOOLS-2.5) and "Checked without a billed call. Balance: see the Typesafe console." (test)
+- [ ] USAGE-2.7 What USAGE-2.1 and 2.2 promise still holds: every window with its bar, % used and reset, tightest first, each provider's plan, Jev's version and key source, and why a provider can't be read; it never shows stale numbers as current, and a stale provider's section is dimmed as before. (test)
+- [ ] USAGE-2.8 Seen at 280 px in both modes, with a limit at 100%, Codex read from its Transcripts and Jev not set up: the popover fits its 22 rem without a horizontal scroll, the tiles keep their values on one line, and it reads as Memory's sibling (DS-19.4). (manual)
 
 ### USAGE-3 In the launcher
 - [x] USAGE-3.1 In the launcher's Harness choice, a Harness with a window at 95% or more shows it next to its name (for example "5h limit 100% · resets 17:30"). It stays selectable. (test)
@@ -50,9 +56,9 @@ Limits show up only when an agent stalls. Claude's usage page and Codex's `/stat
 │ …                                    │
 ├──────────────────────────────────────┤   the line above the composer (SIDE-8)
 │ ✳ ███░░░░░░░░░░░░░░░░░░░  12%   2h10 │   Claude's 5-hour window, resets in 2 h 10 min
-│   weekly 42% · updated just now      │   its tightest weekly limit, 42%; how old the numbers are
+│   weekly 42% · 12s ago               │   its tightest weekly limit, 42%; how old the numbers are
 │ ⊛ ██████████████████████ 100% ⛔  25m │   Codex at its 5-hour limit, resets in 25 min
-│   weekly 85% ⚠ · as of last turn · 5m│   its weekly limit past 80%; as of Codex's last turn
+│   weekly 85% ⚠ · last turn · 5m      │   its weekly limit past 80%; as of Codex's last turn
 │ Jev ✓ ready                          │
 └──────────────────────────────────────┘
 ```
@@ -60,7 +66,30 @@ Limits show up only when an agent stalls. Claude's usage page and Codex's `/stat
 - The mock-up uses ⛔, ⚠ and ✓ as shorthand for the critical octagon, the warning triangle and the check icon.
 - Each provider has two lines (USAGE-1.1). The first: the Harness mark, the 5-hour window's bar, % used, its mark's slot and time to reset. The second, under the bar: the weekly limit as `weekly 42%` in muted text, with "Weekly limit 42%" as its tooltip and its mark after its %, then ` · ` and how old the numbers are, as before ("stale · …" included, in the info tone: DS-3.3). The bar's slot stays empty for a weekly mark. A 5-hour window whose reset has passed reads 0% with an empty reset slot. With no 5-hour window reported, the first line is the weekly window's bar, % used and reset, with a muted `w` before the bar, its tooltip "Weekly limit 33%", so it never passes for the 5-hour window, and the second line says only how old the numbers are. The first line's tooltip names both windows.
 - The bar takes the room the rest of the first line leaves: the %, the mark's slot and the time to reset keep their natural width. The first lines share one set of columns, each as wide as its widest entry, so every line's bar starts and ends at the same place; a `w` before one line's bar moves the others' along with it. The bar never gets narrower than 2.5rem, which the widest line (`w`, 100%, a mark, `1d 23h`) easily leaves in the sidebar's 280 px. The widest second line (`weekly 100% ⛔ · as of last turn · just now`) fits too; should one ever run out of room, how old the numbers are is cut short with an ellipsis, in full in its tooltip (with the reason, when there is one), never the weekly limit. Screen readers get every line as the strip button's description, saying what the line shows: each number with its mark, the time to reset, and how old the numbers are, so old ones never read as current (USAGE-2.2). For example "Claude Code: 5-hour 12%, resets in 2h10; weekly 97%, critical; updated 1m ago", or after a failed read "Claude Code: 5-hour 0%; weekly 42%; old · 12m ago".
-- Clicking the strip opens a popover with the details (USAGE-2.1).
+- Clicking the strip opens a popover with the details (USAGE-2.1), built as Memory's (USAGE-2.3 to 2.8, DS-19):
+
+```
+┌ ● Codex's weekly limit is used up      1m ago ┐   verdict: the worst window, the oldest age
+│ ┌Claude Code──┐ ┌Codex────────┐ ┌Jev────────┐ │   tiles: each Harness's tightest window, then Jev
+│ │ 27%         │ │ ⛔ 100%      │ │ ready     │ │
+│ │ 5h · in 2h28│ │ weekly · Mon│ │ v0.2.0    │ │
+│ └─────────────┘ └─────────────┘ └───────────┘ │
+│ ┌ Worth a look ───────────────────────────────┐ │
+│ │ ⛔ Codex weekly at 100%, resets Mon 10:35 (in 2d 22h) │
+│ └─────────────────────────────────────────────┘ │
+│ ✳ CLAUDE CODE           Team · Max 5x · 1m ago │   a SectionLabel per provider
+│ Current session                         27%   │
+│ ▬▬▬▬▬▬───────────────────────────────────────  │   a 4 px meter, the level as its edge
+│ resets 14:10 · in 2h28                        │
+│ ⊛ CODEX           ChatGPT Plus · last turn · 5m │
+│ Weekly                               100% ⛔  │
+│ ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▌  │
+│ resets Mon 10:35 · in 2d 22h                  │
+│ JEV                                    ready  │
+│ Version                               0.2.0   │
+│ Key from                      macOS Keychain  │
+└────────────────────────────────────────────────┘
+```
 - One grid (SIDE-8): the strip is the Session sidebar's cell in the shell's dock row, so its top line is the line above the composer, or above the ended / View only banner. Whichever side is taller sets the row's height; the strip's lines stay at its top.
 - Level icons: a warning triangle (lucide `TriangleAlert`, amber in the `warning-text` token (DS-2), as text and strokes use) at 80% or more, a critical octagon (`OctagonAlert`, red) at 95% or more, beside the bar's edge. The strip's bar (DS-3.2): the fill is the foreground at 55% at every level (3:1 against the track in both modes), and the level is a 3 px edge at the fill's end, set off from the fill by a 1 px gap in the sidebar's colour: `warning` from 80% to 94%, `destructive` at 95% or more, so a limit held for hours isn't the brightest thing on screen. The fill is `overflow-hidden`, so the edge follows its rounded end. The details popover keeps solid fills (`warning`, `destructive`). The Harness marks in the strip and the details are monochrome (DS-3.1). The launcher hint (USAGE-3.1) starts with the same octagon. Icons follow [0008](../../decisions/0008-lucide-icons-only.md).
 
@@ -115,6 +144,8 @@ Limits show up only when an agent stalls. Claude's usage page and Codex's `/stat
 - **At the bottom of the Session sidebar**: always visible, which is the point; the right sidebar is closed most of the time.
 - **% used**: what Claude's and Codex's own screens show.
 - **No Jev balance**: there's no endpoint for it. Showing that Jev is set up is still useful, and costs nothing.
+- **The details are built as Memory's (USAGE-2.3 to 2.8)**: one popover family, so Usage's verdict, tiles and "Worth a look" read the way Memory's do; Dario chose Memory's as the model (DS-19).
+- **The verdict's age is the oldest provider's**: a verdict is only as fresh as the numbers behind it; each section still says its own.
 - **Launcher hint, not a block**: you may know a window resets in a minute.
 
 ## Open questions
@@ -143,3 +174,5 @@ None.
 - 2026-11-02: Design pass: the strip's "old · …" reads "stale · …" (`freshnessLabel`); "old" read as cryptic beside the age. The tooltip keeps the reason, as before.
 - 2026-11-03: In Progress again. Fleet's upstream reads the ChatGPT plan Codex is logged in with (`openai`), and the fork's `providers[]` now gives Codex's entry from it, with a `source` field. USAGE-1.3 unticked: Codex refreshes every 60 s when the live read is there. USAGE-1.5 added: a live Codex read reads like Claude's (`updated …`, stale after 5 minutes), Transcripts keep `as of last turn`.
 - 2026-11-03: Done again: USAGE-1.5 by its tests; USAGE-1.3 seen in the running app, Codex reading `updated just now` across reads minutes apart from the live ChatGPT read.
+- 2026-11-06: Added USAGE-2.3 to 2.8 (Plan item 47, the clarity pass's idea 5): the details are rebuilt in Memory's anatomy (DS-19): a verdict line, three tiles, "Worth a look", a section per provider under an uppercase label, thin meters with the level as an edge, Jev's details as rows. USAGE-1.5 amended for DS-19.3's one age formatter ("1m ago", "last turn · 17m") and unticked until it's rebuilt. In Progress again.
+- 2026-11-06: USAGE-1.1's example and the strip's mock-up follow DS-19.3's one age formatter ("12s ago", "last turn · 5m"); USAGE-1.1 unticked until it's rebuilt. The UX gains the details popover's new mock-up.
