@@ -14,9 +14,13 @@ export async function openMore(page: Page, row: Locator): Promise<Locator> {
   return rowMenu(page);
 }
 
-/** DS-16: picks an action, by its `data-action`, from an expanded row's "More". */
+/**
+ * DS-16: picks an action, by its `data-action`, from an expanded row's "More", and waits for the menu
+ * to be gone: it fades out after a pick, and until then Esc is its, not a dialog's the pick opened.
+ */
 export async function pickMore(page: Page, row: Locator, action: string): Promise<void> {
   await (await openMore(page, row)).locator(`[data-action="${action}"]`).click();
+  await expect(rowMenu(page)).toHaveCount(0);
 }
 
 /** DS-16 (WORK-2.10, WORK-3.6): an expanded row's actions' words in order: the labelled one, then More's. */
