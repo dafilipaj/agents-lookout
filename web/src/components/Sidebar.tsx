@@ -4,6 +4,7 @@ import { sidebarOrder } from '@shared/order.ts';
 import type { FleetHealth, LaunchView, SessionRow } from '@shared/types.ts';
 import { type ToolsSnapshot, toolsAttention } from '@shared/tools.ts';
 import type { UsageSnapshot } from '@shared/usage.ts';
+import type { WorkSnapshot } from '@shared/work.ts';
 import { Keyboard, Plus, Search, Settings as SettingsIcon, TriangleAlert, WifiOff } from 'lucide-react';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
@@ -13,7 +14,8 @@ import { Loading } from '@/components/ui/loading';
 import { IconButton } from '@/components/ui/icon-button';
 import { Kbd } from '@/components/ui/kbd';
 import { LookoutMark } from '@/components/ui/lookout-mark';
-import { isLongIdle, locationTip, matchesFilter, sessionOptionId } from '@/lib/sessions';
+import { linkedPrs, nameSuffixes } from '@/lib/names';
+import { isLongIdle, matchesFilter, sessionOptionId } from '@/lib/sessions';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { MemoryLine } from './MemoryLine';
@@ -61,6 +63,8 @@ export interface SidebarProps {
   onUsageOpen?(): void;
   /** TOPIC-3.5: the titles of the Topics a live Session is in, which the filter also matches. */
   topicTitles?(row: SessionRow): string[];
+  /** SIDE-10.3: Work's list, for a Session's Linked PR; null before it has loaded. */
+  work?: WorkSnapshot | null;
 }
 
 export function Sidebar(props: SidebarProps) {
@@ -86,18 +90,9 @@ export function Sidebar(props: SidebarProps) {
   if (frozenOrder && !sameOrder(frozenOrder, orderedIds)) setFrozenOrder(orderedIds);
 
   const byId = useMemo(() => new Map(sessions.map((s) => [s.id, s])), [sessions]);
-  // SIDE-2.1: rows that share a title tell themselves apart by their location, else by when they started.
-  const twins = useMemo(() => {
-    const byTitle = new Map<string, SessionRow[]>();
-    for (const s of sessions) byTitle.set(s.title, [...(byTitle.get(s.title) ?? []), s]);
-    const m = new Map<string, 'location' | 'start'>();
-    for (const group of byTitle.values()) {
-      if (group.length < 2) continue;
-      const places = new Set(group.map(locationTip));
-      for (const s of group) m.set(s.id, places.size > 1 ? 'location' : 'start');
-    }
-    return m;
-  }, [sessions]);
+  // SIDE-10.3: rows that share a name tell themselves apart by a suffix after it.
+  const prs = useMemo(() => linkedPrs(props.work ?? null), [props.work]);
+  const suffixes = useMemo(() => nameSuffixes(sessions, prs), [sessions, prs]);
   const { controllable, viewOnly, visible } = useMemo(() => {
     const rows = orderedIds.map((id) => byId.get(id)).filter((r): r is SessionRow => !!r && matchesFilter(r, filter, topicTitles?.(r)));
     const controllable = rows.filter((r) => r.controllable);
@@ -241,7 +236,7 @@ export function Sidebar(props: SidebarProps) {
         dimmed={isLongIdle(row, now, idleThresholdHours)}
         now={now}
         onSelect={selectId}
-        twin={twins.get(row.id) ?? null}
+        suffix={suffixes.get(row.id) ?? null}
       />
     );
     // DS-9.1: the list takes focus as History's does: the selected Session is its active option, none

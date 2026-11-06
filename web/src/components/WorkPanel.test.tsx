@@ -1216,7 +1216,7 @@ describe('Tasks (WORK-2)', () => {
     expect(row.querySelector('[data-field="ci"]')).toHaveAttribute('data-ci', 'passing');
     expect(row.querySelector('[data-field="linked-task"]')).toHaveAttribute('title', 'PR body');
     // Live first, then the latest past one (WORK-2.4's order).
-    expect([...row.querySelectorAll('[data-field="session-chips"] [data-action="session"]')].map((c) => c.getAttribute('aria-label'))).toEqual(['Open review-anvil, Idle', 'Resume anvil-opener, past']);
+    expect([...row.querySelectorAll('[data-field="session-chips"] [data-action="session"]')].map((c) => c.getAttribute('aria-label'))).toEqual(['Open beta, Idle', 'Resume anvil-opener, past']); // SIDE-10.2: a live one is named by the Session list
     expect(await rowActionWords(row, userEvent.setup())).toEqual(['Open Session', 'Open on GitHub', 'Add to Topic']);
     expect(expandRow(option('willow#2106')).querySelector('[data-field="chip"]')).toBeNull();
   });
@@ -1282,7 +1282,7 @@ describe('Tasks (WORK-2)', () => {
     const chips = [...expandRow(taskOption(LIGHT.id)).querySelectorAll<HTMLElement>('[data-field="session-chips"] [data-action="session"]')];
     expect(chips.map((c) => c.getAttribute('data-session-id'))).toEqual(['beta', ...Array.from({ length: 7 }, (_, i) => `past-${i + 1}`)]);
     expect(taskOption(LIGHT.id).querySelector('[data-field="older"]')).toHaveTextContent('+2 older');
-    expect(chips[0]).toHaveAccessibleName('Open fix-rounding, Busy');
+    expect(chips[0]).toHaveAccessibleName('Open beta, Busy'); // SIDE-10.2: named by the Session list, not tb-session
     expect(chips[1]).toHaveAccessibleName('Resume notes 1, past');
     expect(chips[0]).toHaveAttribute('title', 'started on this Task');
     expect(chips[1]).toHaveAttribute('title', 'through PR #2101');

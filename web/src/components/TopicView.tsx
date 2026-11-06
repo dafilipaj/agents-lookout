@@ -431,7 +431,7 @@ function Members({ topic, sessions, work, view, act, fresh, ...props }: TopicVie
         <Section label="Sessions" count={sessionMembers.length} field="sessions">
           <div className="flex min-w-0 flex-wrap items-center gap-1">
             {sessionMembers.map((m) => (
-              <SessionChip key={m.key} member={m} row={liveRow(m, sessions)} pruned={pruned.includes(`${m.ref.harness}:${m.ref.sessionId}`)} onOpen={(live) => act(props.onOpenSession(m, live), "Couldn't open its Session.")} onRemove={() => remove(m)} removeLabel={removeLabel(m.snapshot.title)} fresh={fresh.has(m.key)} />
+              <SessionChip key={m.key} member={m} row={liveRow(m, sessions)} pruned={pruned.includes(`${m.ref.harness}:${m.ref.sessionId}`)} onOpen={(live) => act(props.onOpenSession(m, live), "Couldn't open its Session.")} onRemove={() => remove(m)} removeLabel={removeLabel(liveRow(m, sessions)?.title ?? m.snapshot.title)} fresh={fresh.has(m.key)} />
             ))}
           </div>
         </Section>

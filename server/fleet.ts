@@ -20,7 +20,13 @@ export interface FleetRow {
   backend: string;
   /** The tmux session the pane lives in (LAUNCH matches a start to its Session by it). */
   tmux_session?: string | null;
+  /**
+   * SIDE-10.1: the Session's name ([contract](../docs/contracts/fleet-display-title.md)): the name
+   * you gave it, else its Harness's own title, else its first prompt's first line, else its id.
+   */
   display_title: string;
+  /** SIDE-10.5: its first prompt, in full; null before it has one. */
+  title?: string | null;
   context: { pct: number } | null;
   /** `claude` | `codex` | `pi` */
   harness: string;

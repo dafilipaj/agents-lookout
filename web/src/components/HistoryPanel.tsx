@@ -1,7 +1,7 @@
 import { BLOCK_REASON } from '@shared/history.ts';
 import type { Harness, HistoryItem, HistoryPage, HistoryPeek, SessionRow, Status } from '@shared/types.ts';
 import { Search } from 'lucide-react';
-import { type KeyboardEvent, type MouseEvent, type ReactNode, type Ref, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { type KeyboardEvent, type MouseEvent, type ReactNode, type Ref, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Chip } from '@/components/ui/chip';
@@ -12,7 +12,7 @@ import { RowActions } from '@/components/ui/row-actions';
 import { Loading } from '@/components/ui/loading';
 import { SessionMarker } from '@/components/ui/session-marker';
 import type { HistoryQuery } from '@/lib/client';
-import { type HarnessFilter, filterHarness, isLive, itemKey, loadHarnessFilter, saveHarnessFilter, snippetParts } from '@/lib/history';
+import { type HarnessFilter, filterHarness, isLive, itemKey, liveNamed, loadHarnessFilter, saveHarnessFilter, snippetParts } from '@/lib/history';
 import { type PanelNav, focusTab } from '@/lib/right-sidebar';
 import { HARNESS_NAME } from '@/lib/sessions';
 import { byDay, formatAge } from '@/lib/time';
@@ -191,7 +191,8 @@ export function HistoryPanel({ focusKey, sessions, now, search, peek, onOpen, na
     if (unfilled) loadMoreRef.current(true);
   }, [results]);
 
-  const items = results.state === 'ok' ? results.items : [];
+  const okItems = results.state === 'ok' ? results.items : null;
+  const items = useMemo(() => (okItems ? liveNamed(okItems, sessions) : []), [okItems, sessions]);
   /** HIST-3.1 to HIST-3.3: the expanded result's button, or Enter on it: resume, open or show it. */
   const open = (item: HistoryItem) => {
     const key = itemKey(item);

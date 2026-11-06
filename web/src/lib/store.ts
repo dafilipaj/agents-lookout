@@ -81,6 +81,25 @@ export interface LookoutState {
   chatOrder: readonly string[];
   /** The Session in view (chat updates for any other are ignored). */
   chatViewing: string | null;
+  /**
+   * SIDE-10.4: the selected Session's name as it showed when it was selected. `sessions` names it
+   * so, wherever it's read, until another Session or nothing is selected; null with none selected.
+   */
+  held: HeldName | null;
+}
+
+/** SIDE-10.4: a selected Session's name, held while you look at it. */
+export interface HeldName {
+  id: string;
+  /** The name it shows; null until it's listed. */
+  shown: string | null;
+  /** Its name in Fleet's list now; it takes this once it isn't selected. */
+  latest: string | null;
+  /**
+   * A rename made in Lookout is under way (VIEW-5.14): its name in the list when the rename went
+   * out. The first name that differs from it is the rename's, and shows at once; null with none.
+   */
+  accept: string | null;
 }
 
 export type { Chat } from './chat.ts';
@@ -94,8 +113,10 @@ export type Action =
   /** `at`: when the tab got it (its clock); VIEW-4.7 times reads that say nothing from it. */
   | { type: 'event'; event: ServerEvent; at?: number }
   | { type: 'connection'; connected: boolean }
-  /** VIEW-1: the tab now views this Session's chat. */
+  /** VIEW-1: the tab now views this Session's chat; it's the selected Session (SIDE-10.4). */
   | { type: 'chat-view'; sessionId: string | null }
+  /** SIDE-10.4, VIEW-5.14: a rename of this Session made here is under way (true) or failed (false). */
+  | { type: 'rename-sent'; id: string; sent: boolean }
   /** VIEW-1.6: a "Show earlier" page, asked for with `before` while the chat had `epoch`. */
   | { type: 'chat-page'; sessionId: string; before: string; epoch: number; page: ChatPage }
   /** VIEW-1.5: whether you're at the bottom of the chat. */
@@ -143,10 +164,17 @@ export const initialState: LookoutState = {
   chats: new Map(),
   chatOrder: [],
   chatViewing: null,
+  held: null,
 };
 
 export function reducer(state: LookoutState, action: Action): LookoutState {
   if (action.type === 'chat-view') return viewChat(state, action.sessionId);
+  if (action.type === 'rename-sent') {
+    const held = state.held;
+    if (held?.id !== action.id) return state;
+    const accept = action.sent ? held.latest : null;
+    return accept === held.accept ? state : { ...state, held: { ...held, accept } };
+  }
   if (action.type === 'chat-page' || action.type === 'chat-following') {
     const chat = state.chats.get(action.sessionId);
     if (!chat) return state;
@@ -178,8 +206,9 @@ export function reducer(state: LookoutState, action: Action): LookoutState {
   switch (e.type) {
     case 'snapshot': {
       const sessions = new Map(e.sessions.map((s) => [s.id, s]));
+      const held = holdName(sessions, state.held);
       const lastKnown = new Map(state.lastKnown);
-      for (const s of e.sessions) lastKnown.set(s.id, s);
+      for (const s of e.sessions) lastKnown.set(s.id, sessions.get(s.id)!);
       // After a reconnect, rows may have changed identity while we weren't listening.
       const gone = [...state.orphans, ...state.sessions.values()].filter((s) => !sessions.has(s.id));
       const aliases = withSuccessors(state.aliases, gone, e.sessions);
@@ -204,6 +233,7 @@ export function reducer(state: LookoutState, action: Action): LookoutState {
         requested: settleRequested(state.requested, e.launches, started),
         orphans,
         clientId: e.clientId,
+        held,
         previews: new Map(), // a new stream: previews come again once it says what it views
         prompts: new Map(),
         usage: e.usage ?? state.usage,
@@ -220,13 +250,12 @@ export function reducer(state: LookoutState, action: Action): LookoutState {
       const lastKnown = new Map(state.lastKnown);
       const gone = e.remove.map((id) => sessions.get(id)).filter((s): s is SessionRow => !!s);
       for (const id of e.remove) sessions.delete(id);
-      for (const s of e.upsert) {
-        sessions.set(s.id, s);
-        lastKnown.set(s.id, s);
-      }
+      for (const s of e.upsert) sessions.set(s.id, s);
+      const held = e.upsert.some((s) => s.id === state.held?.id) ? holdName(sessions, state.held) : state.held;
+      for (const s of e.upsert) lastKnown.set(s.id, sessions.get(s.id)!);
       const aliases = withSuccessors(state.aliases, [...gone, ...state.orphans], e.upsert);
       const orphans = state.orphans.filter((o) => !e.upsert.some((u) => u.pid === o.pid && u.harness === o.harness));
-      return { ...state, sessions, lastKnown, aliases, orphans };
+      return { ...state, sessions, lastKnown, aliases, orphans, held };
     }
     case 'fleet': {
       // Once the list is known again, orphans that didn't come back really ended.
@@ -298,6 +327,34 @@ export function reducer(state: LookoutState, action: Action): LookoutState {
   }
 }
 
+/**
+ * SIDE-10.4: names the held Session in `sessions` (a map of the store's own, changed in place) as it
+ * showed, and returns the hold with its latest name. A rename made here, or its first listing since
+ * it was selected, shows its name now.
+ */
+function holdName(sessions: Map<string, SessionRow>, held: HeldName | null): HeldName | null {
+  const row = held && sessions.get(held.id);
+  if (!held || !row) return held;
+  const latest = row.title;
+  if (held.shown === null || (held.accept !== null && latest !== held.accept)) return { id: held.id, shown: latest, latest, accept: null };
+  if (latest !== held.shown) sessions.set(held.id, { ...row, title: held.shown });
+  return latest === held.latest ? held : { ...held, latest };
+}
+
+/** SIDE-10.4: the held Session takes its latest name again, and `sessionId`'s name is held as it shows. */
+function moveHold(state: LookoutState, sessionId: string | null): Pick<LookoutState, 'sessions' | 'lastKnown' | 'held'> {
+  let { sessions, lastKnown } = state;
+  const was = state.held;
+  if (was && was.latest !== null && was.latest !== was.shown) {
+    const row = sessions.get(was.id);
+    if (row) sessions = new Map(sessions).set(was.id, { ...row, title: was.latest });
+    const known = lastKnown.get(was.id);
+    if (known) lastKnown = new Map(lastKnown).set(was.id, { ...known, title: was.latest });
+  }
+  const title = sessionId ? (sessions.get(sessionId)?.title ?? null) : null;
+  return { sessions, lastKnown, held: sessionId ? { id: sessionId, shown: title, latest: title, accept: null } : null };
+}
+
 /** VIEW-1: the chat in view changes; older ones are cut to their latest entries, the oldest dropped. */
 function viewChat(state: LookoutState, sessionId: string | null): LookoutState {
   if (sessionId === state.chatViewing) return state;
@@ -309,7 +366,7 @@ function viewChat(state: LookoutState, sessionId: string | null): LookoutState {
     if (chat) chats.set(id, id === sessionId ? chat : park(chat));
   }
   // VIEW-4.2: a prompt read for a Session left behind may be stale by the time it's viewed again.
-  return { ...state, chats, chatOrder: keep, chatViewing: sessionId, prompts: new Map() };
+  return { ...state, ...moveHold(state, sessionId), chats, chatOrder: keep, chatViewing: sessionId, prompts: new Map() };
 }
 
 /**

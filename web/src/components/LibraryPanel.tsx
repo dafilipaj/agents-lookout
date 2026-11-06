@@ -394,7 +394,9 @@ function OutputRow({ item, now, query, active, expanded, sessions, enabled, onSe
           </span>;
           const listed = isLive(s, sessions) ? sessions.get(s.sessionId) : null;
           const label = listed ? 'Open' : s.blocked ? 'Show' : 'Resume';
-          return <RowAction key={`${s.harness}:${s.sessionId}`} data-action="session" aria-label={`${label} ${s.title}, ${listed ? STATUS_LABEL[listed.status] : 'past'}`} label={s.title} icon={<HarnessIcon harness={s.harness} />} trailing={<SessionMarker aria-hidden="true" state={listed ? 'live' : s.blocked ? 'blocked' : 'past'} status={listed?.status} since={listed?.statusSince ?? null} />} tip={`${EVENT[s.event]}${n === 0 ? ' (S)' : ''}${s.blocked && !listed ? ` · ${BLOCK_REASON[s.blocked]}` : ''}`} enabled={enabled} onPress={() => onSession(s)} className="max-w-full font-normal" />;
+          // SIDE-10.2: a live Session's name is the Session list's.
+          const name = listed ? listed.title : s.title;
+          return <RowAction key={`${s.harness}:${s.sessionId}`} data-action="session" aria-label={`${label} ${name}, ${listed ? STATUS_LABEL[listed.status] : 'past'}`} label={name} icon={<HarnessIcon harness={s.harness} />} trailing={<SessionMarker aria-hidden="true" state={listed ? 'live' : s.blocked ? 'blocked' : 'past'} status={listed?.status} since={listed?.statusSince ?? null} />} tip={`${EVENT[s.event]}${n === 0 ? ' (S)' : ''}${s.blocked && !listed ? ` · ${BLOCK_REASON[s.blocked]}` : ''}`} enabled={enabled} onPress={() => onSession(s)} className="max-w-full font-normal" />;
         })}{sorted.length > 8 && <span>+{sorted.length - 8} older</span>}
       </div>
     </div>}

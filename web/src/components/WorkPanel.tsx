@@ -13,6 +13,7 @@ import { Loading } from '@/components/ui/loading';
 import { SessionMarker } from '@/components/ui/session-marker';
 import { type PanelNav, WORK_FILTERS, WORK_FILTER_LABEL, type WorkFilter } from '@/lib/right-sidebar';
 import { Segmented } from '@/components/ui/segmented';
+import { liveName } from '@/lib/history';
 import { STATUS_LABEL } from '@/lib/sessions';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
@@ -828,13 +829,15 @@ function SessionChips({ sessions, enabled, onOpen }: { sessions: readonly WorkSe
       {shown.map((session) => {
         const listed = live.get(session.sessionId);
         const status = session.live ? (listed?.status ?? 'unknown') : null;
+        // SIDE-10.2: a live Session's name is the Session list's.
+        const name = liveName(session, live);
         return (
           <RowAction
             key={session.sessionId}
             data-action="session"
             data-session-id={session.sessionId}
-            aria-label={`${session.live ? 'Open' : 'Resume'} ${session.title}, ${status ? STATUS_LABEL[status] : 'past'}`}
-            label={session.title}
+            aria-label={`${session.live ? 'Open' : 'Resume'} ${name}, ${status ? STATUS_LABEL[status] : 'past'}`}
+            label={name}
             icon={<HarnessIcon harness={session.harness} />}
             trailing={<SessionMarker aria-hidden="true" state={status ? 'live' : 'past'} status={status ?? undefined} since={listed?.statusSince ?? null} />}
             tip={session.reason}

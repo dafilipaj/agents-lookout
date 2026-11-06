@@ -94,6 +94,7 @@ describe('fleet list → sidebar rows', () => {
         pid: 12434,
         harness: 'claude',
         title: 'lookout-test-claude',
+        firstPrompt: 'Ask me a question',
         status: 'needs-you',
         waitingFor: 'input needed',
         statusSince: 1792145455214,
@@ -119,6 +120,7 @@ describe('fleet list → sidebar rows', () => {
         pid: 14352,
         harness: 'codex',
         title: 'Run curl command',
+        firstPrompt: 'Run a shell command',
         status: 'idle',
         waitingFor: null,
         statusSince: 1792145434397,
@@ -144,6 +146,7 @@ describe('fleet list → sidebar rows', () => {
         pid: 88030,
         harness: 'claude',
         title: 'summarize-this-months-metrics',
+        firstPrompt: "Summarize this month's engineering metrics",
         status: 'idle',
         waitingFor: null,
         statusSince: 1792145421960,
@@ -169,6 +172,7 @@ describe('fleet list → sidebar rows', () => {
         pid: 85928,
         harness: 'claude',
         title: 'sketch-a-ui-for-watching',
+        firstPrompt: 'Sketch a UI for watching agent sessions',
         status: 'busy',
         waitingFor: null,
         statusSince: 1792145011865,
@@ -189,6 +193,30 @@ describe('fleet list → sidebar rows', () => {
         memoryGrowthBytes: null, pendingModel: null, pendingEffort: null,
         modelAt: null,
       },
+    ]);
+  });
+
+  it('SIDE-10.1: given a recorded `fleet list --json` from a Fleet with the contract, each row is named as the contract names it: the Harness\'s own title over the first prompt, never a slug', () => {
+    const recorded = fixture('recorded-2026-11-06.json');
+    const rows = normalizeRows(recorded, deps);
+    // Neither name was chosen (`derived`), so the Harness's title stands, and the first prompt is kept for the filter.
+    expect(recorded.map((r) => [(r as FleetRow & { name_source?: string }).name_source, r.display_title])).toEqual([['derived', 'Lookout UI usability ideas'], ['derived', 'Claude.ai artifact']]);
+    expect(rows.map((r) => r.title)).toEqual(['Lookout UI usability ideas', 'Claude.ai artifact']);
+    expect(rows.map((r) => r.firstPrompt)).toEqual(recorded.map((r) => r.title));
+    for (const r of rows) expect(r.title).not.toMatch(/^[a-z0-9]+(?:-[a-z0-9]+)+$/);
+  });
+
+  it('SIDE-10.5: the first prompt reaches the row on one line, cut to 300 characters; missing, blank or not a string, it\'s null', () => {
+    const base = fixture('recorded-2026-11-06.json')[0]!;
+    const prompts = (titles: unknown[]) => normalizeRows(titles.map((title, i) => ({ ...base, session_id: `s${i}`, title }) as FleetRow), deps).map((r) => r.firstPrompt);
+    const long = 'word '.repeat(100);
+    expect(prompts(["Let's resolve\n  merge conflicts", '  ', null, 42, undefined, long])).toEqual([
+      "Let's resolve merge conflicts",
+      null,
+      null,
+      null,
+      null,
+      `${long.trim().slice(0, 299).trimEnd()}…`,
     ]);
   });
 

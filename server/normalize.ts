@@ -131,6 +131,8 @@ export function backgroundShell(r: Pick<FleetRow, 'status' | 'background'>): boo
 }
 
 const MAX_ACTIVITY = 120;
+/** SIDE-10.5: enough of the first prompt for the filter to find the words you started with. */
+const MAX_FIRST_PROMPT = 300;
 /** Bidi controls, which could show a command reversed. */
 const BIDI = /[؜‎‏‪-‮⁦-⁩]/g;
 const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
@@ -203,6 +205,7 @@ export function normalizeRows(rows: readonly FleetRow[], deps: NormalizeDeps): S
       pid: r.pid,
       harness: r.harness as Harness,
       title: r.display_title || `${r.harness} ${r.pid}`,
+      firstPrompt: activity(r.title, MAX_FIRST_PROMPT),
       status,
       waitingFor: status === 'needs-you' ? (r.waiting_for?.trim() || null) : null,
       statusSince: deps.statusSince(id, status, typeof r.updated_at === 'number' ? r.updated_at : null),

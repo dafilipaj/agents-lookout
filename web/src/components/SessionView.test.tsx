@@ -97,7 +97,7 @@ describe('Session view header', () => {
     expect(header()).toHaveTextContent('Ended');
   });
 
-  it('VIEW-5.1: the header shows the title, Harness and Status, updating live; where it works and its model are not in it', () => {
+  it('VIEW-5.1: the header shows the title, Harness and Status, updating live (the title holds while selected, SIDE-10.4); where it works and its model are not in it', () => {
     const app = renderApp('/s/a');
     app.snapshot([
       row({ id: 'a', title: 'fix-deal-rates', model: 'claude-opus-5-5', status: 'busy', contextPct: 41, git: { repo: 'work', worktree: 'crm-rates', branch: 'x', commonDir: '/Users/me/Projects/work/.git', defaultBranch: 'main' } }),
@@ -117,7 +117,8 @@ describe('Session view header', () => {
       upsert: [row({ id: 'a', title: 'renamed', model: 'claude-opus-5-5', status: 'needs-you', waitingFor: 'input needed', contextPct: 55 })],
       remove: [],
     });
-    expect(within(h).getByRole('heading', { level: 1 })).toHaveTextContent('renamed');
+    // SIDE-10.4: a name that changes on its own waits until you look away; the Status doesn't.
+    expect(within(h).getByRole('heading', { level: 1 })).toHaveTextContent('fix-deal-rates');
     expect(h.querySelector('[data-field="status"]')).toHaveTextContent('Needs you');
     // What it waits for isn't repeated in the header: the chat's Needs you row says it (VIEW-1.10).
     expect(h).not.toHaveTextContent('input needed');

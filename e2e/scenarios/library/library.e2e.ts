@@ -149,7 +149,7 @@ scenario('LIB-3.3: HTML opens from a listed route with scripts, opaque storage a
 
 scenario('LIB-3.5: a live Session chip selects its Session without spawning, a deleted Transcript shows read-only, and a pruned Session has no button', world().outputs([{ kind: 'file', path: 'output/live.html', title: 'Live report', sessionId: 'library-live' }, { kind: 'file', path: 'output/missing.html', title: 'Missing Transcript report', transcriptMissing: true, sessionId: 'library-missing' }, { kind: 'file', path: 'output/pruned.html', title: 'Pruned report', pruned: true, sessionId: 'library-pruned' }]), async ({ page, world: w }) => {
   w.fleet.gainSession(fleetRow('library-live', w.home)); await open(page);
-  const live = rows(page).filter({ hasText: 'Live report' }); await live.click(); await expect(live.getByRole('button', { name: 'Open World report writer, Idle' })).toBeVisible();
+  const live = rows(page).filter({ hasText: 'Live report' }); await live.click(); await expect(live.getByRole('button', { name: 'Open World writer, Idle' })).toBeVisible(); // SIDE-10.2: a live one is named by the Session list, not tb-session
   await library(page).getByRole('listbox').press('s'); await expect(page).toHaveURL(new URL('/s/library-live', w.url).href);
   expect(w.calls().some((c) => /fleet.*spawn/.test(c))).toBe(false);
   const missing = rows(page).filter({ hasText: 'Missing Transcript report' }); await missing.click(); await expect(missing.getByRole('button', { name: 'Show World report writer, past' })).toBeVisible();

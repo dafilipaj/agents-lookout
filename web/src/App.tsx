@@ -939,7 +939,19 @@ export function App({ client }: { client: LookoutClient }) {
   );
 
   // VIEW-5.12: Fleet types the Harness's `/rename`; the new title comes back through the list (VIEW-5.14).
-  const renameSession = useCallback((row: SessionRow, name: string) => client.renameSession(row.id, name), [client]);
+  // VIEW-5.14: a rename made here shows at once, though the Session is selected (SIDE-10.4).
+  const renameSession = useCallback(
+    async (row: SessionRow, name: string) => {
+      dispatch({ type: 'rename-sent', id: row.id, sent: true });
+      try {
+        return await client.renameSession(row.id, name);
+      } catch (err) {
+        dispatch({ type: 'rename-sent', id: row.id, sent: false });
+        throw err;
+      }
+    },
+    [client, dispatch],
+  );
 
   // VIEW-6, VIEW-7: Fleet types `/model <id>` or `/effort <level>` into the process the menu was
   // opened on (`opened`; a pick after it changed asks nothing); the new value comes back with the
@@ -1072,6 +1084,7 @@ export function App({ client }: { client: LookoutClient }) {
           onMemoryOpenChange={setMemoryOpen}
           onUsageOpen={() => void client.refreshJev().catch(() => {})}
           topicTitles={topicTitles}
+          work={state.work}
         />
         {/* tabIndex -1: focus lands here after the selected start is dismissed (LAUNCH UX). */}
         <main className={cn(SHELL_COLUMN, 'relative outline-none')} data-shell-column="main" tabIndex={-1}>

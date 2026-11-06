@@ -3,6 +3,7 @@ import type { SessionRow } from '@shared/types.ts';
 import { Bot, CircleCheck, FolderGit2, GitBranch, Hourglass, SquareTerminal, TrendingUp } from 'lucide-react';
 import { memo, useEffect, useRef } from 'react';
 import { clockTime } from '@/lib/chat';
+import type { NameSuffix } from '@/lib/names';
 import { BACKGROUND_SHELL_TIP, CONTEXT_LEVEL_CLASS, queuedTip, ROW_TONE, STATUS_LABEL, STATUS_STRIP_CLASS, contextLevel, location, locationTip, sessionOptionId } from '@/lib/sessions';
 import { Chip } from '@/components/ui/chip';
 import { SessionMarker } from '@/components/ui/session-marker';
@@ -20,29 +21,24 @@ interface Props {
   dimmed: boolean;
   now: number;
   onSelect(id: string): void;
-  /**
-   * SIDE-2.1: another live row has this title. `location`: their locations differ, so the row shows
-   * where it works even at the default location; `start`: those match too, so it shows when its
-   * process started instead. Null when the title is the row's alone.
-   */
-  twin?: 'location' | 'start' | null;
+  /** SIDE-10.3: another live row has this name; what tells this one apart. Null when the name is its alone. */
+  suffix?: NameSuffix | null;
 }
 
 const NOT_CONTROLLABLE = 'Not Controllable: this Session runs in another app, so Lookout can only show it.';
 
 /** One sidebar row (SIDE-2). */
-export const SessionItem = memo(function SessionItem({ row, selected, dimmed, now, onSelect, twin = null }: Props) {
+export const SessionItem = memo(function SessionItem({ row, selected, dimmed, now, onSelect, suffix = null }: Props) {
   const ref = useRef<HTMLLIElement>(null);
   useEffect(() => {
     if (selected) ref.current?.scrollIntoView?.({ block: 'nearest' });
   }, [selected]);
 
   const shown = row.locationShown;
-  // SIDE-2.1: a title two rows share stops hiding where each works, since that's what tells them
-  // apart; when that matches too, when each started shows instead (the row has room for one).
-  const loc = shown.where || twin === 'location' ? location(row) : null;
+  // SIDE-10.3: the second line doesn't repeat a Worktree or branch the name's suffix shows.
+  const where = shown.where ? location(row) : null;
+  const loc = where && !((suffix?.kind === 'worktree' || suffix?.kind === 'branch') && suffix.text === where.name) ? where : null;
   const showRepo = shown.repo && (row.git !== null || row.cwd !== null);
-  const started = twin === 'start' ? clockTime(row.procStart) : null;
   const tip = locationTip(row);
   const needsYou = row.status === 'needs-you';
   const tone = needsYou ? ROW_TONE.needsYou : ROW_TONE.plain;
@@ -57,8 +53,8 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
         : null;
   const doneAt = row.done ? clockTime(new Date(row.done.at).toISOString()) : null;
   // SIDE-2.10: with no location to show, the words take the slot; otherwise they go on a line under it.
-  const wordsInSlot = !!words && !showRepo && !loc && !started;
-  const slotEmpty = !showRepo && !loc && !started && !wordsInSlot;
+  const wordsInSlot = !!words && !showRepo && !loc;
+  const slotEmpty = !showRepo && !loc && !wordsInSlot;
   const age = row.statusSince !== null ? formatAge(now - row.statusSince) : null;
   const running = row.subagents?.running ?? 0;
   const wordsLine = (className: string, title: string) => words && (
@@ -99,15 +95,21 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
       <div className="flex items-center gap-2">
         {/* DS-5.1: the Session marker, its Status shape at the sidebar's 18 px (SIDE-3.8). */}
         <SessionMarker state="live" status={row.status} since={row.statusSince} className={cn('size-4.5', !row.controllable && 'opacity-60 grayscale')} />
-        <span
-          className={cn(
-            'min-w-0 flex-1 truncate text-body leading-5',
-            row.controllable ? 'font-medium' : tone.quiet,
+        {/* SIDE-10.3: at 280 px the name gives way first, down to 12 characters (the suffix never
+            takes more than the rest), then the suffix. */}
+        <span className="flex min-w-0 flex-1 items-baseline gap-1">
+          <span
+            className={cn('min-w-0 shrink-[1000] truncate text-body leading-5', row.controllable ? 'font-medium' : tone.quiet)}
+            title={row.title}
+            data-field="title"
+          >
+            {row.title}
+          </span>
+          {suffix && (
+            <span className={cn('min-w-0 max-w-[calc(100%-12ch)] truncate text-body leading-5', tone.quiet)} title={suffix.tip} data-field="name-suffix" data-kind={suffix.kind}>
+              <span aria-hidden>·</span> {suffix.text}
+            </span>
           )}
-          title={row.title}
-          data-field="title"
-        >
-          {row.title}
         </span>
         {/* SIDE-2.17: it reported its work finished and wasn't prompted since. */}
         {row.done && (
@@ -148,14 +150,6 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
                 {loc.name}
               </span>
             </span>
-          )}
-          {started && (
-            <>
-              {(showRepo || loc) && <span aria-hidden>·</span>}
-              <span className="min-w-0 truncate tabular-nums" title={`Started ${started}; another Session has this title and location`} data-field="started">
-                from {started}
-              </span>
-            </>
           )}
           {wordsInSlot && wordsLine('min-w-0 truncate', tip ? `${words.text}\n${tip}` : words.text)}
         </span>

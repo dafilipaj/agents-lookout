@@ -47,5 +47,6 @@ An unreadable or missing Transcript, a malformed record, or an unreadable cache 
 
 ## Lookout's side
 
-- No new field to read: `normalize.ts` already takes `display_title` as the row's title. Lookout's pin in `e2e/pins.json` moves to the fork commit.
+- No new field to read: `normalize.ts` already takes `display_title` as the row's title. Lookout's pin in `e2e/pins.json` moves to the fork commit (`2e8f860`, built 2026-11-06) once it's pushed.
+- Built in the fork as `core::harness_title`: the cache is `~/.claude/fleet-harness-titles.json`, a first read scans 256 KiB, 2 MiB, 8 MiB, then the whole file until a title turns up, and entries unused for a week are dropped. Measured on 2026-11-06 with two live Sessions (one Transcript about 30 MB): warm `list --json` 100 to 108 ms against 110 to 118 ms before; cold 326 ms. A stamped row keeps its `display_title` in `headline()`, so another host's row in `list --all-hosts` keeps step 2.
 - With an older Fleet, the row's name is what that Fleet sends, as today; nothing breaks.

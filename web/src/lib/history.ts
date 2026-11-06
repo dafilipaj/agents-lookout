@@ -32,8 +32,21 @@ export function saveHarnessFilter(filter: HarnessFilter): void {
 export const filterHarness = (f: HarnessFilter): Harness | null => (f.claude && f.codex ? null : f.claude ? 'claude' : 'codex');
 
 /** HIST-3.2: live means Fleet's current list has it: the sidebar's row of that id and Harness. */
-export function isLive(item: HistoryItem, sessions: ReadonlyMap<string, SessionRow>): boolean {
+export function isLive(item: Pick<HistoryItem, 'sessionId' | 'harness'>, sessions: ReadonlyMap<string, SessionRow>): boolean {
   return sessions.get(item.sessionId)?.harness === item.harness;
+}
+
+/** SIDE-10.2: a live Session's name, from the Session list; `title` (tb-session's) for a past one. */
+export function liveName(item: Pick<HistoryItem, 'sessionId' | 'harness' | 'title'>, sessions: ReadonlyMap<string, SessionRow>): string {
+  return isLive(item, sessions) ? sessions.get(item.sessionId)!.title : item.title;
+}
+
+/** SIDE-10.2: the results with each live Session named as the Session list names it. */
+export function liveNamed(items: readonly HistoryItem[], sessions: ReadonlyMap<string, SessionRow>): HistoryItem[] {
+  return items.map((item) => {
+    const title = liveName(item, sessions);
+    return title === item.title ? item : { ...item, title };
+  });
 }
 
 /** A search snippet as text and hits (tb-session marks hits with `«` and `»`). */

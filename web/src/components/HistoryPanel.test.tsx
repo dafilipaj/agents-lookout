@@ -193,7 +193,7 @@ describe('finding past Sessions (HIST-2)', () => {
   it('HIST-2.3: each result shows title, Harness, repo, branch, last activity and the snippet; a live one is marked', async () => {
     vi.useFakeTimers({ toFake: ['Date'], now: NOW }); // ages count from the fixtures' NOW, not today
     const app = renderApp('/', { history: async () => ok([LIVE, { ...CODEX, snippet: '…but «the hook fires» twice…' }, GONE]) });
-    app.snapshot([row({ id: 'live-1', harness: 'claude' })]);
+    app.snapshot([row({ id: 'live-1', title: 'fix-deal-rates', harness: 'claude' })]);
     await openHistory(app);
     await waitFor(() => expect(options()).toHaveLength(3));
     const [live, codex, gone] = options();
@@ -216,10 +216,10 @@ describe('finding past Sessions (HIST-2)', () => {
 
   it('HIST-2.3: a past Session is live only while Fleet lists it under the same Harness', async () => {
     const app = renderApp('/', { history: async () => ok([LIVE]) });
-    app.snapshot([row({ id: 'live-1', harness: 'codex' })]);
+    app.snapshot([row({ id: 'live-1', title: 'fix-deal-rates', harness: 'codex' })]);
     await openHistory(app);
     await waitFor(() => expect(options()[0]).toHaveAttribute('data-state', 'resumable'));
-    app.emit({ type: 'sessions', upsert: [row({ id: 'live-1', harness: 'claude' })], remove: [] });
+    app.emit({ type: 'sessions', upsert: [row({ id: 'live-1', title: 'fix-deal-rates', harness: 'claude' })], remove: [] });
     expect(options()[0]).toHaveAttribute('data-state', 'live');
   });
 
@@ -428,15 +428,15 @@ describe('an expanded result (HIST-2.9 to HIST-2.11, HIST-3.5)', () => {
     const resume = vi.fn();
     const pastSession = vi.fn();
     const app = renderApp('/s/alpha', { history: async () => ok([LIVE, CODEX, GONE]), resume, pastSession });
-    app.snapshot([row({ id: 'alpha' }), row({ id: 'live-1' })]);
+    app.snapshot([row({ id: 'alpha' }), row({ id: 'live-1', title: 'fix-deal-rates' })]);
     const user = await openHistory(app);
     await waitFor(() => expect(options()).toHaveLength(3));
     for (const [i, title] of [[0, 'fix-deal-rates'], [1, 'kg-hook-review'], [2, 'pr641-review']] as const) {
-      await user.click(screen.getByText(title, { selector: '[data-field="title"]' }));
+      await user.click(within(panel()).getByText(title, { selector: '[data-field="title"]' }));
       expect(options()[i]).toHaveAttribute('aria-selected', 'true');
       expect(options()[i]).toHaveAttribute('aria-expanded', 'true');
       // A second click on it keeps it as it is.
-      await user.click(screen.getByText(title, { selector: '[data-field="title"]' }));
+      await user.click(within(panel()).getByText(title, { selector: '[data-field="title"]' }));
       expect(options()[i]).toHaveAttribute('aria-expanded', 'true');
     }
     expect(resume).not.toHaveBeenCalled();
@@ -467,7 +467,7 @@ describe('an expanded result (HIST-2.9 to HIST-2.11, HIST-3.5)', () => {
     const app = renderApp('/', { history: async () => ok([{ ...CODEX, firstPrompt: 'Why does the hook skip the merge commit?' }]), pastPeek });
     app.snapshot([]);
     const user = await openHistory(app);
-    await user.click(await screen.findByText('kg-hook-review', { selector: '[data-field="title"]' }));
+    await user.click(await within(panel()).findByText('kg-hook-review', { selector: '[data-field="title"]' }));
     const d = details(options()[0]!)!;
     expect(d.querySelector('[data-field="start-dir"]')!.textContent).toBe('~/Projects/work');
     const when = new Date(CODEX.lastActiveAt!).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
@@ -487,14 +487,14 @@ describe('an expanded result (HIST-2.9 to HIST-2.11, HIST-3.5)', () => {
   it('HIST-2.9: your own last prompt is labelled "You"; a live result says it’s live and its button is Open; one that can’t be resumed says why and its button is Show', async () => {
     const pastPeek = vi.fn(async (_h: string, id: string) => peekOf({ last: id === 'live-1' ? { role: 'user', text: 'Keep going.' } : null }));
     const app = renderApp('/', { history: async () => ok([LIVE, GONE]), pastPeek });
-    app.snapshot([row({ id: 'live-1' })]);
+    app.snapshot([row({ id: 'live-1', title: 'fix-deal-rates' })]);
     const user = await openHistory(app);
-    await user.click(await screen.findByText('fix-deal-rates', { selector: '[data-field="title"]' }));
+    await user.click(await within(panel()).findByText('fix-deal-rates', { selector: '[data-field="title"]' }));
     const live = details(options()[0]!)!;
     expect(live.querySelector('[data-field="state"]')).toHaveTextContent(/\d · live$/);
     await waitFor(() => expect(live.querySelector('[data-field="last-message"]')).toHaveTextContent('YouKeep going.'));
     expect(live.querySelector('[data-field="actions"]')).toHaveTextContent('Open');
-    await user.click(screen.getByText('pr641-review', { selector: '[data-field="title"]' }));
+    await user.click(within(panel()).getByText('pr641-review', { selector: '[data-field="title"]' }));
     const gone = details(options()[1]!)!;
     expect(gone.querySelector('[data-field="state"]')).toHaveTextContent("can't be resumed");
     expect(gone.querySelector('[data-field="blocked"]')).toHaveTextContent('The directory it started in no longer exists.');
@@ -511,7 +511,7 @@ describe('an expanded result (HIST-2.9 to HIST-2.11, HIST-3.5)', () => {
     await waitFor(() => expect(options()).toHaveLength(2));
     // Listing reads nothing per result.
     expect(pastPeek).not.toHaveBeenCalled();
-    await user.click(screen.getByText('kg-hook-review', { selector: '[data-field="title"]' }));
+    await user.click(within(panel()).getByText('kg-hook-review', { selector: '[data-field="title"]' }));
     expect(pastPeek).toHaveBeenCalledTimes(1);
     expect(pastPeek).toHaveBeenCalledWith('codex', 'codex-1');
     expect(details(options()[1]!)).toHaveTextContent('Reading what it said…');
@@ -519,17 +519,17 @@ describe('an expanded result (HIST-2.9 to HIST-2.11, HIST-3.5)', () => {
     expect(details(options()[1]!)).not.toHaveTextContent('Reading what it said…');
     expect(details(options()[1]!)!.querySelector('[data-field="last-message"]')).toHaveTextContent('The hook only runs on');
     // Another, then back: the first one's read is kept.
-    await user.click(screen.getByText('fix-deal-rates', { selector: '[data-field="title"]' }));
+    await user.click(within(panel()).getByText('fix-deal-rates', { selector: '[data-field="title"]' }));
     expect(pastPeek).toHaveBeenCalledTimes(2);
     await act(async () => answer(peekOf()));
-    await user.click(screen.getByText('kg-hook-review', { selector: '[data-field="title"]' }));
+    await user.click(within(panel()).getByText('kg-hook-review', { selector: '[data-field="title"]' }));
     expect(pastPeek).toHaveBeenCalledTimes(2);
     expect(details(options()[1]!)!.querySelector('[data-field="last-message"]')).toBeInTheDocument();
     // A new search clears them.
     await user.type(screen.getByRole('searchbox', { name: 'Search past Sessions' }), 'hook');
     await waitFor(() => expect(history).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(options().every((o) => o.getAttribute('aria-expanded') === 'false')).toBe(true));
-    await user.click(screen.getByText('kg-hook-review', { selector: '[data-field="title"]' }));
+    await user.click(within(panel()).getByText('kg-hook-review', { selector: '[data-field="title"]' }));
     expect(pastPeek).toHaveBeenCalledTimes(3);
   });
 
@@ -542,11 +542,11 @@ describe('an expanded result (HIST-2.9 to HIST-2.11, HIST-3.5)', () => {
     const app = renderApp('/', { history: async () => ok([CODEX, { ...LIVE, sessionId: 'old-1', title: 'old-one' }]), pastPeek, resume });
     app.snapshot([]);
     const user = await openHistory(app);
-    await user.click(await screen.findByText('kg-hook-review', { selector: '[data-field="title"]' }));
+    await user.click(await within(panel()).findByText('kg-hook-review', { selector: '[data-field="title"]' }));
     await waitFor(() => expect(details(options()[0]!)!.querySelector('[data-field="peek-error"]')).toHaveTextContent('tb-session took too long to answer.'));
     await pressRowAction(user, options()[0]!.querySelector<HTMLElement>('[data-field="actions"] [data-action]')!);
     expect(resume).toHaveBeenCalledWith('codex', 'codex-1', expect.any(String));
-    await user.click(screen.getByText('old-one', { selector: '[data-field="title"]' }));
+    await user.click(within(panel()).getByText('old-one', { selector: '[data-field="title"]' }));
     const old = details(options()[1]!)!;
     await waitFor(() => expect(old.querySelector('[data-field="first-prompt"]')).toHaveTextContent('Review PR 641.'));
     expect(old.querySelector('[data-field="last-message"]')).toBeNull();
@@ -608,9 +608,9 @@ describe('an expanded result (HIST-2.9 to HIST-2.11, HIST-3.5)', () => {
       const user = await openHistory(app);
       await waitFor(() => expect(options()).toHaveLength(3));
       const expanded = () => options().filter((o) => o.getAttribute('aria-expanded') === 'true').map((o) => o.getAttribute('data-session-id'));
-      await user.click(screen.getByText('kg-hook-review', { selector: '[data-field="title"]' }));
+      await user.click(within(panel()).getByText('kg-hook-review', { selector: '[data-field="title"]' }));
       expect(scrolled).toContain('history-codex:codex-1');
-      await user.click(screen.getByText('pr641-review', { selector: '[data-field="title"]' }));
+      await user.click(within(panel()).getByText('pr641-review', { selector: '[data-field="title"]' }));
       expect(expanded()).toEqual(['gone-1']);
       // Esc in the list.
       within(panel()).getByRole('listbox').focus();
@@ -639,7 +639,7 @@ describe('resuming a past Session from its result (HIST-3)', () => {
     const app = renderApp('/', { history: async () => ok([CODEX]), resume });
     app.snapshot([]);
     const user = await openHistory(app);
-    await user.click(await screen.findByText('kg-hook-review', { selector: '[data-field="title"]' }));
+    await user.click(await within(panel()).findByText('kg-hook-review', { selector: '[data-field="title"]' }));
     expect(resume).not.toHaveBeenCalled();
     const button = options()[0]!.querySelector('[data-field="actions"] [data-action]')!;
     expect(button).toHaveAttribute('data-action', 'resume');
@@ -659,9 +659,9 @@ describe('resuming a past Session from its result (HIST-3)', () => {
   it('HIST-3.2: "Open" on an expanded live result, or Enter on it, selects it, never resumed; so is one Fleet says went live meanwhile', async () => {
     const resume = vi.fn(async () => ({ kind: 'live' as const, sessionId: 'codex-1' }));
     const app = renderApp('/', { history: async () => ok([LIVE, CODEX]), resume });
-    app.snapshot([row({ id: 'live-1' })]);
+    app.snapshot([row({ id: 'live-1', title: 'fix-deal-rates' })]);
     const user = await openHistory(app);
-    await user.click(await screen.findByText('fix-deal-rates', { selector: '[data-field="title"]' }));
+    await user.click(await within(panel()).findByText('fix-deal-rates', { selector: '[data-field="title"]' }));
     expect(window.location.pathname).toBe('/');
     expect(options()[0]!.querySelector('[data-field="actions"] [data-action]')).toHaveTextContent('Open');
     // Enter on the expanded result runs its button.
@@ -689,7 +689,7 @@ describe('resuming a past Session from its result (HIST-3)', () => {
     const app = renderApp('/', { history: async () => ok([GONE]), pastSession, resume });
     app.snapshot([]);
     const user = await openHistory(app);
-    await user.click(await screen.findByText('pr641-review', { selector: '[data-field="title"]' }));
+    await user.click(await within(panel()).findByText('pr641-review', { selector: '[data-field="title"]' }));
     expect(window.location.pathname).toBe('/');
     expect(options()[0]!.querySelector('[data-field="actions"] [data-action]')).toHaveTextContent('Show');
     // Enter on the expanded result runs its button, as pressing Show does.
@@ -757,7 +757,7 @@ describe('resuming a past Session from its result (HIST-3)', () => {
     const app = renderApp('/', { history: async () => ok([CODEX]) });
     app.snapshot([]);
     const user = await openHistory(app);
-    await user.click(await screen.findByText('kg-hook-review', { selector: '[data-field="title"]' }));
+    await user.click(await within(panel()).findByText('kg-hook-review', { selector: '[data-field="title"]' }));
     const button = options()[0]!.querySelector('[data-field="actions"] [data-action]')!;
     expect(button).toHaveAttribute('role', 'button');
     expect(button).toHaveAttribute('data-slot', 'row-action');
@@ -796,14 +796,14 @@ describe('History colours (design system)', () => {
 describe('History on the design system', () => {
   it("DS-5.2: a live result shows its Session's Status marker from the Session list and follows its Status; a resumable one the past marker, a blocked one the slashed circle; the live chip stays", async () => {
     const app = renderApp('/', { history: async () => ok([LIVE, CODEX, GONE]) });
-    app.snapshot([row({ id: 'live-1', harness: 'claude', status: 'busy' })]);
+    app.snapshot([row({ id: 'live-1', title: 'fix-deal-rates', harness: 'claude', status: 'busy' })]);
     await openHistory(app);
     await waitFor(() => expect(options()).toHaveLength(3));
     const marker = (i: number) => options()[i]!.querySelector<HTMLElement>('[data-session-marker]')!;
     expect(marker(0)).toHaveAttribute('data-state', 'live');
     expect(marker(0)).toHaveAttribute('data-status', 'busy');
     expect(within(options()[0]!).getByText('live')).toHaveAttribute('data-slot', 'chip');
-    app.emit({ type: 'sessions', upsert: [row({ id: 'live-1', harness: 'claude', status: 'needs-you' })], remove: [] });
+    app.emit({ type: 'sessions', upsert: [row({ id: 'live-1', title: 'fix-deal-rates', harness: 'claude', status: 'needs-you' })], remove: [] });
     expect(marker(0)).toHaveAttribute('data-status', 'needs-you');
     expect(marker(1)).toHaveAttribute('data-state', 'past');
     expect(marker(1).querySelector('svg')).toHaveClass('lucide-history', 'text-muted-foreground');
@@ -813,20 +813,20 @@ describe('History on the design system', () => {
 
   it("DS-10.1: a live result's Busy marker pulses by its Session's Status start, from the Session list", async () => {
     const app = renderApp('/', { history: async () => ok([LIVE]) });
-    app.snapshot([row({ id: 'live-1', harness: 'claude', status: 'busy', statusSince: Date.now() - 2_000 })]);
+    app.snapshot([row({ id: 'live-1', title: 'fix-deal-rates', harness: 'claude', status: 'busy', statusSince: Date.now() - 2_000 })]);
     await openHistory(app);
     await waitFor(() => expect(options()).toHaveLength(1));
     const dot = options()[0]!.querySelector<SVGElement>('[data-session-marker] svg')!;
     expect(dot).toHaveClass('animate-busy');
     expect(dot.style.animationDelay).toMatch(/^-2\d{3}ms$/);
     // Busy for a minute: no pulse.
-    app.emit({ type: 'sessions', upsert: [row({ id: 'live-1', harness: 'claude', status: 'busy', statusSince: Date.now() - 60_000 })], remove: [] });
+    app.emit({ type: 'sessions', upsert: [row({ id: 'live-1', title: 'fix-deal-rates', harness: 'claude', status: 'busy', statusSince: Date.now() - 60_000 })], remove: [] });
     expect(options()[0]!.querySelector('[data-session-marker] svg')).not.toHaveClass('animate-busy');
   });
 
   it("DS-3.6: a live result's marker is its Session's Status colour, no longer a stand-in grey", async () => {
     const app = renderApp('/', { history: async () => ok([LIVE]) });
-    app.snapshot([row({ id: 'live-1', harness: 'claude', status: 'busy' })]);
+    app.snapshot([row({ id: 'live-1', title: 'fix-deal-rates', harness: 'claude', status: 'busy' })]);
     await openHistory(app);
     await waitFor(() => expect(options()).toHaveLength(1));
     const svg = options()[0]!.querySelector('[data-session-marker] svg')!;
@@ -836,7 +836,7 @@ describe('History on the design system', () => {
 
   it("DS-5.5: a result's accessible name doesn't change: the marker is hidden from screen readers, the row's words say it", async () => {
     const app = renderApp('/', { history: async () => ok([LIVE, CODEX]) });
-    app.snapshot([row({ id: 'live-1', harness: 'claude', status: 'needs-you' })]);
+    app.snapshot([row({ id: 'live-1', title: 'fix-deal-rates', harness: 'claude', status: 'needs-you' })]);
     await openHistory(app);
     await waitFor(() => expect(options()).toHaveLength(2));
     for (const option of options()) {

@@ -68,7 +68,16 @@ export interface SessionRow {
   pid: number;
   memoryGrowthBytes: number | null;
   harness: Harness;
+  /**
+   * SIDE-10.1: the Session's one name, Fleet's `display_title`. While the Session is selected, the
+   * browser holds the name it showed (SIDE-10.4).
+   */
   title: string;
+  /**
+   * SIDE-10.5: its first prompt (Fleet's `title`) on one line, at most 300 characters, for the
+   * filter; null before it has one, missing from an older server.
+   */
+  firstPrompt?: string | null;
   status: Status;
   /** What a Needs you Session is waiting for; null otherwise. */
   waitingFor: string | null;

@@ -1,0 +1,105 @@
+[
+  {
+    "pid": 86639,
+    "session_id": "44444444-4444-4444-8444-444444444444",
+    "name": "work-af",
+    "cwd": "/Users/me/Projects/work",
+    "status": "busy",
+    "updated_at": 1793982896926,
+    "prompted_at": 1793982896931,
+    "tty": "ttys004",
+    "backend": "unknown",
+    "handle": null,
+    "tab": null,
+    "tmux_session": null,
+    "name_source": "derived",
+    "waiting_for": null,
+    "title": "Look at current lookout overall design, suggest me 3 ideas to make ui more intuitive. Present them as a page.",
+    "gen_title": null,
+    "display_title": "Lookout UI usability ideas",
+    "host": "local",
+    "background": null,
+    "context": {
+      "used": 245666,
+      "window": 1000000,
+      "pct": 25,
+      "model": "claude-opus-5-5"
+    },
+    "stack": null,
+    "harness": "claude",
+    "model": "claude-opus-5-5",
+    "effort": "xhigh",
+    "subagents": {
+      "running": 0,
+      "finished": 0,
+      "items": []
+    },
+    "activity": "Thinking",
+    "model_at": "2026-11-06T16:46:23.495Z",
+    "transcript": null,
+    "origin": null,
+    "gh_identity": null,
+    "embed": null,
+    "git": {
+      "branch": "main",
+      "root": "/Users/me/Projects/work",
+      "linked": false,
+      "repo": "productiveio/work"
+    },
+    "done": null,
+    "proc_start": "2026-11-06T10:24:38Z"
+  },
+  {
+    "pid": 46880,
+    "session_id": "55555555-5555-4555-8555-555555555555",
+    "name": "work-d4",
+    "cwd": "/Users/me/Projects/work",
+    "status": "idle",
+    "updated_at": 1793982431050,
+    "prompted_at": 1793981849905,
+    "tty": "ttys000",
+    "backend": "tmux",
+    "handle": "%0",
+    "tab": "2.1.319",
+    "tmux_session": "work",
+    "name_source": "derived",
+    "waiting_for": null,
+    "title": "Let's update https://claude.ai/artifact/00000000000000000000aa with this afternoon's merges",
+    "gen_title": null,
+    "display_title": "Claude.ai artifact",
+    "host": "local",
+    "background": null,
+    "context": {
+      "used": 210071,
+      "window": 1000000,
+      "pct": 21,
+      "model": "claude-opus-5-5"
+    },
+    "stack": null,
+    "harness": "claude",
+    "model": "claude-opus-5-5",
+    "effort": "xhigh",
+    "subagents": {
+      "running": 0,
+      "finished": 0,
+      "items": []
+    },
+    "activity": null,
+    "model_at": "2026-11-06T16:24:13.735Z",
+    "transcript": null,
+    "origin": null,
+    "gh_identity": null,
+    "embed": null,
+    "git": {
+      "branch": "main",
+      "root": "/Users/me/Projects/work",
+      "linked": false,
+      "repo": "productiveio/work"
+    },
+    "done": {
+      "at": 1793982245096,
+      "note": "Status page updated with the afternoon merges"
+    },
+    "proc_start": "2026-11-06T16:27:10Z"
+  }
+]

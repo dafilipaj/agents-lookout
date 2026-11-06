@@ -162,7 +162,7 @@ it('LIB-3.4: Copy link, under More, copies an absolute path, and the row reports
 });
 it('LIB-3.5: Session chips select live Sessions, resume through History’s Starting row, Show blocked ones, and never act for pruned ones', async () => {
   let finish: ((v: Awaited<ReturnType<ReturnType<typeof renderApp>['client']['resume']>>) => void) | undefined;
-  const app = renderApp('/', { library: async () => ok([output({ sessions: [session(), session({ sessionId: 'live', title: 'Live writer' }), session({ sessionId: 'deleted', title: 'Deleted writer', blocked: 'transcript-missing' }), session({ sessionId: 'pruned-12345', pruned: true })] })]), resume: () => new Promise((r) => { finish = r; }) }); await open(app); app.snapshot([row({ id: 'live' })]); fireEvent.click(await first());
+  const app = renderApp('/', { library: async () => ok([output({ sessions: [session(), session({ sessionId: 'live', title: 'Live writer' }), session({ sessionId: 'deleted', title: 'Deleted writer', blocked: 'transcript-missing' }), session({ sessionId: 'pruned-12345', pruned: true })] })]), resume: () => new Promise((r) => { finish = r; }) }); await open(app); app.snapshot([row({ id: 'live', title: 'Live writer' })]); fireEvent.click(await first());
   await act(async () => { fireEvent.click(within(panel()).getByRole('button', { name: 'Open Live writer, Idle' })); }); expect(window.location.pathname).toBe('/s/live'); expect(app.client.resume).not.toHaveBeenCalled();
   await act(async () => { fireEvent.click(within(panel()).getByRole('button', { name: 'Show Deleted writer, past' })); }); expect(window.location.pathname).toBe('/h/claude/deleted');
   expect(within(panel()).queryByRole('button', { name: /pruned/ })).toBeNull();
