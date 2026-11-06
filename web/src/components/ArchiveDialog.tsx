@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { PickerList } from '@/components/ui/picker';
+import { ActionIcon } from '@/lib/actions';
 
 /** TOPIC-1.6: what Archive sends. */
 export interface ArchivePatch {
@@ -97,7 +98,7 @@ function ArchiveBody({ topic, topics, looksDone, onClose, archive, busy, setBusy
           }}
         />
         <div className="flex justify-end">
-          <Button type="button" variant="outline" size="sm" onClick={() => setPicking(false)}>
+          <Button variant="secondary" size="form" type="button" onClick={() => setPicking(false)}>
             Back
           </Button>
         </div>
@@ -132,7 +133,7 @@ function ArchiveBody({ topic, topics, looksDone, onClose, archive, busy, setBusy
       {outcome === 'superseded' && (
         <p className="flex min-w-0 items-center gap-2 text-meta text-muted-foreground" data-field="superseded-by">
           <span className="min-w-0 truncate">{by ? `By ${by.title}` : 'Pick the Topic that superseded it.'}</span>
-          <Button type="button" variant="outline" size="sm" className="h-6" onClick={() => setPicking(true)}>
+          <Button variant="secondary" size="line" type="button" onClick={() => setPicking(true)}>
             {by ? 'Change…' : 'Pick…'}
           </Button>
         </p>
@@ -140,10 +141,11 @@ function ArchiveBody({ topic, topics, looksDone, onClose, archive, busy, setBusy
       <Input aria-label="Closing line" placeholder="Closing line, optional" maxLength={MAX_CLOSING} value={closing} onChange={(e) => setClosing(e.target.value)} className="h-8" />
       {problem && <Alert tone="error" title={problem} />}
       <DialogFooter>
-        <Button type="button" variant="outline" size="sm" onClick={onClose} disabled={busy}>
+        <Button variant="secondary" size="form" type="button" onClick={onClose} disabled={busy}>
           Cancel
         </Button>
-        <Button type="submit" size="sm" disabled={!ready || busy}>
+        <Button variant="primary" size="form" type="submit" disabled={!ready || busy}>
+          <ActionIcon id="archive" />
           {busy ? 'Archiving…' : 'Archive'}
         </Button>
       </DialogFooter>

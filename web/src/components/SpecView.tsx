@@ -3,13 +3,15 @@ import { ArrowLeft, ChevronDown, ChevronRight, ChevronUp, ListChecks } from 'luc
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Checkbox } from '@/components/ui/checkbox';
-import { IconButton, labelledButtonLook } from '@/components/ui/icon-button';
+import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Loading } from '@/components/ui/loading';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
 import { SaveError } from '@/lib/client';
 import { type ChangeKind, firstLine, JUMP_MARGIN_PX, type Mark, stepMark } from '@/lib/marks';
 import { plainRoute, routePath, specHash } from '@/lib/router';
 import { cn } from '@/lib/utils';
+import { ActionIcon } from '@/lib/actions';
 import { ChatRail } from './ChatRail';
 import { PlainView } from './Shell';
 
@@ -410,10 +412,10 @@ export function SpecView({ source, path, backTo, load, setViewed, onBack, onOpen
   // PLAIN-8.6: in a narrow pane Back is its arrow and "Only what changed" is "Changed only", so the header fits on one line.
   const header = (
     <div className="@container/header flex min-w-0 flex-1 items-center gap-3">
-      <button type="button" className={cn(labelledButtonLook(), 'h-7 shrink-0 text-meta font-normal')} onClick={onBack} data-field="spec-back" title={backTo ? `Back to ${backTo}` : 'Back'}>
-        <ArrowLeft aria-hidden className="size-3.5" />
+      <Button type="button" variant="secondary" size="default" className="shrink-0 font-normal" onClick={onBack} data-field="spec-back" title={backTo ? `Back to ${backTo}` : 'Back'}>
+        <ArrowLeft aria-hidden />
         <span className="max-w-48 truncate @max-[40rem]/header:sr-only">{backTo ? `Back to ${backTo}` : 'Back'}</span>
-      </button>
+      </Button>
       <h1 className="min-w-0 flex-1 truncate text-title font-semibold tracking-tight">
         {name}
         <span className="font-normal text-muted-foreground">.plain</span>
@@ -1300,9 +1302,12 @@ function ConceptBody({ name, concept, missing, onOpenModule, hrefOf }: { name: s
     <>
       <div className="flex items-baseline gap-2">
         <p className="min-w-0 flex-1 text-body font-semibold">{name}</p>
-        <a href={hrefOf(`${concept.module}.plain`)} className={cn(labelledButtonLook(), 'h-6 text-meta font-normal')} onClick={moduleClick(() => onOpenModule(`${concept.module}.plain`))}>
-          Open {moduleName(concept.module)}
-        </a>
+        <Button asChild variant="secondary" size="line" className="font-normal">
+          <a href={hrefOf(`${concept.module}.plain`)} onClick={moduleClick(() => onOpenModule(`${concept.module}.plain`))}>
+            <ActionIcon id="open" />
+            Open {moduleName(concept.module)}
+          </a>
+        </Button>
       </div>
       <p className="text-meta text-muted-foreground">
         Defined in <span className="text-foreground">{concept.module}</span>
@@ -1355,20 +1360,23 @@ function SpecBody({ id, own, other, onGo, onOpenModule, hrefOf }: { id: string; 
       <div className="flex items-baseline gap-2">
         <p className="min-w-0 flex-1 text-body font-semibold">{first ? gist(first.text) : id}</p>
         {own ? (
-          <a
-            href={`#${specAnchor(id)}`}
-            className={cn(labelledButtonLook(), 'h-6 text-meta font-normal')}
-            onClick={(e) => {
-              jump(specAnchor(id))(e);
-              onGo();
-            }}
-          >
-            {action}
-          </a>
+          <Button asChild variant="secondary" size="line" className="font-normal">
+            <a
+              href={`#${specAnchor(id)}`}
+              onClick={(e) => {
+                jump(specAnchor(id))(e);
+                onGo();
+              }}
+            >
+              {action}
+            </a>
+          </Button>
         ) : (
-          <a href={`${hrefOf(other!.module)}#${specAnchor(id)}`} className={cn(labelledButtonLook(), 'h-6 text-meta font-normal')} onClick={moduleClick(() => onOpenModule(other!.module, id))}>
-            {action}
-          </a>
+          <Button asChild variant="secondary" size="line" className="font-normal">
+            <a href={`${hrefOf(other!.module)}#${specAnchor(id)}`} onClick={moduleClick(() => onOpenModule(other!.module, id))}>
+              {action}
+            </a>
+          </Button>
         )}
       </div>
       <p className="text-meta text-muted-foreground">

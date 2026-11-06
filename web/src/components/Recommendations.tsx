@@ -4,10 +4,8 @@ import { ArrowRight, Check, FolderInput, RotateCcw, TriangleAlert, X } from 'luc
 import { useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { labelledButtonLook } from '@/components/ui/icon-button';
 import { SessionMarker } from '@/components/ui/session-marker';
 import { liveRow } from '@/lib/topics';
-import { cn } from '@/lib/utils';
 import { HarnessIcon } from './HarnessIcon';
 import { TaskStatusDot } from './TaskStatusDot';
 import { PrIcon } from './WorkPanel';
@@ -68,18 +66,18 @@ export function Recommendations({ recommendations, topics, sessions, showTopic, 
               {r.reason}
             </span>
             <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <button type="button" className={cn(labelledButtonLook(), 'h-6 text-meta [&>svg]:size-3.5')} disabled={off} onClick={() => act(r, 'accept')}>
+              <Button type="button" variant="soft" size="line" disabled={off} onClick={() => act(r, 'accept')}>
                 <Check />
                 Accept
-              </button>
-              <button type="button" className={cn(labelledButtonLook(), 'h-6 text-meta [&>svg]:size-3.5')} disabled={off} onClick={() => onOtherTopic(r)}>
+              </Button>
+              <Button type="button" variant="secondary" size="line" disabled={off} onClick={() => onOtherTopic(r)}>
                 <FolderInput />
                 Other Topic…
-              </button>
-              <button type="button" className={cn(labelledButtonLook(), 'h-6 text-meta [&>svg]:size-3.5')} disabled={off} onClick={() => act(r, 'dismiss')}>
+              </Button>
+              <Button type="button" variant="secondary" size="line" disabled={off} onClick={() => act(r, 'dismiss')}>
                 <X />
                 Dismiss
-              </button>
+              </Button>
             </div>
           </div>
         );
@@ -126,7 +124,7 @@ export function JevSetAside({ setAside, recommend, onProblem, className }: { set
   return (
     <Alert tone="info" icon={TriangleAlert} title={`${items} couldn't be judged by Jev: ${setAside.reason ?? 'no reason given'}`} className={className} data-field="jev-set-aside">
       <div>
-        <Button variant="outline" size="xs" disabled={asking} onClick={askAgain}>
+        <Button variant="secondary" size="line" disabled={asking} onClick={askAgain}>
           <RotateCcw aria-hidden />
           Ask again
         </Button>

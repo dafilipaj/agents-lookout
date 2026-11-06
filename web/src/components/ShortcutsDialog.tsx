@@ -1,5 +1,6 @@
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Kbd } from '@/components/ui/kbd';
+import { ActionIcon } from '@/lib/actions';
 import { SHORTCUT_GROUPS, type Shortcut, shortcutsIn } from '@/lib/shortcuts';
 
 /** SIDE-7.4: a shortcut's keys as `Kbd`s, with "or" before its alternative keys. */
@@ -49,6 +50,7 @@ export function ShortcutsDialog({ open, onOpenChange, returnFocus }: ShortcutsDi
                   <li key={s.id} data-shortcut={s.id} className="contents">
                     <ShortcutKeys shortcut={s} />
                     <span className="leading-5">
+                      {s.action && <ActionIcon id={s.action} className="mr-1.5 inline size-3.5 align-[-2px] text-muted-foreground" />}
                       {s.label}
                       {s.note && <span className="text-muted-foreground"> {s.note}</span>}
                     </span>

@@ -1,7 +1,9 @@
-import { Check, Copy } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { type ComponentProps, createContext, memo, useContext } from 'react';
 import ReactMarkdown, { type Components, type ExtraProps } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { Button } from '@/components/ui/button';
+import { ActionIcon } from '@/lib/actions';
 import { useCopy } from '@/lib/copy';
 import { pathParts } from '@/lib/files';
 import { HIDDEN_CHARACTER, HIDDEN_ENCODED, LINK_CLASS, LINK_REL, addressSpans, linkify } from '@/lib/links';
@@ -118,21 +120,23 @@ function CopyButton({ text }: { text: string }) {
   const { state, said, copy } = useCopy(text);
   return (
     <>
-      <button
+      <Button
+        variant="secondary"
+        size="line"
         type="button"
         aria-label="Copy code"
         title="Copy code"
         onClick={() => void copy()}
         className={cn(
-          'absolute top-1.5 right-1.5 flex h-6 items-center gap-1 rounded-md border border-border bg-background px-1.5 text-meta text-muted-foreground shadow-xs select-none hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none group-hover/code:opacity-100 motion-safe:transition-opacity',
+          'absolute top-1.5 right-1.5 text-muted-foreground select-none hover:text-foreground focus-visible:opacity-100 group-hover/code:opacity-100 motion-safe:transition-opacity',
           state === 'idle' ? 'opacity-0' : 'opacity-100',
           state === 'failed' && 'text-destructive hover:text-destructive',
         )}
         data-copy={state}
       >
-        {state === 'copied' ? <Check className="size-3.5" aria-hidden /> : <Copy className="size-3.5" aria-hidden />}
+        {state === 'copied' ? <Check aria-hidden /> : <ActionIcon id="copy" />}
         {said && <span aria-hidden>{said}</span>}
-      </button>
+      </Button>
       {/* The button keeps its name; the outcome is read out here. */}
       <span role="status" className="sr-only">
         {said}

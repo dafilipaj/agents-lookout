@@ -3,8 +3,7 @@ import { type MemberKind, type NewMember, type SummaryState, type Topic, type To
 export { historyMember, prMember, rowMember, sessionMember, taskMember } from '@shared/topics.ts';
 import type { SessionRow, Status } from '@shared/types.ts';
 import type { WorkPr, WorkSnapshot, WorkTask } from '@shared/work.ts';
-import { Plus } from 'lucide-react';
-import { createContext, createElement, useContext } from 'react';
+import { createContext, useContext } from 'react';
 import type { RowMenuItem } from '@/components/ui/row-actions';
 
 /**
@@ -201,7 +200,7 @@ export const useTopics = () => useContext(TopicsContext);
 export function useAddToTopicItem(members: readonly NewMember[], label: string, enabled = true): RowMenuItem | null {
   const topics = useTopics();
   if (!topics) return null;
-  return { id: 'add-to-topic', label: 'Add to Topic', icon: createElement(Plus), group: 'topic', shortcut: 'A', enabled: enabled && members.length > 0, onSelect: () => topics.addTo(members, label) };
+  return { id: 'add-to-topic', action: 'add-to-topic', group: 'topic', shortcut: 'A', enabled: enabled && members.length > 0, onSelect: () => topics.addTo(members, label) };
 }
 
 /** TOPIC-1.6: the outcome chip's words, on an archived Topic. */

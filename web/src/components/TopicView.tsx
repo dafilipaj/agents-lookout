@@ -2,10 +2,10 @@ import type { OutputItem } from '@shared/library.ts';
 import { ACTIVITY_PAGE, type ActivityEntry, MAX_NEW_SHOWN, MAX_TOPIC_NOTES, MAX_TOPIC_TITLE, OUTPUTS_FRESH_MS, type Recommendation, type RecommendationAction, type SummaryCite, type SummaryPoint, type Topic, type TopicMember, type TopicSummary, type TopicsView, activityWords, formatCost, modelName } from '@shared/topics.ts';
 import type { SessionRow } from '@shared/types.ts';
 import type { WorkSnapshot } from '@shared/work.ts';
-import { Archive, ArchiveRestore, ArrowLeft, ArrowLeftRight, ArrowRight, ExternalLink, Link2, Maximize2, Network, Play, RefreshCw, Repeat2, Sparkles, Trash2, Unlink, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ExternalLink, Link2, Repeat2, Sparkles, Unlink, X } from 'lucide-react';
 import { type MouseEvent, type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
+import { Button, ButtonDivider } from '@/components/ui/button';
 import { Chip } from '@/components/ui/chip';
 import { CommandBlock } from '@/components/ui/command-block';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '@/components/ui/dialog';
@@ -16,6 +16,7 @@ import { Loading } from '@/components/ui/loading';
 import { SessionMarker } from '@/components/ui/session-marker';
 import { Tabs } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import { ActionIcon, type ActionId, actionWord } from '@/lib/actions';
 import { STATUS_LABEL } from '@/lib/sessions';
 import { OUTCOME_WORD, SUMMARY_STATE_WORD, edgesOf, liveRow, looksDone, memberCounts, orderSessions, orderWorkMembers, prState, sharedLabel, sharedPairs, taskState, topicMarker } from '@/lib/topics';
 import type { TopicTab } from '@/lib/router';
@@ -114,8 +115,8 @@ export function TopicView(props: TopicViewProps) {
           title="This Topic is gone"
           hint="It was deleted, or its link is wrong."
           action={
-            <Button variant="outline" size="sm" onClick={props.onOpenGraph}>
-              <Network />
+            <Button variant="quiet" size="default" onClick={props.onOpenGraph}>
+              <ActionIcon id="open-graph" />
               Open graph
             </Button>
           }
@@ -239,9 +240,9 @@ function Closing({ topic, onOpenTopic }: { topic: Topic; onOpenTopic?: ((id: str
     <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 pl-5 text-meta text-muted-foreground" data-field="closing">
       {by &&
         (onOpenTopic ? (
-          <button type="button" className={cn(labelledButtonLook(), 'h-6 text-meta font-normal')} data-field="superseded-by" onClick={() => onOpenTopic(by.id)}>
+          <Button type="button" variant="secondary" size="line" className="font-normal" data-field="superseded-by" onClick={() => onOpenTopic(by.id)}>
             superseded by {by.title}
-          </button>
+          </Button>
         ) : (
           <span data-field="superseded-by">superseded by {by.title}</span>
         ))}
@@ -383,9 +384,9 @@ function SinceLooked({ topic, entries, total, onMore, ...rest }: EntryProps & { 
         ))}
       </ul>
       {total > shown.length && (
-        <button type="button" className={cn(labelledButtonLook(), 'h-6 self-start text-meta')} data-field="since-more" onClick={onMore}>
+        <Button type="button" variant="quiet" size="line" className="self-start" data-field="since-more" onClick={onMore}>
           +{total - shown.length} more
-        </button>
+        </Button>
       )}
     </section>
   );
@@ -406,7 +407,7 @@ function Activity({ topic, activity, ...rest }: EntryProps & { topic: Topic; act
         </ul>
       )}
       {activity.more && (
-        <Button variant="outline" size="sm" className="h-7 self-start" data-action="activity-more" disabled={activity.paging} onClick={activity.showMore}>
+        <Button variant="quiet" size="default" className="self-start" data-action="activity-more" disabled={activity.paging} onClick={activity.showMore}>
           Show more
         </Button>
       )}
@@ -505,14 +506,14 @@ function Summary({ topic, view, sessions, now, act, onShowActivity, ...props }: 
           {running ? (
             <>
               <Loading label="Summarizing…" />
-              <Button variant="outline" size="sm" className="h-7" data-action="cancel-summary" onClick={() => act(props.cancelSummary(topic.id), "Couldn't cancel it.")}>
+              <Button variant="secondary" size="default" data-action="cancel-summary" onClick={() => act(props.cancelSummary(topic.id), "Couldn't cancel it.")}>
                 <X />
                 Cancel
               </Button>
             </>
           ) : (
-            <Button variant="outline" size="sm" className="h-7" data-action="summarize" onClick={() => act(props.summarize(topic.id), "Couldn't start the summary.")}>
-              {summary ? <RefreshCw /> : <Sparkles />}
+            <Button variant="secondary" size="default" data-action="summarize" onClick={() => act(props.summarize(topic.id), "Couldn't start the summary.")}>
+              <Sparkles />
               {summary ? 'Summarize again' : 'Summarize'}
             </Button>
           )}
@@ -544,9 +545,9 @@ function EarlierSummaries({ topic, count, now, load }: { topic: Topic; count: nu
   };
   return (
     <div className="flex min-w-0 flex-col gap-1.5" data-field="earlier-summaries">
-      <button type="button" className={cn(labelledButtonLook(), 'h-6 self-start text-meta')} aria-expanded={open} onClick={toggle}>
+      <Button type="button" variant="quiet" size="line" className="self-start" aria-expanded={open} onClick={toggle}>
         Earlier summaries ({count})
-      </button>
+      </Button>
       {open && error && <Alert title={error} />}
       {open && !list && !error && <Loading label="Loading…" />}
       {open &&
@@ -625,9 +626,9 @@ function SummaryBody({ topic, summary, sessions, pruned, now, act, onOpenSession
       <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-meta text-muted-foreground" data-field="summary-by">
         <span>{[modelName(summary.model), summary.costUsd === null ? null : formatCost(summary.costUsd), `${formatAge(now - summary.writtenAt)} ago`].filter(Boolean).join(' · ')}</span>
         {changes > 0 && (
-          <button type="button" className={cn(labelledButtonLook(), 'h-6 text-meta font-normal')} data-field="summary-changes" onClick={onChanges}>
+          <Button type="button" variant="secondary" size="line" className="font-normal" data-field="summary-changes" onClick={onChanges}>
             · {changes} {changes === 1 ? 'change' : 'changes'} since
-          </button>
+          </Button>
         )}
       </p>
     </div>
@@ -641,7 +642,6 @@ function SummaryBody({ topic, summary, sessions, pruned, now, act, onOpenSession
  */
 function Cite({ cite, topic, sessions, pruned, act, onOpenSession }: { cite: SummaryCite; topic: Topic; sessions: ReadonlyMap<string, SessionRow>; pruned: readonly string[]; act: Act; onOpenSession: TopicViewProps['onOpenSession'] }) {
   const m = topic.members.find((x) => x.key === cite.key);
-  const look = cn(labelledButtonLook(), 'h-6 max-w-full text-meta font-normal [&>svg]:size-3.5');
   if (!m) {
     return (
       <span className="text-meta text-muted-foreground" title="No longer in this Topic" data-field="summary-cite">
@@ -660,19 +660,19 @@ function Cite({ cite, topic, sessions, pruned, act, onOpenSession }: { cite: Sum
       );
     }
     return (
-      <button type="button" className={look} aria-label={`${row ? 'Open' : 'Resume'} ${name}`} data-field="summary-cite" onClick={() => act(onOpenSession(m, row !== null), "Couldn't open its Session.")}>
+      <Button type="button" variant="secondary" size="line" className="max-w-full font-normal" aria-label={`${row ? 'Open' : 'Resume'} ${name}`} data-field="summary-cite" onClick={() => act(onOpenSession(m, row !== null), "Couldn't open its Session.")}>
         <HarnessIcon harness={m.ref.harness} />
         <span className="min-w-0 truncate">{name}</span>
-      </button>
+      </Button>
     );
   }
   const url = m.kind === 'pr' ? m.ref.url : m.kind === 'task' ? m.snapshot.url : '';
   if (!url) return <span className="text-meta text-muted-foreground" data-field="summary-cite">{cite.name}</span>;
   return (
-    <button type="button" className={look} aria-label={`${m.kind === 'pr' ? 'Open on GitHub' : 'Open in Fantastic'}: ${cite.name}`} data-field="summary-cite" onClick={() => openInBrowser(url)}>
+    <Button type="button" variant="secondary" size="line" className="max-w-full font-normal" aria-label={`${m.kind === 'pr' ? 'Open on GitHub' : 'Open in Fantastic'}: ${cite.name}`} data-field="summary-cite" onClick={() => openInBrowser(url)}>
       {m.kind === 'pr' ? <PrIcon chip={null} /> : <ExternalLink />}
       <span className="min-w-0 truncate">{cite.name}</span>
-    </button>
+    </Button>
   );
 }
 
@@ -757,9 +757,11 @@ export function TopicActions({
       el.focus();
     }
   };
-  const button = (action: string, onClick: (e: MouseEvent<HTMLButtonElement>) => void, children: ReactNode) => (
-    <Button key={action} variant="outline" size="sm" className="h-7" data-action={action} onClick={onClick}>
-      {children}
+  /** DS-18.1, 18.6: a header action in its role, with its icon and word from the action table. */
+  const button = (action: string, id: ActionId, variant: 'secondary' | 'quiet' | 'danger', onClick: (e: MouseEvent<HTMLButtonElement>) => void, word: string = actionWord(id)) => (
+    <Button key={action} variant={variant} size="default" data-action={action} onClick={onClick}>
+      <ActionIcon id={id} />
+      {word}
     </Button>
   );
   // TOPIC-1.6: Archive asks how it ended; Unarchive doesn't ask.
@@ -776,12 +778,12 @@ export function TopicActions({
           <DialogTitle className="text-title">Delete “{topic.title}”?</DialogTitle>
           <DialogDescription className="text-body leading-5">Its notes and the list of what's in it go. No Session, PR, Task or Output is changed, closed or deleted.</DialogDescription>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setConfirming(false)} disabled={deleting}>
+            <Button variant="secondary" size="form" onClick={() => setConfirming(false)} disabled={deleting}>
               Cancel
             </Button>
             <Button
               variant="destructive"
-              size="sm"
+              size="form"
               disabled={deleting}
               onClick={() => {
                 setDeleting(true);
@@ -810,12 +812,12 @@ export function TopicActions({
           className="mt-1"
           focusable
           name={topic.title}
-          primary={onOpen ? { 'data-action': 'open', label: 'Open', icon: <Maximize2 />, tip: 'Open', onPress: onOpen } : null}
+          primary={onOpen ? { 'data-action': 'open', action: 'open', tip: 'Open', onPress: onOpen } : null}
           more={[
-            { id: 'open-graph', label: 'Open graph', icon: <Network />, group: 'open', shortcut: 'G', onSelect: onOpenGraph },
-            { id: 'link', label: 'Link to Topic…', icon: <ArrowLeftRight />, group: 'topic', onSelect: () => onLinkTo(topic) },
-            { id: 'archive', label: topic.state === 'open' ? 'Archive' : 'Unarchive', icon: topic.state === 'open' ? <Archive /> : <ArchiveRestore />, group: 'manage', onSelect: archive },
-            { id: 'delete', label: 'Delete', icon: <Trash2 />, group: 'manage', destructive: true, onSelect: () => ask(setConfirming) },
+            { id: 'open-graph', action: 'open-graph', group: 'open', shortcut: 'G', onSelect: onOpenGraph },
+            { id: 'link', action: 'link-to-topic', group: 'topic', onSelect: () => onLinkTo(topic) },
+            { id: 'archive', action: topic.state === 'open' ? 'archive' : 'unarchive', group: 'manage', onSelect: archive },
+            { id: 'delete', action: 'delete', group: 'manage', destructive: true, onSelect: () => ask(setConfirming) },
           ]}
         />
         {dialogs}
@@ -823,56 +825,16 @@ export function TopicActions({
     );
   return (
     <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2" data-field="actions">
-      {onStartSession &&
-        button(
-          'start',
-          (e) => onStartSession(e.currentTarget),
-          <>
-            <Play />
-            Start Session
-          </>,
-        )}
-      {onOpen &&
-        button(
-          'open',
-          onOpen,
-          <>
-            <Maximize2 />
-            Open
-          </>,
-        )}
-      {button(
-        'open-graph',
-        onOpenGraph,
-        <>
-          <Network />
-          Open graph
-        </>,
-      )}
-      {button(
-        'link',
-        () => onLinkTo(topic),
-        <>
-          <ArrowLeftRight />
-          Link to Topic…
-        </>,
-      )}
-      {button(
-        'archive',
-        archive,
-        <>
-          {topic.state === 'open' ? <Archive /> : <ArchiveRestore />}
-          {topic.state === 'open' ? 'Archive' : 'Unarchive'}
-        </>,
-      )}
-      {button(
-        'delete',
-        () => ask(setConfirming),
-        <>
-          <Trash2 />
-          Delete
-        </>,
-      )}
+      {onStartSession && button('start', 'start', 'secondary', (e) => onStartSession(e.currentTarget))}
+      {onOpen && button('open', 'open', 'secondary', onOpen)}
+      {button('open-graph', 'open-graph', 'quiet', onOpenGraph)}
+      {button('link', 'link-to-topic', 'quiet', () => onLinkTo(topic))}
+      {topic.state === 'open' ? button('archive', 'archive', 'quiet', archive) : button('archive', 'unarchive', 'quiet', archive)}
+      {/* DS-18.5: the divider stays with Delete when the row wraps, 4 px either side. */}
+      <span className="-ml-1 flex items-center gap-1">
+        <ButtonDivider className="mx-0" />
+        {button('delete', 'delete', 'danger', () => ask(setConfirming))}
+      </span>
       {dialogs}
     </div>
   );
@@ -1058,10 +1020,10 @@ function Edges({ topic, view, act, linkTopics, editEdge, unlinkTopics }: { topic
           <span className="min-w-0 flex-1 truncate" title={`${title(p.b)}, ${sharedLabel(p)}`}>
             {title(p.b)} · {sharedLabel(p)}
           </span>
-          <button type="button" className={cn(labelledButtonLook(), 'h-6 text-meta [&>svg]:size-3.5')} aria-label={`Link to ${title(p.b)}`} onClick={() => act(linkTopics(topic.id, p.b, null), "Couldn't link them.")}>
+          <Button type="button" variant="secondary" size="line" aria-label={`Link to ${title(p.b)}`} onClick={() => act(linkTopics(topic.id, p.b, null), "Couldn't link them.")}>
             <Link2 />
             Link
-          </button>
+          </Button>
         </div>
       ))}
     </Section>
@@ -1098,10 +1060,10 @@ function MemberLine({ field, children, open, onRemove, removeLabel, fresh = fals
       {fresh && <FreshDot />}
       <div className="flex min-w-0 flex-1 items-center gap-1.5">{children}</div>
       {open && (
-        <button type="button" className={cn(labelledButtonLook(), 'h-6 shrink-0 text-meta [&>svg]:size-3.5')} onClick={open.onPress}>
-          <ExternalLink />
+        <Button type="button" variant="secondary" size="line" className="shrink-0" onClick={open.onPress}>
+          <ActionIcon id="open-external" />
           {open.label}
-        </button>
+        </Button>
       )}
       <IconButton label={removeLabel} tip="Remove from this Topic" onClick={onRemove}>
         <X />
@@ -1205,10 +1167,10 @@ function OutputLine({ item, now }: { item: OutputItem; now: number }) {
       {gone ? (
         <Chip>gone</Chip>
       ) : (
-        <button type="button" className={cn(labelledButtonLook(), 'h-6 text-meta [&>svg]:size-3.5')} aria-label={`Open ${item.title}, ${TYPE_LABEL[t]}`} onClick={() => openOutput(item)}>
-          <ExternalLink />
+        <Button type="button" variant="secondary" size="line" aria-label={`Open ${item.title}, ${TYPE_LABEL[t]}`} onClick={() => openOutput(item)}>
+          <ActionIcon id="open-external" />
           Open
-        </button>
+        </Button>
       )}
     </div>
   );

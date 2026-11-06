@@ -98,10 +98,10 @@ export function StartingView({ launch, loaded, now, onTrust }: Props) {
               {trust.lines && <pre className="mt-2 max-h-[calc(14*1.45em)] overflow-auto rounded-md border border-border bg-muted/40 px-3 py-2 font-mono text-meta leading-[1.45] whitespace-pre-wrap break-words text-foreground/90 dark:bg-black/25">{trust.lines.join('\n')}</pre>}
               {trust.message ? <TerminalNote message={trust.message} terminal={null} className="mt-3" /> : (
                 <div className="mt-3 flex gap-2">
-                  <Button aria-disabled={trust.answering ? true : undefined} aria-describedby="starting-trust-accept" onClick={() => { if (!trust.answering && trust.answerable && trust.id) onTrust?.('accept', trust.id); }}>
+                  <Button variant="primary" size="default" aria-disabled={trust.answering ? true : undefined} aria-describedby="starting-trust-accept" onClick={() => { if (!trust.answering && trust.answerable && trust.id) onTrust?.('accept', trust.id); }}>
                     {trust.answering === 'accept' ? 'Trusting…' : 'Trust folder'}
                   </Button>
-                  <Button variant="outline" aria-disabled={trust.answering ? true : undefined} aria-describedby="starting-trust-decline" onClick={() => { if (!trust.answering && trust.answerable && trust.id) onTrust?.('decline', trust.id); }}>
+                  <Button variant="secondary" size="default" aria-disabled={trust.answering ? true : undefined} aria-describedby="starting-trust-decline" onClick={() => { if (!trust.answering && trust.answerable && trust.id) onTrust?.('decline', trust.id); }}>
                     {trust.answering === 'decline' ? 'Cancelling…' : 'Cancel'}
                   </Button>
                 </div>

@@ -472,3 +472,8 @@ export function pickMoreNow(row: HTMLElement, action: string): void {
   if (!item) throw new Error(`More has no ${action}`);
   fireEvent.click(item);
 }
+
+/** DS-18.4: the `primary` Buttons inside a surface (a view, a dialog, a form with its own Save). */
+export function primaryButtons(root: ParentNode): HTMLElement[] {
+  return [...root.querySelectorAll<HTMLElement>('[data-slot="button"][data-variant="primary"]')];
+}

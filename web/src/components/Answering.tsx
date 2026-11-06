@@ -1,5 +1,5 @@
 import type { ChatQuestion, QuestionAnswer } from '@shared/types.ts';
-import { Circle, CircleDot, ShieldQuestion, Square, SquareCheck, TerminalSquare } from 'lucide-react';
+import { Circle, CircleDot, ShieldQuestion, Square, SquareCheck } from 'lucide-react';
 import { type ComponentPropsWithoutRef, type HTMLAttributes, type KeyboardEvent, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -20,6 +20,7 @@ import {
 import type { QuestionEntry } from '@/lib/chat';
 import { linkify } from '@/lib/links';
 import { cn } from '@/lib/utils';
+import { ActionIcon } from '@/lib/actions';
 
 /** VIEW-1.9: a box for several picks, a circle for one; checked, or with a dot, when picked. */
 export function ChoiceIcon({ multiSelect, chosen }: { multiSelect: boolean; chosen: boolean }) {
@@ -170,8 +171,8 @@ export function TerminalNote({
     >
       <span className="min-w-0">{message}</span>
       {terminal && !terminal.open && (
-        <Button variant="outline" size="xs" className="h-6 gap-1 text-meta" onClick={terminal.show}>
-          <TerminalSquare className="size-3" />
+        <Button variant="secondary" size="line" onClick={terminal.show}>
+          <ActionIcon id="show-terminal" />
           Show terminal
         </Button>
       )}
@@ -317,8 +318,9 @@ export function QuestionForm({
       <div className={cn('flex items-center gap-3', (withSubmit || progress) && 'mt-2.5 min-h-7')} data-slot="answer-actions">
         {withSubmit && (
           <Button
-            size="sm"
-            className="h-7 aria-disabled:pointer-events-none aria-disabled:opacity-50"
+            variant="primary"
+            size="default"
+            className="aria-disabled:pointer-events-none aria-disabled:opacity-50"
             disabled={(locked && !waiting) || !answers}
             aria-disabled={(waiting && !!answers) || undefined}
             onClick={submit}
@@ -366,11 +368,11 @@ export function PromptCard({ panel, label, onChoose, terminal }: { panel: Permis
             {panel.prompt.choices.map((c) => (
               <Button
                 key={c.n}
-                variant="outline"
-                size="sm"
+                variant="secondary"
+                size="form"
                 disabled={panel.sending}
                 onClick={() => onChoose(c.n)}
-                className="h-auto min-h-8 max-w-full justify-start py-1.5 text-left text-body font-normal whitespace-normal"
+                className="h-auto min-h-8 max-w-full justify-start py-1.5 text-left font-normal whitespace-normal"
               >
                 <span aria-hidden className="font-mono text-meta text-muted-foreground">
                   {c.n}

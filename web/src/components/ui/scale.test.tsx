@@ -17,7 +17,7 @@ describe('shadcn components on the type scale', () => {
     render(
       <>
         <Button>Save</Button>
-        <Button size="xs">Show</Button>
+        <Button size="line">Show</Button>
         <Input aria-label="Name" />
         <Textarea aria-label="Prompt" />
         <Label htmlFor="x">Folder</Label>

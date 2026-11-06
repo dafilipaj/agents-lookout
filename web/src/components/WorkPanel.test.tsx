@@ -2189,7 +2189,9 @@ describe('Work on the design system', () => {
       expect(button!.tagName.toLowerCase()).toBe('span');
       expect(button).toHaveAttribute('role', 'button');
       expect(button).not.toHaveAttribute('tabindex');
-      expect(button).toHaveClass('h-7', "[&_svg:not([class*='size-'])]:size-5", '[&>svg]:size-5', 'hover:bg-accent');
+      expect(button).toHaveClass('h-7', "[&_svg:not([class*='size-'])]:size-5", '[&>svg]:size-5');
+      // DS-18.4: the first action is Soft, More is Quiet.
+      expect(button).toHaveClass(...(i % 2 === 0 ? ['bg-primary-soft', 'text-primary-text'] : ['text-muted-foreground', 'hover:bg-accent']));
       expect(button!.querySelector('svg')!.getAttribute('class')).not.toMatch(/\bsize-/);
       expect(button).toHaveAccessibleName(words[i]);
     });

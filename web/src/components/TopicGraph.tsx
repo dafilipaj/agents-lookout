@@ -1,6 +1,6 @@
 import { MAX_EDGE_LABEL, MAX_TOPIC_TITLE, type Topic, type TopicEdge, type TopicMember, type TopicPosition, type TopicsView, sortTopics } from '@shared/topics.ts';
 import type { SessionRow } from '@shared/types.ts';
-import { ArrowRight, LayoutGrid, Pencil, Plus, Sparkles } from 'lucide-react';
+import { ArrowRight, LayoutGrid, Pencil, Plus } from 'lucide-react';
 import { type FormEvent, type KeyboardEvent, type PointerEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,7 @@ import { SessionMarker } from '@/components/ui/session-marker';
 import { MEMBER_R, NODE_SIZES, type NodeSize, type Point, type SizeStep, arrange, border, bounds, placeMissing, ring, sizeStep } from '@/lib/graph';
 import { liveRow, memberCounts, memberName, sharedLabel, sharedPairs, topicMarker } from '@/lib/topics';
 import { cn } from '@/lib/utils';
+import { ActionIcon } from '@/lib/actions';
 import { HarnessIcon } from './HarnessIcon';
 import { PlainView } from './Shell';
 import { TaskStatusDot } from './TaskStatusDot';
@@ -82,7 +83,7 @@ export function TopicGraph(props: TopicGraphProps) {
         title="No Topics yet"
         hint="A Topic gathers the Sessions, PRs and Tasks of one piece of work. Each one is a node here."
         action={
-          <Button variant="outline" size="sm" onClick={() => setCreating(true)}>
+          <Button variant="secondary" size="default" onClick={() => setCreating(true)}>
             <Plus />
             New Topic
           </Button>
@@ -106,17 +107,17 @@ export function TopicGraph(props: TopicGraphProps) {
               <input type="checkbox" checked={archived} onChange={(e) => onArchived(e.target.checked)} className="size-3.5" />
               Archived
             </label>
-            <Button variant="outline" size="sm" className="h-7" disabled={!all.length} onClick={() => setConfirmArrange(true)} data-action="arrange">
+            <Button variant="quiet" size="default" disabled={!all.length} onClick={() => setConfirmArrange(true)} data-action="arrange">
               <LayoutGrid />
               Arrange
             </Button>
-            <Button variant="outline" size="sm" className="h-7" disabled={view?.state !== 'ok'} onClick={() => setCreating(true)} data-action="new-topic">
+            <Button variant="quiet" size="default" disabled={view?.state !== 'ok'} onClick={() => setCreating(true)} data-action="new-topic">
               <Plus />
               New Topic
             </Button>
             {props.onSuggest && (
-              <Button variant="outline" size="sm" className="h-7" disabled={view?.state !== 'ok'} onClick={props.onSuggest} data-action="suggest-topics">
-                <Sparkles />
+              <Button variant="quiet" size="default" disabled={view?.state !== 'ok'} onClick={props.onSuggest} data-action="suggest-topics">
+                <ActionIcon id="suggest" />
                 Suggest Topics
               </Button>
             )}
@@ -166,10 +167,10 @@ function NewTopic({ open, onClose, create }: { open: boolean; onClose(): void; c
           <Input autoFocus aria-label="Topic title" placeholder="Title" maxLength={MAX_TOPIC_TITLE} value={title} onChange={(e) => setTitle(e.target.value)} className="h-8" />
           {error && <Alert title={error} />}
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={onClose} disabled={busy}>
+            <Button variant="secondary" size="form" type="button" onClick={onClose} disabled={busy}>
               Cancel
             </Button>
-            <Button type="submit" size="sm" disabled={busy}>
+            <Button variant="primary" size="form" type="submit" disabled={busy}>
               {busy ? 'Making…' : 'Make'}
             </Button>
           </div>
@@ -511,10 +512,10 @@ function Canvas({ topics, edges, pruned, sessions, selected, onSelect, archived,
           <DialogTitle className="text-title">Arrange every node?</DialogTitle>
           <DialogDescription className="text-body leading-5">Every node shown moves to a new place. Where you dragged them isn't kept, and there's no undo.</DialogDescription>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={onArranged}>
+            <Button variant="secondary" size="form" onClick={onArranged}>
               Cancel
             </Button>
-            <Button size="sm" onClick={arrangeNow}>
+            <Button variant="primary" size="form" onClick={arrangeNow}>
               Arrange
             </Button>
           </DialogFooter>
@@ -691,13 +692,13 @@ function EdgeForm({ edge, title, onClose, save, reverse, unlink }: { edge: Topic
         <Input autoFocus aria-label="Label" placeholder="Label, optional: part of, follows, blocks" maxLength={MAX_EDGE_LABEL} value={label} onChange={(e) => setLabel(e.target.value)} className="h-8" />
         {error && <Alert title={error} />}
         <div className="flex flex-wrap justify-end gap-2">
-          <Button type="button" variant="outline" size="sm" className="mr-auto" disabled={busy} onClick={() => run(() => unlink(edge), "Couldn't unlink it.")}>
+          <Button variant="secondary" size="form" className="mr-auto" type="button" disabled={busy} onClick={() => run(() => unlink(edge), "Couldn't unlink it.")}>
             Unlink
           </Button>
-          <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => run(() => reverse(edge), "Couldn't reverse it.")}>
+          <Button variant="secondary" size="form" type="button" disabled={busy} onClick={() => run(() => reverse(edge), "Couldn't reverse it.")}>
             Reverse
           </Button>
-          <Button type="submit" size="sm" disabled={busy}>
+          <Button variant="primary" size="form" type="submit" disabled={busy}>
             Save
           </Button>
         </div>

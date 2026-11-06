@@ -5,6 +5,8 @@
  * `shortcuts.test.tsx` checks that `press` covers every key an entry shows, then presses each one and checks that something happens.
  */
 
+import type { ActionId } from '@/lib/actions';
+
 export type ShortcutGroupId = 'sessions' | 'session' | 'panels' | 'composer' | 'app';
 
 export const SHORTCUT_GROUPS: readonly { id: ShortcutGroupId; title: string }[] = [
@@ -29,6 +31,8 @@ export interface Shortcut {
   /** Other keys that do the same, shown after "or". */
   alt?: string[];
   label: string;
+  /** DS-18.6: the table action it runs, whose icon the dialog shows before its label. */
+  action?: ActionId;
   /** When it works, or what else it does: shown in the dialog. */
   note?: string;
   /** Key presses that trigger it (one per distinct key). */
@@ -168,6 +172,7 @@ export const SHORTCUTS: readonly Shortcut[] = [
   },
   {
     id: 'panel-open',
+    action: 'open-external',
     group: 'panels',
     keys: ['O'],
     label: 'Open the selected row',
@@ -176,6 +181,7 @@ export const SHORTCUTS: readonly Shortcut[] = [
   },
   {
     id: 'panel-review',
+    action: 'review',
     group: 'panels',
     keys: ['R'],
     label: 'Review the selected pull request',
@@ -192,6 +198,7 @@ export const SHORTCUTS: readonly Shortcut[] = [
   },
   {
     id: 'panel-add',
+    action: 'add-to-topic',
     group: 'panels',
     keys: ['A'],
     label: 'Add the selected row to a Topic',
@@ -200,6 +207,7 @@ export const SHORTCUTS: readonly Shortcut[] = [
   },
   {
     id: 'panel-graph',
+    action: 'open-graph',
     group: 'panels',
     keys: ['G'],
     label: 'Open the Topics graph',
@@ -208,6 +216,7 @@ export const SHORTCUTS: readonly Shortcut[] = [
   },
   {
     id: 'panel-copy',
+    action: 'copy',
     group: 'panels',
     keys: ['C'],
     label: 'Copy the selected row’s path or link',
@@ -233,6 +242,7 @@ export const SHORTCUTS: readonly Shortcut[] = [
   },
   {
     id: 'start',
+    action: 'start',
     group: 'app',
     keys: ['⌘', 'Enter'],
     label: 'Start the Session',

@@ -1,11 +1,12 @@
 import { TOOLS, TOOL_IDS, type ToolRow, type ToolsSnapshot } from '@shared/tools.ts';
-import { CircleArrowUp, RefreshCw } from 'lucide-react';
+import { CircleArrowUp } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { CommandBlock } from '@/components/ui/command-block';
 import { formatAgeAgo } from '@/lib/usage';
 import { cn } from '@/lib/utils';
+import { ActionIcon } from '@/lib/actions';
 
 /** TOOLS-3.4: said once, at the top of the section. */
 export const NEVER_RUNS = 'These are the CLIs Lookout runs. Lookout never installs or updates them; copy a command and run it.';
@@ -76,8 +77,8 @@ export function ToolsSection({ tools, now, load, refresh }: Props) {
         <span className="ml-auto text-meta text-muted-foreground" data-field="checked">
           {checked}
         </span>
-        <Button type="button" size="sm" variant="outline" className="h-7" disabled={reading} onClick={() => void press()}>
-          <RefreshCw className={cn(reading && 'motion-safe:animate-spin')} /> Refresh
+        <Button variant="secondary" size="default" type="button" disabled={reading} onClick={() => void press()}>
+          <ActionIcon id="refresh" className={cn(reading && 'motion-safe:animate-spin')} /> Refresh
         </Button>
       </div>
       <p className="mt-1 text-meta text-muted-foreground" data-field="never-runs">

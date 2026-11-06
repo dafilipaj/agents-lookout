@@ -2,7 +2,7 @@ import { BLOCK_REASON } from '@shared/history.ts';
 import { libraryMatches } from '@shared/library-search.ts';
 import { LIBRARY_TYPES, type LibraryFilter, type LibraryPage, type LibraryQuery, type LibraryType, type OutputItem, type OutputSession } from '@shared/library.ts';
 import type { HistoryItem, SessionRow } from '@shared/types.ts';
-import { Copy, ExternalLink, CircleSlash, Search, X } from 'lucide-react';
+import { CircleSlash, Search, X } from 'lucide-react';
 import { type KeyboardEvent, type Ref, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -275,7 +275,7 @@ export function LibraryPanel({ focusKey, visible, sessions, now, search, status,
         </IconButton>
       </div>}
       <div role="group" aria-label="Output Types" className="flex flex-wrap gap-1">
-        {LIBRARY_TYPES.map((t) => <Button key={t} variant="ghost" size="xs" className="px-1" type="button" aria-pressed={filter.types.includes(t)} title={t === 'pages' ? 'HTML files and Artifacts' : FILTER_LABEL[t]} onClick={(e) => typeToggle(t, e.altKey)}>
+        {LIBRARY_TYPES.map((t) => <Button key={t} variant="quiet" size="line" className="px-1" type="button" aria-pressed={filter.types.includes(t)} title={t === 'pages' ? 'HTML files and Artifacts' : FILTER_LABEL[t]} onClick={(e) => typeToggle(t, e.altKey)}>
           <Chip tone={filter.types.includes(t) ? 'neutral' : 'muted'}>
             {FILTER_LABEL[t]}
           </Chip>
@@ -378,10 +378,10 @@ function OutputRow({ item, now, query, active, expanded, sessions, enabled, onSe
       {/* DS-16: Open is what Enter runs; a gone file's row has only More. */}
       <RowActions
         name={item.title}
-        primary={gone ? null : { 'data-action': 'open', label: 'Open', icon: <ExternalLink />, tip: 'Open (O)', enabled, onPress: open }}
+        primary={gone ? null : { 'data-action': 'open', action: 'open-external', tip: 'Open (O)', enabled, onPress: open }}
         more={[
-          item.kind === 'artifact' && item.source?.exists && { id: 'open-file', label: 'Open file', icon: <ExternalLink />, group: 'open', enabled, onSelect: () => openFile(item.source!.path, item.source!.type) },
-          { id: 'copy', label: 'Copy link', icon: <Copy />, group: 'open', shortcut: 'C', enabled, onSelect: () => void copy.copy() },
+          item.kind === 'artifact' && item.source?.exists && { id: 'open-file', action: 'open-external', label: 'Open file', group: 'open', enabled, onSelect: () => openFile(item.source!.path, item.source!.type) },
+          { id: 'copy', action: 'copy', label: 'Copy link', group: 'open', shortcut: 'C', enabled, onSelect: () => void copy.copy() },
           addToTopic,
         ]}
       />

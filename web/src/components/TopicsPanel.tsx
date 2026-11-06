@@ -1,12 +1,11 @@
 import { MAX_TOPIC_TITLE, type Recommendation, type RecommendationAction, type Topic, type TopicsView, activityWords, memberKey, rowMember, sortTopics } from '@shared/topics.ts';
 import type { SessionRow } from '@shared/types.ts';
 import type { WorkSnapshot } from '@shared/work.ts';
-import { Network, Plus, Search, Sparkles } from 'lucide-react';
+import { Plus, Search } from 'lucide-react';
 import { type FormEvent, type KeyboardEvent, type ReactNode, type Ref, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Chip } from '@/components/ui/chip';
-import { labelledButtonLook } from '@/components/ui/icon-button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Loading } from '@/components/ui/loading';
 import { SessionMarker } from '@/components/ui/session-marker';
@@ -14,6 +13,7 @@ import { type PanelNav, focusTab } from '@/lib/right-sidebar';
 import { OUTCOME_WORD, SUMMARY_STATE_WORD, liveRow, looksDone, matchesTopic, memberCounts, orderSessions, topicMarker } from '@/lib/topics';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
+import { ActionIcon } from '@/lib/actions';
 import { Markdown } from './Markdown';
 import type { ArchivePatch } from './ArchiveDialog';
 import { JevSetAside, Recommendations } from './Recommendations';
@@ -249,7 +249,7 @@ export function TopicsPanel(props: TopicsPanelProps) {
         title="No Topics yet"
         hint="A Topic gathers the Sessions, PRs and Tasks of one piece of work, with your notes."
         action={
-          <Button variant="outline" size="sm" onClick={newTopic}>
+          <Button variant="secondary" size="default" onClick={newTopic}>
             <Plus />
             New Topic
           </Button>
@@ -298,18 +298,18 @@ export function TopicsPanel(props: TopicsPanelProps) {
           />
         </label>
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <Button variant="outline" size="xs" className="h-7 gap-1.5 px-2 text-meta" onClick={newTopic} disabled={view?.state !== 'ok'}>
-            <Plus className="size-3.5" />
+          <Button variant="quiet" size="default" onClick={newTopic} disabled={view?.state !== 'ok'}>
+            <Plus />
             New Topic
           </Button>
           {props.onSuggest && (
-            <Button variant="outline" size="xs" className="h-7 gap-1.5 px-2 text-meta" onClick={props.onSuggest} disabled={view?.state !== 'ok'} aria-label="Suggest Topics" title="Suggest Topics" data-action="suggest-topics">
-              <Sparkles className="size-3.5" />
+            <Button variant="quiet" size="default" onClick={props.onSuggest} disabled={view?.state !== 'ok'} aria-label="Suggest Topics" title="Suggest Topics" data-action="suggest-topics">
+              <ActionIcon id="suggest" />
               Suggest
             </Button>
           )}
-          <Button variant="outline" size="xs" className="h-7 gap-1.5 px-2 text-meta" onClick={props.onOpenGraph} disabled={view?.state !== 'ok'} data-action="open-graph">
-            <Network className="size-3.5" />
+          <Button variant="quiet" size="default" onClick={props.onOpenGraph} disabled={view?.state !== 'ok'} data-action="open-graph">
+            <ActionIcon id="open-graph" />
             Open graph
           </Button>
           <label className="ml-auto flex shrink-0 items-center gap-1.5 text-meta text-muted-foreground">
@@ -320,10 +320,10 @@ export function TopicsPanel(props: TopicsPanelProps) {
         {props.onSuggest && unfiled > 0 && (
           <div className="flex min-w-0 items-center gap-2 text-meta text-muted-foreground" data-field="unfiled">
             <span className="min-w-0 truncate">{unfiled === 1 ? '1 live Session in no Topic' : `${unfiled} live Sessions in no Topic`}</span>
-            <button type="button" className={cn(labelledButtonLook(), 'h-6 text-meta [&>svg]:size-3.5')} onClick={props.onSuggest}>
-              <Sparkles />
+            <Button type="button" variant="secondary" size="line" onClick={props.onSuggest}>
+              <ActionIcon id="suggest" />
               Suggest Topics
-            </button>
+            </Button>
           </div>
         )}
         {creating && (
@@ -345,7 +345,7 @@ export function TopicsPanel(props: TopicsPanelProps) {
               }}
               className="h-7 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-body outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
             />
-            <Button type="submit" size="xs" className="h-7 px-2 text-meta">
+            <Button variant="primary" size="default" type="submit">
               Make
             </Button>
           </form>

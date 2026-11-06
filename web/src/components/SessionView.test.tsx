@@ -308,7 +308,10 @@ describe('Session view header', () => {
       expect(button).toBeInTheDocument();
       expect(button).toHaveAttribute('title', expect.stringContaining(id));
       expect(button.querySelector('svg.lucide-copy')).not.toBeNull(); // lucide's icon, never emoji
-      expect(within(header().querySelector('[data-slot="header-actions"]')!).getAllByRole('button').at(-1)).toBe(button); // last: keeps its place
+      // Last before End Session, which DS-18.5 puts after a divider: it keeps its place whether Stop or Esc show.
+      const buttons = within(header().querySelector('[data-slot="header-actions"]')!).getAllByRole('button');
+      expect(buttons.at(-1)).toHaveAccessibleName('End Session');
+      expect(buttons.at(-2)).toBe(button);
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
       fireEvent.click(button);
       await act(async () => {});

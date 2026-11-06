@@ -1,11 +1,11 @@
 import type { NewMember } from '@shared/topics.ts';
-import { Layers } from 'lucide-react';
 import { useContext } from 'react';
 import { Button } from '@/components/ui/button';
 import { chipVariants } from '@/components/ui/chip';
 import { RowSettling } from '@/components/ui/icon-button';
 import { topicsOf, useTopics } from '@/lib/topics';
 import { cn } from '@/lib/utils';
+import { ActionIcon } from '@/lib/actions';
 
 /**
  * TOPIC-2.2: the same in the Session header and a past Session's view. A Session without a session id
@@ -17,16 +17,16 @@ export function AddToTopicButton({ member, label }: { member: NewMember | null; 
   const tip = member ? 'Add to Topic' : "This Session has no session id until its first prompt, so it can't be added to a Topic yet.";
   return (
     <Button
-      variant="outline"
-      size="xs"
-      className="h-7 shrink-0 gap-1.5 px-2 text-meta"
+      variant="quiet"
+      size="default"
+      className="shrink-0"
       title={tip}
       aria-label="Add to Topic"
       aria-disabled={member ? undefined : true}
       data-action="add-to-topic"
       onClick={() => member && topics.addTo([member], label)}
     >
-      <Layers className="size-3.5" />
+      <ActionIcon id="add-to-topic" />
       <span className="@max-[26rem]:sr-only">Add to Topic</span>
     </Button>
   );

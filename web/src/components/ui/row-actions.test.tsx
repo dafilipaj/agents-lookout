@@ -1,12 +1,11 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { Archive, ExternalLink, Play, Plus, Trash2 } from 'lucide-react';
 import { describe, expect, it, vi } from 'vitest';
 import { RowSettling } from '@/components/ui/icon-button';
 import { type RowMenuItem, RowActions } from '@/components/ui/row-actions';
 
 const menu = () => document.querySelector<HTMLElement>('[data-slot="row-menu"]');
-const item = (over: Partial<RowMenuItem> & Pick<RowMenuItem, 'id' | 'group'>): RowMenuItem => ({ label: over.id, icon: <Plus />, onSelect: () => {}, ...over });
+const item = (over: Partial<RowMenuItem> & Pick<RowMenuItem, 'id' | 'group'>): RowMenuItem => ({ action: 'more', onSelect: () => {}, ...over });
 
 /** A listbox option holding the actions, as Work's, History's and Library's rows do. */
 function Row({ onRow = () => {}, onKeys = () => {}, settling = false, ...props }: Partial<Parameters<typeof RowActions>[0]> & { onRow?(): void; onKeys?(key: string): void; settling?: boolean }) {
@@ -14,7 +13,7 @@ function Row({ onRow = () => {}, onKeys = () => {}, settling = false, ...props }
     <div role="listbox" tabIndex={0} aria-label="Rows" onKeyDown={(e) => onKeys(e.key)}>
       <div role="option" aria-selected onClick={onRow}>
         <RowSettling.Provider value={settling}>
-          <RowActions name="Harbor bells" primary={{ 'data-action': 'start', label: 'Start Session', icon: <Play />, tip: 'Start Session (S)', onPress: () => {} }} more={[]} {...props} />
+          <RowActions name="Harbor bells" primary={{ 'data-action': 'start', action: 'start', tip: 'Start Session (S)', onPress: () => {} }} more={[]} {...props} />
         </RowSettling.Provider>
       </div>
     </div>
@@ -22,7 +21,7 @@ function Row({ onRow = () => {}, onKeys = () => {}, settling = false, ...props }
 }
 
 describe('RowActions (DS-16)', () => {
-  it('DS-16.1: the first action is a labelled button with ↵ after its word, the rest one "More" on the same line that never wraps; without others, no More', () => {
+  it('DS-16.1, DS-18.4: the first action is a labelled Soft button with ↵ after its word, the rest one "More" on the same line that never wraps; without others, no More', () => {
     const { rerender } = render(<Row more={[item({ id: 'open', group: 'open' })]} />);
     const actions = document.querySelector<HTMLElement>('[data-field="actions"]')!;
     expect(actions).toHaveClass('flex-nowrap');
@@ -36,6 +35,12 @@ describe('RowActions (DS-16)', () => {
     expect(more).toHaveAccessibleName('More');
     expect(more).toHaveAttribute('aria-haspopup', 'menu');
     expect(more!.textContent).toBe('More'); // no count
+    // DS-18.4: the first action is Soft, More is Quiet with its word; DS-18.6: their icons come from the action table.
+    expect(first).toHaveClass('bg-primary-soft', 'text-primary-text');
+    expect(more).toHaveClass('text-muted-foreground');
+    expect(more).not.toHaveClass('border');
+    expect(first!.querySelector('[data-action-icon]')).toHaveAttribute('data-action-icon', 'start');
+    expect(more!.querySelector('[data-action-icon]')).toHaveAttribute('data-action-icon', 'more');
     rerender(<Row more={[null, false]} />);
     expect(document.querySelector('[data-action="more"]')).toBeNull();
   });
@@ -45,10 +50,10 @@ describe('RowActions (DS-16)', () => {
     render(
       <Row
         more={[
-          item({ id: 'delete', group: 'manage', label: 'Delete', icon: <Trash2 />, destructive: true }),
+          item({ id: 'delete', group: 'manage', action: 'delete', destructive: true }),
           item({ id: 'add-to-topic', group: 'topic', label: 'Add to Topic', shortcut: 'A' }),
-          item({ id: 'open', group: 'open', label: 'Open on GitHub', icon: <ExternalLink />, shortcut: 'O' }),
-          item({ id: 'archive', group: 'manage', label: 'Archive', icon: <Archive /> }),
+          item({ id: 'open', group: 'open', action: 'open-external', label: 'Open on GitHub', shortcut: 'O' }),
+          item({ id: 'archive', group: 'manage', action: 'archive' }),
           item({ id: 'review', group: 'run', label: 'Review', shortcut: 'R' }),
           item({ id: 'specs', group: 'open', label: 'Specs', shortcut: 'S', submenu: { label: 'Specs in shop #7', content: <p data-field="sub">the list</p> } }),
         ]}
@@ -76,7 +81,7 @@ describe('RowActions (DS-16)', () => {
     const keys = vi.fn();
     const ran = vi.fn();
     const blocked = vi.fn();
-    render(<Row onRow={onRow} onKeys={keys} more={[item({ id: 'open', group: 'open', onSelect: ran }), item({ id: 'review', group: 'run', enabled: false, onSelect: blocked })]} />);
+    render(<Row onRow={onRow} onKeys={keys} more={[item({ id: 'open', group: 'open', action: 'open-external', label: 'open', onSelect: ran }), item({ id: 'review', group: 'run', action: 'review', label: 'review', enabled: false, onSelect: blocked })]} />);
     await user.click(screen.getByRole('button', { name: 'More' }));
     const m = await waitFor(() => menu()!);
     await user.click(within(m).getByRole('menuitem', { name: 'review' }));
@@ -125,7 +130,7 @@ describe('RowActions (DS-16)', () => {
     render(
       <div>
         <button type="button">Header</button>
-        <RowActions focusable name="Harbor bells" primary={{ 'data-action': 'open', label: 'Open', icon: <Play />, tip: 'Open', onPress: opened }} more={[item({ id: 'archive', group: 'manage', onSelect: asked })]} />
+        <RowActions focusable name="Harbor bells" primary={{ 'data-action': 'open', action: 'open', tip: 'Open', onPress: opened }} more={[item({ id: 'archive', group: 'manage', onSelect: asked })]} />
       </div>,
     );
     screen.getByRole('button', { name: 'Header' }).focus();

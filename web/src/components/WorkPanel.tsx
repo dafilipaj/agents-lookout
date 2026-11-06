@@ -1,7 +1,7 @@
 import { LAUNCH_TIMEOUT_MS } from '@shared/defaults.ts';
 import type { SessionRow, Status } from '@shared/types.ts';
 import type { ColumnMark, PrSection, TaskSection, WorkPr, WorkSessionLink, WorkSnapshot, WorkTask } from '@shared/work.ts';
-import { CircleCheck, CircleDashed, CircleQuestionMark, CircleX, ExternalLink, FileText, GitPullRequest, GitPullRequestDraft, History, LoaderCircle, Milestone, Play, TriangleAlert } from 'lucide-react';
+import { CircleCheck, CircleDashed, CircleQuestionMark, CircleX, GitPullRequest, GitPullRequestDraft, LoaderCircle, Milestone, TriangleAlert } from 'lucide-react';
 import { type FocusEvent, type KeyboardEvent, type MouseEvent, type ReactNode, type Ref, type RefObject, createContext, useCallback, useContext, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Avatar } from '@/components/ui/avatar';
@@ -49,6 +49,7 @@ import { TopicChips } from './TopicLinks';
 import { PrSpecsList } from './PrSpecs';
 import { PrSpecsContext, useNoCloneReason, type PrSpecsApi } from '@/lib/pr-specs';
 import { useAddToTopicItem, useTopics } from '@/lib/topics';
+import { type ActionId } from '@/lib/actions';
 
 export interface WorkPanelProps {
   work: WorkSnapshot | null;
@@ -773,8 +774,8 @@ function Details({ id, row, actions, sessions, state, children, extra }: Details
               ? null
               : {
               'data-action': actionId(first),
+              action: actionOf(first),
               label: resuming && first.kind === 'session' ? 'Resuming…' : actionLabel(first, row).label,
-              icon: actionIcon(first),
               tip: actionLabel(first, row).tip,
               enabled: state.resuming === null,
               onPress: () => state.onAct(row, first),
@@ -784,8 +785,8 @@ function Details({ id, row, actions, sessions, state, children, extra }: Details
             ...rest.map(
               (action): RowMenuItem => ({
                 id: actionId(action),
+                action: actionOf(action),
                 label: actionLabel(action, row).label,
-                icon: actionIcon(action),
                 group: ACTION_GROUP[action.kind],
                 shortcut: ACTION_KEY[action.kind],
                 enabled: state.resuming === null,
@@ -808,7 +809,9 @@ function Details({ id, row, actions, sessions, state, children, extra }: Details
 const ACTION_GROUP: Record<RowActionKind['kind'], RowMenuGroup> = { session: 'run', start: 'run', review: 'run', open: 'open' };
 const ACTION_KEY: Record<RowActionKind['kind'], string | undefined> = { session: undefined, start: 'S', review: 'R', open: 'O' };
 const actionId = (action: RowActionKind) => (action.kind === 'session' ? (action.session.live ? 'open-session' : 'resume') : action.kind);
-const actionIcon = (action: RowActionKind) => (action.kind === 'open' ? <ExternalLink /> : action.kind === 'session' && !action.session.live ? <History /> : <Play />);
+/** DS-18.6: the action each of a row's buttons runs, for its icon: a live Session opens inside Lookout, a PR or Task leaves it. */
+const actionOf = (action: RowActionKind): ActionId =>
+  action.kind === 'open' ? 'open-external' : action.kind === 'session' ? (action.session.live ? 'open' : 'resume') : action.kind === 'start' ? 'start' : 'review';
 
 /** One labelled line of an expanded row: "PRs", "Sessions". */
 function DetailLine({ label, field, children }: { label: string; field: string; children: ReactNode }) {
@@ -1024,8 +1027,7 @@ function PrRow({ row, group, pr, now, active, state }: PrRowProps) {
     specs?.api && specs.clones?.has(pr.repo.toLowerCase())
       ? {
           id: 'specs',
-          label: 'Specs',
-          icon: <FileText />,
+          action: 'specs',
           group: 'open',
           shortcut: 'S',
           submenu: { label: `Specs in ${pr.repo} #${pr.number}`, content: <PrSpecsList pr={pr} />, open: state.specsOpen === row.key, onOpenChange: (next) => state.onSpecs(row, next) },

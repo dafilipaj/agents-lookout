@@ -135,7 +135,7 @@ function NoSessions({ onNewSession, onShowShortcuts }: { onNewSession(): void; o
         title="No Sessions running"
         action={
           <div className="flex flex-col items-center gap-3">
-            <Button size="sm" onClick={onNewSession}>
+            <Button variant="primary" size="default" onClick={onNewSession}>
               Start a Session
             </Button>
             <div className="flex flex-col items-center text-meta text-muted-foreground">
@@ -166,7 +166,7 @@ function Hints({ view, className }: { view: 'select' | 'none'; className?: strin
 /** VIEW-5.4, DS-6.4: opens the Keyboard shortcuts dialog (SIDE-7.4). */
 function AllShortcuts({ onShow }: { onShow(opener: HTMLElement): void }) {
   return (
-    <Button variant="link" size="xs" className="mt-2 text-meta" onClick={(e) => onShow(e.currentTarget)}>
+    <Button variant="link" size="line" className="mt-2" onClick={(e) => onShow(e.currentTarget)}>
       All shortcuts
     </Button>
   );

@@ -52,7 +52,7 @@ export function SettingsPage({ settings, save, onBack, section, onSection, tools
     <PlainView
       header={
         <>
-          <Button variant="ghost" size="sm" className="-ml-2.5 h-7 text-muted-foreground" onClick={onBack}>
+          <Button variant="quiet" size="default" className="-ml-2.5" onClick={onBack}>
             <ArrowLeft /> Back
           </Button>
           <h1 className="text-title font-semibold tracking-tight">Settings</h1>
@@ -140,7 +140,7 @@ function General({ settings, save, jev, jevAsksToday, jevSetAside, recommend }: 
               }}
             />
             <span className="text-body text-muted-foreground">hours</span>
-            <Button type="submit" size="sm" className="ml-2 h-8" disabled={state.kind === 'saving' || draft === null}>
+            <Button variant="primary" size="form" className="ml-2" type="submit" disabled={state.kind === 'saving' || draft === null}>
               Save
             </Button>
             <span role="status" className="ml-1 text-meta text-muted-foreground">
@@ -222,7 +222,7 @@ function ProductiveEmail({ settings, save }: Pick<Props, 'settings' | 'save'>) {
             setState({ kind: 'idle' });
           }}
         />
-        <Button type="submit" size="sm" className="h-8" disabled={state.kind === 'saving' || (draft === null && !showsSuggestion)}>
+        <Button variant="primary" size="form" type="submit" disabled={state.kind === 'saving' || (draft === null && !showsSuggestion)}>
           Save
         </Button>
         <span role="status" className="ml-1 text-meta text-muted-foreground">
@@ -381,7 +381,7 @@ function StartDirectories({ settings, save }: Pick<Props, 'settings' | 'save'>) 
           }}
           className="h-8 flex-1 font-mono text-body"
         />
-        <Button type="submit" size="sm" variant="outline" className="h-8" disabled={busy || !adding.trim()}>
+        <Button variant="secondary" size="form" type="submit" disabled={busy || !adding.trim()}>
           Add
         </Button>
       </form>

@@ -151,9 +151,9 @@ function PickerBody({ target, onClose, topics, createTopic, addMember }: TopicPi
           <Input autoFocus aria-label="Label" placeholder="Label, optional: part of, follows, blocks" maxLength={MAX_EDGE_LABEL} value={label} onChange={(e) => setLabel(e.target.value)} className="h-8" />
           <div className="flex justify-end gap-2">
             <Button
+              variant="secondary"
+              size="form"
               type="button"
-              variant="outline"
-              size="sm"
               onClick={() => {
                 setLinking(null);
                 setMessage(null);
@@ -162,7 +162,7 @@ function PickerBody({ target, onClose, topics, createTopic, addMember }: TopicPi
             >
               Back
             </Button>
-            <Button type="submit" size="sm" disabled={busy}>
+            <Button variant="primary" size="form" type="submit" disabled={busy}>
               {busy ? 'Linking…' : 'Link'}
             </Button>
           </div>
@@ -171,10 +171,10 @@ function PickerBody({ target, onClose, topics, createTopic, addMember }: TopicPi
         <form onSubmit={create} className="flex min-w-0 flex-col gap-3">
           <Input autoFocus aria-label="Topic title" placeholder="Title" maxLength={MAX_TOPIC_TITLE} value={title} onChange={(e) => setTitle(e.target.value)} className="h-8" />
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={onClose} disabled={busy}>
+            <Button variant="secondary" size="form" type="button" onClick={onClose} disabled={busy}>
               Cancel
             </Button>
-            <Button type="submit" size="sm" disabled={busy}>
+            <Button variant="primary" size="form" type="submit" disabled={busy}>
               {busy ? 'Adding…' : 'Make and add'}
             </Button>
           </div>

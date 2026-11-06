@@ -11,22 +11,22 @@ Tokens live in `web/src/index.css`, components in `web/src/components/ui/`, deci
 ## Principles
 
 1. **Colour means Status; amber means act on it.** A Status colour marks a Status and nothing else. Amber is Needs you (now) or a warning level (soon). Staleness is grey Info. (DS-3)
-2. **Primary is you and your next step.** Indigo marks what you act on and what you wrote, and a surface has at most one Primary button. A selection, a link, a Chip or a Status is never Primary. (DS-12.4; coming: DS-18)
+2. **Primary is you and your next step.** Indigo marks what you act on and what you wrote, and a surface has at most one Primary button. A selection, a link, a Chip or a Status is never Primary. (DS-12.4, DS-18.4)
 3. **One name per thing, the same on every surface.** A Session has one name in the Session sidebar, its header, History and Work; a concept has its Glossary term. (Glossary, SIDE-10)
 4. **Routine values are quiet; exceptions get colour and words.** A number in its usual range is in the row's quiet colour. Past a threshold it takes its level's colour and an icon or words, never colour alone. (DS-3.2, DS-3.5; coming: DS-22)
 5. **Where your keys go is always visible.** Nothing takes focus by itself, and the column that has the keys shows it. (DS-9; coming: SIDE-11)
 6. **Copy the nearest sibling, or extend the system first.** A new surface takes its anatomy from the closest one that exists: Memory's popover for a details popover, a Work row for a row. A piece the system lacks goes into `components/ui/` and this guide in the same change. (0009, 0015)
-7. **One action, one icon.** An action shows the same icon on its button, in a menu and in the shortcuts list. Opening something inside Lookout and leaving Lookout have different icons. (0008; coming: DS-18)
+7. **One action, one icon.** An action shows the same icon on its button, in a menu and in the shortcuts list. Opening something inside Lookout and leaving Lookout have different icons. (0008, DS-18.6)
 8. **Labels next to icons**, unless the icon is universal (close, search, more). A tooltip doesn't replace a label. The right sidebar's icon tabs are the one exception today.
-9. **Sizes come from steps.** Type from the scale (DS-1); icon buttons 24 or 28 px (DS-7); icons 14 or 16 px, 20 px only in a labelled row button (DS-7.4); buttons 24, 28 or 32 px (coming: DS-18). Nothing in between.
+9. **Sizes come from steps.** Type from the scale (DS-1); icon buttons 24 or 28 px (DS-7); icons 14 or 16 px, 20 px only in a labelled row button (DS-7.4); buttons 24, 28 or 32 px (DS-18.3). Nothing in between.
 
 ## By task
 
 ### A button
 
 - **Use** `Button` (`ui/button.tsx`) for a word, with or without an icon; `IconButton` (`ui/icon-button.tsx`) for an icon alone; `RowActions` (`ui/row-actions.tsx`) for an expanded row's actions.
-- **Today:** the default variant is Primary, used only where DS-12.4 lists it (Send, Start a Session, the launcher's Start, a question's submit, Settings' Save). An `IconButton` is `sm` (24 px) inside a line or row, `md` (28 px) in a column's header or a toolbar; its name is required and its tooltip says the same, with the key when it has one. An expanded row has one labelled action, the one Enter runs, and "More" for the rest.
-- **Coming (DS-18):** a button has a role, and its role sets its look:
+- An `IconButton` is `sm` (24 px) inside a line or row, `md` (28 px) in a column's header or a toolbar; its name is required and its tooltip says the same, with the key when it has one. An expanded row has one labelled action, the one Enter runs, and "More" for the rest.
+- **Roles (DS-18.1):** a button's `variant` is its role, and its role sets its look; `secondary` is the default:
 
   | Role | Looks | For | Limit |
   |---|---|---|---|
@@ -34,12 +34,12 @@ Tokens live in `web/src/index.css`, components in `web/src/components/ui/`, deci
   | Soft | `primary-soft` fill, `primary-text` label and icon | the next step in a dense place: a row's Enter action, a past Session's Resume | one per row |
   | Secondary | outline | a real alternative: Stop, Cancel, Review | |
   | Quiet | ghost | frequent, low-stakes actions in headers and toolbars: Add to Topic, More, Copy | |
-  | Danger | red text and icon | End Session, Delete: visible where you use it often, last in its group, behind a divider | a red fill only in its confirm |
+  | Danger | red text and icon | End Session, Delete: visible where you use it often, last in its group, behind a `ButtonDivider` | a red fill (`destructive`) only in its confirm |
 
-  Sizes, named by place: `line` (24 px) inside a line of text or the status line, `default` (28 px) in headers, rows, panels and toolbars, `form` (32 px) in dialogs and Settings' forms. End Session sits last in the header, after a divider. An action's icon comes from `lib/actions.ts`.
+  Sizes, named by place (DS-18.3): `line` (24 px) inside a line of text, a card's line or the status line, `default` (28 px) in headers, rows, panels and toolbars, `form` (32 px) in dialogs and Settings' forms. End Session sits last in the header, after a divider (DS-18.5). An action's icon and word come from `lib/actions.ts` (DS-18.6): a row's first action and a menu item name their `action`, and a `Button` draws `<ActionIcon id>`.
 - **Do:** pick the role by what the action is for, then the height by where it sits.
 - **Don't:** set a height, padding or text size in a Button's `className` (`<Button size="sm" className="h-7">`); copy a button's look onto a hand-made `<button>`.
-- **Guard:** DS-7.2 (icon buttons), DS-12.4 (Primary's places), DS-16.4 (row actions). Coming (DS-18): no height, padding or text size in a Button's `className`; one icon per action, menus included.
+- **Guard:** DS-7.2 (icon buttons), DS-12.4 (Primary's places), DS-16.4 (row actions), DS-18.7 (no height, padding or text size in a Button's `className`; the red fill only in a confirm; a hand-made `<button>` only where the list says why; one icon per action, menus included).
 
 ### A details popover
 
@@ -126,7 +126,7 @@ Context usage, a usage limit, memory and CPU load, a PR's age.
 
 - **Use** `lucide-react`, sized and stroked like its neighbours, coloured with tokens (0008). Only the listed shapes draw their own: `StatusMarker`, the chat rail's Marks, `TaskStatusDot`, `Avatar`, `HarnessIcon` and `LookoutMark`.
 - In a button, 14 or 16 px; 20 px only in a labelled row button.
-- **Coming (DS-18):** an action's icon comes from `lib/actions.ts`, the same on its button, in menus and in the shortcuts list.
+- An action's icon comes from `lib/actions.ts`, the same on its button, in menus and in the shortcuts list (DS-18.6).
 - **Don't:** emoji, a Unicode symbol, or a second icon for an action that already has one.
 - **Guard:** 0008's icons guard, DS-7.2.
 

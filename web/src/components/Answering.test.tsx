@@ -19,7 +19,7 @@ import {
   doesntFit,
 } from '@/lib/answers';
 import { SaveError } from '@/lib/client';
-import { NOW, fakeResizeObserver, movePointer, renderApp, row, rowEl, sizeBoxByText } from '@/test/helpers';
+import { NOW, fakeResizeObserver, movePointer, renderApp, row, rowEl, sizeBoxByText, primaryButtons } from '@/test/helpers';
 
 const PERMISSION: Extract<ScreenPrompt, { kind: 'permission' }> = {
   kind: 'permission',
@@ -310,6 +310,7 @@ describe('questions (VIEW-4.1)', () => {
     const app = open({}, [question([q({ multiSelect: true }), q({ header: 'Second', question: 'One choice?' })])]);
     app.form();
     const buttons = within(screen.getByTestId('chat')).getAllByRole('button', { name: /^Only push/ });
+    expect(primaryButtons(screen.getByTestId('chat')).map((b) => b.textContent)).toEqual(['Submit']); // DS-18.4: the card's one
     for (const b of buttons) {
       expect(b).not.toHaveClass('border-primary');
       expect(b.querySelector('[data-field="choice"] svg')).not.toHaveClass('text-primary');

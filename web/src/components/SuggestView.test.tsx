@@ -2,7 +2,7 @@ import { type NewMember, NO_ACTIVITY, type Proposal, type SuggestState, type Top
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { NOW, renderApp, row } from '@/test/helpers';
+import { NOW, renderApp, row, primaryButtons } from '@/test/helpers';
 
 /** Synthetic Topics, Sessions and PRs only. */
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -79,6 +79,7 @@ describe('Suggest Topics (TOPIC-14)', () => {
     await user.type(title, 'Lantern polishing');
     await user.click(within(card).getByRole('checkbox', { name: /Polish lantern 2/ }));
     await user.click(within(card).getByRole('checkbox', { name: /Harbor \(part of\)/ }));
+    expect(primaryButtons(view()).length).toBeLessThanOrEqual(1); // DS-18.4: each card's Accept is Soft, a row's next step
     await user.click(within(card).getByRole('button', { name: 'Accept' }));
     expect(app.client.acceptProposal).toHaveBeenCalledWith('1:0', { title: 'Lantern polishing', note: 'Polishing every lantern.', members: [SESSION(1).key], edges: [] });
     const addition = cards[1]!;

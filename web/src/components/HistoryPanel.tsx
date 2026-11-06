@@ -1,6 +1,6 @@
 import { BLOCK_REASON } from '@shared/history.ts';
 import type { Harness, HistoryItem, HistoryPage, HistoryPeek, SessionRow, Status } from '@shared/types.ts';
-import { Eye, History, Play, Search } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { type KeyboardEvent, type MouseEvent, type ReactNode, type Ref, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils';
 import { HarnessIcon } from './HarnessIcon';
 import { TopicChips } from './TopicLinks';
 import { historyMember, useAddToTopicItem, useTopics } from '@/lib/topics';
+import { type ActionId } from '@/lib/actions';
 
 /** A field that takes typed letters (a search box, never the Headless checkbox). */
 const isTextTarget = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && !['checkbox', 'radio'].includes((t as HTMLInputElement).type)));
@@ -425,10 +426,10 @@ interface ResultProps {
 
 /** HIST-3.5: the expanded result's one button, by what it is. */
 const BUTTON = {
-  live: { label: 'Open', tip: 'Open: select the live Session', icon: <Play /> },
-  resumable: { label: 'Resume', tip: 'Resume it in its own Session host', icon: <History /> },
-  blocked: { label: 'Show', tip: 'Show it read-only', icon: <Eye /> },
-} as const;
+  live: { action: 'open', tip: 'Open: select the live Session' },
+  resumable: { action: 'resume', tip: 'Resume it in its own Session host' },
+  blocked: { action: 'show', tip: 'Show it read-only' },
+} as const satisfies Record<string, { action: ActionId; tip: string }>;
 
 /** HIST-2.9: when it was last active, as "Oct 20, 14:12". */
 const lastActive = (at: number) => new Date(at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
@@ -535,7 +536,7 @@ function Result({ index, item, status, since, active, expanded, peek, opening, b
             <TopicChips members={[historyMember(item)]} labelClass="w-10" />
             <RowActions
               name={item.title}
-              primary={{ 'data-action': state === 'live' ? 'open' : state === 'blocked' ? 'show' : 'resume', label: opening ? 'Resuming…' : button.label, icon: button.icon, tip: button.tip, enabled: !busy, onPress: onOpen }}
+              primary={{ 'data-action': state === 'live' ? 'open' : state === 'blocked' ? 'show' : 'resume', action: button.action, label: opening ? 'Resuming…' : undefined, tip: button.tip, enabled: !busy, onPress: onOpen }}
               more={[addToTopic]}
             />
           </div>
@@ -584,7 +585,7 @@ function LoadMore({ onClick, hint }: { onClick(): void; hint?: string }) {
   return (
     <div className={cn('flex flex-col items-center gap-1.5 px-2', hint ? 'py-8 text-center' : 'py-2')}>
       {hint && <p className="text-meta leading-5 text-muted-foreground">{hint}</p>}
-      <Button variant="ghost" size="sm" onClick={onClick} className="text-meta">
+      <Button variant="quiet" size="default" onClick={onClick}>
         Load more
       </Button>
     </div>

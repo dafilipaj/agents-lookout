@@ -6,7 +6,7 @@ import type { PrSection, TaskSection, WorkPr, WorkSnapshot, WorkTask } from '@sh
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { NOW, pickMore, pressRowAction, renderApp, row, rowActionWords, settings } from '@/test/helpers';
+import { NOW, pickMore, pressRowAction, renderApp, row, rowActionWords, settings, primaryButtons } from '@/test/helpers';
 
 /** Synthetic Topics, Tasks and PRs only: invented titles, repos and ids. */
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -220,6 +220,7 @@ describe('a Topic (TOPIC-1)', () => {
     const user = await openTopics();
     await user.click(within(panel()).getAllByRole('button', { name: /New Topic/ })[0]!);
     const title = screen.getByRole('textbox', { name: 'New Topic title' });
+    expect(primaryButtons(title.closest('form')!).map((b) => b.textContent)).toEqual(['Make']); // DS-18.4
     await user.keyboard('{Enter}');
     expect(within(panel()).getByRole('alert')).toHaveTextContent('A Topic needs a title.');
     expect(app.client.createTopic).not.toHaveBeenCalled();
@@ -268,6 +269,7 @@ describe('a Topic (TOPIC-1)', () => {
     await pickMore(item('Proposals rates'), 'archive', user);
     // TOPIC-1.6: Archive asks how it ended, and waits for a pick.
     const asked = screen.getByRole('dialog', { name: 'Archive “Proposals rates”' });
+    expect(primaryButtons(asked).map((b) => b.textContent)).toEqual(['Archive']); // DS-18.4
     expect(within(asked).getByRole('button', { name: 'Archive' })).toBeDisabled();
     await user.click(within(asked).getByRole('radio', { name: 'Parked' }));
     await user.type(within(asked).getByRole('textbox', { name: 'Closing line' }), 'After the release.');
@@ -324,7 +326,9 @@ describe('members (TOPIC-2)', () => {
     const option = screen.getByTestId('work-panel').querySelector<HTMLElement>(`[data-task="${LIGHT.id}"]`)!;
     fireEvent.click(option);
     await pickMore(option, 'add-to-topic', user);
-    return screen.getByRole('dialog', { name: 'Add to Topic' });
+    const picker = screen.getByRole('dialog', { name: 'Add to Topic' });
+    expect(primaryButtons(picker).length).toBeLessThanOrEqual(1); // DS-18.4
+    return picker;
   }
 
   it('TOPIC-2.1: Add to Topic on an expanded Work row opens the picker, Open Topics most recently changed first then New Topic…; a pick adds the row’s item and closes it; A opens it for the selected row', async () => {
@@ -663,6 +667,7 @@ describe('Edges (TOPIC-6)', () => {
     await user.click(header('Rates table'));
     await pickMore(item('Rates table'), 'link', user);
     const dialog = screen.getByRole('dialog', { name: 'Link to Topic' });
+    expect(primaryButtons(dialog).length).toBeLessThanOrEqual(1); // DS-18.4
     expect(within(dialog).getAllByRole('option').map((o) => o.textContent)).toEqual(['Proposals v2', 'CRM backlog']);
     await user.click(within(dialog).getByRole('option', { name: 'Proposals v2' }));
     const label = within(screen.getByRole('dialog', { name: 'Link to Proposals v2' })).getByRole('textbox', { name: 'Label' });
@@ -799,6 +804,7 @@ describe('the graph (TOPIC-7)', () => {
     // Arrange, after its confirmation; Cancel moves nothing.
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: 'Arrange' }));
+    expect(primaryButtons(screen.getByRole('dialog', { name: 'Arrange every node?' })).map((b) => b.textContent)).toEqual(['Arrange']); // DS-18.4
     await user.click(within(screen.getByRole('dialog', { name: 'Arrange every node?' })).getByRole('button', { name: 'Cancel' }));
     expect(app.client.placeTopics).toHaveBeenCalledTimes(2);
     await user.click(screen.getByRole('button', { name: 'Arrange' }));
@@ -882,6 +888,7 @@ describe('the graph (TOPIC-7)', () => {
     expect(screen.getByText('No Topics yet')).toBeInTheDocument();
     const user = userEvent.setup();
     await user.click(within(screen.getByText('No Topics yet').closest<HTMLElement>('[role="status"]')!).getByRole('button', { name: 'New Topic' }));
+    expect(primaryButtons(screen.getByRole('dialog', { name: 'New Topic' })).map((b) => b.textContent)).toEqual(['Make']); // DS-18.4
     await user.type(within(screen.getByRole('dialog', { name: 'New Topic' })).getByRole('textbox', { name: 'Topic title' }), 'Rates table{Enter}');
     expect(app.client.createTopic).toHaveBeenCalledWith('Rates table');
     expect(await within(graph()).findByRole('button', { name: /^Rates table,/ })).toHaveAttribute('aria-pressed', 'true');

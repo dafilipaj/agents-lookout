@@ -1,8 +1,9 @@
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 import css from '@/index.css?raw';
+import { ACTIONS, type ActionId } from '@/lib/actions';
 import { TYPE_SCALE } from '@/lib/utils';
-import { solid, themeTokens } from './contrast';
+import { contrast, paint, solid, themeTokens } from './contrast';
 
 /**
  * Decision 0009: one design system, guarded by tests (docs/features/design-system/SPEC.md, DS). Like
@@ -307,7 +308,7 @@ const FAMILIES: Record<string, Family> = {
     files: {
       'web/src/components/ChangesButton.tsx': { why: "why a changed file didn't open in VS Code, on its row for 5 s (DIFF-4.5, 4.6)", uses: ['text-destructive-text'] },
       'web/src/lib/memory.ts': { why: 'memory and load critical levels (MEM-1.3, MEM-5.2)', uses: ['bg-destructive', 'text-destructive-text'] },
-      'web/src/components/ui/button.tsx': { why: 'the destructive Button variant, and an invalid field', uses: ['bg-destructive', 'bg-destructive/60', 'bg-destructive/90', 'border-destructive', 'ring-destructive/20', 'ring-destructive/40'] },
+      'web/src/components/ui/button.tsx': { why: 'the danger and destructive Button variants (DS-18.1), and an invalid field', uses: ['bg-destructive', 'bg-destructive/60', 'bg-destructive/90', 'border-destructive', 'ring-destructive/20', 'ring-destructive/40', 'text-destructive-text'] },
       'web/src/components/ui/input.tsx': { why: 'an invalid field', uses: ['border-destructive', 'ring-destructive/20', 'ring-destructive/40'] },
       'web/src/components/ui/textarea.tsx': { why: 'an invalid field', uses: ['border-destructive', 'ring-destructive/20', 'ring-destructive/40'] },
       'web/src/lib/sessions.ts': { why: 'context above 60% (CONTEXT_LEVEL_CLASS)', uses: ['text-destructive-text'] },
@@ -352,9 +353,9 @@ const FAMILIES: Record<string, Family> = {
     },
   },
   primary: {
-    tokens: ['primary', 'primary-foreground', 'primary-soft', 'ring'],
+    tokens: ['primary', 'primary-foreground', 'primary-soft', 'primary-text', 'ring'],
     files: {
-      'web/src/components/ui/button.tsx': { why: 'the default Button, keyboard focus and a focused field (DS-12.4)', uses: ['bg-primary', 'bg-primary/90', 'border-ring', 'ring-ring/50', 'text-primary-foreground'] },
+      'web/src/components/ui/button.tsx': { why: 'the primary and soft Buttons (DS-18.1, 18.2; the labelled look of icon-button.tsx draws through them), keyboard focus and a focused field (DS-12.4)', uses: ['bg-primary', 'bg-primary-soft', 'bg-primary/15', 'bg-primary/30', 'bg-primary/90', 'border-ring', 'ring-ring/50', 'text-primary-foreground', 'text-primary-text'] },
       'web/src/components/Answering.tsx': { why: 'a chosen option’s border and dot or tick, and keyboard focus (DS-12.4)', uses: ['border-primary', 'border-ring', 'ring-ring', 'ring-ring/25', 'text-primary'] },
       'web/src/components/Chat.tsx': { why: 'your own message bubble, the dashed edge of one waiting to go (VIEW-3.9), and keyboard focus (DS-12.4)', uses: ['bg-primary-soft', 'border-primary/45', 'ring-ring'] },
       'web/src/index.css': { why: 'the base outline colour, as before DS-12', uses: ['outline-ring/50'] },
@@ -363,7 +364,6 @@ const FAMILIES: Record<string, Family> = {
       'web/src/components/HistoryPanel.tsx': { why: 'keyboard focus and a focused filter', uses: ['border-ring', 'ring-ring/30'] },
       'web/src/components/Launcher.tsx': { why: 'keyboard focus and focused fields', uses: ['border-ring', 'ring-ring/30'] },
       'web/src/components/LibraryPanel.tsx': { why: 'keyboard focus on the filter and list', uses: ['ring-ring/30'] },
-      'web/src/components/Markdown.tsx': { why: 'keyboard focus on Copy', uses: ['ring-ring'] },
       'web/src/components/MemoryLine.tsx': { why: 'keyboard focus on a Session', uses: ['ring-ring/50'] },
       'web/src/components/RightSidebar.tsx': { why: 'keyboard focus and the resize handle while dragged', uses: ['bg-ring/20', 'ring-ring/50'] },
       'web/src/components/SessionTitle.tsx': { why: 'keyboard focus on the title and its edit', uses: ['ring-ring'] },
@@ -662,7 +662,7 @@ describe('colour by meaning', () => {
 
   it('DS-12.4: Primary is pinned to default buttons, chosen options, your messages, the composer drop target and the existing focus and resize classes', () => {
     expect(FAMILIES.primary).toBeDefined();
-    expect(FAMILIES.primary!.tokens).toEqual(['primary', 'primary-foreground', 'primary-soft', 'ring']);
+    expect(FAMILIES.primary!.tokens).toEqual(['primary', 'primary-foreground', 'primary-soft', 'primary-text', 'ring']);
     const primary = FAMILIES.primary!;
     const coloured = Object.entries(primary.files).filter(([, { uses }]) => uses.some((c) => /primary/.test(c))).map(([path]) => path).sort();
     expect(coloured).toEqual(['web/src/components/Answering.tsx', 'web/src/components/Chat.tsx', 'web/src/components/SessionView.tsx', 'web/src/components/TopicGraph.tsx', 'web/src/components/ui/button.tsx']);
@@ -1055,11 +1055,11 @@ function iconButtonSizes(source: string, path = 'x.tsx'): string[] {
 }
 
 /** Tags that draw one icon besides lucide's own (imported from `lucide-react`). */
-const ICON_TAGS = new Set(['HarnessIcon', 'MarkShape']);
+const ICON_TAGS = new Set(['HarnessIcon', 'MarkShape', 'ActionIcon']);
 
 /**
  * A `<button>` or `<Button>` with an icon and no words of its own: its children are icons (lucide's,
- * `HarnessIcon`, `MarkShape`), also in a conditional, and at most `aria-hidden` elements. As
+ * `HarnessIcon`, `MarkShape`, `ActionIcon`), also in a conditional, and at most `aria-hidden` elements. As
  * `line:col <tag> fn`. These are `IconButton`s, whatever their classes (DS-7.2).
  */
 function iconOnlyButtons(source: string, path = 'x.tsx'): string[] {
@@ -1199,6 +1199,250 @@ describe('row actions', () => {
       .flatMap(([path, text]) => loneRowActions(text, path).map((s) => `${path}:${s}`));
     expect(found).toEqual([]);
     for (const path of ['WorkPanel', 'HistoryPanel', 'LibraryPanel', 'TopicView']) expect(SOURCES[`web/src/components/${path}.tsx`], path).toMatch(/<RowActions\b/);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// DS-18.7: buttons by role (check 9)
+
+/** A class that sizes a Button by hand: a height, padding or a type step. The size decides those (DS-18.3). */
+const BUTTON_SIZE_CLASS = /^(?:.*:)?!?-?(?:size|h|min-h|max-h|p|px|py|pt|pr|pb|pl|ps|pe)-\S+$|^(?:.*:)?!?text-(?:caption|meta|body|prose|title|reading|reading-title)$/;
+
+/** The string arguments beside a `labelledButtonLook(…)` call in the `cn(…)` around it. */
+function besideLook(call: ts.CallExpression): string[] {
+  const parent = call.parent;
+  if (!ts.isCallExpression(parent)) return [];
+  return parent.arguments.filter((a) => a !== call).flatMap((a) => stringsIn(a));
+}
+
+/** `<Button className>` and `labelledButtonLook()` neighbours that size by hand, and `variant="destructive"`, as `line:col what fn`. */
+function buttonRoles(source: string, path = 'x.tsx'): { sizes: string[]; destructive: string[] } {
+  const file = parse(source, path);
+  const sizes: string[] = [];
+  const destructive: string[] = [];
+  const visit = (node: ts.Node) => {
+    if ((ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)) && node.tagName.getText() === 'Button') {
+      const className = attr(node, 'className')?.initializer;
+      for (const c of (className ? stringsIn(className) : []).flatMap((v) => v.split(/\s+/)).filter((c) => BUTTON_SIZE_CLASS.test(c))) sizes.push(`${where(file, node.getStart())} ${c} ${enclosingFn(node)}`);
+      const variant = attr(node, 'variant')?.initializer;
+      if (variant && stringsIn(variant).includes('destructive')) destructive.push(`${where(file, node.getStart())} destructive ${enclosingFn(node)}`);
+    }
+    if (ts.isCallExpression(node) && node.expression.getText() === 'labelledButtonLook') {
+      for (const c of besideLook(node).flatMap((v) => v.split(/\s+/)).filter((c) => BUTTON_SIZE_CLASS.test(c))) sizes.push(`${where(file, node.getStart())} ${c} ${enclosingFn(node)}`);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return { sizes, destructive };
+}
+
+/** Each hand-made `<button>`, as `line:col <button> fn`. */
+function handMadeButtons(source: string, path = 'x.tsx'): string[] {
+  const file = parse(source, path);
+  const found: string[] = [];
+  const visit = (node: ts.Node) => {
+    if ((ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)) && node.tagName.getText() === 'button') found.push(`${where(file, node.getStart())} <button> ${enclosingFn(node)}`);
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return found;
+}
+
+/** A row's first action or a menu item with an `icon` of its own: an object with `group` and `icon`, or `primary={{ icon }}`. */
+function ownIcons(source: string, path = 'x.tsx'): string[] {
+  const file = parse(source, path);
+  const found: string[] = [];
+  const keys = (o: ts.ObjectLiteralExpression) => o.properties.map((p) => p.name?.getText().replace(/['"]/g, '') ?? '');
+  const visit = (node: ts.Node) => {
+    if (ts.isObjectLiteralExpression(node) && keys(node).includes('icon')) {
+      const jsx = node.parent && ts.isJsxExpression(node.parent) && ts.isJsxAttribute(node.parent.parent) ? node.parent.parent.name.getText() : null;
+      if (keys(node).includes('group') || jsx === 'primary') found.push(`${where(file, node.getStart())} icon`);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return found;
+}
+
+/** A `<Button>` whose words are an action's word (lib/actions.ts) without that action's `ActionIcon`, as `line:col "word"`. */
+function missingActionIcons(source: string, path = 'x.tsx'): string[] {
+  const file = parse(source, path);
+  const byWord = new Map<string, ActionId[]>();
+  for (const [id, a] of Object.entries(ACTIONS) as [ActionId, { word: string }][]) byWord.set(a.word, [...(byWord.get(a.word) ?? []), id]);
+  const found: string[] = [];
+  const visit = (node: ts.Node) => {
+    if (ts.isJsxElement(node) && node.openingElement.tagName.getText() === 'Button') {
+      const words: string[] = [];
+      /** Words written as strings in an expression (`{run ? 'Suggest again' : 'Suggest'}`): each is a label the button can show. */
+      const alternatives: string[] = [];
+      const icons: string[] = [];
+      const walk = (n: ts.Node) => {
+        if (ts.isJsxText(n)) words.push(n.text);
+        if (ts.isJsxExpression(n) && n.expression) alternatives.push(...stringsIn(n.expression));
+        if ((ts.isJsxSelfClosingElement(n) || ts.isJsxOpeningElement(n)) && n.tagName.getText() === 'ActionIcon') {
+          const id = attr(n, 'id')?.initializer;
+          if (id) icons.push(...stringsIn(id));
+        }
+        ts.forEachChild(n, walk);
+      };
+      node.children.forEach(walk);
+      const text = words.join(' ').replace(/\s+/g, ' ').trim();
+      for (const label of [text, ...alternatives.map((a) => a.trim())]) {
+        const ids = byWord.get(label);
+        if (ids && !ids.some((id) => icons.includes(id))) found.push(`${where(file, node.getStart())} "${label}"`);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return found;
+}
+
+/** An icon inside a `<Button>` with a `size-` class of its own: the Button's size gives its icons theirs (DS-18.3). As `line:col <Tag> size-…`. */
+function handSizedIcons(source: string, path = 'x.tsx'): string[] {
+  const file = parse(source, path);
+  const lucide = new Set<string>();
+  for (const st of file.statements) {
+    if (ts.isImportDeclaration(st) && ts.isStringLiteral(st.moduleSpecifier) && st.moduleSpecifier.text === 'lucide-react') {
+      const named = st.importClause?.namedBindings;
+      if (named && ts.isNamedImports(named)) for (const el of named.elements) lucide.add(el.name.text);
+    }
+  }
+  const found: string[] = [];
+  const inside = (n: ts.Node) => {
+    if (ts.isJsxSelfClosingElement(n) || ts.isJsxOpeningElement(n)) {
+      const tag = n.tagName.getText();
+      const className = attr(n, 'className')?.initializer;
+      if ((lucide.has(tag) || ICON_TAGS.has(tag)) && className) {
+        for (const c of stringsIn(className).flatMap((v) => v.split(/\s+/)).filter((c) => /^(?:.*:)?size-/.test(c))) found.push(`${where(file, n.getStart())} <${tag}> ${c}`);
+      }
+    }
+    ts.forEachChild(n, inside);
+  };
+  const visit = (node: ts.Node) => {
+    if (ts.isJsxElement(node) && node.openingElement.tagName.getText() === 'Button') node.children.forEach(inside);
+    else ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return found;
+}
+
+/** Hand-sized Buttons, each pinned to its function and count, with why the size can't decide. */
+const BUTTON_SIZE_EXCEPTIONS: Exception[] = [
+  { path: 'web/src/components/Answering.tsx', fn: 'PromptCard', count: 3, reason: "a permission prompt's choices: as tall as their text, which wraps (`h-auto`, `min-h-8`, `py-1.5`)" },
+  { path: 'web/src/components/LibraryPanel.tsx', fn: 'LibraryPanel', count: 1, reason: "the Output Type filter's chips: the Chip inside is the look, the button only its target (`px-1`)" },
+];
+
+/** `variant="destructive"`: only the confirming button of a dialog that ends or deletes something (DS-18.1). */
+const DESTRUCTIVE_CONFIRMS: Exception[] = [
+  { path: 'web/src/components/SessionView.tsx', fn: 'EndSession', count: 1, reason: "End Session's dialog confirms (VIEW-5.6)" },
+  { path: 'web/src/components/TopicView.tsx', fn: 'TopicActions', count: 1, reason: "a Topic's Delete confirms (TOPIC-1.6)" },
+];
+
+/** Hand-made `<button>`s outside components/ui, each pinned to its function and count, with why it isn't a Button. */
+const HAND_MADE_BUTTONS: Exception[] = [
+  { path: 'web/src/components/Answering.tsx', fn: 'optionList', count: 1, reason: "a question's options: a choice with its dot or tick, chosen before submit (VIEW-2)" },
+  { path: 'web/src/components/ChangesButton.tsx', fn: 'ChangesButton', count: 1, reason: "the status line's changed-files count, a menu trigger in the line's own look (DS-7.3, DIFF-1.3)" },
+  { path: 'web/src/components/ChangesButton.tsx', fn: 'FileRow', count: 1, reason: 'a row of the changed-files list (DIFF-1.4)' },
+  { path: 'web/src/components/Chat.tsx', fn: 'Fold', count: 1, reason: "a disclosure: the chat's folded steps (VIEW-12)" },
+  { path: 'web/src/components/Chat.tsx', fn: 'PromptStrip', count: 1, reason: 'the strip that recalls your prompt, a full-width line across the chat (VIEW-14)' },
+  { path: 'web/src/components/Chat.tsx', fn: 'ToolCalls', count: 1, reason: "a disclosure: a step's tool calls" },
+  { path: 'web/src/components/ChatRail.tsx', fn: 'ChatRail', count: 1, reason: "a Mark on the chat's rail (VIEW-1.11)" },
+  { path: 'web/src/components/MemoryLine.tsx', fn: 'Details', count: 1, reason: "a row of Memory's list of Sessions (MEM-3)" },
+  { path: 'web/src/components/MemoryLine.tsx', fn: 'JobRow', count: 1, reason: "a Session's name inside a res job's row, an inline link (RES-2)" },
+  { path: 'web/src/components/PortsChip.tsx', fn: 'PortsChip', count: 1, reason: "the status line's Local servers chip (PORTS-2.2, DS-7.3)" },
+  { path: 'web/src/components/RightSidebar.tsx', fn: 'RightSidebar', count: 1, reason: "the right sidebar's tabs on its rail (DS-13.3)" },
+  { path: 'web/src/components/ServersPanel.tsx', fn: 'ServersPanel', count: 1, reason: "a row of the Servers tab's list (PORTS-3)" },
+  { path: 'web/src/components/SessionTitle.tsx', fn: 'useSessionTitle', count: 1, reason: "the Session title's rename: the title itself is the target (VIEW-5.12)" },
+  { path: 'web/src/components/SessionView.tsx', fn: 'Drawer', count: 1, reason: "a disclosure: the Terminal preview's handle (DS-11)" },
+  { path: 'web/src/components/SpecView.tsx', fn: 'Module', count: 1, reason: 'an inline link: "Show all N specs" (PLAIN-1)' },
+  { path: 'web/src/components/SpecView.tsx', fn: 'SpecNotes', count: 1, reason: "a disclosure: a spec's notes" },
+  { path: 'web/src/components/SpecView.tsx', fn: 'Inline', count: 1, reason: 'an inline link: an ability key explained in place (PLAIN-7.5)' },
+  { path: 'web/src/components/SpecView.tsx', fn: 'Term', count: 1, reason: 'an inline link: a term explained in place (PLAIN-7)' },
+  { path: 'web/src/components/StatusMenu.tsx', fn: 'StatusMenu', count: 1, reason: "the status line's model and Effort menus (DS-7.3)" },
+  { path: 'web/src/components/SubagentsButton.tsx', fn: 'SubagentsButton', count: 1, reason: "the status line's Subagents (VIEW-8, DS-7.3)" },
+  { path: 'web/src/components/TopicGraph.tsx', fn: 'Canvas', count: 1, reason: "the Topic graph's Edge chip, on the line it names (TOPIC-6)" },
+  { path: 'web/src/components/TopicView.tsx', fn: 'EarlierSummaries', count: 1, reason: 'a disclosure: an earlier summary, opened whole' },
+  { path: 'web/src/components/TopicView.tsx', fn: 'Notes', count: 1, reason: 'an inline link: Edit beside the notes' },
+  { path: 'web/src/components/TopicView.tsx', fn: 'SessionChip', count: 1, reason: "a Topic member's Session chip (TOPIC-4.2)" },
+  { path: 'web/src/components/TopicView.tsx', fn: 'Outputs', count: 1, reason: 'an inline link: "+N more" Outputs' },
+  { path: 'web/src/components/TopicsPanel.tsx', fn: 'TopicItem', count: 1, reason: "a row of the Topics tab: its header expands it (TOPIC-3.4)" },
+  { path: 'web/src/components/WorkPanel.tsx', fn: 'WorkPanel', count: 1, reason: "Work's Show filter, a segment of a radio group (WORK-1.5; Segmented, DS-20, comes next)" },
+];
+
+describe('buttons by role', () => {
+  const what = (found: string[]) => found.map((s) => s.split(' ').slice(1, -1).join(' '));
+
+  it("DS-18.2: a Soft button's primary-text keeps 4.5:1 on primary-soft, and a danger button's destructive-text 4.5:1, over the background, the sidebar and sidebar-accent in both modes", () => {
+    for (const [mode, t] of Object.entries(themeTokens(css))) {
+      const sidebar = solid(t, 'sidebar');
+      const planes = { background: solid(t, 'background'), sidebar, 'sidebar-accent': paint(t, 'sidebar-accent', sidebar) };
+      for (const [name, plane] of Object.entries(planes)) {
+        const soft = paint(t, 'primary-soft', plane);
+        expect(contrast(paint(t, 'primary-text', soft), soft), `${mode} primary-text on primary-soft over ${name}`).toBeGreaterThanOrEqual(4.5);
+        expect(contrast(paint(t, 'destructive-text', plane), plane), `${mode} destructive-text on ${name}`).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
+
+  it('DS-18.7: the guard catches a Button or a labelled look sized by hand, and a destructive variant, and lets the rest through', () => {
+    const { sizes, destructive } = buttonRoles(`function A() { return <><Button className="h-7 px-2 text-meta" /><Button className={cn('md:py-1', on && 'min-h-8')} /><Button variant="destructive" />{cn(labelledButtonLook(), 'h-6 text-meta')}</>; }`);
+    expect(what(sizes)).toEqual(['h-7', 'px-2', 'text-meta', 'md:py-1', 'min-h-8', 'h-6', 'text-meta']);
+    expect(what(buttonRoles(`function A() { return <Button className="size-7 has-[>svg]:px-3 @max-[20rem]:h-6 group-hover/code:text-body" />; }`).sizes)).toEqual(['size-7', 'has-[>svg]:px-3', '@max-[20rem]:h-6', 'group-hover/code:text-body']);
+    expect(what(destructive)).toEqual(['destructive']);
+    expect(buttonRoles(`<Button variant="quiet" size="line" className={cn('shrink-0 -ml-2.5 self-start font-normal', bad && 'text-destructive')} />; cn(labelledButtonLook('soft'), 'cursor-pointer'); <Other className="h-7" />`)).toEqual({ sizes: [], destructive: [] });
+  });
+
+  it('DS-18.7: no Button or labelled look outside components/ui sizes itself, outside the listed exceptions', () => {
+    const found = Object.entries(SOURCES)
+      .filter(([path]) => /\.tsx$/.test(path) && !path.startsWith('web/src/components/ui/'))
+      .flatMap(([path, text]) => buttonRoles(text, path).sizes.map((s) => `${path}:${s}`));
+    const { unlisted, counts } = againstExceptions(found, BUTTON_SIZE_EXCEPTIONS);
+    expect(unlisted).toEqual([]);
+    expect(counts).toEqual(BUTTON_SIZE_EXCEPTIONS.map(({ path, fn, count }) => ({ path, fn, count })));
+  });
+
+  it("DS-18.1: the red fill is only a dialog's confirming button, in End Session's and a Topic's Delete", () => {
+    const found = Object.entries(SOURCES)
+      .filter(([path]) => /\.tsx$/.test(path) && !path.startsWith('web/src/components/ui/'))
+      .flatMap(([path, text]) => buttonRoles(text, path).destructive.map((s) => `${path}:${s}`));
+    const { unlisted, counts } = againstExceptions(found, DESTRUCTIVE_CONFIRMS);
+    expect(unlisted).toEqual([]);
+    expect(counts).toEqual(DESTRUCTIVE_CONFIRMS.map(({ path, fn, count }) => ({ path, fn, count })));
+  });
+
+  it('DS-18.7: a hand-made button outside components/ui is one of the listed ones, each with its reason and count', () => {
+    expect(what(handMadeButtons(`function A() { return <><button type="button" /><Button /><button>x</button></>; }`))).toEqual(['<button>', '<button>']);
+    const found = Object.entries(SOURCES)
+      .filter(([path]) => /\.tsx$/.test(path) && !path.startsWith('web/src/components/ui/'))
+      .flatMap(([path, text]) => handMadeButtons(text, path).map((s) => `${path}:${s}`));
+    const { unlisted, counts } = againstExceptions(found, HAND_MADE_BUTTONS);
+    expect(unlisted).toEqual([]);
+    expect(counts).toEqual(HAND_MADE_BUTTONS.map(({ path, fn, count }) => ({ path, fn, count })));
+  });
+
+  it("DS-18.3, DS-18.7: an icon inside a Button takes the Button's size, never a size of its own", () => {
+    expect(handSizedIcons(`import { X } from 'lucide-react';\n<Button><X className="size-3.5" />Close</Button>; <Button><ActionIcon id="copy" className="md:size-4" /></Button>; <Button><X className={cn(on && 'animate-spin')} />Go</Button>; <div><X className="size-3" /></div>`).map((s) => s.split(' ').slice(1).join(' '))).toEqual(['<X> size-3.5', '<ActionIcon> md:size-4']);
+    const found = Object.entries(SOURCES)
+      .filter(([path]) => /\.tsx$/.test(path) && !path.startsWith('web/src/components/ui/'))
+      .flatMap(([path, text]) => handSizedIcons(text, path).map((s) => `${path}:${s}`));
+    expect(found).toEqual([]);
+  });
+
+  it("DS-18.6, DS-18.7: a row's first action and a menu item name their action, never an icon of their own", () => {
+    expect(ownIcons(`const a = { id: 'x', group: 'open', icon: <X /> }; <RowActions primary={{ label: 'Open', icon: <Play /> }} />; const b = { icon: <X /> }; <RowAction icon={<Y />} />`).map((s) => s.split(' ')[1])).toEqual(['icon', 'icon']);
+    const found = Object.entries(SOURCES)
+      .filter(([path]) => /\.tsx?$/.test(path) && !path.startsWith('web/src/components/ui/'))
+      .flatMap(([path, text]) => ownIcons(text, path).map((s) => `${path}:${s}`));
+    expect(found).toEqual([]);
+  });
+
+  it("DS-18.6, DS-18.7: a Button whose words are an action's word draws that action's ActionIcon", () => {
+    expect(missingActionIcons(`<Button>Refresh</Button>; <Button><X />Delete</Button>; <Button><ActionIcon id="refresh" />Refresh</Button>; <Button><ActionIcon id="open-external" />Open</Button>; <Button>Cancel</Button>; <Button><Sparkles />{run ? 'Suggest again' : 'Suggest'}</Button>`).map((s) => s.split(' ').slice(1).join(' '))).toEqual(['"Refresh"', '"Delete"', '"Suggest"']);
+    const found = Object.entries(SOURCES)
+      .filter(([path]) => /\.tsx$/.test(path))
+      .flatMap(([path, text]) => missingActionIcons(text, path).map((s) => `${path}:${s}`));
+    expect(found).toEqual([]);
   });
 });
 

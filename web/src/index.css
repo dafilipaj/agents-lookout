@@ -15,6 +15,8 @@
   --primary: oklch(0.52 0.2 281);
   --primary-foreground: oklch(0.99 0 0);
   --primary-soft: oklch(0.95 0.035 281);
+  /* DS-18.2: the Primary family's text shade, for a Soft button's label and icon: 4.5:1 or more on primary-soft */
+  --primary-text: oklch(0.52 0.2 281);
   --secondary: oklch(0.955 0.008 270);
   --secondary-foreground: oklch(0.21 0.012 270);
   --muted: oklch(0.955 0.008 270);
@@ -96,6 +98,7 @@
     --primary: oklch(0.55 0.19 281);
     --primary-foreground: oklch(0.99 0 0);
     --primary-soft: oklch(0.6 0.17 281 / 20%);
+    --primary-text: oklch(0.74 0.14 281);
     --secondary: oklch(0.26 0.016 270);
     --secondary-foreground: oklch(0.96 0.004 270);
     --muted: oklch(0.25 0.016 270);
@@ -153,6 +156,7 @@
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
   --color-primary-soft: var(--primary-soft);
+  --color-primary-text: var(--primary-text);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);

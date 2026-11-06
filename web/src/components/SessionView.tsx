@@ -1,9 +1,9 @@
 import type { LocalServer, PortsSnapshot } from '@shared/ports.ts';
 import type { AnswerRequest, ChangesView, ChatPage, EndTarget, RenameResult, SessionRow } from '@shared/types.ts';
-import { Check, ChevronDown, CircleCheck, CircleSlash, CircleStop, Copy, FolderGit2, GitBranch, Hourglass, Info, OctagonX, Paperclip, Power, SendHorizontal, TerminalSquare } from 'lucide-react';
+import { Check, ChevronDown, CircleCheck, CircleSlash, FolderGit2, GitBranch, Hourglass, Info, Paperclip, SendHorizontal, TerminalSquare } from 'lucide-react';
 import { type ComponentPropsWithRef, type ComponentPropsWithoutRef, type KeyboardEvent, type PointerEvent, type ReactNode, type RefObject, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Alert } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
+import { Button, ButtonDivider } from '@/components/ui/button';
 import { Kbd } from '@/components/ui/kbd';
 import { Loading } from '@/components/ui/loading';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '@/components/ui/dialog';
@@ -54,6 +54,7 @@ import { SubagentsButton, type SubagentsButtonProps } from './SubagentsButton';
 import { changesTip } from '@/lib/changes';
 import { AddToTopicButton } from './TopicLinks';
 import { rowMember } from '@/lib/topics';
+import { ActionIcon } from '@/lib/actions';
 
 export interface SessionViewProps {
   attachments: ComposerAttachments;
@@ -517,9 +518,9 @@ function Header({
   const stopErrorId = useId();
   // VIEW-4.4 Stop while Busy, or VIEW-4.5 Esc while it Needs you: never both (one Status at a time).
   const key: EscKeyProps | null = stop
-    ? { label: 'Stop', pressingLabel: 'Stopping…', hint: null, icon: <CircleStop className="size-3.5" />, pressing: stop.stopping, error: stop.error, onPress: onStop }
+    ? { label: 'Stop', pressingLabel: 'Stopping…', hint: null, icon: <ActionIcon id="stop" />, pressing: stop.stopping, error: stop.error, onPress: onStop }
     : esc
-      ? { label: 'Esc', pressingLabel: 'Pressing Esc…', hint: ESC_HINT, icon: <OctagonX className="size-3.5" />, pressing: esc.pressing, error: esc.error, onPress: onEsc }
+      ? { label: 'Esc', pressingLabel: 'Pressing Esc…', hint: ESC_HINT, icon: <ActionIcon id="esc" />, pressing: esc.pressing, error: esc.error, onPress: onEsc }
       : null;
   return (
     // Positioned, so the bubble with Stop's whole error sizes to the pane and stays inside it.
@@ -558,10 +559,10 @@ function Header({
           {key && <EscKey {...key} errorId={stopErrorId} />}
           {/* TOPIC-2.2: disabled, saying why, for a Session with no session id yet. */}
           <AddToTopicButton member={rowMember(row)} label={row.title} />
-          <EndSession row={row} eligible={!ended && row.controllable && row.ownHost} onEnd={onEnd} fallbackFocus={title} />
-          {/* VIEW-5.10: last, so it keeps its place whether Stop, Esc or End Session show. A
-              Session without a session_id has `<harness>:<pid>` for its id: no button then. */}
+          {/* VIEW-5.10: a Session without a session_id has `<harness>:<pid>` for its id: no button then. */}
           {row.id !== processKey(row) && <CopySessionId sessionId={row.id} />}
+          {/* DS-18.5: the danger action last, after its divider. */}
+          <EndSession row={row} eligible={!ended && row.controllable && row.ownHost} onEnd={onEnd} fallbackFocus={title} />
         </div>
       </div>
     </PaneHeader>
@@ -580,15 +581,15 @@ function CopySessionId({ sessionId }: { sessionId: string }) {
     <>
       {/* Not an IconButton (DS-7): "Copied" shows beside its icon for 2 s, which a fixed square can't hold. It's 28 px tall, as its neighbours. */}
       <Button
-        variant="outline"
-        size="xs"
-        className={cn('h-7 shrink-0 gap-1.5 px-2 text-meta', state === 'failed' && 'text-destructive hover:text-destructive')}
+        variant="quiet"
+        size="default"
+        className={cn('shrink-0', state === 'failed' && 'text-destructive hover:text-destructive')}
         aria-label="Copy session ID"
         title={`Copy session ID: ${sessionId}`}
         data-copy={state}
         onClick={() => void copy()}
       >
-        {state === 'copied' ? <Check className="size-3.5" aria-hidden /> : <Copy className="size-3.5" aria-hidden />}
+        {state === 'copied' ? <Check aria-hidden /> : <ActionIcon id="copy" />}
         {said && (
           <span aria-hidden className="@max-[26rem]:sr-only">
             {said}
@@ -627,9 +628,9 @@ function EscKey({ label, pressingLabel, hint, icon, pressing, error, errorId, on
   const tip = pressing ? pressingLabel : (hint ?? label);
   return (
     <Button
-      variant="outline"
-      size="xs"
-      className={cn('h-7 shrink-0 gap-1.5 px-2 text-meta', error && '@max-[20rem]:text-destructive')}
+      variant="secondary"
+      size="default"
+      className={cn('shrink-0', error && '@max-[20rem]:text-destructive')}
       title={error ? `${tip}\n${error}` : tip}
       aria-describedby={error ? errorId : undefined}
       disabled={pressing}
@@ -729,12 +730,13 @@ function EndSession({
   };
   return (
     <>
+      {eligible && <ButtonDivider />}
       {eligible && (
         <Button
+          variant="danger"
+          size="default"
+          className="shrink-0"
           ref={trigger}
-          variant="outline"
-          size="xs"
-          className="h-7 shrink-0 gap-1.5 px-2 text-meta"
           title="End Session"
           onClick={() => {
             setError(null);
@@ -742,7 +744,7 @@ function EndSession({
             setTarget({ pid: row.pid, procStart: row.procStart });
           }}
         >
-          <Power className="size-3.5" />
+          <ActionIcon id="end-session" />
           <span className="@max-[26rem]:sr-only">End Session</span>
         </Button>
       )}
@@ -766,10 +768,11 @@ function EndSession({
             <Alert title={unconfirmed ? 'Lookout can’t confirm it’s the same Session, so it won’t end it. Close it in the terminal.' : error} />
           )}
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={close} disabled={ending}>
+            <Button variant="secondary" size="form" onClick={close} disabled={ending}>
               Cancel
             </Button>
-            <Button variant="destructive" size="sm" onClick={() => void confirm()} disabled={ending || unconfirmed}>
+            <Button variant="destructive" size="form" onClick={() => void confirm()} disabled={ending || unconfirmed}>
+              <ActionIcon id="end-session" />
               {ending ? 'Ending…' : 'End Session'}
             </Button>
           </DialogFooter>
@@ -939,9 +942,9 @@ function StatusLine({
           </span>
           {onCompact && (
             <Button
-              variant="outline"
-              size="xs"
-              className="h-5 shrink-0 px-1.5 text-caption"
+              variant="secondary"
+              size="line"
+              className="shrink-0"
               title="Compact the conversation (/compact)"
               onClick={onCompact}
               data-field="compact"
@@ -1442,7 +1445,7 @@ function ComposerFrame({ error, field, send, hint, hintTitle, className, loading
             field?.value ? 'field-sizing-content' : 'field-sizing-fixed truncate placeholder:truncate',
           )}
         />
-        <Button type="submit" size="sm" className="h-7 shrink-0 gap-1.5" {...send} />
+        <Button variant="primary" size="default" className="shrink-0" type="submit" {...send} />
       </div>
       <p className="mt-1.5 h-4 truncate text-caption leading-4 text-muted-foreground" title={hintTitle}>
         {hint}

@@ -29,7 +29,7 @@ export class ViewErrorBoundary extends Component<{ resetKey: string; children: R
     if (!error) return this.props.children;
     return (
       <Alert title="This view couldn't be drawn" detail={error.message} className="m-5" data-field="view-error">
-        <Button variant="outline" size="sm" className="mt-2" onClick={() => this.setState({ error: null })}>
+        <Button variant="secondary" size="default" className="mt-2" onClick={() => this.setState({ error: null })}>
           Try again
         </Button>
       </Alert>

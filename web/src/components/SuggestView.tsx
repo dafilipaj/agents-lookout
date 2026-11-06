@@ -1,6 +1,6 @@
 import { MAX_SUGGEST_NOTE, MAX_TOPIC_TITLE, type Proposal, type ProposalAccept, type SuggestPreview, type TopicsView, formatCost, modelName } from '@shared/topics.ts';
 import type { SessionRow } from '@shared/types.ts';
-import { ArrowRight, Check, RefreshCw, Sparkles, X } from 'lucide-react';
+import { ArrowRight, Check, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,7 @@ import { CommandBlock } from '@/components/ui/command-block';
 import { Input } from '@/components/ui/input';
 import { Loading } from '@/components/ui/loading';
 import { formatAge } from '@/lib/time';
+import { ActionIcon } from '@/lib/actions';
 import { MemberMark } from './Recommendations';
 import { PlainView } from './Shell';
 
@@ -72,14 +73,14 @@ export function SuggestView({ view, sessions, now, ...props }: SuggestViewProps)
           {running ? (
             <>
               <Loading label="Suggesting…" />
-              <Button variant="outline" size="sm" data-action="cancel-suggest" onClick={() => act(props.cancelSuggest(), "Couldn't cancel it.")}>
+              <Button variant="secondary" size="default" data-action="cancel-suggest" onClick={() => act(props.cancelSuggest(), "Couldn't cancel it.")}>
                 <X />
                 Cancel
               </Button>
             </>
           ) : (
-            <Button variant="outline" size="sm" data-action="suggest" disabled={view?.state !== 'ok'} onClick={() => act(props.suggest(), "Couldn't start suggesting.")}>
-              {state?.run ? <RefreshCw /> : <Sparkles />}
+            <Button variant="secondary" size="default" data-action="suggest" disabled={view?.state !== 'ok'} onClick={() => act(props.suggest(), "Couldn't start suggesting.")}>
+              <ActionIcon id="suggest" />
               {state?.run ? 'Suggest again' : 'Suggest'}
             </Button>
           )}
@@ -174,7 +175,8 @@ function ProposalCard({ proposal: p, topics, sessions, accept, dismiss }: { prop
       {problem && <Alert layout="inline" title={problem} />}
       <div className="flex flex-wrap items-center gap-2">
         <Button
-          size="sm"
+          variant="soft"
+          size="default"
           disabled={busy || gone}
           data-action="accept-proposal"
           onClick={() => run(accept({ ...(p.kind === 'new' ? { title, note } : {}), members: [...members], edges: [...edges] }), "Couldn't accept it.")}
@@ -182,7 +184,7 @@ function ProposalCard({ proposal: p, topics, sessions, accept, dismiss }: { prop
           <Check />
           Accept
         </Button>
-        <Button variant="outline" size="sm" disabled={busy} data-action="dismiss-proposal" onClick={() => run(dismiss(), "Couldn't dismiss it.")}>
+        <Button variant="secondary" size="default" disabled={busy} data-action="dismiss-proposal" onClick={() => run(dismiss(), "Couldn't dismiss it.")}>
           <X />
           Dismiss
         </Button>

@@ -1,5 +1,5 @@
 import type { ChatEntry, ChatPage, ChatQuestion, Harness } from '@shared/types.ts';
-import { ArrowDown, ChevronRight, CircleHelp, type LucideIcon, MessagesSquare, TerminalSquare, Undo2, Wrench } from 'lucide-react';
+import { ArrowDown, ChevronRight, CircleHelp, type LucideIcon, MessagesSquare, Undo2, Wrench } from 'lucide-react';
 import { type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, memo, useCallback, useContext, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { Alert } from '@/components/ui/alert';
@@ -16,6 +16,7 @@ import { JUMP_MARGIN_PX, chatMarks, firstLine, stepMark } from '@/lib/marks';
 import { HARNESS_NAME } from '@/lib/sessions';
 import type { Chat as ChatState } from '@/lib/store';
 import { cn } from '@/lib/utils';
+import { ActionIcon } from '@/lib/actions';
 import { AnswerInTerminal, ChoiceIcon, type OptionRowProps, PreviewOptions, QuestionForm, TerminalNote } from './Answering';
 import { ChatRail, MarkShape } from './ChatRail';
 import { LinkedText } from './FilePath';
@@ -477,7 +478,7 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
       <ol ref={list} className="mx-auto flex w-full max-w-3xl flex-col gap-3.5 px-6 pt-11 pb-5" aria-label="Messages">
         {before && !ended && (
           <li className="flex flex-col items-center gap-1">
-            <Button variant="ghost" size="sm" className="h-7 text-meta text-muted-foreground" disabled={loadingEarlier} onClick={() => void showEarlier()}>
+            <Button variant="quiet" size="default" disabled={loadingEarlier} onClick={() => void showEarlier()}>
               {loadingEarlier ? <Loading label="Loading…" /> : 'Show earlier'}
             </Button>
             {earlierError && <Alert layout="inline" title={earlierError} />}
@@ -563,13 +564,13 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
         )}
         {!following && chat?.loaded && items.length > 0 && (
           <Button
-            size="sm"
             variant="secondary"
+            size="default"
+            className="absolute right-5 bottom-3 rounded-full shadow-sm"
             onClick={jumpToLatest}
-            className="absolute right-5 bottom-3 h-7 gap-1.5 rounded-full border border-border text-meta shadow-sm"
           >
             {unseen > 0 ? `${unseen} new · Jump to latest` : 'Jump to latest'}
-            <ArrowDown className="size-3.5" />
+            <ArrowDown />
           </Button>
         )}
       </div>
@@ -810,7 +811,7 @@ function Held({ held }: { held: HeldMessage }) {
         <span className="sr-only" role="status">
           Sending in {Math.round(total / 1000)} seconds. Undo, or Backspace in the empty box, takes it back.
         </span>
-        <Button type="button" variant="ghost" size="xs" className="-mr-1.5 text-foreground/80" title="Undo, or Backspace in the empty box" onClick={held.onUndo}>
+        <Button variant="quiet" size="line" className="-mr-1.5" type="button" title="Undo, or Backspace in the empty box" onClick={held.onUndo}>
           <Undo2 />
           Undo
         </Button>
@@ -1075,8 +1076,8 @@ function Skeleton({ terminal }: { terminal: TerminalLink | null }) {
         action={
           terminal &&
           !terminal.open && (
-            <Button variant="outline" size="xs" className="h-6 gap-1" onClick={terminal.show}>
-              <TerminalSquare className="size-3.5" />
+            <Button variant="secondary" size="line" onClick={terminal.show}>
+              <ActionIcon id="show-terminal" />
               Show terminal
             </Button>
           )

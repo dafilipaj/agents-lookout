@@ -25,10 +25,16 @@ export const iconButtonVariants = cva('shrink-0 rounded-md text-muted-foreground
  * 20 px goes to a lucide icon and to an icon that is the target's own child (a Harness logo); a
  * Session marker inside keeps its own size.
  */
-export const labelledButtonVariants = cva("h-7 shrink-0 gap-1.5 rounded-md px-2 text-body text-foreground [&_svg:not([class*='size-'])]:size-5 [&>svg]:size-5");
+export const labelledButtonVariants = cva("h-7 shrink-0 gap-1.5 rounded-md px-2 text-body [&_svg:not([class*='size-'])]:size-5 [&>svg]:size-5");
 
-/** The whole look of a labelled button: outline, so it reads as one beside the row's words. */
-export const labelledButtonLook = () => cn(buttonVariants({ variant: 'outline', size: null }), labelledButtonVariants());
+/** A Button's role (DS-18.1), which a labelled button takes too. */
+export type ButtonRole = 'primary' | 'soft' | 'secondary' | 'quiet' | 'danger';
+
+/**
+ * The whole look of a labelled button, in its role (DS-18.1): `secondary` by default, `soft` for a
+ * row's first action and `quiet` for its More (DS-18.4).
+ */
+export const labelledButtonLook = (role: ButtonRole = 'secondary') => cn(buttonVariants({ variant: role, size: null }), labelledButtonVariants());
 
 export interface RowActionProps extends Omit<ComponentPropsWithoutRef<'span'>, 'onClick' | 'title' | 'children'> {
   /** Its word, which is also its accessible name unless `aria-label` says more (a Linked Session chip's Status). */
@@ -41,6 +47,8 @@ export interface RowActionProps extends Omit<ComponentPropsWithoutRef<'span'>, '
   tip: string;
   /** False while it can't act (a resume under way): it says so and does nothing. */
   enabled?: boolean;
+  /** Its look, a Button role (DS-18.1): `secondary` for a Session chip, `soft` for a row's first action. */
+  look?: ButtonRole;
   onPress(): void;
 }
 
@@ -80,7 +88,7 @@ export function useRowSettle() {
  * click (`detail` over 1) and any press while its row settles (RowSettling), saying it's disabled
  * meanwhile without looking it, so a double click on a row never resumes or opens anything.
  */
-export function RowAction({ label, icon, trailing, tip, enabled = true, onPress, className, ...rest }: RowActionProps) {
+export function RowAction({ label, icon, trailing, tip, enabled = true, look = 'secondary', onPress, className, ...rest }: RowActionProps) {
   const settling = useContext(RowSettling);
   return (
     <span
@@ -92,7 +100,7 @@ export function RowAction({ label, icon, trailing, tip, enabled = true, onPress,
         e.stopPropagation();
         if (enabled && !settling && e.detail <= 1) onPress();
       }}
-      className={cn(labelledButtonLook(), enabled ? 'cursor-pointer' : 'cursor-default opacity-50', className)}
+      className={cn(labelledButtonLook(look), enabled ? 'cursor-pointer' : 'cursor-default opacity-50', className)}
       {...rest}
     >
       {icon}
@@ -110,16 +118,17 @@ export interface IconButtonProps extends Omit<ComponentProps<'button'>, 'aria-la
   /** A tooltip that says more than the name (why it's disabled, the whole ID it copies). */
   tip?: string;
   size?: 'sm' | 'md';
-  variant?: 'ghost' | 'outline';
+  /** Its role (DS-18.1): `quiet` by default, `secondary` where it sits among outlined controls. */
+  variant?: 'quiet' | 'secondary';
 }
 
 /**
- * DS-7.1: a button that is only an icon. Ghost by default, `accent` under the pointer, with the
+ * DS-7.1: a button that is only an icon. Quiet by default (DS-18.1), `accent` under the pointer, with the
  * Button's focus ring. Its name is a required prop and its tooltip says the same, with the key when
  * there is one. Its `className` never sets a size (the guard, DS-7.2): that's `size`. The icon inside
  * takes the size's own, so it carries no size class either.
  */
-export function IconButton({ label, shortcut, tip, size = 'sm', variant = 'ghost', className, type = 'button', ...props }: IconButtonProps) {
+export function IconButton({ label, shortcut, tip, size = 'sm', variant = 'quiet', className, type = 'button', ...props }: IconButtonProps) {
   return (
     <button
       type={type}

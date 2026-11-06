@@ -300,10 +300,10 @@ export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, h
             <span className="mr-auto text-meta text-muted-foreground">
               <Kbd>Esc</Kbd> to close · {keepsInput ? 'your input is kept' : 'your input is discarded'}
             </span>
-            <Button type="button" variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
+            <Button variant="secondary" size="form" type="button" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" size="sm" disabled={!canStart}>
+            <Button variant="primary" size="form" type="submit" disabled={!canStart}>
               {submitting ? 'Starting…' : 'Start'}
               <Kbd className="border-current/30 opacity-70">⌘↵</Kbd>
             </Button>

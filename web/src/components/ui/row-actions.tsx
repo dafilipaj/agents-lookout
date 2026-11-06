@@ -1,8 +1,8 @@
-import { Ellipsis } from 'lucide-react';
 import { type ReactNode, useContext, useEffect, useRef, useState } from 'react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { RowAction, RowSettling, labelledButtonLook, type RowActionProps } from '@/components/ui/icon-button';
 import { Kbd } from '@/components/ui/kbd';
+import { ActionIcon, type ActionId, actionWord } from '@/lib/actions';
 import { cn } from '@/lib/utils';
 
 /** DS-16.2: the menu's groups, in their order; a divider goes before `manage`. */
@@ -13,8 +13,9 @@ const GROUPS: readonly RowMenuGroup[] = ['run', 'open', 'topic', 'manage'];
 export interface RowMenuItem {
   /** Its `data-action`. */
   id: string;
-  label: string;
-  icon: ReactNode;
+  /** DS-18.6: the action it runs, which gives its icon (and its word, unless `label` says more). */
+  action: ActionId;
+  label?: string;
   group: RowMenuGroup;
   /** Its panel's key, shown at the right (no new keys: only one the panel already has). */
   shortcut?: string;
@@ -27,8 +28,12 @@ export interface RowMenuItem {
   submenu?: { content: ReactNode; label: string; open?: boolean; onOpenChange?(open: boolean): void };
 }
 
-/** DS-16.1: the row's first action, the one Enter runs, as a labelled button. */
-export type RowPrimary = Omit<RowActionProps, 'trailing'> & { 'data-action'?: string };
+/**
+ * DS-16.1: the row's first action, the one Enter runs, as a labelled button in the `soft` role
+ * (DS-18.4). DS-18.6: it names its action, which gives its icon and its word unless `label` says more
+ * ("Open Session").
+ */
+export type RowPrimary = Omit<RowActionProps, 'trailing' | 'icon' | 'label' | 'look'> & { action: ActionId; label?: ReactNode; 'data-action'?: string };
 
 export interface RowActionsProps {
   primary: RowPrimary | null;
@@ -76,6 +81,9 @@ export function RowActions({ primary, more, name, open, onOpenChange, focusable 
       {primary && (
         <RowAction
           {...primary}
+          look="soft"
+          label={primary.label ?? actionWord(primary.action)}
+          icon={<ActionIcon id={primary.action} />}
           {...(focusable && { tabIndex: 0, onKeyDown: (e) => press(e, () => primary.enabled !== false && primary.onPress()) })}
           trailing={<Kbd aria-hidden className="ml-0.5 text-muted-foreground">↵</Kbd>}
           className={cn('min-w-0 shrink', primary.className)}
@@ -100,10 +108,10 @@ export function RowActions({ primary, more, name, open, onOpenChange, focusable 
                 e.stopPropagation();
                 if (!settling && e.detail <= 1) setOpen(!isOpen);
               }}
-              className={cn(labelledButtonLook(), 'cursor-pointer')}
+              className={cn(labelledButtonLook('quiet'), 'cursor-pointer')}
             >
-              <Ellipsis />
-              <span>More</span>
+              <ActionIcon id="more" />
+              <span>{actionWord('more')}</span>
             </span>
           </DropdownMenuTrigger>
           <DropdownMenuContent
@@ -152,8 +160,8 @@ function Item({ item, divider, onRun }: { item: RowMenuItem; divider: boolean; o
   }, [subOpen]);
   const body = (
     <>
-      {item.icon}
-      <span className="min-w-0 truncate">{item.label}</span>
+      <ActionIcon id={item.action} />
+      <span className="min-w-0 truncate">{item.label ?? actionWord(item.action)}</span>
       {item.shortcut && <Kbd className="ml-auto text-muted-foreground">{item.shortcut}</Kbd>}
     </>
   );
