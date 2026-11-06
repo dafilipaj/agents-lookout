@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { check, collect, main, parseCodes, parseSpec, titlesFromPlaywright, titlesFromVitest } from './req-check.mjs';
+import { check, collect, main, parseCodes, parseGuide, parseSpec, titlesFromPlaywright, titlesFromVitest } from './req-check.mjs';
 
 const root = fileURLToPath(new URL('./fixtures/req-check', import.meta.url));
 const strays = fileURLToPath(new URL('./fixtures/req-check-strays', import.meta.url));
@@ -264,6 +264,41 @@ describe('req-check', () => {
     const report = run({ units: [...baseUnits, unit(['UTF-8', 'decodes']), unit('NOPE-1.1: not a code'), unit(['DEMO-2', 'DEMO-2.1: inside a requirement'])] });
     expect(report.violations.filter((v) => v.rule === 'TEST-3.4')).toEqual([]);
     expect(row(report, 'DEMO-2.1').tests).toHaveLength(2);
+  });
+
+  it('TEST-3.8: reads the ids the design guide names, in code too, and passes when each exists', () => {
+    const collected = collect(root, { vitest: () => baseUnits });
+    expect(collected.guide.file).toBe('docs/design/GUIDE.md');
+    expect(collected.guide.ids.map((i) => i.id)).toEqual(['DEMO-1.1', 'DEMO-2', 'DEMO-2.1', 'DEMO-2.2', 'OTHER-1.1']);
+    expect(collected.guide.ids[0].line).toBe(3);
+    expect(check(collected).violations.filter((v) => v.rule === 'TEST-3.8')).toEqual([]);
+  });
+
+  it('TEST-3.8: fails when the guide names an id no spec has, or one that is struck through', () => {
+    const collected = collect(root, { vitest: () => baseUnits });
+    const ids = parseGuide('Rows: DEMO-1.1.\nGone: DEMO-7.1, and DEMO-1.9 and DEMO-3 are struck, DEMO-3 twice.\r\nLATER-1 has no spec; DEMO-4.1–4.7 ends past the last.', collected.codes);
+    const report = check({ ...collected, guide: { file: 'docs/design/GUIDE.md', ids } });
+    const guide = report.violations.filter((v) => v.rule === 'TEST-3.8');
+    expect(guide.map((v) => v.message)).toEqual([
+      'docs/design/GUIDE.md:2 names DEMO-7.1, which no spec has',
+      'docs/design/GUIDE.md:2 names DEMO-1.9, which is struck through',
+      'docs/design/GUIDE.md:2 names DEMO-3, which is struck through',
+      'docs/design/GUIDE.md:3 names LATER-1, which no spec has',
+      'docs/design/GUIDE.md:3 names DEMO-4.7, which no spec has',
+    ]);
+    expect(guide.map((v) => v.code)).toEqual(['DEMO', 'DEMO', 'DEMO', 'LATER', 'DEMO']);
+    expect(report.ok).toBe(false);
+  });
+
+  it('TEST-3.8: a guide violation fails the run with its line, also narrowed and as JSON; a missing guide is a note', () => {
+    const out = [];
+    const listings = { vitest: () => baseUnits, playwright: () => behaviour('DEMO-1.3: holds', 'DEMO-1.4: holds'), guide: () => 'A row: DEMO-1.1.\nGone: DEMO-7.1.' };
+    expect(main(['--feature', 'DEMO'], { root, listings: { ...listings, vitest: () => [...baseUnits, unit('DEMO-1.2: now tested')] }, out: (s) => out.push(s) })).toBe(1);
+    expect(out.join('\n')).toMatch(/✗ docs\/design\/GUIDE\.md:2 names DEMO-7\.1, which no spec has \(TEST-3\.8\)/);
+    out.length = 0;
+    expect(main(['--json', '--feature', 'OTHER'], { root, listings, out: (s) => out.push(s) })).toBe(1);
+    expect(JSON.parse(out.join('')).violations.map((v) => v.rule)).toEqual(['TEST-3.2']);
+    expect(check({ ...collect(root, { vitest: () => baseUnits }), guide: null }).notes).toContain('No docs/design/GUIDE.md, so no design guide ids were read.');
   });
 
   it('TEST-3.5: a tested (manual) criterion and an open criterion with tests are listed as information', () => {

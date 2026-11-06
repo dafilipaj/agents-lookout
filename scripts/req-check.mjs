@@ -1,6 +1,7 @@
 // `pnpm req-check`: keeps the specs' acceptance criteria and the tests naming them in step (TEST-3).
 // Criteria come from docs/features/*/SPEC.md, codes from docs/features/README.md, and test titles
 // only from the runners' own listings: Vitest's (scripts/vitest-titles.mjs) and `playwright test --list`.
+// The ids the design guide names (docs/design/GUIDE.md) are checked against the specs too (TEST-3.8).
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { basename, join, relative } from 'node:path';
@@ -13,6 +14,7 @@ import { parse as parseYaml } from 'yaml';
 const PLAYWRIGHT_CONFIGS = ['e2e/playwright.config.ts', 'e2e/playwright.config.mjs', 'e2e/playwright.config.js', 'playwright.config.ts', 'playwright.config.mjs', 'playwright.config.js'];
 const VITEST_TITLES = fileURLToPath(new URL('./vitest-titles.mjs', import.meta.url));
 const SEE = 'See docs/features/behaviour-tests/SPEC.md (TEST-3).';
+const GUIDE = 'docs/design/GUIDE.md';
 
 /** The feature codes from the table in docs/features/README.md. Only these count as ids. */
 export function parseCodes(readme) {
@@ -147,8 +149,29 @@ export function idsIn(path, codes) {
   return { named: [...named], mentioned: [...mentioned] };
 }
 
-/** Applies the rules of TEST-3.2 to TEST-3.5. */
-export function check({ codes, specs, tests, behaviourRead = true }) {
+/**
+ * The requirement and criterion ids a design guide names, with the line of each (TEST-3.8). Every
+ * mention counts, in code or not: the guide points at the specs, so an id it names must exist. The
+ * end of a range counts too ("DS-6.5 to 6.9", "DS-6.5–6.9" name DS-6.9). An id twice on a line is one.
+ */
+export function parseGuide(text, codes) {
+  if (!codes.length) return [];
+  const any = new RegExp(`\\b((?:${codes.join('|')})-)(\\d+(?:\\.\\d+)?)(?![\\d.]*\\d)(?:\\s*(?:to|–)\\s*(\\d+\\.\\d+)(?![\\d.]*\\d))?`, 'g');
+  const ids = [];
+  text.replace(/\r\n?/g, '\n').split('\n').forEach((line, i) => {
+    const seen = new Set();
+    for (const m of line.matchAll(any)) {
+      for (const id of [m[1] + m[2], m[3] && m[1] + m[3]]) {
+        if (id && !seen.has(id)) ids.push({ id, line: i + 1 });
+        if (id) seen.add(id);
+      }
+    }
+  });
+  return ids;
+}
+
+/** Applies the rules of TEST-3.2 to TEST-3.5, and TEST-3.8 to the design guide's ids. */
+export function check({ codes, specs, tests, behaviourRead = true, guide = null }) {
   const known = new Map();
   for (const spec of specs) {
     for (const r of spec.requirements) known.set(r.id, { kind: 'requirement', struck: r.struck });
@@ -172,6 +195,10 @@ export function check({ codes, specs, tests, behaviourRead = true }) {
       if (!mentioning.has(id)) mentioning.set(id, []);
       mentioning.get(id).push(t);
     }
+  }
+  for (const { id, line } of guide?.ids ?? []) {
+    const k = known.get(id);
+    if (!k || k.struck) violations.push({ rule: 'TEST-3.8', id, code: id.split('-')[0], file: guide.file, message: `${guide.file}:${line} names ${id}, ${k ? 'which is struck through' : 'which no spec has'}` });
   }
   for (const spec of specs) {
     for (const s of spec.strays) violations.push({ rule: 'TEST-3.1', id: s.id, code: spec.code, message: `${spec.file}:${s.line}: ${s.id} ${s.reason}, so it isn't read as a criterion` });
@@ -206,6 +233,7 @@ export function check({ codes, specs, tests, behaviourRead = true }) {
     }),
   }));
   const notes = behaviourRead ? [] : ['No Playwright config, so no Behaviour tests were read.'];
+  if (!guide) notes.push(`No ${GUIDE}, so no design guide ids were read.`);
   return { ok: violations.length === 0, features, violations, info, notes };
 }
 
@@ -285,7 +313,10 @@ export function collect(root, listings = {}) {
   if (playwright?.errors?.length) throw new Error(`\`playwright test --list\` reported errors:\n${playwright.errors.map((e) => e.message).join('\n')}`);
 
   const tests = [...titlesFromVitest(vitest, root), ...(playwright ? titlesFromPlaywright(playwright) : [])];
-  return { codes, specs, tests, behaviourRead: Boolean(playwright) };
+  const guidePath = join(root, GUIDE);
+  const guideText = listings.guide ? listings.guide() : existsSync(guidePath) ? readFileSync(guidePath, 'utf8') : null;
+  const guide = guideText === null ? null : { file: GUIDE, ids: parseGuide(guideText, codes) };
+  return { codes, specs, tests, behaviourRead: Boolean(playwright), guide };
 }
 
 /** The CLI. Returns the exit code: 0 when there's no violation, 1 otherwise. */
