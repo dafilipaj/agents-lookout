@@ -4,7 +4,6 @@ import { Check, ChevronDown, CircleCheck, CircleSlash, FolderGit2, GitBranch, Ho
 import { type ComponentPropsWithRef, type ComponentPropsWithoutRef, type KeyboardEvent, type PointerEvent, type ReactNode, type RefObject, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Button, ButtonDivider } from '@/components/ui/button';
-import { Kbd } from '@/components/ui/kbd';
 import { Loading } from '@/components/ui/loading';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '@/components/ui/dialog';
 import { turnRunning } from '@/lib/activity';
@@ -44,6 +43,7 @@ import { PromptCard } from './Answering';
 import { Chat, type ChatSeen, type HeldMessage } from './Chat';
 import { ChatActivity } from './ChatActivity';
 import { HarnessIcon } from './HarnessIcon';
+import { KeysHint } from './KeysHint';
 import { useSessionTitle } from './SessionTitle';
 import { PaneHeader, ShellCell, ShellView } from './Shell';
 import { StatusMarker } from './StatusMarker';
@@ -1184,6 +1184,7 @@ function Drawer({ sessionId, open, onToggle, preview }: { sessionId: string; ope
         <div
           role="separator"
           aria-orientation="horizontal"
+          data-preview-handle=""
           aria-label="Terminal preview height"
           aria-valuenow={height}
           aria-valuemin={min}
@@ -1415,12 +1416,7 @@ function Composer({ sessionId, title, drafts, sending, error, onEdit, onSend, in
           </>
         ),
       }}
-      hint={
-        <>
-          Enter sends · Shift+Enter for a new line · <Kbd>i</Kbd> to type here · Esc to leave
-        </>
-      }
-      hintTitle="Enter sends · Shift+Enter for a new line · i to type here · Esc to leave"
+      hint={<KeysHint />}
     />
   );
 }
@@ -1434,9 +1430,8 @@ interface ComposerFrameProps extends Omit<ComponentPropsWithoutRef<'form'>, 'chi
   field?: ComponentPropsWithRef<'textarea'>;
   /** The Send button, its label included. */
   send?: ComponentPropsWithoutRef<typeof Button>;
-  /** The one-line hint under the box, its full text in `hintTitle`. */
+  /** The one-line hint under the box (VIEW-3.12), its full text in its own tooltip. */
   hint?: ReactNode;
-  hintTitle?: string;
 }
 
 /**
@@ -1445,7 +1440,7 @@ interface ComposerFrameProps extends Omit<ComponentPropsWithoutRef<'form'>, 'chi
  * An empty field is one line high whatever its placeholder: it sizes to its content only once it
  * holds text, and the placeholder stays on one line, cut short with an ellipsis.
  */
-export function ComposerFrame({ error, field, send, hint, hintTitle, className, loading, dragging, ...form }: ComposerFrameProps) {
+export function ComposerFrame({ error, field, send, hint, className, loading, dragging, ...form }: ComposerFrameProps) {
   return (
     <form className={cn('flex-1 px-4 py-3', className)} {...form}>
       {error && <Alert layout="inline" title={error} className="mb-2" />}
@@ -1454,6 +1449,7 @@ export function ComposerFrame({ error, field, send, hint, hintTitle, className, 
         {dragging && <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center gap-1.5 rounded-lg bg-primary-soft text-meta text-primary"><Paperclip className="size-3.5" />Drop to attach</div>}
         <textarea
           rows={1}
+          data-composer=""
           {...field}
           className={cn(
             'max-h-[min(12rem,20dvh)] min-h-6 flex-1 resize-none bg-transparent text-prose leading-6 outline-none placeholder:text-muted-foreground',
@@ -1462,7 +1458,7 @@ export function ComposerFrame({ error, field, send, hint, hintTitle, className, 
         />
         <Button variant="primary" size="default" className="shrink-0" type="submit" {...send} />
       </div>
-      <p className="mt-1.5 h-4 truncate text-caption leading-4 text-muted-foreground" title={hintTitle}>
+      <p className="mt-1.5 h-4 truncate text-caption leading-4 text-muted-foreground">
         {hint}
       </p>
     </form>

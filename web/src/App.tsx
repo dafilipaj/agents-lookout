@@ -11,7 +11,8 @@ import { MainPane } from '@/components/MainPane';
 import { PastSessionView } from '@/components/PastSessionView';
 import { RightRail, RightSidebar } from '@/components/RightSidebar';
 import { SettingsPage } from '@/components/SettingsPage';
-import { SHELL_COLUMN, SHELL_GRID } from '@/components/Shell';
+import { KeysProvider } from '@/components/KeysProvider';
+import { KeysEdge, SHELL_COLUMN, SHELL_GRID } from '@/components/Shell';
 import { Sidebar } from '@/components/Sidebar';
 import { StartingView } from '@/components/StartingView';
 import { WorkPanel } from '@/components/WorkPanel';
@@ -433,7 +434,7 @@ export function App({ client }: { client: LookoutClient }) {
   // HIST-1, WORK-1: the right sidebar; open or not, its width, its tab and Work's filter, kept in
   // this browser (HIST-1.3, WORK-1.2, WORK-1.5).
   const [layout, setLayout] = useState<RightLayout>(loadLayout);
-  /** Bumped to move focus into the panel just opened or switched to (HIST-1.1). */
+  /** Bumped to move focus into the panel just opened or switched to (HIST-1.1), only by your key or click; at 0, never asked, a panel takes none (SIDE-11.1). */
   const [rightFocus, setRightFocus] = useState<Record<RightTab, number>>({ history: 0, work: 0, library: 0, topics: 0, servers: 0 });
   const updateLayout = useCallback((patch: Partial<RightLayout>) => {
     setLayout((l) => {
@@ -1041,6 +1042,8 @@ export function App({ client }: { client: LookoutClient }) {
     // DS-6.1: Loading ticks on this one-second clock rather than a timer of its own.
     <ClockContext.Provider value={now}>
       <TopicsContext.Provider value={topicsApi}>
+      {/* SIDE-11.3: where the keys are, for the columns' edges and the composer's hint line. */}
+      <KeysProvider>
       {/* SIDE-8.1: one grid, rows header / content / dock, shared by every column (see Shell). */}
       <div className={SHELL_GRID} data-shell="">
         <Sidebar
@@ -1071,7 +1074,7 @@ export function App({ client }: { client: LookoutClient }) {
           topicTitles={topicTitles}
         />
         {/* tabIndex -1: focus lands here after the selected start is dismissed (LAUNCH UX). */}
-        <main className={cn(SHELL_COLUMN, 'outline-none')} data-shell-column="main" tabIndex={-1}>
+        <main className={cn(SHELL_COLUMN, 'relative outline-none')} data-shell-column="main" tabIndex={-1}>
           {/* DS-4.5: a view that throws shows an error here, not a blank app; a new route starts clean. */}
           <ViewErrorBoundary resetKey={JSON.stringify(route)}>
             {route.name === 'settings' ? (
@@ -1250,6 +1253,7 @@ export function App({ client }: { client: LookoutClient }) {
               />
             )}
           </ViewErrorBoundary>
+          <KeysEdge column="main" />
         </main>
         {layout.open ? (
           <RightSidebar
@@ -1349,6 +1353,7 @@ export function App({ client }: { client: LookoutClient }) {
         <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} returnFocus={shortcutsOpener} />
         <TopicPicker target={pickTarget} onClose={() => setPickTarget(null)} returnFocus={pickOpener} topics={state.topics?.topics ?? []} createTopic={(title) => client.createTopic(title)} addMember={(id, m) => client.addMember(id, m)} />
       </div>
+      </KeysProvider>
       </TopicsContext.Provider>
     </ClockContext.Provider>
   );

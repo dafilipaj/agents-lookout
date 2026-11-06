@@ -20,7 +20,7 @@ import { MemoryLine } from './MemoryLine';
 import { LaunchItem } from './LaunchItem';
 import { SessionItem } from './SessionItem';
 import { DockRest } from './SessionView';
-import { SHELL_COLUMN, ShellCell } from './Shell';
+import { KeysEdge, SHELL_COLUMN, ShellCell } from './Shell';
 import { UsageStrip } from './UsageStrip';
 
 export interface SidebarProps {
@@ -299,7 +299,7 @@ export function Sidebar(props: SidebarProps) {
   return (
     <aside
       aria-label="Session sidebar"
-      className={cn(SHELL_COLUMN, 'w-[280px] border-r border-sidebar-border bg-sidebar text-sidebar-foreground')}
+      className={cn(SHELL_COLUMN, 'relative w-[280px] border-r border-sidebar-border bg-sidebar text-sidebar-foreground')}
       data-shell-column="left"
       onPointerEnter={() => {
         setFrozenOrder(orderedIds);
@@ -386,6 +386,7 @@ export function Sidebar(props: SidebarProps) {
           <MemoryLine memory={props.memory ?? null} res={props.res ?? null} sessions={sessions} now={now} open={dockPopover === 'memory'} onOpenChange={(open) => changePopover('memory', open)} onSelect={selectId} />
         </div>
       </ShellCell>
+      <KeysEdge column="left" />
     </aside>
   );
 }

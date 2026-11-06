@@ -1,4 +1,5 @@
 import type { ComponentPropsWithoutRef, HTMLAttributes, ReactNode, Ref } from 'react';
+import { type KeysColumn, useKeys } from '@/lib/keys';
 import { cn } from '@/lib/utils';
 
 /**
@@ -16,6 +17,18 @@ export const SHELL_GRID = 'grid h-dvh overflow-hidden grid-cols-[auto_minmax(0,1
 
 /** A column of the shell: a subgrid over all three rows. */
 export const SHELL_COLUMN = 'row-span-full grid grid-rows-subgrid min-h-0 min-w-0';
+
+/**
+ * SIDE-11.3: a 3 px line in `ring` along the top of the column that has the keys, over its header.
+ * Placed absolutely in the column (each column is `relative`), so it takes no room and nothing moves
+ * when it does: as a grid item it would take a cell, and the column's auto-placed cells would move
+ * out of its way. No transition, so it follows focus at once. None while a dialog is open.
+ */
+export function KeysEdge({ column }: { column: KeysColumn }) {
+  const keys = useKeys();
+  if (keys?.column !== column) return null;
+  return <span aria-hidden data-keys-edge={column} className="pointer-events-none absolute inset-x-0 top-0 z-20 h-[3px] bg-ring" />;
+}
 
 type Row = 'header' | 'body' | 'dock';
 

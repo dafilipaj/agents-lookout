@@ -17,7 +17,18 @@ export interface Mark {
   ts: string | null;
   /** PLAIN-8.5: the spec or section a change is in, said after its kind. */
   where?: string;
+  /** VIEW-1.21: a question's state, said after its kind; only a waiting one is Needs you's amber. */
+  question?: QuestionState;
 }
+
+/** VIEW-1.21: waiting for your answer (`pending`), answered, or not (declined, or abandoned as the conversation moved on). */
+export type QuestionState = 'waiting' | 'answered' | 'not-answered';
+
+export const QUESTION_STATE_WORDS: Record<QuestionState, string> = {
+  waiting: 'waiting for your answer',
+  answered: 'answered',
+  'not-answered': 'not answered',
+};
 
 export const MARK_KIND_LABEL: Record<MarkKind, string> = {
   prompt: 'Your prompt',
@@ -36,7 +47,7 @@ export function chatMarks(entries: readonly ChatEntry[]): Mark[] {
   for (const e of entries) {
     if (e.kind === 'user' && !e.queued) out.push({ cursor: e.cursor, kind: 'prompt', text: firstLine(e.text), ts: e.ts });
     else if (e.kind === 'system') out.push({ cursor: e.cursor, kind: 'subagent', text: firstLine(e.text), ts: e.ts });
-    else if (e.kind === 'question') out.push({ cursor: e.cursor, kind: 'question', text: firstLine(e.questions[0]?.question ?? ''), ts: e.ts });
+    else if (e.kind === 'question') out.push({ cursor: e.cursor, kind: 'question', text: firstLine(e.questions[0]?.question ?? ''), ts: e.ts, question: e.status === 'pending' ? 'waiting' : e.status === 'answered' ? 'answered' : 'not-answered' });
   }
   return out;
 }
@@ -51,10 +62,15 @@ export function firstLine(text: string): string {
   return line.length > MAX_LINE ? `${line.slice(0, MAX_LINE - 1)}…` : line;
 }
 
+/** What a Mark is, a question's state after it (VIEW-1.21): "Question (answered)". */
+export function markKind(m: Mark): string {
+  return `${MARK_KIND_LABEL[m.kind]}${m.question ? ` (${QUESTION_STATE_WORDS[m.question]})` : ''}`;
+}
+
 /** The Mark's accessible name: what it is, when, and its first line. */
 export function markName(m: Mark): string {
   const time = clockTime(m.ts);
-  return `${MARK_KIND_LABEL[m.kind]}${m.where ? ` in ${m.where}` : ''}${time ? ` at ${time}` : ''}: ${m.text}`;
+  return `${markKind(m)}${m.where ? ` in ${m.where}` : ''}${time ? ` at ${time}` : ''}: ${m.text}`;
 }
 
 /** Where a Mark sits on the rail, as a fraction of the chat's full scroll height (0 at the top). */

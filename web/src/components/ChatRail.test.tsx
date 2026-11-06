@@ -79,6 +79,44 @@ afterEach(() => {
   delete (window as { matchMedia?: unknown }).matchMedia;
 });
 
+describe('VIEW-1.21 Marks in your colour', () => {
+  it("VIEW-1.21: your prompts' Marks are `primary`; a question's is Needs you's amber only while it waits for your answer, grey once answered, declined or abandoned, and its name and tooltip say which", async () => {
+    const user = userEvent.setup();
+    const { reset } = open();
+    const asked = (text: string, status: 'answered' | 'declined' | 'abandoned' | 'pending', answer: unknown = null) => ({ ...question(text), status, answer }) as ChatEntry;
+    reset([
+      you('Fix the rounding'),
+      result('Agent "Build" finished'),
+      asked('First?', 'answered', { answers: ['Yes'], picked: [[0]] }),
+      asked('Second?', 'declined', { declined: true }),
+      asked('Third?', 'abandoned'),
+      asked('Fourth?', 'pending'),
+    ]);
+    const buttons = await marks();
+    const shape = (b: HTMLElement) => b.querySelector('span')!.classList;
+    // Each keeps its shape: the dot, the diamond, the triangles.
+    expect(buttons.map((b) => b.dataset.markKind)).toEqual(['prompt', 'subagent', 'question', 'question', 'question', 'question']);
+    expect(shape(buttons[0]!)).toContain('rounded-full');
+    expect(shape(buttons[0]!)).toContain('bg-primary');
+    expect(shape(buttons[1]!)).toContain('bg-muted-foreground');
+    expect(buttons.slice(2).map((b) => [b.dataset.markQuestion, shape(b).contains('bg-needs-you'), shape(b).contains('bg-muted-foreground')])).toEqual([
+      ['answered', false, true],
+      ['not-answered', false, true],
+      ['not-answered', false, true],
+      ['waiting', true, false],
+    ]);
+    expect(buttons[2]).toHaveAccessibleName(/^Question \(answered\) at .*: First\?$/);
+    expect(buttons[3]).toHaveAccessibleName(/^Question \(not answered\) at .*: Second\?$/);
+    expect(buttons[4]).toHaveAccessibleName(/^Question \(not answered\) at .*: Third\?$/);
+    expect(buttons[5]).toHaveAccessibleName(/^Question \(waiting for your answer\) at .*: Fourth\?$/);
+    expect(buttons[0]).toHaveAccessibleName(/^Your prompt at .*: Fix the rounding$/);
+    await user.hover(buttons[2]!);
+    expect(screen.getByRole('tooltip', { hidden: true })).toHaveTextContent(/^First\?Question · answered · /);
+    await user.hover(buttons[5]!);
+    expect(screen.getByRole('tooltip', { hidden: true })).toHaveTextContent(/^Fourth\?Question · waiting for your answer · /);
+  });
+});
+
 describe('VIEW-1.11 Marks', () => {
   it('VIEW-1.11: ↑/↓ step between the Marks and Home/End go to the first and last, from a focused Mark', async () => {
     const { reset } = open();
@@ -104,7 +142,7 @@ describe('VIEW-1.11 Marks', () => {
     const time = clockTime('2026-10-16T10:00:00Z');
     expect(buttons[0]).toHaveAccessibleName(`Your prompt at ${time}: Fix the rounding`);
     expect(buttons[1]).toHaveAccessibleName(/^Subagent result at .*: Agent "Build" finished$/);
-    expect(buttons[2]).toHaveAccessibleName(/^Question at .*: Recalculate drafts\?$/);
+    expect(buttons[2]).toHaveAccessibleName(/^Question \(waiting for your answer\) at .*: Recalculate drafts\?$/);
     // One tab stop; the arrow keys move between Marks.
     expect(buttons.map((b) => b.tabIndex)).toEqual([0, -1, -1]);
     act(() => buttons[0]!.focus());

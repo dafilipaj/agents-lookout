@@ -252,7 +252,7 @@ const FAMILIES: Record<string, Family> = {
       'web/src/components/Sidebar.tsx': { why: 'the Needs you section header and count (DS-12.6)', uses: ['text-needs-you-text'] },
       'web/src/components/SessionItem.tsx': { why: 'a Needs you row\'s "waiting for" line', uses: ['text-needs-you-text'] },
       'web/src/components/ChatActivity.tsx': { why: 'the Needs you row in the chat', uses: ['bg-needs-you', 'text-needs-you-text'] },
-      'web/src/components/ChatRail.tsx': { why: "a question's Mark on the chat rail", uses: ['bg-needs-you'] },
+      'web/src/components/ChatRail.tsx': { why: "a question's Mark on the chat rail, only while it waits for your answer (DS-3.8)", uses: ['bg-needs-you'] },
       'web/src/components/Chat.tsx': { why: 'a pending question card', uses: ['bg-needs-you-soft', 'border-needs-you/60', 'text-needs-you-text'] },
       'web/src/components/Answering.tsx': { why: 'the question and permission cards, and their TerminalNote', uses: ['bg-needs-you-soft', 'border-needs-you/60', 'text-needs-you-text'] },
     },
@@ -366,7 +366,8 @@ const FAMILIES: Record<string, Family> = {
       'web/src/components/Chat.tsx': { why: 'your own message bubble, the dashed edge of one waiting to go (VIEW-3.9), and keyboard focus (DS-12.4)', uses: ['bg-primary-soft', 'border-primary/45', 'ring-ring'] },
       'web/src/index.css': { why: 'the base outline colour, as before DS-12', uses: ['outline-ring/50'] },
       'web/src/lib/links.tsx': { why: 'keyboard focus on a link', uses: ['outline-ring'] },
-      'web/src/components/ChatRail.tsx': { why: 'keyboard focus on a Mark', uses: ['ring-ring'] },
+      'web/src/components/ChatRail.tsx': { why: "your prompts' Marks, in your messages' colour (VIEW-1.21, DS-12.8), and keyboard focus on a Mark", uses: ['bg-primary', 'ring-ring'] },
+      'web/src/components/Shell.tsx': { why: 'the edge of the column that has the keys (SIDE-11.3, DS-12.8)', uses: ['bg-ring'] },
       'web/src/components/HistoryPanel.tsx': { why: 'keyboard focus and a focused filter', uses: ['border-ring', 'ring-ring/30'] },
       'web/src/components/Launcher.tsx': { why: 'keyboard focus and focused fields', uses: ['border-ring', 'ring-ring/30'] },
       'web/src/components/LibraryPanel.tsx': { why: 'keyboard focus on the filter and list', uses: ['ring-ring/30'] },
@@ -672,13 +673,26 @@ describe('colour by meaning', () => {
     expect(FAMILIES.primary!.tokens).toEqual(['primary', 'primary-foreground', 'primary-soft', 'primary-text', 'ring']);
     const primary = FAMILIES.primary!;
     const coloured = Object.entries(primary.files).filter(([, { uses }]) => uses.some((c) => /primary/.test(c))).map(([path]) => path).sort();
-    expect(coloured).toEqual(['web/src/components/Answering.tsx', 'web/src/components/Chat.tsx', 'web/src/components/SessionView.tsx', 'web/src/components/TopicGraph.tsx', 'web/src/components/ui/button.tsx']);
+    expect(coloured).toEqual(['web/src/components/Answering.tsx', 'web/src/components/Chat.tsx', 'web/src/components/ChatRail.tsx', 'web/src/components/SessionView.tsx', 'web/src/components/TopicGraph.tsx', 'web/src/components/ui/button.tsx']);
     expect(classesOf('primary', 'web/src/components/ui/button.tsx')).not.toContain('text-primary');
     expect(familyUses('primary', `'bg-primary-soft border-primary text-primary text-primary-foreground ring-ring bg-ring outline-ring'`)).toHaveLength(7);
     expect(familyUses('primary', `'bg-primary-soft'`, 'web/src/components/SessionItem.tsx')).toHaveLength(1);
     expect(primary.files['web/src/components/SessionItem.tsx']).toBeUndefined();
     expect(pinDrift({ primary }, { ...SOURCES, 'web/src/components/Chat.tsx': `${SOURCES['web/src/components/Chat.tsx']}\n'bg-primary';` })).toEqual([expect.stringContaining('primary: web/src/components/Chat.tsx:')]);
     expect(pinDrift({ primary }, SOURCES)).toEqual([]);
+  });
+
+  it("DS-12.8: Primary marks where your keys are, the column edge in `ring` (Shell.tsx's one class), and your prompts' Marks in `primary` (ChatRail.tsx, on a prompt's shape only)", () => {
+    const primary = FAMILIES.primary!;
+    expect(primary.files['web/src/components/Shell.tsx']!.uses).toEqual(['bg-ring']);
+    expect(primary.files['web/src/components/ChatRail.tsx']!.uses).toEqual(['bg-primary', 'ring-ring']);
+    // The edge's file has that one class, once.
+    expect(familyUses('primary', SOURCES['web/src/components/Shell.tsx']!, 'web/src/components/Shell.tsx')).toHaveLength(1);
+    // The rail's one `bg-primary` is in the prompt's shape, the condition in front of it `kind === 'prompt'`.
+    const rail = SOURCES['web/src/components/ChatRail.tsx']!;
+    const uses = familyUses('primary', rail, 'web/src/components/ChatRail.tsx').filter((u) => u.endsWith(' bg-primary'));
+    expect(uses).toHaveLength(1);
+    expect(rail).toMatch(/kind === 'prompt' && '[^']*\bbg-primary\b[^']*'/);
   });
 
   it('DS-12.2: both side columns and the closed rail paint sidebar, while main-pane views inherit background', () => {
@@ -722,6 +736,34 @@ describe('colour by meaning', () => {
     const link = SOURCES['web/src/lib/links.tsx']!.match(/export const LINK_CLASS = '([^']+)'/)![1]!.split(' ');
     expect(link).toEqual(expect.arrayContaining(['underline', 'underline-offset-2', 'focus-visible:outline-2', 'focus-visible:outline-ring']));
     expect(link.filter((c) => /^(?:hover:)?(?:no-underline|text-)/.test(c))).toEqual([]); // the surrounding colour, and no hover that drops the underline
+  });
+
+  it("DS-3.8: on the chat rail, Needs you's amber is a waiting question's Mark only; an answered, declined or abandoned one is grey", () => {
+    const path = 'web/src/components/ChatRail.tsx';
+    const file = parse(SOURCES[path]!, path);
+    const found: string[] = [];
+    const visit = (node: ts.Node): void => {
+      if (ts.isStringLiteralLike(node) && /\bbg-needs-you\b/.test(node.text)) {
+        // `kind === 'question' && (waiting ? 'bg-needs-you' : 'bg-muted-foreground')`
+        const choice = node.parent;
+        const guarded =
+          ts.isConditionalExpression(choice) &&
+          choice.whenTrue === node &&
+          choice.condition.getText(file) === 'waiting' &&
+          ts.isStringLiteralLike(choice.whenFalse) &&
+          choice.whenFalse.text === 'bg-muted-foreground' &&
+          ts.isParenthesizedExpression(choice.parent) &&
+          ts.isBinaryExpression(choice.parent.parent) &&
+          choice.parent.parent.left.getText(file) === "kind === 'question'";
+        found.push(`${where(file, node.getStart(file))} ${guarded ? 'waiting' : 'unguarded'}`);
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(file);
+    expect(found.map((f) => f.split(' ').pop())).toEqual(['waiting']);
+    // `waiting` is the Mark's own state: its question is pending (lib/marks.ts).
+    expect(SOURCES[path]).toContain("waiting={m.question === 'waiting'}");
+    expect(SOURCES['web/src/lib/marks.ts']).toContain("question: e.status === 'pending' ? 'waiting'");
   });
 
   it('DS-3.6: Needs you\'s colours stay off staleness, search hits and the usage bar', () => {

@@ -6,7 +6,7 @@ import { IconButton } from '@/components/ui/icon-button';
 import { type PanelNav, RIGHT_TABS, type RightTab, TAB_KEY, TAB_LABEL, clampWidth } from '@/lib/right-sidebar';
 import { cn } from '@/lib/utils';
 import { refreshState } from '@/lib/work';
-import { SHELL_COLUMN, ShellCell } from './Shell';
+import { KeysEdge, SHELL_COLUMN, ShellCell } from './Shell';
 
 const TAB_ICON: Record<RightTab, ComponentType<{ className?: string }>> = { history: HistoryIcon, work: BriefcaseBusiness, library: BookOpen, topics: Layers, servers: Server };
 
@@ -206,6 +206,7 @@ export function RightSidebar({ width, onResize, tab, onTab, onClose, refresh, on
           </div>
         ))}
       </ShellCell>
+      <KeysEdge column="right" />
     </aside>
   );
 }
@@ -223,7 +224,7 @@ export function RightRail({ onOpen, counts, servers }: { onOpen(tab: RightTab): 
     );
   };
   return (
-    <div className={cn(SHELL_COLUMN, 'w-10 border-l border-sidebar-border bg-sidebar')} data-shell-column="right">
+    <div className={cn(SHELL_COLUMN, 'relative w-10 border-l border-sidebar-border bg-sidebar')} data-shell-column="right">
       <ShellCell row="header" className="justify-center border-sidebar-border">
         {button('history')}
       </ShellCell>
@@ -233,6 +234,7 @@ export function RightRail({ onOpen, counts, servers }: { onOpen(tab: RightTab): 
         {button('topics')}
         {button('servers')}
       </ShellCell>
+      <KeysEdge column="right" />
     </div>
   );
 }

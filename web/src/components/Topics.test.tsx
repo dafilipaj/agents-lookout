@@ -1623,6 +1623,8 @@ describe('the Topic view in tabs (TOPIC-10.7, TOPIC-10.8)', () => {
     expect(tabs().map((t) => t.getAttribute('aria-label'))).toEqual(['Overview', 'Members 1, new activity', 'Activity 60 new']);
     expect(within(topicView()).getByRole('region', { name: 'Since you last looked' })).toHaveTextContent('+50 more');
     cleanup();
+    // A fresh app: the first one's open Topics tab, kept in this browser, would have T close it.
+    window.localStorage.clear();
     // New activity about a member no longer in the Topic: Activity counts it, Members carries no dot.
     openApp([topic(52, { title: 'Proposals', members: [member(TASK_MEMBER)], seenUpto: 0, newCount: 1, lastEntryId: 1 })], work(), { activity: { [id(52)]: [entry(1)] } });
     const again = await openTopics();

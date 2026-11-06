@@ -142,6 +142,22 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('the Work tab (WORK-1)', () => {
+  it('SIDE-11.1: Work open on load takes no focus, nor when its lists update; a click on its tab does', async () => {
+    window.localStorage.setItem('lookout.right', JSON.stringify({ open: true, width: 420, tab: 'work' }));
+    const app = openApp('/', withTasks({ tasks: [BELLS] }, { mine: [DRAFT], reviewRequests: [] }));
+    await waitFor(() => expect(shownRows()).toEqual(['41000102', 'anvil#2101']));
+    await act(async () => {});
+    expect(document.activeElement).toBe(document.body);
+    // A new read lands: a row goes, the lists update, focus stays where it was.
+    app.emit({ type: 'work', work: withTasks({ tasks: [BELLS] }, { mine: [], reviewRequests: [] }) });
+    await waitFor(() => expect(shownRows()).toEqual(['41000102']));
+    expect(document.activeElement).toBe(document.body);
+    const user = userEvent.setup();
+    await user.click(tab('History'));
+    await user.click(tab('Work'));
+    expect(workPanel().contains(document.activeElement)).toBe(true);
+  });
+
   it('WORK-1.1: W opens the right sidebar on Work and closes it on Work; H does the same for History; both stand down in a text field', async () => {
     const user = userEvent.setup();
     openApp();

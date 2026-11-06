@@ -110,8 +110,10 @@ export function HistoryPanel({ focusKey, sessions, now, search, peek, onOpen, na
     searchRef.current = search;
   });
 
-  // HIST-1.1: opening it focuses the search box.
-  useEffect(() => inputRef.current?.focus(), [focusKey]);
+  // HIST-1.1: opening it focuses the search box; SIDE-11.1: only when you open it (`focusKey` above 0), never as it mounts.
+  useEffect(() => {
+    if (focusKey) inputRef.current?.focus();
+  }, [focusKey]);
 
   // HIST-2.1/2.2: the first page, again on every change of query or toggle.
   const q = query.trim();

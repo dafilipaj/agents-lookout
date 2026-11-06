@@ -14,7 +14,7 @@ Tokens live in `web/src/index.css`, components in `web/src/components/ui/`, deci
 2. **Primary is you and your next step.** Indigo marks what you act on and what you wrote, and a surface has at most one Primary button. A selection, a link, a Chip or a Status is never Primary. (DS-12.4, DS-18.4)
 3. **One name per thing, the same on every surface.** A Session has one name in the Session sidebar, its header, History and Work; a concept has its Glossary term. (Glossary, SIDE-10)
 4. **Routine values are quiet; exceptions get colour and words.** A number in its usual range is in the row's quiet colour. Past a threshold it takes its level's colour and an icon or words, never colour alone. (DS-3.2, DS-3.5; coming: DS-22)
-5. **Where your keys go is always visible.** Nothing takes focus by itself, and the column that has the keys shows it. (DS-9; coming: SIDE-11)
+5. **Where your keys go is always visible.** Nothing takes focus by itself, and the column that has the keys shows it. (DS-9, SIDE-11)
 6. **Copy the nearest sibling, or extend the system first.** A new surface takes its anatomy from the closest one that exists: Memory's popover for a details popover, a Work row for a row. A piece the system lacks goes into `components/ui/` and this guide in the same change. (0009, 0015)
 7. **One action, one icon.** An action shows the same icon on its button, in a menu and in the shortcuts list. Opening something inside Lookout and leaving Lookout have different icons. (0008, DS-18.6)
 8. **Labels next to icons**, unless the icon is universal (close, search, more). A tooltip doesn't replace a label. The right sidebar's icon tabs are the one exception today.
@@ -117,7 +117,7 @@ Context usage, a usage limit, memory and CPU load, a PR's age.
 
 - **Use** the one shortcuts list, `SHORTCUTS` in `lib/shortcuts.ts`: every shortcut is an entry there with its group, keys and label, and the Keyboard shortcuts dialog and the empty views list it from there (SIDE-7.4). A key is a `Kbd`, and a sentence is never a key (DS-8.4).
 - A button with a key says it in its tooltip (DS-7.1); a menu item shows it at its right (DS-16.2).
-- **Coming (SIDE-11, VIEW-3.12):** nothing takes focus by itself, a search box or a list included; the column that has the keys shows a `ring` edge along its top; the hint line under the composer names who has the keys, from the shortcuts list.
+- **Where the keys are:** nothing takes focus by itself, a search box or a list included; a panel takes it only for a request (`focusKey` above 0, from your key or click). The column that has the keys shows `KeysEdge` (`Shell.tsx`), a `ring` line along its top, and the hint line under the composer (`KeysHint`) names who has the keys and their keys, from `hint()` in the shortcuts list (SIDE-11, VIEW-3.12).
 - **Don't:** handle a key that isn't in the list; give a field focus on load.
 - **Guard:** SIDE-7.4 (every entry pressed by a test), DS-8.4 (`<kbd>` only in `kbd.tsx`).
 

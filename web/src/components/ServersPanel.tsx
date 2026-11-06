@@ -42,8 +42,9 @@ export function ServersPanel({ ports, sessions, now, showAll, onShowAll, focusKe
   const active = rows.find((s) => s.pid === selected) ?? rows[0] ?? null;
   const list = useRef<HTMLDivElement>(null);
 
+  // SIDE-11.1: opening Servers focuses its list, only when you open it (`focusKey` above 0), never as it mounts.
   useEffect(() => {
-    list.current?.focus();
+    if (focusKey) list.current?.focus();
   }, [focusKey]);
 
   // PORTS-2.2: the chip of a Session with several servers opens this tab at its group, its first

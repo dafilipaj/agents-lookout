@@ -369,7 +369,9 @@ describe('one grid (SIDE-8.1)', () => {
   it('SIDE-8.1: the resting docks fit the resting height: a one-line composer hint, a banner’s one-line title and two-line detail', async () => {
     const app = renderApp('/s/a');
     app.snapshot([row({ id: 'a' }), row({ id: 'b', controllable: false })]);
-    const hint = screen.getByText(/Enter sends/);
+    // VIEW-3.12: the hint line names who has the keys, the Session list's with nothing focused.
+    const hint = document.querySelector('[data-field="keys-hint"]')!.closest('p')!;
+    expect(hint).toHaveTextContent(/^Sessions · /);
     expect(hint.classList).toContain('h-4');
     expect(hint.classList).toContain('truncate');
 

@@ -121,7 +121,8 @@ export function LibraryPanel({ focusKey, visible, sessions, now, search, status,
     pending.current = null;
     if (next?.gen === seq.current) setResults(next);
   }, [expanded, hovered]);
-  useEffect(() => { if (visible) input.current?.focus(); }, [focusKey, visible]);
+  // SIDE-11.1: only when you open it (`focusKey` above 0), never as it mounts.
+  useEffect(() => { if (visible && focusKey) input.current?.focus(); }, [focusKey, visible]);
 
   const refresh = useRef<(readId?: string) => void>(() => { });
   const refreshNow = (readId?: string) => {

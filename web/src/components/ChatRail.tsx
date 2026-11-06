@@ -2,7 +2,7 @@ import { ChevronUp } from 'lucide-react';
 import { type KeyboardEvent, type RefObject, memo, useRef, useState } from 'react';
 import { IconButton } from '@/components/ui/icon-button';
 import { clockTime } from '@/lib/chat';
-import { type Mark, type MarkKind, MARK_KIND_LABEL, markName } from '@/lib/marks';
+import { type Mark, type MarkKind, MARK_KIND_LABEL, QUESTION_STATE_WORDS, markName } from '@/lib/marks';
 import { useMarkFractions } from '@/lib/rail';
 import { cn } from '@/lib/utils';
 
@@ -105,6 +105,7 @@ export const ChatRail = memo(function ChatRail({
             <button
               type="button"
               data-mark-kind={m.kind}
+              data-mark-question={m.question}
               aria-label={markName(m)}
               tabIndex={m.cursor === tabStop ? 0 : -1}
               onClick={() => {
@@ -121,7 +122,7 @@ export const ChatRail = memo(function ChatRail({
               onBlur={() => setFocused((s) => (s === m.cursor ? null : s))}
               className="group flex h-3 w-full items-center justify-center rounded-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
             >
-              <MarkShape kind={m.kind} />
+              <MarkShape kind={m.kind} waiting={m.question === 'waiting'} />
             </button>
           </div>
         ))}
@@ -137,6 +138,7 @@ export const ChatRail = memo(function ChatRail({
           <span className="block truncate">{tip.text || MARK_KIND_LABEL[tip.kind]}</span>
           <span className="block text-caption text-muted-foreground">
             {MARK_KIND_LABEL[tip.kind]}
+            {tip.question && ` · ${QUESTION_STATE_WORDS[tip.question]}`}
             {tip.where && ` · ${tip.where}`}
             {clockTime(tip.ts) && ` · ${clockTime(tip.ts)}`}
           </span>
@@ -146,16 +148,21 @@ export const ChatRail = memo(function ChatRail({
   );
 });
 
-/** A dot for your prompts, a diamond for subagent results, a triangle for questions; a bar for a Module's change (PLAIN-8.5). */
-export function MarkShape({ kind, className }: { kind: MarkKind; className?: string }) {
+/**
+ * A dot for your prompts, a diamond for subagent results, a triangle for questions; a bar for a
+ * Module's change (PLAIN-8.5). VIEW-1.21: your prompts in `primary`, your messages' colour; a
+ * question in Needs you's amber only while it waits for your answer (DS-3.8), else grey.
+ */
+export function MarkShape({ kind, waiting = false, className }: { kind: MarkKind; waiting?: boolean; className?: string }) {
   return (
     <span
       aria-hidden
       className={cn(
         'block group-hover:scale-125 group-focus-visible:scale-125 motion-safe:transition-transform',
-        kind === 'prompt' && 'size-2 rounded-full bg-muted-foreground',
+        kind === 'prompt' && 'size-2 rounded-full bg-primary',
         kind === 'subagent' && 'size-[7px] rotate-45 rounded-[1px] bg-muted-foreground',
-        kind === 'question' && 'h-2 w-[9px] bg-needs-you [clip-path:polygon(50%_0,100%_100%,0_100%)]',
+        kind === 'question' && 'h-2 w-[9px] [clip-path:polygon(50%_0,100%_100%,0_100%)]',
+        kind === 'question' && (waiting ? 'bg-needs-you' : 'bg-muted-foreground'),
         (kind === 'added' || kind === 'removed' || kind === 'changed') && 'h-[3px] w-2.5 rounded-full',
         kind === 'added' && 'bg-diff-added-text',
         kind === 'removed' && 'bg-diff-removed-text',

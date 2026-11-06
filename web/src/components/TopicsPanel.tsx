@@ -104,8 +104,10 @@ export function TopicsPanel(props: TopicsPanelProps) {
     if (t && (archived || t.state === 'open') && !matchesTopic(t, query, sessions)) setQuery('');
   }
 
-  // Opening Topics focuses the selected Topic, else the filter.
+  // Opening Topics focuses the selected Topic, else the filter; SIDE-11.1: only when you open it
+  // (`focusKey` above 0), never as it mounts.
   useEffect(() => {
+    if (!focusKey) return;
     const el = current ? document.getElementById(headerId(current)) : null;
     (el ?? filterRef.current)?.focus();
     // Only when Topics is opened, not when the selection moves.

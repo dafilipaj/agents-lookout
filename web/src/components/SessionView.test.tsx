@@ -765,7 +765,7 @@ describe('composer', () => {
       expect(held()!.closest('.opacity-60')).toBeNull();
       expect(within(held()!).getByRole('button', { name: 'Undo' })).toBeInTheDocument();
       expect(within(held()!).getByRole('status')).toHaveTextContent('Sending in 3 seconds. Undo, or Backspace in the empty box, takes it back.');
-      expect(box.closest('form')!).toHaveTextContent('Enter sends');
+      expect(box.closest('form')!).toHaveTextContent('Composer · Enter send');
       act(() => vi.advanceTimersByTime(1100));
       expect(held()).toHaveTextContent('Sending in 2 s');
       act(() => vi.advanceTimersByTime(2000));

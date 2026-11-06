@@ -6,6 +6,7 @@
  */
 
 import type { ActionId } from '@/lib/actions';
+import { type RightTab, TAB_LABEL } from '@/lib/right-sidebar';
 
 export type ShortcutGroupId = 'sessions' | 'session' | 'panels' | 'composer' | 'app';
 
@@ -21,6 +22,7 @@ export const SHORTCUT_GROUPS: readonly { id: ShortcutGroupId; title: string }[] 
 export interface Press {
   key: string;
   meta?: boolean;
+  shift?: boolean;
 }
 
 export interface Shortcut {
@@ -228,8 +230,15 @@ export const SHORTCUTS: readonly Shortcut[] = [
     group: 'composer',
     keys: ['Enter'],
     label: 'Send the message',
-    note: 'Shift+Enter starts a new line.',
     press: [{ key: 'Enter' }],
+    global: true,
+  },
+  {
+    id: 'new-line',
+    group: 'composer',
+    keys: ['⇧', 'Enter'],
+    label: 'Start a new line',
+    press: [{ key: 'Enter', shift: true }],
     global: true,
   },
   {
@@ -280,3 +289,60 @@ export const shortcutsIn = (group: ShortcutGroupId): Shortcut[] => SHORTCUTS.fil
 
 /** The entries an empty view lists, in list order. */
 export const emptyViewShortcuts = (view: 'select' | 'none'): Shortcut[] => SHORTCUTS.filter((s) => s.empty?.views.includes(view));
+
+/**
+ * VIEW-3.12: where the keys are, as the composer's hint line names it (SIDE-11.3): the Session list
+ * (or nothing focused), the composer, the rest of the Session (its chat rail and the preview's
+ * handle apart), a panel's search box, list or other field, and the closed right sidebar's rail.
+ */
+export type HintAt = 'sessions' | 'composer' | 'session' | 'rail' | 'preview' | 'search' | 'list' | 'field' | 'panels';
+
+/** One key of the hint line: an entry of the list (`id`), all its keys or the ones named, and its word or two. Without an entry, words saying what typing does. */
+export interface HintKey {
+  id?: string;
+  keys?: string[];
+  label: string;
+}
+
+const WRITE: HintKey = { id: 'composer-focus', label: 'write' };
+const MOVE: HintKey = { id: 'panel-move', label: 'move' };
+const EXPAND: HintKey = { id: 'panel-enter', label: 'expand' };
+const OPEN: HintKey = { id: 'panel-open', label: 'open' };
+const ADD: HintKey = { id: 'panel-add', label: 'add to Topic' };
+
+/** A panel's list: the keys its rows take, up to four (UX, Hint line). */
+const PANEL_KEYS: Record<RightTab, HintKey[]> = {
+  history: [MOVE, EXPAND, ADD],
+  work: [MOVE, EXPAND, OPEN, ADD],
+  library: [MOVE, EXPAND, OPEN, ADD],
+  topics: [MOVE, EXPAND, OPEN, { id: 'panel-graph', label: 'graph' }],
+  servers: [MOVE, { id: 'panel-enter', label: 'open' }],
+};
+
+/** VIEW-3.12: the hint line's region name and its keys, as the UX table "Hint line" lists them. */
+export function hint(at: HintAt, panel?: RightTab): { name: string; keys: HintKey[] } {
+  const tab = panel ? TAB_LABEL[panel] : '';
+  switch (at) {
+    case 'sessions':
+      return { name: 'Sessions', keys: [{ id: 'move', label: 'move' }, { id: 'needs-you', label: 'next that needs you' }, { id: 'filter', label: 'filter' }, WRITE] };
+    case 'composer':
+      return { name: 'Composer', keys: [{ id: 'send', label: 'send' }, { id: 'new-line', label: 'new line' }, { id: 'composer-leave', label: 'leave' }] };
+    case 'session':
+      return { name: 'This Session', keys: [WRITE] };
+    case 'rail':
+      return { name: 'This Session', keys: [WRITE, { id: 'rail-move', keys: ['↑', '↓'], label: 'move between Marks' }] };
+    case 'preview':
+      return { name: 'This Session', keys: [WRITE, { id: 'preview-resize', label: 'resize' }] };
+    case 'search':
+      return { name: `${tab} search`, keys: [{ label: 'type to search' }, { id: 'panel-move', keys: ['↓'], label: 'results' }, { id: 'panel-esc', label: `back to ${tab}` }] };
+    case 'list':
+      return { name: tab, keys: panel ? PANEL_KEYS[panel] : [] };
+    case 'field':
+      return { name: tab, keys: [] };
+    case 'panels':
+      return { name: 'Panels', keys: [{ id: 'panels', label: 'open' }] };
+  }
+}
+
+/** A hint key's keys: the ones it names, or its entry's. */
+export const hintKeys = (k: HintKey): string[] => k.keys ?? SHORTCUTS.find((s) => s.id === k.id)?.keys ?? [];

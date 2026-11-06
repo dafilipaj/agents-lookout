@@ -2,7 +2,8 @@ import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent, { type UserEvent } from '@testing-library/user-event';
 import { afterEach, describe, expect, it } from 'vitest';
 import { renderApp, row } from '@/test/helpers';
-import { SHORTCUTS, type Press, type Shortcut, emptyViewShortcuts, shortcutsIn, SHORTCUT_GROUPS } from './shortcuts';
+import { RIGHT_TABS } from './right-sidebar';
+import { type HintAt, SHORTCUTS, type Press, type Shortcut, emptyViewShortcuts, hint, hintKeys, shortcutsIn, SHORTCUT_GROUPS } from './shortcuts';
 
 afterEach(() => {
   try {
@@ -12,11 +13,11 @@ afterEach(() => {
   }
 });
 
-/** user-event's keyboard syntax for a press: a key with ⌘ held, or alone. */
+/** user-event's keyboard syntax for a press: a key with ⌘ or ⇧ held, or alone. */
 const typed = (p: Press) => {
   // `[` opens a descriptor in user-event: doubled it is a literal.
   const text = p.key === '[' ? '[[' : p.key.length === 1 ? p.key : `{${p.key}}`;
-  return p.meta ? `{Meta>}${text}{/Meta}` : text;
+  return p.meta ? `{Meta>}${text}{/Meta}` : p.shift ? `{Shift>}${text}{/Shift}` : text;
 };
 const pressKey = (user: UserEvent, p: Press) => user.keyboard(typed(p));
 
@@ -93,6 +94,14 @@ const PROBES: Record<string, (user: UserEvent, press: Press) => Promise<void>> =
     await user.type(message(), 'hello');
     await pressKey(user, press);
     await waitFor(() => expect(app.client.sendMessage).toHaveBeenCalledWith('a', 'hello'));
+  },
+  async 'new-line'(user, press) {
+    const app = fresh('/s/a');
+    await user.type(message(), 'one');
+    await pressKey(user, press);
+    await user.keyboard('two');
+    expect(message()).toHaveValue('one\ntwo');
+    expect(app.client.sendMessage).not.toHaveBeenCalled();
   },
   async 'composer-leave'(user, press) {
     fresh('/s/a');
@@ -194,7 +203,7 @@ describe('the shortcuts list', () => {
     for (const s of SHORTCUTS) {
       const pressed = new Set(s.press.map((p) => p.key));
       for (const shown of [...s.keys, ...(s.alt ?? [])]) {
-        if (shown === '⌘') continue; // the `meta` of a press
+        if (shown === '⌘' || shown === '⇧') continue; // the `meta` or `shift` of a press
         expect(pressed.has(pressedAs(shown)), `${s.id}: ${shown} is shown but never pressed`).toBe(true);
       }
     }
@@ -228,6 +237,55 @@ describe('the shortcuts list', () => {
     // VIEW-5.4: the Sessions list's own keys, N, and the panels; DS-6.4: only the keys that do something with no Session.
     expect(emptyViewShortcuts('select').map((s) => s.id)).toEqual(['move', 'jump', 'needs-you', 'filter', 'new', 'panels']);
     expect(emptyViewShortcuts('none').map((s) => s.id)).toEqual(['new', 'panels']);
+  });
+});
+
+describe('the hint line (VIEW-3.12)', () => {
+  const places: [HintAt, (typeof RIGHT_TABS)[number] | undefined][] = [
+    ['sessions', undefined],
+    ['composer', undefined],
+    ['session', undefined],
+    ['rail', undefined],
+    ['preview', undefined],
+    ['panels', undefined],
+    ...RIGHT_TABS.flatMap((t) => (['list', 'field'] as const).map((at) => [at, t] as [HintAt, typeof t])),
+    ...(['history', 'library', 'topics'] as const).map((t) => ['search', t] as [HintAt, typeof t]),
+  ];
+
+  it('VIEW-3.12: each place names who has the keys, then at most four keys, each an entry of the one shortcuts list with its own keys', () => {
+    for (const [at, panel] of places) {
+      const { name, keys } = hint(at, panel);
+      expect(name, at).not.toBe('');
+      expect(keys.length, `${at} ${panel}`).toBeLessThanOrEqual(4);
+      for (const k of keys) {
+        if (!k.id) {
+          expect(k.keys, `${at}: words without an entry show no keys`).toBeUndefined();
+          continue;
+        }
+        const entry = SHORTCUTS.find((s) => s.id === k.id);
+        expect(entry, `${at}: ${k.id} is not in the list`).toBeDefined();
+        const own = [...entry!.keys, ...(entry!.alt ?? [])];
+        for (const key of hintKeys(k)) expect(own, `${at}: ${k.id} shows ${key}`).toContain(key);
+      }
+    }
+  });
+
+  it('VIEW-3.12: the words are the UX table\'s, region by region', () => {
+    const line = (at: HintAt, panel?: (typeof RIGHT_TABS)[number]) => {
+      const { name, keys } = hint(at, panel);
+      return [name, ...keys.map((k) => [...hintKeys(k), k.label].join(' '))].join(' · ');
+    };
+    expect(line('sessions')).toBe('Sessions · ↑ ↓ move · ⌘ J next that needs you · / filter · i write');
+    expect(line('composer')).toBe('Composer · Enter send · ⇧ Enter new line · Esc leave');
+    expect(line('session')).toBe('This Session · i write');
+    expect(line('rail')).toBe('This Session · i write · ↑ ↓ move between Marks');
+    expect(line('preview')).toBe('This Session · i write · ↑ ↓ resize');
+    expect(line('search', 'history')).toBe('History search · type to search · ↓ results · Esc back to History');
+    expect(line('list', 'work')).toBe('Work · ↑ ↓ move · Enter expand · O open · A add to Topic');
+    // A panel's line leaves out the keys its rows don't take: History's rows open nothing with O, Servers' take neither A nor O.
+    expect(line('list', 'history')).toBe('History · ↑ ↓ move · Enter expand · A add to Topic');
+    expect(line('list', 'servers')).toBe('Servers · ↑ ↓ move · Enter open');
+    expect(line('panels')).toBe('Panels · H W L T P open');
   });
 });
 

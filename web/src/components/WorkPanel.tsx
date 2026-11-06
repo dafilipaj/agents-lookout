@@ -172,8 +172,10 @@ export function WorkPanel({ work, sessions, filter, onFilter, now, focusKey, onS
   // Which list holds the selected row: the only one in the Tab order (UX, Focus).
   const holding = rows.find((r) => r.key === current)?.kind ?? null;
 
-  // Opening Work focuses the list that holds the selected row, else the first list, else Work itself.
+  // Opening Work focuses the list that holds the selected row, else the first list, else Work itself;
+  // SIDE-11.1: only when you open it (`focusKey` above 0), never as it mounts or its lists update.
   useEffect(() => {
+    if (!focusKey) return;
     const root = rootRef.current;
     (selectedList(root) ?? root?.querySelector<HTMLElement>('[role="listbox"]') ?? root)?.focus();
   }, [focusKey]);
