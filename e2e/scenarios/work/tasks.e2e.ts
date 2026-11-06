@@ -567,7 +567,7 @@ scenario(
       if (pathname.startsWith('/api/work/')) asked.push(`${r.method()} ${pathname}`);
     };
     page.on('request', record);
-    const choice = (name: string) => work(page).getByRole('group', { name: 'Show' }).getByRole('button', { name, exact: true });
+    const choice = (name: string) => work(page).getByRole('radiogroup', { name: 'Show' }).getByRole('radio', { name, exact: true });
     await choice('PRs').click();
     await expect(work(page).getByRole('region', { name: 'Tasks' })).toHaveCount(0);
     // While Tasks is hidden, Productive gains two Tasks and Refresh reads both sources.

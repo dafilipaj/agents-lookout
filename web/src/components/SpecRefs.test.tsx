@@ -77,12 +77,15 @@ function open(over: Partial<PlainAnswer> = {}) {
 }
 const module = () => document.querySelector<HTMLElement>('[data-slot="spec-module"]')!;
 const first = () => module().querySelector<HTMLElement>('[data-spec-id="§1.1"]')!;
+/** PLAIN-10.2: the view opens on Changes, which folds the unchanged §1.1 these references sit in. */
+const whole = () => act(() => screen.getByRole('radio', { name: 'Whole' }).click());
 
 describe('references explained in place', () => {
   it('PLAIN-7.1, PLAIN-7.3: a § to this Module still scrolls there, and hovered or focused shows the spec, its change, its counts and Go to', async () => {
     const user = userEvent.setup();
     open();
     await screen.findByText('Rates.');
+    whole();
     const ref = within(first()).getByRole('link', { name: '§1.2' });
     expect(ref).toHaveAttribute('href', '#plain-s-1-2');
     await user.hover(ref);
@@ -107,6 +110,7 @@ describe('references explained in place', () => {
     const user = userEvent.setup();
     const { readPlain } = open();
     await screen.findByText('Rates.');
+    whole();
     const ref = within(first()).getByRole('link', { name: '§2.1' });
     expect(ref).toHaveAttribute('href', `${href('plain/sub/b.plain')}#plain-s-2-1`);
     expect(within(first()).getByRole('link', { name: '§2.2' })).toHaveAttribute('href', `${href('plain/sub/b.plain')}#plain-s-2-2`);
@@ -131,6 +135,7 @@ describe('references explained in place', () => {
     const user = userEvent.setup();
     open();
     await screen.findByText('Rates.');
+    whole();
     await user.hover(within(first()).getByRole('link', { name: '§2.2' }));
     const changed = await screen.findByRole('dialog', { name: '§2.2, in b' });
     expect(changed).toHaveTextContent('Changed in this branch');
@@ -145,6 +150,7 @@ describe('references explained in place', () => {
   it('PLAIN-7.4: a § in no Module stays text, saying so in its tooltip', async () => {
     open();
     await screen.findByText('Rates.');
+    whole();
     expect(within(first()).queryByRole('link', { name: '§9.9' })).toBeNull();
     expect(within(first()).getByText('§9.9')).toHaveAttribute('title', "No functional spec §9.9 in this repo's Modules");
   });
@@ -153,6 +159,7 @@ describe('references explained in place', () => {
     const user = userEvent.setup();
     open();
     await screen.findByText('Rates.');
+    whole();
     const key = within(first()).getByRole('button', { name: 'x.can_do' });
     expect(key).toHaveAttribute('data-term', 'ability');
     expect(key).toHaveClass('font-mono', 'bg-muted');
@@ -174,6 +181,7 @@ describe('references explained in place', () => {
     const user = userEvent.setup();
     open();
     await screen.findByText('Rates.');
+    whole();
     await user.hover(within(first()).getByRole('button', { name: 'x.can_do' }));
     const card = await screen.findByRole('dialog', { name: 'x.can_do, an ability' });
     expect(card).toHaveTextContent('Changed in this branch');
@@ -200,6 +208,7 @@ describe('references explained in place', () => {
     const user = userEvent.setup();
     open();
     await screen.findByText('Rates.');
+    whole();
     await user.hover(within(first()).getByRole('button', { name: 'x.can_raw' }));
     const card = await screen.findByRole('dialog', { name: 'x.can_raw, an ability' });
     expect(card.querySelector('[data-field="ref-changed"]')).toBeNull();
@@ -212,6 +221,7 @@ describe('references explained in place', () => {
     const user = userEvent.setup();
     const { app } = open();
     await screen.findByText('Rates.');
+    whole();
     await user.hover(within(first()).getByRole('button', { name: 'x.can_never' }));
     expect(await screen.findByRole('dialog', { name: 'x.can_never, an ability' })).toHaveTextContent("Not in this Checkout's abilities catalogue.");
     expect(within(first()).getByText('plain_code').tagName).toBe('CODE');
@@ -219,6 +229,7 @@ describe('references explained in place', () => {
 
     open({ catalogue: false, abilities: {} });
     await screen.findByText('Rates.');
+    whole();
     expect(within(first()).queryByRole('button', { name: 'x.can_do' })).toBeNull();
     expect(within(first()).getByText('x.can_do').tagName).toBe('CODE');
   });

@@ -81,6 +81,12 @@ const PROBES: Record<string, (user: UserEvent, press: Press) => Promise<void>> =
     tab('History').focus();
     await pressKey(user, press);
     expect(tab(press.key === 'ArrowRight' ? 'Work' : 'Servers')).toHaveAttribute('aria-selected', 'true');
+    // DS-20.2: a choice of views too, Work's Show.
+    await user.click(tab('Work'));
+    const show = within(screen.getByRole('radiogroup', { name: 'Show' }));
+    show.getByRole('radio', { checked: true }).focus();
+    await pressKey(user, press);
+    expect(show.getByRole('radio', { checked: true })).toHaveTextContent(press.key === 'ArrowRight' ? 'Tasks' : 'PRs');
   },
   async send(user, press) {
     const app = fresh('/s/a');

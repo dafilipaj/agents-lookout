@@ -320,9 +320,9 @@ scenario(
   async ({ page, world }) => {
     await openWork(page);
     await world.step('the PRs to show', () => expect(work(page).getByRole('option')).toHaveCount(3));
-    await work(page).getByRole('button', { name: 'PRs', exact: true }).click();
+    await work(page).getByRole('radio', { name: 'PRs', exact: true }).click();
     await expect(work(page).getByRole('option')).toHaveCount(3);
-    await work(page).getByRole('button', { name: 'All' }).click();
+    await work(page).getByRole('radio', { name: 'All' }).click();
     await expect(work(page).getByRole('option')).toHaveCount(3);
     expect(world.tbPr.calls()).toEqual([['list', '--json']]);
   },

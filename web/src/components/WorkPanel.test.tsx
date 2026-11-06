@@ -255,15 +255,15 @@ describe('the Work tab (WORK-1)', () => {
     const user = userEvent.setup();
     const app = openApp('/', withTasks());
     await user.keyboard('w');
-    const filter = within(workPanel()).getByRole('group', { name: 'Show' });
-    const choice = (name: string) => within(filter).getByRole('button', { name });
+    const filter = within(workPanel()).getByRole('radiogroup', { name: 'Show' });
+    const choice = (name: string) => within(filter).getByRole('radio', { name });
     const sections = () => within(workPanel()).queryAllByRole('region').map((r) => r.getAttribute('data-section'));
-    expect(within(filter).getAllByRole('button').map((b) => b.textContent)).toEqual(['All', 'Tasks', 'PRs']);
-    expect(choice('All')).toHaveAttribute('aria-pressed', 'true');
+    expect(within(filter).getAllByRole('radio').map((b) => b.textContent)).toEqual(['All', 'Tasks', 'PRs']);
+    expect(choice('All')).toHaveAttribute('aria-checked', 'true');
     expect(sections()).toEqual(['tasks', 'prs']);
     expect(shownRows()).toEqual(['41000101', '41000102', 'anvil#2101', 'willow#2102', 'kettle#2103', 'willow#2106']);
     await user.click(choice('Tasks'));
-    expect(choice('Tasks')).toHaveAttribute('aria-pressed', 'true');
+    expect(choice('Tasks')).toHaveAttribute('aria-checked', 'true');
     expect(sections()).toEqual(['tasks']);
     expect(shownRows()).toEqual(['41000101', '41000102']);
     await user.click(choice('PRs'));
@@ -273,13 +273,13 @@ describe('the Work tab (WORK-1)', () => {
     expect(shownRows()).toEqual(['anvil#2101', 'willow#2102', 'kettle#2103', 'willow#2106']);
     app.unmount();
     openApp('/', withTasks());
-    expect(within(workPanel()).getByRole('button', { name: 'PRs' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(workPanel()).getByRole('radio', { name: 'PRs' })).toHaveAttribute('aria-checked', 'true');
   });
 
   it('WORK-1.5: a remembered Tasks filter shows Tasks only', () => {
     window.localStorage.setItem('lookout.right', JSON.stringify({ open: true, width: 360, tab: 'work', workFilter: 'tasks' }));
     openApp('/', withTasks());
-    expect(within(workPanel()).getByRole('button', { name: 'Tasks' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(workPanel()).getByRole('radio', { name: 'Tasks' })).toHaveAttribute('aria-checked', 'true');
     expect(shownRows()).toEqual(['41000101', '41000102']);
     expect(within(workPanel()).queryByRole('region', { name: 'PRs' })).toBeNull();
   });
@@ -287,7 +287,7 @@ describe('the Work tab (WORK-1)', () => {
   it('WORK-1.5: an unknown remembered filter reads as All', () => {
     window.localStorage.setItem('lookout.right', JSON.stringify({ open: true, width: 360, tab: 'work', workFilter: 'reviews' }));
     openApp('/', withTasks());
-    expect(within(workPanel()).getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(workPanel()).getByRole('radio', { name: 'All' })).toHaveAttribute('aria-checked', 'true');
   });
 
   it('WORK-1.6 (support): switching the filter shows the hidden section’s latest data at once, without asking the server for a read', async () => {
@@ -297,11 +297,11 @@ describe('the Work tab (WORK-1)', () => {
     await waitFor(() => expect(app.client.watchWork).toHaveBeenCalledWith('tab-1', true));
     // The watch is said once, when Work opens: no switch says it again, or closes it and reopens it.
     const watches = vi.mocked(app.client.watchWork).mock.calls.length;
-    await user.click(within(workPanel()).getByRole('button', { name: 'PRs' }));
+    await user.click(within(workPanel()).getByRole('radio', { name: 'PRs' }));
     app.emit({ type: 'work', work: withTasks({ tasks: [BELLS] }, { mine: [DRAFT], reviewRequests: [] }) });
-    await user.click(within(workPanel()).getByRole('button', { name: 'Tasks' }));
+    await user.click(within(workPanel()).getByRole('radio', { name: 'Tasks' }));
     expect(shownRows()).toEqual(['41000102']);
-    await user.click(within(workPanel()).getByRole('button', { name: 'All' }));
+    await user.click(within(workPanel()).getByRole('radio', { name: 'All' }));
     expect(shownRows()).toEqual(['41000102', 'anvil#2101']);
     expect(app.client.refreshWork).not.toHaveBeenCalled();
     expect(vi.mocked(app.client.watchWork).mock.calls).toHaveLength(watches);
@@ -425,9 +425,9 @@ describe('the Work tab (WORK-1)', () => {
     expect(listbox()).toHaveFocus();
     // Focus put elsewhere stays there when the list comes back.
     app.emit({ type: 'work', work: empty });
-    within(workPanel()).getByRole('button', { name: 'All' }).focus();
+    within(workPanel()).getByRole('radio', { name: 'All' }).focus();
     app.emit({ type: 'work', work: snap() });
-    expect(within(workPanel()).getByRole('button', { name: 'All' })).toHaveFocus();
+    expect(within(workPanel()).getByRole('radio', { name: 'All' })).toHaveFocus();
   });
 
   it('WORK-1.9: the selection stays on its item across reads; once a read removes it, it moves to the first visible row, or to none', async () => {
@@ -444,8 +444,8 @@ describe('the Work tab (WORK-1)', () => {
     app.emit({ type: 'work', work: snap({ mine: [DRAFT, READY] }) });
     expect(selectedPr()).toBe('anvil#2101');
     // A filter change keeps it while it's visible.
-    await user.click(within(workPanel()).getByRole('button', { name: 'PRs' }));
-    await user.click(within(workPanel()).getByRole('button', { name: 'All' }));
+    await user.click(within(workPanel()).getByRole('radio', { name: 'PRs' }));
+    await user.click(within(workPanel()).getByRole('radio', { name: 'All' }));
     expect(selectedPr()).toBe('anvil#2101');
     // Work empty: none selected.
     app.emit({ type: 'work', work: snap({ mine: [], reviewRequests: [] }) });
@@ -510,7 +510,7 @@ describe('the Work tab (WORK-1)', () => {
     // Shift+Tab passes over the Tasks; Tab from the filter comes back to the PRs, holding the selection.
     await user.tab({ shift: true });
     expect(taskList()).not.toHaveFocus();
-    within(workPanel()).getByRole('button', { name: 'PRs' }).focus();
+    within(workPanel()).getByRole('radio', { name: 'PRs' }).focus();
     await user.tab();
     expect(listbox()).toHaveFocus();
     expect(selectedRow()).toBe('anvil#2101');
@@ -671,13 +671,13 @@ describe('the Work tab (WORK-1)', () => {
     openApp('/s/alpha', withTasks());
     await user.keyboard('w');
     await waitFor(() => expect(taskList()).toHaveFocus());
-    clickUnfocused(within(workPanel()).getByRole('button', { name: 'PRs' }));
+    clickUnfocused(within(workPanel()).getByRole('radio', { name: 'PRs' }));
     expect(workPanel()).toHaveFocus();
     expect(selectedRow()).toBe('anvil#2101');
     await user.keyboard('j');
     expect(selectedRow()).toBe('willow#2102');
     // All brings the Tasks list back: the selection stays on the PR, and focus goes to the PRs.
-    clickUnfocused(within(workPanel()).getByRole('button', { name: 'All' }));
+    clickUnfocused(within(workPanel()).getByRole('radio', { name: 'All' }));
     expect(shownRows()).toEqual(['41000101', '41000102', 'anvil#2101', 'willow#2102', 'kettle#2103', 'willow#2106']);
     expect(selectedRow()).toBe('willow#2102');
     expect(listbox()).toHaveFocus();
@@ -695,7 +695,7 @@ describe('the Work tab (WORK-1)', () => {
     expect(options()).toEqual([]);
     expect(listbox()).toHaveAttribute('tabindex', '0');
     // Tab from the filter comes back to it.
-    within(workPanel()).getByRole('button', { name: 'PRs' }).focus();
+    within(workPanel()).getByRole('radio', { name: 'PRs' }).focus();
     await user.tab();
     expect(listbox()).toHaveFocus();
     // A Task shows up and holds the selection: only the Tasks are in the Tab order.
@@ -735,17 +735,17 @@ describe('the Work tab (WORK-1)', () => {
     await user.keyboard('w');
     await user.keyboard('jjj');
     expect(selectedRow()).toBe('willow#2102');
-    await user.click(within(workPanel()).getByRole('button', { name: 'Tasks' }));
+    await user.click(within(workPanel()).getByRole('radio', { name: 'Tasks' }));
     expect(selectedRow()).toBe('41000101');
     await user.keyboard('j');
     expect(selectedRow()).toBe('41000102');
     // Back to All: the Task is still visible, so it stays selected.
-    await user.click(within(workPanel()).getByRole('button', { name: 'All' }));
+    await user.click(within(workPanel()).getByRole('radio', { name: 'All' }));
     expect(selectedRow()).toBe('41000102');
-    await user.click(within(workPanel()).getByRole('button', { name: 'PRs' }));
+    await user.click(within(workPanel()).getByRole('radio', { name: 'PRs' }));
     expect(selectedRow()).toBe('anvil#2101');
     // A read that removes the selected Task: the first visible row.
-    await user.click(within(workPanel()).getByRole('button', { name: 'Tasks' }));
+    await user.click(within(workPanel()).getByRole('radio', { name: 'Tasks' }));
     await user.keyboard('j');
     expect(selectedRow()).toBe('41000102');
     app.emit({ type: 'work', work: withTasks({ tasks: [LIGHT] }) });
@@ -1090,9 +1090,9 @@ describe('Tasks (WORK-2)', () => {
     app.emit({ type: 'work', work: withTasks() });
     expect(expanded()).toEqual([]);
     await user.click(option('anvil#2101'));
-    await user.click(within(workPanel()).getByRole('button', { name: 'Tasks' }));
+    await user.click(within(workPanel()).getByRole('radio', { name: 'Tasks' }));
     expect(expanded()).toEqual([]);
-    await user.click(within(workPanel()).getByRole('button', { name: 'All' }));
+    await user.click(within(workPanel()).getByRole('radio', { name: 'All' }));
     expect(expanded()).toEqual([]);
     await user.click(taskOption(LIGHT.id));
     app.unmount();

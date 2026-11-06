@@ -12,6 +12,7 @@ import { RowActions, type RowMenuGroup, type RowMenuItem } from '@/components/ui
 import { Loading } from '@/components/ui/loading';
 import { SessionMarker } from '@/components/ui/session-marker';
 import { type PanelNav, WORK_FILTERS, WORK_FILTER_LABEL, type WorkFilter } from '@/lib/right-sidebar';
+import { Segmented } from '@/components/ui/segmented';
 import { STATUS_LABEL } from '@/lib/sessions';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
@@ -78,6 +79,8 @@ export interface WorkPanelProps {
 }
 
 const DAY_MS = 86_400_000;
+/** WORK-1.5: the Show filter's choices (DS-20). */
+const FILTER_CHOICES = WORK_FILTERS.map((id) => ({ id, label: WORK_FILTER_LABEL[id] }));
 
 function isTextField(t: EventTarget | null): boolean {
   if (!(t instanceof HTMLElement)) return false;
@@ -343,22 +346,7 @@ export function WorkPanel({ work, sessions, filter, onFilter, now, focusKey, onS
       <div ref={rootRef} role="group" aria-label="Work" tabIndex={-1} className="flex min-h-0 flex-1 flex-col outline-none" onKeyDown={onKeyDown} data-testid="work-panel">
         {/* WORK-1.5: what Work shows, below the tab strip where History has its search field (WORK-1.8). */}
         <div className="px-2.5 pt-2 pb-2">
-          <div role="group" aria-label="Show" className="flex rounded-md border border-input bg-background/60 p-0.5 dark:bg-input/20">
-            {WORK_FILTERS.map((f) => (
-              <button
-                key={f}
-                type="button"
-                aria-pressed={filter === f}
-                onClick={() => onFilter(f)}
-                className={cn(
-                  'min-w-0 flex-auto truncate rounded px-1.5 py-0.5 text-meta whitespace-nowrap transition-colors',
-                  filter === f ? 'bg-sidebar-accent font-medium text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground',
-                )}
-              >
-                {WORK_FILTER_LABEL[f]}
-              </button>
-            ))}
-          </div>
+          <Segmented label="Show" choices={FILTER_CHOICES} value={filter} onChange={onFilter} surface="sidebar" fill />
         </div>
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto pb-2">
           {showsTasks(filter) && tasks && (

@@ -568,3 +568,4 @@ None.
 - 2026-11-06: WORK-1.5's filter becomes DS-20's `Segmented` (Plan item 48): its look as it is, but one Tab stop, ←/→ to choose, where each option was a Tab stop.
 - 2026-11-06: Its waits take DS-6.6's words and the orbiting Lens (Plan item 49): the Tasks and PRs headers say "Reading from Productive…" and "Reading from GitHub…".
 - 2026-11-06: WORK-2.9, 3.6 and 4.10 amended and unticked for DS-21 (Plan item 50, the clarity pass's idea 8, option A): an expanded Task or PR in DS-21's parts, its links as counts that list in place, three at most. WORK-4.10's "never '2 Sessions'" goes: the count is option A's, and the names (SIDE-10) now tell the Sessions apart.
+- 2026-11-06: Built with Plan item 48: the Show filter is a `Segmented` (`radiogroup` "Show", one `radio` per option), its look unchanged; WORK-1.5's tests read it as radios.

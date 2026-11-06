@@ -11,6 +11,7 @@ import { IconButton, RowAction, RowSettling } from './icon-button';
 import { Kbd } from './kbd';
 import { Loading } from './loading';
 import { LookoutMark } from './lookout-mark';
+import { Segmented } from './segmented';
 import { SessionMarker } from './session-marker';
 
 /** The lucide icon an element draws (`lucide-circle-x` → `circle-x`). */
@@ -406,5 +407,73 @@ describe("Lookout's mark", () => {
     // Amber is Needs you's colour (DS-3): the old favicon's ring was #f59e0b.
     const colours = text!.match(/#[0-9a-f]{3,8}\b/gi)!.map((c) => c.toLowerCase());
     expect(new Set(colours)).toEqual(new Set(['#18181b', '#fafafa']));
+  });
+});
+
+describe('Segmented', () => {
+  const CHOICES = [
+    { id: 'changes', label: 'Changes', tooltip: 'Only what changed, marked' },
+    { id: 'whole', label: 'Whole' },
+    { id: 'clean', label: 'Clean', disabled: true, tooltip: 'Deleted in this branch' },
+  ] as const;
+  const draw = (value: 'changes' | 'whole' | 'clean' = 'changes', extra: { surface?: 'page' | 'sidebar'; fill?: boolean } = {}) => {
+    const onChange = vi.fn();
+    const view = render(<Segmented label="View" choices={CHOICES} value={value} onChange={onChange} {...extra} />);
+    return { onChange, view, radio: (name: string) => screen.getByRole('radio', { name }) };
+  };
+
+  it("DS-20.1: a radiogroup named after what it chooses, of text choices in one track with Work's Show filter's look; the chosen one raised on accent, never in Primary; a disabled one says why", () => {
+    const { onChange, radio, view } = draw();
+    const group = screen.getByRole('radiogroup', { name: 'View' });
+    expect(group).toHaveClass('rounded-md', 'border', 'border-input', 'bg-background/60', 'p-0.5', 'dark:bg-input/20');
+    expect(screen.getAllByRole('radio').map((r) => r.textContent)).toEqual(['Changes', 'Whole', 'Clean']);
+    expect(radio('Changes')).toHaveAttribute('aria-checked', 'true');
+    expect(radio('Changes')).toHaveAttribute('title', 'Only what changed, marked');
+    expect(radio('Changes')).toHaveClass('bg-accent', 'font-medium', 'text-foreground', 'shadow-xs', 'text-meta', 'rounded', 'px-1.5');
+    expect(radio('Whole')).toHaveClass('text-muted-foreground', 'hover:text-foreground');
+    expect(radio('Whole')).not.toHaveAttribute('title');
+    for (const r of screen.getAllByRole('radio')) expect(r.className).not.toMatch(/\bbg-primary|text-primary/);
+    expect(radio('Clean')).toHaveAttribute('aria-disabled', 'true');
+    expect(radio('Clean')).toHaveAttribute('title', 'Deleted in this branch');
+    fireEvent.click(radio('Clean'));
+    fireEvent.click(radio('Changes'));
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.click(radio('Whole'));
+    expect(onChange).toHaveBeenLastCalledWith('whole');
+    // Each as wide as its word, unless it fills a sidebar's width, raised on sidebar-accent there.
+    expect(radio('Whole')).not.toHaveClass('flex-auto');
+    view.unmount();
+    draw('whole', { surface: 'sidebar', fill: true });
+    expect(screen.getByRole('radio', { name: 'Whole' })).toHaveClass('bg-sidebar-accent', 'flex-auto');
+    expect(screen.getByRole('radio', { name: 'Changes' })).toHaveClass('flex-auto');
+  });
+
+  it('DS-20.2: only the chosen choice is a Tab stop; ←/→ choose the previous or next, wrapping and skipping a disabled one, Home and End the first and last, focus following', () => {
+    const { onChange, radio, view } = draw();
+    expect(screen.getAllByRole('radio').map((r) => r.tabIndex)).toEqual([0, -1, -1]);
+    act(() => radio('Changes').focus());
+    fireEvent.keyDown(radio('Changes'), { key: 'ArrowRight' });
+    expect(onChange).toHaveBeenLastCalledWith('whole');
+    expect(radio('Whole')).toHaveFocus();
+    view.rerender(<Segmented label="View" choices={CHOICES} value="whole" onChange={onChange} />);
+    expect(screen.getAllByRole('radio').map((r) => r.tabIndex)).toEqual([-1, 0, -1]);
+    // Clean is disabled: → wraps past it to Changes, ← from Changes back to Whole.
+    fireEvent.keyDown(radio('Whole'), { key: 'ArrowRight' });
+    expect(onChange).toHaveBeenLastCalledWith('changes');
+    expect(radio('Changes')).toHaveFocus();
+    view.rerender(<Segmented label="View" choices={CHOICES} value="changes" onChange={onChange} />);
+    fireEvent.keyDown(radio('Changes'), { key: 'ArrowLeft' });
+    expect(onChange).toHaveBeenLastCalledWith('whole');
+    view.rerender(<Segmented label="View" choices={CHOICES} value="whole" onChange={onChange} />);
+    fireEvent.keyDown(radio('Whole'), { key: 'Home' });
+    expect(onChange).toHaveBeenLastCalledWith('changes');
+    view.rerender(<Segmented label="View" choices={CHOICES} value="changes" onChange={onChange} />);
+    fireEvent.keyDown(radio('Changes'), { key: 'End' });
+    expect(onChange).toHaveBeenLastCalledWith('whole');
+    expect(radio('Whole')).toHaveFocus();
+    // A modified arrow is the page's.
+    const calls = onChange.mock.calls.length;
+    fireEvent.keyDown(radio('Whole'), { key: 'ArrowRight', metaKey: true });
+    expect(onChange).toHaveBeenCalledTimes(calls);
   });
 });

@@ -24,6 +24,7 @@ import { contrast, paint, solid, themeTokens } from './contrast';
  * - a 20 px icon (`size-5`) outside `components/ui/`: only the labelled button size draws one (DS-7.1, 7.4);
  * - a `<kbd>` outside `Kbd`, or a `select-all` command outside `CommandBlock` (DS-8.2, 8.4);
  * - a `role="tablist"` outside `Tabs` and the right sidebar, or `aria-current="page"` outside `SideNav` (DS-13.3);
+ * - a `role="radiogroup"` outside `Segmented` and the launcher's Harness choice (DS-20.3);
  * - a wait written past `Loading`: the text "Loading…" outside it, lucide's loaders outside Work's CI icon,
  *   `animate-spin` outside that icon and the Refresh buttons, and a spin or pulse without `motion-safe:` (DS-6.8).
  * Every exception is in this file, with its reason, so adding one is a reviewed change.
@@ -379,6 +380,7 @@ const FAMILIES: Record<string, Family> = {
       'web/src/components/ui/textarea.tsx': { why: 'keyboard focus and a focused field', uses: ['border-ring', 'ring-ring/50'] },
       'web/src/components/ui/tabs.tsx': { why: 'keyboard focus on a tab (DS-13.2)', uses: ['ring-ring/50'] },
       'web/src/components/ui/side-nav.tsx': { why: 'keyboard focus on a sub-page link (DS-13.1)', uses: ['ring-ring/50'] },
+      'web/src/components/ui/segmented.tsx': { why: 'keyboard focus on a choice (DS-20.1)', uses: ['ring-ring/50'] },
       'web/src/components/ui/picker.tsx': { why: "a focused picker's filter", uses: ['border-ring', 'ring-ring/30'] },
       'web/src/components/TopicsPanel.tsx': { why: 'keyboard focus and the focused filter', uses: ['border-ring', 'ring-ring/30', 'ring-ring/50'] },
       'web/src/components/TopicView.tsx': { why: 'the focused title field', uses: ['border-ring', 'ring-ring/30'] },
@@ -1359,6 +1361,7 @@ const HAND_MADE_BUTTONS: Exception[] = [
   { path: 'web/src/components/SessionView.tsx', fn: 'Drawer', count: 1, reason: "a disclosure: the Terminal preview's handle (DS-11)" },
   { path: 'web/src/components/SpecView.tsx', fn: 'Module', count: 1, reason: 'an inline link: "Show all N specs" (PLAIN-1)' },
   { path: 'web/src/components/SpecView.tsx', fn: 'SpecNotes', count: 1, reason: "a disclosure: a spec's notes" },
+  { path: 'web/src/components/SpecView.tsx', fn: 'FoldLine', count: 1, reason: 'a disclosure: what Changes folds, shown in place (PLAIN-10.5)' },
   { path: 'web/src/components/SpecView.tsx', fn: 'Inline', count: 1, reason: 'an inline link: an ability key explained in place (PLAIN-7.5)' },
   { path: 'web/src/components/SpecView.tsx', fn: 'Term', count: 1, reason: 'an inline link: a term explained in place (PLAIN-7)' },
   { path: 'web/src/components/StatusMenu.tsx', fn: 'StatusMenu', count: 1, reason: "the status line's model and Effort menus (DS-7.3)" },
@@ -1369,7 +1372,6 @@ const HAND_MADE_BUTTONS: Exception[] = [
   { path: 'web/src/components/TopicView.tsx', fn: 'SessionChip', count: 1, reason: "a Topic member's Session chip (TOPIC-4.2)" },
   { path: 'web/src/components/TopicView.tsx', fn: 'Outputs', count: 1, reason: 'an inline link: "+N more" Outputs' },
   { path: 'web/src/components/TopicsPanel.tsx', fn: 'TopicItem', count: 1, reason: "a row of the Topics tab: its header expands it (TOPIC-3.4)" },
-  { path: 'web/src/components/WorkPanel.tsx', fn: 'WorkPanel', count: 1, reason: "Work's Show filter, a segment of a radio group (WORK-1.5; Segmented, DS-20, comes next)" },
 ];
 
 describe('buttons by role', () => {
@@ -1568,6 +1570,42 @@ describe('sub-pages and tabs', () => {
       .flatMap(([path, text]) => tabsAndNavs(text, path).filter((s) => s.split(' ')[1] !== own[path]).map((s) => `${path}:${s}`));
     expect(found).toEqual([]);
     for (const [path, what] of Object.entries(own)) expect(tabsAndNavs(SOURCES[path] ?? '', path).map((s) => s.split(' ')[1]), path).toContain(what);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// DS-20.3: one of a few ways to show a thing (check 11)
+
+/** `role="radiogroup"` written as a JSX attribute, as `line:col radiogroup`. */
+function radioGroups(source: string, path = 'x.tsx'): string[] {
+  const file = parse(source, path);
+  const found: string[] = [];
+  const visit = (node: ts.Node) => {
+    if (ts.isJsxAttribute(node) && node.initializer && node.name.getText() === 'role') {
+      const init = node.initializer;
+      if (/\bradiogroup\b/.test(ts.isStringLiteral(init) ? init.text : init.getText())) found.push(`${where(file, node.getStart())} radiogroup`);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return found;
+}
+
+describe('one of a few', () => {
+  it('DS-20.3: the guard catches a radio group however it is written, and lets a radio through', () => {
+    expect(radioGroups(`<div role="radiogroup" />; <div role={'radiogroup'} />; <div role={a ? 'radiogroup' : 'group'} />`).map((s) => s.split(' ')[1])).toEqual(['radiogroup', 'radiogroup', 'radiogroup']);
+    expect(radioGroups(`<button role="radio" />; <div role="group" aria-label="radiogroup" />`)).toEqual([]);
+  });
+
+  it("DS-20.3: a radio group is drawn only by Segmented and the launcher's Harness choice; Work's Show filter and the Spec view's switch are Segmenteds", () => {
+    const own: Record<string, number> = { 'web/src/components/ui/segmented.tsx': 1, 'web/src/components/Launcher.tsx': 1 };
+    const found = Object.entries(SOURCES)
+      .filter(([path]) => /\.tsx$/.test(path) && !(path in own))
+      .flatMap(([path, text]) => radioGroups(text, path).map((s) => `${path}:${s}`));
+    expect(found).toEqual([]);
+    for (const [path, n] of Object.entries(own)) expect(radioGroups(SOURCES[path] ?? '', path), path).toHaveLength(n);
+    expect(SOURCES['web/src/components/WorkPanel.tsx']).toMatch(/<Segmented label="Show"/);
+    expect(SOURCES['web/src/components/SpecView.tsx']).toMatch(/<Segmented label="View"/);
   });
 });
 
