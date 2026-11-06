@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { CommandBlock } from '@/components/ui/command-block';
-import { formatAgeAgo } from '@/lib/usage';
+import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { ActionIcon } from '@/lib/actions';
 
@@ -66,7 +66,7 @@ export function ToolsSection({ tools, now, load, refresh }: Props) {
 
   const rows = tools?.rows.length ? tools.rows : CHECKING;
   const reading = refreshing || tools?.reading === true;
-  const checked = reading ? 'Checking…' : tools?.checkedAt ? `Checked ${formatAgeAgo(tools.checkedAt, now)}` : 'Not checked yet';
+  const checked = reading ? 'Checking…' : tools?.checkedAt ? `Checked ${formatAge(now - tools.checkedAt)} ago` : 'Not checked yet';
 
   return (
     <section aria-labelledby="tools-title" className="mt-4 rounded-lg border border-border bg-card p-4">

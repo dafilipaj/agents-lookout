@@ -5,6 +5,7 @@ import { flushSync } from 'react-dom';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Chip } from '@/components/ui/chip';
+import { SectionLabel } from '@/components/ui/details';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Loading } from '@/components/ui/loading';
 import { AnswerContext, type TerminalLink, hasPreviews } from '@/lib/answers';
@@ -936,7 +937,7 @@ function Question({ entry, label }: { entry: QuestionEntry; label: string }) {
             const { picked, other } = answerFor(q, entry.status === 'answered' ? entry.answer : null, qi);
             return (
               <section key={qi} aria-label={q.header || q.question}>
-                {q.header && <p className="text-caption font-medium tracking-wide text-muted-foreground uppercase">{linkify(q.header)}</p>}
+                {q.header && <SectionLabel as="p">{linkify(q.header)}</SectionLabel>}
                 <p className="text-prose font-medium">{linkify(q.question)}</p>
                 {q.multiSelect && <p className="text-meta text-muted-foreground">Several can be picked</p>}
                 <ReadOnlyOptions q={q} picked={picked} faded={entry.status !== 'pending'} />

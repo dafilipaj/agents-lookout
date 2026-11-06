@@ -336,3 +336,46 @@ it('MEM-3.3: the displayed delta and collecting state ignore points older than t
   app.emit({ type: 'memory', memory: sample({ old: true, trend: [{ at: NOW - 3_600_000, bytes: GB }, { at: NOW - 3_570_000, bytes: 2 * GB }] }) });
   expect(details().querySelector('[data-field="trend"]')).toHaveTextContent('collecting…');
 });
+
+it("MEM-3.10: a tile's last line wraps rather than being cut short, the tiles' tops aligned, and a line that fits looks as before", async () => {
+  show(sample({ trend: [{ at: NOW - 30_000, bytes: GB }, { at: NOW, bytes: GB + 7.2 * GB }] }));
+  await userEvent.setup().click(trigger());
+  const tile = (name: string) => details().querySelector<HTMLElement>(`[data-field="tile-${name}"]`)!;
+  const last = tile('memory').children[2]!;
+  expect(last).toHaveTextContent('+7.2 GB in 30m');
+  expect(last).not.toHaveClass('truncate');
+  expect(last).toHaveClass('break-words', 'text-caption', 'text-muted-foreground');
+  // On a second line the icon stays by the first: the trend's items start at the top, the icon 2 px down, as centring on one 16 px line put it.
+  const trend = tile('memory').querySelector<HTMLElement>('[data-field="trend"]')!;
+  expect(trend).toHaveClass('inline-flex', 'items-start', 'gap-0.5');
+  expect(trend.querySelector('svg')).toHaveClass('mt-0.5', 'size-3', 'shrink-0');
+  // The grid stretches each tile to the row, so the tops line up whoever wraps.
+  const grid = tile('memory').parentElement!;
+  expect(grid).toHaveClass('grid', 'grid-cols-3');
+  expect([...grid.classList].filter((c) => /^(items|content|self)-/.test(c))).toEqual([]);
+  expect(tile('load').children[2]).toHaveTextContent('of 12 cores');
+});
+
+it("DS-19.1: Memory's breakdown is drawn from ui/details.tsx's pieces and keeps its elements and classes", async () => {
+  const app = show(sample({ pressure: 'warn' }));
+  app.emit({ type: 'res', res: { readAt: NOW, error: null, jobs: [] } });
+  await userEvent.setup().click(trigger());
+  const verdict = details().querySelector<HTMLElement>('[data-field="verdict"]')!;
+  expect(verdict.className).toBe('flex items-center justify-between gap-2');
+  expect(verdict.firstElementChild!.className).toBe('flex min-w-0 items-center gap-1.5 font-medium');
+  expect(within(verdict).getByText('12s ago').className).toBe('shrink-0 text-caption tabular-nums text-muted-foreground');
+  const pressure = details().querySelector<HTMLElement>('[data-field="tile-pressure"]')!;
+  expect(pressure.className).toBe('min-w-0 rounded-md bg-muted/60 px-2 py-1.5');
+  expect(pressure.parentElement!.className).toBe('grid grid-cols-3 gap-1.5');
+  expect(pressure.children[1]!.className).toBe('flex items-center gap-1 font-medium whitespace-nowrap tabular-nums text-warning-text');
+  expect(within(details()).getByRole('region', { name: 'Worth a look' }).className).toBe('flex flex-col gap-1 rounded-md border border-border bg-muted/40 px-2.5 py-2 text-meta');
+  const label = within(screen.getByRole('region', { name: 'Who uses it' })).getByRole('heading', { level: 3 });
+  expect(label.className).toBe('flex justify-between gap-2 text-caption font-medium tracking-wide text-muted-foreground items-baseline mb-1.5');
+  expect(within(label).getByText('Who uses it').className).toBe('uppercase');
+  expect(within(screen.getByRole('region', { name: 'res queue' })).getByRole('heading', { level: 3 })).toHaveClass('text-caption', 'font-medium', 'tracking-wide', 'text-muted-foreground', 'mb-1.5');
+  const row = details().querySelector<HTMLElement>('[data-row="a"]')!;
+  expect(row.className).toBe('min-w-0 py-1.5');
+  expect(row.firstElementChild!.className).toBe('flex min-w-0 items-center gap-1.5');
+  expect(row.querySelector('[aria-hidden].block')!.className).toBe('mt-1 block h-1 overflow-hidden rounded-full bg-foreground/10');
+  expect(row.querySelector('[aria-hidden].block > span')!.className).toBe('block h-full rounded-full bg-foreground/55');
+});

@@ -2,8 +2,9 @@ import { MB, formatBytes, loadLevel, trendShape, watchedLevel, type MemoryRow, t
 import { jobTool, waitStart, waitingCount, type ResJob, type ResSnapshot } from '@shared/res.ts';
 import type { SessionRow } from '@shared/types.ts';
 import { Hourglass, TrendingDown, TrendingUp } from 'lucide-react';
-import { useId, useState, type ReactNode } from 'react';
+import { useId, useState } from 'react';
 import type { UsageLevel } from '@shared/usage.ts';
+import { Meter, type MeterTone, SectionLabel, Tile, Tiles, Verdict, WorthALook as WorthALookBox } from '@/components/ui/details';
 import { Loading } from '@/components/ui/loading';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { clockTime } from '@/lib/chat';
@@ -11,7 +12,6 @@ import { MEMORY_GLYPH, MEMORY_TEXT, memoryDescription } from '@/lib/memory';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { HarnessIcon } from './HarnessIcon';
-import { UsageLevelIcon } from './UsageLevelIcon';
 
 interface Props {
   memory: MemorySnapshot | null;
@@ -79,7 +79,7 @@ function Details({ memory, res, sessions, now, onSelect }: { memory: MemorySnaps
   const pressureLevel: UsageLevel = memory.pressure === 'warn' ? 'warning' : memory.pressure;
   const load = loadLevel(memory.load);
   const total = Math.max(1, memory.totalBytes);
-  const width = (bytes: number) => (bytes > 0 ? `${Math.max(2, (bytes / total) * 100)}%` : '0%');
+  const width = (bytes: number) => (bytes > 0 ? Math.max(2, (bytes / total) * 100) : 0);
   return (
     <div
       className="divide-y divide-border text-body"
@@ -97,25 +97,16 @@ function Details({ memory, res, sessions, now, onSelect }: { memory: MemorySnaps
       }}
     >
       <header className="flex flex-col gap-2.5 px-3.5 py-3">
-        <div className="flex items-center justify-between gap-2" data-field="verdict">
-          <span className="flex min-w-0 items-center gap-1.5 font-medium">
-            <span aria-hidden className={cn('size-2 shrink-0 rounded-full', MEMORY_GLYPH[level])} />
-            {VERDICT[level]}
-          </span>
-          <span className={cn('shrink-0 text-caption tabular-nums', memory.old ? 'text-info-text' : 'text-muted-foreground')}>{memory.old ? `stale · ${age}` : `${age} ago`}</span>
-        </div>
-        <div className="grid grid-cols-3 gap-1.5">
+        <Verdict level={level} age={memory.old ? `stale · ${age}` : `${age} ago`} flagged={memory.old}>{VERDICT[level]}</Verdict>
+        <Tiles>
           <Tile label="Memory" value={formatBytes(memory.watchedBytes)} field="tile-memory"><Trend memory={memory} now={now} /></Tile>
           <Tile label="Pressure" value={memory.pressure} level={pressureLevel} field="tile-pressure">macOS</Tile>
           <Tile label="CPU load" value={memory.load.one.toFixed(1)} level={load} field="tile-load">of {memory.load.cores} cores</Tile>
-        </div>
+        </Tiles>
         <WorthALook memory={memory} res={res} byId={byId} now={now} />
       </header>
       <section className="px-3.5 py-3" aria-label="Who uses it">
-        <h3 className="mb-1.5 flex items-baseline justify-between gap-2 text-caption font-medium tracking-wide text-muted-foreground">
-          <span className="uppercase">Who uses it</span>
-          <span className="font-normal tabular-nums">{formatBytes(memory.totalBytes).replace('.0 GB', ' GB')} of {formatBytes(memory.ramBytes).replace('.0 GB', ' GB')} in use</span>
-        </h3>
+        <SectionLabel className="mb-1.5" note={`${formatBytes(memory.totalBytes).replace('.0 GB', ' GB')} of ${formatBytes(memory.ramBytes).replace('.0 GB', ' GB')} in use`}>Who uses it</SectionLabel>
         <ul className="flex flex-col">
           {ids.length ? ids.map((id) => {
             const row = sorted.find((r) => r.id === id)!;
@@ -124,32 +115,18 @@ function Details({ memory, res, sessions, now, onSelect }: { memory: MemorySnaps
             return (
               <li key={id}>
                 <button className="w-full rounded-md text-left outline-none hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-ring/50" aria-label={`Open ${session.title}, ${formatBytes(row.bytes)}${growth}`} onClick={() => onSelect(id)}>
-                  <UseRow row={row} name={session.title} session={session} bar="bg-foreground/55" width={width(row.bytes)} cores={memory.load.cores} now={now} />
+                  <UseRow row={row} name={session.title} session={session} tone="strong" percent={width(row.bytes)} cores={memory.load.cores} now={now} />
                 </button>
               </li>
             );
           }) : <li className="py-1.5 text-meta text-muted-foreground">No live Sessions</li>}
-          <li><UseRow row={memory.lookout} name="Lookout" bar="bg-foreground/30" width={width(memory.lookout.bytes)} cores={memory.load.cores} now={now} /></li>
+          <li><UseRow row={memory.lookout} name="Lookout" tone="mid" percent={width(memory.lookout.bytes)} cores={memory.load.cores} now={now} /></li>
           <li title="Every other process on this Mac, this tab too">
-            <UseRow row={{ id: 'other', bytes: memory.otherBytes, growthBytes: null, cpuPct: 0, top: [] }} name="Other apps" bar="bg-foreground/15" width={width(memory.otherBytes)} cores={memory.load.cores} now={now} quiet />
+            <UseRow row={{ id: 'other', bytes: memory.otherBytes, growthBytes: null, cpuPct: 0, top: [] }} name="Other apps" tone="faint" percent={width(memory.otherBytes)} cores={memory.load.cores} now={now} quiet />
           </li>
         </ul>
       </section>
       {res && <Queue res={res} sessions={sessions} now={now} onSelect={onSelect} />}
-    </div>
-  );
-}
-
-/** MEM-3.2: one of the three tiles; a level colours its value and adds the level icon. */
-function Tile({ label, value, level = 'normal', field, children }: { label: string; value: string; level?: UsageLevel; field: string; children: ReactNode }) {
-  return (
-    <div className="min-w-0 rounded-md bg-muted/60 px-2 py-1.5" data-field={field}>
-      <div className="text-caption text-muted-foreground">{label}</div>
-      <div className={cn('flex items-center gap-1 font-medium whitespace-nowrap tabular-nums', level !== 'normal' && MEMORY_TEXT[level])}>
-        {level !== 'normal' && <UsageLevelIcon level={level} label={level} />}
-        {value}
-      </div>
-      <div className="truncate text-caption text-muted-foreground">{children}</div>
     </div>
   );
 }
@@ -160,8 +137,9 @@ function Trend({ memory, now }: { memory: MemorySnapshot; now: number }) {
   if (!shape) return <span data-field="trend">collecting…</span>;
   const Icon = shape.delta < 0 ? TrendingDown : TrendingUp;
   return (
-    <span data-field="trend" className="inline-flex items-center gap-0.5 tabular-nums" title={`${shape.delta < 0 ? '−' : '+'}${formatBytes(Math.abs(shape.delta))} in the last 30 min`}>
-      <Icon className="size-3 shrink-0" aria-hidden />
+    // MEM-3.10: on a second line rather than cut short, the icon by the first.
+    <span data-field="trend" className="inline-flex items-start gap-0.5 tabular-nums" title={`${shape.delta < 0 ? '−' : '+'}${formatBytes(Math.abs(shape.delta))} in the last 30 min`}>
+      <Icon className="mt-0.5 size-3 shrink-0" aria-hidden />
       {shape.delta < 0 ? '−' : '+'}{formatBytes(Math.abs(shape.delta))} in 30m
     </span>
   );
@@ -175,52 +153,53 @@ function WorthALook({ memory, res, byId, now }: { memory: MemorySnapshot; res: R
   ];
   const waiting = res?.jobs.filter((j) => j.state === 'waiting') ?? [];
   const longest = Math.max(0, ...waiting.map((j) => now - (waitStart(j) ?? now)));
-  if (!growing.length && !waiting.length) return null;
   return (
-    <section aria-label="Worth a look" className="flex flex-col gap-1 rounded-md border border-border bg-muted/40 px-2.5 py-2 text-meta">
-      <h3 className="font-medium">Worth a look</h3>
-      {growing.map((g) => (
-        <p key={g.id} className="flex min-w-0 items-center gap-1.5">
-          <TrendingUp aria-hidden className={cn('size-3 shrink-0', MEMORY_TEXT.warning)} />
-          <span className="truncate">{g.name} grew +{formatBytes(g.bytes)} in 10 min</span>
-        </p>
-      ))}
-      {waiting.length > 0 && (
-        <p className="flex min-w-0 items-center gap-1.5" data-field="res-waiting-note">
-          {HOURGLASS}
-          <span className="truncate">{waiting.length} job{waiting.length === 1 ? '' : 's'} waiting in res{waiting.length === 1 ? ` for ${formatAge(longest)}` : `, the longest ${formatAge(longest)}`}</span>
-        </p>
-      )}
-    </section>
+    <WorthALookBox
+      lines={[
+        ...growing.map((g) => ({ key: g.id, icon: <TrendingUp aria-hidden className={cn('size-3 shrink-0', MEMORY_TEXT.warning)} />, text: `${g.name} grew +${formatBytes(g.bytes)} in 10 min` })),
+        ...(waiting.length
+          ? [{ key: 'res', field: 'res-waiting-note', icon: HOURGLASS, text: `${waiting.length} job${waiting.length === 1 ? '' : 's'} waiting in res${waiting.length === 1 ? ` for ${formatAge(longest)}` : `, the longest ${formatAge(longest)}`}` }]
+          : []),
+      ]}
+    />
   );
 }
 
-/** MEM-3.5: a name, its marks, its size, and a bar on the list's one scale; its executables in the tooltip. */
-function UseRow({ row, name, session, bar, width, cores, now, quiet = false }: { row: MemoryRow; name: string; session?: SessionRow; bar: string; width: string; cores: number; now: number; quiet?: boolean }) {
+/** MEM-3.5: a name, its marks, its size, and a meter on the list's one scale; its executables in the tooltip. */
+function UseRow({ row, name, session, tone, percent, cores, now, quiet = false }: { row: MemoryRow; name: string; session?: SessionRow; tone: MeterTone; percent: number; cores: number; now: number; quiet?: boolean }) {
   const top = row.top.map((e) => `${e.name}${e.count > 1 ? ` ×${e.count}` : ''} ${Math.round(e.bytes / MB)}`).join(' · ');
   const gone = !!session && row.bytes === 0;
   return (
-    <div className="min-w-0 py-1.5" title={top || undefined} data-row={row.id}>
-      <div className="flex min-w-0 items-center gap-1.5">
-        {session && <HarnessIcon harness={session.harness} />}
-        <span className={cn('min-w-0 truncate', quiet ? 'text-muted-foreground' : 'font-medium')}>{name}</span>
-        {gone && <span className="shrink-0 text-caption text-muted-foreground">gone</span>}
-        {row.growthBytes !== null && (
-          <span className={cn('flex shrink-0 items-center gap-0.5 text-caption tabular-nums', MEMORY_TEXT.warning)} data-field="growth">
-            <TrendingUp aria-hidden className="size-3" />+{formatBytes(row.growthBytes)}
-          </span>
-        )}
-        {session?.queued && (
-          <span className="flex shrink-0 items-center gap-0.5 text-caption text-muted-foreground tabular-nums" data-field="queued" title={`Queued in res: ${session.queued.tool}`}>
-            {HOURGLASS}{formatAge(Math.max(0, now - session.queued.since))}
-          </span>
-        )}
-        <span className="flex-1" />
-        {row.cpuPct >= 10 && <span className="shrink-0 text-caption text-muted-foreground tabular-nums" title={`${Math.round(row.cpuPct)}% of ${cores * 100}%`}>cpu {Math.round(row.cpuPct)}%</span>}
-        <span className={cn('shrink-0 tabular-nums', quiet && 'text-muted-foreground')}>{formatBytes(row.bytes)}</span>
-      </div>
-      <span aria-hidden className="mt-1 block h-1 overflow-hidden rounded-full bg-foreground/10"><span className={cn('block h-full rounded-full', bar)} style={{ width }} /></span>
-    </div>
+    <Meter
+      className="py-1.5"
+      title={top || undefined}
+      data-row={row.id}
+      tone={tone}
+      percent={percent}
+      name={
+        <>
+          {session && <HarnessIcon harness={session.harness} />}
+          <span className={cn('min-w-0 truncate', quiet ? 'text-muted-foreground' : 'font-medium')}>{name}</span>
+          {gone && <span className="shrink-0 text-caption text-muted-foreground">gone</span>}
+          {row.growthBytes !== null && (
+            <span className={cn('flex shrink-0 items-center gap-0.5 text-caption tabular-nums', MEMORY_TEXT.warning)} data-field="growth">
+              <TrendingUp aria-hidden className="size-3" />+{formatBytes(row.growthBytes)}
+            </span>
+          )}
+          {session?.queued && (
+            <span className="flex shrink-0 items-center gap-0.5 text-caption text-muted-foreground tabular-nums" data-field="queued" title={`Queued in res: ${session.queued.tool}`}>
+              {HOURGLASS}{formatAge(Math.max(0, now - session.queued.since))}
+            </span>
+          )}
+        </>
+      }
+      value={
+        <>
+          {row.cpuPct >= 10 && <span className="shrink-0 text-caption text-muted-foreground tabular-nums" title={`${Math.round(row.cpuPct)}% of ${cores * 100}%`}>cpu {Math.round(row.cpuPct)}%</span>}
+          <span className={cn('shrink-0 tabular-nums', quiet && 'text-muted-foreground')}>{formatBytes(row.bytes)}</span>
+        </>
+      }
+    />
   );
 }
 
@@ -229,7 +208,7 @@ function Queue({ res, sessions, now, onSelect }: { res: ResSnapshot; sessions: r
   const byId = new Map(sessions.map((s) => [s.id, s]));
   return (
     <section className="px-3.5 py-3" aria-label="res queue" data-section="res">
-      <h3 className="mb-1.5 text-caption font-medium tracking-wide text-muted-foreground uppercase">res queue</h3>
+      <SectionLabel className="mb-1.5">res queue</SectionLabel>
       {res.error && (
         <p className="mb-1.5 text-meta text-info-text">
           Couldn't read res: {res.error}.{res.readAt !== null && ` Showing the list from ${clockTime(new Date(res.readAt).toISOString())}.`}

@@ -1,12 +1,13 @@
 import type { JevStatus, ProviderUsage, UsageSnapshot, UsageWindow } from '@shared/usage.ts';
-import { freshness, hasReset, isFiveHour, isFlagged, stripWindows, usageLevel } from '@shared/usage.ts';
+import { freshness, hasReset, isFiveHour, isFlagged, liveWindows, stripWindows, usageLevel } from '@shared/usage.ts';
 import { Check } from 'lucide-react';
-import { useId } from 'react';
+import { type ReactNode, useId } from 'react';
 import { CommandBlock } from '@/components/ui/command-block';
+import { Meter, SectionLabel, Tile, Tiles, Verdict, WorthALook } from '@/components/ui/details';
 import { Loading } from '@/components/ui/loading';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { HARNESS_NAME } from '@/lib/sessions';
-import { BAR_EDGE, BAR_EDGE_GAP, BAR_FILL, BAR_TRACK, formatClock, formatUntil, freshnessLabel } from '@/lib/usage';
+import { BAR_EDGE, BAR_EDGE_GAP, BAR_FILL, formatClock, formatUntil, freshnessLabel, limits, oldestAge, usageVerdict } from '@/lib/usage';
 import { cn } from '@/lib/utils';
 import { HarnessIcon } from './HarnessIcon';
 import { UsageLevelIcon } from './UsageLevelIcon';
@@ -32,6 +33,7 @@ const windowKey = (p: ProviderUsage, w: UsageWindow) => `${p.id}-${w.kind}-${w.m
 /** USAGE-1: the always-visible strip at the bottom of the Session sidebar; click for details. */
 export function UsageStrip({ usage, now, onOpen, open, onOpenChange }: { usage: UsageSnapshot | null; now: number; onOpen?(): void; open?: boolean; onOpenChange?(open: boolean): void }) {
   const summaryId = useId();
+  const verdictId = useId();
   return (
     <Popover open={open} onOpenChange={(next) => { onOpenChange?.(next); if (next) onOpen?.(); }}>
       <PopoverTrigger
@@ -62,11 +64,12 @@ export function UsageStrip({ usage, now, onOpen, open, onOpenChange }: { usage: 
           <Loading label="Reading usage…" />
         )}
       </PopoverTrigger>
-      <PopoverContent side="right" align="end" sideOffset={8} className="w-[22rem] p-0" aria-labelledby="usage-details-title">
+      {/* USAGE-2.3: the verdict names the popover; until there's one, "Usage details" does. */}
+      <PopoverContent side="right" align="end" sideOffset={8} className="max-h-[min(36rem,90vh)] w-[22rem] overflow-x-hidden overflow-y-auto p-0" aria-labelledby={usage ? verdictId : 'usage-details-title'}>
         <h2 id="usage-details-title" className="sr-only">
           Usage details
         </h2>
-        {usage ? <Details usage={usage} now={now} /> : <Loading label="Reading usage…" className="p-3" />}
+        {usage ? <Details usage={usage} now={now} verdictId={verdictId} /> : <Loading label="Reading usage…" className="p-3" />}
       </PopoverContent>
     </Popover>
   );
@@ -145,121 +148,49 @@ function ProviderLine({ provider, now }: { provider: ProviderUsage; now: number 
   );
 }
 
-/** USAGE-2: plan, every window tightest first, extra usage, credits, and Jev. */
-function Details({ usage, now }: { usage: UsageSnapshot; now: number }) {
+/**
+ * USAGE-2.3 to 2.7, in Memory's anatomy (DS-19): a verdict, three tiles, "Worth a look", then a
+ * section per provider (its plan and age, its windows as meters, tightest first, extra usage, credits,
+ * why it can't be read), and Jev's last.
+ */
+function Details({ usage, now, verdictId }: { usage: UsageSnapshot; now: number; verdictId: string }) {
+  const verdict = usageVerdict(usage.providers, now);
+  const age = oldestAge(usage.providers, now);
+  const flagged = limits(usage.providers, now).filter((l) => usageLevel(l.percent) !== 'normal');
   return (
     <div className="divide-y divide-border text-body" data-testid="usage-details">
-      {usage.providers.map((p) => {
-        const f = freshness(p, now);
-        return (
-          <section key={p.id} className="px-3.5 py-3" aria-label={`${HARNESS_NAME[p.id]} usage`}>
-            <header className="mb-2 flex items-center gap-2">
-              <HarnessIcon harness={p.id} className="size-4" />
-              <span className="shrink-0 font-medium whitespace-nowrap">{HARNESS_NAME[p.id]}</span>
-              {p.plan && (
-                <span className="min-w-0 truncate text-muted-foreground" title={p.plan}>
-                  · {p.plan}
-                </span>
-              )}
-              {p.windows.length > 0 && (
-                <span
-                  className={cn('ml-auto shrink-0 text-caption whitespace-nowrap text-muted-foreground', isFlagged(f) && 'font-medium text-info-text')}
-                  data-field="age"
-                >
-                  {freshnessLabel(f, now)}
-                </span>
-              )}
-            </header>
-            {p.reason && (p.state !== 'ok' || p.stale) && <p className="mb-2 text-meta text-muted-foreground">{p.reason}</p>}
-            {p.windows.length > 0 && (
-              <ul className={cn('flex flex-col gap-2', isFlagged(f) && 'opacity-60')}>
-                {p.windows.map((w) => (
-                  <li key={windowKey(p, w)}>
-                    {hasReset(w, now) ? (
-                      <div className="flex items-baseline gap-1.5">
-                        <span className="min-w-0 flex-1 truncate">{w.label}</span>
-                        <span className="text-meta text-muted-foreground">reset · refreshing</span>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="flex items-baseline gap-1.5">
-                          <span className="min-w-0 flex-1 truncate">{w.label}</span>
-                          <span className="font-medium tabular-nums">{Math.round(w.percent)}%</span>
-                          <Mark percent={w.percent} />
-                        </div>
-                        <Bar percent={w.percent} solid className="mt-1" />
-                        {w.resetsAt !== null && (
-                          <p className="mt-0.5 text-caption text-muted-foreground">
-                            resets {formatClock(w.resetsAt, now)} · in {formatUntil(w.resetsAt, now)}
-                          </p>
-                        )}
-                      </>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-            {p.extra?.enabled && (
-              <div className="mt-2" data-testid="extra-usage">
-                <div className="flex items-baseline gap-1.5 text-meta">
-                  <span className="min-w-0 flex-1">Extra usage</span>
-                  {p.extra.limit !== null ? (
-                    <>
-                      <span className="text-muted-foreground tabular-nums">
-                        {p.extra.used} of {p.extra.limit} {p.extra.currency ?? ''}
-                      </span>
-                      <span className="font-medium tabular-nums">{Math.round(p.extra.percent)}%</span>
-                      <Mark percent={p.extra.percent} />
-                    </>
-                  ) : (
-                    <span className="text-muted-foreground">
-                      {p.extra.used} {p.extra.currency ?? ''} · no limit set
-                    </span>
-                  )}
-                </div>
-                {p.extra.limit !== null && <Bar percent={p.extra.percent} solid className="mt-1" />}
-              </div>
-            )}
-            {p.credits && (p.credits.hasCredits || p.credits.unlimited) && (
-              <p className="mt-2 text-meta text-muted-foreground">
-                Credits: {p.credits.unlimited ? 'unlimited' : (p.credits.balance ?? '?')}
-              </p>
-            )}
-          </section>
-        );
-      })}
+      <header className="flex flex-col gap-2.5 px-3.5 py-3">
+        <Verdict level={verdict.level} age={age?.label} flagged={age?.flagged} id={verdictId}>
+          {verdict.text}
+        </Verdict>
+        <Tiles>
+          {(['claude', 'codex'] as const).map((id) => (
+            <HarnessTile key={id} id={id} provider={usage.providers.find((p) => p.id === id)} now={now} />
+          ))}
+          <Tile label="Jev" value={JEV_LABEL[usage.jev.state]} field="tile-jev">
+            {usage.jev.version && `v${usage.jev.version}`}
+          </Tile>
+        </Tiles>
+        <WorthALook
+          lines={flagged.map((l) => ({
+            key: l.key,
+            icon: <UsageLevelIcon level={usageLevel(l.percent)} className="shrink-0" />,
+            text: `${HARNESS_NAME[l.provider.id]} ${l.words} at ${l.percent}%${l.resetsAt !== null ? `, resets ${formatClock(l.resetsAt, now)} (in ${formatUntil(l.resetsAt, now)})` : ''}`,
+          }))}
+        />
+      </header>
+      {usage.providers.map((p) => (
+        <ProviderSection key={p.id} provider={p} now={now} />
+      ))}
       <section className="px-3.5 py-3" aria-label="Jev">
-        <header className="mb-1 flex items-center gap-2">
-          <span className="font-medium">Jev</span>
-          <span className={cn(usage.jev.state === 'ready' ? 'text-foreground/80' : 'text-muted-foreground')}><JevState state={usage.jev.state} /></span>
-        </header>
-        <dl className="grid grid-cols-[5.5rem_1fr] gap-x-2 gap-y-0.5 text-meta">
-          {usage.jev.version && (
-            <>
-              <dt className="text-muted-foreground">Version</dt>
-              <dd>{usage.jev.version}</dd>
-            </>
-          )}
-          {usage.jev.keySource && (
-            <>
-              <dt className="text-muted-foreground">Key from</dt>
-              <dd>{usage.jev.keySource}</dd>
-            </>
-          )}
-          {usage.jev.baseUrl && (
-            <>
-              <dt className="text-muted-foreground">API</dt>
-              <dd className="truncate">{usage.jev.baseUrl}</dd>
-            </>
-          )}
-          {usage.jev.configPath && (
-            <>
-              <dt className="text-muted-foreground">Config</dt>
-              <dd className="truncate font-mono text-caption" title={usage.jev.configPath}>
-                {usage.jev.configPath}
-              </dd>
-            </>
-          )}
+        <SectionLabel className="mb-1.5" note={<span className={cn(usage.jev.state === 'ready' && 'text-foreground/80')}><JevState state={usage.jev.state} /></span>}>
+          Jev
+        </SectionLabel>
+        <dl className="flex flex-col gap-0.5 text-meta">
+          <Row name="Version" value={usage.jev.version} />
+          <Row name="Key from" value={usage.jev.keySource} />
+          <Row name="API" value={usage.jev.baseUrl} />
+          <Row name="Config" value={usage.jev.configPath} mono />
         </dl>
         {usage.jev.reason && <p className="mt-1 text-meta text-muted-foreground">{usage.jev.reason}</p>}
         {/* TOOLS-2.5: a tb-jev too old for `status`: the command that updates it, to copy. */}
@@ -270,18 +201,138 @@ function Details({ usage, now }: { usage: UsageSnapshot; now: number }) {
   );
 }
 
-function Bar({ percent, solid = false, className }: { percent: number; solid?: boolean; className?: string }) {
-  const level = usageLevel(percent);
-  const edge = solid ? null : BAR_EDGE[level];
+/**
+ * USAGE-2.4: a Harness's tile: its tightest window's % used, marked from 80% (USAGE-1.2), with the
+ * window and the time to its reset under it ("5h · in 2h28", "weekly · Mon"); "—" and why when it
+ * can't be read. Old numbers are dimmed, as in its section.
+ */
+function HarnessTile({ id, provider, now }: { id: ProviderUsage['id']; provider: ProviderUsage | undefined; now: number }) {
+  const field = `tile-${id}`;
+  if (!provider?.windows.length) {
+    return (
+      <Tile label={HARNESS_NAME[id]} value="—" field={field}>
+        {provider ? unreadable(provider) : UNREADABLE.unavailable}
+      </Tile>
+    );
+  }
+  const w = liveWindows(provider.windows, now)[0];
+  const dim = isFlagged(freshness(provider, now)) ? 'opacity-60' : undefined;
+  if (!w) {
+    return (
+      <Tile label={HARNESS_NAME[id]} value="0%" field={field} className={dim}>
+        reset · refreshing
+      </Tile>
+    );
+  }
+  const span = `${isFiveHour(w) ? '5h' : 'weekly'}${w.model ? ` ${w.model}` : ''}`;
+  // Within a day, how long; further off, the day.
+  const when = w.resetsAt === null ? null : w.resetsAt - now < 24 * 3_600_000 ? `in ${formatUntil(w.resetsAt, now)}` : new Date(w.resetsAt).toLocaleDateString(undefined, { weekday: 'short' });
   return (
-    <span aria-hidden className={cn('relative block h-1.5 overflow-hidden rounded-full', BAR_TRACK, className)}>
-      <span
-        className={cn('absolute inset-y-0 left-0 overflow-hidden rounded-full', BAR_FILL[solid ? 'solid' : 'strip'][level])}
-        style={{ width: `${Math.max(2, Math.min(100, percent))}%` }}
-        data-field="fill"
-        data-level={level}
-      >
-        {edge && <span className={cn('absolute inset-y-0 right-0 w-1', BAR_EDGE_GAP, edge)} data-field="edge" />}
+    <Tile label={HARNESS_NAME[id]} value={`${w.percent}%`} level={usageLevel(w.percent)} field={field} className={dim}>
+      {when ? `${span} · ${when}` : span}
+    </Tile>
+  );
+}
+
+/**
+ * USAGE-2.6, 2.7: a provider under its label (its mark, and at its right its plan and how old its
+ * numbers are), why it can't be read and its credits as lines, then its windows as meters, tightest
+ * first, and extra usage; old numbers dimmed.
+ */
+function ProviderSection({ provider: p, now }: { provider: ProviderUsage; now: number }) {
+  const f = freshness(p, now);
+  const aged = p.windows.length > 0;
+  const note: ReactNode =
+    p.plan || aged ? (
+      <>
+        {p.plan && <span title={p.plan}>{p.plan}</span>}
+        {p.plan && aged && ' · '}
+        {aged && (
+          <span className={cn(isFlagged(f) && 'font-medium text-info-text')} data-field="age">
+            {freshnessLabel(f, now)}
+          </span>
+        )}
+      </>
+    ) : null;
+  return (
+    <section className="px-3.5 py-3" aria-label={`${HARNESS_NAME[p.id]} usage`}>
+      <SectionLabel className="mb-1.5" icon={<HarnessIcon harness={p.id} />} note={note}>
+        {HARNESS_NAME[p.id]}
+      </SectionLabel>
+      {p.reason && (p.state !== 'ok' || p.stale) && <p className="mb-1.5 text-meta text-muted-foreground">{p.reason}</p>}
+      {p.credits && (p.credits.hasCredits || p.credits.unlimited) && (
+        <p className="mb-1.5 text-meta text-muted-foreground">Credits: {p.credits.unlimited ? 'unlimited' : (p.credits.balance ?? '?')}</p>
+      )}
+      {aged && (
+        <ul className={cn('flex flex-col gap-2', isFlagged(f) && 'opacity-60')}>
+          {p.windows.map((w) => (
+            <li key={windowKey(p, w)}>
+              {hasReset(w, now) ? (
+                // A passed reset: its numbers no longer hold, so no %, an empty bar, and what happens now in place of when.
+                <Meter name={<span className="min-w-0 truncate">{w.label}</span>} percent={0} line="reset · refreshing" />
+              ) : (
+                <Meter
+                  name={<span className="min-w-0 truncate">{w.label}</span>}
+                  value={<span className="font-medium tabular-nums">{w.percent}%</span>}
+                  mark={<Mark percent={w.percent} />}
+                  percent={Math.max(2, w.percent)}
+                  level={usageLevel(w.percent)}
+                  line={w.resetsAt !== null ? `resets ${formatClock(w.resetsAt, now)} · in ${formatUntil(w.resetsAt, now)}` : null}
+                />
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {p.extra?.enabled &&
+        (p.extra.limit !== null ? (
+          <Meter
+            className="mt-2"
+            data-testid="extra-usage"
+            name={<span className="min-w-0 truncate">Extra usage</span>}
+            value={
+              <>
+                <span className="text-meta text-muted-foreground tabular-nums">
+                  {p.extra.used} of {p.extra.limit} {p.extra.currency ?? ''}
+                </span>
+                <span className="font-medium tabular-nums">{Math.round(p.extra.percent)}%</span>
+              </>
+            }
+            mark={<Mark percent={p.extra.percent} />}
+            percent={Math.max(2, Math.min(100, p.extra.percent))}
+            level={usageLevel(p.extra.percent)}
+          />
+        ) : (
+          <p className="mt-2 text-meta text-muted-foreground" data-testid="extra-usage">
+            Extra usage: {p.extra.used} {p.extra.currency ?? ''} · no limit set
+          </p>
+        ))}
+    </section>
+  );
+}
+
+/** USAGE-2.6: one of Jev's details, the name at the left and the value at the right, cut short at its start, whole in its tooltip. */
+function Row({ name, value, mono = false }: { name: string; value: string | null; mono?: boolean }) {
+  if (!value) return null;
+  return (
+    <div className="flex min-w-0 items-baseline justify-between gap-2">
+      <dt className="shrink-0 text-muted-foreground">{name}</dt>
+      {/* Right to left, so the ellipsis is at the start and the end (a path's file, a host) stays; the value itself reads left to right. */}
+      <dd dir="rtl" className={cn('min-w-0 truncate', mono && 'font-mono text-caption')} title={value}>
+        <span dir="ltr">{value}</span>
+      </dd>
+    </div>
+  );
+}
+
+/** DS-3.2: the strip's bar: the fill `foreground/55` at every level, the level a 3 px edge at its end, set off by a 1 px gap in the sidebar's colour. */
+function Bar({ percent }: { percent: number }) {
+  const level = usageLevel(percent);
+  const edge = BAR_EDGE[level];
+  return (
+    <span aria-hidden className="relative block h-1.5 overflow-hidden rounded-full bg-foreground/10" data-field="track">
+      <span className={cn('absolute inset-y-0 left-0 overflow-hidden rounded-full', BAR_FILL)} style={{ width: `${Math.max(2, Math.min(100, percent))}%` }} data-field="fill" data-level={level}>
+        {edge && <span className={cn('absolute inset-y-0 right-0 w-1', BAR_EDGE_GAP.strip, edge)} data-field="edge" />}
       </span>
     </span>
   );

@@ -56,7 +56,7 @@ A click on the memory line opens a popover, as the usage strip's does (USAGE-2.1
 - [ ] MEM-3.8 Seen at 280 px, light and dark, with four Sessions, one growing and one Queued, the Pressure forced to `warn`: the verdict, the tiles, Worth a look and the list fit the popover's 22 rem without a horizontal scroll, the tiles keep their values on one line, long Session titles truncate before their marks and size, and the popover never covers the Session list's selected row. (manual)
 
 - [x] MEM-3.9 Between the tiles and the list, "Worth a look" lists what needs an eye, one line each, and shows only when there is something: each growing row ("Rates fix grew +180 MB in 10 min", with `TrendingUp` in `warning-text`), and the jobs waiting in `res` ("2 jobs waiting in res, the longest 3m", with `Hourglass`). It's a neutral box (`border`, `muted/40`), not an Alert: the icons carry the warning, as the design system has no amber Alert (DS-4). (test)
-- [ ] MEM-3.10 A tile's last line wraps to a second line rather than being cut short, so the Memory tile reads "+7.2 GB in 30m" whole (seen 2026-11-06 cut to "+7.2 GB in 3…"); the three tiles keep their tops aligned, and a tile whose line fits looks as before. The popover is otherwise unchanged by DS-19's move of its pieces into `ui/details.tsx`. (test)
+- [x] MEM-3.10 A tile's last line wraps to a second line rather than being cut short, so the Memory tile reads "+7.2 GB in 30m" whole (seen 2026-11-06 cut to "+7.2 GB in 3…"); the three tiles keep their tops aligned, and a tile whose line fits looks as before. The popover is otherwise unchanged by DS-19's move of its pieces into `ui/details.tsx`. (test)
 
 ### MEM-4 Growth on the Session row
 
@@ -196,7 +196,7 @@ interface MemoryRow {
 ### Client
 
 - `web/src/components/MemoryLine.tsx` (the line and its popover, as `UsageStrip.tsx` holds both) and `web/src/lib/memory.ts` (formatting and level classes); the sidebar's dock cell renders it under `UsageStrip`, in a stretched flex column over `DockRest` (`Sidebar.tsx`, SIDE-8.1). The usage trigger uses `pt-1 pb-0.5` to fit within 92 px. The memory trigger uses `mt-auto h-7 items-center border-t border-sidebar-border/70 bg-muted/30`, with no vertical padding or glyph offset: it is anchored at the dock’s bottom and its separator aligns with the main status line. `SessionItem.tsx` adds the mark to its numbers group before the Subagent count.
-- The breakdown is `Details` in `MemoryLine.tsx`: the verdict and its three `Tile`s, `WorthALook` (MEM-3.9), one `UseRow` per row of the list on the scale of `totalBytes`, and RES's `Queue` last. The trend is `trendShape`'s delta, as text (MEM-3.3).
+- The breakdown is `Details` in `MemoryLine.tsx`, drawn from `ui/details.tsx` (DS-19): the `Verdict` and three `Tile`s, `WorthALook` (MEM-3.9), one `UseRow` per row of the list, a `Meter` on the scale of `totalBytes`, and RES's `Queue` last, each list under a `SectionLabel`. The trend is `trendShape`'s delta, as text (MEM-3.3).
 - Selecting a Session from a row goes through the sidebar's `onSelect` (`push`), the same path as a click on the row.
 
 ### Dependencies
@@ -257,3 +257,4 @@ None.
 - 2026-11-06: Added MEM-3.10 (Plan item 47): a tile's last line wraps instead of being cut, the fix for MEM-3.8's clipped Memory tile; the popover's pieces move into `ui/details.tsx` unchanged (DS-19), and Usage is rebuilt from them.
 - 2026-11-06: MEM-3.5, 4.1 and 4.3 amended and unticked for DS-22 (Plan item 50, the clarity pass's idea 3): the row's mark and the popover's amber are for a Session running away, 1 GB or more in 10 minutes, or 30 MB or more while the Mac's memory pressure is warn or critical, with the amount in words at the start of the row's second line; growth under that is grey in the popover and absent from the row. MEM-2.5's 30 MB still defines growth. On 2026-11-06 the mark was on four of five live rows (+56 MB, +267 MB, +393 MB, +2.8 GB).
 - 2026-11-06: The runaway threshold (MEM-3.5, 4.1) grilled with Dario as recommended: 1 GB in 10 minutes, or 30 MB under warn or critical pressure, checked against 20 minutes of live samples (two working Sessions, +58 to +892 MB, none at 1 GB); one constant, raised to 1.5 GB if it flags working Sessions.
+- 2026-11-06: MEM-3.10 built with Plan item 47: a tile's last line wraps (`break-words`, no `truncate`), and the trend's icon sits by its first line; the breakdown is drawn from `ui/details.tsx` with the classes it had, which a test reads against the old ones (DS-19.1).

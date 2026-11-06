@@ -45,16 +45,15 @@ Tokens live in `web/src/index.css`, components in `web/src/components/ui/`, deci
 
 What opens from a reading to explain it: Memory's and Usage's, from the sidebar's footer.
 
-- **Use** `Popover` (`ui/popover.tsx`), `w-[22rem] p-0`, and build it as Memory's (`MemoryLine.tsx`), top to bottom:
-  - a **verdict line**: a dot in its level's colour, the verdict in words ("The Mac has room"), and the reading's age at the right ("3s ago", or "stale · 3s" in `info-text`);
-  - **tiles**: up to three, each a label, a value and a line under it;
-  - **Worth a look**: a box listing what's past a threshold, in words, or nothing at all;
-  - **sections**: each under an uppercase section label (below), its rows with thin 4 px meters.
-- **Coming (DS-19):** these pieces move into `components/ui/details.tsx` as they are (`Verdict`, `Tiles`, `WorthALook`, `SectionLabel`, `Meter`), and Usage is rebuilt from them, keeping its reset line under each bar and its monochrome logos.
+- **Use** `Popover` (`ui/popover.tsx`), `w-[22rem] p-0`, and the pieces in `ui/details.tsx`, top to bottom, as Memory's (`MemoryLine.tsx`) and Usage's (`UsageStrip.tsx`) are:
+  - `Verdict`: a dot in its level's colour, the verdict in words ("The Mac has room"), and the reading's age at the right ("3s ago", or "stale · 3s" in `info-text`); its `id` can name the popover;
+  - `Tiles` and `Tile`: up to three, each a label, a value and a line under it, which wraps;
+  - `WorthALook`: a box listing what's past a threshold, in words, or nothing at all;
+  - sections: each under a `SectionLabel` (below), its rows `Meter`s, thin 4 px bars, the level as an edge.
 - **Do:** start from Memory's popover and drop the parts you don't need.
 - **Don't:** invent a new header, a bar height or a way of saying "critical".
-- **Guard:** none yet. Coming (DS-19): a bar or track drawn outside the meter piece fails, and so does an uppercase label written by hand.
-- **See:** MEM-3, USAGE-1, DS-3.2.
+- **Guard:** DS-19.2 (a bar or track drawn outside `Meter` and the usage strip's bar fails, and so does `uppercase` outside `SectionLabel` and the chat's message tag).
+- **See:** MEM-3, USAGE-2, DS-19, DS-3.2.
 
 ### A list row
 
@@ -104,15 +103,15 @@ Context usage, a usage limit, memory and CPU load, a PR's age.
 | Section label | `caption`, medium, uppercase, `tracking-wide`, `muted-foreground`; a total at its right in normal case | a section of a details popover ("Who uses it"), a question's header |
 
 - **Don't:** add a fifth level, or make body text bold to act as a heading.
-- **Guard:** none yet. Coming (DS-19): the section label is a `ui/` piece, and `uppercase` written elsewhere fails.
+- **Use** `SectionLabel` (`ui/details.tsx`) for a section label.
+- **Guard:** DS-19.2 (`uppercase` only in `SectionLabel` and the chat's message tag).
 
 ### A time ago
 
 - **Use** `formatAge` (`lib/time.ts`): `12s`, `5m`, `3h`, `2d`, and `useNow` or `useClock` so it keeps time.
 - **Rule:** in a row's column, the age alone, `tabular-nums`, in the row's quiet colour (`5m`); in a sentence or as a reading's age, `5m ago`; a stale reading, `stale · 5m` in `info-text`.
 - **Don't:** write another age formatter, or "just now": a reading a few seconds old says `12s ago`.
-- **Coming (DS-19):** `lib/usage.ts`'s two formatters (`formatAgeAgo`, `formatAgeShort`) go when Usage takes Memory's wording.
-- **Guard:** none yet. Coming (DS-19): no age formatter outside `lib/time.ts`.
+- **Guard:** DS-19.3 (no function or variable named `format…Age…` or `…Ago` outside `lib/time.ts`).
 
 ### A keyboard shortcut
 

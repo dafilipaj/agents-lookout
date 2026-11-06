@@ -3,6 +3,7 @@ import { Circle, CircleDot, ShieldQuestion, Square, SquareCheck } from 'lucide-r
 import { type ComponentPropsWithoutRef, type HTMLAttributes, type KeyboardEvent, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { SectionLabel } from '@/components/ui/details';
 import {
   type Draft,
   type DraftKeeper,
@@ -279,7 +280,7 @@ export function QuestionForm({
           const name = q.header || q.question;
           return (
             <section key={qi} aria-label={name}>
-              {q.header && <p className="text-caption font-medium tracking-wide text-muted-foreground uppercase">{linkify(q.header)}</p>}
+              {q.header && <SectionLabel as="p">{linkify(q.header)}</SectionLabel>}
               <p className="text-prose font-medium">{linkify(q.question)}</p>
               {q.multiSelect && <p className="text-meta text-muted-foreground">Several can be picked</p>}
               {hasPreviews(q) ? (

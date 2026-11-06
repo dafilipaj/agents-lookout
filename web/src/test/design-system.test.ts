@@ -24,6 +24,8 @@ import { contrast, paint, solid, themeTokens } from './contrast';
  * - a 20 px icon (`size-5`) outside `components/ui/`: only the labelled button size draws one (DS-7.1, 7.4);
  * - a `<kbd>` outside `Kbd`, or a `select-all` command outside `CommandBlock` (DS-8.2, 8.4);
  * - a `role="tablist"` outside `Tabs` and the right sidebar, or `aria-current="page"` outside `SideNav` (DS-13.3);
+ * - `uppercase` outside `SectionLabel` and the chat's message tag, a bar drawn by hand outside `Meter` and the usage
+ *   strip's bar, or an age formatter outside `lib/time.ts` (DS-19.2, 19.3);
  * - a `role="radiogroup"` outside `Segmented` and the launcher's Harness choice (DS-20.3);
  * - a wait written past `Loading`: the text "Loading…" outside it, lucide's loaders outside Work's CI icon,
  *   `animate-spin` outside that icon and the Refresh buttons, and a spin or pulse without `motion-safe:` (DS-6.8).
@@ -341,7 +343,8 @@ const FAMILIES: Record<string, Family> = {
   info: {
     tokens: ['info-soft', 'info-border', 'info-text'],
     files: {
-      'web/src/components/MemoryLine.tsx': { why: 'a skipped memory sample is old (MEM-2.6)', uses: ['text-info-text'] },
+      'web/src/components/MemoryLine.tsx': { why: "res's queue that couldn't be read (RES-2.2)", uses: ['text-info-text'] },
+      'web/src/components/ui/details.tsx': { why: "a details popover's verdict whose reading is old: a skipped memory sample (MEM-2.6), old usage numbers (DS-3.3)", uses: ['text-info-text'] },
       'web/src/components/ui/alert.tsx': { why: 'the info Alert (DS-4): staleness and notices, its box, text and icon', uses: ['bg-info-soft', 'border-info-border', 'text-info-text'] },
       'web/src/components/ui/chip.tsx': { why: 'the info chip: "old" (DS-3.3)', uses: ['bg-info-soft', 'text-info-text'] },
       'web/src/components/SessionView.tsx': { why: 'the terminal preview\'s "… · retrying" (DS-3.3)', uses: ['text-info-text'] },
@@ -1570,6 +1573,110 @@ describe('sub-pages and tabs', () => {
       .flatMap(([path, text]) => tabsAndNavs(text, path).filter((s) => s.split(' ')[1] !== own[path]).map((s) => `${path}:${s}`));
     expect(found).toEqual([]);
     for (const [path, what] of Object.entries(own)) expect(tabsAndNavs(SOURCES[path] ?? '', path).map((s) => s.split(' ')[1]), path).toContain(what);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// DS-19.2, 19.3: details popovers (check 10)
+
+/** `uppercase` in a class string, with any variant, as `line:col class fn`; in CSS, `uppercase` anywhere (`@apply`, `text-transform`), as `line uppercase`. */
+function uppercases(source: string, path = 'x.tsx'): string[] {
+  if (path.endsWith('.css')) return scan(source, path, /\buppercase\b/g);
+  const file = parse(source, path);
+  const found: string[] = [];
+  const visit = (node: ts.Node) => {
+    if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) || ts.isTemplateHead(node) || ts.isTemplateMiddle(node) || ts.isTemplateTail(node)) {
+      for (const c of node.text.split(/\s+/)) if (/^(?:[\w-]+:|\[[^\]]+\]:)*!?uppercase!?$/.test(c)) found.push(`${where(file, node.getStart())} ${c} ${enclosingFn(node)}`);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return found;
+}
+
+/**
+ * A bar or a track drawn by hand: an element whose `className` holds `rounded-full`, a
+ * `bg-foreground/<n>` fill and an `h-1` or `h-1.5` height (with any variant, split across `cn()`'s
+ * strings too), as `line:col bar fn`.
+ */
+function handBars(source: string, path = 'x.tsx'): string[] {
+  const file = parse(source, path);
+  const found: string[] = [];
+  const visit = (node: ts.Node) => {
+    const cls = (ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)) && attr(node, 'className');
+    if (cls && cls.initializer) {
+      const classes = stringsIn(cls.initializer).flatMap((t) => t.split(/\s+/)).map((c) => c.replace(/^.*:/, '').replace(/^!|!$/g, ''));
+      const has = (re: RegExp) => classes.some((c) => re.test(c));
+      if (has(/^rounded-full$/) && has(/^bg-foreground\/(?:\d+(?:\.\d+)?|\[[^\]]+\])$/) && has(/^h-1(?:\.5)?$/)) found.push(`${where(file, node.getStart())} bar ${enclosingFn(node)}`);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return found;
+}
+
+/** A function or variable named `format…Age…` or `…Ago`, as `line:col name`. */
+function ageFormatters(source: string, path = 'x.ts'): string[] {
+  const file = parse(source, path);
+  const found: string[] = [];
+  const visit = (node: ts.Node) => {
+    const name = (ts.isFunctionDeclaration(node) || ts.isVariableDeclaration(node) || ts.isMethodDeclaration(node)) && node.name && ts.isIdentifier(node.name) ? node.name.text : null;
+    if (name && /^format\w*Age(?![a-z])|Ago$/.test(name)) found.push(`${where(file, node.getStart())} ${name}`);
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return found;
+}
+
+const DETAILS = 'web/src/components/ui/details.tsx';
+/** Where a label may be uppercase outside `SectionLabel`. */
+const UPPERCASE_EXCEPTIONS: Exception[] = [{ path: 'web/src/components/Chat.tsx', fn: 'Meta', count: 1, reason: "the chat's message tag, a `Chip` beside who wrote it (\"queued\"): a tag, not a section's label" }];
+/** Where a bar may be drawn outside `Meter`. */
+const BAR_EXCEPTIONS: Exception[] = [{ path: 'web/src/components/UsageStrip.tsx', fn: 'Bar', count: 1, reason: "the usage strip's bar (DS-3.2): 6 px, on the strip's shared columns, its edge set off in the sidebar's colour" }];
+
+describe('details popovers', () => {
+  it('DS-19.2: the guard catches an uppercase label and a bar drawn by hand however they are written, and lets the rest through', () => {
+    const up = (src: string) => uppercases(src).map((f) => f.split(' ').slice(1).join(' '));
+    expect(up(`function A() { return <><p className="uppercase" /><p className={cn('text-caption', on && 'md:uppercase')} /><p className={\`x \${y} uppercase\`} /></>; }`)).toEqual(['uppercase A', 'md:uppercase A', 'uppercase A']);
+    expect(up(`function A() { return <><p className="normal-case lowercase" /><p data-case="not-uppercase" />{/* uppercase */}</>; }`)).toEqual([]);
+    expect(uppercases(`.a { text-transform: uppercase; }\n.b { @apply uppercase tracking-wide; }\n/* uppercase */`, 'x.css')).toEqual(['1 uppercase', '2 uppercase']);
+    const bars = (src: string) => handBars(src).map((f) => f.split(' ').slice(1).join(' '));
+    expect(bars(`function A() { return <><span className="h-1 rounded-full bg-foreground/10" /><span className={cn('block h-1.5 rounded-full', 'bg-foreground/[0.2]')} /></>; }`)).toEqual(['bar A', 'bar A']);
+    // A dot, a glyph, a fill with no height of its own, and a bar in another colour pass.
+    expect(bars(`function A() { return <><span className="size-2 rounded-full bg-foreground/55" /><span className="h-3 w-[3px] rounded-full bg-warning" /><span className="h-full rounded-full bg-foreground/55" /><span className="h-1 rounded-full bg-primary" /></>; }`)).toEqual([]);
+  });
+
+  it('DS-19.3: the guard catches an age formatter however it is declared, and lets other names through', () => {
+    expect(ageFormatters(`export function formatAgeAgo() {} const formatSampleAge = () => 1; let timeAgo = 2; class C { formatAge() {} }`).map((f) => f.split(' ')[1])).toEqual(['formatAgeAgo', 'formatSampleAge', 'timeAgo', 'formatAge']);
+    expect(ageFormatters(`function formatAgent() {} const formatUntil = 1; const agoText = 'x'; const age = formatAge(ms);`)).toEqual([]);
+  });
+
+  it("DS-19.2: labels are uppercase only in SectionLabel and the chat's message tag; a question's header in the chat is a SectionLabel", () => {
+    const found = Object.entries(SOURCES)
+      .filter(([path]) => /\.(?:tsx?|css)$/.test(path) && path !== DETAILS)
+      .flatMap(([path, text]) => uppercases(text, path).map((f) => `${path}:${f}`));
+    const { unlisted, counts } = againstExceptions(found, UPPERCASE_EXCEPTIONS);
+    expect(unlisted).toEqual([]);
+    expect(counts).toEqual(UPPERCASE_EXCEPTIONS.map(({ path, fn, count }) => ({ path, fn, count })));
+    expect(uppercases(SOURCES[DETAILS] ?? '', DETAILS).map((f) => f.split(' ').slice(1).join(' '))).toEqual(['uppercase SectionLabel']);
+    for (const path of ['web/src/components/Answering.tsx', 'web/src/components/Chat.tsx']) expect(SOURCES[path], path).toMatch(/<SectionLabel as="p">\{linkify\(q\.header\)\}<\/SectionLabel>/);
+  });
+
+  it("DS-19.2: bars and tracks are drawn only by Meter and the usage strip's bar", () => {
+    const found = Object.entries(SOURCES)
+      .filter(([path]) => path.endsWith('.tsx') && path !== DETAILS)
+      .flatMap(([path, text]) => handBars(text, path).map((f) => `${path}:${f}`));
+    const { unlisted, counts } = againstExceptions(found, BAR_EXCEPTIONS);
+    expect(unlisted).toEqual([]);
+    expect(counts).toEqual(BAR_EXCEPTIONS.map(({ path, fn, count }) => ({ path, fn, count })));
+    expect(handBars(SOURCES[DETAILS] ?? '', DETAILS).map((f) => f.split(' ').slice(1).join(' '))).toEqual(['bar Meter']);
+  });
+
+  it('DS-19.3: only lib/time.ts formats an age, and only as formatAge', () => {
+    const found = Object.entries(SOURCES)
+      .filter(([path]) => /\.tsx?$/.test(path))
+      .flatMap(([path, text]) => ageFormatters(text, path).map((f) => `${path} ${f.split(' ')[1]}`));
+    expect(found).toEqual(['web/src/lib/time.ts formatAge']);
   });
 });
 

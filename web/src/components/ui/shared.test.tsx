@@ -6,6 +6,7 @@ import { Alert } from './alert';
 import { Avatar } from './avatar';
 import { Chip } from './chip';
 import { CommandBlock } from './command-block';
+import { Meter, SectionLabel, Tile, Tiles, Verdict, WorthALook } from './details';
 import { EmptyState } from './empty-state';
 import { IconButton, RowAction, RowSettling } from './icon-button';
 import { Kbd } from './kbd';
@@ -475,5 +476,64 @@ describe('Segmented', () => {
     const calls = onChange.mock.calls.length;
     fireEvent.keyDown(radio('Whole'), { key: 'ArrowRight', metaKey: true });
     expect(onChange).toHaveBeenCalledTimes(calls);
+  });
+});
+
+describe('details popover pieces', () => {
+  it("DS-19.1: Verdict, Tiles and Tile, WorthALook, SectionLabel and Meter draw a details popover's parts with Memory's classes", () => {
+    const { container, rerender } = render(
+      <>
+        <Verdict level="warning" age="stale · 1m" flagged id="v">The Mac is getting busy</Verdict>
+        <Tiles>
+          <Tile label="Pressure" value="warn" level="warning" field="tile-p">macOS</Tile>
+          <Tile label="Memory" value="2.4 GB">+180 MB in 30m</Tile>
+        </Tiles>
+        <WorthALook lines={[{ key: 'a', icon: <Plus aria-hidden className="size-3 shrink-0" />, text: 'Rates fix grew +180 MB in 10 min' }]} />
+        <SectionLabel note="12 GB of 24 GB in use">Who uses it</SectionLabel>
+        <Meter name={<span>Rates fix</span>} value={<span>612 MB</span>} percent={40} tone="mid" data-row="a" />
+        <Meter name={<span>Weekly</span>} value={<span>97%</span>} percent={97} level="critical" line="resets Mon 10:35 · in 2d 22h" data-row="b" />
+      </>,
+    );
+    // The verdict: a dot in its level's colour, the words in body medium (and its id, to name a popover), the age at its end.
+    const verdict = container.querySelector<HTMLElement>('[data-field="verdict"]')!;
+    expect(verdict).toHaveClass('flex', 'items-center', 'justify-between', 'gap-2');
+    expect(verdict.firstElementChild).toHaveClass('flex', 'min-w-0', 'items-center', 'gap-1.5', 'font-medium');
+    expect(verdict.querySelector('[aria-hidden]')).toHaveClass('size-2', 'shrink-0', 'rounded-full', 'bg-warning');
+    expect(document.getElementById('v')).toHaveTextContent('The Mac is getting busy');
+    expect(screen.getByText('stale · 1m')).toHaveClass('shrink-0', 'text-caption', 'tabular-nums', 'text-info-text');
+    // The tiles: three columns; a label in caption, a value in body medium tabular-nums in its level's colour with its icon, a caption line.
+    const pressure = container.querySelector<HTMLElement>('[data-field="tile-p"]')!;
+    expect(pressure.parentElement).toHaveClass('grid', 'grid-cols-3', 'gap-1.5');
+    expect(pressure).toHaveClass('min-w-0', 'rounded-md', 'bg-muted/60', 'px-2', 'py-1.5');
+    expect(pressure.children[0]).toHaveClass('text-caption', 'text-muted-foreground');
+    expect(pressure.children[1]).toHaveClass('flex', 'items-center', 'gap-1', 'font-medium', 'whitespace-nowrap', 'tabular-nums', 'text-warning-text');
+    expect(screen.getByRole('img', { name: 'warning' })).toBeInTheDocument();
+    expect(pressure.children[2]).toHaveClass('text-caption', 'text-muted-foreground');
+    expect(screen.getByText('2.4 GB')).not.toHaveClass('text-warning-text');
+    // Worth a look: a neutral box, its title in meta medium, one line each with its icon, whole in its tooltip.
+    const box = screen.getByRole('region', { name: 'Worth a look' });
+    expect(box).toHaveClass('flex', 'flex-col', 'gap-1', 'rounded-md', 'border', 'border-border', 'bg-muted/40', 'px-2.5', 'py-2', 'text-meta');
+    expect(box.querySelector('h3')).toHaveClass('font-medium');
+    expect(screen.getByText('Rates fix grew +180 MB in 10 min')).toHaveAttribute('title', 'Rates fix grew +180 MB in 10 min');
+    // A section's label: caption, medium, uppercase, tracking-wide, muted, its note at its right in normal case.
+    const label = screen.getByRole('heading', { level: 3, name: /Who uses it/ });
+    expect(label).toHaveClass('flex', 'items-baseline', 'justify-between', 'gap-2', 'text-caption', 'font-medium', 'tracking-wide', 'text-muted-foreground');
+    expect(screen.getByText('Who uses it')).toHaveClass('uppercase');
+    expect(screen.getByText('12 GB of 24 GB in use')).toHaveClass('font-normal', 'tabular-nums');
+    expect(screen.getByText('12 GB of 24 GB in use')).not.toHaveClass('uppercase');
+    // A meter: its line, a 4 px bar on a foreground/10 track, its fill one of three tones; the level as the strip's edge, a caption line under it.
+    const meter = (row: string) => container.querySelector<HTMLElement>(`[data-row="${row}"]`)!;
+    const track = (row: string) => meter(row).querySelector<HTMLElement>('[aria-hidden]')!;
+    expect(meter('a').firstElementChild).toHaveClass('flex', 'min-w-0', 'items-center', 'gap-1.5');
+    expect(track('a')).toHaveClass('mt-1', 'block', 'h-1', 'overflow-hidden', 'rounded-full', 'bg-foreground/10');
+    expect(track('a').firstElementChild).toHaveClass('block', 'h-full', 'rounded-full', 'bg-foreground/30');
+    expect(track('a').firstElementChild).toHaveStyle({ width: '40%' });
+    expect(meter('a').querySelector('[data-field="edge"]')).toBeNull();
+    expect(track('b').firstElementChild).toHaveClass('bg-foreground/55', 'relative', 'overflow-hidden');
+    expect(meter('b').querySelector('[data-field="edge"]')).toHaveClass('absolute', 'inset-y-0', 'right-0', 'w-1', 'border-l', 'border-popover', 'bg-destructive');
+    expect(screen.getByText('resets Mon 10:35 · in 2d 22h')).toHaveClass('mt-0.5', 'text-caption', 'text-muted-foreground');
+    // With nothing worth a look, the box isn't there at all.
+    rerender(<WorthALook lines={[]} />);
+    expect(screen.queryByRole('region', { name: 'Worth a look' })).toBeNull();
   });
 });

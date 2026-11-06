@@ -75,7 +75,7 @@ describe('Settings › Tools', () => {
     expect(section.querySelector('[data-field="checked"]')).toHaveTextContent('Checked 2m ago');
     await user.click(within(section).getByRole('button', { name: 'Refresh' }));
     expect(refreshTools).toHaveBeenCalledTimes(1);
-    await waitFor(() => expect(section.querySelector('[data-field="checked"]')).toHaveTextContent('Checked just now'));
+    await waitFor(() => expect(section.querySelector('[data-field="checked"]')).toHaveTextContent(/^Checked \d+s ago$/));
     expect(tools).toHaveBeenCalledTimes(1);
   });
 
