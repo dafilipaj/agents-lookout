@@ -109,59 +109,79 @@ it('MEM-3.1: click, Enter and Space open; Escape, outside and second click close
   expect(screen.queryByRole('dialog', { name: 'Memory details' })).not.toBeInTheDocument();
 });
 
-it('MEM-3.2: the header shows total, RAM, pressure icon and age, with info tone on a skipped sample', async () => {
+it('MEM-3.2: a verdict at the memory line\'s level with the sample\'s age, then three tiles whose Pressure and load take their levels', async () => {
   const app = show(sample({ pressure: 'warn' }));
   await userEvent.setup().click(trigger());
-  expect(within(details()).getByText('2.4 GB')).toHaveClass('text-title', 'tabular-nums');
-  expect(within(details()).getByText(/of 24 GB on this Mac/)).toBeInTheDocument();
-  expect(within(details()).getByText('pressure warn')).toHaveClass('text-warning-text');
-  expect(within(details()).getByRole('img', { name: 'warning' })).toBeInTheDocument();
-  expect(within(details()).getByText('sampled 12s ago')).toBeInTheDocument();
+  const verdict = details().querySelector<HTMLElement>('[data-field="verdict"]')!;
+  expect(verdict).toHaveTextContent('The Mac is getting busy');
+  expect(verdict.querySelector('.rounded-full')).toHaveClass('bg-warning');
+  expect(within(verdict).getByText('12s ago')).toHaveClass('text-muted-foreground');
+  const tile = (name: string) => details().querySelector<HTMLElement>(`[data-field="tile-${name}"]`)!;
+  expect(tile('memory')).toHaveTextContent(/^Memory2\.4 GB/);
+  expect(within(tile('pressure')).getByText('warn')).toHaveClass('text-warning-text', 'tabular-nums', 'font-medium');
+  expect(within(tile('pressure')).getByRole('img', { name: 'warning' })).toBeInTheDocument();
+  expect(tile('pressure')).toHaveTextContent('macOS');
+  expect(tile('load')).toHaveTextContent('CPU load3.3of 12 cores');
+  expect(tile('load').querySelector('.font-medium')).not.toHaveClass('text-warning-text');
   app.emit({ type: 'memory', memory: sample({ pressure: 'critical', old: true, sampledAt: NOW - 60_000 }) });
-  expect(within(details()).getByText('pressure critical')).toHaveClass('text-destructive-text');
-  expect(within(details()).getByRole('img', { name: 'critical' })).toBeInTheDocument();
-  expect(within(details()).getByText('stale · 1m')).toHaveClass('text-info-text');
+  expect(verdict).toHaveTextContent('The Mac is overloaded');
+  expect(within(tile('pressure')).getByText('critical')).toHaveClass('text-destructive-text');
+  expect(within(verdict).getByText('stale · 1m')).toHaveClass('text-info-text');
+  app.emit({ type: 'memory', memory: sample() });
+  expect(verdict).toHaveTextContent('The Mac has room');
 });
 
-it('MEM-3.3: collecting draws nothing, then a hidden sparkline and signed trend reading with a direction icon', async () => {
+it('MEM-3.3: the Memory tile reads collecting, then the signed change over 30 minutes with a direction icon, and draws no sparkline', async () => {
   const app = show();
   await userEvent.setup().click(trigger());
-  expect(within(details()).getByText('collecting…')).toBeInTheDocument();
-  expect(details().querySelector('[data-field="trend"] svg')).toBeNull();
+  const trend = () => details().querySelector<HTMLElement>('[data-field="trend"]')!;
+  expect(trend()).toHaveTextContent('collecting…');
   app.emit({ type: 'memory', memory: sample({ trend: [{ at: NOW - 30_000, bytes: GB }, { at: NOW, bytes: GB + 180 * MB }] }) });
-  expect(within(details()).getByText('last 30 min')).toBeInTheDocument();
-  expect(within(details()).getByText('+180 MB')).toBeInTheDocument();
-  expect(details().querySelector('svg[data-field="sparkline"]')).toHaveAttribute('aria-hidden', 'true');
+  expect(trend()).toHaveTextContent('+180 MB in 30m');
+  expect(trend().querySelector('svg')).toHaveClass('lucide-trending-up');
   app.emit({ type: 'memory', memory: sample({ trend: [{ at: NOW - 30_000, bytes: GB }, { at: NOW, bytes: GB - 40 * MB }] }) });
-  expect(within(details()).getByText('−40 MB')).toBeInTheDocument();
+  expect(trend()).toHaveTextContent('−40 MB in 30m');
+  expect(trend().querySelector('svg')).toHaveClass('lucide-trending-down');
+  expect(details().querySelector('[data-field="sparkline"]')).toBeNull();
 });
 
-it('MEM-3.4: a textured three-part split bar has a legend and explicitly puts this tab in other', async () => {
+it('MEM-3.4: one list holds the Sessions, Lookout and Other apps, on one scale of every process\'s memory, told apart by lightness', async () => {
   show();
   await userEvent.setup().click(trigger());
-  const slices = [...details().querySelectorAll<HTMLElement>('[data-field="split"] > span')];
-  expect(slices).toHaveLength(3);
-  expect(new Set(slices.map((el) => el.className)).size).toBe(3);
-  expect(slices.reduce((sum, el) => sum + parseFloat(el.style.width), 0)).toBeCloseTo(100);
-  expect(within(details()).getByText('this tab is in other')).toBeInTheDocument();
-  expect(within(details()).getByText(/other 9.6 GB/)).toBeInTheDocument();
+  const list = screen.getByRole('region', { name: 'Who uses it' });
+  expect(list).toHaveTextContent('12 GB of 24 GB in use');
+  const rows = [...list.querySelectorAll<HTMLElement>('[data-row]')];
+  expect(rows.map((r) => r.dataset.row)).toEqual(['a', 'b', 'lookout', 'other']);
+  const bar = (r: HTMLElement) => r.querySelector<HTMLElement>('[aria-hidden] > span')!;
+  expect(rows.map((r) => bar(r).className.match(/bg-foreground\/\d+/)?.[0])).toEqual(['bg-foreground/55', 'bg-foreground/55', 'bg-foreground/30', 'bg-foreground/15']);
+  // 612 MB of 12 GB is 5%; Lookout's 96 MB is under 2%, so it shows at 2%; other apps 9.6 GB is 80%.
+  expect(parseFloat(bar(rows[0]!).style.width)).toBeCloseTo((612 * MB) / (12 * GB) * 100);
+  expect(bar(rows[2]!).style.width).toBe('2%');
+  expect(parseFloat(bar(rows[3]!).style.width)).toBeCloseTo(80);
+  expect(rows[3]!.closest('li')).toHaveAttribute('title', 'Every other process on this Mac, this tab too');
+  expect(rows[3]).toHaveTextContent('Other apps9.6 GB');
 });
 
-it('MEM-3.5: rows show biggest executables and warning growth chips, sort by size and freeze under the pointer, with gone at zero', async () => {
-  const app = show();
+it('MEM-3.5: rows carry growth and Queued marks after the name, executables in the tooltip, sort by size and freeze under the pointer, with gone at zero', async () => {
+  const app = renderApp();
+  app.snapshot([row({ id: 'a', title: 'First', memoryGrowthBytes: 180 * MB, queued: { tool: 'vitest', since: NOW - 120_000, position: 1 } }), row({ id: 'b', title: 'Second', harness: 'codex' })]);
+  app.emit({ type: 'memory', memory: sample() });
   await userEvent.setup().click(trigger());
-  const buttons = () => within(details()).getAllByRole('button');
+  const buttons = () => within(screen.getByRole('region', { name: 'Who uses it' })).getAllByRole('button');
   expect(buttons().map((b) => b.textContent)).toEqual([expect.stringContaining('First'), expect.stringContaining('Second')]);
-  expect(within(buttons()[0]!).getByText('node ×2 612')).toHaveClass('text-caption');
-  expect(within(buttons()[0]!).getByText('+180 MB in 10 min').closest('[data-slot="chip"]')).toHaveAttribute('data-tone', 'warning');
-  expect(within(buttons()[0]!).getByText('+180 MB in 10 min').closest('[data-slot="chip"]')).toHaveClass('border-warning/40', 'text-warning-text');
+  const first = buttons()[0]!.querySelector<HTMLElement>('[data-row]')!;
+  expect(first).toHaveAttribute('title', 'node ×2 612');
+  expect(first.querySelector('[data-field="growth"]')).toHaveTextContent('+180 MB');
+  expect(first.querySelector('[data-field="growth"]')).toHaveClass('text-warning-text');
+  expect(first.querySelector('[data-field="queued"]')).toHaveTextContent('2m');
   expect(within(buttons()[0]!).getByRole('img', { name: 'Claude Code' })).not.toHaveAttribute('data-brand');
-  fireEvent.pointerEnter(details().lastElementChild!);
+  const root = screen.getByRole('dialog', { name: 'Memory details' }).querySelector<HTMLElement>('.divide-y')!;
+  fireEvent.pointerEnter(root);
   app.emit({ type: 'memory', memory: sample({ sessions: [mr('b', 900 * MB), mr('a', 0)] }) });
   expect(buttons()[0]).toHaveTextContent('First');
   expect(buttons()[0]).toHaveTextContent('gone');
   expect(buttons()[0]).toHaveTextContent('0 B');
-  fireEvent.pointerLeave(details().lastElementChild!);
+  fireEvent.pointerLeave(root);
   expect(buttons()[0]).toHaveTextContent('Second');
 });
 
@@ -185,14 +205,43 @@ it('MEM-3.6: Session buttons select and close with focus restored, arrow keys mo
   expect(app.client.sendMessage).not.toHaveBeenCalled();
 });
 
-it('MEM-3.7: Loading before a sample, and no live Sessions with the Lookout row retained', async () => {
+it('MEM-3.7: Loading before a sample, and no live Sessions with the Lookout and Other apps rows kept', async () => {
   const app = show(null);
   await userEvent.setup().click(trigger());
   expect(within(details()).getByText('Reading memory…')).toBeInTheDocument();
   app.snapshot([]);
   app.emit({ type: 'memory', memory: sample({ sessions: [] }) });
   expect(within(details()).getByText('No live Sessions')).toHaveClass('text-meta', 'text-muted-foreground');
-  expect(within(details()).getByRole('region', { name: 'Lookout memory' }).querySelector('.font-medium')).toBeInTheDocument();
+  expect([...details().querySelectorAll<HTMLElement>('[data-row]')].map((r) => r.dataset.row)).toEqual(['lookout', 'other']);
+});
+
+it('MEM-3.9: Worth a look lists growing rows and waiting res jobs, and is gone when nothing needs an eye', async () => {
+  const app = show();
+  await userEvent.setup().click(trigger());
+  const box = () => screen.queryByRole('region', { name: 'Worth a look' });
+  expect(box()).toHaveTextContent('First grew +180 MB in 10 min');
+  expect(box()!.querySelector('svg')).toHaveClass('lucide-trending-up', 'text-warning-text');
+  expect(box()).toHaveClass('border-border', 'bg-muted/40');
+  const job = (id: string, waitedMs: number) => ({ id, pid: 1, kind: 'run' as const, state: 'waiting' as const, prio: 'check', cls: 'vitest@x', cores: 1, mb: 100, since: null, waitingSince: NOW - waitedMs, queuedAt: NOW - waitedMs, session: null, sessionId: null, position: 1 });
+  app.emit({ type: 'res', res: { jobs: [job('w1', 60_000), job('w2', 180_000)], readAt: NOW, error: null } });
+  expect(box()).toHaveTextContent('2 jobs waiting in res, the longest 3m');
+  app.emit({ type: 'res', res: { jobs: [job('w1', 60_000)], readAt: NOW, error: null } });
+  expect(box()).toHaveTextContent('1 job waiting in res for 1m');
+  app.emit({ type: 'res', res: null });
+  app.emit({ type: 'memory', memory: sample({ sessions: [mr('a', 612 * MB), mr('b', 400 * MB)] }) });
+  expect(box()).toBeNull();
+});
+
+it('MEM-3.9: Worth a look keeps one note per growing row when Sessions share a title and reorder', async () => {
+  const app = renderApp();
+  app.snapshot([row({ id: 'a', title: 'Same' }), row({ id: 'b', title: 'Same' }), row({ id: 'c', title: 'Other' })]);
+  app.emit({ type: 'memory', memory: sample({ sessions: [mr('a', 700 * MB, 100 * MB), mr('b', 600 * MB, 90 * MB), mr('c', 500 * MB, 80 * MB)] }) });
+  await userEvent.setup().click(trigger());
+  const notes = () => screen.getByRole('region', { name: 'Worth a look' }).querySelectorAll('svg.lucide-trending-up');
+  expect(notes()).toHaveLength(3);
+  app.emit({ type: 'memory', memory: sample({ sessions: [mr('c', 900 * MB, 300 * MB), mr('a', 700 * MB, 100 * MB), mr('b', 600 * MB, 90 * MB)] }) });
+  expect(notes()).toHaveLength(3);
+  expect(screen.getByRole('region', { name: 'Worth a look' })).toHaveTextContent('Other grew +300 MB in 10 min');
 });
 
 it('MEM-4.1: growth precedes Subagents in the nonshrinking numbers group, names the amount and meets contrast on every row state', () => {
@@ -243,14 +292,16 @@ it('MEM-5.1: CPU from 10% is shown after size with the machine capacity in its t
   expect(within(details()).queryByText('cpu 10%')).not.toBeInTheDocument();
 });
 
-it('MEM-5.2: load and cores in the header warn with a triangle or octagon, and the glyph takes the worse level', async () => {
+it('MEM-5.2: the CPU load tile warns with a triangle or octagon, and the glyph takes the worse level', async () => {
   const app = show(sample({ load: { one: 12, cores: 12 } }));
   await userEvent.setup().click(trigger());
-  expect(within(details()).getByText('load 12.0 · 12 cores')).toHaveClass('text-warning-text');
+  const load = () => details().querySelector<HTMLElement>('[data-field="tile-load"]')!;
+  expect(within(load()).getByText('12.0')).toHaveClass('text-warning-text');
+  expect(load()).toHaveTextContent('of 12 cores');
   expect(trigger().querySelector('[data-field="memory-glyph"]')).toHaveClass('bg-warning');
   app.emit({ type: 'memory', memory: sample({ load: { one: 24, cores: 12 } }) });
-  expect(within(details()).getByText('load 24.0 · 12 cores')).toHaveClass('text-destructive-text');
-  expect(within(details()).getByRole('img', { name: 'critical' })).toBeInTheDocument();
+  expect(within(load()).getByText('24.0')).toHaveClass('text-destructive-text');
+  expect(within(load()).getByRole('img', { name: 'critical' })).toBeInTheDocument();
   expect(trigger().querySelector('[data-field="memory-glyph"]')).toHaveClass('bg-destructive');
 });
 
@@ -281,8 +332,7 @@ it('MEM-1.4: the announced count follows current row marks when Fleet removes a 
 it('MEM-3.3: the displayed delta and collecting state ignore points older than thirty minutes', async () => {
   const app = show(sample({ old: true, trend: [{ at: NOW - 3_600_000, bytes: GB }, { at: NOW - 30_000, bytes: 2 * GB }, { at: NOW, bytes: 2 * GB + 10 * MB }] }));
   await userEvent.setup().click(trigger());
-  expect(within(details()).getByText('+10 MB')).toBeInTheDocument();
+  expect(details().querySelector('[data-field="trend"]')).toHaveTextContent('+10 MB in 30m');
   app.emit({ type: 'memory', memory: sample({ old: true, trend: [{ at: NOW - 3_600_000, bytes: GB }, { at: NOW - 3_570_000, bytes: 2 * GB }] }) });
-  expect(within(details()).getByText('collecting…')).toBeInTheDocument();
-  expect(details().querySelector('[data-field="sparkline"]')).toBeNull();
+  expect(details().querySelector('[data-field="trend"]')).toHaveTextContent('collecting…');
 });

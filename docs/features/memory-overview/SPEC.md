@@ -47,13 +47,15 @@ Lookout's server samples the whole machine at once and sums each Process tree, s
 A click on the memory line opens a popover, as the usage strip's does (USAGE-2.1): a click, not a hover, since its rows are clickable and the 5 s cadence is tied to it being open.
 
 - [x] MEM-3.1 A click on the line, or Enter or Space with focus on it, opens the breakdown as a popover beside the line (`side="right" align="end"`, as the usage details); Esc, a click outside, or a second click closes it. While it is open the tab tells the server (`PUT /api/memory/watch {clientId, open}`, as `PUT /api/work/watch` does, WORK-8.1), the server samples at once and then every 5 s (MEM-2.3), and the tab tells it when it closes; a tab whose event stream ends counts as closed. Only one of the two dock popovers is open at a time: opening one closes the other. (e2e)
-- [x] MEM-3.2 The header shows the watched total large (`title`, `tabular-nums`), then "of 24 GB on this Mac · pressure normal" in `meta`; the Pressure word reads in `warning-text` at `warn` and `destructive-text` at `critical`, each with the design system's level icon beside it (USAGE-1.2's triangle and octagon), and plain `muted-foreground` when normal. How old the sample is sits at the header's end ("sampled 3 s ago", "stale · 1m" in the info tone after a skipped sample, MEM-2.6). (test)
-- [x] MEM-3.3 Under the header a sparkline of the trend (MEM-2.4), 30 minutes wide, with a label: "last 30 min" and the change from its first point to its last with lucide's `TrendingUp` or `TrendingDown` ("+180 MB", "−40 MB"); its vertical span is at least 50 MB, so a flat line doesn't look like a cliff; with fewer than 2 points it reads "collecting…" and draws nothing. (test)
-- [x] MEM-3.4 Then a split bar, the sum of every process's RSS as 100%, in three parts, Lookout, Sessions and other, each at least 2% wide when it isn't zero, with a legend of the three names and their sizes; the parts are told apart by texture and the legend, not colour alone (`foreground/55`, `foreground/30` and the track, DS-3.2's palette). (test)
-- [x] MEM-3.5 Then two sections, Lookout and Sessions (other has no rows: it is one number in the legend). A row shows its name (the Session's title, with its Harness mark monochrome, DS-3.1; "Lookout" for the server), a faint detail in `caption` with its biggest executables, the top 3 of 1 MB or more by their `comm` basename, each with a count when there are several and its MB (`claude 312 · node ×2 96 · vitest 214`), a growth badge when MEM-2.5 says it grows (`Chip`, `warning` tone: `TrendingUp` and "+180 MB in 10 min"), a bar relative to the section's largest row (the usage details' solid bar, DS-3.2), and its size at the end in `tabular-nums`. Rows sort by size, largest first, and don't move while the pointer is over the popover (SIDE-3.4's rule). A Session Fleet lists whose tree the sample doesn't hold (its pid exited between the two reads) shows "gone" in its detail, 0 B, for that sample. (test)
+- [x] MEM-3.2 The breakdown opens on a verdict: a CSS dot in the memory line's level colour (MEM-1.3, MEM-5.2's worse level) and one sentence, "The Mac has room" (normal), "The Mac is getting busy" (warning) or "The Mac is overloaded" (critical), in `body` `font-medium`; how old the sample is sits at its end ("4s ago", "stale · 1m" in the info tone after a skipped sample, MEM-2.6). Under it three tiles side by side, each a label in `caption`, a value in `body` `font-medium` `tabular-nums` and a line under it: **Memory**, the watched total, with the trend (MEM-3.3); **Pressure**, the Pressure word, "macOS" under it; **CPU load**, the 1-minute load to one decimal, "of 12 cores" under it. Pressure and load read in `warning-text` or `destructive-text` with the design system's level icon (USAGE-1.2's triangle and octagon) at their levels, and plain when normal. (test)
+- [x] MEM-3.3 The Memory tile's line is the trend (MEM-2.4): the change from the first point of the last 30 minutes to the last, with lucide's `TrendingUp` or `TrendingDown` ("+180 MB in 30m", "−40 MB in 30m", the whole phrase in its tooltip); with fewer than 2 points in that window it reads "collecting…". No sparkline: the number is what's read. (test)
+- [x] MEM-3.4 Then one list, "Who uses it", headed with "12 GB of 24 GB in use" (every process's RSS, of the Mac's RAM): the Sessions, then Lookout, then "Other apps" (other, MEM-2.2, with "this tab too" in its tooltip), each with a bar under it on one scale, the RSS of every process as 100% (at least 2% wide when it isn't zero): `foreground/55` for a Session, `foreground/30` for Lookout and `foreground/15` for other apps, so the three kinds differ in lightness, not hue. (test)
+- [x] MEM-3.5 A row shows its name (the Session's title with its Harness mark monochrome, DS-3.1; "Lookout"; "Other apps"), its marks after the name, then its size at the end in `tabular-nums`: growth when MEM-2.5 says it grows (`TrendingUp` and "+180 MB" in `warning-text`), a Queued mark when one of its jobs waits in `res` (RES-3: `Hourglass` and its wait), and its CPU from 10% (MEM-5.1). Its biggest executables, the top 3 of 1 MB or more by their `comm` basename with counts and MB (`claude 312 · node ×2 96`), are its tooltip. The Sessions sort by size, largest first, and don't move while the pointer is over the popover (SIDE-3.4's rule). A Session Fleet lists whose tree the sample doesn't hold (its pid exited between the two reads) reads "gone" after its name, 0 B, for that sample. (test)
 - [x] MEM-3.6 A Session row is a button: a click, or Enter on it, selects that Session in the sidebar and closes the popover, nothing else (no start, resume or send); its accessible name is "Open <title>, 612 MB, growing +180 MB" in the order shown. The Lookout row is plain text. The rows are reachable with Tab and ↑/↓ inside the popover; focus returns to the memory line when it closes. (test)
-- [x] MEM-3.7 Empty and loading states are the design system's: before the first sample, "Reading memory…" (DS-6.3) in the popover too; with no Session listed, the Sessions section says "No live Sessions" in `meta` `muted-foreground` and keeps the Lookout row; after a skipped sample the header's age reads old (MEM-3.2) and the rows stay as they were. (test)
-- [x] MEM-3.8 Seen at 280 px, light and dark, with four Sessions, one growing, the Pressure forced to `warn`: the header, sparkline, split bar and rows fit the popover's 22 rem without a horizontal scroll, long Session titles truncate before the size, the badge never wraps, and the popover never covers the Session list's selected row. (manual)
+- [x] MEM-3.7 Empty and loading states are the design system's: before the first sample, "Reading memory…" (DS-6.3) in the popover too; with no Session listed, the list says "No live Sessions" in `meta` `muted-foreground` where the Sessions would be and keeps the Lookout and Other apps rows; after a skipped sample the verdict's age reads old (MEM-3.2) and the rows stay as they were. (test)
+- [ ] MEM-3.8 Seen at 280 px, light and dark, with four Sessions, one growing and one Queued, the Pressure forced to `warn`: the verdict, the tiles, Worth a look and the list fit the popover's 22 rem without a horizontal scroll, the tiles keep their values on one line, long Session titles truncate before their marks and size, and the popover never covers the Session list's selected row. (manual)
+
+- [x] MEM-3.9 Between the tiles and the list, "Worth a look" lists what needs an eye, one line each, and shows only when there is something: each growing row ("Rates fix grew +180 MB in 10 min", with `TrendingUp` in `warning-text`), and the jobs waiting in `res` ("2 jobs waiting in res, the longest 3m", with `Hourglass`). It's a neutral box (`border`, `muted/40`), not an Alert: the icons carry the warning, as the design system has no amber Alert (DS-4). (test)
 
 ### MEM-4 Growth on the Session row
 
@@ -66,13 +68,13 @@ A click on the memory line opens a popover, as the usage strip's does (USAGE-2.1
 The incident that motivates this feature was load, not memory (decided 2026-10-24, Key decisions).
 
 - [x] MEM-5.1 The sample's `ps` has one more column, `%cpu=`, and a tree's CPU is the sum of its processes'; a row whose tree is at 10% or more shows it after its size in the breakdown (`cpu 140%`), with the Mac's core count as the scale in its tooltip ("140% of 1200%"). (test)
-- [x] MEM-5.2 The breakdown's header carries the 1-minute load average from `os.loadavg()` with the core count from `os.cpus().length` ("load 3.3 · 12 cores"), in `warning-text` with the triangle from one load per core, in `destructive-text` with the octagon from two per core; the memory line's glyph takes the worse of the memory level (MEM-1.3) and this one. (test)
+- [x] MEM-5.2 The breakdown's CPU load tile (MEM-3.2) carries the 1-minute load average from `os.loadavg()` with the core count from `os.cpus().length` ("3.3", "of 12 cores"), in `warning-text` with the triangle from one load per core, in `destructive-text` with the octagon from two per core; the memory line's glyph takes the worse of the memory level (MEM-1.3) and this one. (test)
 - [x] MEM-5.3 The memory line reads `▌ 2.4 GB · load 3.3`, the load rounded to one decimal, and shows the Pressure word instead only when it isn't normal (`▌ 2.4 GB · pressure warn`), since "pressure normal" says nothing on a normal day and the load is the number that was 33. (test)
 
 ## Non-goals
 
 - Killing, pausing or renicing any process from Lookout; the breakdown is a map, and the Session's own Stop (VIEW-4.4) or End Session (VIEW-5.6) are the actions.
-- The browser tab's own memory: Lookout's server can't see it (a Chrome renderer isn't in any tree the server owns), and it says so in the breakdown's other legend ("this tab is in other"). Measuring it from inside the tab (`performance.measureUserAgentSpecificMemory()`) needs cross-origin isolation headers (Key decisions).
+- The browser tab's own memory: Lookout's server can't see it (a Chrome renderer isn't in any tree the server owns), and it says so in the Other apps row's tooltip ("this tab too", MEM-3.4). Measuring it from inside the tab (`performance.measureUserAgentSpecificMemory()`) needs cross-origin isolation headers (Key decisions).
 - More than the top 3 executables per row, a per-process list, or a tree view; Activity Monitor has them.
 - Swap, compressed memory, wired memory, `vm_stat`'s page counts, GPU memory: RSS and the Pressure level are what one `ps` and one `sysctl` give; the sum of RSS over-counts shared pages (Known gaps) and that is accepted.
 - History beyond 30 minutes, or across restarts; a chart per row (the trend is of the watched total only).
@@ -104,37 +106,38 @@ The incident that motivates this feature was load, not memory (decided 2026-10-2
 - `▌` stands for the glyph: a 3 × 12 px rounded bar drawn in CSS like the Status strip (SIDE-3.6), in the level's token (MEM-1.3), with `transition-colors duration-700` and no glow; Lookout's design system has no glows, and a glow on an amber bar would be the brightest thing in the sidebar (DS-3.7). `↗` stands for lucide's `TrendingUp` ([0008](../../decisions/0008-lucide-icons-only.md)); the usage strip's marks are as in USAGE's mock-up.
 - **Fit:** Dario’s 2026-10-25 check at 1512 × 703 found a 98 px usage strip (8 px top padding + 86 px content + 4 px bottom padding) above the old 20 px memory line. The memory row is now the sidebar’s status line: 28 px including its top border, aligned with the main pane’s 675–703 status line. The usage strip uses 4 px top and 2 px bottom padding (`pt-1 pb-0.5`), fitting its 86 px content into 92 px. Together, 92 + 28 = DockRest’s 120 px; the dock cell is 121 px including its outer top border. A stretched flex column keeps usage at the dock’s top and the memory row at its bottom, including with sparse/loading usage and in views with no status line. The memory button remains a sibling of the usage trigger, never nested in it.
 - The line: the glyph, then the total in `font-medium tabular-nums`, then ` · ` and the Pressure word (or the load, MEM-5.3) in `muted-foreground`, `text-caption leading-4`, `h-7 items-center`, `border-t border-sidebar-border/70 bg-muted/30`, `px-2.5`, hover and focus as the usage strip's trigger (`hover:bg-sidebar-accent/50`).
-- **The breakdown** (MEM-3), a popover of 22 rem like the usage details, `side="right" align="end"`:
+- **The breakdown** (MEM-3), a popover of 22 rem like the usage details, `side="right" align="end"`; option A of the three drawn on 2026-11-06 (https://claude.ai/artifact/5cB9UUo3QAZPUPJkAcxehD):
 
 ```
 ┌────────────────────────────────────────────────┐
-│ 2.4 GB                          sampled 3 s ago│  ← title size; age at the end
-│ of 24 GB on this Mac · pressure normal         │  ← meta; load 3.3 · 12 cores with MEM-5
-│ ▁▂▂▃▃▃▄▄▅▅▆▆▇▇  last 30 min · ↗ +180 MB        │  ← sparkline, ≥ 50 MB span
-│ ███▒▒▒▒▒▒▒▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ │  ← Lookout · Sessions · other
-│ Lookout 96 MB · Sessions 2.3 GB · other 9.1 GB │     (this tab is in other)
+│ ● The Mac has room                       4s ago│  ← verdict at the line's level
+│ ┌Memory──────┐ ┌Pressure────┐ ┌CPU load────┐   │
+│ │2.4 GB      │ │normal      │ │3.3         │   │  ← tiles; levels colour the value
+│ │↗ +180 MB in│ │macOS       │ │of 12 cores │   │
+│ └────────────┘ └────────────┘ └────────────┘   │
+│ ┌ Worth a look ─────────────────────────────┐  │  ← only when something needs an eye
+│ │ ↗ fix-deal-rates grew +180 MB in 10 min   │  │
+│ │ ⧖ 1 job waiting in res for 2m             │  │
+│ └───────────────────────────────────────────┘  │
 ├────────────────────────────────────────────────┤
-│ LOOKOUT                                        │
-│ Lookout                                  96 MB │
-│   node 51 · fleet 12 · tb-session 9            │
-├────────────────────────────────────────────────┤
-│ SESSIONS                                       │
-│ ✳ fix-deal-rates  [↗ +180 MB in 10 min] 612 MB │  ← a button: selects the Session
-│   ████████████████████████████████             │  ← bar relative to the largest row
-│   claude 312 · node ×2 96 · vitest 214         │
+│ WHO USES IT                 12 GB of 24 GB in use│
+│ ✳ fix-deal-rates ↗ +180 MB ⧖ 2m         612 MB │  ← a button: selects the Session
+│   ██                                           │  ← one scale: every process's RSS
 │ ⊛ kg-hook-review                        498 MB │
-│   ████████████████████████                     │
-│   codex 410 · node 88                          │
-│ ✳ spec-lookout                          402 MB │
-│   ████████████████████                         │
-│   claude 402                                   │
+│ Lookout                                  96 MB │
+│ Other apps                              9.1 GB │  ← this tab too, in its tooltip
+│   ██████████████████████████████████           │
+├────────────────────────────────────────────────┤
+│ RES QUEUE                                      │  ← with res only (RES-2.2)
+│ running  vitest · spec-lookout     2.6 GB · 1m │
+│ #1 waits tsc · fix-deal-rates      2.9 GB · 2m │
 └────────────────────────────────────────────────┘
 ```
 
-  - Section headers in `caption` medium `muted-foreground`, as the usage details' provider headers; rows in `body`, the detail in `caption` `muted-foreground`, the bar the usage details' solid one (`h-1.5`, `foreground/55`); the growth badge a `Chip` in the `warning` tone, `TrendingUp` then the amount; sizes `tabular-nums`, right-aligned on one column so they line up.
-  - A Session row is a `button` the width of the row, with the row's hover (`hover:bg-accent`), `aria-label` as MEM-3.6; the Lookout row is a `div`. Keyboard: Tab reaches the first Session row, ↑/↓ move between rows, Enter opens, Esc closes and returns focus to the memory line (Radix's Popover does the focus part, as for the usage details).
-  - Colour by meaning (DS-2): the only amber in the breakdown is a growth badge, the Pressure word at `warn` and the load at one per core; red is `critical`, two per core, or a watched total past two thirds of RAM; the bars and the split bar are neutral. Staleness is the info tone (DS-3.3).
-- **States:** "Reading memory…" (DS-6.3) in the line and the popover before the first sample; "collecting…" in the sparkline's place until 2 points; "stale · 1m" in the header after a skipped sample; "No live Sessions" in the Sessions section when Fleet lists none; a Session row at 0 B says "gone" (its pid exited between Fleet's read and `ps`).
+  - `⧖` stands for lucide's `Hourglass`. Section headers in `caption` medium `muted-foreground`; rows in `body`; a row's executables are its tooltip; the bars are `h-1` on the track `foreground/10`, `foreground/55` for a Session, `/30` for Lookout and `/15` for other apps; sizes `tabular-nums`, right-aligned.
+  - A Session row is a `button` the width of the row (`hover:bg-accent/50`), `aria-label` as MEM-3.6; Lookout's and Other apps' rows are plain. Keyboard: Tab reaches the first button, ↑/↓ move between the popover's buttons (the queue's Sessions too), Enter opens, Esc closes and returns focus to the memory line.
+  - Colour by meaning (DS-2): amber is a growth mark, the Pressure at `warn`, the load at one per core and the verdict's dot at the warning level; red is `critical`, two per core, or a watched total past two thirds of RAM; Worth a look is a neutral box whose icons carry the tone (no amber Alert, DS-4); the bars are neutral. Staleness is the info tone (DS-3.3).
+- **States:** "Reading memory…" (DS-6.3) in the line and the popover before the first sample; "collecting…" in the Memory tile until 2 points; "stale · 1m" at the verdict's end after a skipped sample; "No live Sessions" in the list when Fleet lists none; a Session row at 0 B says "gone" (its pid exited between Fleet's read and `ps`).
 - **Shortcuts:** none new. The line is in the Tab order after the usage strip's trigger; Enter and Space open it.
 
 ## Technical approach
@@ -161,7 +164,7 @@ interface MemorySnapshot {
   ramBytes: number;             // hw.memsize
   pressure: 'normal' | 'warn' | 'critical';
   watchedBytes: number;         // lookout + sessions
-  totalBytes: number;           // every process's RSS summed (the split bar's 100%)
+  totalBytes: number;           // every process's RSS summed (the list's one scale, MEM-3.4)
   lookout: MemoryRow;
   sessions: MemoryRow[];        // keyed by SessionRow.id, sorted by bytes desc
   otherBytes: number;
@@ -181,7 +184,7 @@ interface MemoryRow {
 
 ### Trend and growth (MEM-2.4, MEM-2.5)
 
-- The ring is in the sampler, 60 entries, a point only when the last one is ≥ 30 s old, so the 5 s cadence adds nothing extra and 30 minutes stays 30 minutes. The sparkline's span is `max(50 MB, max − min)` around the points, so a flat 2.40–2.41 GB draws flat.
+- The ring is in the sampler, 60 entries, a point only when the last one is ≥ 30 s old, so the 5 s cadence adds nothing extra and 30 minutes stays 30 minutes.
 - Growth history is a per-row list of `{at, bytes}` trimmed to 10 minutes; `growthBytes = latest − oldest` when that is ≥ 30 MB, else null. A row that vanishes drops its list; a new row starts a new one, so a Session resumed under a new pid starts from zero. The pure functions live in `shared/memory.ts` (parse, tree, owners, top executables, growth, level, formatting) with unit tests per criterion; only `server/memory.ts` runs `ps` and `sysctl`.
 
 ### Colour and the design system (MEM-1.3)
@@ -192,7 +195,7 @@ interface MemoryRow {
 ### Client
 
 - `web/src/components/MemoryLine.tsx` (the line and its popover, as `UsageStrip.tsx` holds both) and `web/src/lib/memory.ts` (formatting and level classes); the sidebar's dock cell renders it under `UsageStrip`, in a stretched flex column over `DockRest` (`Sidebar.tsx`, SIDE-8.1). The usage trigger uses `pt-1 pb-0.5` to fit within 92 px. The memory trigger uses `mt-auto h-7 items-center border-t border-sidebar-border/70 bg-muted/30`, with no vertical padding or glyph offset: it is anchored at the dock’s bottom and its separator aligns with the main status line. `SessionItem.tsx` adds the mark to its numbers group before the Subagent count.
-- The sparkline is an inline SVG, `currentColor` strokes, `aria-hidden`, its reading in text beside it (MEM-3.3); the split bar three `span`s in one track.
+- The breakdown is `Details` in `MemoryLine.tsx`: the verdict and its three `Tile`s, `WorthALook` (MEM-3.9), one `UseRow` per row of the list on the scale of `totalBytes`, and RES's `Queue` last. The trend is `trendShape`'s delta, as text (MEM-3.3).
 - Selecting a Session from a row goes through the sidebar's `onSelect` (`push`), the same path as a click on the row.
 
 ### Dependencies
@@ -220,7 +223,7 @@ interface MemoryRow {
 - **The server samples; the tab renders** ([0003](../../decisions/0003-browser-first-react-stack.md)): only the server sees every process, and one `ps` for every tab is cheaper than one per tab.
 - **One `ps` for every number**: parts that come from one listing add up; two listings (a tree walk per Session, say) would disagree by whatever moved between them.
 - **RAM from `sysctl hw.memsize`, in the same call as the Pressure, `os.totalmem()` only as the fallback**: one command, one fake in a World, and a World can then declare the Mac's RAM without an environment variable.
-- **The watched total is Lookout plus the Sessions, not the Mac's used memory**: the line answers "what do my Sessions cost", and the split bar answers "of how much" with other as one number; the Mac's own accounting (`vm_stat`) isn't comparable with RSS sums and isn't read.
+- **The watched total is Lookout plus the Sessions, not the Mac's used memory**: the line answers "what do my Sessions cost", and the list answers "of how much" with other apps as one row; the Mac's own accounting (`vm_stat`) isn't comparable with RSS sums and isn't read.
 - **Other is one number, no rows** (Dario, 2026-10-24, agreed): what the Sessions cost is the question; a row per tmux pane would show tmux (0001), and a row per app is Activity Monitor.
 - **An own status row under the usage strip, not a shared line** (Dario, 2026-10-24; aligned with the main status line from his 2026-10-25 check): a 28 px bordered row follows up to 92 px of usage content and padding, so the resting dock stays 120 px inside its top border. It is a sibling button of the usage trigger, since a button cannot nest a button. Additional usage rows can still grow the dock, as SIDE-8.1 allows; the memory row stays at the bottom.
 - **CPU and load beside memory, as MEM-5** (Dario, 2026-10-24, agreed): the incident was load (33 on 12 cores), and Pressure was probably normal throughout. `%cpu` is one more `ps` column at no cost (measured: 97.5% for a busy process after one second, 0.1% asleep), the load is `os.loadavg()`; the glyph takes the worse of memory and load, and the line reads `▌ 2.4 GB · load 3.3` with the Pressure word only when it isn't normal. Thresholds (one and two loads per core) are a guess until seen.
@@ -249,3 +252,4 @@ None.
 - 2026-10-25: Review round 1: expire trend points by timestamp on recording, snapshot reads and failed samples, and filter the rendered trend and delta by the app clock (MEM-2.4, MEM-3.3); count current Session-row growth marks for the announcement (MEM-1.4); repeatedly apply the split-bar minimum while redistributing (MEM-3.4). Behaviour tests now check release after closing the breakdown, disconnecting its stream and closing the last tab; API tests verify the exact 30-second boundary and zero reads without tabs (MEM-2.3). The dock test now declares Claude, Codex and Jev usage and checks SIDE-8.1’s resting composer height and alignment (MEM-1.2).
 - 2026-10-25: the memory line gets the status line's border and height, aligned with it, from Dario's check. MEM-1.1 specifies the 28 px centred row and sidebar separator; MEM-1.2 checks separator alignment with the Session status line and bottom anchoring without one. Usage padding is now 4 px above and 2 px below so 92 px of usage plus 28 px of memory preserve SIDE-8.1’s 120 px resting dock content. MEM-1.2 is unticked until its updated Behaviour geometry check runs.
 - 2026-11-02: Design pass: MEM-1.3 amended, the total takes the level's text colour at warning and critical, since the 3 px glyph alone was easy to miss; the header's "old · 1m" reads "stale · 1m", as the usage strip's now does.
+- 2026-11-06: The breakdown, verdict first (Dario chose option A of three drawn on a canvas, https://claude.ai/artifact/5cB9UUo3QAZPUPJkAcxehD): a verdict line and three tiles (Memory with its trend, Pressure, CPU load) replace the header, the sparkline and the split bar; one "Who uses it" list on one scale holds the Sessions, Lookout and Other apps, the executables in each row's tooltip; MEM-3.9's "Worth a look" gathers growth and waiting `res` jobs. MEM-3.2 to 3.5, 3.7 and 3.8 changed, MEM-3.9 added.

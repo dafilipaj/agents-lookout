@@ -138,28 +138,6 @@ export function formatBytes(bytes: number): string {
   return bytes >= GB ? `${(bytes / GB).toFixed(1)} GB` : `${Math.round(bytes / MB)} MB`;
 }
 
-/** A minimum slice borrows proportionally from the remaining slices; the whole stays 100%. */
-export function splitWidths(values: number[]): number[] {
-  const total = values.reduce((a, b) => a + b, 0);
-  if (!total) return values.map(() => 0);
-  const widths = values.map(() => 0);
-  const remaining = values.map((value, index) => ({ value, index })).filter((r) => r.value > 0);
-  let available = 100;
-  while (remaining.length) {
-    const sum = remaining.reduce((n, r) => n + r.value, 0);
-    const small = remaining.filter((r) => r.value / sum * available < 2);
-    if (!small.length) {
-      for (const r of remaining) widths[r.index] = r.value / sum * available;
-      break;
-    }
-    for (const r of small) {
-      widths[r.index] = 2;
-      available -= 2;
-      remaining.splice(remaining.indexOf(r), 1);
-    }
-  }
-  return widths;
-}
 
 export function recentTrend(trend: readonly MemoryPoint[], now: number): MemoryPoint[] {
   return trend.filter((p) => p.at >= now - TREND_WINDOW_MS);

@@ -134,4 +134,31 @@ describe('pre-push', () => {
       expect(hook().ran, other).toEqual(['req-check', 'test --maxWorkers=50%', 'e2e --workers=25%']);
     }
   });
+
+  it('TEST-4.5: with res on PATH, the unit and Behaviour tests queue through res run, Vitest so res sets its workers', () => {
+    // A fake res that logs its arguments, then runs what follows `--`, as `res run` does once admitted.
+    writeFileSync(
+      join(dir, 'fakes', 'res'),
+      `#!/bin/sh\necho "res $*" >> '${join(dir, 'pnpm.log')}'\nwhile [ "$1" != "--" ]; do shift; done\nshift\nexec "$@"\n`,
+    );
+    chmodSync(join(dir, 'fakes', 'res'), 0o755);
+    const r = hook();
+    expect(r.stderr).toBe('');
+    expect(r.code).toBe(0);
+    expect(r.ran).toEqual([
+      'req-check',
+      'res run --prio check -- pnpm exec vitest run',
+      'exec vitest run',
+      'res run --prio check -- pnpm e2e --workers=25%',
+      'e2e --workers=25%',
+    ]);
+  });
+
+  it('TEST-4.5: a test run that fails under res still stops the push', () => {
+    writeFileSync(join(dir, 'fakes', 'res'), `#!/bin/sh\necho "res $*" >> '${join(dir, 'pnpm.log')}'\nexit 1\n`);
+    chmodSync(join(dir, 'fakes', 'res'), 0o755);
+    const r = hook();
+    expect(r.code).toBe(1);
+    expect(r.ran).toEqual(['req-check', 'res run --prio check -- pnpm exec vitest run']);
+  });
 });

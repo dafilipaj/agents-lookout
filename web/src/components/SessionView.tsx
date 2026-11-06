@@ -1,6 +1,6 @@
 import type { LocalServer, PortsSnapshot } from '@shared/ports.ts';
 import type { AnswerRequest, ChangesView, ChatPage, EndTarget, RenameResult, SessionRow } from '@shared/types.ts';
-import { Check, ChevronDown, CircleCheck, CircleSlash, CircleStop, Copy, FolderGit2, GitBranch, Info, OctagonX, Paperclip, Power, SendHorizontal, TerminalSquare } from 'lucide-react';
+import { Check, ChevronDown, CircleCheck, CircleSlash, CircleStop, Copy, FolderGit2, GitBranch, Hourglass, Info, OctagonX, Paperclip, Power, SendHorizontal, TerminalSquare } from 'lucide-react';
 import { type ComponentPropsWithRef, type ComponentPropsWithoutRef, type KeyboardEvent, type PointerEvent, type ReactNode, type RefObject, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -35,10 +35,10 @@ import { type ModelTarget, canSwitchModel, checkedModel, modelFootnote, modelOpt
 import { FROM_NEXT_REPLY, type MenuOptions, type SwitchState, type SwitchWhat, plainWhy, switchWhy } from '@/lib/status-switch';
 import type { Chat as ChatState, Preview } from '@/lib/store';
 import { chipText, sessionServers } from '@/lib/ports';
-import { BACKGROUND_SHELL_TIP, CONTEXT_LEVEL_CLASS, HARNESS_NAME, STATUS_LABEL, STATUS_TAG_CLASS, contextLevel, location } from '@/lib/sessions';
+import { BACKGROUND_SHELL_TIP, CONTEXT_LEVEL_CLASS, HARNESS_NAME, STATUS_LABEL, STATUS_TAG_CLASS, contextLevel, location, queuedTip } from '@/lib/sessions';
 import { HEIGHT_STEP, clampHeight, drawerHeight, heightBounds, keepHeight, parseHeights, readHeightsRaw, subscribeHeights } from '@/lib/terminal-height';
 import { clockTime } from '@/lib/chat';
-import { formatAge } from '@/lib/time';
+import { formatAge, useClock } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { PromptCard } from './Answering';
 import { Chat, type ChatSeen, type HeldMessage } from './Chat';
@@ -842,7 +842,11 @@ function StatusLine({
   const subagents = !ended && count > 0 ? `${count} subagent${count === 1 ? '' : 's'}${running ? '' : ' done'}` : null;
   const changed = changes?.changes ? changesTip(changes.changes) : null;
   const serversPart = servers.length ? chipText(servers) : null;
-  const parts = [where, loc?.name, changed, serversPart, modelPart, effortPart, context, shell, subagents].filter((p): p is string => !!p);
+  // RES-3.2: a job of this Session waits in res; its wait counts on the app's one-second clock.
+  const now = useClock();
+  const queued = row.queued && !ended ? row.queued : null;
+  const queuedPart = queued ? `Queued: ${queued.tool} · ${formatAge(Math.max(0, now - queued.since))}` : null;
+  const parts = [where, loc?.name, changed, queuedPart, serversPart, modelPart, effortPart, context, shell, subagents].filter((p): p is string => !!p);
   if (!parts.length) return null;
   const dot = (
     <span aria-hidden className="shrink-0 opacity-60">
@@ -875,7 +879,16 @@ function StatusLine({
       {changes && (changes.changes || changes.list !== undefined) && (
         <ChangesSlot dot={(where || loc) && dot} {...changes} />
       )}
-      <PortsChip servers={servers} onShowAll={onShowServers} focusFallback={focusFallback} dot={(where || loc || changed) && dot} />
+      {queued && (
+        <>
+          {(where || loc || changed) && dot}
+          <span className="flex min-w-0 shrink-0 items-center gap-1" data-field="queued" title={queuedTip(queued, now)}>
+            <Hourglass aria-hidden className="size-3.5 shrink-0" />
+            <span className="truncate">{queuedPart}</span>
+          </span>
+        </>
+      )}
+      <PortsChip servers={servers} onShowAll={onShowServers} focusFallback={focusFallback} dot={(where || loc || changed || queued) && dot} />
       {model && (
         <span className="contents @max-[36rem]:hidden" data-slot="status-model">
           {(where || loc) && dot}

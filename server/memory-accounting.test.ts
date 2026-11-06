@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { MB, GB, MemoryHistory, buildOwners, formatBytes, loadLevel, memoryLevel, parseProcesses, splitWidths, trendShape } from '../shared/memory.ts';
+import { MB, GB, MemoryHistory, buildOwners, formatBytes, loadLevel, memoryLevel, parseProcesses, trendShape } from '../shared/memory.ts';
 
 const fixture = readFileSync(new URL('./fixtures/memory/ps.txt', import.meta.url), 'utf8');
 const roots = [{ id: 'outer', pid: 200 }, { id: 'inner', pid: 300 }, { id: 'gone', pid: 500 }];
@@ -77,11 +77,6 @@ describe('memory accounting', () => {
     expect(trendShape([{ at: 0, bytes: GB }, { at: 1_800_000, bytes: 0 }])?.span).toBe(GB);
   });
 
-  it('MEM-3.4: nonzero slices get at least 2% and all slices still sum to 100%', () => {
-    expect(splitWidths([1, 1, 998])).toEqual([2, 2, 96]);
-    expect(splitWidths([0, 10, 90])).toEqual([0, 10, 90]);
-    expect(splitWidths([0, 0, 0])).toEqual([0, 0, 0]);
-  });
 
   it('MEM-5.1: CPU is summed through each owned tree', () => {
     const owners = buildOwners(parseProcesses(fixture), 100, roots);
@@ -117,8 +112,3 @@ it('MEM-3.3: expired trend points affect neither the chart coordinates nor its d
   expect(shape).toHaveProperty('delta', 10 * MB);
 });
 
-it('MEM-3.4: redistributing a tiny slice keeps boundary slices at the 2% minimum', () => {
-  expect(splitWidths([2, 1, 97])).toEqual([2, 2, 96]);
-  expect(splitWidths([97, 1, 2])).toEqual([96, 2, 2]);
-  expect(splitWidths([2.01, 1, 96.99])).toEqual([2, 2, 96]);
-});

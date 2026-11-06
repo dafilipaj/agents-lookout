@@ -22,6 +22,9 @@ import { MemoryMonitor } from './memory.ts';
 import { SessionMonitor } from './monitor.ts';
 import { parsePort } from './port.ts';
 import { PortsMonitor } from './ports.ts';
+import { ResMonitor } from './res.ts';
+import { sessionId } from './normalize.ts';
+import { queuedFor } from '../shared/res.ts';
 import { localAllowLists } from './security.ts';
 import { SettingsStore, defaultSettingsPath, expandHome } from './settings.ts';
 import { trackStartDirectories } from './start-repos.ts';
@@ -99,6 +102,8 @@ const monitor: SessionMonitor = new SessionMonitor({
   models: modelSwitches,
   memoryGrowth: (row) => memory.growthFor(row),
   changes: (row) => changes.rowChanges(row),
+  // RES-3: read when the rows are derived, which runs only after start-up, once resQueue exists.
+  queued: (row) => queuedFor(resQueue.snapshot(), row.id),
   onEvent: (e) => app.broadcast(e),
   onList: (rows) => {
     changes.observe(monitor.snapshot().sessions);
@@ -212,6 +217,17 @@ const ports = new PortsMonitor({
   onChange: (p) => app.broadcast({ type: 'ports', ports: p }),
 });
 
+// RES: `res`'s queue, read while any tab is connected; its jobs are tied to Sessions by tmux session or id,
+// and a waiting one marks its Session's row (RES-3), so a change refreshes the rows too.
+const resQueue = new ResMonitor({
+  runner: run,
+  sessions: () => monitor.fleetRows().map((r) => ({ id: sessionId(r), tmuxSession: r.backend === 'tmux' && r.tmux_session ? r.tmux_session : null })),
+  onChange: (r) => {
+    monitor.refreshDerived();
+    app.broadcast({ type: 'res', res: r });
+  },
+});
+
 /** TOPIC-12.2, TOPIC-8.4: a Topics store that fails while recording activity is one log line; Lookout keeps running. */
 function observeTopics(fn: () => void): void {
   try {
@@ -294,6 +310,7 @@ const app = createApp({
   usage,
   memory,
   ports,
+  resQueue,
   work,
   changes,
   plain,
@@ -369,7 +386,7 @@ const shutdown = async () => {
   // Cancel the pollers and wait until their processes have exited, so none is orphaned.
   await Promise.all([recommender.close(), summarizer.close(), suggester.close()]);
   topics.close();
-  await Promise.all([usage.close().catch(() => {}), memory.close().catch(() => {}), ports.close().catch(() => {}), work.close().catch(() => {}), tools.close().catch(() => {})]);
+  await Promise.all([usage.close().catch(() => {}), memory.close().catch(() => {}), ports.close().catch(() => {}), resQueue.close().catch(() => {}), work.close().catch(() => {}), tools.close().catch(() => {})]);
   process.exit(0);
 };
 process.on('SIGINT', shutdown);

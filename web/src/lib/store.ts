@@ -2,6 +2,7 @@ import { type SettingsView, defaultSettings } from '@shared/settings.ts';
 import type { ChangesView, ChatPage, FleetHealth, LaunchView, ServerEvent, SessionRow } from '@shared/types.ts';
 import type { MemorySnapshot } from '@shared/memory.ts';
 import type { PortsSnapshot } from '@shared/ports.ts';
+import type { ResSnapshot } from '@shared/res.ts';
 import type { ToolsSnapshot } from '@shared/tools.ts';
 import type { TopicsView } from '@shared/topics.ts';
 import type { UsageSnapshot } from '@shared/usage.ts';
@@ -56,6 +57,8 @@ export interface LookoutState {
   memory: MemorySnapshot | null;
   /** PORTS-1.2: the Local servers, or null before the first read. */
   ports: PortsSnapshot | null;
+  /** RES-1.1: `res`'s queue; null before the first read and without `res`. */
+  res: ResSnapshot | null;
   /** WORK: the latest PRs and Refresh state, or null before the server sent any. */
   work: WorkSnapshot | null;
   /** TOOLS: the last read of every Tool, or null before the server sent one. */
@@ -126,6 +129,7 @@ export const initialState: LookoutState = {
   usage: null,
   memory: null,
   ports: null,
+  res: null,
   work: null,
   tools: null,
   topics: null,
@@ -198,6 +202,7 @@ export function reducer(state: LookoutState, action: Action): LookoutState {
         usage: e.usage ?? state.usage,
         memory: e.memory,
         ports: e.ports !== undefined ? e.ports : state.ports,
+        res: e.res !== undefined ? e.res : state.res,
         work: e.work ?? state.work,
         tools: e.tools ?? state.tools,
         topics: e.topics ?? state.topics,
@@ -227,6 +232,8 @@ export function reducer(state: LookoutState, action: Action): LookoutState {
       return { ...state, memory: e.memory };
     case 'ports':
       return { ...state, ports: e.ports };
+    case 'res':
+      return { ...state, res: e.res };
     case 'changes':
       return { ...state, changes: new Map(state.changes).set(e.sessionId, e.changes) };
     case 'usage':

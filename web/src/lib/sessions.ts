@@ -1,4 +1,6 @@
+import type { Queued } from '@shared/res.ts';
 import type { Harness, SessionRow, Status } from '@shared/types.ts';
+import { formatAge } from './time';
 
 /** The Harnesses' full names, also their marks' accessible names. */
 export const HARNESS_NAME: Record<Harness, string> = { claude: 'Claude Code', codex: 'Codex' };
@@ -104,4 +106,9 @@ export function locationTip(row: SessionRow): string | null {
   if (!git) return row.cwd;
   if (git.worktree) return `${git.repo} · Worktree ${git.worktree}${git.branch ? ` (branch ${git.branch})` : ''}`;
   return git.branch ? `${git.repo} · ${git.branch}` : git.repo;
+}
+
+/** RES-3.1, 3.2: what a Queued mark's tooltip says. */
+export function queuedTip(queued: Queued, now: number): string {
+  return `Queued in res: ${queued.tool}, waiting ${formatAge(Math.max(0, now - queued.since))}, #${queued.position} in the queue`;
 }

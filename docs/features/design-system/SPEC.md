@@ -345,7 +345,7 @@ DS changes only `web/src`. Nothing on the server changes, so every check is a un
 7. **Icon buttons (DS-7.2).** `size="icon…"` on a `Button` only inside `components/ui/`; no `size-`, `h-`, `w-`, `min-…` or `max-…` class, with any variant, on an `IconButton`; and a `<button>` or `<Button>` whose children are only icons (lucide's, `HarnessIcon`, `MarkShape`, also in a conditional, besides `aria-hidden` elements) only in three pinned places: Copy session ID and a code block's copy button, which show "Copied" beside the icon for 2 s, and a Mark on the chat's rail, a 12 px target by design on a 16 px rail (VIEW-1.11).
 8. **One key, one command (DS-8.2, 8.4).** A `<kbd>` only in `kbd.tsx`, and `select-all` only in `command-block.tsx`.
 
-The icons guard keeps its rules: `SessionMarker` draws with lucide and `StatusMarker`, and `MemoryLine.tsx` draws MEM’s sparkline, a chart like `SessionItem.tsx`’s context gauge; both chart files are named in the icons guard. It reads a key glyph inside `<Kbd>` as it reads one inside `<kbd>` (the launcher's ⌘↵).
+The icons guard keeps its rules: `SessionMarker` draws with lucide and `StatusMarker`, and `SessionItem.tsx` draws the context gauge, a chart, so it's named in the icons guard (MEM's sparkline went with MEM-3.3's 2026-11-06 change). It reads a key glyph inside `<Kbd>` as it reads one inside `<kbd>` (the launcher's ⌘↵).
 
 ### Tokens
 
@@ -515,3 +515,4 @@ None.
 - 2026-11-05: DS-1.1's `reading` steps serve the chat's prompts and replies too (VIEW-11.1).
 - 2026-11-05: The colour guard's Busy family lists `SessionItem.tsx`: a sidebar row's running Subagent count is in `busy-text`, as the status line's (SIDE-9.7, VIEW-8.1), a meaning its Status spec ties to Busy (DS-3.6). It keeps 4.5:1 on every row state (SIDE-3.11).
 - 2026-11-05: Added DS-2.6, the `spec` family (`spec`, `spec-text`), a violet for a `.plain` Module's row in DIFF's list (PLAIN-3.4); guarded, with its contrast measured.
+- 2026-11-06: MEM's breakdown drops its sparkline (MEM-3.3), so `MemoryLine.tsx` leaves the icons guard's chart files.

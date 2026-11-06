@@ -20,3 +20,4 @@ One row per feature. Update the status here and in the spec's frontmatter togeth
 | Topics: a Session, its PR, its Task and its run as one Topic with notes, recommended by Links and Jev, Topics linked into a graph | TOPIC | In Progress | [SPEC](topics/SPEC.md) |
 | Changed files: a Session's changed lines on its row and status line, its changed files listed, each opening its Changes in VS Code | DIFF | In Progress | [SPEC](changed-files/SPEC.md) |
 | Spec view: a `.plain` Module and its change, with other Modules' Concepts on hover, opened from a Session's changed files or a PR | PLAIN | In Progress | [SPEC](plain-specs/SPEC.md) |
+| Test queue: what `res`, the machine-wide queue for heavy jobs, runs and who waits, in the Memory line and on a waiting Session | RES | In Progress | [SPEC](test-queue/SPEC.md) |

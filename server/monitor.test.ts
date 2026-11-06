@@ -277,3 +277,22 @@ it('MEM-4.2: memory growth re-derives only the growth field, and Fleet removal d
   await monitor.tick();
   expect(events).toEqual([{ type: 'sessions', upsert: [], remove: [before.id] }]);
 });
+
+it('RES-3.3: a change in res\'s queue re-derives the row\'s Queued mark, and the next read without the job clears it; fleetRows keeps the tmux session', async () => {
+  let queued: { tool: string; since: number; position: number } | null = null;
+  const rows = [{ ...recorded[0]!, backend: 'tmux', tmux_session: 'lookout-res' }];
+  const events: MonitorEvent[] = [];
+  const monitor = new SessionMonitor({ fetchList: async () => ok(rows), git: { get: () => null, prune: () => {} }, now: () => 1_792_146_000_000, queued: () => queued, onEvent: (e) => events.push(e) });
+  await monitor.tick();
+  expect(monitor.fleetRows()[0]?.tmux_session).toBe('lookout-res');
+  const before = monitor.snapshot().sessions[0]!;
+  expect(before.queued).toBeNull();
+  events.length = 0;
+  queued = { tool: 'vitest', since: 1_792_145_880_000, position: 1 };
+  monitor.refreshDerived();
+  expect(events).toEqual([{ type: 'sessions', upsert: [{ ...before, queued }], remove: [] }]);
+  events.length = 0;
+  queued = null;
+  monitor.refreshDerived();
+  expect(events).toEqual([{ type: 'sessions', upsert: [before], remove: [] }]);
+});

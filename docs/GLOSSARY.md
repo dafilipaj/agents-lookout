@@ -64,6 +64,8 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Process tree**: A process and every descendant of it, by parent pid, as one `ps` listing shows them at that instant. A Session's is rooted at its Harness process (Fleet's `pid`): the Harness, its MCP servers, the shells and test runners it started. Lookout's is rooted at its server. See the MEM spec.
 
+**Queued**: A Session with a job waiting in `res`, the machine-wide queue for heavy jobs (tests, type checks, builds), for cores and memory to come free. Its Status stays what the Harness says (usually Busy); its row and status line show the wait. See the RES spec.
+
 **Recommendation**: A proposed Topic membership: an item new to Lookout (a Session, PR or Task in no Topic) and the Open Topic it probably belongs to, or a new Topic, with its reason: a Link, or Jev's judgment. Nothing happens until you accept it. See TOPIC-9.
 
 **Requirement**: One capability a feature provides, ID'd `<CODE>-n`.

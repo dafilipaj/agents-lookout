@@ -1,4 +1,5 @@
 import type { MemorySnapshot } from '@shared/memory.ts';
+import type { ResSnapshot } from '@shared/res.ts';
 import { sidebarOrder } from '@shared/order.ts';
 import type { FleetHealth, LaunchView, SessionRow } from '@shared/types.ts';
 import { type ToolsSnapshot, toolsAttention } from '@shared/tools.ts';
@@ -52,6 +53,8 @@ export interface SidebarProps {
   /** TOOLS-2.4: a Tool missing or behind marks the Settings button. */
   tools?: ToolsSnapshot | null;
   memory?: MemorySnapshot | null;
+  /** RES-2: `res`'s queue, shown in the Memory line; null without `res`. */
+  res?: ResSnapshot | null;
   onMemoryOpenChange?(open: boolean): void;
   /** USAGE-2.1: its details opened. */
   onUsageOpen?(): void;
@@ -378,7 +381,7 @@ export function Sidebar(props: SidebarProps) {
         <DockRest />
         <div className="flex flex-col self-stretch">
           <UsageStrip usage={props.usage} now={now} onOpen={props.onUsageOpen} open={dockPopover === 'usage'} onOpenChange={(open) => changePopover('usage', open)} />
-          <MemoryLine memory={props.memory ?? null} sessions={sessions} now={now} open={dockPopover === 'memory'} onOpenChange={(open) => changePopover('memory', open)} onSelect={selectId} />
+          <MemoryLine memory={props.memory ?? null} res={props.res ?? null} sessions={sessions} now={now} open={dockPopover === 'memory'} onOpenChange={(open) => changePopover('memory', open)} onSelect={selectId} />
         </div>
       </ShellCell>
     </aside>

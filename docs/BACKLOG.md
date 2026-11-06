@@ -201,14 +201,6 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
 - **Why it's here:** a Non-goal of PLAIN's first version (grill, 2026-11-04): reading and Viewed come first. It fits with "review comments sent to the Session as a prompt" (DIFF) above.
 - **Added:** 2026-11-04, by Dario, from PLAIN's grill.
 
-## A shared test queue, and Lookout showing who waits (RES)
-
-- **What:** a colleague's `res` (https://claude.ai/artifact/1SwU47oaM3eAghGW8DQD5F, shared in the org, in Croatian) is a per-machine queue for heavy jobs on macOS: `res run --prio live|check|bg [--workers N] [--mb N] -- <cmd>` waits until the job's estimated cores and memory fit the measured free budget (2 cores and 4 GB never leased), by priority then first come, and holds a lease resized every 5 s from what the job really uses; it passes `--maxWorkers`, `NODE_OPTIONS=--max-old-space-size` and a `taskpolicy` QoS. A PreToolUse hook, `res-guard.mjs`, refuses a known heavy command run outside `res`. State in `~/.cache/res/ledger.json` (pid, session, cls, prio, state, workers, cores, mb, peak) and `metrics.jsonl`; `res status [--json|--short]`, `res report`, `res hold` for a standing dev server.
-- **Why:** the laptop freezes when several Sessions run full test suites at once (Dario 2026-11-04).
-- **How (proposal):** (1) use it on this Mac: install, register the hook in `~/.claude/settings.json`, check what Codex Sessions get, and run Lookout's own vitest through it. (2) Lookout shows it, read-only and optional (no `res`, no line), from `res status --json` as PORTS reads `tb-devctl ps --json`: a dock line beside Memory ("running 2, waiting 1") opening a list of holders and waiters, and a "Queued: vitest@agents-lookout, 3 min" mark on a waiting Session's row and status line, matched by pid through MEM-2's process tree or by `session`. A RES spec of its own, grilled.
-- **Parked:** 2026-11-05, by Dario. Blocked on the code: the artifact has no source or install steps (the source is in the colleague's `~/.local/share/res`), and nothing in our repos or plugins calls `res`. Reverse-engineering was weighed the same day: the scheduling is documented well enough to rebuild (budget, per-class defaults and history, admission with ageing, the head-of-line block and the idle-machine rule, the lease's grace and follow, every constant; the page's calculator script is the real fit logic), but the JSON shapes of the ledger, metrics and `res status --json`, what `session` holds, `res-guard`'s rules and class detection would be guesses. Next, when resumed: ask the colleague for the code; only if it can't be shared, rebuild it as `tb-res` in cli-toolbox (0005) with its own state directory and a JSON shape we define.
-- **Added:** 2026-11-04 as PLAN item 37, by Dario; moved here 2026-11-05.
-
 ## Dropped
 
 Discussed and decided against. Each keeps why, so it isn't proposed again without something new.

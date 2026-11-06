@@ -1,9 +1,9 @@
 import { GROWTH_BYTES } from '@shared/memory.ts';
 import type { SessionRow } from '@shared/types.ts';
-import { Bot, CircleCheck, FolderGit2, GitBranch, SquareTerminal, TrendingUp } from 'lucide-react';
+import { Bot, CircleCheck, FolderGit2, GitBranch, Hourglass, SquareTerminal, TrendingUp } from 'lucide-react';
 import { memo, useEffect, useRef } from 'react';
 import { clockTime } from '@/lib/chat';
-import { BACKGROUND_SHELL_TIP, CONTEXT_LEVEL_CLASS, ROW_TONE, STATUS_LABEL, STATUS_STRIP_CLASS, contextLevel, location, locationTip, sessionOptionId } from '@/lib/sessions';
+import { BACKGROUND_SHELL_TIP, CONTEXT_LEVEL_CLASS, queuedTip, ROW_TONE, STATUS_LABEL, STATUS_STRIP_CLASS, contextLevel, location, locationTip, sessionOptionId } from '@/lib/sessions';
 import { Chip } from '@/components/ui/chip';
 import { SessionMarker } from '@/components/ui/session-marker';
 import { formatBytes } from '@/lib/memory';
@@ -163,6 +163,13 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
           {(row.memoryGrowthBytes ?? 0) >= GROWTH_BYTES && (
             <span data-field="memory-growth" title={`Memory +${formatBytes(row.memoryGrowthBytes!)} in 10 min`}>
               <TrendingUp role="img" aria-label={`memory growing, +${formatBytes(row.memoryGrowthBytes!)} in 10 min`} className="size-2.5 text-warning-text" />
+            </span>
+          )}
+          {/* RES-3.1: a job of this Session waits in res; before the Subagent count, its Status unchanged. */}
+          {row.queued && (
+            <span data-field="queued" role="img" aria-label={queuedTip(row.queued, now)} title={queuedTip(row.queued, now)} className="flex items-center gap-0.5">
+              <Hourglass aria-hidden className="size-3" />
+              {formatAge(Math.max(0, now - row.queued.since))}
             </span>
           )}
           {running > 0 && (

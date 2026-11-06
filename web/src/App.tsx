@@ -1057,6 +1057,7 @@ export function App({ client }: { client: LookoutClient }) {
           usage={state.usage}
           tools={state.tools}
           memory={state.memory}
+          res={state.res}
           onMemoryOpenChange={setMemoryOpen}
           onUsageOpen={() => void client.refreshJev().catch(() => {})}
           topicTitles={topicTitles}

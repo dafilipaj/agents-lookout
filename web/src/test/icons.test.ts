@@ -31,7 +31,7 @@ const SOURCES = Object.fromEntries(
 /** DS-8.5 (0012): the one component that renders an `<img>`: a person's avatar, never an icon. */
 const IMG_FILES = new Set(['web/src/components/ui/avatar.tsx']);
 
-const SVG_FILES = new Set(['web/src/components/HarnessIcon.tsx', 'web/src/components/StatusMarker.tsx', 'web/src/components/SessionItem.tsx', 'web/src/components/MemoryLine.tsx', 'web/src/components/TopicGraph.tsx', 'web/src/components/ui/lookout-mark.tsx']);
+const SVG_FILES = new Set(['web/src/components/HarnessIcon.tsx', 'web/src/components/StatusMarker.tsx', 'web/src/components/SessionItem.tsx', 'web/src/components/TopicGraph.tsx', 'web/src/components/ui/lookout-mark.tsx']);
 
 /**
  * The packages UI source may import. Any other package fails the guard until someone checks it isn't

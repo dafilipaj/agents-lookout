@@ -1,4 +1,5 @@
 import { FLEET_INSTALL_COMMAND } from '../shared/defaults.ts';
+import type { Queued } from '../shared/res.ts';
 import type { FleetHealth, PendingEffort, PendingModel, RowChanges, SessionRow, Status } from '../shared/types.ts';
 import type { FleetListResult, FleetRow } from './fleet.ts';
 import type { GitCache } from './git.ts';
@@ -25,6 +26,8 @@ export interface MonitorOptions {
   memoryGrowth?(row: SessionRow): number | null;
   /** DIFF-1: the Session's Changes, carried with its row. */
   changes?(row: SessionRow): RowChanges | null;
+  /** RES-3: the Session's job waiting in `res`, carried with its row. */
+  queued?(row: SessionRow): Queued | null;
   intervalMs?: number;
   now?: () => number;
 }
@@ -104,6 +107,11 @@ export class SessionMonitor {
     return this.tick();
   }
 
+  /** RES-1.4: the last `fleet list` rows as Fleet gave them, for what `SessionRow` doesn't carry (the tmux session). */
+  fleetRows(): readonly FleetRow[] {
+    return this.lastRaw;
+  }
+
   /** Re-derives rows from the last list, e.g. after git info for a directory arrived. */
   refreshDerived(): void {
     this.apply(this.lastRaw);
@@ -163,6 +171,7 @@ export class SessionMonitor {
 
     for (const row of next) row.memoryGrowthBytes = this.opts.memoryGrowth?.(row) ?? null;
     if (this.opts.changes) for (const row of next) row.changes = this.opts.changes(row);
+    if (this.opts.queued) for (const row of next) row.queued = this.opts.queued(row);
 
     const upsert: SessionRow[] = [];
     const nextRows = new Map<string, SessionRow>();
