@@ -1,7 +1,7 @@
 import { ABILITY_KEY, compareClauses, compareModules, definitionName, gist, parseClauses, PREDEFINED_CONCEPTS, wordDiff, type AbilityEntry, type AbilityLeafKind, type AbilityRule, type Clause, type Compared, type FunctionalSpec, type PlainAbility, type PlainAnswer, type PlainConcept, type PlainExample, type PlainExampleFrame, type PlainExamplesAnswer, type PlainExampleTest, type PlainPortRow, type PlainSource, type PlainSpecRef, type Touched } from '@shared/plain.ts';
 import { formatCost, modelName } from '@shared/topics.ts';
-import { ArrowLeft, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, ListChecks } from 'lucide-react';
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react';
+import { ArrowLeft, ArrowRight, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, ListChecks } from 'lucide-react';
+import { createContext, Fragment, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import { Alert } from '@/components/ui/alert';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -16,6 +16,7 @@ import { SaveError } from '@/lib/client';
 import { type ChangeKind, firstLine, JUMP_MARGIN_PX, type Mark, stepMark } from '@/lib/marks';
 import { plainRoute, routePath, specHash } from '@/lib/router';
 import { formatAge, useNow } from '@/lib/time';
+import { cropRegion } from '@/lib/plain-shots';
 import { cn } from '@/lib/utils';
 import { ActionIcon } from '@/lib/actions';
 import { ChatRail } from './ChatRail';
@@ -1967,6 +1968,8 @@ function ExamplesBar({ ui }: { ui: ExamplesUi }) {
           label={
             running?.phase === 'writing'
               ? 'Writing examples…'
+              : running?.phase === 'pictures'
+                ? 'Taking the pictures…'
               : running?.mine && running.phase in PREPARING
                 ? PREPARING[running.phase]!
                 : running && running.tests > 0
@@ -2015,10 +2018,13 @@ function ExampleCard({ example: g, kept, spec, ctx }: { example: PlainExample; k
   // A newer answer may hold fewer frames than the one the dialog was opened on: it closes, for good.
   const at = open !== null && open < g.frames.length ? open : null;
   if (open !== null && at === null) setOpen(null);
-  const first = g.frames[0];
+  // PLAIN-13.5: frames kept since PLAIN-13 are a storyboard's panels; older ones read as PLAIN-11.9 drew them.
+  const story = g.frames.length > 0 && g.frames.every((f) => f.steps !== undefined);
+  const first = story ? undefined : g.frames[0];
   const tests = g.tests.length;
   return (
     <section aria-label={`Example of ${g.spec}`} className="@container grid gap-3 rounded-md bg-muted p-3 font-sans" data-slot="spec-example" data-spec={g.spec}>
+      {story && <Storyboard example={g} kept={kept} onOpen={setOpen} />}
       <div className={cn('grid gap-3', first && '@min-[36rem]:grid-cols-[12.5rem_minmax(0,1fr)]')}>
         {first && (
           <figure className="flex min-w-0 flex-col gap-1.5">
@@ -2057,6 +2063,7 @@ function ExampleCard({ example: g, kept, spec, ctx }: { example: PlainExample; k
               {g.refused}
             </p>
           ) : (
+            !story &&
             spec.tests.length > 0 && (
               <p className="text-meta text-muted-foreground" data-field="spec-example-own-tests">
                 Its acceptance tests, below, walk through it.
@@ -2081,6 +2088,94 @@ function ExampleCard({ example: g, kept, spec, ctx }: { example: PlainExample; k
       {(g.ported || oldNotes.length > 0) && <OldApp example={g} notes={oldNotes} ctx={ctx} />}
       {at !== null && <FramesDialog example={g} kept={kept} at={at} onAt={setOpen} onClose={() => setOpen(null)} />}
     </section>
+  );
+}
+
+const pct = (n: number) => `${n * 100}%`;
+
+/** PLAIN-13.2, 13.5: a panel's picture cropped around its box, the box ringed (for an absence, where it searched); "Not there" for an absence. A picture without a box is the whole screen. */
+function Shot({ frame: f, src }: { frame: PlainExampleFrame; src: string }) {
+  const box = f.box ?? null;
+  const screen = f.screen ?? { w: 16, h: 10 };
+  if (!box)
+    return (
+      <div className="relative" data-field="spec-shot" data-crop="none">
+        <img src={src} alt={f.caption} className="block w-full" />
+        {f.absent && <NotThere />}
+      </div>
+    );
+  const r = cropRegion(box, screen);
+  return (
+    <div className="relative w-full overflow-hidden" style={{ aspectRatio: `${r.w * screen.w} / ${r.h * screen.h}` }} data-field="spec-shot" data-crop="box">
+      <img src={src} alt={f.caption} className="absolute max-w-none" style={{ width: pct(1 / r.w), height: pct(1 / r.h), left: pct(-r.x / r.w), top: pct(-r.y / r.h) }} />
+      <span
+        className="pointer-events-none absolute rounded-sm border-2 border-ring ring-4 ring-ring/25"
+        style={{ left: pct((box.x - r.x) / r.w), top: pct((box.y - r.y) / r.h), width: pct(box.w / r.w), height: pct(box.h / r.h) }}
+        data-field="spec-shot-ring"
+      />
+      {f.absent && <NotThere />}
+    </div>
+  );
+}
+
+function NotThere() {
+  return (
+    <span className="absolute top-1.5 right-1.5" data-field="spec-shot-absent">
+      <Chip tone="info">Not there</Chip>
+    </span>
+  );
+}
+
+/** PLAIN-13.4: the steps between two panels: three named, then how many more; every one in the tooltip. */
+function stepsLine(f: PlainExampleFrame): { label: string; tip: string } {
+  if (f.newTest) return { label: 'Next test', tip: f.test };
+  const steps = f.steps ?? [];
+  return { label: steps.length > 3 ? `${steps.slice(0, 3).join(', ')}, +${steps.length - 3} more` : steps.join(', '), tip: steps.join('\n') };
+}
+
+/** PLAIN-13.5: a group's panels in the order they ran, the steps between them; under 36rem, the first and how many. */
+function Storyboard({ example: g, kept, onOpen }: { example: PlainExample; kept: NonNullable<PlainExamplesAnswer['examples']>; onOpen(n: number): void }) {
+  const panel = (f: PlainExampleFrame, i: number) => (
+    <figure className="m-0 flex min-w-0 flex-col gap-1.5">
+      <button type="button" onClick={() => onOpen(i)} className="overflow-hidden rounded border border-border bg-background" aria-label={`Show ${g.spec}'s pictures large, at step ${i + 1}`} data-field="spec-example-picture">
+        <Shot frame={f} src={frameUrl(kept.key, f.name)} />
+      </button>
+      <figcaption className="text-meta text-muted-foreground">
+        {f.caption}
+        <NotThereYet frame={f} />
+      </figcaption>
+    </figure>
+  );
+  return (
+    <>
+      <ol className="flex min-w-0 items-start overflow-x-auto pb-1 @max-[36rem]:hidden" aria-label={`${g.spec}, step by step`} data-field="spec-story">
+        {g.frames.map((f, i) => {
+          const s = stepsLine(f);
+          return (
+            // Two panels can share a picture, ringing two things on one screen (PLAIN-13.3).
+            <Fragment key={`${i}:${f.name}`}>
+              {i > 0 && (
+                <li className="flex w-24 shrink-0 flex-col items-center gap-1 px-1.5 pt-10" title={s.tip || undefined} data-field="spec-story-step">
+                  <ArrowRight className="size-4 text-muted-foreground" aria-hidden />
+                  {s.label && <span className="text-center text-meta font-medium break-words text-foreground">{s.label}</span>}
+                </li>
+              )}
+              <li className="w-56 shrink-0" data-field="spec-story-panel">
+                {panel(f, i)}
+              </li>
+            </Fragment>
+          );
+        })}
+      </ol>
+      <div className="hidden flex-col items-start gap-1.5 @max-[36rem]:flex" data-field="spec-story-narrow">
+        <div className="w-full max-w-60">{panel(g.frames[0]!, 0)}</div>
+        {g.frames.length > 1 && (
+          <Button type="button" variant="quiet" size="line" onClick={() => onOpen(0)} data-field="spec-story-all">
+            {g.frames.length} steps
+          </Button>
+        )}
+      </div>
+    </>
   );
 }
 
@@ -2165,9 +2260,25 @@ function FramesDialog({ example: g, kept, at, onAt, onClose }: { example: PlainE
         </DialogTitle>
         <DialogDescription className="text-meta text-muted-foreground">
           From the Playwright test “{f.test}”{n > 1 ? ` · ${at + 1} of ${n}` : ''}
+          {at > 0 && f.steps && (f.newTest || f.steps.length > 0) && (
+            <span className="block text-foreground" data-field="spec-example-after">
+              {f.newTest ? 'Next test' : `After: ${f.steps.join(', ')}`}
+            </span>
+          )}
           <NotThereYet frame={f} />
         </DialogDescription>
-        <img src={frameUrl(kept.key, f.name)} alt={f.caption} className="block w-full rounded border border-border" />
+        <div className="relative overflow-hidden rounded border border-border" data-field="spec-example-large">
+          <img src={frameUrl(kept.key, f.name)} alt={f.caption} className="block w-full" />
+          {/* PLAIN-13.7: the box ringed and the rest dimmed; an absence says so. */}
+          {f.box && (
+            <span
+              className="pointer-events-none absolute rounded-sm border-2 border-ring outline-[200vmax] outline-black/35 outline-solid"
+              style={{ left: pct(f.box.x), top: pct(f.box.y), width: pct(f.box.w), height: pct(f.box.h) }}
+              data-field="spec-shot-ring"
+            />
+          )}
+          {f.absent && <NotThere />}
+        </div>
         {n > 1 && (
           <div className="flex items-center justify-end gap-1">
             <IconButton label="Previous picture" onClick={() => go(-1)}>

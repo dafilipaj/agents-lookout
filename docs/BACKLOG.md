@@ -195,6 +195,12 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
 - **Why it's here:** a Non-goal of PLAIN's first version (grill, 2026-11-04): reading and Viewed come first. It fits with "review comments sent to the Session as a prompt" (DIFF) above.
 - **Added:** 2026-11-04, by Dario, from PLAIN's grill.
 
+## A lead with receipts on the Changes card (PLAIN)
+
+- **What:** three fixed lines at the top of a Module's Changes card, written in PLAIN-11's run: what you can do now, who gets it, and what differs from before (from the spec's notes and its base text only). Every line names the `§` it comes from, and hovering it marks those clauses; PLAIN-11.8's quote check runs on every line, and a line naming no `§` isn't shown. Drawn as direction C (https://claude.ai/artifact/UfsaNAvgpJAio5atZJUUuj).
+- **Why it's here:** optional. Dario dropped a plain-words summary on 2026-11-09 as one more text to check (PLAIN's Non-goals); the receipts are meant to make checking it one hover. He chose to try PLAIN-13's proof shots and storyboard first and decide on this after.
+- **Added:** 2026-11-09, by Dario.
+
 ## A `/design` route: every piece in both modes (DS)
 
 - **What:** one page inside Lookout that shows each piece of the design system (buttons by role, Alerts, markers, rows, popovers, Loading and empty states) in light and dark mode side by side, from the real components.

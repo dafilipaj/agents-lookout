@@ -31,7 +31,8 @@ const SOURCES = Object.fromEntries(
 /** DS-8.5 (0012): the components that render an `<img>`, and how many: a person's avatar, and a spec's example picture and its frames large (PLAIN-11.9, 11.10), never an icon. */
 const IMG_COUNTS = new Map([
   ['web/src/components/ui/avatar.tsx', 1],
-  ['web/src/components/SpecView.tsx', 2],
+  // PLAIN-11.9, 11.10, 13.5: a card's picture, the dialog's, and a proof shot whole or cropped.
+  ['web/src/components/SpecView.tsx', 4],
 ]);
 const IMG_FILES = new Set(IMG_COUNTS.keys());
 

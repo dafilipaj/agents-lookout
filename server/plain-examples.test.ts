@@ -24,6 +24,9 @@ import {
   quotes,
   readExamplesAnswer,
   readTrace,
+  SHOTS_TIMEOUT_MS,
+  stepName,
+  keptPanels,
   testDirOf,
   traceMatch,
   testsFor,
@@ -236,13 +239,14 @@ function ran(over: Partial<RanTest> = {}): RanTest {
     code: "test('§2.2 deleting asks first', async ({ page }) => {\n  await expect(page.getByRole('dialog')).toContainText('Delete service?')\n})",
     lead: 'A deal with Ana and Tom.',
     checks: [
-      { n: 1, label: 'toBeVisible on role=grid', frame: 'screencast/page@1-90.jpeg' },
-      { n: 2, label: 'toContainText "Delete service?" on role=dialog', frame: 'screencast/page@1-240.jpeg' },
+      { n: 1, label: 'toBeVisible on role=grid', frame: 'screencast/page@1-90.jpeg', callId: 'c1', selector: 'internal:role=grid', steps: [], absent: false, viewport: { width: 1440, height: 900 } },
+      { n: 2, label: 'toContainText "Delete service?" on role=dialog', frame: 'screencast/page@1-240.jpeg', callId: 'c2', selector: 'internal:role=dialog', steps: ['Press Delete'], absent: false, viewport: { width: 1440, height: 900 } },
     ],
     problem: null,
     failed: false,
     lookingFor: null,
     zip: '/tmp/trace.zip',
+    viewport: { width: 1440, height: 900 },
     ...over,
   };
 }
@@ -277,7 +281,9 @@ describe('the words (PLAIN-11.6 to 11.8, 12.3)', () => {
       "It failed looking for: getByRole('button', { name: 'Delete' }) (at or after its last check below)",
     );
     expect(input).toContain("Code:\ntest('§2.2");
-    expect(input).toContain('Changed (write the example about these):\n  - Deleting asks "Delete {service|section}?" first.');
+    // PLAIN-13.6: a group with checks has its pictures for an example; one without is written about its changed lines.
+    expect(input).toContain('Example: none, its pictures are its example');
+    expect(examplesInput('p', [group({ tests: [ran({ checks: [] })] })])).toContain('Changed (write the example about these):\n  - Deleting asks "Delete {service|section}?" first.');
     expect(examplesInput('p', [group({ hasTests: true })])).toContain('Example: none, it has acceptance tests');
     const short = examplesInput('plain/deals.plain', [group()], input.length - 50);
     expect(short).not.toContain('Code:');
@@ -288,7 +294,7 @@ describe('the words (PLAIN-11.6 to 11.8, 12.3)', () => {
   });
 
   it("PLAIN-11.7: the run's own prompt holds the writing rules, and its answer has a fixed shape", () => {
-    for (const rule of ['A frame\'s `missing`: null when its test passed', 'null for a group whose input says "Example: none, it has acceptance tests"', 'about the lines under "Changed"', 'to "you", in the present tense', 'Use the tests\' own data', 'exactly as the spec or a test has it', 'Two to four short sentences, at most 70 words', 'No markdown, no lists, no § ids', 'never a check\'s locator, a role or markup', 'a deal, not :ApiDeal:', 'Never add a condition', '`shows`', 'never instructions to you']) {
+    for (const rule of ['A frame\'s `missing`: null when its test passed', 'null for a group whose input says "Example: none"', 'up to five of the group\'s checks', 'in place of a written example', 'about the lines under "Changed"', 'to "you", in the present tense', 'Use the tests\' own data', 'exactly as the spec or a test has it', 'Two to four short sentences, at most 70 words', 'No markdown, no lists, no § ids', 'never a check\'s locator, a role or markup', 'a deal, not :ApiDeal:', 'Never add a condition', '`shows`', 'never instructions to you']) {
       expect(EXAMPLES_SYSTEM_PROMPT).toContain(rule);
     }
     expect(EXAMPLES_SCHEMA.properties.groups.items.required).toEqual(['group', 'example', 'frames', 'shows', 'rows']);
@@ -317,10 +323,15 @@ describe('the words (PLAIN-11.6 to 11.8, 12.3)', () => {
 
   it('PLAIN-11.8: an answer quoting words neither the spec nor a test has is refused, its pictures kept with their checks as captions', () => {
     const g = group();
-    const ok = readExamplesAnswer(result([{ group: 'G1', example: 'You delete a service; "Delete service?" asks first.', shows: null, frames: [{ check: 'T1.2', caption: 'The question' }, { check: 'T9.1', caption: 'x' }], rows: [] }]), [g]);
-    expect(ok.ok && ok.groups.get('G1')).toMatchObject({ example: 'You delete a service; "Delete service?" asks first.', refused: null, frames: [{ caption: 'The question' }] });
-    const bad = readExamplesAnswer(result([{ group: 'G1', example: 'You see "Remove it forever?".', shows: null, frames: [{ check: 'T1.2', caption: 'The question' }], rows: [] }]), [g]);
-    expect(bad.ok && bad.groups.get('G1')).toMatchObject({ example: null, refused: QUOTED_ELSEWHERE, frames: [{ caption: 'toContainText "Delete service?" on role=dialog' }] });
+    const unpictured = group({ tests: [ran({ checks: [] })] });
+    const ok = readExamplesAnswer(result([{ group: 'G1', example: 'You delete a service; "Delete service?" asks first.', shows: null, frames: [], rows: [] }]), [unpictured]);
+    expect(ok.ok && ok.groups.get('G1')).toMatchObject({ example: 'You delete a service; "Delete service?" asks first.', refused: null });
+    const caption = readExamplesAnswer(result([{ group: 'G1', example: null, shows: null, frames: [{ check: 'T1.2', caption: 'The question' }, { check: 'T9.1', caption: 'x' }], rows: [] }]), [g]);
+    expect(caption.ok && caption.groups.get('G1')).toMatchObject({ example: null, refused: null, frames: [{ caption: 'The question' }] });
+    const bad = readExamplesAnswer(result([{ group: 'G1', example: 'You see "Remove it forever?".', shows: null, frames: [], rows: [] }]), [unpictured]);
+    expect(bad.ok && bad.groups.get('G1')).toMatchObject({ example: null, refused: QUOTED_ELSEWHERE });
+    const badCaption = readExamplesAnswer(result([{ group: 'G1', example: null, shows: null, frames: [{ check: 'T1.2', caption: 'It says "Remove it forever?"' }], rows: [] }]), [g]);
+    expect(badCaption.ok && badCaption.groups.get('G1')).toMatchObject({ refused: QUOTED_ELSEWHERE, frames: [{ caption: 'toContainText "Delete service?" on role=dialog' }] });
     expect(ok.ok && ok.model).toBe('claude-sonnet-5-5');
     expect(ok.ok && ok.costUsd).toBe(0.04);
     expect(readExamplesAnswer('nope', [g])).toEqual({ ok: false, reason: "Claude answered something Lookout can't read." });
@@ -426,6 +437,9 @@ function world() {
   ]);
   let gate: Promise<void> | null = null;
   let onClaude = () => {};
+  let shots: 'ok' | 'error' | 'fail' | 'late' | 'same' = 'ok';
+  let checks: Parameters<typeof trace>[1] = [{ end: 100, matcher: 'toContainText', selector: 'internal:role=dialog', text: 'Delete service?' }];
+  const shotRequests: { root: string; deadline: number; shots: { out: string; callId: string; selector: string; absent: boolean; viewport: object; zip: string }[] }[] = [];
   let playwright: (out: string) => void = (out) => {
     mkdirSync(join(out, 'deals-2-2-chromium'), { recursive: true });
     writeFileSync(join(out, 'deals-2-2-chromium', 'trace.zip'), 'zip');
@@ -442,7 +456,27 @@ function world() {
     }
     if (file === 'unzip' && args[0] === '-Z1') return 'test.trace\n0-trace.trace\nresources/x.dat\n';
     if (file === 'unzip' && args[2] === 'test.trace') return runnerTrace();
-    if (file === 'unzip' && args[2] === '0-trace.trace') return trace('crm/deals.spec.ts:4 › §2.2 deleting asks first', [{ end: 100, matcher: 'toContainText', selector: 'internal:role=dialog', text: 'Delete service?' }], [90]);
+    if (file === 'unzip' && args[2] === '0-trace.trace')
+      return [
+        JSON.stringify({ type: 'context-options', options: { viewport: { width: 1440, height: 900 } } }),
+        trace('crm/deals.spec.ts:4 › §2.2 deleting asks first', checks, [90]),
+      ].join('\n');
+    if (args.some((a) => a.endsWith('plain-shots-render.mjs'))) {
+      const input = args.at(-1)!;
+      const req = JSON.parse(readFileSync(input, 'utf8')) as (typeof shotRequests)[number];
+      shotRequests.push(req);
+      if (shots === 'fail') throw Object.assign(new Error('res: the job failed'), { stderr: 'chromium would not start' });
+      const results = req.shots.map((s, i) => {
+        if (shots === 'error') return { out: s.out, box: null, absent: false, error: 'Its snapshot isn\'t in the trace (404).' };
+        // 'same': one screen, two things ringed on it.
+        writeFileSync(s.out, shots === 'same' ? 'PROOF' : `PROOF ${s.callId}`);
+        return { out: s.out, box: { x: 0.25 * (shots === 'same' ? i + 1 : 1), y: 0.5, w: 0.25, h: 0.125 }, absent: false, error: null };
+      });
+      writeFileSync(`${input}.out.json`, JSON.stringify({ results }));
+      // 'late': it answered, then was stopped at the cut-off.
+      if (shots === 'late') throw Object.assign(new Error('timed out'), { timedOut: true });
+      return '';
+    }
     if (file === 'unzip' && args[2]?.startsWith('screencast/')) return 'JPEG-BYTES';
     if (file === 'claude-bin') {
       onClaude();
@@ -496,6 +530,9 @@ function world() {
     setOnClaude: (f: () => void) => (onClaude = f),
     setPlaywright: (f: (out: string) => void) => (playwright = f),
     setAcquire: (f: typeof acquire) => (acquire = f),
+    setShots: (s: typeof shots) => (shots = s),
+    setChecks: (c: typeof checks) => (checks = c),
+    shotRequests,
     released: () => released,
     /** Playwright waits until the returned function is called. */
     hold: () => {
@@ -561,11 +598,12 @@ describe('a press (PLAIN-11.1, 11.4, 11.9 to 11.14, 12.4 to 12.6)', () => {
     expect(ex.costUsd).toBe(0.04);
     expect(ex.groups.map((g) => g.spec)).toEqual(['§2.2', '§2.20']);
     const g = ex.groups[0]!;
-    expect(g).toMatchObject({ example: 'You delete a service at Acme; "Delete service?" asks first.', refused: null, outOfDate: false, ported: true, mentionedIn: [] });
+    // PLAIN-13.6: §2.2's pictures are its example; whatever Claude wrote isn't kept.
+    expect(g).toMatchObject({ example: null, refused: null, outOfDate: false, ported: true, mentionedIn: [] });
     expect(g.tests).toEqual([{ title: '§2.2 deleting asks first', file: 'acceptance/specs/crm/deals.spec.ts', line: 4, problem: null }]);
-    expect(g.frames).toEqual([{ name: expect.stringMatching(/^[0-9a-f]{40}\.jpg$/), test: '§2.2 deleting asks first', caption: 'The question', failed: false, missing: null }]);
+    expect(g.frames).toEqual([{ name: expect.stringMatching(/^[0-9a-f]{40}\.jpg$/), test: '§2.2 deleting asks first', caption: 'The question', failed: false, missing: null, box: { x: 0.25, y: 0.5, w: 0.25, h: 0.125 }, absent: false, screen: { w: 1440, h: 900 }, steps: [], newTest: false }]);
     expect(g.rows).toEqual([{ doc: 'knowledge/port/deals.md', line: 3, capability: 'Delete a service', answer: 'keep', source: 'row.gts:40', parity: 'built §2.2', verdict: 'covered', missing: null }]);
-    expect((await w.maker.frame(ex.key, g.frames[0]!.name))!.toString('latin1')).toBe('JPEG-BYTES');
+    expect((await w.maker.frame(ex.key, g.frames[0]!.name))!.toString('latin1')).toBe('PROOF c0');
     // PLAIN-11.11, 12.4: no test names §2.20; the port doc mentions it in a range, in no row.
     expect(ex.groups[1]).toMatchObject({ tests: [], frames: [], ported: true, rows: [], mentionedIn: ['knowledge/port/deals.md'] });
     expect(ex.rowsChecked).toBe(1);
@@ -755,3 +793,211 @@ describe('a press (PLAIN-11.1, 11.4, 11.9 to 11.14, 12.4 to 12.6)', () => {
     expect(statSync(join(w.store, key, 'answer.json')).mode & 0o777).toBe(0o600);
   });
 });
+
+describe('proof shots and a storyboard (PLAIN-13)', () => {
+  it("PLAIN-13.1, 13.2, 13.4: a check keeps its call, its selector, the steps since the check before, whether it asserts an absence, and its snapshot's page size", () => {
+    const lines = [
+      { type: 'context-options', title: 't', options: { viewport: { width: 1440, height: 900 } } },
+      { type: 'before', callId: 'g', startTime: 1, method: 'goto', params: { url: 'http://x' } },
+      { type: 'before', callId: 'e1', startTime: 10, method: 'expect', title: 'Expect "toBeVisible"', params: { selector: 'internal:role=dialog[name="Website redesign"s]', expression: 'to.be.visible', isNot: false } },
+      { type: 'after', callId: 'e1', endTime: 20 },
+      { type: 'before', callId: 'f', startTime: 20.5, method: 'fill', params: { selector: 'internal:label="Secret word"i', value: 'hunter2' } },
+      { type: 'frame-snapshot', snapshot: { callId: 'f', viewport: { width: 1440, height: 900 }, html: ['HTML', {}, [[0, 3]], ['BODY', {}, 'Secret word', ['INPUT', { __playwright_target__: '', type: 'password' }]]] } },
+      { type: 'before', callId: 'f2', startTime: 20.6, method: 'fill', params: { selector: 'internal:label="Your number"i', value: '123456' } },
+      { type: 'frame-snapshot', snapshot: { callId: 'f2', viewport: { width: 1440, height: 900 }, html: ['HTML', {}, ['INPUT', { __playwright_target__: '', type: 'text', autocomplete: 'section-login One-Time-Code' }]] } },
+      { type: 'before', callId: 'h', startTime: 21, method: 'hover', params: { selector: 'internal:role=button[name="Edit deal value"s]' } },
+      { type: 'before', callId: 'a1', startTime: 22, method: 'click', params: { selector: 'internal:role=dialog[name="Website redesign"s] >> internal:role=button[name="Edit deal value"s]' } },
+      { type: 'before', callId: 'a2', startTime: 30, method: 'click', params: { selector: 'internal:role=radio[name="Retainer"s]' } },
+      { type: 'before', callId: 'e2', startTime: 40, method: 'expect', title: 'Expect "toHaveCount"', params: { selector: 'internal:role=dialog[name="Deal value"s] >> internal:label="Period"s', expression: 'to.have.count', expectedNumber: 0, isNot: false } },
+      { type: 'after', callId: 'e2', endTime: 45 },
+      { type: 'before', callId: 'k', startTime: 50, method: 'keyboardPress', params: { key: 'Escape' } },
+      { type: 'before', callId: 'v', startTime: 55, method: 'setViewportSize', params: { viewportSize: { width: 390, height: 844 } } },
+      { type: 'before', callId: 'e3', startTime: 60, method: 'expect', title: 'Expect "toBeHidden"', params: { selector: 'internal:role=dialog[name="Deal value"s]', expression: 'to.be.hidden', isNot: false } },
+      { type: 'frame-snapshot', snapshot: { callId: 'e3', phase: 'before', isMainFrame: true, viewport: { width: 1440, height: 900 }, html: ['HTML', {}] } },
+      { type: 'frame-snapshot', snapshot: { callId: 'e3', phase: 'after', isMainFrame: true, viewport: { width: 390, height: 844 }, html: ['HTML', {}] } },
+      // An iframe's snapshot, last, has the iframe's size, not the page's.
+      { type: 'frame-snapshot', snapshot: { callId: 'e3', phase: 'after', isMainFrame: false, viewport: { width: 300, height: 200 }, html: ['HTML', {}] } },
+      { type: 'after', callId: 'e3', endTime: 70 },
+      { type: 'before', callId: 'e4', startTime: 80, method: 'expect', title: 'Expect "not toBeVisible"', params: { selector: 'x', expression: 'to.be.visible', isNot: true } },
+      { type: 'after', callId: 'e4', endTime: 81 },
+      { type: 'before', callId: 'e5', startTime: 82, method: 'expect', title: 'Expect "toBeAttached"', params: { selector: 'x', expression: 'to.be.detached', isNot: false } },
+      { type: 'after', callId: 'e5', endTime: 83 },
+      { type: 'before', callId: 'e6', startTime: 84, method: 'expect', title: 'Expect "not toHaveCount"', params: { selector: 'x', expression: 'to.have.count', expectedNumber: 0, isNot: true } },
+      { type: 'after', callId: 'e6', endTime: 85 },
+    ].map((l) => JSON.stringify(l));
+    const t = readTrace([lines.join('\n')]);
+    expect(t.viewport).toEqual({ width: 1440, height: 900 });
+    expect(t.checks.map((c) => [c.callId, c.steps, c.absent])).toEqual([
+      ['e1', ['Open the page'], false],
+      ['e2', ['Type in Secret word', 'Type in Your number', 'Press Edit deal value', 'Pick Retainer'], true],
+      ['e3', ['Press Escape'], true],
+      ['e4', [], true],
+      ['e5', [], true],
+      ['e6', [], false],
+    ]);
+    // A check's page size is its own snapshot's, after the test resized it.
+    expect(t.checks.map((c) => c.viewport.width)).toEqual([1440, 1440, 390, 1440, 1440, 1440]);
+    expect(t.checks[1]!.selector).toBe('internal:role=dialog[name="Deal value"s] >> internal:label="Period"s');
+    // A trace naming no viewport was Playwright's default.
+    expect(readTrace([trace('t', [{ end: 10, matcher: 'toBeVisible', selector: 'x' }], [])]).viewport).toEqual({ width: 1280, height: 720 });
+  });
+
+  it('PLAIN-13.4: a step is named from what it acts on and the words on it; a hover or a focus is none', () => {
+    const on = (selector: string) => ({ selector });
+    expect(stepName('click', on('internal:role=button[name="Edit deal value"s]'))).toBe('Press Edit deal value');
+    expect(stepName('click', on('internal:role=tab[name="Line items"i]'))).toBe('Press Line items');
+    expect(stepName('click', on('internal:role=dialog >> internal:role=radio[name="One-off"s] >> nth=0'))).toBe('Pick One-off');
+    expect(stepName('click', on('internal:role=option[name="Month"s]'))).toBe('Pick Month');
+    expect(stepName('click', on('internal:text="Save"i'))).toBe('Press Save');
+    expect(stepName('click', on('internal:role=button[name="Say \\"hi\\""s]'))).toBe('Press Say "hi"');
+    expect(stepName('click', on('internal:testid=[data-testid="gear"s]'))).toBe('Click');
+    expect(stepName('click', null)).toBe('Click');
+    expect(stepName('dispatchEvent', { ...on('internal:role=button[name="Go"s]'), type: 'click' })).toBe('Press Go');
+    expect(stepName('fill', { ...on('internal:role=textbox[name="No. of periods"i]'), value: '25' })).toBe('Type “25” in No. of periods');
+    expect(stepName('fill', { ...on('internal:attr=[placeholder="Search"i]'), value: '' })).toBe('Clear Search');
+    expect(stepName('fill', { selector: 'css=input', value: 'Acme' })).toBe('Type');
+    expect(stepName('press', { ...on('internal:label="Period"s'), key: 'Enter' })).toBe('Press Enter');
+    expect(stepName('keyboardPress', { key: 'Escape' })).toBe('Press Escape');
+    expect(stepName('selectOption', { ...on('internal:label="Period"s'), options: [{ valueOrLabel: 'Month' }] })).toBe('Choose Month in Period');
+    expect(stepName('check', on('internal:role=checkbox[name="Billable"s]'))).toBe('Tick Billable');
+    expect(stepName('setChecked', { ...on('internal:label="Billable"s'), checked: false })).toBe('Untick Billable');
+    expect(stepName('goto', { url: 'http://localhost/deals' })).toBe('Open the page');
+    for (const m of ['hover', 'focus', 'blur', 'mouseMove', 'setViewportSize']) expect(stepName(m, on('internal:role=button[name="X"s]'))).toBeNull();
+    // A secret is typed, never shown; nor is what the keyboard types with no target.
+    expect(stepName('fill', { ...on('internal:label="Password"i'), value: 'hunter2' })).toBe('Type in Password');
+    expect(stepName('fill', { ...on('internal:role=textbox[name="API token"i]'), value: 'sk-123' })).toBe('Type in API token');
+    expect(stepName('fill', { selector: 'internal:attr=[type="password"s]', value: 'hunter2' })).toBe('Type');
+    expect(stepName('keyboardType', { text: 'hunter2' })).toBe('Type');
+    // A field named innocently whose markup says it's a password; a field with no name; a key that could be a secret's.
+    expect(stepName('fill', { ...on('internal:label="Secret word"i'), value: 'hunter2' }, true)).toBe('Type in Secret word');
+    expect(stepName('fill', { selector: 'internal:testid=[data-testid="credential"s]', value: 'hunter2' })).toBe('Type');
+    expect(stepName('pressSequentially', { selector: 'input', text: '1234' })).toBe('Type');
+    for (const key of ['h', '1', 'KeyA', 'Digit7', 'Numpad3', 'ž']) expect(stepName('press', { ...on('internal:label="Password"s'), key })).toBe('Press a key');
+    expect(stepName('keyboardPress', { key: '1' })).toBe('Press a key');
+    expect(stepName('keyboardPress', { key: 'Control+A' })).toBe('Press Control+A');
+    expect(stepName('keyboardPress', { key: 'ArrowDown' })).toBe('Press ArrowDown');
+    // A character held with Shift or Alt is still typed; with Control or Meta it's a shortcut.
+    for (const key of ['Shift+KeyH', 'Shift+Digit1', 'Alt+KeyE', 'Shift++']) expect(stepName('keyboardPress', { key })).toBe('Press a key');
+    expect(stepName('keyboardPress', { key: 'Meta+KeyK' })).toBe('Press Meta+KeyK');
+    expect(stepName('keyboardPress', { key: 'Shift+Tab' })).toBe('Press Shift+Tab');
+  });
+
+  it('PLAIN-13.5, 13.6: up to five panels, by test then by check, the steps between two of one test, "Next test" between tests; no written example for a pictured spec', () => {
+    const checks = (key: string) => [1, 2, 3, 4].map((n) => ({ n, label: `check ${n}`, frame: `screencast/${key}-${n}.jpeg`, callId: `${key}${n}`, selector: 'x', steps: [`step ${key}${n}`], absent: false, viewport: { width: 1440, height: 900 } }));
+    const g = group({ tests: [ran({ key: 'T1', checks: checks('a') }), ran({ key: 'T2', title: '§2.2 another', line: 9, checks: checks('b') })] });
+    const a = readExamplesAnswer(
+      result([{ group: 'G1', example: 'You delete a service.', shows: null, frames: ['T2.1', 'T1.4', 'T1.1', 'T2.3', 'T1.2', 'T2.4'].map((check) => ({ check, caption: `at ${check}` })), rows: [] }]),
+      [g],
+    );
+    const frames = a.ok ? a.groups.get('G1')!.frames : [];
+    expect(frames.map((f) => [`${f.test.key}.${f.check.n}`, f.steps, f.newTest])).toEqual([
+      ['T1.1', [], false],
+      ['T1.2', ['step a2'], false],
+      ['T1.4', ['step a3', 'step a4'], false],
+      ['T2.1', [], true],
+      ['T2.3', ['step b2', 'step b3'], false],
+    ]);
+    expect(a.ok && a.groups.get('G1')!.example).toBeNull();
+  });
+
+  it('PLAIN-13.4: a panel left out hands the next of its test its steps, and "Next test" when it was the first of one', () => {
+    const p = (steps: string[], newTest: boolean) => ({ steps, newTest });
+    const panels = [p([], false), p(['a'], false), p([], true), p(['b'], false), p(['c'], false)];
+    const kept = (k: boolean[]) => keptPanels(panels, k).map((x) => [x.i, x.steps, x.newTest]);
+    expect(kept([true, true, true, true, true])).toEqual([[0, [], false], [1, ['a'], false], [2, [], true], [3, ['b'], false], [4, ['c'], false]]);
+    // The second test's first panel left out: its next still opens with "Next test".
+    expect(kept([true, true, false, true, true])).toEqual([[0, [], false], [1, ['a'], false], [3, ['b'], true], [4, ['c'], false]]);
+    // A panel in a test left out: the next carries its steps.
+    expect(kept([true, true, true, false, true])).toEqual([[0, [], false], [1, ['a'], false], [2, [], true], [4, ['b', 'c'], false]]);
+    // The first kept is never "Next test".
+    expect(kept([false, false, true, true, false])).toEqual([[2, [], false], [3, ['b'], false]]);
+  });
+});
+
+describe('a press takes proof shots (PLAIN-13.1 to 13.3)', () => {
+  let w: ReturnType<typeof world>;
+  beforeEach(() => {
+    w = world();
+  });
+  afterEach(() => w.cleanup());
+
+  it("PLAIN-13.3: the chosen checks' snapshots render after the writing run, through res with the Checkout's Node, from the run's own folder; nothing in the Checkout", async () => {
+    await w.maker.start({}, 'plain/deals.plain');
+    await w.settle();
+    const call = w.calls.find((c) => c.args.some((a) => a.endsWith('plain-shots-render.mjs')))!;
+    expect(call.file).toBe('/opt/res');
+    expect(call.args.slice(0, 5)).toEqual(['run', '--prio', 'live', '--', 'node']);
+    expect(call.args[5]).toBe(join(import.meta.dirname, 'plain-shots-render.mjs'));
+    expect(call.args[6]!.startsWith(w.store)).toBe(true);
+    expect(call.opts).toMatchObject({ cwd: w.root, timeoutMs: SHOTS_TIMEOUT_MS });
+    expect(call.opts.env).not.toHaveProperty('NODE_ENV');
+    expect(w.calls.indexOf(call)).toBeGreaterThan(w.calls.findIndex((c) => c.file === 'claude-bin'));
+    const [req] = w.shotRequests;
+    expect(req!.root).toBe(w.root);
+    expect(req!.shots).toEqual([{ zip: expect.stringMatching(/trace\.zip$/), callId: 'c0', selector: 'internal:role=dialog', absent: false, viewport: { width: 1440, height: 900 }, out: expect.stringMatching(/shots\/0\.jpg$/) }]);
+    // It answers ten seconds before Lookout's cut-off, however long it waited for its turn.
+    expect(req!.deadline - Date.now()).toBeLessThanOrEqual(SHOTS_TIMEOUT_MS - 10_000);
+    expect(req!.deadline - Date.now()).toBeGreaterThan(SHOTS_TIMEOUT_MS - 20_000);
+    expect(readdirSync(w.store).filter((n) => n.startsWith('run-'))).toEqual([]);
+  });
+
+  it("PLAIN-13.3: a snapshot that didn't render, or a render that failed, keeps the screen-recording frame with no box; the run still ends well", async () => {
+    for (const mode of ['error', 'fail'] as const) {
+      w.setShots(mode);
+      await w.maker.start({}, 'plain/deals.plain');
+      await w.settle();
+      const a = await w.maker.get({}, 'plain/deals.plain');
+      expect(a.error).toBeNull();
+      const f = a.examples!.groups[0]!.frames[0]!;
+      expect(f).toMatchObject({ caption: 'The question', box: null, absent: false, steps: [] });
+      expect((await w.maker.frame(a.examples!.key, f.name))!.toString('latin1')).toBe('JPEG-BYTES');
+    }
+  });
+
+  it('PLAIN-13.3: what the script answered before it was stopped is kept; one screen ringing two things is two panels on one picture', async () => {
+    w.setShots('late');
+    await w.maker.start({}, 'plain/deals.plain');
+    await w.settle();
+    let a = await w.maker.get({}, 'plain/deals.plain');
+    let f = a.examples!.groups[0]!.frames[0]!;
+    expect(f.box).toEqual({ x: 0.25, y: 0.5, w: 0.25, h: 0.125 });
+    expect((await w.maker.frame(a.examples!.key, f.name))!.toString('latin1')).toBe('PROOF c0');
+    w.setShots('same');
+    w.setChecks([
+      { end: 100, matcher: 'toBeVisible', selector: 'internal:role=dialog' },
+      { end: 200, matcher: 'toBeVisible', selector: 'internal:role=button' },
+    ]);
+    w.setClaude(result([{ group: 'G1', example: null, shows: null, frames: [{ check: 'T1.1', caption: 'The dialog' }, { check: 'T1.2', caption: 'Its button' }], rows: [] }]));
+    await w.maker.start({}, 'plain/deals.plain');
+    await w.settle();
+    a = await w.maker.get({}, 'plain/deals.plain');
+    const frames = a.examples!.groups[0]!.frames;
+    expect(frames.map((x) => [x.caption, x.box?.x])).toEqual([['The dialog', 0.25], ['Its button', 0.5]]);
+    expect(frames[0]!.name).toBe(frames[1]!.name);
+    f = frames[1]!;
+    expect((await w.maker.frame(a.examples!.key, f.name))!.toString('latin1')).toBe('PROOF');
+  });
+
+  it('PLAIN-13.3: Cancel while the pictures render keeps nothing', async () => {
+    let cancel!: () => void;
+    const started = new Promise<void>((r) => (cancel = r));
+    const runner = (w.maker as unknown as { opts: { runner: (f: string, a: readonly string[], o: RunOptions) => Promise<string> } }).opts;
+    const real = runner.runner;
+    runner.runner = (file, args, opts) =>
+      args.some((a) => a.endsWith('plain-shots-render.mjs'))
+        ? new Promise((_, reject) => {
+            cancel();
+            opts.signal?.addEventListener('abort', () => reject(Object.assign(new Error('cancelled'), { aborted: true })));
+          })
+        : real(file, args, opts);
+    await w.maker.start({}, 'plain/deals.plain');
+    await started;
+    expect((await w.maker.get({}, 'plain/deals.plain')).running).toMatchObject({ phase: 'pictures' });
+    w.maker.cancel();
+    await w.settle();
+    const a = await w.maker.get({}, 'plain/deals.plain');
+    expect(a.error).toBe('Cancelled. The examples before it are kept.');
+    expect(a.examples).toBeNull();
+  });
+});
+

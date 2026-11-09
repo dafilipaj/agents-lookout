@@ -620,6 +620,19 @@ export interface PlainExampleFrame {
   failed?: boolean;
   /** PLAIN-11.17: what the change adds that the picture doesn't show yet, from what the failing step looked for. */
   missing?: string | null;
+  /**
+   * PLAIN-13.1: a proof shot's box, what its check looked at, in fractions of the screen; null for a
+   * screen-recording frame (PLAIN-13.3) or a check of the whole page. Absent on frames kept before PLAIN-13.
+   */
+  box?: { x: number; y: number; w: number; h: number } | null;
+  /** PLAIN-13.2: its check found something absent; the box is the container it searched. */
+  absent?: boolean;
+  /** PLAIN-13.1: the screen the test ran at, in CSS pixels. */
+  screen?: { w: number; h: number };
+  /** PLAIN-13.4: the steps its test took since the panel before, named. */
+  steps?: string[];
+  /** PLAIN-13.4: another test than the panel before's. */
+  newTest?: boolean;
 }
 
 /** PLAIN-11.3: a Playwright test that names a group's spec. */
@@ -689,7 +702,7 @@ export interface PlainExamplesAnswer {
    * The run going in Lookout, if any: this Module's or another's. A PR's run first checks out its
    * worktree and copies or installs its dependencies (PLAIN-11.15).
    */
-  running: { module: string; mine: boolean; phase: 'worktree' | 'copying' | 'installing' | 'tests' | 'writing'; tests: number } | null;
+  running: { module: string; mine: boolean; phase: 'worktree' | 'copying' | 'installing' | 'tests' | 'writing' | 'pictures'; tests: number } | null;
   /** The last run of this Module failed: why. */
   error: string | null;
 }

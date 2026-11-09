@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SaveError } from '@/lib/client';
 import { parseRoute, routePath } from '@/lib/router';
 import { renderApp, row } from '@/test/helpers';
+import { cropRegion } from '@/lib/plain-shots';
 import { JUST_CHANGED_MS, SPEC_POLL_MS, STRIP_PX } from './SpecView';
 
 const CHECKOUT = '0123456789abcdef';
@@ -1357,5 +1358,105 @@ describe('each change beside what it does (PLAIN-11, 12)', () => {
     open({}, { plainExamples: async () => kept({ rows: [], ported: false }) });
     await waitFor(() => expect(card()).not.toBeNull());
     expect(card()!.querySelector('[data-field="spec-example-old-app"]')).toBeNull();
+  });
+});
+
+describe('proof shots and a storyboard (PLAIN-13)', () => {
+  const card = () => document.querySelector<HTMLElement>('[data-slot="spec-example"]');
+  const story = () => card()!.querySelector<HTMLElement>('[data-field="spec-story"]')!;
+  const screen1440 = { w: 1440, h: 900 };
+  const panels = (): Partial<PlainExample> => ({
+    example: null,
+    frames: [
+      { name: `${'a'.repeat(40)}.jpg`, test: '§1.2 a rate can be deleted', caption: 'The rate card with two rates', box: { x: 0.4, y: 0.4, w: 0.1, h: 0.05 }, absent: false, screen: screen1440, steps: [], newTest: false },
+      { name: `${'b'.repeat(40)}.jpg`, test: '§1.2 a rate can be deleted', caption: 'The rate is gone', box: { x: 0.3, y: 0.1, w: 0.4, h: 0.5 }, absent: true, screen: screen1440, steps: ['Press Delete', 'Pick Yes', 'Press Confirm', 'Press Escape', 'Open the page'], newTest: false },
+      { name: `${'c'.repeat(40)}.jpg`, test: '§1.2 a deleted rate can be undone', caption: 'The dialog is closed', box: null, absent: true, screen: screen1440, steps: [], newTest: true },
+    ],
+  });
+
+  it('PLAIN-13.5: the region a panel shows is its box with room around it, 16:10, centred where the screen allows', () => {
+    const mid = cropRegion({ x: 0.45, y: 0.45, w: 0.05, h: 0.05 }, screen1440);
+    expect(mid.w * 1440).toBeCloseTo(360);
+    expect(mid.h * 900).toBeCloseTo(225);
+    expect(mid.x + mid.w / 2).toBeCloseTo(0.475);
+    const corner = cropRegion({ x: 0, y: 0, w: 0.02, h: 0.02 }, screen1440);
+    expect([corner.x, corner.y]).toEqual([0, 0]);
+    const big = cropRegion({ x: 0.1, y: 0.1, w: 0.9, h: 0.9 }, screen1440);
+    expect(big).toEqual({ x: 0, y: 0, w: 1, h: 1 });
+    // A box 16:10 can't hold on a 4:3 or a portrait screen is kept whole.
+    expect(cropRegion({ x: 0, y: 0, w: 1, h: 1 }, { w: 800, h: 600 })).toEqual({ x: 0, y: 0, w: 1, h: 1 });
+    const tall = cropRegion({ x: 0.1, y: 0.05, w: 0.8, h: 0.9 }, { w: 390, h: 844 });
+    expect(tall.y).toBeCloseTo(0.05);
+    expect(tall.y + tall.h).toBeCloseTo(0.95);
+    expect([tall.x, tall.w]).toEqual([0, 1]);
+  });
+
+  it('PLAIN-13.6, 13.5: a pictured spec has its pictures for an example, as a storyboard: panels in order, cropped and ringed, the steps between them, "Next test" between tests; no written example', async () => {
+    open({}, { plainExamples: async () => kept(panels()) });
+    await waitFor(() => expect(card()?.querySelector('[data-field="spec-story"]') ?? null).not.toBeNull());
+    const s = story();
+    expect([...s.querySelectorAll('figcaption')].map((f) => f.textContent)).toEqual(['The rate card with two rates', 'The rate is gone', 'The dialog is closed']);
+    const steps = [...s.querySelectorAll<HTMLElement>('[data-field="spec-story-step"]')];
+    expect(steps.map((x) => x.textContent)).toEqual(['Press Delete, Pick Yes, Press Confirm, +2 more', 'Next test']);
+    expect(steps[0]!.getAttribute('title')).toBe('Press Delete\nPick Yes\nPress Confirm\nPress Escape\nOpen the page');
+    expect(steps[1]!.getAttribute('title')).toBe('§1.2 a deleted rate can be undone');
+    const shots = [...s.querySelectorAll<HTMLElement>('[data-field="spec-shot"]')];
+    expect(shots.map((x) => x.dataset.crop)).toEqual(['box', 'box', 'none']);
+    // The first is cropped around its box and ringed; the absence rings where it searched, and says so.
+    expect(shots[0]!.querySelector('[data-field="spec-shot-ring"]')).not.toBeNull();
+    expect(shots[0]!.querySelector('img')!.style.width).not.toBe('');
+    expect(shots[1]!.querySelector('[data-field="spec-shot-ring"]')).not.toBeNull();
+    expect(within(shots[1]!).getByText('Not there')).toBeTruthy();
+    expect(shots[2]!.querySelector('[data-field="spec-shot-ring"]')).toBeNull();
+    // An absence that searched the whole page is the whole screen, and says so too.
+    expect(within(shots[2]!).getByText('Not there')).toBeTruthy();
+    expect(within(s).getByRole('img', { name: 'The rate card with two rates' }).getAttribute('src')).toBe(`/api/plain/examples/frame?key=${EXAMPLE_KEY}&name=${'a'.repeat(40)}.jpg`);
+    // PLAIN-13.6: its pictures are its example.
+    expect(card()!.querySelector('[data-field="spec-example-text"]')).toBeNull();
+    expect(card()!.querySelector('[data-field="spec-example-by"]')).toBeNull();
+    expect(within(card()!).queryByText('Example')).toBeNull();
+    expect(card()!.querySelector('[data-field="spec-example-tests"]')!.textContent).toBe('1 Playwright test: passed');
+    // Narrow: the first panel and how many steps, which open the dialog.
+    expect(within(card()!.querySelector<HTMLElement>('[data-field="spec-story-narrow"]')!).getByRole('button', { name: '3 steps' })).toBeTruthy();
+  });
+
+  it('PLAIN-13.5: two panels ringing two things on one picture are both drawn, each its own', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const p = panels();
+      const [first] = p.frames!;
+      open({}, { plainExamples: async () => kept({ ...p, frames: [first!, { ...first!, caption: 'Its second rate', box: { x: 0.4, y: 0.5, w: 0.1, h: 0.05 }, steps: [] }, ...p.frames!.slice(1)] }) });
+      await waitFor(() => expect(card()?.querySelector('[data-field="spec-story"]') ?? null).not.toBeNull());
+      expect([...story().querySelectorAll('figcaption')].map((f) => f.textContent)).toEqual(['The rate card with two rates', 'Its second rate', 'The rate is gone', 'The dialog is closed']);
+      expect(err.mock.calls.some((c) => String(c[0]).includes('same key'))).toBe(false);
+    } finally {
+      err.mockRestore();
+    }
+  });
+
+  it('PLAIN-13.7: the dialog shows a panel whole, ringed with the rest dimmed (where an absence searched too), the steps that led to it, "Not there" for an absence', async () => {
+    const user = userEvent.setup();
+    open({}, { plainExamples: async () => kept(panels()) });
+    await waitFor(() => expect(card()?.querySelector('[data-field="spec-story"]') ?? null).not.toBeNull());
+    await user.click(within(story()).getByRole('button', { name: "Show §1.2's pictures large, at step 1" }));
+    let dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('§1.2 · The rate card with two rates')).toBeTruthy();
+    expect(dialog.querySelector('[data-field="spec-example-after"]')).toBeNull();
+    const ring = dialog.querySelector<HTMLElement>('[data-field="spec-example-large"] [data-field="spec-shot-ring"]')!;
+    expect([ring.style.left, ring.style.top, ring.style.width, ring.style.height]).toEqual(['40%', '40%', '10%', '5%']);
+    await user.keyboard('{ArrowRight}');
+    dialog = screen.getByRole('dialog');
+    expect(dialog.querySelector('[data-field="spec-example-after"]')!.textContent).toBe('After: Press Delete, Pick Yes, Press Confirm, Press Escape, Open the page');
+    // An absence: where it searched, ringed, the rest dimmed, and "Not there".
+    const searched = dialog.querySelector<HTMLElement>('[data-field="spec-shot-ring"]')!;
+    expect([searched.style.left, searched.style.top, searched.style.width, searched.style.height]).toEqual(['30%', '10%', '40%', '50%']);
+    expect(within(dialog).getByText('Not there')).toBeTruthy();
+    await user.keyboard('{ArrowRight}');
+    dialog = screen.getByRole('dialog');
+    expect(dialog.querySelector('[data-field="spec-example-after"]')!.textContent).toBe('Next test');
+    expect(dialog.querySelector('[data-field="spec-shot-ring"]')).toBeNull();
+    expect(within(dialog).getByText('Not there')).toBeTruthy();
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 });
