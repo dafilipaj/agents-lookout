@@ -1,14 +1,15 @@
 import { LAUNCH_TIMEOUT_MS } from '@shared/defaults.ts';
 import type { SessionRow, Status } from '@shared/types.ts';
-import type { ColumnMark, PrSection, TaskSection, WorkPr, WorkSessionLink, WorkSnapshot, WorkTask } from '@shared/work.ts';
-import { CircleCheck, CircleDashed, CircleQuestionMark, CircleX, GitPullRequest, GitPullRequestDraft, LoaderCircle, Milestone, TriangleAlert } from 'lucide-react';
+import { type ColumnMark, type LinkedPr, type LinkedTask, type PrSection, type TaskSection, type WorkPr, type WorkSessionLink, type WorkSnapshot, type WorkTask, taskUrl } from '@shared/work.ts';
+import { CircleCheck, CircleDashed, CircleQuestionMark, CircleX, GitPullRequest, GitPullRequestDraft, LoaderCircle, Milestone, SquareCheckBig, TriangleAlert } from 'lucide-react';
 import { type FocusEvent, type KeyboardEvent, type MouseEvent, type ReactNode, type Ref, type RefObject, createContext, useCallback, useContext, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Avatar } from '@/components/ui/avatar';
 import { Chip } from '@/components/ui/chip';
 import { CommandBlock } from '@/components/ui/command-block';
-import { RowAction, RowSettling, useRowSettle } from '@/components/ui/icon-button';
+import { RowSettling, useRowSettle } from '@/components/ui/icon-button';
 import { RowActions, type RowMenuGroup, type RowMenuItem } from '@/components/ui/row-actions';
+import { RowDetails, type RowLinkGroup, RowTitle } from '@/components/ui/row-details';
 import { Loading } from '@/components/ui/loading';
 import { SessionMarker } from '@/components/ui/session-marker';
 import { type PanelNav, WORK_FILTERS, WORK_FILTER_LABEL, type WorkFilter } from '@/lib/right-sidebar';
@@ -19,7 +20,6 @@ import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import {
   AGE_LEVEL_CLASS,
-  MAX_SESSION_CHIPS,
   PR_GROUPS,
   PR_GROUP_LABEL,
   type PrGroup,
@@ -45,12 +45,10 @@ import {
   taskKey,
   visibleRows,
 } from '@/lib/work';
-import { HarnessIcon } from './HarnessIcon';
 import { TaskStatusDot } from './TaskStatusDot';
-import { TopicChips } from './TopicLinks';
 import { PrSpecsList } from './PrSpecs';
 import { PrSpecsContext, useNoCloneReason, type PrSpecsApi } from '@/lib/pr-specs';
-import { useAddToTopicItem, useTopics } from '@/lib/topics';
+import { useAddToTopicItem, useTopics, useTopicLinks } from '@/lib/topics';
 import { type ActionId } from '@/lib/actions';
 
 export interface WorkPanelProps {
@@ -614,6 +612,7 @@ function TaskRow({ row, task, now, active, state }: TaskRowProps) {
   const expanded = state.open === row.key;
   const actions = rowActions(row, state.sessionsAvailable);
   const sessions = state.sessionsAvailable ? (task.links?.sessions ?? []) : [];
+  const live = useContext(LiveSessions);
   return (
     <div
       id={id}
@@ -638,80 +637,98 @@ function TaskRow({ row, task, now, active, state }: TaskRowProps) {
       </RowIcon>
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         {/* The spaces keep the row's name (from its content) from running the fields together. */}
-        <div className="flex min-w-0 items-center gap-1.5">
-          <span className="min-w-0 truncate" data-field="title" title={task.title}>
+        <div className={cn('flex min-w-0 gap-1.5', expanded ? 'items-start' : 'items-center')}>
+          <RowTitle expanded={expanded} title={task.title}>
             {task.title}
-          </span>{' '}
-          <LinkedMarker links={sessions} incomplete={task.links?.incomplete ?? false} />
+          </RowTitle>{' '}
+          <span className="flex h-5 shrink-0 items-center">
+            <LinkedMarker links={sessions} incomplete={task.links?.incomplete ?? false} />
+          </span>
           {state.resuming === row.key && <span className="ml-auto shrink-0 text-caption text-muted-foreground">Resuming…</span>}
         </div>
-        {(task.project !== null || task.status !== null) && (
-          <div className="flex min-w-0 items-center gap-1 text-meta text-muted-foreground">
-            {task.project !== null && (
-              <span className="min-w-0 truncate" data-field="project" title={task.project}>
-                {task.project}
-              </span>
-            )}{' '}
-            {task.project !== null && task.status !== null && (
-              <span aria-hidden className="shrink-0">
-                ·
-              </span>
-            )}
-            {task.status !== null && (
-              <span className="min-w-0 truncate" data-field="status" title={task.status}>
-                {task.status}
-              </span>
-            )}{' '}
-          </div>
-        )}
-        {!expanded && task.links && task.links.prs.length > 0 && (
-          <div className="flex min-w-0 flex-wrap items-center gap-1 text-meta text-muted-foreground" data-field="linked-prs">
-            {task.links.prs.map((linked) => (
-              <span key={linked.url} className="inline-flex items-center gap-1" title={prSources(linked.sources)} data-field="linked-pr">
-                <span className="font-medium text-foreground">#{linked.number}</span>
-                {linked.chip ? <Chip tone={CHIP_TONE[linked.chip]}>{linked.chip}</Chip> : <span>Review request</span>}
-                <Ci ci={linked.ci} />
-              </span>
-            ))}
-          </div>
-        )}
-        {(task.milestone || due) && (
-          <div className="flex min-w-0 items-center gap-1.5 text-meta text-muted-foreground">
-            {task.milestone && (
-              <>
-                <Chip data-field="milestone">
-                  <Milestone aria-hidden className="size-3" />
-                  milestone
-                </Chip>{' '}
-              </>
-            )}
-            {due && (
-              <span className="truncate" data-field="due" title={due.title}>
-                {due.text}
-              </span>
-            )}
-          </div>
-        )}
-        {expanded && (
-          <Details id={`${id}-details`} row={row} actions={actions} sessions={sessions} state={state}>
-            {task.description !== null && (
-              <p className="line-clamp-3 text-meta whitespace-pre-line text-muted-foreground" data-field="description">
-                {task.description}
-              </p>
+        {expanded ? (
+          <Details
+            id={`${id}-details`}
+            row={row}
+            actions={actions}
+            state={state}
+            now={now}
+            facts={[
+              task.project !== null && (
+                <span className="min-w-0 truncate" data-field="project" title={task.project}>
+                  {task.project}
+                </span>
+              ),
+              task.status !== null && (
+                <span className="min-w-0 truncate" data-field="status" title={task.status}>
+                  {task.status}
+                </span>
+              ),
+              task.milestone && <MilestoneChip />,
+              due && (
+                <span className="shrink-0" data-field="due" title={due.title}>
+                  {due.text}
+                </span>
+              ),
+              // DS-21: a single Linked PR stays on the state line; more than one are a count.
+              task.links?.prs.length === 1 && <LinkedPrFact linked={task.links.prs[0]!} />,
+            ]}
+            summary={
+              task.description !== null && (
+                <p className="line-clamp-3 whitespace-pre-line" data-field="description">
+                  {task.description}
+                </p>
+              )
+            }
+            links={[sessionLinks(sessions, live, now, state.resuming === null, (session) => state.onSession(row, session)), task.links && task.links.prs.length > 1 ? prLinks(task.links.prs) : null]}
+          />
+        ) : (
+          <>
+            {(task.project !== null || task.status !== null) && (
+              <div className="flex min-w-0 items-center gap-1 text-meta text-muted-foreground">
+                {task.project !== null && (
+                  <span className="min-w-0 truncate" data-field="project" title={task.project}>
+                    {task.project}
+                  </span>
+                )}{' '}
+                {task.project !== null && task.status !== null && (
+                  <span aria-hidden className="shrink-0">
+                    ·
+                  </span>
+                )}
+                {task.status !== null && (
+                  <span className="min-w-0 truncate" data-field="status" title={task.status}>
+                    {task.status}
+                  </span>
+                )}{' '}
+              </div>
             )}
             {task.links && task.links.prs.length > 0 && (
-              <DetailLine label="PRs" field="detail-prs">
+              <div className="flex min-w-0 flex-wrap items-center gap-1 text-meta text-muted-foreground" data-field="linked-prs">
                 {task.links.prs.map((linked) => (
-                  <span key={linked.url} className="inline-flex min-w-0 items-center gap-1" title={prSources(linked.sources)} data-field="detail-pr">
-                    <span className="truncate">{linked.repo}</span>
-                    <span className="font-medium text-foreground tabular-nums">#{linked.number}</span>
+                  <span key={linked.url} className="inline-flex items-center gap-1" title={prSources(linked.sources)} data-field="linked-pr">
+                    <span className="font-medium text-foreground">#{linked.number}</span>
                     {linked.chip ? <Chip tone={CHIP_TONE[linked.chip]}>{linked.chip}</Chip> : <span>Review request</span>}
                     <Ci ci={linked.ci} />
                   </span>
                 ))}
-              </DetailLine>
+              </div>
             )}
-          </Details>
+            {(task.milestone || due) && (
+              <div className="flex min-w-0 items-center gap-1.5 text-meta text-muted-foreground">
+                {task.milestone && (
+                  <>
+                    <MilestoneChip />{' '}
+                  </>
+                )}
+                {due && (
+                  <span className="truncate" data-field="due" title={due.title}>
+                    {due.text}
+                  </span>
+                )}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -726,72 +743,166 @@ function keysHint(row: WorkRow, expanded: boolean, actions: readonly RowActionKi
   return expanded ? `Enter: ${actionLabel(actions[0]!, row).label}.` : 'Enter shows its details.';
 }
 
+function MilestoneChip() {
+  return (
+    <Chip data-field="milestone">
+      <Milestone aria-hidden className="size-3" />
+      milestone
+    </Chip>
+  );
+}
+
+/** WORK-2.9, DS-21: a Task's one Linked PR on its state line: its number, state chip and CI, its hover the Link's source. */
+function LinkedPrFact({ linked }: { linked: LinkedPr }) {
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1" title={prSources(linked.sources)} data-field="linked-pr">
+      <span className="font-medium text-foreground tabular-nums">#{linked.number}</span>{' '}
+      {linked.chip ? <Chip tone={CHIP_TONE[linked.chip]}>{linked.chip}</Chip> : <span>Review request</span>}{' '}
+      <Ci ci={linked.ci} />
+    </span>
+  );
+}
+
+/** WORK-2.9, DS-21.2: a Task's Linked PRs, when it has more than one: each opens on GitHub, its hover the Link's source. */
+function prLinks(prs: readonly LinkedPr[]): RowLinkGroup {
+  return {
+    kind: 'prs',
+    noun: ['PR', 'PRs'],
+    items: prs.map((linked) => ({
+      key: linked.url,
+      glyph: <PrIcon chip={linked.chip} />,
+      name: `${linked.repo} #${linked.number}`,
+      state: (
+        <span className="flex items-center gap-1">
+          {linked.chip ? <Chip tone={CHIP_TONE[linked.chip]}>{linked.chip}</Chip> : 'Review request'}
+          <Ci ci={linked.ci} />
+        </span>
+      ),
+      label: `Open ${linked.repo} #${linked.number} on GitHub`,
+      tip: prSources(linked.sources),
+      action: 'pr',
+      onPress: () => openInBrowser(linked.url),
+    })),
+  };
+}
+
+/** WORK-3.6, DS-21.2: a PR's Linked Task: it opens in Fantastic, its hover the Link's source. */
+function taskLinks(tasks: readonly LinkedTask[]): RowLinkGroup {
+  return {
+    kind: 'tasks',
+    noun: ['Task', 'Tasks'],
+    items: tasks.map((linked) => ({
+      key: linked.id,
+      glyph: <SquareCheckBig aria-hidden />,
+      name: linked.title,
+      label: `Open ${linked.title} in Fantastic`,
+      tip: prSources(linked.sources),
+      action: 'task',
+      onPress: () => openInBrowser(taskUrl(linked.id)),
+    })),
+  };
+}
+
+/**
+ * WORK-4.10, DS-21.2: a row's Linked Sessions, in WORK-2.4's order: each its Status marker (DS-5.1),
+ * from the Session sidebar's list for a live one, its name (SIDE-10) and "live", its age or "past". A
+ * press opens a live one or resumes a past one; its hover gives the Link's reason.
+ */
+function sessionLinks(sessions: readonly WorkSessionLink[], live: ReadonlyMap<string, SessionRow>, now: number, enabled: boolean, onOpen: (session: WorkSessionLink) => void): RowLinkGroup {
+  return {
+    kind: 'sessions',
+    noun: ['Session', 'Sessions'],
+    items: [...sessions].sort(bySessionOrder).map((session) => {
+      const listed = live.get(session.sessionId);
+      const status = session.live ? (listed?.status ?? 'unknown') : null;
+      // SIDE-10.2: a live Session's name is the Session list's.
+      const name = liveName(session, live);
+      return {
+        key: session.sessionId,
+        glyph: <SessionMarker aria-hidden="true" state={status ? 'live' : 'past'} status={status ?? undefined} since={listed?.statusSince ?? null} />,
+        name,
+        state: status ? 'live' : session.modifiedAt !== null ? formatAge(Math.max(0, now - session.modifiedAt)) : 'past',
+        label: `${session.live ? 'Open' : 'Resume'} ${name}, ${status ? STATUS_LABEL[status] : 'past'}`,
+        tip: session.reason,
+        action: 'session',
+        sessionId: session.sessionId,
+        enabled,
+        onPress: () => onOpen(session),
+      };
+    }),
+  };
+}
+
 interface DetailsProps {
   id: string;
   row: WorkRow;
   actions: readonly RowActionKind[];
-  /** The Linked Sessions shown as chips (none while Session Links are unavailable, WORK-7.4). */
-  sessions: readonly WorkSessionLink[];
   state: RowState;
-  /** The row's own lines, before the chips. */
-  children?: ReactNode;
+  now: number;
+  /** DS-21.1: the row's state, its facts in order. */
+  facts: readonly ReactNode[];
+  summary?: ReactNode;
+  /** Its links before its Topics, which every row has. */
+  links: readonly (RowLinkGroup | null)[];
   /** An action of its own kind under "More", after the row's (PLAIN-5.1's "Specs"), before "Add to Topic". */
   extra?: RowMenuItem | null;
 }
 
 /**
- * WORK-2.9, WORK-3.6: what an expanded row adds, below what it already shows: its own lines, its
- * Linked Session chips (WORK-4.10), then its buttons (WORK-2.10, WORK-3.6), wrapping when they don't
- * fit, and a failed open under them. A screen reader hears it as the row's description, not its name.
+ * WORK-2.9, WORK-3.6, DS-21: an expanded row under its title: its state, its summary, its links as
+ * counts (Topics last), then its buttons (WORK-2.10, WORK-3.6), and a failed open under them. A
+ * screen reader hears the state as part of the row's name and the rest as its description.
  */
-function Details({ id, row, actions, sessions, state, children, extra }: DetailsProps) {
+function Details({ id, row, actions, state, facts, summary, links, extra }: DetailsProps) {
   const resuming = state.resuming === row.key;
-  const addToTopic = useAddToTopicItem(rowMembers(row), rowLabel(row));
+  const members = rowMembers(row);
+  const addToTopic = useAddToTopicItem(members, rowLabel(row));
+  const topics = useTopicLinks(members);
   const [first, ...rest] = actions;
   const failure = state.failure?.key === row.key ? state.failure.message : null;
   return (
     <RowSettling.Provider value={state.settling}>
-      <div id={id} aria-hidden className="mt-1 flex min-w-0 flex-col gap-1.5" data-field="details">
-        {children}
-        {sessions.length > 0 && (
-          <DetailLine label="Sessions" field="session-chips">
-            <SessionChips sessions={sessions} enabled={state.resuming === null} onOpen={(session) => state.onSession(row, session)} />
-          </DetailLine>
-        )}
-        <TopicChips members={rowMembers(row)} labelClass="w-14" />
-        <RowActions
-          name={rowLabel(row)}
-          primary={
-            first === undefined
-              ? null
-              : {
-              'data-action': actionId(first),
-              action: actionOf(first),
-              label: resuming && first.kind === 'session' ? 'Resuming…' : actionLabel(first, row).label,
-              tip: actionLabel(first, row).tip,
-              enabled: state.resuming === null,
-              onPress: () => state.onAct(row, first),
+      <RowDetails
+        id={id}
+        described
+        state={facts}
+        summary={summary}
+        links={[...links, topics].filter((g): g is RowLinkGroup => g !== null)}
+        actions={
+          <RowActions
+            name={rowLabel(row)}
+            primary={
+              first === undefined
+                ? null
+                : {
+                    'data-action': actionId(first),
+                    action: actionOf(first),
+                    label: resuming && first.kind === 'session' ? 'Resuming…' : actionLabel(first, row).label,
+                    tip: actionLabel(first, row).tip,
+                    enabled: state.resuming === null,
+                    onPress: () => state.onAct(row, first),
+                  }
             }
-          }
-          more={[
-            ...rest.map(
-              (action): RowMenuItem => ({
-                id: actionId(action),
-                action: actionOf(action),
-                label: actionLabel(action, row).label,
-                group: ACTION_GROUP[action.kind],
-                shortcut: ACTION_KEY[action.kind],
-                enabled: state.resuming === null,
-                onSelect: () => state.onAct(row, action),
-              }),
-            ),
-            extra,
-            addToTopic,
-          ]}
-          open={state.menuOpen === row.key}
-          onOpenChange={(next) => state.onMenu(row, next)}
-        />
-      </div>
+            more={[
+              ...rest.map(
+                (action): RowMenuItem => ({
+                  id: actionId(action),
+                  action: actionOf(action),
+                  label: actionLabel(action, row).label,
+                  group: ACTION_GROUP[action.kind],
+                  shortcut: ACTION_KEY[action.kind],
+                  enabled: state.resuming === null,
+                  onSelect: () => state.onAct(row, action),
+                }),
+              ),
+              extra,
+              addToTopic,
+            ]}
+            open={state.menuOpen === row.key}
+            onOpenChange={(next) => state.onMenu(row, next)}
+          />
+        }
+      />
       {failure && <Alert title={failure} className="mt-1" />}
     </RowSettling.Provider>
   );
@@ -804,57 +915,6 @@ const actionId = (action: RowActionKind) => (action.kind === 'session' ? (action
 /** DS-18.6: the action each of a row's buttons runs, for its icon: a live Session opens inside Lookout, a PR or Task leaves it. */
 const actionOf = (action: RowActionKind): ActionId =>
   action.kind === 'open' ? 'open-external' : action.kind === 'session' ? (action.session.live ? 'open' : 'resume') : action.kind === 'start' ? 'start' : 'review';
-
-/** One labelled line of an expanded row: "PRs", "Sessions". */
-function DetailLine({ label, field, children }: { label: string; field: string; children: ReactNode }) {
-  return (
-    <div className="flex min-w-0 items-start gap-2 text-meta text-muted-foreground" data-field={field}>
-      <span className="w-14 shrink-0 pt-0.5">{label}</span>
-      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">{children}</div>
-    </div>
-  );
-}
-
-/**
- * WORK-4.10: each Linked Session its own chip, in WORK-2.4's order, at most 8, then "+N older": its
- * Harness logo, its name and its Status marker (DS-5.1), from the Session sidebar's list for a live
- * one. A click opens a live one or resumes a past one; its hover gives the Link's reason.
- */
-function SessionChips({ sessions, enabled, onOpen }: { sessions: readonly WorkSessionLink[]; enabled: boolean; onOpen(session: WorkSessionLink): void }) {
-  const live = useContext(LiveSessions);
-  const sorted = [...sessions].sort(bySessionOrder);
-  const shown = sorted.slice(0, MAX_SESSION_CHIPS);
-  return (
-    <>
-      {shown.map((session) => {
-        const listed = live.get(session.sessionId);
-        const status = session.live ? (listed?.status ?? 'unknown') : null;
-        // SIDE-10.2: a live Session's name is the Session list's.
-        const name = liveName(session, live);
-        return (
-          <RowAction
-            key={session.sessionId}
-            data-action="session"
-            data-session-id={session.sessionId}
-            aria-label={`${session.live ? 'Open' : 'Resume'} ${name}, ${status ? STATUS_LABEL[status] : 'past'}`}
-            label={name}
-            icon={<HarnessIcon harness={session.harness} />}
-            trailing={<SessionMarker aria-hidden="true" state={status ? 'live' : 'past'} status={status ?? undefined} since={listed?.statusSince ?? null} />}
-            tip={session.reason}
-            enabled={enabled}
-            onPress={() => onOpen(session)}
-            className="max-w-full font-normal"
-          />
-        );
-      })}
-      {sorted.length > shown.length && (
-        <span className="text-meta text-muted-foreground" data-field="older">
-          +{sorted.length - shown.length} older
-        </span>
-      )}
-    </>
-  );
-}
 
 /** DS-5.3: which live Status needs action most, first. */
 const URGENCY: readonly Status[] = ['needs-you', 'busy', 'idle', 'unknown'];
@@ -1014,6 +1074,7 @@ function PrRow({ row, group, pr, now, active, state }: PrRowProps) {
   const expanded = state.open === row.key;
   const actions = rowActions(row, state.sessionsAvailable);
   const sessions = state.sessionsAvailable ? (pr.links?.sessions ?? []) : [];
+  const live = useContext(LiveSessions);
   // PLAIN-5.4: a PR without a local clone has no "Specs"; its tooltip says why.
   const noClone = useNoCloneReason(pr.repo);
   const specs = useContext(PrSpecsContext);
@@ -1028,6 +1089,16 @@ function PrRow({ row, group, pr, now, active, state }: PrRowProps) {
         }
       : null;
   const tip = [pr.links?.incomplete ? 'Links may be incomplete' : null, noClone].filter(Boolean).join('\n');
+  const ageEl = age && (
+    <span
+      className={cn('shrink-0 text-meta', level ? AGE_LEVEL_CLASS[level] : 'text-muted-foreground')}
+      data-field="age"
+      data-level={level ?? undefined}
+      title={pr.createdAt !== null ? `Opened ${new Date(pr.createdAt).toLocaleString()}` : undefined}
+    >
+      {age}
+    </span>
+  );
   return (
     <div
       id={id}
@@ -1049,50 +1120,81 @@ function PrRow({ row, group, pr, now, active, state }: PrRowProps) {
       </span>
       <RowIcon>{isReview && pr.author ? <Avatar login={pr.author} src={`/api/avatars/${encodeURIComponent(pr.author)}`} /> : <PrIcon chip={pr.chip} />}</RowIcon>
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        {/* The spaces keep the row's name (from its content: repo, number, chip, CI, age, title) from running the fields together. */}
-        <div className="flex min-w-0 items-center gap-1.5">
-          <span className="min-w-0 truncate text-muted-foreground" data-field="repo">
-            {pr.repo}
-          </span>{' '}
-          <span className="shrink-0 font-medium tabular-nums" data-field="number">
-            #{pr.number}
-          </span>{' '}
-          <LinkedMarker links={sessions} incomplete={pr.links?.incomplete ?? false} />
-          {pr.chip && (
-            <>
-              <Chip tone={CHIP_TONE[pr.chip]} data-field="chip">
-                {pr.chip}
-              </Chip>{' '}
-            </>
-          )}
-          <Ci ci={pr.ci} />{' '}
-          {age && (
-            <>
-              <span
-                className={cn('shrink-0 text-meta', level ? AGE_LEVEL_CLASS[level] : 'text-muted-foreground')}
-                data-field="age"
-                data-level={level ?? undefined}
-                title={pr.createdAt !== null ? `Opened ${new Date(pr.createdAt).toLocaleString()}` : undefined}
-              >
-                {age}
-              </span>{' '}
-            </>
-          )}
-          {state.resuming === row.key && <span className="ml-auto shrink-0 text-caption text-muted-foreground">Resuming…</span>}
-        </div>
-        <p className="truncate" data-field="title" title={pr.title}>
-          {pr.title}
-        </p>
-        {pr.links && pr.links.tasks.length > 0 && (
-          <div className="flex min-w-0 flex-wrap items-center gap-1 text-meta text-muted-foreground" data-field="linked-tasks">
-            {pr.links.tasks.map((linked) => (
-              <span key={linked.id} className="truncate" title={prSources(linked.sources)} data-field="linked-task">
-                {linked.title}
+        {expanded ? (
+          <>
+            <div className="flex min-w-0 items-start gap-1.5">
+              <RowTitle expanded title={pr.title}>
+                {pr.title}
+              </RowTitle>{' '}
+              <span className="flex h-5 shrink-0 items-center">
+                <LinkedMarker links={sessions} incomplete={pr.links?.incomplete ?? false} />
               </span>
-            ))}
-          </div>
+              {state.resuming === row.key && <span className="ml-auto shrink-0 text-caption text-muted-foreground">Resuming…</span>}
+            </div>
+            <Details
+              id={`${id}-details`}
+              row={row}
+              actions={actions}
+              state={state}
+              now={now}
+              facts={[
+                <span className="flex min-w-0 items-center gap-1">
+                  <span className="min-w-0 truncate" data-field="repo">
+                    {pr.repo}
+                  </span>{' '}
+                  <span className="shrink-0 font-medium text-foreground tabular-nums" data-field="number">
+                    #{pr.number}
+                  </span>
+                </span>,
+                pr.chip && (
+                  <Chip tone={CHIP_TONE[pr.chip]} data-field="chip">
+                    {pr.chip}
+                  </Chip>
+                ),
+                <Ci ci={pr.ci} />,
+                ageEl,
+              ]}
+              links={[pr.links && pr.links.tasks.length > 0 ? taskLinks(pr.links.tasks) : null, sessionLinks(sessions, live, now, state.resuming === null, (session) => state.onSession(row, session))]}
+              extra={specsItem}
+            />
+          </>
+        ) : (
+          <>
+            {/* The spaces keep the row's name (from its content: repo, number, chip, CI, age, title) from running the fields together. */}
+            <div className="flex min-w-0 items-center gap-1.5">
+              <span className="min-w-0 truncate text-muted-foreground" data-field="repo">
+                {pr.repo}
+              </span>{' '}
+              <span className="shrink-0 font-medium tabular-nums" data-field="number">
+                #{pr.number}
+              </span>{' '}
+              <LinkedMarker links={sessions} incomplete={pr.links?.incomplete ?? false} />
+              {pr.chip && (
+                <>
+                  <Chip tone={CHIP_TONE[pr.chip]} data-field="chip">
+                    {pr.chip}
+                  </Chip>{' '}
+                </>
+              )}
+              <Ci ci={pr.ci} />{' '}
+              {ageEl}
+              {ageEl && ' '}
+              {state.resuming === row.key && <span className="ml-auto shrink-0 text-caption text-muted-foreground">Resuming…</span>}
+            </div>
+            <RowTitle expanded={false} title={pr.title}>
+              {pr.title}
+            </RowTitle>
+            {pr.links && pr.links.tasks.length > 0 && (
+              <div className="flex min-w-0 flex-wrap items-center gap-1 text-meta text-muted-foreground" data-field="linked-tasks">
+                {pr.links.tasks.map((linked) => (
+                  <span key={linked.id} className="truncate" title={prSources(linked.sources)} data-field="linked-task">
+                    {linked.title}
+                  </span>
+                ))}
+              </div>
+            )}
+          </>
         )}
-        {expanded && <Details id={`${id}-details`} row={row} actions={actions} sessions={sessions} state={state} extra={specsItem} />}
       </div>
     </div>
   );

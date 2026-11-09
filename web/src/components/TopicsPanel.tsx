@@ -9,6 +9,8 @@ import { Chip } from '@/components/ui/chip';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Loading } from '@/components/ui/loading';
 import { SessionMarker } from '@/components/ui/session-marker';
+import { RowDetails, type RowLinkGroup, RowTitle } from '@/components/ui/row-details';
+import { STATUS_LABEL } from '@/lib/sessions';
 import { type PanelNav, focusTab } from '@/lib/right-sidebar';
 import { OUTCOME_WORD, SUMMARY_STATE_WORD, liveRow, looksDone, matchesTopic, memberCounts, orderSessions, topicMarker } from '@/lib/topics';
 import { formatAge } from '@/lib/time';
@@ -17,7 +19,7 @@ import { ActionIcon } from '@/lib/actions';
 import { Markdown } from './Markdown';
 import type { ArchivePatch } from './ArchiveDialog';
 import { JevSetAside, Recommendations } from './Recommendations';
-import { type SessionMember, SessionChip, TopicActions } from './TopicView';
+import { type SessionMember, TopicActions } from './TopicView';
 
 /** TOPIC-3.4: the expanded Topic shows this many lines of its notes. */
 const NOTES_LINES = 3;
@@ -401,13 +403,13 @@ function TopicItem({ topic, selected, expanded, sessions, work, onHeader, panel,
         onClick={(e) => onHeader(e.detail === 0)}
         className="flex min-w-0 cursor-default flex-col gap-0.5 rounded-md px-2 py-[7px] text-left text-body outline-none hover:bg-sidebar-accent/60 focus-visible:ring-2 focus-visible:ring-ring/50"
       >
-        <span className="flex w-full min-w-0 items-center gap-1.5">
-          <span className="inline-flex size-3.5 shrink-0" data-field="marker">
+        <span className={cn('flex w-full min-w-0 gap-1.5', expanded ? 'items-start' : 'items-center')}>
+          <span className="inline-flex h-5 w-3.5 shrink-0 items-center" data-field="marker">
             {marker && <SessionMarker aria-hidden state={marker.state} status={marker.state === 'live' ? marker.status : undefined} since={marker.state === 'live' ? marker.since : null} />}
           </span>
-          <span className="min-w-0 flex-1 truncate font-medium" data-field="title">
+          <RowTitle expanded={expanded} className="flex-1 font-medium">
             {topic.title}
-          </span>
+          </RowTitle>
           {topic.state === 'archived' && <Chip tone="muted">{topic.outcome ? `archived · ${OUTCOME_WORD[topic.outcome]}` : 'archived'}</Chip>}
           {done && (
             <Chip tone="info" title="Every PR and Task in it has left Work. Archive it when you're done." data-field="looks-done">
@@ -420,10 +422,12 @@ function TopicItem({ topic, selected, expanded, sessions, work, onHeader, panel,
             </Chip>
           )}
         </span>
-        <span className="truncate pl-5 text-meta text-muted-foreground" data-field="counts">
-          {counts}
-        </span>
-        {last && (
+        {!expanded && (
+          <span className="truncate pl-5 text-meta text-muted-foreground" data-field="counts">
+            {counts}
+          </span>
+        )}
+        {!expanded && last && (
           <span className="truncate pl-5 text-meta text-muted-foreground" data-field="last-activity">
             {activityWords(last)} · {formatAge(panel.now - last.at)}
           </span>
@@ -435,49 +439,93 @@ function TopicItem({ topic, selected, expanded, sessions, work, onHeader, panel,
 }
 
 /**
- * TOPIC-3.4: an expanded Topic is a summary; the whole Topic is its view (TOPIC-10). The notes' first
- * lines, its live Sessions as chips and how many past ones, then its buttons, "Open" first.
+ * TOPIC-3.4, DS-21: an expanded Topic is a summary; the whole Topic is its view (TOPIC-10). Its state
+ * (members, when it was last updated), its summary (TOPIC-11.8's, then the notes' first lines), its
+ * Sessions as a count, live first, then its buttons, "Open" first.
  */
 function TopicSummary({ topic, sessions, panel, onProblem, done }: Omit<TopicItemProps, 'selected' | 'expanded' | 'onHeader' | 'work'> & { done: boolean }) {
-  const sessionMembers = topic.members.filter((m): m is SessionMember => m.kind === 'session');
-  const live = orderSessions(sessionMembers, sessions).filter((m) => liveRow(m, sessions) !== null);
-  const past = sessionMembers.length - live.length;
-  const openSession = (m: SessionMember) => {
+  const pruned = panel.view?.pruned ?? [];
+  const members = orderSessions(
+    topic.members.filter((m): m is SessionMember => m.kind === 'session'),
+    sessions,
+  );
+  const openSession = (m: SessionMember, live: boolean) => {
     onProblem(null);
-    panel.onOpenSession(m, true).catch((err: unknown) => onProblem(err instanceof Error ? err.message : "Couldn't open its Session."));
+    panel.onOpenSession(m, live).catch((err: unknown) => onProblem(err instanceof Error ? err.message : "Couldn't open its Session."));
   };
   const notes = topic.notes.split('\n').slice(0, NOTES_LINES).join('\n').trim();
   const summary = topic.summary?.answer;
+  const links: RowLinkGroup[] = members.length
+    ? [
+        {
+          kind: 'sessions',
+          noun: ['Session', 'Sessions'],
+          items: members.map((m) => {
+            const row = liveRow(m, sessions);
+            const name = row?.title ?? m.snapshot.title;
+            const key = `${m.ref.harness}:${m.ref.sessionId}`;
+            // TOPIC-4.2: one tb-session no longer has is text, as LIB-2.6's.
+            if (!row && pruned.includes(key)) return { key: m.key, glyph: <SessionMarker aria-hidden="true" state="past" />, name, state: 'removed from the index', label: `${name}, removed from the index`, tip: m.snapshot.directory ?? undefined };
+            return {
+              key: m.key,
+              glyph: <SessionMarker aria-hidden="true" state={row ? 'live' : 'past'} status={row?.status} since={row?.statusSince ?? null} />,
+              name,
+              state: row ? 'live' : 'past',
+              label: `${row ? 'Open' : 'Resume'} ${name}, ${row ? STATUS_LABEL[row.status] : 'past'}`,
+              tip: m.snapshot.directory ?? undefined,
+              action: 'session',
+              sessionId: m.ref.sessionId,
+              onPress: () => openSession(m, row !== null),
+            };
+          }),
+        },
+      ]
+    : [];
   return (
-    <div className="flex min-w-0 flex-col gap-2 px-2 pt-0.5 pb-2 pl-7 text-meta" data-field="details">
-      {summary && (
-        // TOPIC-11.8: the summary's `what` and `state`, above the notes.
-        <div className="flex min-w-0 flex-col gap-0.5 text-body text-foreground" data-field="summary">
-          <p className="min-w-0">{summary.what}</p>
-          <p className="flex min-w-0 flex-wrap items-center gap-1.5 text-meta text-muted-foreground">
-            <span>{SUMMARY_STATE_WORD[summary.state]}</span>
-            {topic.summaryStale && (
-              <Chip tone="info" title="A member was added or removed, or the notes changed, since it was written." data-field="summary-stale">
-                Out of date
-              </Chip>
+    <RowDetails
+      id={`${headerId(topic.id)}-details`}
+      className="px-2 pt-0.5 pb-2 pl-7"
+      focusable
+      state={[
+        <span className="min-w-0 truncate" data-field="counts">
+          {memberCounts(topic.members)}
+        </span>,
+        // TOPIC-3.8: what happened last, else when it last changed.
+        topic.lastActivity ? (
+          <span className="min-w-0 truncate" data-field="last-activity">
+            {activityWords(topic.lastActivity)} · {formatAge(Math.max(0, panel.now - topic.lastActivity.at))}
+          </span>
+        ) : (
+          `updated ${formatAge(Math.max(0, panel.now - topic.updatedAt))} ago`
+        ),
+      ]}
+      summary={
+        (summary || notes) && (
+          <>
+            {summary && (
+              // TOPIC-11.8: the summary's `what` and `state`, above the notes.
+              <div className="flex min-w-0 flex-col gap-0.5 text-body text-foreground" data-field="summary">
+                <p className="min-w-0">{summary.what}</p>
+                <p className="flex min-w-0 flex-wrap items-center gap-1.5 text-meta text-muted-foreground">
+                  <span>{SUMMARY_STATE_WORD[summary.state]}</span>
+                  {topic.summaryStale && (
+                    <Chip tone="info" title="A member was added or removed, or the notes changed, since it was written." data-field="summary-stale">
+                      Out of date
+                    </Chip>
+                  )}
+                </p>
+              </div>
             )}
-          </p>
-        </div>
-      )}
-      {notes && (
-        <div className="min-w-0 text-body text-foreground" data-field="notes-text">
-          <Markdown text={notes} />
-        </div>
-      )}
-      {sessionMembers.length > 0 && (
-        <div className="flex min-w-0 flex-wrap items-center gap-1 text-muted-foreground" data-field="sessions">
-          {live.map((m) => (
-            <SessionChip key={m.key} member={m} row={liveRow(m, sessions)} pruned={false} onOpen={() => openSession(m)} />
-          ))}
-          {past > 0 && <span data-field="past-sessions">{live.length ? `+${past} past` : `${past} past ${past === 1 ? 'Session' : 'Sessions'}`}</span>}
-        </div>
-      )}
-      <TopicActions topic={topic} topics={panel.view?.topics ?? []} looksDone={done} look="row" onOpen={() => panel.onOpenTopic(topic.id)} onOpenGraph={panel.onOpenGraph} onLinkTo={panel.onLinkTo} updateTopic={panel.updateTopic} deleteTopic={panel.deleteTopic} onProblem={onProblem} />
-    </div>
+            {notes && (
+              <div className="line-clamp-3 min-w-0 text-body text-foreground" data-field="notes-text">
+                <Markdown text={notes} />
+              </div>
+            )}
+          </>
+        )
+      }
+      links={links}
+      actions={<TopicActions topic={topic} topics={panel.view?.topics ?? []} looksDone={done} look="row" onOpen={() => panel.onOpenTopic(topic.id)} onOpenGraph={panel.onOpenGraph} onLinkTo={panel.onLinkTo} updateTopic={panel.updateTopic} deleteTopic={panel.deleteTopic} onProblem={onProblem} />}
+    />
   );
 }

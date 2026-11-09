@@ -33,7 +33,7 @@ The laptop froze when several Sessions ran full test suites at once (Dario, 2026
 
 ### RES-3 A waiting Session says so
 
-- [ ] RES-3.1 A Session with a job waiting in `res` (RES-1.4) shows, at the start of its sidebar row's second line after the memory mark and before the Subagent count (DS-22.3), the `Hourglass` and how long it has waited (`3m`), with the tooltip "Queued in res: vitest, waiting 3m, #2 in the queue". Its Status, marker and strip don't change. With several of its jobs waiting, the one waiting longest. (test)
+- [x] RES-3.1 A Session with a job waiting in `res` (RES-1.4) shows, at the start of its sidebar row's second line after the memory mark and before the Subagent count (DS-22.3), the `Hourglass` and how long it has waited (`3m`), with the tooltip "Queued in res: vitest, waiting 3m, #2 in the queue". Its Status, marker and strip don't change. With several of its jobs waiting, the one waiting longest. (test)
 - [x] RES-3.2 Its status line (VIEW-5.5) shows the same as a part before the Local servers chip (PORTS-2.1): the `Hourglass` and "Queued: vitest · 3m", with the same tooltip. (test)
 - [x] RES-3.3 The mark goes within one read (5 s) of the job being admitted or ending. (test)
 - [ ] RES-3.4 The row's mark and the Memory line's count read well at 280 px, light and dark, beside a Subagent count and Changes. (manual)
@@ -90,3 +90,4 @@ None.
 - 2026-11-06: Draft and In Progress, from PLAN item 37 (Dario: "proceed with implementation"), with `res` installed and its source read. In the Memory line instead of a dock line (SIDE-8.1), matched by tmux session or Session id.
 - 2026-11-06: RES-2.2 follows MEM's verdict-first breakdown: the Queue section moves to the end as compact lines, the details in each line's tooltip.
 - 2026-11-06: RES-3.1 amended and unticked for DS-22 (Plan item 50): the queued mark leads the row's second line with the other marks, ahead of the location, where it sat among the numbers.
+- 2026-11-09: RES-3.1 ticked with DS-22 (Plan item 50): the queued mark sits among the marks at the start of the row's second line.

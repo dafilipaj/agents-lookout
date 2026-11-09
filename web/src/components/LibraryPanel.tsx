@@ -9,8 +9,9 @@ import { Button } from '@/components/ui/button';
 import { Chip } from '@/components/ui/chip';
 import { CommandBlock } from '@/components/ui/command-block';
 import { EmptyState } from '@/components/ui/empty-state';
-import { IconButton, RowAction, RowSettling, useRowSettle } from '@/components/ui/icon-button';
+import { IconButton, RowSettling, useRowSettle } from '@/components/ui/icon-button';
 import { RowActions } from '@/components/ui/row-actions';
+import { RowDetails, type RowLinkGroup, RowTitle } from '@/components/ui/row-details';
 import { Loading } from '@/components/ui/loading';
 import { SessionMarker } from '@/components/ui/session-marker';
 import { useCopy } from '@/lib/copy';
@@ -20,14 +21,15 @@ import { STATUS_LABEL } from '@/lib/sessions';
 import { byDay, formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { SEARCH_DEBOUNCE_MS } from './HistoryPanel';
-import { HarnessIcon } from './HarnessIcon';
-import { TopicChips } from './TopicLinks';
-import { outputSessionMembers, useAddToTopicItem, useTopics } from '@/lib/topics';
+import { outputSessionMembers, useAddToTopicItem, useTopics, useTopicLinks } from '@/lib/topics';
 import { OUTPUT_ICON, TYPE_LABEL, openFile, openOutput } from '@/lib/outputs';
+import { vscodeHref } from '@/lib/files';
 
 const FILTER_LABEL: Record<LibraryType, string> = { pages: 'Pages', pdf: 'PDF', markdown: 'Markdown', image: 'Image', share: 'Share' };
 const EVENT: Record<OutputSession['event'], string> = { write: 'wrote it', edit: 'edited it', publish: 'published it', upload: 'uploaded it' };
 const key = (i: OutputItem) => `${i.kind}:${i.key}`;
+/** LIB-3.2: how many times it was updated, in its kind's word. */
+const TIMES_WORD: Record<OutputItem['kind'], string> = { file: 'written', artifact: 'published', share: 'uploaded' };
 const stamp = (at: number) => new Date(at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 /** LIB-2.7: starts, ends, replacement processes and Subagent completions can add Outputs.
  * Activity, context, model and Status updates during normal polling wait for the 60-second read.
@@ -347,58 +349,87 @@ function OutputRow({ item, now, query, active, expanded, sessions, enabled, onSe
   const t = item.kind === 'file' ? item.type! : item.kind, Icon = OUTPUT_ICON[t], id = `library-${encodeURIComponent(key(item))}`;
   const gone = item.kind === 'file' && !item.exists, live = sorted.some((s) => isLive(s, sessions));
   const age = formatAge(now - item.updatedAt);
-  return <div id={id} role="option" aria-selected={active} aria-expanded={expanded} aria-label={[item.title, TYPE_LABEL[t], item.repo, age, item.display, gone && 'gone', live && 'live'].filter(Boolean).join(' ')} aria-describedby={`${id}-keys${expanded ? ` ${id}-details` : ''}`} onClick={onRow} onMouseEnter={() => onHover(true)} onMouseLeave={() => onHover(false)} data-slot="row" data-selected={active || undefined} className={cn('flex min-w-0 cursor-default flex-col gap-0.5 rounded-md px-2 py-[7px] text-body hover:bg-sidebar-accent/60', active && 'bg-sidebar-accent')}>
+  const topics = useTopicLinks(outputSessionMembers(item.sessions));
+  const source = item.sourceDisplay ?? item.source?.display ?? null;
+  // LIB-3.2: an Artifact whose folded source file was edited after its last publish.
+  const newer = !!item.source && item.source.updatedAt > item.updatedAt;
+  // LIB-3.2, DS-21.2: every Session that touched it, most recent touch first, with what it did; a pruned one is text (LIB-2.6).
+  const sessionLinks: RowLinkGroup | null = sorted.length ? {
+    kind: 'sessions',
+    noun: ['Session', 'Sessions'],
+    items: sorted.map((s, n) => {
+      const listed = isLive(s, sessions) ? sessions.get(s.sessionId) : null;
+      if (s.pruned) return { key: `${s.harness}:${s.sessionId}`, glyph: <SessionMarker aria-hidden="true" state="past" />, name: s.sessionId.slice(0, 8), state: EVENT[s.event], label: `${s.sessionId.slice(0, 8)}, removed from tb-session's index`, tip: "removed from tb-session's index" };
+      const verb = listed ? 'Open' : s.blocked ? 'Show' : 'Resume';
+      // SIDE-10.2: a live Session's name is the Session list's.
+      const name = listed ? listed.title : s.title;
+      return {
+        key: `${s.harness}:${s.sessionId}`,
+        glyph: <SessionMarker aria-hidden="true" state={listed ? 'live' : s.blocked ? 'blocked' : 'past'} status={listed?.status} since={listed?.statusSince ?? null} />,
+        name,
+        state: EVENT[s.event],
+        label: `${verb} ${name}, ${listed ? STATUS_LABEL[listed.status] : 'past'}`,
+        tip: `${EVENT[s.event]}${n === 0 ? ' (S)' : ''}${s.blocked && !listed ? ` · ${BLOCK_REASON[s.blocked]}` : ''}`,
+        action: 'session',
+        sessionId: s.sessionId,
+        enabled,
+        onPress: () => onSession(s),
+      };
+    }),
+  } : null;
+  return <div id={id} role="option" aria-selected={active} aria-expanded={expanded} aria-label={[item.title, TYPE_LABEL[t], item.repo, age, item.display, gone && 'gone', live && 'live'].filter(Boolean).join(' ')} aria-describedby={`${id}-keys${expanded ? ` ${id}-details-state ${id}-details` : ''}`} onClick={onRow} onMouseEnter={() => onHover(true)} onMouseLeave={() => onHover(false)} data-slot="row" data-selected={active || undefined} className={cn('flex min-w-0 cursor-default flex-col gap-0.5 rounded-md px-2 py-[7px] text-body hover:bg-sidebar-accent/60', active && 'bg-sidebar-accent')}>
     <span id={`${id}-keys`} aria-hidden className="sr-only">O opens it, C copies its link, S opens its Session</span>
-    <div className="flex min-w-0 items-center gap-1.5">
-      <Icon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
-      <span className="min-w-0 flex-1 truncate font-medium" data-field="title">
+    <div className={cn('flex min-w-0 gap-1.5', expanded ? 'items-start' : 'items-center')}>
+      <span className="flex h-5 shrink-0 items-center"><Icon aria-hidden className="size-3.5 text-muted-foreground" /></span>
+      <RowTitle expanded={expanded} className="flex-1 font-medium">
         <Hit text={item.title} query={query} />
-      </span>
+      </RowTitle>
       {gone && <Chip>gone</Chip>}{live && <Chip>live</Chip>}
     </div>
-    <p className="truncate pl-5 text-meta text-muted-foreground">
-      {[TYPE_LABEL[t], item.repo, age, item.version ? `v${item.version}` : null].filter(Boolean).join(' · ')}
-    </p>
-    <p className={cn('pl-5 text-meta text-muted-foreground', expanded ? 'break-all' : 'truncate')}>
-      <Hit text={item.display} query={query} />
-    </p>
+    {!expanded && <>
+      <p className="truncate pl-5 text-meta text-muted-foreground">
+        {[TYPE_LABEL[t], item.repo, age, item.version ? `v${item.version}` : null].filter(Boolean).join(' · ')}
+      </p>
+      <p className="truncate pl-5 text-meta text-muted-foreground">
+        <Hit text={item.display} query={query} />
+      </p>
+    </>}
     <span role="status" aria-live="polite" className={!copy.said ? 'sr-only' : 'pl-5 text-meta text-muted-foreground'}>
       {copy.said}
     </span>
-    {expanded && <div id={`${id}-details`} className="mt-1 flex min-w-0 flex-col gap-1.5 pl-5 text-meta text-muted-foreground">
-      <p className="break-all">
-        {item.path ?? item.url}
-      </p>
-      <p>
-        {stamp(item.createdAt)} · updated {stamp(item.updatedAt)} · {item.events} times</p>
-      {(item.sourceDisplay || item.source) && <p className="break-all">from <Hit text={item.sourceDisplay ?? item.source!.display} query={query} />
-      </p>}
-      {item.source && <p>edited {stamp(item.source.updatedAt)}{item.source.updatedAt > item.updatedAt ? ', newer than published' : ''}
-      </p>}
-      {gone && <p>This file no longer exists.</p>}
-      {/* DS-16: Open is what Enter runs; a gone file's row has only More. */}
-      <RowActions
-        name={item.title}
-        primary={gone ? null : { 'data-action': 'open', action: 'open-external', tip: 'Open (O)', enabled, onPress: open }}
-        more={[
-          item.kind === 'artifact' && item.source?.exists && { id: 'open-file', action: 'open-external', label: 'Open file', group: 'open', enabled, onSelect: () => openFile(item.source!.path, item.source!.type) },
-          { id: 'copy', action: 'copy', label: 'Copy link', group: 'open', shortcut: 'C', enabled, onSelect: () => void copy.copy() },
-          addToTopic,
-        ]}
-      />
-      <TopicChips members={outputSessionMembers(item.sessions)} />
-      <div className="flex min-w-0 flex-wrap gap-1.5">
-        {sorted.slice(0, 8).map((s, n) => {
-          if (s.pruned) return <span key={`${s.harness}:${s.sessionId}`} title="removed from tb-session's index">
-            {s.sessionId.slice(0, 8)}
-          </span>;
-          const listed = isLive(s, sessions) ? sessions.get(s.sessionId) : null;
-          const label = listed ? 'Open' : s.blocked ? 'Show' : 'Resume';
-          // SIDE-10.2: a live Session's name is the Session list's.
-          const name = listed ? listed.title : s.title;
-          return <RowAction key={`${s.harness}:${s.sessionId}`} data-action="session" aria-label={`${label} ${name}, ${listed ? STATUS_LABEL[listed.status] : 'past'}`} label={name} icon={<HarnessIcon harness={s.harness} />} trailing={<SessionMarker aria-hidden="true" state={listed ? 'live' : s.blocked ? 'blocked' : 'past'} status={listed?.status} since={listed?.statusSince ?? null} />} tip={`${EVENT[s.event]}${n === 0 ? ' (S)' : ''}${s.blocked && !listed ? ` · ${BLOCK_REASON[s.blocked]}` : ''}`} enabled={enabled} onPress={() => onSession(s)} className="max-w-full font-normal" />;
-        })}{sorted.length > 8 && <span>+{sorted.length - 8} older</span>}
-      </div>
-    </div>}
+    {expanded && <RowDetails
+      id={`${id}-details`}
+      className="pl-5"
+      state={[
+        TYPE_LABEL[t],
+        item.repo,
+        `updated ${age} ago`,
+        `${TIMES_WORD[item.kind]} ${item.events} ${item.events === 1 ? 'time' : 'times'}`,
+        newer && <span className="shrink-0" data-field="newer">newer than published</span>,
+      ]}
+      stateTip={[
+        item.kind === 'file' ? item.path : item.url,
+        source && `from ${source}`,
+        `made ${stamp(item.createdAt)}`,
+        item.source && `source edited ${stamp(item.source.updatedAt)}`,
+      ].filter(Boolean).join('\n')}
+      // LIB-2.4: a hit in its path or URL stays marked while the row is expanded, though the path left it (DS-21.3).
+      summary={query && libraryMatches(item.display, query).length > 0 && <p className="break-all" data-field="path-hit"><Hit text={item.display} query={query} /></p>}
+      links={[sessionLinks, topics].filter((g): g is RowLinkGroup => g !== null)}
+      actions={
+        // DS-16: Open is what Enter runs; a gone file's row has only More.
+        <RowActions
+          name={item.title}
+          primary={gone ? null : { 'data-action': 'open', action: 'open-external', tip: 'Open (O)', enabled, onPress: open }}
+          more={[
+            item.kind === 'artifact' && item.source?.exists && { id: 'open-file', action: 'open-external', label: 'Open file', group: 'open', enabled, onSelect: () => openFile(item.source!.path, item.source!.type) },
+            { id: 'copy', action: 'copy', label: 'Copy link', group: 'open', shortcut: 'C', enabled, onSelect: () => void copy.copy() },
+            // DS-21.3: the source file's path left the row; this shows the file in VS Code (VIEW-1.17).
+            item.source?.exists && item.source.type !== 'markdown' && { id: 'show-source', action: 'open-vscode', label: 'Show source file', group: 'open', enabled, onSelect: () => window.open(vscodeHref(item.source!.path, null, null), '_self') },
+            addToTopic,
+          ]}
+        />
+      }
+    />}
   </div>;
 }

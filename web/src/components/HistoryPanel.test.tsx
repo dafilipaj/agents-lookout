@@ -462,26 +462,37 @@ describe('an expanded result (HIST-2.9 to HIST-2.11, HIST-3.5)', () => {
     expect(resume).toHaveBeenCalledWith('codex', 'codex-1', expect.any(String));
   });
 
-  it('HIST-2.9: it shows its start directory with ~, when it was last active and that it can be resumed, not the Harness or branch its row already shows; its first prompt and last message, three lines each, with who said the last', async () => {
+  it('HIST-2.9: an expanded result is built as DS-21 says: its state the Harness, repo, branch, age and when it was last active, its start directory with ~ the tooltip; its summary its first prompt and last message, three lines each, with who said the last; no labels beside them', async () => {
     const pastPeek = vi.fn(async () => peekOf());
     const app = renderApp('/', { history: async () => ok([{ ...CODEX, firstPrompt: 'Why does the hook skip the merge commit?' }]), pastPeek });
     app.snapshot([]);
     const user = await openHistory(app);
     await user.click(await within(panel()).findByText('kg-hook-review', { selector: '[data-field="title"]' }));
-    const d = details(options()[0]!)!;
-    expect(d.querySelector('[data-field="start-dir"]')!.textContent).toBe('~/Projects/work');
+    const o = options()[0]!;
+    const d = details(o)!;
+    const state = o.querySelector<HTMLElement>('[data-field="state"]')!;
+    expect(state).toHaveAttribute('title', '~/Projects/work');
     const when = new Date(CODEX.lastActiveAt!).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
-    expect(d.querySelector('[data-field="state"]')!.textContent).toBe(`${when} · can resume`);
+    expect([...state.querySelectorAll('[data-field]')].map((f) => f.getAttribute('data-field'))).toEqual(['harness', 'repo', 'branch', 'age', 'last-active']);
+    expect(state.querySelector('[data-field="harness"]')).toHaveTextContent('Codex');
+    expect(state.textContent!.replace(/^.*?Codex /, '')).toMatch(new RegExp(`^· ${CODEX.repo} · feature/kg-hook · \\d+d · ${when}$`));
+    // Only when it can't be resumed does the state say so (HIST-3.3).
+    expect(state).not.toHaveTextContent(/resume/);
+    // The title is whole; the collapsed row's second line is gone.
+    expect(o.querySelector('[data-field="title"]')).not.toHaveClass('truncate');
+    expect(o.querySelectorAll('[data-field="branch"]')).toHaveLength(1);
     expect(d.querySelector('[data-field="first-prompt"]')).toHaveTextContent('Why does the hook skip the merge commit?');
-    await waitFor(() => expect(d.querySelector('[data-field="last-message"]')).toHaveTextContent('Codex'));
-    expect(d.querySelector('[data-field="last-message"] p')!.textContent).toBe('The hook only runs on\nthe first parent.');
-    expect(d.querySelector('[data-field="last-message"] p')).toHaveClass('line-clamp-3', 'whitespace-pre-line');
-    expect(d.querySelector('[data-field="first-prompt"] p')).toHaveClass('line-clamp-3');
+    await waitFor(() => expect(d.querySelector('[data-field="last-message"]')).toHaveTextContent('Codex: The hook only runs on the first parent.'));
+    expect(d.querySelector('[data-field="last-message"]')!.textContent).toBe('Codex: The hook only runs on\nthe first parent.');
+    for (const f of ['first-prompt', 'last-message']) expect(d.querySelector(`[data-field="${f}"]`)).toHaveClass('line-clamp-3', 'whitespace-pre-line');
     // No model: tb-session gives none.
-    expect(d).not.toHaveTextContent(/gpt|sonnet|opus/i);
-    // A screen reader hears it as the result's description, not its name.
+    expect(o).not.toHaveTextContent(/gpt|sonnet|opus/i);
+    // The state is part of its name; the summary, links and actions are its description.
     expect(d).toHaveAttribute('aria-hidden');
-    expect(options()[0]).toHaveAttribute('aria-describedby', d.id);
+    expect(o).toHaveAttribute('aria-describedby', d.id);
+    expect(d.contains(state)).toBe(false);
+    // DS-21.1's order: the summary, then the actions last.
+    expect(d.lastElementChild).toHaveAttribute('data-field', 'actions');
   });
 
   it('HIST-2.9: your own last prompt is labelled "You"; a live result says it’s live and its button is Open; one that can’t be resumed says why and its button is Show', async () => {
@@ -490,14 +501,15 @@ describe('an expanded result (HIST-2.9 to HIST-2.11, HIST-3.5)', () => {
     app.snapshot([row({ id: 'live-1', title: 'fix-deal-rates' })]);
     const user = await openHistory(app);
     await user.click(await within(panel()).findByText('fix-deal-rates', { selector: '[data-field="title"]' }));
-    const live = details(options()[0]!)!;
-    expect(live.querySelector('[data-field="state"]')).toHaveTextContent(/\d · live$/);
-    await waitFor(() => expect(live.querySelector('[data-field="last-message"]')).toHaveTextContent('YouKeep going.'));
+    const live = options()[0]!;
+    expect(live.querySelector('[data-field="state"]')).toHaveTextContent(/· live$/);
+    // "live" is said once: the collapsed row's chip gives way to the state's word.
+    expect(live.querySelectorAll('[data-field="live"]')).toHaveLength(1);
+    await waitFor(() => expect(details(live)!.querySelector('[data-field="last-message"]')).toHaveTextContent('You: Keep going.'));
     expect(live.querySelector('[data-field="actions"]')).toHaveTextContent('Open');
     await user.click(within(panel()).getByText('pr641-review', { selector: '[data-field="title"]' }));
-    const gone = details(options()[1]!)!;
-    expect(gone.querySelector('[data-field="state"]')).toHaveTextContent("can't be resumed");
-    expect(gone.querySelector('[data-field="blocked"]')).toHaveTextContent('The directory it started in no longer exists.');
+    const gone = options()[1]!;
+    expect(gone.querySelector('[data-field="state"] [data-field="blocked"]')).toHaveTextContent('The directory it started in no longer exists.');
     expect(gone.querySelector('[data-field="actions"]')).toHaveTextContent('Show');
   });
 

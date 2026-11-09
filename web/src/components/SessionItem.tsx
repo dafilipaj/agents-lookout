@@ -1,4 +1,4 @@
-import { GROWTH_BYTES } from '@shared/memory.ts';
+import { type Pressure, runsAway } from '@shared/memory.ts';
 import type { SessionRow } from '@shared/types.ts';
 import { Bot, CircleCheck, FolderGit2, GitBranch, Hourglass, SquareTerminal, TrendingUp } from 'lucide-react';
 import { memo, useEffect, useRef } from 'react';
@@ -23,12 +23,14 @@ interface Props {
   onSelect(id: string): void;
   /** SIDE-10.3: another live row has this name; what tells this one apart. Null when the name is its alone. */
   suffix?: NameSuffix | null;
+  /** MEM-4.1: the Mac's memory pressure, which lowers the bar for memory running away; null before a sample. */
+  pressure?: Pressure | null;
 }
 
 const NOT_CONTROLLABLE = 'Not Controllable: this Session runs in another app, so Lookout can only show it.';
 
 /** One sidebar row (SIDE-2). */
-export const SessionItem = memo(function SessionItem({ row, selected, dimmed, now, onSelect, suffix = null }: Props) {
+export const SessionItem = memo(function SessionItem({ row, selected, dimmed, now, onSelect, suffix = null, pressure = null }: Props) {
   const ref = useRef<HTMLLIElement>(null);
   useEffect(() => {
     if (selected) ref.current?.scrollIntoView?.({ block: 'nearest' });
@@ -63,6 +65,9 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
     </span>
   );
   const subagentLabel = `${running} Subagent${running === 1 ? '' : 's'} running`;
+  // DS-22.3: the exceptions that lead the second line.
+  const runaway = runsAway(row.memoryGrowthBytes, pressure);
+  const hasMarks = runaway || !!row.queued || running > 0 || row.backgroundShell;
 
   return (
     <li
@@ -123,10 +128,42 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
           <HarnessIcon harness={row.harness} className={cn(!row.controllable && 'opacity-70')} />
         </span>
       </div>
-      {/* SIDE-2.7–2.14: the left slot takes what varies (where the Session works, and the Session's
-          words when nothing else is there); the numbers group sits at the end. Empty at
-          the default location, it is aria-hidden so its tooltip (the full location) isn't read. */}
-      <div className={cn('flex min-h-4 items-center gap-1 pl-6.5 text-meta leading-4', tone.quiet)}>
+      {/* SIDE-2.7–2.14, DS-22: the exceptions lead the line, in colour and with an icon or words, never
+          cut (DS-22.3); then the slot, what varies (where the Session works, and the Session's words
+          when nothing else is there), which truncates first; then the numbers in three fixed columns,
+          grey (DS-22.1, 22.2). Empty at the default location, the slot is aria-hidden so its tooltip
+          (the full location) isn't read. */}
+      <div className={cn('flex min-h-4 items-center gap-1.5 pl-6.5 text-meta leading-4', tone.quiet)}>
+        {hasMarks && (
+          <span className="flex shrink-0 items-center gap-1 tabular-nums" data-field="marks">
+            {/* MEM-4.1: memory running away. */}
+            {runaway && (
+              <span data-field="memory-growth" role="img" aria-label={`memory growing, +${formatBytes(row.memoryGrowthBytes!)} in 10 min`} title={`Memory +${formatBytes(row.memoryGrowthBytes!)} in 10 min`} className="flex items-center gap-0.5 text-warning-text">
+                <TrendingUp aria-hidden className="size-2.5" />+{formatBytes(row.memoryGrowthBytes!)}
+              </span>
+            )}
+            {/* RES-3.1: a job of this Session waits in res; its Status unchanged. */}
+            {row.queued && (
+              <span data-field="queued" role="img" aria-label={queuedTip(row.queued, now)} title={queuedTip(row.queued, now)} className="flex items-center gap-0.5">
+                <Hourglass aria-hidden className="size-3" />
+                {formatAge(Math.max(0, now - row.queued.since))}
+              </span>
+            )}
+            {running > 0 && (
+              // SIDE-9.7: Busy's blue, as the status line's count (VIEW-8.1); not a Status, so the strip stays.
+              <span data-field="subagents" role="img" aria-label={subagentLabel} title={subagentLabel} className="flex items-center gap-0.5 text-busy-text">
+                <Bot aria-hidden className="size-3" />
+                {running}
+              </span>
+            )}
+            {/* SIDE-2.6: Idle, with a background shell command still running; a mark, not a Status. */}
+            {row.backgroundShell && (
+              <span title={BACKGROUND_SHELL_TIP} className="flex items-center text-idle-text" data-field="background-shell">
+                <SquareTerminal role="img" aria-label="background shell running" className="size-3" />
+              </span>
+            )}
+          </span>
+        )}
         <span
           className="flex min-w-0 flex-1 items-center gap-1"
           title={tip ?? undefined}
@@ -153,45 +190,26 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
           )}
           {wordsInSlot && wordsLine('min-w-0 truncate', tip ? `${words.text}\n${tip}` : words.text)}
         </span>
-        <span className="flex shrink-0 items-center gap-1.5 tabular-nums">
-          {(row.memoryGrowthBytes ?? 0) >= GROWTH_BYTES && (
-            <span data-field="memory-growth" title={`Memory +${formatBytes(row.memoryGrowthBytes!)} in 10 min`}>
-              <TrendingUp role="img" aria-label={`memory growing, +${formatBytes(row.memoryGrowthBytes!)} in 10 min`} className="size-2.5 text-warning-text" />
-            </span>
-          )}
-          {/* RES-3.1: a job of this Session waits in res; before the Subagent count, its Status unchanged. */}
-          {row.queued && (
-            <span data-field="queued" role="img" aria-label={queuedTip(row.queued, now)} title={queuedTip(row.queued, now)} className="flex items-center gap-0.5">
-              <Hourglass aria-hidden className="size-3" />
-              {formatAge(Math.max(0, now - row.queued.since))}
-            </span>
-          )}
-          {running > 0 && (
-            // SIDE-9.7: Busy's blue, as the status line's count (VIEW-8.1); not a Status, so the strip stays.
-            <span data-field="subagents" role="img" aria-label={subagentLabel} title={subagentLabel} className="flex items-center gap-0.5 text-busy-text">
-              <Bot aria-hidden className="size-3" />
-              {running}
-            </span>
-          )}
-          {/* DIFF-1.1: the Session's changed lines, after the Subagent count (SIDE-9.1 stays first). */}
+        {/* DS-22.1: changes, time in its Status, context; each right-aligned in its own width, so a
+            value's place says what it is; empty without one, never cut (a wider one grows its own). */}
+        <span className="w-16 min-w-fit shrink-0 text-right tabular-nums" data-column="changes">
+          {/* DIFF-1.1: the Session's changed lines, grey on the row (DS-22.2). */}
           {hasLines(row.changes) && (
-            <span data-field="changes" role="img" aria-label={linesLabel(row.changes)} title={changesTip(row.changes)} className="flex items-center">
-              <ChangesCount additions={row.changes.additions} deletions={row.changes.deletions} />
+            <span data-field="changes" role="img" aria-label={linesLabel(row.changes)} title={changesTip(row.changes)} className="flex justify-end">
+              <ChangesCount quiet additions={row.changes.additions} deletions={row.changes.deletions} />
             </span>
           )}
-          {/* SIDE-2.6: Idle, with a background shell command still running; a mark, not a Status. */}
-          {row.backgroundShell && (
-            <span title={BACKGROUND_SHELL_TIP} className="flex items-center text-idle-text" data-field="background-shell">
-              <SquareTerminal role="img" aria-label="background shell running" className="size-3" />
-            </span>
-          )}
+        </span>
+        <span className="w-6.5 min-w-fit shrink-0 text-right tabular-nums" data-column="age">
           {age && (
             <span title={`${STATUS_LABEL[row.status]} for ${age}`} data-field="age">
               {age}
             </span>
           )}
+        </span>
+        <span className="flex w-11 min-w-fit shrink-0 justify-end tabular-nums" data-column="context">
           {row.contextPct !== null && (
-            // DS-3.5: the status line's levels (VIEW-5.5), from the same contextLevel; quiet up to 40%.
+            // DS-3.5, DS-22.2: grey up to 40%, the status line's levels past it (VIEW-5.5), from the same contextLevel.
             <span
               title={`Context used: ${row.contextPct}%`}
               className={cn('flex items-center gap-0.5', CONTEXT_LEVEL_CLASS[contextLevel(row.contextPct)])}

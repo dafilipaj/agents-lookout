@@ -3,8 +3,10 @@ import { type MemberKind, type NewMember, type SummaryState, type Topic, type To
 export { historyMember, prMember, rowMember, sessionMember, taskMember } from '@shared/topics.ts';
 import type { SessionRow, Status } from '@shared/types.ts';
 import type { WorkPr, WorkSnapshot, WorkTask } from '@shared/work.ts';
-import { createContext, useContext } from 'react';
+import { Layers } from 'lucide-react';
+import { createContext, createElement, useContext } from 'react';
 import type { RowMenuItem } from '@/components/ui/row-actions';
+import type { RowLinkGroup } from '@/components/ui/row-details';
 
 /**
  * TOPIC: what the browser joins to a Topic's members (TOPIC-4.1, TOPIC-4.2): the Session list's
@@ -205,3 +207,27 @@ export function useAddToTopicItem(members: readonly NewMember[], label: string, 
 
 /** TOPIC-1.6: the outcome chip's words, on an archived Topic. */
 export const OUTCOME_WORD: Record<TopicOutcome, string> = { done: 'done', parked: 'parked', dropped: 'dropped', superseded: 'superseded' };
+
+/**
+ * TOPIC-2.5, DS-21.2: the Topics an expanded row's item is in (a Library row's: any of its Sessions'),
+ * as its Topics count; a press on a line opens the Topics tab on that Topic. A collapsed row shows none.
+ */
+export function useTopicLinks(members: readonly NewMember[]): RowLinkGroup | null {
+  const topics = useTopics();
+  if (!topics) return null;
+  const list = topicsOf(topics.byMember, members);
+  if (!list.length) return null;
+  return {
+    kind: 'topics',
+    noun: ['Topic', 'Topics'],
+    items: list.map((t) => ({
+      key: t.id,
+      glyph: createElement(Layers, { 'aria-hidden': true }),
+      name: t.title,
+      label: `Open ${t.title} in Topics`,
+      tip: `Open ${t.title} in Topics`,
+      topicId: t.id,
+      onPress: () => topics.open(t.id),
+    })),
+  };
+}

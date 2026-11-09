@@ -26,7 +26,9 @@ const NAME = {
 };
 
 const work = (page: Page) => page.getByRole('tabpanel', { name: 'Work' });
-const prRow = (page: Page, name: string) => work(page).getByRole('option', { name, exact: true });
+const PR_KEY: Record<string, string> = { [NAME.stale]: 'willow#2102', [NAME.fresh]: 'anvil#2101', [NAME.review]: 'willow#2106' };
+/** A PR's row, by its collapsed name; found by `data-pr`, since an expanded row's name leads with its title (DS-21.1). */
+const prRow = (page: Page, name: string) => work(page).locator(`[role="option"][data-pr="${PR_KEY[name]}"]`);
 const sessionSidebar = (page: Page) => page.getByRole('complementary', { name: 'Session sidebar' });
 
 /** Opens Work with `W` once Lookout has listed Sessions, so focus isn't in a text field. */
@@ -138,7 +140,7 @@ scenario(
 );
 
 scenario(
-  'WORK-3.6: an expanded PR shows its repo, number, age, CI and state chip, and its buttons; an expanded Review request has no chip, and Review comes before Open on GitHub',
+  'WORK-3.6: an expanded PR is built as DS-21 says: its title whole, then its repo, number, age, CI and state chip on its state line, then its buttons; an expanded Review request has no chip, and Review comes before Open on GitHub',
   world().tbPr({ board: BOARD }).settings(CODEX_LAST),
   async ({ page, world }) => {
     await openWork(page);
@@ -151,8 +153,9 @@ scenario(
     await expect(mine.locator('[data-field="ci"]')).toHaveAttribute('data-ci', 'passing');
     await expect(mine.locator('[data-field="chip"]')).toHaveText('draft');
     expect(await actionWords(page, mine)).toEqual(['Open on GitHub', 'Add to Topic']);
-    // The name stays the row's content; the details are its description.
-    await expect(mine).toHaveAccessibleName(NAME.fresh);
+    // Its name is its title and state; the rest is its description.
+    await expect(mine).toHaveAccessibleName('Sharpen the anvil corners anvil #2101 draft CI passing 1d');
+    await expect(mine.locator('[data-field="state"] [data-field="repo"]')).toHaveCount(1);
     const review = prRow(page, NAME.review);
     await expand(review);
     await expect(mine).toHaveAttribute('aria-expanded', 'false');

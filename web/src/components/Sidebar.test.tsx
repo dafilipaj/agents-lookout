@@ -22,7 +22,7 @@ function pinDate() {
 }
 
 describe('sidebar rows', () => {
-  it('SIDE-9.1: only running Subagents show, first in the numbers group before age and context', () => {
+  it('SIDE-9.1: only running Subagents show, among the marks that lead the second line (DS-22.3), before the slot', () => {
     const app = renderApp();
     app.snapshot([1, 2, 0, null].map((running, i) => row({ id: `s${i}`, contextPct: 23,
       subagents: running === null ? null : { running, finished: 3 } })));
@@ -30,19 +30,19 @@ describe('sidebar rows', () => {
       const chip = field(id, 'subagents')!;
       expect(chip).toHaveTextContent(count);
       expect(chip.parentElement).toHaveClass('shrink-0', 'tabular-nums');
+      expect(chip.parentElement).toHaveAttribute('data-field', 'marks');
       expect(chip.parentElement!.firstElementChild).toBe(chip);
-      expect(chip.nextElementSibling).toBe(field(id, 'age'));
-      expect(chip.nextElementSibling!.nextElementSibling).toBe(field(id, 'context'));
+      expect(chip.parentElement!.nextElementSibling).toBe(field(id, 'slot'));
+      expect(field(id, 'age')!.parentElement).toHaveAttribute('data-column', 'age');
       expect(chip.querySelector('svg')).toHaveClass('size-3');
     }
     for (const id of ['s2', 's3']) expect(field(id, 'subagents')).toBeNull();
-    // At the default location the count is still first among the numbers, with the slot empty before it.
+    // At the default location the count still leads, the slot empty after it.
     app.snapshot([row({ id: 'h', contextPct: 23, subagents: { running: 2, finished: 0 }, locationShown: { repo: false, where: false } })]);
     const chip = field('h', 'subagents')!;
     expect(chip.previousElementSibling).toBeNull();
-    expect(chip.parentElement!.previousElementSibling).toBe(field('h', 'slot'));
+    expect(chip.parentElement!.nextElementSibling).toBe(field('h', 'slot'));
     expect(field('h', 'slot')).toBeEmptyDOMElement();
-    expect(chip.nextElementSibling).toBe(field('h', 'age'));
   });
 
   it('SIDE-9.2: count updates keep the row order, Status, marker, strip and age, also under the pointer', () => {
@@ -378,7 +378,7 @@ describe('sidebar rows', () => {
       }
     });
 
-    it('SIDE-2.10: the numbers group sits at the line\'s end in every case, after the slot', () => {
+    it('SIDE-2.10: the numbers sit at the line\'s end in every case, after the slot, in their three columns (DS-22.1)', () => {
       const app = renderApp();
       app.snapshot([
         row({ id: 'a', locationShown: HIDDEN, subagents: { running: 2, finished: 0 }, contextPct: 9 }),
@@ -386,11 +386,11 @@ describe('sidebar rows', () => {
         row({ id: 'c', status: 'needs-you', waitingFor: 'w', locationShown: HIDDEN, subagents: { running: 2, finished: 0 }, contextPct: 9 }),
       ]);
       for (const id of ['a', 'b', 'c']) {
-        const numbers = field(id, 'subagents')!.parentElement!;
-        expect(numbers).toHaveClass('shrink-0');
-        expect(numbers).toBe(slot(id).parentElement!.lastElementChild);
-        expect(numbers.previousElementSibling).toBe(slot(id));
-        expect(numbers.children).toHaveLength(3); // Subagents, age, context
+        const columns = [...rowEl(id).querySelectorAll<HTMLElement>('[data-column]')];
+        expect(columns.map((c) => c.dataset.column)).toEqual(['changes', 'age', 'context']);
+        for (const c of columns) expect(c).toHaveClass('shrink-0');
+        expect(columns[0]!.previousElementSibling).toBe(slot(id));
+        expect(columns[2]).toBe(slot(id).parentElement!.lastElementChild);
       }
     });
 
@@ -468,7 +468,7 @@ describe('sidebar rows', () => {
       ]);
       expect(rowEl('hidden')).toHaveAccessibleName('IdlehiddenClaude Code 1m5%');
       expect(rowEl('other')).toHaveAccessibleName('IdleotherClaude Code harborBranchfix/x1m');
-      expect(rowEl('wt')).toHaveAccessibleName('IdlewtClaude Code Worktreelantern2 Subagents running1m');
+      expect(rowEl('wt')).toHaveAccessibleName('IdlewtClaude Code 2 Subagents runningWorktreelantern1m'); // DS-22.3: the marks lead
       expect(rowEl('words')).toHaveAccessibleName('Needs youwordsClaude Code input needed1m41%');
       // A third line comes after the numbers, in the order the row shows them.
       expect(rowEl('third')).toHaveAccessibleName('Needs youthirdClaude Code Worktreelantern1m input needed');
@@ -520,7 +520,7 @@ describe('sidebar rows', () => {
     expect(rowEl('none').textContent).not.toContain('%');
   });
 
-  it('SIDE-2.6: an Idle row with a background shell running is an Idle row with a terminal mark before the age', () => {
+  it('SIDE-2.6: an Idle row with a background shell running is an Idle row with a terminal mark leading its second line', () => {
     const app = renderApp();
     app.snapshot([
       row({ id: 'busy', status: 'busy', statusSince: NOW - 5000 }),
@@ -537,8 +537,11 @@ describe('sidebar rows', () => {
     expect(mark).toHaveAttribute('title', 'A background shell command is still running');
     expect(mark).toHaveClass('text-idle-text');
     expect(within(mark).getByRole('img', { name: 'background shell running' })).toBeInTheDocument();
-    expect(mark.nextElementSibling).toBe(field('shell', 'age'));
-    expect(r).toHaveAccessibleName('IdleshellClaude Code workBranchmainbackground shell running2m12%');
+    // DS-22.3: last of the marks, which lead the line, before the slot.
+    expect(mark.parentElement).toHaveAttribute('data-field', 'marks');
+    expect(mark.nextElementSibling).toBeNull();
+    expect(mark.parentElement!.nextElementSibling).toBe(field('shell', 'slot'));
+    expect(r).toHaveAccessibleName('IdleshellClaude Code background shell runningworkBranchmain2m12%');
     expect(field('plain', 'background-shell')).toBeNull();
     expect(rowEl('plain')).toHaveAccessibleName('IdleplainClaude Code workBranchmain1s');
   });

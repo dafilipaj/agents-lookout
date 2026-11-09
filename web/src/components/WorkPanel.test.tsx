@@ -1014,7 +1014,7 @@ describe('Tasks (WORK-2)', () => {
     // The first click expands the row; the second lands on the Resume that moved under the pointer.
     fireEvent.click(taskOption(LIGHT.id), { detail: 1 });
     const resume = taskOption(LIGHT.id).querySelector<HTMLElement>('[data-field="actions"] [data-action="resume"]')!;
-    const chip = taskOption(LIGHT.id).querySelector<HTMLElement>('[data-field="session-chips"] [data-action="session"]')!;
+    const chip = taskOption(LIGHT.id).querySelector<HTMLElement>('[data-field="link-list"] [data-action="session"]')!;
     fireEvent.click(resume, { detail: 2 });
     // A quick single press right after is held back too, and the button says it can't act yet.
     fireEvent.click(resume, { detail: 1 });
@@ -1138,7 +1138,7 @@ describe('Tasks (WORK-2)', () => {
     }
   });
 
-  it('WORK-2.9: an expanded Task shows its description’s first three lines as plain text, its Linked PRs with repo, number, chip and CI, and its Linked Sessions as chips; one with neither shows its project, status and buttons only', async () => {
+  it('WORK-2.9: an expanded Task is built as DS-21 says: its title whole; its state its project, status, milestone and due date, and a single Linked PR; its summary its description’s first three lines; its Sessions, its PRs when more than one and its Topics as counts; one with neither its state and buttons only', async () => {
     const linked = task({
       ...BELLS,
       description: 'Totals round half up on the preview\nbut half even on the PDF.\nReproduce with deal 4.\nA fourth line.',
@@ -1148,34 +1148,52 @@ describe('Tasks (WORK-2)', () => {
         incomplete: false,
       },
     });
-    openApp('/s/alpha', withTasks({ tasks: [linked, LIGHT] }));
+    const one = task({ id: '41000999', title: 'Port the rates table', links: { prs: [{ repo: 'anvil', number: 2101, url: DRAFT.url, chip: 'draft', ci: 'passing', sources: ['branch'] }], sessions: [], incomplete: false } });
+    const browser = vi.spyOn(window, 'open').mockImplementation(() => null);
+    openApp('/s/alpha', withTasks({ tasks: [linked, LIGHT, one] }));
     const user = userEvent.setup();
     await user.keyboard('w');
     const row = expandRow(taskOption(BELLS.id));
     const details = row.querySelector<HTMLElement>('[data-field="details"]')!;
-    expect(row.querySelector('[data-field="project"]')).toHaveTextContent('Harbor Bells');
-    expect(row.querySelector('[data-field="status"]')).toHaveTextContent('Not started');
-    expect(row.querySelector('[data-field="due"]')).toHaveTextContent('due Nov 4');
+    const state = row.querySelector<HTMLElement>('[data-field="state"]')!;
+    expect(row.querySelector('[data-field="title"]')).not.toHaveClass('truncate');
+    expect([...state.querySelectorAll('[data-field]')].map((f) => f.getAttribute('data-field'))).toEqual(['project', 'status', 'milestone', 'due']);
+    expect(state).toHaveTextContent('Harbor Bells · Not started · milestone · due Nov 4', { normalizeWhitespace: true });
     const description = details.querySelector('[data-field="description"]')!;
     expect(description.textContent).toBe(linked.description);
     expect(description).toHaveClass('line-clamp-3', 'whitespace-pre-line');
-    const prs = [...details.querySelectorAll('[data-field="detail-pr"]')];
-    expect(prs.map((p) => p.textContent)).toEqual(['anvil#2101draft', 'willow#2106Review requestno CI']);
+    // DS-21.2: one Session, open as it holds three or fewer; two PRs, closed.
+    const counts = [...details.querySelectorAll<HTMLElement>('[data-field="count"]')];
+    expect(counts.map((c) => [c.textContent, c.getAttribute('aria-expanded')])).toEqual([['1 Session', 'true'], ['2 PRs', 'false']]);
+    expect(details.querySelectorAll('[data-action="session"]')).toHaveLength(1);
+    fireEvent.click(counts[1]!);
+    expect(details.querySelectorAll('[data-action="session"]')).toHaveLength(0);
+    const prs = [...details.querySelectorAll<HTMLElement>('[data-field="link-list"] [data-field="link"]')];
+    expect(prs.map((p) => p.textContent)).toEqual(['anvil #2101draft', 'willow #2106Review requestno CI']);
     expect(prs.map((p) => p.querySelector('[data-field="ci"]')!.getAttribute('data-ci'))).toEqual(['passing', 'none']);
     expect(prs[0]).toHaveAttribute('title', 'PR body');
-    // Expanded, the PRs are in the details, not the collapsed line too.
+    expect(prs[0]).toHaveAccessibleName('Open anvil #2101 on GitHub');
+    fireEvent.click(prs[0]!);
+    expect(browser).toHaveBeenLastCalledWith(DRAFT.url, '_blank', 'noopener,noreferrer');
+    // Expanded, the collapsed lines give way to the state.
     expect(row.querySelector('[data-field="linked-prs"]')).toBeNull();
-    expect(details.querySelectorAll('[data-field="session-chips"] [data-action="session"]')).toHaveLength(1);
-    // Its details are its description, not its name.
+    // The state is part of its name; the rest is its description.
     expect(details).toHaveAttribute('aria-hidden');
     expect(row).toHaveAccessibleName('Tune the harbor bells Harbor Bells Not started milestone due Nov 4');
     expect(row.getAttribute('aria-describedby')).toContain(details.id);
-    // A Task with neither: its project and status, and its buttons.
-    const bare = expandRow(taskOption(LIGHT.id)).querySelector<HTMLElement>('[data-field="details"]')!;
+    // DS-21.1's order: summary, links, then the actions last.
+    expect([...details.children].map((c) => c.getAttribute('data-field'))).toEqual(['row-summary', 'links', 'actions']);
+    // A Task with neither: its state and its buttons.
+    const bare = expandRow(taskOption(LIGHT.id));
     expect(bare.querySelector('[data-field="description"]')).toBeNull();
-    expect(bare.querySelector('[data-field="detail-prs"]')).toBeNull();
-    expect(bare.querySelector('[data-field="session-chips"]')).toBeNull();
-    expect(await rowActionWords(bare, userEvent.setup())).toEqual(['Start Session', 'Open in Fantastic', 'Add to Topic']);
+    expect(bare.querySelector('[data-field="links"]')).toBeNull();
+    expect(await rowActionWords(bare.querySelector<HTMLElement>('[data-field="details"]')!, userEvent.setup())).toEqual(['Start Session', 'Open in Fantastic', 'Add to Topic']);
+    // A single Linked PR stays on the state line, its source its hover, with no PRs count.
+    const single = expandRow(taskOption(one.id));
+    expect(single.querySelector('[data-field="state"] [data-field="linked-pr"]')).toHaveTextContent('#2101 draft');
+    expect(single.querySelector('[data-field="state"] [data-field="linked-pr"]')).toHaveAttribute('title', 'branch');
+    expect(single.querySelector('[data-field="count"][data-kind="prs"]')).toBeNull();
+    browser.mockRestore();
   });
 
   it('WORK-2.10 (support), WORK-3.6 (support): the buttons, in order: Open Session for a live Linked Session, else Resume, then Start Session or Review, then Open in Fantastic or Open on GitHub', async () => {
@@ -1203,7 +1221,7 @@ describe('Tasks (WORK-2)', () => {
     expect(await words(option('willow#2106'))).toEqual(['resume:Resume:Resume', 'review:Review:R', 'open:Open on GitHub:O', add]);
   });
 
-  it('WORK-3.6 (support): an expanded PR keeps its repo, number, chip, CI, age and Linked Task, the source its hover, and adds its Linked Sessions as chips; a Review request has no chip', async () => {
+  it('WORK-3.6 (support): an expanded PR is built as DS-21 says: its title whole; its state its repo, number, chip, CI and age; its Linked Task and Sessions as counts, the Task’s source its hover; a Review request has no chip', async () => {
     const sessions: WorkSessionLink[] = [
       { sessionId: 'beta', harness: 'claude', title: 'review-anvil', createdAt: 1, modifiedAt: 1, live: true, reason: 'started on this PR' },
       { sessionId: 'opener', harness: 'codex', title: 'anvil-opener', createdAt: 1, modifiedAt: 5, live: false, reason: 'probably opened this PR (the earliest Session that mentions it)' },
@@ -1212,11 +1230,21 @@ describe('Tasks (WORK-2)', () => {
     openApp('/s/alpha', snap({ mine: [linkedPr], reviewRequests: [REVIEW] }));
     await userEvent.setup().keyboard('w');
     const row = expandRow(option('anvil#2101'));
-    for (const [field, text] of [['repo', 'anvil'], ['number', '#2101'], ['chip', 'draft'], ['age', '2d'], ['linked-task', LIGHT.title]] as const) expect(row.querySelector(`[data-field="${field}"]`), field).toHaveTextContent(text);
-    expect(row.querySelector('[data-field="ci"]')).toHaveAttribute('data-ci', 'passing');
-    expect(row.querySelector('[data-field="linked-task"]')).toHaveAttribute('title', 'PR body');
+    const state = row.querySelector<HTMLElement>('[data-field="state"]')!;
+    for (const [field, text] of [['repo', 'anvil'], ['number', '#2101'], ['chip', 'draft'], ['age', '2d']] as const) expect(state.querySelector(`[data-field="${field}"]`), field).toHaveTextContent(text);
+    expect(state.querySelector('[data-field="ci"]')).toHaveAttribute('data-ci', 'passing');
+    expect(row.querySelector('[data-field="title"]')).toHaveTextContent(DRAFT.title);
+    expect(row.querySelector('[data-field="title"]')).not.toHaveClass('truncate');
+    // DS-21.2: the Task first, open as it holds one; the Sessions closed.
+    const counts = [...row.querySelectorAll<HTMLElement>('[data-field="count"]')];
+    expect(counts.map((c) => [c.textContent, c.getAttribute('aria-expanded')])).toEqual([['1 Task', 'true'], ['2 Sessions', 'false']]);
+    const taskLine = row.querySelector<HTMLElement>('[data-field="link"][data-action="task"]')!;
+    expect(taskLine).toHaveTextContent(LIGHT.title);
+    expect(taskLine).toHaveAttribute('title', 'PR body');
+    expect(taskLine).toHaveAccessibleName(`Open ${LIGHT.title} in Fantastic`);
+    fireEvent.click(counts[1]!);
     // Live first, then the latest past one (WORK-2.4's order).
-    expect([...row.querySelectorAll('[data-field="session-chips"] [data-action="session"]')].map((c) => c.getAttribute('aria-label'))).toEqual(['Open beta, Idle', 'Resume anvil-opener, past']); // SIDE-10.2: a live one is named by the Session list
+    expect([...row.querySelectorAll('[data-field="link-list"] [data-action="session"]')].map((c) => c.getAttribute('aria-label'))).toEqual(['Open beta, Idle', 'Resume anvil-opener, past']); // SIDE-10.2: a live one is named by the Session list
     expect(await rowActionWords(row, userEvent.setup())).toEqual(['Open Session', 'Open on GitHub', 'Add to Topic']);
     expect(expandRow(option('willow#2106')).querySelector('[data-field="chip"]')).toBeNull();
   });
@@ -1269,34 +1297,42 @@ describe('Tasks (WORK-2)', () => {
     expect(taskOption(BELLS.id)).not.toHaveTextContent('Resuming…');
   });
 
-  it('WORK-4.10 (support): each Linked Session is its own chip, Harness logo, name and Status marker, newest first, at most 8 then “+N older”; a chip opens a live one, resumes a past one, and says so with its Status', async () => {
+  it('WORK-4.10 (support): Linked Sessions are a count that lists them in place, newest first, three then "Show all N": each its Status marker, name and state; a line opens a live one, resumes a past one, and says so with its Status', async () => {
     const resume = vi.fn(async () => ({ kind: 'live' as const, sessionId: 'past-1' }));
     const sessions: WorkSessionLink[] = [
       { sessionId: 'beta', harness: 'claude', title: 'fix-rounding', createdAt: 1, modifiedAt: 20, live: true, reason: 'started on this Task' },
-      ...Array.from({ length: 9 }, (_, i): WorkSessionLink => ({ sessionId: `past-${i + 1}`, harness: 'codex', title: `notes ${i + 1}`, createdAt: 1, modifiedAt: 10 - i, live: false, reason: 'through PR #2101' })),
+      ...Array.from({ length: 9 }, (_, i): WorkSessionLink => ({ sessionId: `past-${i + 1}`, harness: 'codex', title: `notes ${i + 1}`, createdAt: 1, modifiedAt: Date.now() - (i + 1) * 3_600_000, live: false, reason: 'through PR #2101' })),
     ];
     const app = openApp('/s/alpha', withTasks({ tasks: [task({ ...LIGHT, links: { prs: [], sessions, incomplete: false } })] }), { resume });
     app.emit({ type: 'sessions', upsert: [row({ id: 'beta', status: 'busy' })], remove: [] });
     const user = userEvent.setup();
     await user.keyboard('w');
-    const chips = [...expandRow(taskOption(LIGHT.id)).querySelectorAll<HTMLElement>('[data-field="session-chips"] [data-action="session"]')];
-    expect(chips.map((c) => c.getAttribute('data-session-id'))).toEqual(['beta', ...Array.from({ length: 7 }, (_, i) => `past-${i + 1}`)]);
-    expect(taskOption(LIGHT.id).querySelector('[data-field="older"]')).toHaveTextContent('+2 older');
-    expect(chips[0]).toHaveAccessibleName('Open beta, Busy'); // SIDE-10.2: named by the Session list, not tb-session
-    expect(chips[1]).toHaveAccessibleName('Resume notes 1, past');
-    expect(chips[0]).toHaveAttribute('title', 'started on this Task');
-    expect(chips[1]).toHaveAttribute('title', 'through PR #2101');
-    expect(chips[0]!.querySelector('svg[data-harness="claude"]')).not.toBeNull();
-    expect(chips[0]!.querySelector('[data-session-marker]')).toHaveAttribute('data-status', 'busy');
-    expect(chips[1]!.querySelector('[data-session-marker]')).toHaveAttribute('data-state', 'past');
-    expect(chips[0]).toHaveClass('h-7');
-    await user.click(chips[1]!);
+    const r = expandRow(taskOption(LIGHT.id));
+    const count = r.querySelector<HTMLElement>('[data-field="count"][data-kind="sessions"]')!;
+    // Ten: closed when the row expands (DS-21.2).
+    expect(count).toHaveTextContent('10 Sessions');
+    expect(count).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(count);
+    const lines = () => [...r.querySelectorAll<HTMLElement>('[data-field="link-list"] [data-action="session"]')];
+    expect(lines().map((c) => c.getAttribute('data-session-id'))).toEqual(['beta', 'past-1', 'past-2']);
+    fireEvent.click(r.querySelector<HTMLElement>('[data-field="show-all"]')!);
+    expect(lines().map((c) => c.getAttribute('data-session-id'))).toEqual(['beta', ...Array.from({ length: 9 }, (_, i) => `past-${i + 1}`)]);
+    const [live, past] = lines();
+    expect(live).toHaveAccessibleName('Open beta, Busy'); // SIDE-10.2: named by the Session list, not tb-session
+    expect(past).toHaveAccessibleName('Resume notes 1, past');
+    expect(live).toHaveAttribute('title', 'started on this Task');
+    expect(past).toHaveAttribute('title', 'through PR #2101');
+    expect(live!.querySelector('[data-session-marker]')).toHaveAttribute('data-status', 'busy');
+    expect(past!.querySelector('[data-session-marker]')).toHaveAttribute('data-state', 'past');
+    expect(live).toHaveTextContent(/live$/);
+    expect(past).toHaveTextContent(/1h$/);
+    await user.click(past!);
     expect(resume).toHaveBeenCalledWith('codex', 'past-1', expect.any(String));
-    // One resume at a time: the chips wait until it's live.
+    // One resume at a time: the lines wait until it's live.
     await waitFor(() => expect(window.location.pathname).toBe('/s/past-1'));
-    expect(chips[0]).toHaveAttribute('aria-disabled', 'true');
+    expect(live).toHaveAttribute('aria-disabled', 'true');
     app.emit({ type: 'sessions', upsert: [row({ id: 'past-1' })], remove: [] });
-    await user.click(chips[0]!);
+    await user.click(live!);
     expect(window.location.pathname).toBe('/s/beta');
   });
 

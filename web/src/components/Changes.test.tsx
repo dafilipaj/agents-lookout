@@ -34,7 +34,7 @@ afterEach(() => {
 });
 
 describe('the count', () => {
-  it('DIFF-1.1: a row shows added lines in green and removed in red, after the Subagent count and before the age; never +0 −0', () => {
+  it('DIFF-1.1: a row shows its added and removed lines in its first column, grey (DS-22.2), before the age; never +0 −0', () => {
     const app = renderApp('/');
     app.snapshot([
       row({ id: 'a', title: 'First', subagents: { running: 2, finished: 0 }, changes: { additions: 120, deletions: 30, files: 4 } }),
@@ -42,10 +42,10 @@ describe('the count', () => {
       row({ id: 'c', title: 'Third', changes: null }),
     ]);
     const mark = option(/First/).querySelector<HTMLElement>('[data-field="changes"]')!;
-    expect(mark.previousElementSibling).toHaveAttribute('data-field', 'subagents');
-    expect(mark.nextElementSibling).toHaveAttribute('data-field', 'age');
-    expect(within(mark).getByText('+120')).toHaveClass('text-diff-added-text');
-    expect(within(mark).getByText('−30')).toHaveClass('text-diff-removed-text');
+    expect(mark.parentElement).toHaveAttribute('data-column', 'changes');
+    expect(mark.parentElement!.nextElementSibling).toHaveAttribute('data-column', 'age');
+    expect(within(mark).getByText('+120')).not.toHaveClass('text-diff-added-text');
+    expect(within(mark).getByText('−30')).not.toHaveClass('text-diff-removed-text');
     expect(option(/Second/).querySelector('[data-field="changes"]')).toBeNull();
     expect(option(/Third/).querySelector('[data-field="changes"]')).toBeNull();
   });

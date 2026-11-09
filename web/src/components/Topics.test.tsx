@@ -156,7 +156,7 @@ describe('the Topics tab (TOPIC-3)', () => {
     expect(app.client.resume).not.toHaveBeenCalled();
   });
 
-  it('TOPIC-3.4: an expanded Topic is a summary: its notes’ first three lines, its live Sessions as chips and how many past, then Open, Open graph, Link to Topic…, Archive and Delete; Enter on it opens its view', async () => {
+  it('TOPIC-3.4: an expanded Topic is built as DS-21 says: its members and update its state, its notes’ first three lines its summary, its Sessions a count, live first, then Open, Open graph, Link to Topic…, Archive and Delete; Enter on it opens its view', async () => {
     const notes = ['**Port** the rates table', 'two', 'three', 'fourth line'].join('\n');
     const app = openApp([topic(1, { title: 'Proposals rates', notes, members: [member(TASK_MEMBER), member(PR_MEMBER), member(SESSION), member({ ...SESSION, ref: { harness: 'claude', sessionId: 'past-one' }, snapshot: { harness: 'claude', title: 'spec', directory: null } })] })]);
     const user = await openTopics();
@@ -167,10 +167,12 @@ describe('the Topics tab (TOPIC-3)', () => {
     expect(rendered).toHaveTextContent('three');
     expect(rendered).not.toHaveTextContent('fourth line');
     expect(within(details).queryByRole('button', { name: /^(more|Edit)$/ })).toBeNull();
-    // Live Sessions as chips, the past ones counted; PRs, Tasks and Edges are in the view.
-    expect(within(details).getByRole('button', { name: 'Open rates-port, Needs you' })).toBeInTheDocument();
-    expect(within(details).queryByRole('button', { name: /spec/ })).toBeNull();
-    expect(details.querySelector('[data-field="past-sessions"]')).toHaveTextContent('+1 past');
+    expect(item('Proposals rates').querySelector('[data-field="state"]')).toHaveTextContent(/ · updated \S+ ago$/);
+    // DS-21.2: its Sessions a count, open as it holds two, the live one first, then the past; PRs, Tasks and Edges are in the view.
+    expect(within(details).getByRole('button', { name: '2 Sessions' })).toHaveAttribute('aria-expanded', 'true');
+    expect([...details.querySelectorAll('[data-action="session"]')].map((l) => l.getAttribute('aria-label'))).toEqual(['Open rates-port, Needs you', 'Resume spec, past']);
+    // Its title is whole.
+    expect(item('Proposals rates').querySelector('[data-field="title"]')).not.toHaveClass('truncate');
     expect(details.querySelector('[data-field="prs"], [data-field="tasks"], [data-field="outputs"], [data-field="edges"]')).toBeNull();
     expect(within(details).queryByRole('textbox')).toBeNull();
     expect(await rowActionWords(details, user)).toEqual(['Open', 'Open graph', 'Link to Topic…', 'Archive', 'Delete']);
@@ -183,7 +185,7 @@ describe('the Topics tab (TOPIC-3)', () => {
     await user.keyboard('{Enter}');
     expect(window.location.pathname).toBe(`/topics/${id(1)}`);
     expect(topicView()).toBeInTheDocument();
-    // A Session chip opens a live Session.
+    // A Session's line opens a live Session.
     await user.click(within(details).getByRole('button', { name: 'Open rates-port, Needs you' }));
     expect(window.location.pathname).toBe(`/s/${SESSION_ID}`);
     expect(app.client.resume).not.toHaveBeenCalled();
@@ -433,18 +435,20 @@ describe('members (TOPIC-2)', () => {
     expect(item('Other').querySelector('[data-field="counts"]')).toHaveTextContent('1 PR');
   });
 
-  it('TOPIC-2.5: an expanded Work row shows each Topic its item is in as a chip, a collapsed one none, and a chip opens the Topics tab on that Topic', async () => {
+  it('TOPIC-2.5: an expanded Work row shows the Topics its item is in as its Topics count, a collapsed one none, and a Topic’s line opens the Topics tab on that Topic', async () => {
     openApp([topic(1, { title: 'Rates', members: [member(TASK_MEMBER)] }), topic(2, { title: 'Archived', state: 'archived', members: [member(TASK_MEMBER)] }), topic(3, { title: 'Unrelated' })]);
     const user = userEvent.setup();
     await user.keyboard('w');
     const option = screen.getByTestId('work-panel').querySelector<HTMLElement>(`[data-task="${LIGHT.id}"]`)!;
-    expect(option.querySelector('[data-field="topic-chips"]')).toBeNull();
+    expect(option.querySelector('[data-field="count"][data-kind="topics"]')).toBeNull();
     fireEvent.click(option);
-    const chips = option.querySelector<HTMLElement>('[data-field="topic-chips"]')!;
-    expect([...chips.querySelectorAll('[data-topic-id]')].map((c) => c.textContent)).toEqual(['Rates', 'Archived']);
-    await waitFor(() => expect(chips.querySelector('[data-topic-id]')).toBeInTheDocument());
+    const count = option.querySelector<HTMLElement>('[data-field="count"][data-kind="topics"]')!;
+    expect(count).toHaveTextContent('2 Topics');
     await new Promise((r) => setTimeout(r, 450)); // the row's settle (ROW_SETTLE_MS)
-    await user.click(within(chips).getByText('Archived'));
+    if (count.getAttribute('aria-expanded') !== 'true') await user.click(count);
+    const lines = [...option.querySelectorAll<HTMLElement>('[data-field="link"][data-topic-id]')];
+    expect(lines.map((c) => c.textContent)).toEqual(['Rates', 'Archived']);
+    await user.click(lines[1]!);
     expect(screen.getByRole('tab', { name: 'Topics' })).toHaveAttribute('aria-selected', 'true');
     await waitFor(() => expect(header('Archived')).toHaveAttribute('aria-expanded', 'true'));
     expect(screen.getByRole('checkbox', { name: 'Archived' })).toBeChecked();
@@ -1419,6 +1423,10 @@ describe('slice 7: finding a Topic, what happened, what’s new, how it ended', 
       const user = await openTopics();
       expect(item('Rates').querySelector('[data-field="last-activity"]')).toHaveTextContent('anvil #2101 CI failing · 1h');
       expect(item('Rates').querySelector('[data-field="new-count"]')).toHaveTextContent('2 new');
+      // Expanded, it says it on its state line (TOPIC-3.4).
+      await user.click(header('Rates'));
+      expect(item('Rates').querySelectorAll('[data-field="last-activity"]')).toHaveLength(1);
+      expect(item('Rates').querySelector('[data-field="state"] [data-field="last-activity"]')).toHaveTextContent('anvil #2101 CI failing · 1h');
       await openView(user, 'Rates');
       expect(item('Rates').querySelector('[data-field="new-count"]')).toBeNull();
       await user.click(screen.getByRole('checkbox', { name: 'Archived' }));

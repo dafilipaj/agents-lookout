@@ -1,10 +1,6 @@
 import type { NewMember } from '@shared/topics.ts';
-import { useContext } from 'react';
 import { Button } from '@/components/ui/button';
-import { chipVariants } from '@/components/ui/chip';
-import { RowSettling } from '@/components/ui/icon-button';
-import { topicsOf, useTopics } from '@/lib/topics';
-import { cn } from '@/lib/utils';
+import { useTopics } from '@/lib/topics';
 import { ActionIcon } from '@/lib/actions';
 
 /**
@@ -29,39 +25,5 @@ export function AddToTopicButton({ member, label }: { member: NewMember | null; 
       <ActionIcon id="add-to-topic" />
       <span className="@max-[26rem]:sr-only">Add to Topic</span>
     </Button>
-  );
-}
-
-/**
- * TOPIC-2.5: the Topics an expanded row's item is in (a Library row's: any of its Sessions'), each a
- * chip; a click opens the Topics tab on that Topic. A collapsed row shows none.
- */
-export function TopicChips({ members, labelClass }: { members: readonly NewMember[]; labelClass?: string }) {
-  const topics = useTopics();
-  const settling = useContext(RowSettling);
-  if (!topics) return null;
-  const list = topicsOf(topics.byMember, members);
-  if (!list.length) return null;
-  return (
-    <div className="flex min-w-0 items-start gap-2 text-meta text-muted-foreground" data-field="topic-chips">
-      <span className={cn('shrink-0 pt-0.5', labelClass)}>Topics</span>
-      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
-        {list.map((t) => (
-          <span
-            key={t.id}
-            role="button"
-            title={`Open ${t.title} in Topics`}
-            data-topic-id={t.id}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (!settling && e.detail <= 1) topics.open(t.id);
-            }}
-            className={cn(chipVariants({ tone: 'neutral' }), 'max-w-full cursor-pointer hover:bg-accent')}
-          >
-            <span className="truncate">{t.title}</span>
-          </span>
-        ))}
-      </div>
-    </div>
   );
 }

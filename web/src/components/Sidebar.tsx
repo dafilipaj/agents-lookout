@@ -237,6 +237,7 @@ export function Sidebar(props: SidebarProps) {
         now={now}
         onSelect={selectId}
         suffix={suffixes.get(row.id) ?? null}
+        pressure={props.memory?.pressure ?? null}
       />
     );
     // DS-9.1: the list takes focus as History's does: the selected Session is its active option, none

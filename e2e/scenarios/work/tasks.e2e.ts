@@ -281,7 +281,7 @@ scenario(
 );
 
 scenario(
-  'WORK-4.10: an expanded row shows each Linked Session as its own chip, newest first, named with what it does and its Status; a live one’s chip selects it, a past one’s resumes it',
+  'WORK-4.10: an expanded row’s Sessions count lists each Linked Session on its own line, newest first, named with what it does and its Status; a live one’s line selects it, a past one’s resumes it',
   world().tbProd({ tasks: { [ME]: MINE.slice(0, 1) } }).tbPr({ board: { columns: {} } }).settings({ productiveEmail: ME }),
   async ({ page, world }) => {
     world.tbSession.indexSession({ ...indexed('00000000-0000-4000-8000-0000000000a7', `Start ${WICKS}`, '2026-10-18T10:00:00Z', '2026-10-18T11:00:00Z', world.home), summary: 'wick notes' });
@@ -293,7 +293,9 @@ scenario(
     const row = taskRows(page).filter({ hasText: 'Trim the lamp wicks' });
     await expect(row.locator('[data-session-marker]')).toHaveAttribute('data-state', 'live');
     await expand(row);
-    const chips = row.locator('[data-field="session-chips"] [data-action="session"]');
+    // Three: the count is open when the row expands (DS-21.2).
+    await expect(row.locator('[data-field="count"][data-kind="sessions"]')).toHaveAttribute('aria-expanded', 'true');
+    const chips = row.locator('[data-field="link-list"] [data-action="session"]');
     await expect(chips).toHaveCount(3);
     expect(await chips.evaluateAll((els) => els.map((el) => el.getAttribute('aria-label')))).toEqual(['Open wick trim, Idle', 'Resume wick plan, past', 'Resume wick notes, past']);
     await expect(chips.nth(1)).toHaveAttribute('title', 'started on this Task');
@@ -302,12 +304,12 @@ scenario(
     await expect(page).toHaveURL(/\/s\/00000000-0000-4000-8000-0000000000a9$/);
     expect(world.calls().filter((call) => /\bspawn\b/.test(call))).toEqual([]);
     await chips.nth(1).click();
-    await world.waitUntil('Fleet to be asked to resume the chip’s Session', () => world.calls().some((call) => /\bspawn --resume 00000000-0000-4000-8000-0000000000a8\b/.test(call)));
+    await world.waitUntil('Fleet to be asked to resume the line’s Session', () => world.calls().some((call) => /\bspawn --resume 00000000-0000-4000-8000-0000000000a8\b/.test(call)));
   },
 );
 
 scenario(
-  'WORK-6.5: every button of an expanded Task, PR and Review request, chips and Open in browser included, is a word beside a 20 px icon in a 28 px tall target, named by its word',
+  'WORK-6.5: every labelled button of an expanded Task, PR and Review request, More included, is a word beside a 20 px icon in a 28 px tall target, named by its word',
   world().tbProd({ tasks: { [ME]: MINE.slice(0, 1) } }).tbPr({ board: BOARD }).settings({ productiveEmail: ME }),
   async ({ page, world }) => {
     world.tbSession.indexSession({ ...indexed('00000000-0000-4000-8000-0000000000c7', `Start ${WICKS}`, '2026-10-18T10:00:00Z', '2026-10-18T11:00:00Z', world.home), summary: 'wick notes' });
@@ -333,11 +335,11 @@ scenario(
       );
     }
     // DS-16: each row's first action labelled, the rest under More.
-    expect(measured.map((m) => m.word)).toEqual(['wick trim', 'wick notes', 'Open Session', 'More', 'Open on GitHub', 'More', 'Review', 'More']);
+    expect(measured.map((m) => m.word)).toEqual(['Open Session', 'More', 'Open on GitHub', 'More', 'Review', 'More']);
     for (const m of measured) {
       expect(m.height, m.word).toBe(28);
       expect(m.icon, m.word).toEqual([20, 20]);
-      // Its word is its name; a chip's adds what it does and its Status (WORK-4.10).
+      // Its word is its name.
       expect(m.name, m.word).toContain(m.word);
     }
   },

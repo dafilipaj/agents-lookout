@@ -1,7 +1,7 @@
 import { BLOCK_REASON } from '@shared/history.ts';
 import type { Harness, HistoryItem, HistoryPage, HistoryPeek, SessionRow, Status } from '@shared/types.ts';
 import { Search } from 'lucide-react';
-import { type KeyboardEvent, type MouseEvent, type ReactNode, type Ref, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { type KeyboardEvent, type MouseEvent, type Ref, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Chip } from '@/components/ui/chip';
@@ -9,6 +9,7 @@ import { CommandBlock } from '@/components/ui/command-block';
 import { EmptyState } from '@/components/ui/empty-state';
 import { IconButton, RowSettling, useRowSettle } from '@/components/ui/icon-button';
 import { RowActions } from '@/components/ui/row-actions';
+import { RowDetails, type RowLinkGroup, RowTitle } from '@/components/ui/row-details';
 import { Loading } from '@/components/ui/loading';
 import { SessionMarker } from '@/components/ui/session-marker';
 import type { HistoryQuery } from '@/lib/client';
@@ -18,8 +19,7 @@ import { HARNESS_NAME } from '@/lib/sessions';
 import { byDay, formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { HarnessIcon } from './HarnessIcon';
-import { TopicChips } from './TopicLinks';
-import { historyMember, useAddToTopicItem, useTopics } from '@/lib/topics';
+import { historyMember, useAddToTopicItem, useTopics, useTopicLinks } from '@/lib/topics';
 import { type ActionId } from '@/lib/actions';
 
 /** A field that takes typed letters (a search box, never the Headless checkbox). */
@@ -452,6 +452,7 @@ function Result({ index, item, status, since, active, expanded, peek, opening, b
   const id = `history-${itemKey(item)}`;
   const button = BUTTON[state];
   const addToTopic = useAddToTopicItem([historyMember(item)], item.title);
+  const topics = useTopicLinks([historyMember(item)]);
   return (
     <div
       id={id}
@@ -471,115 +472,159 @@ function Result({ index, item, status, since, active, expanded, peek, opening, b
         active && 'bg-sidebar-accent',
       )}
     >
-      <div className="flex min-w-0 items-center gap-1.5">
-        <SessionMarker aria-hidden state={status !== null ? 'live' : item.blocked ? 'blocked' : 'past'} status={status ?? undefined} since={since} data-field="marker" />
-        <span className={cn('min-w-0 flex-1 truncate font-medium', item.blocked && 'text-muted-foreground')} data-field="title">
-          {item.title}
+      <div className={cn('flex min-w-0 gap-1.5', expanded ? 'items-start' : 'items-center')}>
+        <span className="flex h-5 shrink-0 items-center">
+          <SessionMarker aria-hidden state={status !== null ? 'live' : item.blocked ? 'blocked' : 'past'} status={status ?? undefined} since={since} data-field="marker" />
         </span>
-        {live && <Chip data-field="live">live</Chip>}
+        <RowTitle expanded={expanded} className={cn('flex-1 font-medium', item.blocked && 'text-muted-foreground')}>
+          {item.title}
+        </RowTitle>
+        {live && !expanded && <Chip data-field="live">live</Chip>}
         {opening && <span className="shrink-0 text-caption text-muted-foreground">Resuming…</span>}
       </div>
-      <div className="flex min-w-0 items-center gap-1 pl-5 text-meta text-muted-foreground">
-        <HarnessIcon harness={item.harness} className="size-3" />
-        <span className="shrink-0" data-field="harness">
-          {HARNESS_NAME[item.harness]}
-        </span>
-        {item.repo && (
-          <>
-            <span aria-hidden>·</span>
-            <span className="min-w-0 truncate" data-field="repo" title={item.projectPath ?? undefined}>
-              {item.repo}
-            </span>
-          </>
-        )}
-        {item.branch && (
-          <>
-            <span aria-hidden>·</span>
-            <span className="min-w-0 truncate" data-field="branch">
-              {item.branch}
-            </span>
-          </>
-        )}
-        {item.lastActiveAt !== null && (
-          <>
-            <span aria-hidden>·</span>
-            <span className="shrink-0" data-field="age">
-              {formatAge(now - item.lastActiveAt)}
-            </span>
-          </>
-        )}
-        {item.headless && <Chip>headless</Chip>}
-      </div>
-      {!expanded && item.blocked === 'folder-gone' && <p className="pl-5 text-meta text-muted-foreground">folder gone</p>}
-      {!expanded && item.blocked === 'transcript-missing' && <p className="pl-5 text-meta text-muted-foreground">Transcript deleted</p>}
-      {item.snippet && (
-        <p className="line-clamp-2 pl-5 text-meta text-muted-foreground" data-field="snippet">
-          {snippetParts(item.snippet).map((p, i) =>
-            p.hit ? (
-              <mark key={i} className="rounded-sm bg-highlight px-0.5 text-foreground">
-                {p.text}
-              </mark>
-            ) : (
-              <span key={i}>{p.text}</span>
-            ),
-          )}
-        </p>
-      )}
-      {expanded && (
+      {expanded ? (
         <>
-          <div id={`${id}-details`} aria-hidden className="mt-1 flex min-w-0 flex-col gap-1.5 pl-5 text-meta text-muted-foreground" data-field="details">
-            {item.projectDisplay && (
-              <p className="truncate" data-field="start-dir" title={item.projectPath ?? undefined}>
-                {item.projectDisplay}
-              </p>
-            )}
-            <p data-field="state">
-              {[item.lastActiveAt !== null ? lastActive(item.lastActiveAt) : null, live ? 'live' : item.blocked ? "can't be resumed" : 'can resume'].filter(Boolean).join(' · ')}
-            </p>
-            {!live && item.blocked && <p data-field="blocked">{BLOCK_REASON[item.blocked]}</p>}
-            <Said item={item} peek={peek} />
-            <TopicChips members={[historyMember(item)]} labelClass="w-10" />
-            <RowActions
-              name={item.title}
-              primary={{ 'data-action': state === 'live' ? 'open' : state === 'blocked' ? 'show' : 'resume', action: button.action, label: opening ? 'Resuming…' : undefined, tip: button.tip, enabled: !busy, onPress: onOpen }}
-              more={[addToTopic]}
-            />
-          </div>
+          <RowDetails
+            id={`${id}-details`}
+            described
+            className="pl-5"
+            state={[
+              <span className="flex shrink-0 items-center gap-1" data-field="harness">
+                <HarnessIcon harness={item.harness} className="size-3" />
+                {HARNESS_NAME[item.harness]}
+              </span>,
+              item.repo && (
+                <span className="min-w-0 truncate" data-field="repo">
+                  {item.repo}
+                </span>
+              ),
+              item.branch && (
+                <span className="min-w-0 truncate" data-field="branch">
+                  {item.branch}
+                </span>
+              ),
+              item.lastActiveAt !== null && (
+                <span className="shrink-0" data-field="age">
+                  {formatAge(now - item.lastActiveAt)}
+                </span>
+              ),
+              item.lastActiveAt !== null && (
+                <span className="shrink-0" data-field="last-active">
+                  {lastActive(item.lastActiveAt)}
+                </span>
+              ),
+              item.headless && <Chip>headless</Chip>,
+              live ? (
+                <span className="shrink-0" data-field="live">
+                  live
+                </span>
+              ) : (
+                item.blocked && (
+                  <span className="min-w-0 truncate" data-field="blocked" title={BLOCK_REASON[item.blocked]}>
+                    {BLOCK_REASON[item.blocked]}
+                  </span>
+                )
+              ),
+            ]}
+            stateTip={item.projectDisplay ?? undefined}
+            summary={
+              <>
+                {/* HIST-2.3: what the search matched, first. */}
+                {item.snippet && <Snippet text={item.snippet} />}
+                <Said item={item} peek={peek} />
+              </>
+            }
+            links={[topics].filter((g): g is RowLinkGroup => g !== null)}
+            actions={
+              <RowActions
+                name={item.title}
+                primary={{ 'data-action': state === 'live' ? 'open' : state === 'blocked' ? 'show' : 'resume', action: button.action, label: opening ? 'Resuming…' : undefined, tip: button.tip, enabled: !busy, onPress: onOpen }}
+                more={[addToTopic]}
+              />
+            }
+          />
           {openError && <Alert title={openError} className="mt-1" />}
+        </>
+      ) : (
+        <>
+          <div className="flex min-w-0 items-center gap-1 pl-5 text-meta text-muted-foreground">
+            <HarnessIcon harness={item.harness} className="size-3" />
+            <span className="shrink-0" data-field="harness">
+              {HARNESS_NAME[item.harness]}
+            </span>
+            {item.repo && (
+              <>
+                <span aria-hidden>·</span>
+                <span className="min-w-0 truncate" data-field="repo" title={item.projectPath ?? undefined}>
+                  {item.repo}
+                </span>
+              </>
+            )}
+            {item.branch && (
+              <>
+                <span aria-hidden>·</span>
+                <span className="min-w-0 truncate" data-field="branch">
+                  {item.branch}
+                </span>
+              </>
+            )}
+            {item.lastActiveAt !== null && (
+              <>
+                <span aria-hidden>·</span>
+                <span className="shrink-0" data-field="age">
+                  {formatAge(now - item.lastActiveAt)}
+                </span>
+              </>
+            )}
+            {item.headless && <Chip>headless</Chip>}
+          </div>
+          {item.blocked === 'folder-gone' && <p className="pl-5 text-meta text-muted-foreground">folder gone</p>}
+          {item.blocked === 'transcript-missing' && <p className="pl-5 text-meta text-muted-foreground">Transcript deleted</p>}
+          {item.snippet && <Snippet text={item.snippet} className="pl-5" />}
         </>
       )}
     </div>
   );
 }
 
-/** One labelled line of an expanded result: "First", "Last". */
-function Line({ label, field, children }: { label: string; field: string; children: ReactNode }) {
+/** HIST-2.3: the matching snippet, its hits marked (DS-3.4). */
+function Snippet({ text, className }: { text: string; className?: string }) {
   return (
-    <div className="flex min-w-0 items-start gap-2" data-field={field}>
-      <span className="w-9 shrink-0">{label}</span>
-      <div className="min-w-0 flex-1">{children}</div>
-    </div>
+    <p className={cn('line-clamp-2 text-meta text-muted-foreground', className)} data-field="snippet">
+      {snippetParts(text).map((p, i) =>
+        p.hit ? (
+          <mark key={i} className="rounded-sm bg-highlight px-0.5 text-foreground">
+            {p.text}
+          </mark>
+        ) : (
+          <span key={i}>{p.text}</span>
+        ),
+      )}
+    </p>
   );
 }
 
 /**
- * HIST-2.9, HIST-2.10: the first prompt (from the row, else the read) and the last message with who
- * said it, each its first three lines. "Reading what it said…" while the read runs; a failed read is a line of its
- * own, and the button still works. tb-session 0.2 can't tail, so its last message is left out.
+ * HIST-2.9, HIST-2.10, DS-21.1: the summary: the first prompt (from the row, else the read) and the
+ * last message with who said it, each its first three lines. "Reading what it said…" while the read
+ * runs; a failed read is a line of its own, and the button still works. tb-session 0.2 can't tail, so
+ * its last message is left out.
  */
 function Said({ item, peek }: { item: HistoryItem; peek: Peek | null }) {
   const first = item.firstPrompt ?? (peek?.state === 'ok' ? peek.peek.firstPrompt : null);
-  const quote = (text: string) => <p className="line-clamp-3 whitespace-pre-line text-foreground">{text}</p>;
   return (
     <>
-      {first && <Line label="First" field="first-prompt">{quote(first)}</Line>}
+      {first && (
+        <p className="line-clamp-3 whitespace-pre-line text-foreground" data-field="first-prompt">
+          {first}
+        </p>
+      )}
       {(!peek || peek.state === 'loading') && <Loading label="Reading what it said…" />}
       {peek?.state === 'error' && <p data-field="peek-error">Couldn't read its messages: {peek.message}</p>}
       {peek?.state === 'ok' && peek.peek.last && (
-        <Line label="Last" field="last-message">
-          <span className="text-caption font-medium">{peek.peek.last.role === 'user' ? 'You' : HARNESS_NAME[item.harness]}</span>
-          {quote(peek.peek.last.text)}
-        </Line>
+        <p className="line-clamp-3 whitespace-pre-line text-foreground" data-field="last-message">
+          <span className="font-medium">{peek.peek.last.role === 'user' ? 'You' : HARNESS_NAME[item.harness]}:</span> {peek.peek.last.text}
+        </p>
       )}
     </>
   );

@@ -1,4 +1,4 @@
-import { MB, formatBytes, loadLevel, trendShape, watchedLevel, type MemoryRow, type MemorySnapshot } from '@shared/memory.ts';
+import { MB, formatBytes, loadLevel, runsAway, trendShape, watchedLevel, type MemoryRow, type MemorySnapshot, type Pressure } from '@shared/memory.ts';
 import { jobTool, waitStart, waitingCount, type ResJob, type ResSnapshot } from '@shared/res.ts';
 import type { SessionRow } from '@shared/types.ts';
 import { Hourglass, TrendingDown, TrendingUp } from 'lucide-react';
@@ -115,12 +115,12 @@ function Details({ memory, res, sessions, now, onSelect }: { memory: MemorySnaps
             return (
               <li key={id}>
                 <button className="w-full rounded-md text-left outline-none hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-ring/50" aria-label={`Open ${session.title}, ${formatBytes(row.bytes)}${growth}`} onClick={() => onSelect(id)}>
-                  <UseRow row={row} name={session.title} session={session} tone="strong" percent={width(row.bytes)} cores={memory.load.cores} now={now} />
+                  <UseRow row={row} name={session.title} session={session} tone="strong" percent={width(row.bytes)} cores={memory.load.cores} now={now} pressure={memory.pressure} />
                 </button>
               </li>
             );
           }) : <li className="py-1.5 text-meta text-muted-foreground">No live Sessions</li>}
-          <li><UseRow row={memory.lookout} name="Lookout" tone="mid" percent={width(memory.lookout.bytes)} cores={memory.load.cores} now={now} /></li>
+          <li><UseRow row={memory.lookout} name="Lookout" tone="mid" percent={width(memory.lookout.bytes)} cores={memory.load.cores} now={now} pressure={memory.pressure} /></li>
           <li title="Every other process on this Mac, this tab too">
             <UseRow row={{ id: 'other', bytes: memory.otherBytes, growthBytes: null, cpuPct: 0, top: [] }} name="Other apps" tone="faint" percent={width(memory.otherBytes)} cores={memory.load.cores} now={now} quiet />
           </li>
@@ -166,7 +166,7 @@ function WorthALook({ memory, res, byId, now }: { memory: MemorySnapshot; res: R
 }
 
 /** MEM-3.5: a name, its marks, its size, and a meter on the list's one scale; its executables in the tooltip. */
-function UseRow({ row, name, session, tone, percent, cores, now, quiet = false }: { row: MemoryRow; name: string; session?: SessionRow; tone: MeterTone; percent: number; cores: number; now: number; quiet?: boolean }) {
+function UseRow({ row, name, session, tone, percent, cores, now, quiet = false, pressure = null }: { row: MemoryRow; name: string; session?: SessionRow; tone: MeterTone; percent: number; cores: number; now: number; quiet?: boolean; pressure?: Pressure | null }) {
   const top = row.top.map((e) => `${e.name}${e.count > 1 ? ` ×${e.count}` : ''} ${Math.round(e.bytes / MB)}`).join(' · ');
   const gone = !!session && row.bytes === 0;
   return (
@@ -181,9 +181,10 @@ function UseRow({ row, name, session, tone, percent, cores, now, quiet = false }
           {session && <HarnessIcon harness={session.harness} />}
           <span className={cn('min-w-0 truncate', quiet ? 'text-muted-foreground' : 'font-medium')}>{name}</span>
           {gone && <span className="shrink-0 text-caption text-muted-foreground">gone</span>}
+          {/* MEM-3.5, MEM-4.1: growth is grey; memory running away has the icon and the warning colour. */}
           {row.growthBytes !== null && (
-            <span className={cn('flex shrink-0 items-center gap-0.5 text-caption tabular-nums', MEMORY_TEXT.warning)} data-field="growth">
-              <TrendingUp aria-hidden className="size-3" />+{formatBytes(row.growthBytes)}
+            <span className={cn('flex shrink-0 items-center gap-0.5 text-caption tabular-nums', runsAway(row.growthBytes, pressure) ? MEMORY_TEXT.warning : 'text-muted-foreground')} data-field="growth">
+              {runsAway(row.growthBytes, pressure) && <TrendingUp aria-hidden className="size-3" />}+{formatBytes(row.growthBytes)}
             </span>
           )}
           {session?.queued && (

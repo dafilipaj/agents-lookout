@@ -48,9 +48,6 @@ export function sessionToOpen(sessions: readonly WorkSessionLink[]): WorkSession
   return [...sessions].sort(bySessionOrder)[0] ?? null;
 }
 
-/** WORK-4.10: at most this many Linked Session chips in an expanded row; the rest are "+N older". */
-export const MAX_SESSION_CHIPS = 8;
-
 /** A button of an expanded row (WORK-2.10, WORK-3.6). */
 export type RowActionKind = { kind: 'session'; session: WorkSessionLink } | { kind: 'start' } | { kind: 'review' } | { kind: 'open' };
 

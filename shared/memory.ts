@@ -3,6 +3,8 @@ import type { UsageLevel } from './usage.ts';
 export const MB = 1024 * 1024;
 export const GB = 1024 * MB;
 export const GROWTH_BYTES = 30 * MB;
+/** MEM-4.1: growth in 10 minutes that's running away whatever the pressure. */
+export const RUNAWAY_BYTES = GB;
 export const GROWTH_WINDOW_MS = 10 * 60_000;
 export const MEMORY_INTERVAL_MS = 30_000;
 export const TREND_WINDOW_MS = 30 * 60_000;
@@ -119,6 +121,15 @@ export class MemoryHistory {
     }
     return growth;
   }
+}
+
+/**
+ * MEM-4.1: a Session's memory running away: it grew 1 GB or more in 10 minutes, or 30 MB or more
+ * (MEM-2.5's growth) while the Mac's memory pressure is warn or critical. Pressure unknown: only 1 GB.
+ */
+export function runsAway(growth: number | null | undefined, pressure: Pressure | null | undefined): boolean {
+  if (growth == null) return false;
+  return growth >= RUNAWAY_BYTES || (growth >= GROWTH_BYTES && (pressure === 'warn' || pressure === 'critical'));
 }
 
 export function memoryLevel(bytes: number, ram: number, pressure: Pressure): UsageLevel {

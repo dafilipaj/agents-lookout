@@ -385,6 +385,7 @@ const FAMILIES: Record<string, Family> = {
       'web/src/components/ui/tabs.tsx': { why: 'keyboard focus on a tab (DS-13.2)', uses: ['ring-ring/50'] },
       'web/src/components/ui/side-nav.tsx': { why: 'keyboard focus on a sub-page link (DS-13.1)', uses: ['ring-ring/50'] },
       'web/src/components/ui/segmented.tsx': { why: 'keyboard focus on a choice (DS-20.1)', uses: ['ring-ring/50'] },
+      'web/src/components/ui/row-details.tsx': { why: "keyboard focus on an expanded Topic's counts and links (DS-21.2, TOPIC-3.4)", uses: ['ring-ring/50'] },
       'web/src/components/ui/picker.tsx': { why: "a focused picker's filter", uses: ['border-ring', 'ring-ring/30'] },
       'web/src/components/TopicsPanel.tsx': { why: 'keyboard focus and the focused filter', uses: ['border-ring', 'ring-ring/30', 'ring-ring/50'] },
       'web/src/components/TopicView.tsx': { why: 'the focused title field', uses: ['border-ring', 'ring-ring/30'] },
@@ -1755,6 +1756,33 @@ describe('one of a few', () => {
     for (const [path, n] of Object.entries(own)) expect(radioGroups(SOURCES[path] ?? '', path), path).toHaveLength(n);
     expect(SOURCES['web/src/components/WorkPanel.tsx']).toMatch(/<Segmented label="Show"/);
     expect(SOURCES['web/src/components/SpecView.tsx']).toMatch(/<Segmented label="View"/);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// DS-21.4: expanded rows (check 13)
+
+/** What an expanded row drew by hand before DS-21: Work's chips and labelled lines, the Topic chips. */
+const HAND_DRAWN_DETAILS = /\b(?:SessionChips|DetailLine|TopicChips)\b|<SessionChip\b/;
+
+describe('expanded rows', () => {
+  it('DS-21.4: the guard catches a Session chip, a labelled detail line or the Topic chips in a panel, and lets RowDetails through', () => {
+    for (const text of ['<SessionChips sessions={s} />', '<DetailLine label="PRs" />', '<TopicChips members={m} />', '<SessionChip member={m} />']) expect(text).toMatch(HAND_DRAWN_DETAILS);
+    expect('<RowDetails id={id} state={[]} links={[]} actions={a} /> <SessionChipsLike /> sessionLinks(s)').not.toMatch(HAND_DRAWN_DETAILS);
+  });
+
+  it('DS-21.4: Work, History, Library and Topics build their expanded rows from ui/row-details; a Session chip is drawn only in a Topic view\'s member list', () => {
+    for (const panel of ['WorkPanel', 'HistoryPanel', 'LibraryPanel', 'TopicsPanel']) {
+      const text = SOURCES[`web/src/components/${panel}.tsx`] ?? '';
+      expect(text, panel).toMatch(/<RowDetails\b/);
+      expect(text, panel).toMatch(/<RowTitle\b/);
+      expect(text.match(HAND_DRAWN_DETAILS)?.[0] ?? null, panel).toBeNull();
+    }
+    const chips = Object.entries(SOURCES)
+      .filter(([path, text]) => /\.tsx$/.test(path) && /<SessionChip\b/.test(text))
+      .map(([path, text]) => `${path} ${text.match(/<SessionChip\b/g)!.length}`);
+    expect(chips).toEqual(['web/src/components/TopicView.tsx 1']);
+    expect(SOURCES['web/src/components/TopicView.tsx']).toMatch(/<SessionChip\b[\s\S]*?onRemove=/);
   });
 });
 

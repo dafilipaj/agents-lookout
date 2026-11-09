@@ -83,6 +83,10 @@ it('LIB-2.4: debounces text search within one second, shows Loading and marks ti
   expect(within(panel()).getByText('Reading the Library…')).toBeVisible();
   await act(async () => finish!(ok([output()])));
   expect(panel().querySelectorAll('mark.bg-highlight')).toHaveLength(2);
+  // Expanded, the path leaves the row (DS-21.3) but its hit stays marked, in the summary.
+  fireEvent.click(rows()[0]!);
+  expect(rows()[0]!.querySelector('[data-field="path-hit"] mark.bg-highlight')).toHaveTextContent('report');
+  expect(panel().querySelectorAll('mark.bg-highlight')).toHaveLength(2);
 });
 it('LIB-2.4: highlights Unicode literal hits at their original positions after expanding case folds', async () => {
   const app = renderApp('/', { library: async () => ok([output({ title: 'İ Straße 𐐀 ﬃ', display: '~/a.html' })]) });
@@ -138,11 +142,37 @@ it('LIB-3.1: a row click only selects and expands, Esc leaves it selected, and t
   expect(option).toHaveAttribute('aria-expanded', 'true'); expect(app.client.resume).not.toHaveBeenCalled(); expect(window.location.pathname).toBe('/s/current');
   fireEvent.keyDown(within(panel()).getByRole('listbox'), { key: 'Escape' }); expect(option).toHaveAttribute('aria-selected', 'true'); expect(option).toHaveAttribute('aria-expanded', 'false');
 });
-it('LIB-3.2: expanded details show full source, newer edits, timestamps and event count, with eight newest Session chips and older count', async () => {
+it('LIB-3.2: an expanded row is built as DS-21 says: its state its kind, folder, update and how many times, "newer than published"; its URL, source and dates the tooltip, never twice; every Session a line under its count, most recent first, with what it did; Show source file under More', async () => {
+  const browser = vi.spyOn(window, 'open').mockImplementation(() => null);
   const item = output({ kind: 'artifact', url: 'https://example.invalid/page', source: { path: '/source.html', display: '/source.html', type: 'html', createdAt: NOW, updatedAt: NOW + 1000, events: 4, exists: true }, sessions: Array.from({ length: 10 }, (_, i) => session({ sessionId: `writer-${i}`, title: `Writer ${i}`, event: i ? 'edit' : 'publish', lastActiveAt: NOW - i })) });
   const app = renderApp('/', { library: async () => ok([item]) }); await open(app); fireEvent.click(await first());
-  expect(panel()).toHaveTextContent('newer than published'); expect(panel()).toHaveTextContent('/source.html'); expect(panel()).toHaveTextContent('3 times'); expect(panel()).toHaveTextContent('+2 older');
-  const chips = panel().querySelectorAll('[data-action="session"]'); expect(chips).toHaveLength(8); expect(chips[0]).toHaveAttribute('title', 'published it (S)');
+  const r = rows()[0]!, state = r.querySelector<HTMLElement>('[data-field="state"]')!;
+  expect(state).toHaveTextContent('published 3 times'); expect(state.querySelector('[data-field="newer"]')).toHaveTextContent('newer than published');
+  // The row is named by its own label, so a screen reader hears the state in its description.
+  expect(r).toHaveAccessibleDescription(expect.stringContaining('published 3 times newer than published'));
+  expect(state.title.split('\n')).toEqual(['https://example.invalid/page', 'from /source.html', expect.stringMatching(/^made /), expect.stringMatching(/^source edited /)]);
+  // DS-21.3: the URL and the source path are the tooltip's, not the row's.
+  expect(r).not.toHaveTextContent('example.invalid'); expect(r).not.toHaveTextContent('/source.html');
+  // Ten Sessions: the count starts closed (DS-21.2), then lists three, then all.
+  const count = within(r).getByRole('button', { name: '10 Sessions' }); expect(count).toHaveAttribute('aria-expanded', 'false'); expect(r.querySelectorAll('[data-action="session"]')).toHaveLength(0);
+  fireEvent.click(count); expect(count).toHaveAttribute('aria-expanded', 'true');
+  let lines = r.querySelectorAll<HTMLElement>('[data-action="session"]'); expect(lines).toHaveLength(3);
+  expect(lines[0]).toHaveTextContent('Writer 0published it'); expect(lines[0]).toHaveAttribute('title', 'published it (S)'); expect(lines[1]).toHaveTextContent('Writer 1edited it');
+  fireEvent.click(within(r).getByRole('button', { name: 'Show all 10' })); lines = r.querySelectorAll('[data-action="session"]'); expect(lines).toHaveLength(10);
+  // Its actions come last (LIB-3.6), and the source file is under More.
+  expect(r.querySelector('[data-field="details"]')!.lastElementChild).toHaveAttribute('data-field', 'actions');
+  fireEvent.click(within(await openMore(r, userEvent.setup())).getByRole('menuitem', { name: 'Show source file' }));
+  expect(browser).toHaveBeenLastCalledWith('vscode://file/source.html', '_self'); browser.mockRestore();
+});
+it('DS-21.3: an expanded Output shows nothing twice and keeps rare facts out of the row: its URL, source file and dates in the state\'s tooltip, its link and source file under More; "newer than published" stays, in words', async () => {
+  const item = output({ kind: 'artifact', url: 'https://example.invalid/page', source: { path: '/source.html', display: '~/source.html', type: 'html', createdAt: NOW, updatedAt: NOW + 1000, events: 4, exists: true } });
+  const app = renderApp('/', { library: async () => ok([item]) }); await open(app); fireEvent.click(await first());
+  const r = rows()[0]!, state = r.querySelector<HTMLElement>('[data-field="state"]')!;
+  expect(state.title).toContain('https://example.invalid/page'); expect(state.title).toContain('from ~/source.html');
+  expect(r).not.toHaveTextContent('example.invalid'); expect(r).not.toHaveTextContent('source.html'); expect(r).not.toHaveTextContent(/made |created /);
+  expect(state).toHaveTextContent('newer than published');
+  const menu = await openMore(r, userEvent.setup());
+  expect(within(menu).getAllByRole('menuitem').map((i) => i.textContent)).toEqual(expect.arrayContaining([expect.stringContaining('Copy link'), expect.stringContaining('Show source file')]));
 });
 it('LIB-3.3: Open uses the file route, Markdown uses VS Code, external URLs use no referrer, and a folded existing source has Open file', async () => {
   const browser = vi.spyOn(window, 'open').mockImplementation(() => null);
@@ -160,9 +190,10 @@ it('LIB-3.4: Copy link, under More, copies an absolute path, and the row reports
   act(() => vi.advanceTimersByTime(1)); expect(within(rows()[0]!).queryByText('Copied')).toBeNull();
   write.mockRejectedValueOnce(new Error('refused')); pickMoreNow(rows()[0]!, 'copy'); await act(async () => {}); expect(within(rows()[0]!).getByText("Couldn't copy")).toBeVisible();
 });
-it('LIB-3.5: Session chips select live Sessions, resume through History’s Starting row, Show blocked ones, and never act for pruned ones', async () => {
+it('LIB-3.5: Session lines select live Sessions, resume through History’s Starting row, Show blocked ones, and never act for pruned ones', async () => {
   let finish: ((v: Awaited<ReturnType<ReturnType<typeof renderApp>['client']['resume']>>) => void) | undefined;
   const app = renderApp('/', { library: async () => ok([output({ sessions: [session(), session({ sessionId: 'live', title: 'Live writer' }), session({ sessionId: 'deleted', title: 'Deleted writer', blocked: 'transcript-missing' }), session({ sessionId: 'pruned-12345', pruned: true })] })]), resume: () => new Promise((r) => { finish = r; }) }); await open(app); app.snapshot([row({ id: 'live', title: 'Live writer' })]); fireEvent.click(await first());
+  fireEvent.click(within(panel()).getByRole('button', { name: '4 Sessions' })); fireEvent.click(within(panel()).getByRole('button', { name: 'Show all 4' }));
   await act(async () => { fireEvent.click(within(panel()).getByRole('button', { name: 'Open Live writer, Idle' })); }); expect(window.location.pathname).toBe('/s/live'); expect(app.client.resume).not.toHaveBeenCalled();
   await act(async () => { fireEvent.click(within(panel()).getByRole('button', { name: 'Show Deleted writer, past' })); }); expect(window.location.pathname).toBe('/h/claude/deleted');
   expect(within(panel()).queryByRole('button', { name: /pruned/ })).toBeNull();
