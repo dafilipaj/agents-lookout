@@ -21,7 +21,7 @@ import { type PickTarget, TopicPicker } from '@/components/TopicPicker';
 import { SuggestView } from '@/components/SuggestView';
 import { TopicGraph } from '@/components/TopicGraph';
 import { TopicView } from '@/components/TopicView';
-import { SpecView } from '@/components/SpecView';
+import { type ExamplesApi, SpecView } from '@/components/SpecView';
 import type { PrSpecsApi } from '@/lib/pr-specs';
 import type { PlainSource } from '@shared/plain.ts';
 import { ViewErrorBoundary } from '@/components/ViewErrorBoundary';
@@ -516,6 +516,11 @@ export function App({ client }: { client: LookoutClient }) {
   const saveChatSeen = useCallback((sessionId: string, seen: { cursor: string; at: number | null }, keepalive: boolean) => client.setChatSeen(sessionId, seen, keepalive), [client]);
   const readPlain = useCallback((source: PlainSource, p: string, fresh: boolean) => client.readPlain(source, p, fresh), [client]);
   const setPlainViewed = useCallback((source: PlainSource, p: string, key: string, viewed: boolean) => client.setPlainViewed(source, p, key, viewed), [client]);
+  // PLAIN-11: a Module's examples, offered on a Session's Checkout (a PR's in slice 2).
+  const plainExamples = useMemo<ExamplesApi>(
+    () => ({ load: (source, p) => client.plainExamples(source, p), start: (source, p) => client.startPlainExamples(source, p), cancel: () => client.cancelPlainExamples() }),
+    [client],
+  );
   // PLAIN-5: Work's "Specs" on a PR; a Module opens in the Spec view, and Back returns to what the main pane showed.
   const prSpecs = useMemo<PrSpecsApi>(
     () => ({
@@ -1191,6 +1196,7 @@ export function App({ client }: { client: LookoutClient }) {
                 setViewed={setPlainViewed}
                 onBack={() => navigate({ name: 'session', id: route.session })}
                 onOpenModule={(path, at) => navigate({ name: 'plain', session: route.session, checkout: route.checkout, path }, { hash: at ? specHash(at) : undefined })}
+                examples={plainExamples}
               />
             ) : route.name === 'plain-pr' ? (
               <SpecView

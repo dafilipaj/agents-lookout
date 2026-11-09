@@ -608,3 +608,85 @@ export interface PlainPrFiles {
   /** PLAIN-5.4: why the last fetch failed; the files are then an earlier fetch's, or none. Null when it worked. */
   error: string | null;
 }
+
+/** PLAIN-11.5: one picture of a group: a test's frame at one of its checks, with what it shows. */
+export interface PlainExampleFrame {
+  /** The JPEG's name in the Module's examples folder: its SHA-1 and `.jpg`. */
+  name: string;
+  /** The test's title, as the card's list names it. */
+  test: string;
+  caption: string;
+  /** PLAIN-11.17: its test failed after it, so the change may not be on it all. */
+  failed?: boolean;
+  /** PLAIN-11.17: what the change adds that the picture doesn't show yet, from what the failing step looked for. */
+  missing?: string | null;
+}
+
+/** PLAIN-11.3: a Playwright test that names a group's spec. */
+export interface PlainExampleTest {
+  title: string;
+  file: string;
+  line: number;
+  /** PLAIN-11.5: "Its test failed: …", or why it wasn't run (PLAIN-11.3); null when it passed. */
+  problem: string | null;
+}
+
+export type PlainPortVerdict = 'covered' | 'partly' | 'not found' | 'cut' | 'still in the spec';
+
+/** PLAIN-12.2: one port-doc row that names a group's spec, as written, and its verdict (PLAIN-12.3). */
+export interface PlainPortRow {
+  doc: string;
+  line: number;
+  capability: string;
+  /** keep, cut or change and the rest of its cell; a checklist's struck item reads `cut`. */
+  answer: string | null;
+  /** The old app's source: the `Ember`/`Legacy` column, or a checklist item's sources. */
+  source: string | null;
+  /** A capability table's Parity cell; a checklist item has none. */
+  parity: string | null;
+  verdict: PlainPortVerdict | null;
+  /** After `partly`: what's missing. */
+  missing: string | null;
+}
+
+/** PLAIN-11.9: a changed spec's card. */
+export interface PlainExample {
+  spec: string;
+  /** Null when there's none to show: refused by the quote check (`refused`) or not written. */
+  example: string | null;
+  /** PLAIN-11.8: why the example isn't shown. */
+  refused: string | null;
+  /** PLAIN-11.6: one sentence when the tests show another case than the change. */
+  shows: string | null;
+  frames: PlainExampleFrame[];
+  tests: PlainExampleTest[];
+  /** PLAIN-12.1: a port doc mentions the spec, by its id or in a range. */
+  ported: boolean;
+  /** PLAIN-12.4: the port docs that mention it in no row. */
+  mentionedIn: string[];
+  rows: PlainPortRow[];
+  /** PLAIN-11.12: its spec, tests or port docs changed since it was made. */
+  outOfDate: boolean;
+}
+
+/** PLAIN-11.12: a Module's examples, as kept. */
+export interface PlainExamples {
+  groups: PlainExample[];
+  /** The folder its frames are served from (PLAIN-11.10): a hash of the repo and the Module's path. */
+  key: string;
+  writtenAt: number;
+  model: string;
+  costUsd: number | null;
+  /** PLAIN-12.3: "40 of 52 rows checked". */
+  rowsChecked: number;
+  rowsTotal: number;
+}
+
+/** PLAIN-11.13: what the Spec view shows about a Module's examples. */
+export interface PlainExamplesAnswer {
+  examples: PlainExamples | null;
+  /** The run going in Lookout, if any: this Module's or another's. */
+  running: { module: string; mine: boolean; phase: 'tests' | 'writing'; tests: number } | null;
+  /** The last run of this Module failed: why. */
+  error: string | null;
+}

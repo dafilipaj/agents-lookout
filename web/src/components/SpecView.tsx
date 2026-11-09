@@ -1,9 +1,12 @@
-import { ABILITY_KEY, compareClauses, compareModules, definitionName, gist, parseClauses, PREDEFINED_CONCEPTS, wordDiff, type AbilityEntry, type AbilityLeafKind, type AbilityRule, type Clause, type Compared, type FunctionalSpec, type PlainAbility, type PlainAnswer, type PlainConcept, type PlainSource, type PlainSpecRef, type Touched } from '@shared/plain.ts';
-import { ArrowLeft, ChevronDown, ChevronRight, ChevronUp, ListChecks } from 'lucide-react';
+import { ABILITY_KEY, compareClauses, compareModules, definitionName, gist, parseClauses, PREDEFINED_CONCEPTS, wordDiff, type AbilityEntry, type AbilityLeafKind, type AbilityRule, type Clause, type Compared, type FunctionalSpec, type PlainAbility, type PlainAnswer, type PlainConcept, type PlainExample, type PlainExampleFrame, type PlainExamplesAnswer, type PlainExampleTest, type PlainPortRow, type PlainSource, type PlainSpecRef, type Touched } from '@shared/plain.ts';
+import { formatCost, modelName } from '@shared/topics.ts';
+import { ArrowLeft, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, ListChecks } from 'lucide-react';
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import { Alert } from '@/components/ui/alert';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Chip } from '@/components/ui/chip';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Button, ButtonDivider } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Loading } from '@/components/ui/loading';
@@ -12,6 +15,7 @@ import { Segmented, type SegmentedChoice } from '@/components/ui/segmented';
 import { SaveError } from '@/lib/client';
 import { type ChangeKind, firstLine, JUMP_MARGIN_PX, type Mark, stepMark } from '@/lib/marks';
 import { plainRoute, routePath, specHash } from '@/lib/router';
+import { formatAge, useNow } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { ActionIcon } from '@/lib/actions';
 import { ChatRail } from './ChatRail';
@@ -85,6 +89,32 @@ export interface SpecViewProps {
   onBack(): void;
   /** PLAIN-2.5: another Module of the same Checkout or PR, as a new history entry; PLAIN-7.2: at one of its specs. */
   onOpenModule(path: string, at?: string): void;
+  /** PLAIN-11: a Module's examples; absent where they aren't offered (a PR's Module, until slice 2). */
+  examples?: ExamplesApi;
+}
+
+/** PLAIN-11.1, 11.13: reading, starting and cancelling a Module's examples. */
+export interface ExamplesApi {
+  load(source: PlainSource, path: string): Promise<PlainExamplesAnswer>;
+  start(source: PlainSource, path: string): Promise<void>;
+  cancel(): Promise<void>;
+}
+
+/** PLAIN-11.13: while this Module's examples are made, they're read this often. */
+export const EXAMPLES_RUNNING_POLL_MS = 1500;
+
+/** PLAIN-11.10: a kept frame's address. */
+const frameUrl = (key: string, name: string) => `/api/plain/examples/frame?${new URLSearchParams({ key, name })}`;
+
+/** What Module needs to show the examples (PLAIN-11) and the port check (PLAIN-12). */
+interface ExamplesUi {
+  answer: PlainExamplesAnswer | null;
+  /** Why the last press was refused; cleared when a run ends. */
+  pressError: string | null;
+  /** A press is on its way: the wait shows at once, before any read says the run started. */
+  pressing: boolean;
+  onShow(): void;
+  onCancel(): void;
 }
 
 const SECTION_TITLES: Record<string, string> = { definitions: 'Definitions', 'implementation reqs': 'Implementation requirements', 'test reqs': 'Test requirements' };
@@ -148,7 +178,7 @@ function clauseTexts(c: Compared): Set<string> {
  * PLAIN-1 to 5: a Module of a live Session's Checkout or of a PR, whole, its change since the base
  * marked in place, other Modules' Concepts on hover, and its Viewed box.
  */
-export function SpecView({ source, path, backTo, load, setViewed, onBack, onOpenModule }: SpecViewProps) {
+export function SpecView({ source, path, backTo, load, setViewed, onBack, onOpenModule, examples }: SpecViewProps) {
   // The source by value: a new object for the same Checkout or PR never starts the reads over.
   const sourceKey = JSON.stringify(source);
   const src = useMemo(() => JSON.parse(sourceKey) as PlainSource, [sourceKey]);
@@ -246,6 +276,64 @@ export function SpecView({ source, path, backTo, load, setViewed, onBack, onOpen
 
   const compared = useMemo(() => (answer ? compare(answer) : null), [answer]);
   const hasChange = !!answer && !!compared && hasAnyChange(answer, compared);
+
+  // PLAIN-11.2: the changed functional specs, which examples are made for.
+  const hasGroups = !!compared && compared.module.specs.some((s) => s.state === 'added' || s.state === 'changed');
+  const [ex, setEx] = useState<PlainExamplesAnswer | null>(null);
+  const [pressError, setPressError] = useState<string | null>(null);
+  const [pressing, setPressing] = useState(false);
+  const [exRead, setExRead] = useState(0);
+  const exRunning = useRef(false);
+  const anyRunning = useRef(false);
+  useEffect(() => {
+    if (!examples || !hasGroups) return;
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const read = async () => {
+      try {
+        const next = await examples.load(src, path);
+        if (!alive) return;
+        exRunning.current = !!next.running?.mine;
+        // A refusal is about the run it met: once that run ends, the answer says the rest.
+        if (anyRunning.current && !next.running) setPressError(null);
+        anyRunning.current = !!next.running;
+        setEx((e) => (e && JSON.stringify(e) === JSON.stringify(next) ? e : next));
+      } catch {
+        // The Module's own read says what's wrong with it.
+      }
+      if (alive) timer = setTimeout(() => void read(), exRunning.current ? EXAMPLES_RUNNING_POLL_MS : SPEC_POLL_MS);
+    };
+    void read();
+    return () => {
+      alive = false;
+      if (timer) clearTimeout(timer);
+    };
+  }, [examples, hasGroups, src, path, exRead]);
+  const showExamples = useCallback(async () => {
+    if (!examples) return;
+    setPressError(null);
+    setPressing(true);
+    try {
+      await examples.start(src, path);
+    } catch (err) {
+      setPressError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPressing(false);
+    }
+    setExRead((n) => n + 1);
+  }, [examples, src, path]);
+  const cancelExamples = useCallback(async () => {
+    try {
+      await examples?.cancel();
+    } catch {
+      // The next read says how it ended.
+    }
+    setExRead((n) => n + 1);
+  }, [examples]);
+  const exUi = useMemo<ExamplesUi | undefined>(
+    () => (examples && hasGroups ? { answer: ex, pressError, pressing, onShow: () => void showExamples(), onCancel: () => void cancelExamples() } : undefined),
+    [examples, hasGroups, ex, pressError, pressing, showExamples, cancelExamples],
+  );
   // PLAIN-10.3: a Module with no change is Clean, with no switch; a change arriving later keeps you on Clean.
   if (answer && compared && !hasChange && chosen !== 'clean') setChosen('clean');
   const deleted = answer?.text === null;
@@ -570,6 +658,7 @@ export function SpecView({ source, path, backTo, load, setViewed, onBack, onOpen
               onFold={onFold}
               onOpenModule={onOpenModule}
               hrefOf={hrefOf}
+              examples={exUi}
             />
           </Reveal.Provider>
         )}
@@ -595,6 +684,8 @@ interface Ctx {
   onOpenModule?(path: string, at?: string): void;
   /** PLAIN-9.5: a spec's notes opened or closed, so the Marks are read again. */
   onFold?(): void;
+  /** PLAIN-11.9: the Module's kept examples, by spec id. */
+  examples?: { kept: NonNullable<PlainExamplesAnswer['examples']>; of: ReadonlyMap<string, PlainExample> };
 }
 
 function Module({
@@ -610,6 +701,7 @@ function Module({
   onFold,
   onOpenModule,
   hrefOf,
+  examples,
 }: {
   answer: PlainAnswer;
   compared: Compared;
@@ -628,6 +720,8 @@ function Module({
   onFold(): void;
   onOpenModule(path: string, at?: string): void;
   hrefOf(path: string): string;
+  /** PLAIN-11, 12: absent where examples aren't offered or nothing changed. */
+  examples?: ExamplesUi;
 }) {
   const mod = compared.module;
   const [allSpecs, setAllSpecs] = useState(false);
@@ -653,7 +747,9 @@ function Module({
   };
   const highlight = view !== 'clean';
   const fold = useMemo(() => (view === 'changes' ? { opened, onUnfold } : undefined), [view, opened, onUnfold]);
-  const ctx: Ctx = { own, specIds, specById, answer, justChanged, highlight, fold, onTerm, onFold, hrefOf, onOpenModule };
+  const kept = examples?.answer?.examples ?? null;
+  const exampleOf = useMemo(() => (kept ? new Map(kept.groups.map((g) => [g.spec, g])) : null), [kept]);
+  const ctx: Ctx = { own, specIds, specById, answer, justChanged, highlight, fold, onTerm, onFold, hrefOf, onOpenModule, examples: kept && exampleOf ? { kept, of: exampleOf } : undefined };
   const jump = useJump();
   const descState = descriptionState(answer, compared);
   const newOrGone = answer.text === null || answer.baseText === null;
@@ -800,6 +896,7 @@ function Module({
                 ))}
               </ul>
             )}
+            {examples && <ExamplesBar ui={examples} />}
           </section>
         )}
 
@@ -1314,6 +1411,7 @@ function Spec({ spec, ctx, run }: { spec: FunctionalSpec; ctx: Ctx; run?: string
         <h3 className="text-reading-title font-semibold tracking-tight">{specGist(spec)}</h3>
         <SpecChange spec={spec} highlight={ctx.highlight} className="text-meta" />
       </header>
+      {ctx.highlight && ctx.examples?.of.get(spec.id) && <ExampleCard example={ctx.examples.of.get(spec.id)!} kept={ctx.examples.kept} spec={spec} ctx={ctx} />}
       <ClauseList nodes={spec.clauses} ctx={ctx} inset={0} scope={spec.id} />
       {tests.length > 0 &&
         (testsFolded ? (
@@ -1816,4 +1914,251 @@ const asRemoved = (n: Clause): Clause => ({ ...n, state: 'removed', children: n.
 function stripName(n: Clause, i: number): Clause {
   if (i !== 0) return n;
   return { ...n, text: n.text.replace(/^:[^:]+:\s*/, ''), oldText: n.oldText?.replace(/^:[^:]+:\s*/, '') };
+}
+
+/** PLAIN-12.8: a spec's note that speaks of the old app. */
+const OLD_APP_NOTE = /\b(?:Ember|legacy|old app)\b|\.(?:gts|hbs)\b/i;
+
+/** PLAIN-11.9: a card's tests in one line: "2 Playwright tests: 1 passed, 1 failed". */
+function testsLine(tests: readonly PlainExampleTest[]): string {
+  const failed = tests.filter((t) => t.problem?.startsWith('Its test failed')).length;
+  const unrun = tests.filter((t) => t.problem && !t.problem.startsWith('Its test failed')).length;
+  const passed = tests.length - failed - unrun;
+  if (tests.length === 1) return `1 Playwright test: ${passed ? 'passed' : failed ? 'failed' : "didn't run"}`;
+  const parts = [passed && `${passed} passed`, failed && `${failed} failed`, unrun && `${unrun} didn't run`].filter(Boolean);
+  return `${tests.length} Playwright tests: ${parts.join(', ')}`;
+}
+
+const VERDICT_ORDER: readonly NonNullable<PlainPortRow['verdict']>[] = ['covered', 'partly', 'not found', 'cut', 'still in the spec'];
+/** PLAIN-12.4: the verdicts that need you, at full strength with their words; the others are quiet. */
+const NEEDS_LOOK: ReadonlySet<string> = new Set(['partly', 'not found', 'still in the spec']);
+
+/** PLAIN-11.1, 11.13, 12.5: the Changes card's part for examples: the press, the wait, the failure, the port's tally. */
+function ExamplesBar({ ui }: { ui: ExamplesUi }) {
+  const a = ui.answer;
+  const kept = a?.examples ?? null;
+  const running = a?.running ?? null;
+  const tally = new Map<string, number>();
+  for (const g of kept?.groups ?? []) for (const r of g.rows) if (r.verdict) tally.set(r.verdict, (tally.get(r.verdict) ?? 0) + 1);
+  const port = VERDICT_ORDER.filter((v) => tally.get(v)).map((v) => `${tally.get(v)} ${v}`);
+  const error = ui.pressError ?? a?.error ?? null;
+  return (
+    <div className="flex flex-col gap-2 border-t border-border pt-2" data-slot="spec-examples-bar">
+      {port.length > 0 && (
+        <p className="text-meta text-muted-foreground" data-field="spec-port-tally">
+          Port: {port.join(' · ')}
+          {kept && kept.rowsTotal > kept.rowsChecked && ` (${kept.rowsChecked} of ${kept.rowsTotal} rows checked)`}
+        </p>
+      )}
+      {running?.mine || ui.pressing ? (
+        <Loading
+          label={
+            running?.phase === 'writing'
+              ? 'Writing examples…'
+              : running && running.tests > 0
+                ? `Running ${plural(running.tests, 'Playwright test', 'Playwright tests')}…`
+                : 'Finding the Playwright tests…'
+          }
+          // Cancel is there from the start, as a summary's is (TOPIC-11.6).
+          hintAfter={0}
+          action={
+            <Button type="button" variant="quiet" size="line" onClick={ui.onCancel} data-field="spec-examples-cancel">
+              Cancel
+            </Button>
+          }
+        />
+      ) : (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="soft"
+            size="line"
+            onClick={ui.onShow}
+            disabled={!!running}
+            title={running ? `Examples for ${running.module} are being made` : 'Runs the Playwright tests that name each changed spec, and writes an example of each with Claude'}
+            data-field="spec-examples-show"
+          >
+            {kept ? 'Show examples again' : 'Show examples'}
+          </Button>
+        </div>
+      )}
+      {error && !running?.mine && <Alert title={error} data-field="spec-examples-error" />}
+    </div>
+  );
+}
+
+/** PLAIN-11.9 to 11.11, 12.4: a changed spec's card: its picture, its example, its tests, the old app's rows. */
+function ExampleCard({ example: g, kept, spec, ctx }: { example: PlainExample; kept: NonNullable<PlainExamplesAnswer['examples']>; spec: FunctionalSpec; ctx: Ctx }) {
+  const now = useNow(60_000);
+  const oldNotes = spec.notes.filter((n) => n.state !== 'removed' && OLD_APP_NOTE.test(n.text));
+  const [open, setOpen] = useState<number | null>(null);
+  // A newer answer may hold fewer frames than the one the dialog was opened on: it closes, for good.
+  const at = open !== null && open < g.frames.length ? open : null;
+  if (open !== null && at === null) setOpen(null);
+  const first = g.frames[0];
+  const tests = g.tests.length;
+  return (
+    <section aria-label={`Example of ${g.spec}`} className="@container grid gap-3 rounded-md bg-muted p-3 font-sans" data-slot="spec-example" data-spec={g.spec}>
+      <div className={cn('grid gap-3', first && '@min-[36rem]:grid-cols-[12.5rem_minmax(0,1fr)]')}>
+        {first && (
+          <figure className="flex min-w-0 flex-col gap-1.5">
+            <button
+              type="button"
+              onClick={() => setOpen(0)}
+              className="overflow-hidden rounded border border-border"
+              aria-label={`Show ${g.spec}'s pictures large`}
+              data-field="spec-example-picture"
+            >
+              <img src={frameUrl(kept.key, first.name)} alt={first.caption} className="block w-full" />
+            </button>
+            <figcaption className="text-meta text-muted-foreground">
+              {first.caption}
+              <NotThereYet frame={first} />
+            </figcaption>
+          </figure>
+        )}
+        <div className="flex min-w-0 flex-col gap-2">
+          {(g.example || g.outOfDate) && (
+            <div className="flex flex-wrap items-center gap-2">
+              {g.example && <span className="text-meta font-medium text-muted-foreground">Example</span>}
+              {g.outOfDate && (
+                <Chip tone="info" data-field="spec-example-stale">
+                  Out of date
+                </Chip>
+              )}
+            </div>
+          )}
+          {g.example ? (
+            <p className="text-prose" data-field="spec-example-text">
+              {g.example}
+            </p>
+          ) : g.refused ? (
+            <p className="text-meta text-muted-foreground" data-field="spec-example-refused">
+              {g.refused}
+            </p>
+          ) : (
+            spec.tests.length > 0 && (
+              <p className="text-meta text-muted-foreground" data-field="spec-example-own-tests">
+                Its acceptance tests, below, walk through it.
+              </p>
+            )
+          )}
+          {g.shows && <p className="text-meta text-muted-foreground" data-field="spec-example-shows">{g.shows}</p>}
+          {tests === 0 ? (
+            <p className="text-meta text-muted-foreground" data-field="spec-example-no-test">No Playwright test names {g.spec}</p>
+          ) : (
+            <p className="text-meta text-muted-foreground" title={g.tests.map((t) => [t.title, `${t.file}:${t.line}`, t.problem].filter(Boolean).join(' · ')).join('\n')} data-field="spec-example-tests">
+              {testsLine(g.tests)}
+            </p>
+          )}
+          {g.example && (
+            <p className="text-meta text-muted-foreground" data-field="spec-example-by">
+              {[`Written by Claude from ${g.spec}${tests ? ` and its ${tests === 1 ? 'test' : 'tests'}` : ''}`, modelName(kept.model), kept.costUsd === null ? null : formatCost(kept.costUsd), `${formatAge(now - kept.writtenAt)} ago`].filter(Boolean).join(' · ')}
+            </p>
+          )}
+        </div>
+      </div>
+      {(g.ported || oldNotes.length > 0) && <OldApp example={g} notes={oldNotes} ctx={ctx} />}
+      {at !== null && <FramesDialog example={g} kept={kept} at={at} onAt={setOpen} onClose={() => setOpen(null)} />}
+    </section>
+  );
+}
+
+/** PLAIN-12.4: the port docs' rows for a spec, as written, each with its verdict. */
+function OldApp({ example: g, notes, ctx }: { example: PlainExample; notes: readonly Clause[]; ctx: Ctx }) {
+  return (
+    <div className="flex flex-col gap-1.5 border-t border-border pt-2" data-field="spec-example-old-app">
+      <h4 className="text-meta font-medium text-muted-foreground">The old app</h4>
+      {!g.ported ? (
+        <p className="text-meta text-muted-foreground" data-field="spec-example-no-port-doc">
+          No port doc covers {g.spec}
+        </p>
+      ) : g.rows.length === 0 ? (
+        <p className="text-meta text-muted-foreground" data-field="spec-example-no-row">
+          No port-doc row names {g.spec}
+          {g.mentionedIn.length > 0 && `; ${g.mentionedIn.map((d) => d.split('/').pop()).join(', ')} ${g.mentionedIn.length === 1 ? 'mentions' : 'mention'} it`}
+        </p>
+      ) : (
+        <ul className="flex flex-col gap-1.5">
+          {g.rows.map((r) => (
+            <li key={`${r.doc}:${r.line}`} className="flex min-w-0 flex-col gap-0.5" title={`${r.doc}:${r.line}`} data-field="spec-example-row" data-verdict={r.verdict ?? ''}>
+              <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+                <span className="min-w-0 text-prose break-words">{r.capability}</span>
+                {r.verdict && (
+                  <span className={cn('text-meta font-medium', NEEDS_LOOK.has(r.verdict) ? 'text-foreground' : 'text-muted-foreground')} data-field="spec-example-verdict">
+                    {r.verdict}
+                  </span>
+                )}
+              </span>
+              {r.missing && <span className="text-meta text-foreground">Missing: {r.missing}</span>}
+              {(r.answer || r.parity || r.source) && (
+                <span className="text-meta break-words text-muted-foreground">{[r.answer, r.parity && `Parity: ${r.parity}`, r.source].filter(Boolean).join(' · ')}</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {/* PLAIN-12.8: the spec's own notes about the old app, which sit behind a button under it. */}
+      {notes.length > 0 && (
+        <div className="flex flex-col gap-1" data-field="spec-example-old-notes">
+          <h5 className="text-meta text-muted-foreground">From its notes</h5>
+          {notes.map((n, k) => (
+            <p key={k} className="min-w-0 text-meta break-words text-muted-foreground">
+              <Inline text={n.text} ctx={ctx} />
+            </p>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** PLAIN-11.17: under a picture from a test that failed, what the change adds that it doesn't show yet. */
+function NotThereYet({ frame }: { frame: PlainExampleFrame }) {
+  if (!frame.failed) return null;
+  return (
+    <span className="block text-foreground" data-field="spec-example-not-yet">
+      {frame.missing ? `Not there yet: ${frame.missing}` : 'Its test failed after this picture.'}
+    </span>
+  );
+}
+
+/** PLAIN-11.10: a spec's frames large, each with its caption and its test, ←/→ between them. */
+function FramesDialog({ example: g, kept, at, onAt, onClose }: { example: PlainExample; kept: NonNullable<PlainExamplesAnswer['examples']>; at: number; onAt(n: number): void; onClose(): void }) {
+  const f = g.frames[at]!;
+  const n = g.frames.length;
+  const go = (d: number) => onAt((at + d + n) % n);
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent
+        // 1000 px, 30% over the 768 px it had (Dario, 2026-11-09); the frames are 800 px, so past that they stretch.
+        className="gap-3 p-4 sm:max-w-[62.5rem]"
+        data-field="spec-example-frames"
+        onKeyDown={(e) => {
+          if (n < 2 || (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft')) return;
+          e.preventDefault();
+          go(e.key === 'ArrowRight' ? 1 : -1);
+        }}
+      >
+        <DialogTitle className="text-body font-semibold">
+          {g.spec} · {f.caption}
+        </DialogTitle>
+        <DialogDescription className="text-meta text-muted-foreground">
+          From the Playwright test “{f.test}”{n > 1 ? ` · ${at + 1} of ${n}` : ''}
+          <NotThereYet frame={f} />
+        </DialogDescription>
+        <img src={frameUrl(kept.key, f.name)} alt={f.caption} className="block w-full rounded border border-border" />
+        {n > 1 && (
+          <div className="flex items-center justify-end gap-1">
+            <IconButton label="Previous picture" onClick={() => go(-1)}>
+              <ChevronLeft />
+            </IconButton>
+            <IconButton label="Next picture" onClick={() => go(1)}>
+              <ChevronRight />
+            </IconButton>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
 }

@@ -28,8 +28,12 @@ const SOURCES = Object.fromEntries(
  * Lookout's own mark, the Lens, is a brand like the Harness logos (0014, DS-14.1).
  * The chat rail's Marks are CSS shapes and need no entry.
  */
-/** DS-8.5 (0012): the one component that renders an `<img>`: a person's avatar, never an icon. */
-const IMG_FILES = new Set(['web/src/components/ui/avatar.tsx']);
+/** DS-8.5 (0012): the components that render an `<img>`, and how many: a person's avatar, and a spec's example picture and its frames large (PLAIN-11.9, 11.10), never an icon. */
+const IMG_COUNTS = new Map([
+  ['web/src/components/ui/avatar.tsx', 1],
+  ['web/src/components/SpecView.tsx', 2],
+]);
+const IMG_FILES = new Set(IMG_COUNTS.keys());
 
 const SVG_FILES = new Set(['web/src/components/HarnessIcon.tsx', 'web/src/components/StatusMarker.tsx', 'web/src/components/SessionItem.tsx', 'web/src/components/TopicGraph.tsx', 'web/src/components/ui/lookout-mark.tsx']);
 
@@ -285,12 +289,12 @@ describe('icons', () => {
     expect(img('const a = <span role="img" aria-label="x" />; const b = <Image />; const c = "<img>";')).toBe(0);
   });
 
-  it('DS-8.5: only the Avatar renders an <img>', () => {
+  it('DS-8.5: only the Avatar and the Spec view\'s example pictures render an <img>', () => {
     expect(Object.keys(SOURCES)).toEqual(expect.arrayContaining([...IMG_FILES]));
     const found = Object.entries(SOURCES)
       .filter(([path]) => !path.endsWith('.css') && !IMG_FILES.has(path))
       .flatMap(([path, text]) => iconSources(text, path).img.map((s) => `${path}:${s}`));
     expect(found).toEqual([]);
-    for (const path of IMG_FILES) expect(iconSources(SOURCES[path]!, path).img.length, path).toBe(1);
+    for (const [path, n] of IMG_COUNTS) expect(iconSources(SOURCES[path]!, path).img.length, path).toBe(n);
   });
 });

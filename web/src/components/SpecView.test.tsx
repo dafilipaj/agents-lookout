@@ -1,5 +1,5 @@
-import type { PlainAnswer } from '@shared/plain.ts';
-import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import type { PlainAnswer, PlainExample, PlainExamples, PlainExamplesAnswer } from '@shared/plain.ts';
+import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SaveError } from '@/lib/client';
@@ -243,7 +243,7 @@ describe('the Spec view', () => {
 });
 
 describe("other Modules' Concepts", () => {
-  it('PLAIN-2.2, 2.3: hovering or focusing a Concept from another Module shows its definition, its Module, and its change in this branch', async () => {
+  it('PLAIN-2.2, PLAIN-2.3: hovering or focusing a Concept from another Module shows its definition, its Module, and its change in this branch', async () => {
     const user = userEvent.setup();
     open();
     await screen.findByText('Rate cards on a Deal.');
@@ -584,7 +584,7 @@ describe('reading and stepping through a change', () => {
     delete (HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView;
   });
 
-  it('PLAIN-8.5, 8.6: a deleted description is a change; a read that renumbers the changes lets go of the hold; Space on a link scrolls', async () => {
+  it('PLAIN-8.5, PLAIN-8.6: a deleted description is a change; a read that renumbers the changes lets go of the hold; Space on a link scrolls', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     fakeLayout({ c0: 100, c1: 300, c2: 500, c3: 900 });
     const emptied = answer({ text: TEXT.replace('description: Rate cards on a Deal.\n', '') });
@@ -1095,5 +1095,247 @@ describe('one view switch', () => {
     act(() => (document.activeElement as HTMLElement).blur());
     await user.keyboard('c123');
     expect(chosen()).toBe('Clean');
+  });
+});
+
+const EXAMPLE_KEY = 'e'.repeat(64);
+function kept(over: Partial<PlainExample> = {}, more: Partial<PlainExamples> = {}): PlainExamplesAnswer {
+  return {
+    examples: {
+      key: EXAMPLE_KEY,
+      writtenAt: Date.now() - 2 * 60 * 60 * 1000,
+      model: 'claude-sonnet-5-5',
+      costUsd: 0.04,
+      rowsChecked: 2,
+      rowsTotal: 2,
+      groups: [
+        {
+          spec: '§1.2',
+          example: 'You open Acme\'s rate card and delete a rate; it leaves the table.',
+          refused: null,
+          shows: null,
+          frames: [
+            { name: `${'a'.repeat(40)}.jpg`, test: '§1.2 a rate can be deleted', caption: 'The rate card with two rates' },
+            { name: `${'b'.repeat(40)}.jpg`, test: '§1.2 a rate can be deleted', caption: 'The rate is gone' },
+          ],
+          tests: [{ title: '§1.2 a rate can be deleted', file: 'e2e/rates.spec.ts', line: 12, problem: null }],
+          ported: true,
+          mentionedIn: [],
+          rows: [
+            { doc: 'knowledge/port/rates.md', line: 7, capability: 'Delete a rate', answer: 'keep', source: 'rates.gts:40', parity: null, verdict: 'covered', missing: null },
+            { doc: 'knowledge/port/rates.md', line: 8, capability: 'Undo a deleted rate', answer: 'keep', source: 'undo.ts:3', parity: '⚠️ partial', verdict: 'partly', missing: 'It says nothing of Undo.' },
+          ],
+          outOfDate: false,
+          ...over,
+        },
+      ],
+      ...more,
+    },
+    running: null,
+    error: null,
+  };
+}
+
+describe('each change beside what it does (PLAIN-11, 12)', () => {
+  const card = () => document.querySelector<HTMLElement>('[data-slot="spec-example"]');
+
+  it('PLAIN-11.1: the Changes card offers "Show examples"; nothing makes them on its own; a press starts them for this Module', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const { app } = open();
+    const show = await screen.findByRole('button', { name: 'Show examples' });
+    await act(async () => vi.advanceTimersByTime(SPEC_POLL_MS * 2));
+    expect(app.client.startPlainExamples).not.toHaveBeenCalled();
+    await act(async () => show.click());
+    expect(app.client.startPlainExamples).toHaveBeenCalledWith(SRC, 'plain/rates.plain');
+    vi.useRealTimers();
+  });
+
+  it('PLAIN-11.1: a Module with examples offers "Show examples again"; one with no changed spec offers nothing', async () => {
+    open({}, { plainExamples: async () => kept() });
+    expect(await screen.findByRole('button', { name: 'Show examples again' })).toBeTruthy();
+    cleanup();
+    const { app } = open({ text: BASE });
+    await waitFor(() => expect(module()).not.toBeNull());
+    expect(screen.queryByRole('button', { name: /Show examples/ })).toBeNull();
+    expect(app.client.plainExamples).not.toHaveBeenCalled();
+  });
+
+  it("PLAIN-11.9: in Changes and Whole a changed spec's card sits between its heading and its clauses: picture, example, tests, who wrote it; Clean has none; a card is no change", async () => {
+    open({}, { plainExamples: async () => kept() });
+    await waitFor(() => expect(card()).not.toBeNull());
+    const spec = card()!.closest('article')!;
+    expect(spec.getAttribute('data-spec-id')).toBe('§1.2');
+    expect(card()!.previousElementSibling!.matches('[data-spec-head]')).toBe(true);
+    expect(within(card()!).getByText("You open Acme's rate card and delete a rate; it leaves the table.")).toBeTruthy();
+    expect(within(card()!).getByRole('img', { name: 'The rate card with two rates' }).getAttribute('src')).toBe(`/api/plain/examples/frame?key=${EXAMPLE_KEY}&name=${'a'.repeat(40)}.jpg`);
+    const testsLine = card()!.querySelector('[data-field="spec-example-tests"]')!;
+    expect(testsLine.textContent).toBe('1 Playwright test: passed');
+    expect(testsLine.getAttribute('title')).toBe('§1.2 a rate can be deleted · e2e/rates.spec.ts:12');
+    expect(card()!.querySelector('[data-field="spec-example-by"]')!.textContent).toBe('Written by Claude from §1.2 and its test · Sonnet 5.5 · $0.04 · 2h ago');
+    expect(card()!.querySelector('[data-change]')).toBeNull();
+    choose('Whole');
+    expect(card()).not.toBeNull();
+    choose('Clean');
+    expect(card()).toBeNull();
+  });
+
+  it('PLAIN-11.10: the picture opens the frames large, each with its caption and test; ←/→ step; Esc closes', async () => {
+    const user = userEvent.setup();
+    open({}, { plainExamples: async () => kept() });
+    await waitFor(() => expect(card()).not.toBeNull());
+    await user.click(within(card()!).getByRole('button', { name: "Show §1.2's pictures large" }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('§1.2 · The rate card with two rates')).toBeTruthy();
+    expect(within(dialog).getByText('From the Playwright test “§1.2 a rate can be deleted” · 1 of 2')).toBeTruthy();
+    await user.keyboard('{ArrowRight}');
+    expect(within(screen.getByRole('dialog')).getByText('§1.2 · The rate is gone')).toBeTruthy();
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
+  it('PLAIN-11.10: a newer answer with fewer frames closes the dialog rather than breaking the view', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    let state = kept();
+    open({}, { plainExamples: async () => state });
+    await waitFor(() => expect(card()).not.toBeNull());
+    await user.click(within(card()!).getByRole('button', { name: "Show §1.2's pictures large" }));
+    await user.keyboard('{ArrowRight}');
+    expect(within(screen.getByRole('dialog')).getByText('§1.2 · The rate is gone')).toBeTruthy();
+    state = kept({ frames: kept().examples!.groups[0]!.frames.slice(0, 1) });
+    await act(async () => vi.advanceTimersByTime(SPEC_POLL_MS + 10));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(card()).not.toBeNull();
+    // Closed for good: a later answer with the frame back doesn't open it again.
+    state = kept();
+    await act(async () => vi.advanceTimersByTime(SPEC_POLL_MS + 10));
+    await waitFor(() => expect(document.querySelector('[data-field="spec-example-picture"]')).not.toBeNull());
+    expect(screen.queryByRole('dialog')).toBeNull();
+    vi.useRealTimers();
+  });
+
+  it('PLAIN-11.17: a picture from a test that failed says what the change adds that it doesn\'t show yet, in the card and the dialog', async () => {
+    const user = userEvent.setup();
+    const [a, b] = kept().examples!.groups[0]!.frames;
+    open({}, { plainExamples: async () => kept({ frames: [{ ...a!, failed: true, missing: 'the "Undo" link under the table' }, { ...b!, failed: true, missing: null }] }) });
+    await waitFor(() => expect(card()).not.toBeNull());
+    expect(card()!.querySelector('figcaption')!.textContent).toBe('The rate card with two ratesNot there yet: the "Undo" link under the table');
+    await user.click(within(card()!).getByRole('button', { name: "Show §1.2's pictures large" }));
+    expect(within(await screen.findByRole('dialog')).getByText('Not there yet: the "Undo" link under the table')).toBeTruthy();
+    await user.keyboard('{ArrowRight}');
+    expect(within(screen.getByRole('dialog')).getByText('Its test failed after this picture.')).toBeTruthy();
+    cleanup();
+    open({}, { plainExamples: async () => kept() });
+    await waitFor(() => expect(card()).not.toBeNull());
+    expect(document.querySelector('[data-field="spec-example-not-yet"]')).toBeNull();
+  });
+
+  it("PLAIN-11.9: a spec with acceptance tests points at them in place of an example; its tests are one line, failures counted", async () => {
+    const withTests = TEXT.replace('- A rate can be deleted by :Mystery:.', '- A rate can be deleted by :Mystery:.\n\n***acceptance tests***\n\n- Deleting a rate removes its row.');
+    const [t] = kept().examples!.groups[0]!.tests;
+    open(
+      { text: withTests },
+      { plainExamples: async () => kept({ example: null, tests: [t!, { ...t!, title: '§1.2 a rate asks first', line: 30, problem: 'Its test failed: TimeoutError: locator.click' }] }) },
+    );
+    await waitFor(() => expect(card()).not.toBeNull());
+    expect(within(card()!).getByText('Its acceptance tests, below, walk through it.')).toBeTruthy();
+    expect(within(card()!).queryByText('Example')).toBeNull();
+    expect(card()!.querySelector('[data-field="spec-example-by"]')).toBeNull();
+    const line = card()!.querySelector('[data-field="spec-example-tests"]')!;
+    expect(line.textContent).toBe('2 Playwright tests: 1 passed, 1 failed');
+    expect(line.getAttribute('title')).toBe('§1.2 a rate can be deleted · e2e/rates.spec.ts:12\n§1.2 a rate asks first · e2e/rates.spec.ts:30 · Its test failed: TimeoutError: locator.click');
+  });
+
+  it("PLAIN-12.8: the old app from the spec's own notes, under \"From its notes\"; a spec no port doc covers says so", async () => {
+    const withNotes = TEXT.replace('- A rate can be deleted by :Mystery:.', '- A rate can be deleted by :Mystery:.\n\n> Ember parity (rate-row.gts): the old app greys the button.\n\n> A note about pricing.');
+    open({ text: withNotes }, { plainExamples: async () => kept({ ported: false, rows: [] }) });
+    await waitFor(() => expect(card()).not.toBeNull());
+    const old = card()!.querySelector<HTMLElement>('[data-field="spec-example-old-app"]')!;
+    expect(within(old).getByText('No port doc covers §1.2')).toBeTruthy();
+    expect(within(old).getByText('From its notes')).toBeTruthy();
+    expect(old.querySelector('[data-field="spec-example-old-notes"]')!.textContent).toBe('From its notesEmber parity (rate-row.gts): the old app greys the button.');
+    cleanup();
+    open({}, { plainExamples: async () => kept({ ported: false, rows: [] }) });
+    await waitFor(() => expect(card()).not.toBeNull());
+    expect(card()!.querySelector('[data-field="spec-example-old-app"]')).toBeNull();
+  });
+
+  it("PLAIN-11.11, PLAIN-11.8, PLAIN-11.12: a refused example says why; a spec no test names says so; an out-of-date card says so", async () => {
+    open({}, { plainExamples: async () => kept({ example: null, refused: "Claude's example quoted words the spec doesn't have, so it isn't shown.", frames: [], tests: [], outOfDate: true, shows: 'The tests show another Deal.' }) });
+    await waitFor(() => expect(card()).not.toBeNull());
+    expect(within(card()!).getByText("Claude's example quoted words the spec doesn't have, so it isn't shown.")).toBeTruthy();
+    expect(within(card()!).getByText('No Playwright test names §1.2')).toBeTruthy();
+    expect(within(card()!).getByText('Out of date')).toBeTruthy();
+    expect(within(card()!).getByText('The tests show another Deal.')).toBeTruthy();
+    expect(within(card()!).queryByRole('img')).toBeNull();
+  });
+
+  it("PLAIN-11.13: while this Module's run goes the card shows the wait with Cancel; another Module's run disables the press; a failure says why", async () => {
+    const answers: PlainExamplesAnswer[] = [{ ...kept(), running: { module: 'plain/rates.plain', mine: true, phase: 'tests', tests: 2 } }];
+    const { app } = open({}, { plainExamples: async () => answers[0]! });
+    expect(await screen.findByText('Running 2 Playwright tests…')).toBeTruthy();
+    await act(async () => screen.getByRole('button', { name: 'Cancel' }).click());
+    expect(app.client.cancelPlainExamples).toHaveBeenCalled();
+    cleanup();
+    open({}, { plainExamples: async () => ({ examples: null, running: { module: 'plain/other.plain', mine: false, phase: 'writing', tests: 0 }, error: null }) });
+    const show = await screen.findByRole('button', { name: 'Show examples' });
+    expect((show as HTMLButtonElement).disabled).toBe(true);
+    expect(show.getAttribute('title')).toBe('Examples for plain/other.plain are being made');
+    cleanup();
+    open({}, { plainExamples: async () => ({ examples: null, running: null, error: 'It reached the $0.50 limit and was stopped.' }) });
+    expect(await screen.findByText('It reached the $0.50 limit and was stopped.')).toBeTruthy();
+  });
+
+  it("PLAIN-11.13: before the tests are found the wait says so, from the press on; a refused press's Alert goes when the run it met ends", async () => {
+    open({}, { plainExamples: async () => ({ examples: null, running: { module: 'plain/rates.plain', mine: true, phase: 'tests', tests: 0 }, error: null }) });
+    expect(await screen.findByText('Finding the Playwright tests…')).toBeTruthy();
+    cleanup();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let state: PlainExamplesAnswer = { examples: null, running: null, error: null };
+    let refuse!: (e: Error) => void;
+    open({}, { plainExamples: async () => state, startPlainExamples: () => new Promise<void>((_, reject) => (refuse = reject)) });
+    const show = await screen.findByRole('button', { name: 'Show examples' });
+    await act(async () => show.click());
+    expect(screen.getByText('Finding the Playwright tests…')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Show examples' })).toBeNull();
+    state = { examples: null, running: { module: 'plain/other.plain', mine: false, phase: 'tests', tests: 0 }, error: null };
+    await act(async () => refuse(new Error('Examples for plain/other.plain are being made.')));
+    expect(await screen.findByText('Examples for plain/other.plain are being made.')).toBeTruthy();
+    state = { examples: null, running: null, error: null };
+    await act(async () => vi.advanceTimersByTime(SPEC_POLL_MS + 10));
+    await waitFor(() => expect(screen.queryByText('Examples for plain/other.plain are being made.')).toBeNull());
+    expect((screen.getByRole('button', { name: 'Show examples' }) as HTMLButtonElement).disabled).toBe(false);
+    vi.useRealTimers();
+  });
+
+  it("PLAIN-12.5: after a run the Changes card counts the verdicts, only the kinds it has, and the rows left unchecked", async () => {
+    open({}, { plainExamples: async () => kept({}, { rowsChecked: 2, rowsTotal: 5 }) });
+    expect(await screen.findByText('Port: 1 covered · 1 partly (2 of 5 rows checked)')).toBeTruthy();
+    cleanup();
+    open({}, { plainExamples: async () => kept({ rows: [] }) });
+    await waitFor(() => expect(card()).not.toBeNull());
+    expect(document.querySelector('[data-field="spec-port-tally"]')).toBeNull();
+  });
+
+  it("PLAIN-12.4: the old app's rows under the example, a verdict that needs you at full strength; the Changes card counts them; a spec mentioned in no row says where", async () => {
+    open({}, { plainExamples: async () => kept() });
+    await waitFor(() => expect(card()).not.toBeNull());
+    const rows = card()!.querySelectorAll('[data-field="spec-example-row"]');
+    expect([...rows].map((r) => [r.getAttribute('data-verdict'), r.getAttribute('title')])).toEqual([
+      ['covered', 'knowledge/port/rates.md:7'],
+      ['partly', 'knowledge/port/rates.md:8'],
+    ]);
+    expect(rows[0]!.querySelector('[data-field="spec-example-verdict"]')!.className).toContain('text-muted-foreground');
+    expect(rows[1]!.querySelector('[data-field="spec-example-verdict"]')!.className).toContain('text-foreground');
+    expect(within(rows[1] as HTMLElement).getByText('Missing: It says nothing of Undo.')).toBeTruthy();
+    expect(within(rows[1] as HTMLElement).getByText('keep · Parity: ⚠️ partial · undo.ts:3')).toBeTruthy();
+    cleanup();
+    open({}, { plainExamples: async () => kept({ rows: [], mentionedIn: ['knowledge/port/rates.md'] }) });
+    await waitFor(() => expect(card()).not.toBeNull());
+    expect(within(card()!).getByText('No port-doc row names §1.2; rates.md mentions it')).toBeTruthy();
+    cleanup();
+    open({}, { plainExamples: async () => kept({ rows: [], ported: false }) });
+    await waitFor(() => expect(card()).not.toBeNull());
+    expect(card()!.querySelector('[data-field="spec-example-old-app"]')).toBeNull();
   });
 });

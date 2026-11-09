@@ -18,6 +18,7 @@ import { OUTPUT_HEADERS } from './output-files.ts';
 import { Avatars } from './avatars.ts';
 import { PathsError } from './files.ts';
 import { PlainError, type Plain } from './plain.ts';
+import type { PlainExamplesMaker } from './plain-examples.ts';
 import { ModelSwitchError, parseEffortRequest, parseModelRequest } from './model-switch.ts';
 import { RenameError, parseRenameRequest } from './renamer.ts';
 import { type FindQuery, HistoryError, parseFindQuery } from './history.ts';
@@ -96,6 +97,8 @@ export interface AppOptions {
   plain?: Pick<Plain, 'read' | 'setViewed' | 'viewedPaths' | 'prFiles'>;
   /** PLAIN-5.1, 5.4: the repos Lookout has a local clone of. */
   plainClones?: () => Promise<string[]>;
+  /** PLAIN-11, 12: a Module's examples and port check, made on a press. */
+  plainExamples?: Pick<PlainExamplesMaker, 'get' | 'frame' | 'start' | 'cancel'>;
   /** VIEW-13.1: what you saw of each Session's chat; optional, so a server without it answers 404. */
   chatSeen?: Pick<ChatSeen, 'get' | 'set'>;
   /** VIEW-1.18: which of a batch of paths are files, for one Session's file links (VIEW-1.17). */
@@ -536,6 +539,43 @@ export function createApp(opts: AppOptions): LookoutApp {
         if (err instanceof PlainError) return json(res, err.status, { error: err.message });
         throw err;
       }
+    }
+    // PLAIN-11.9, 11.12, 11.13: a Module's examples and the run's state. A read.
+    if (route === 'GET /api/plain/examples' && opts.plainExamples) {
+      const q = url.searchParams;
+      try {
+        return json(res, 200, await opts.plainExamples.get(plainSourceOf(q), q.get('path')));
+      } catch (err) {
+        if (err instanceof PlainError) return json(res, err.status, { error: err.message });
+        throw err;
+      }
+    }
+    // PLAIN-11.10: a kept frame, by the Module's key and its name; nothing else is served from there.
+    if (route === 'GET /api/plain/examples/frame' && opts.plainExamples) {
+      const bytes = await opts.plainExamples.frame(url.searchParams.get('key'), url.searchParams.get('name'));
+      if (!bytes) return json(res, 404, { error: 'No such picture.' });
+      res.writeHead(200, { ...SECURITY_HEADERS, 'content-type': 'image/jpeg', 'content-length': bytes.length, 'cache-control': 'private, max-age=86400, immutable' });
+      return void res.end(bytes);
+    }
+    // PLAIN-11.14: the press runs the Checkout's tests and `claude -p`: a mutation, so the token and
+    // Origin. The body names the Module only by its source and path (PLAIN-6.1).
+    if (route === 'POST /api/plain/examples' && opts.plainExamples) {
+      const body = await readJson(req, res, MAX_OPEN_CHANGE_BODY, null);
+      if (body === NO_BODY) return;
+      const b = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
+      try {
+        const source = b.repo !== undefined ? { kind: 'pr', repo: b.repo, number: b.pr } : { kind: 'session', session: b.session, checkout: b.checkout };
+        await opts.plainExamples.start(source, b.path);
+        return json(res, 202, { ok: true });
+      } catch (err) {
+        if (err instanceof PlainError) return json(res, err.status, { error: err.message });
+        throw err;
+      }
+    }
+    // PLAIN-11.13: Cancel stops the run going, whichever Module's.
+    if (route === 'POST /api/plain/examples/cancel' && opts.plainExamples) {
+      opts.plainExamples.cancel();
+      return json(res, 200, { ok: true });
     }
     const sendMatch = /^\/api\/sessions\/([^/]{1,200})\/send$/.exec(url.pathname);
     if (sendMatch && req.method === 'POST') {

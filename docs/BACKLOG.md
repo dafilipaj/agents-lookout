@@ -219,6 +219,12 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
 
 Discussed and decided against. Each keeps why, so it isn't proposed again without something new.
 
+### A picture of the old app beside a spec (PLAIN)
+
+- **What:** beside a changed spec, a screenshot of the old (Ember) app's view, for a port: taken by Lookout, or by a Session that opens the old app in a test org and saves it.
+- **Why dropped:** Lookout can't take one by itself: the old app needs a login, and Ember's acceptance tests name no `§` and run in QUnit after a build of minutes; no port doc holds an Ember screenshot. The port check in words (PLAIN-12) checks a port against the port doc's record of the old app instead.
+- **Added:** Dario, 2026-11-09, while speccing Plan item 38. **Dropped:** 2026-11-09, by Dario.
+
 ### Code diffs in the chat (VIEW)
 
 - **What:** an Edit or Write shown in the chat as what it changed (the Transcript's `old_string` and `new_string`, or its structured patch; Codex's `apply_patch`), not only as its tool-call line.

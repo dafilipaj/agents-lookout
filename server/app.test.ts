@@ -12,6 +12,7 @@ import { EndError } from './closer.ts';
 import type { FleetRow } from './fleet.ts';
 import { checkSessionPaths } from './files.ts';
 import { StopError, type StopTarget } from './ports-stop.ts';
+import { PlainError } from './plain.ts';
 import { HistoryError } from './history.ts';
 import { EFFORT_UNCERTAIN, MODEL_UNCERTAIN, ModelSwitchError } from './model-switch.ts';
 import { RenameError } from './renamer.ts';
@@ -46,6 +47,8 @@ let stops: string[] = [];
 let renamed: { sessionId: string; name: string }[] = [];
 let switched: ({ sessionId: string } & (ModelSwitchRequest | EffortSwitchRequest))[] = [];
 let serverStops: StopTarget[] = [];
+let examplePresses: unknown[][] = [];
+let exampleCancels = 0;
 
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'lookout-app-'));
@@ -63,6 +66,8 @@ beforeEach(async () => {
   renamed = [];
   switched = [];
   serverStops = [];
+  examplePresses = [];
+  exampleCancels = 0;
   const settings = new SettingsStore(join(dir, 'settings.json'));
   await settings.load();
   app = createApp({
@@ -157,6 +162,17 @@ beforeEach(async () => {
       },
     },
     memory: { snapshot: () => null, watch: () => () => {}, setOpen: () => {}, drop: () => {} },
+    plainExamples: {
+      get: async (source, path) => ({ examples: null, running: null, error: `read ${JSON.stringify(source)} ${String(path)}` }),
+      frame: async (key, name) => (key === 'k'.repeat(64) && name === `${'f'.repeat(40)}.jpg` ? Buffer.from('JPEG') : null),
+      start: async (source, path) => {
+        examplePresses.push([source, path]);
+        if (path === 'plain/none.plain') throw new PlainError(400, 'This Module has no changed functional spec.');
+      },
+      cancel: () => {
+        exampleCancels++;
+      },
+    },
     ports: {
       snapshot: () => null,
       watch: () => () => {},
@@ -523,6 +539,35 @@ describe('VIEW-5.6 route', () => {
     expect(JSON.parse((await end('{"pid":61001,"procStart":"--json"}')).body)).toEqual({ error: 'Invalid process start time.' });
     expect((await end(JSON.stringify({ pid: 1, procStart: 'x'.repeat(2000) }))).status).toBe(413);
     expect(ended).toEqual([]);
+  });
+});
+
+describe('PLAIN-11 routes', () => {
+  const json = { 'content-type': 'application/json' };
+  const press = (headers: Record<string, string>, body: unknown) => call('POST', '/api/plain/examples', { ...json, ...headers }, JSON.stringify(body));
+
+  it("PLAIN-11.14: the press runs the Checkout's tests, so it's a mutation: our Origin and the token; the body names the Module by its source and path", async () => {
+    const body = { session: 'a', checkout: '0123456789abcdef', path: 'plain/deals.plain' };
+    expect((await press({ 'x-lookout-token': TOKEN }, body)).status).toBe(403); // no Origin
+    expect((await press({ origin }, body)).status).toBe(403); // no token
+    expect((await press({ origin: 'https://evil.example', 'x-lookout-token': TOKEN }, body)).status).toBe(403);
+    expect(examplePresses).toEqual([]);
+    const res = await press({ origin, 'x-lookout-token': TOKEN }, body);
+    expect([res.status, JSON.parse(res.body)]).toEqual([202, { ok: true }]);
+    expect(examplePresses).toEqual([[{ kind: 'session', session: 'a', checkout: '0123456789abcdef' }, 'plain/deals.plain']]);
+    const refused = await press({ origin, 'x-lookout-token': TOKEN }, { ...body, path: 'plain/none.plain' });
+    expect([refused.status, JSON.parse(refused.body)]).toEqual([400, { error: 'This Module has no changed functional spec.' }]);
+    expect((await call('POST', '/api/plain/examples/cancel', { ...json }, '{}')).status).toBe(403);
+    expect((await call('POST', '/api/plain/examples/cancel', { ...json, origin, 'x-lookout-token': TOKEN }, '{}')).status).toBe(200);
+    expect(exampleCancels).toBe(1);
+  });
+
+  it("PLAIN-11.10, PLAIN-11.13: the examples are a read; a frame is served as a JPEG by its key and name, and nothing else", async () => {
+    const read = await call('GET', '/api/plain/examples?session=a&checkout=0123456789abcdef&path=plain%2Fdeals.plain');
+    expect(JSON.parse(read.body)).toEqual({ examples: null, running: null, error: 'read {"kind":"session","session":"a","checkout":"0123456789abcdef"} plain/deals.plain' });
+    const frame = await call('GET', `/api/plain/examples/frame?key=${'k'.repeat(64)}&name=${'f'.repeat(40)}.jpg`);
+    expect([frame.status, frame.body]).toEqual([200, 'JPEG']);
+    expect((await call('GET', `/api/plain/examples/frame?key=${'k'.repeat(64)}&name=answer.json`)).status).toBe(404);
   });
 });
 

@@ -1,7 +1,7 @@
 import type { LibraryPage, LibraryQuery } from '@shared/library.ts';
 import type { PathAnswer } from '@shared/files.ts';
 import type { StopResult, StopTarget } from '@shared/ports.ts';
-import type { PlainAnswer, PlainPrFiles, PlainSource } from '@shared/plain.ts';
+import type { PlainAnswer, PlainExamplesAnswer, PlainPrFiles, PlainSource } from '@shared/plain.ts';
 import type { Settings, SettingsView } from '@shared/settings.ts';
 import type { ToolsSnapshot } from '@shared/tools.ts';
 import type { ActivityEntry, NewMember, ProposalAccept, RecommendationAction, SuggestPreview, Topic, TopicOutcome, TopicPosition, TopicState, TopicSummary } from '@shared/topics.ts';
@@ -77,6 +77,12 @@ export interface LookoutClient {
   plainPr(repo: string, number: number, fresh: boolean): Promise<PlainPrFiles>;
   /** PLAIN-5.4: the repos Lookout has a local clone of. */
   plainClones(): Promise<string[]>;
+  /** PLAIN-11.9, 11.13: a Module's examples and the run going. */
+  plainExamples(source: PlainSource, path: string): Promise<PlainExamplesAnswer>;
+  /** PLAIN-11.1: "Show examples": starts the run; answers once it has started. */
+  startPlainExamples(source: PlainSource, path: string): Promise<void>;
+  /** PLAIN-11.13: Cancel. */
+  cancelPlainExamples(): Promise<void>;
   /** WORK-8.1: whether this tab has Work open, so the server reads only while some tab does. */
   watchWork(clientId: string, open: boolean): Promise<void>;
   /**
@@ -505,6 +511,14 @@ export function createHttpClient(): LookoutClient {
     plainPr: (repo, number, fresh) =>
       call<PlainPrFiles>(() => fetch(`/api/plain/pr?${new URLSearchParams({ repo, pr: String(number), ...(fresh ? { fresh: '1' } : {}) })}`), 'Reading the PR'),
     plainClones: async () => (await call<{ repos: string[] }>(() => fetch('/api/plain/clones'), 'Reading local clones')).repos,
+    plainExamples: (source, path) => call<PlainExamplesAnswer>(() => fetch(`/api/plain/examples?${new URLSearchParams({ ...plainQuery(source), path })}`), 'Reading examples'),
+    startPlainExamples: async (source, path) => {
+      const where = source.kind === 'pr' ? { repo: source.repo, pr: source.number } : { session: source.session, checkout: source.checkout };
+      await call(() => send('POST', '/api/plain/examples', { ...where, path }), 'Making examples');
+    },
+    cancelPlainExamples: async () => {
+      await call(() => send('POST', '/api/plain/examples/cancel', {}), 'Cancelling examples');
+    },
     checkPaths: async (sessionId, paths) =>
       (await call<{ paths: PathAnswer[] }>(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/paths`, { paths }), 'Checking paths')).paths,
     createTopic: async (title) => (await call<{ topic: Topic }>(() => send('POST', '/api/topics', { title }), 'Making the Topic')).topic,

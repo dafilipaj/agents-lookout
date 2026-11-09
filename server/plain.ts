@@ -161,6 +161,21 @@ export class Plain {
     };
   }
 
+  /**
+   * PLAIN-11: a Module as `read` reads it, for its examples: the tree, the real Checkout folder (null
+   * for a PR's commits), and its text now and at the base.
+   */
+  async module(source: unknown, path: unknown): Promise<{ tree: PlainTree; realRoot: string | null; path: string; text: string | null; baseText: string | null }> {
+    const src = plainSource(source);
+    const p = modulePath(path);
+    const { tree: c } = await this.tree(src, false);
+    const realRoot = c.headSha === null ? await this.realRoot(c) : null;
+    const text = await this.headText(c, realRoot, p);
+    const baseText = await this.baseText(c, p);
+    if (text === null && baseText === null) throw new PlainError(404, `${p} isn't in this Checkout or at its Branch point.`);
+    return { tree: c, realRoot, path: p, text, baseText };
+  }
+
   /** PLAIN-4.1, 4.2: ticks or clears a Module's Viewed mark for the text and base it was read with. */
   async setViewed(source: unknown, path: unknown, key: unknown, viewed: unknown): Promise<void> {
     const src = plainSource(source);

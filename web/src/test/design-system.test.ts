@@ -1411,6 +1411,7 @@ const HAND_MADE_BUTTONS: Exception[] = [
   { path: 'web/src/components/SpecView.tsx', fn: 'FoldLine', count: 1, reason: 'a disclosure: what Changes folds, shown in place (PLAIN-10.5)' },
   { path: 'web/src/components/SpecView.tsx', fn: 'Inline', count: 1, reason: 'an inline link: an ability key explained in place (PLAIN-7.5)' },
   { path: 'web/src/components/SpecView.tsx', fn: 'Term', count: 1, reason: 'an inline link: a term explained in place (PLAIN-7)' },
+  { path: 'web/src/components/SpecView.tsx', fn: 'ExampleCard', count: 1, reason: "a picture that opens a spec's frames large (PLAIN-11.10)" },
   { path: 'web/src/components/StatusMenu.tsx', fn: 'StatusMenu', count: 1, reason: "the status line's model and Effort menus (DS-7.3)" },
   { path: 'web/src/components/SubagentsButton.tsx', fn: 'SubagentsButton', count: 1, reason: "the status line's Subagents (VIEW-8, DS-7.3)" },
   { path: 'web/src/components/TopicGraph.tsx', fn: 'Canvas', count: 1, reason: "the Topic graph's Edge chip, on the line it names (TOPIC-6)" },
