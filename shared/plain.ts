@@ -685,8 +685,11 @@ export interface PlainExamples {
 /** PLAIN-11.13: what the Spec view shows about a Module's examples. */
 export interface PlainExamplesAnswer {
   examples: PlainExamples | null;
-  /** The run going in Lookout, if any: this Module's or another's. */
-  running: { module: string; mine: boolean; phase: 'tests' | 'writing'; tests: number } | null;
+  /**
+   * The run going in Lookout, if any: this Module's or another's. A PR's run first checks out its
+   * worktree and copies or installs its dependencies (PLAIN-11.15).
+   */
+  running: { module: string; mine: boolean; phase: 'worktree' | 'copying' | 'installing' | 'tests' | 'writing'; tests: number } | null;
   /** The last run of this Module failed: why. */
   error: string | null;
 }

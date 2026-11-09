@@ -30,6 +30,7 @@ import { SettingsStore, defaultSettingsPath, expandHome } from './settings.ts';
 import { trackStartDirectories } from './start-repos.ts';
 import { Changes } from './changes.ts';
 import { PlainExamplesMaker } from './plain-examples.ts';
+import { PlainWorktrees } from './plain-worktrees.ts';
 import { Plain } from './plain.ts';
 import { PlainPrs } from './plain-prs.ts';
 import { ToolsMonitor } from './tools.ts';
@@ -291,13 +292,17 @@ const suggester = new Suggester({
 });
 topics.suggester = suggester;
 
-// PLAIN-11, 12: a Module's examples and port check, made on a press; kept 30 days unused.
+// PLAIN-11, 12: a Module's examples and port check, made on a press; kept 30 days unused. A PR's
+// tests run in a worktree of its head (PLAIN-11.15); ones a run left behind go at start.
+const plainWorktrees = new PlainWorktrees({ runner: run, env });
+void plainWorktrees.prune();
 const plainExamples = new PlainExamplesMaker({
   plain,
   runner: run,
   claudeBin: async () => (await launcher.harnessFacts()).find((f) => f.id === 'claude' && f.installed)?.path ?? null,
   runDir: join(homedir(), '.lookout', 'claude-run'),
   env,
+  worktrees: plainWorktrees,
 });
 void plainExamples.prune();
 setInterval(() => void plainExamples.prune(), 24 * 60 * 60 * 1000).unref();

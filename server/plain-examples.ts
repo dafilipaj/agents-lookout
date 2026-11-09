@@ -17,7 +17,8 @@ import {
 } from '../shared/plain.ts';
 import type { RunError, Runner } from './exec.ts';
 import { cleanEnv } from './launcher.ts';
-import { PlainError, type Plain, type PlainTree } from './plain.ts';
+import { PlainError, plainSource, type Plain, type PlainTree } from './plain.ts';
+import { type PlainWorktrees, type WorktreePhase, withRepoNode } from './plain-worktrees.ts';
 import { resolveResBin } from './res.ts';
 import { sanitizeLine } from './sanitize.ts';
 import { CANT_READ, modelOf, object, oneShotArgs, parseJson, prose, resultError } from './summarizer.ts';
@@ -614,6 +615,8 @@ export interface PlainExamplesOptions {
   now?: () => number;
   /** Tells every tab a run started, moved on or ended (PLAIN-11.13). */
   onChange?: () => void;
+  /** PLAIN-11.15: a worktree of a PR's head to run its tests in; without it, a PR's Module is refused. */
+  worktrees?: Pick<PlainWorktrees, 'acquire'>;
   log?: (line: string) => void;
 }
 
@@ -621,7 +624,7 @@ interface Running {
   module: string;
   path: string;
   abort: AbortController;
-  phase: 'tests' | 'writing';
+  phase: WorktreePhase | 'tests' | 'writing';
   tests: number;
 }
 
@@ -643,10 +646,12 @@ export class PlainExamplesMaker {
     this.now = opts.now ?? Date.now;
   }
 
-  /** PLAIN-11.12: the folder a Module's examples are kept in, by its repo and path. */
-  /** PLAIN-11.12: per Checkout, since two branches can add the same `§` with different specs. */
+  /**
+   * PLAIN-11.12: the folder a Module's examples are kept in: per Checkout, since two branches can add
+   * the same `§` with different specs, and a PR's by its id, from its repo and number (PLAIN-11.15).
+   */
   moduleKey(tree: PlainTree, path: string): string {
-    return sha256(`${tree.commonDir}\u0000${tree.root}\u0000${path}`);
+    return sha256(`${tree.commonDir}\u0000${tree.headSha === null ? tree.root : `pr ${tree.id}`}\u0000${path}`);
   }
 
   /** PLAIN-11.9, 11.12, 11.13: a Module's examples, marked out of date where their inputs changed, and the run's state. */
@@ -662,13 +667,12 @@ export class PlainExamplesMaker {
       await this.save(key, kept).catch(() => {});
     }
     const groups = new Map(changedGroups(m.text, m.baseText).map((g) => [g.id, g]));
-    const root = m.realRoot;
     const out: PlainExample[] = [];
     for (const g of kept.groups) {
       const now = groups.get(g.spec);
       let outOfDate = true;
-      if (now && root) {
-        const files = await Promise.all([...g.testFiles, ...g.portDocs].map((f) => this.readIn(root, f)));
+      if (now) {
+        const files = await Promise.all([...g.testFiles, ...g.portDocs].map((f) => this.atHead(m.tree, m.realRoot, f)));
         outOfDate = fingerprint(now, files) !== g.fingerprint;
       }
       const { fingerprint: _f, testFiles: _t, portDocs: _p, ...shown } = g;
@@ -693,12 +697,14 @@ export class PlainExamplesMaker {
 
   /**
    * PLAIN-11.1, 11.13, 11.14: a press. Answers once the run has started; what can be told at once (no
-   * group, no Playwright, another run going, a PR's Module) is refused here.
+   * group, no Playwright, another run going) is refused here. A PR's worktree is made ready after
+   * the answer (PLAIN-11.15), so what goes wrong there is the run's failure.
    */
   async start(source: unknown, path: unknown): Promise<void> {
     if (this.running) throw new PlainError(409, `Examples for ${this.running.path} are being made.`);
     const m = await this.opts.plain.module(source, path);
-    if (m.tree.headSha !== null || !m.realRoot) throw new PlainError(400, "Examples for a PR's Module come in a later slice.");
+    const pr = m.tree.headSha !== null ? plainSource(source) : null;
+    if (pr ? pr.kind !== 'pr' || !this.opts.worktrees : !m.realRoot) throw new PlainError(400, "Lookout can't run this Module's tests.");
     const groups = changedGroups(m.text, m.baseText);
     if (!groups.length) throw new PlainError(400, 'This Module has no changed functional spec.');
     const key = this.moduleKey(m.tree, m.path);
@@ -708,24 +714,69 @@ export class PlainExamplesMaker {
     const abort = new AbortController();
     const running: Running = { module: key, path: m.path, abort, phase: 'tests', tests: 0 };
     this.running = running;
-    try {
-      const plan = await this.plan(m.tree, m.realRoot, groups, abort.signal);
-      running.tests = plan.runs.reduce((n, r) => n + r.tests.length, 0);
-      this.errors.delete(key);
-      this.changed();
-      this.pending = this.make(key, m.realRoot, m.path, plan, running)
+    const track = (work: Promise<void>) => {
+      this.pending = work
         .catch((err: unknown) => this.fail(key, err))
         .finally(() => {
           if (this.running === running) this.running = null;
           this.pending = null;
           this.changed();
         });
+    };
+    if (pr?.kind === 'pr') {
+      this.errors.delete(key);
+      this.changed();
+      track(this.inWorktree(pr, m.tree, m.path, groups, key, running));
+      return;
+    }
+    try {
+      const plan = await this.plan(m.tree, m.realRoot!, groups, abort.signal);
+      running.tests = plan.runs.reduce((n, r) => n + r.tests.length, 0);
+      this.errors.delete(key);
+      this.changed();
+      track(this.make(key, m.tree, m.realRoot!, m.path, plan, running));
     } catch (err) {
       this.running = null;
       // A Cancel while the tests were being found ends the press as a Cancel does a run.
       if (!abort.signal.aborted) throw err;
       this.fail(key, Object.assign(new Error('cancelled'), { aborted: true }));
       this.changed();
+    }
+  }
+
+  /** PLAIN-11.15: a PR's run, in a worktree of its head, made ready first and let go after. */
+  private async inWorktree(pr: { repo: string; number: number }, tree: PlainTree, path: string, groups: readonly Group[], key: string, running: Running): Promise<void> {
+    const signal = running.abort.signal;
+    const wt = await this.opts.worktrees!.acquire({
+      clone: tree.root,
+      repo: pr.repo,
+      number: pr.number,
+      headSha: tree.headSha!,
+      signal,
+      onPhase: (phase) => {
+        running.phase = phase;
+        this.changed();
+      },
+    });
+    try {
+      running.phase = 'tests';
+      this.changed();
+      const plan = await this.plan(tree, wt.root, groups, signal);
+      running.tests = plan.runs.reduce((n, r) => n + r.tests.length, 0);
+      this.changed();
+      // A reused worktree someone edited or moved while the tests ran showed their code, not the PR's.
+      const afterTests = async () => {
+        if (!(await wt.unchanged())) {
+          throw Object.assign(new Error('changed'), { reason: `${wt.root} changed while #${pr.number}'s tests ran, so they didn't run the PR's code. Press again.` });
+        }
+      };
+      await this.make(key, tree, wt.root, path, plan, running, afterTests);
+    } catch (err) {
+      // A Cancel while the tests were found reads as a failed git grep: it's a Cancel.
+      if (signal.aborted) throw Object.assign(new Error('cancelled'), { aborted: true });
+      throw err;
+    } finally {
+      await wt.release().catch(() => {});
     }
   }
 
@@ -785,6 +836,20 @@ export class PlainExamplesMaker {
       env: { ...cleanEnv(this.opts.env ?? process.env), GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0' },
       signal,
     });
+  }
+
+  /**
+   * PLAIN-11.12, 11.15: a file a fingerprint reads: the Checkout's, or a PR's at its head, wherever
+   * its tests ran; null when it can't be read.
+   */
+  private async atHead(tree: PlainTree, root: string | null, rel: string): Promise<string | null> {
+    if (tree.headSha === null) return root ? this.readIn(root, rel) : null;
+    try {
+      const text = await this.git(tree.root, ['cat-file', 'blob', `${tree.headSha}:${rel}`]);
+      return text.length > MAX_FILE_BYTES ? null : text;
+    } catch {
+      return null;
+    }
   }
 
   /** A file inside the Checkout, never through a link out of it; null when it can't be read. */
@@ -862,7 +927,7 @@ export class PlainExamplesMaker {
   }
 
   /** PLAIN-11.4 to 11.12, 12.3: runs the tests, reads their traces, writes the words, keeps the lot. */
-  private async make(key: string, root: string, path: string, plan: Awaited<ReturnType<PlainExamplesMaker['plan']>>, running: Running): Promise<void> {
+  private async make(key: string, tree: PlainTree, root: string, path: string, plan: Awaited<ReturnType<PlainExamplesMaker['plan']>>, running: Running, afterTests?: () => Promise<void>): Promise<void> {
     const signal = running.abort.signal;
     const stopIfCancelled = () => {
       if (signal.aborted) throw Object.assign(new Error('cancelled'), { aborted: true });
@@ -880,6 +945,7 @@ export class PlainExamplesMaker {
         for (const t of (await this.readTraces(out, signal)).values()) traces.push({ config: r.config, ...t });
       }
       stopIfCancelled();
+      await afterTests?.();
       running.phase = 'writing';
       this.changed();
       const testKeys = new Map<string, string>();
@@ -952,7 +1018,7 @@ export class PlainExamplesMaker {
         const testFiles = [...new Set(g.tests.map((t) => t.file))];
         const mentionedIn = plan.mentionedIn.get(g.id) ?? [];
         const portDocs = [...new Set([...g.rows.map((r) => r.doc), ...mentionedIn])];
-        const files = await Promise.all([...testFiles, ...portDocs].map((f) => this.readIn(root, f)));
+        const files = await Promise.all([...testFiles, ...portDocs].map((f) => this.atHead(tree, root, f)));
         kept.push({
           spec: g.id,
           example: a?.example ?? null,
@@ -982,9 +1048,10 @@ export class PlainExamplesMaker {
   private async runTests(root: string, playwright: string, config: string, tests: readonly FoundTest[], out: string, signal: AbortSignal): Promise<void> {
     const files = [...new Set(tests.map((t) => t.file))];
     const args = ['test', '-c', config, '--trace', 'on', '--workers', '1', '--retries', '0', '--reporter', 'line', '--output', out, ...files.map(escapeRe), '--grep', [...new Set(tests.map((t) => escapeRe(t.title)))].join('|')];
-    const env = cleanEnv(this.opts.env ?? process.env);
-    delete env.CI;
-    delete env.NODE_ENV;
+    const clean = cleanEnv(this.opts.env ?? process.env);
+    delete clean.CI;
+    delete clean.NODE_ENV;
+    const env = await withRepoNode(root, clean);
     const res = resolveResBin(env);
     const [file, argv] = res !== 'res' ? [res, ['run', '--prio', 'live', '--', playwright, ...args]] : [playwright, args];
     try {

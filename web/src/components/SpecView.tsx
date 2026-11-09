@@ -89,7 +89,7 @@ export interface SpecViewProps {
   onBack(): void;
   /** PLAIN-2.5: another Module of the same Checkout or PR, as a new history entry; PLAIN-7.2: at one of its specs. */
   onOpenModule(path: string, at?: string): void;
-  /** PLAIN-11: a Module's examples; absent where they aren't offered (a PR's Module, until slice 2). */
+  /** PLAIN-11: a Module's examples, on a Session's Checkout and a PR's (PLAIN-11.15); absent where they aren't offered. */
   examples?: ExamplesApi;
 }
 
@@ -113,6 +113,8 @@ interface ExamplesUi {
   pressError: string | null;
   /** A press is on its way: the wait shows at once, before any read says the run started. */
   pressing: boolean;
+  /** PLAIN-11.15: the PR's number, when the Module is a PR's: its tests run in a worktree of its head. */
+  pr: number | null;
   onShow(): void;
   onCancel(): void;
 }
@@ -331,8 +333,11 @@ export function SpecView({ source, path, backTo, load, setViewed, onBack, onOpen
     setExRead((n) => n + 1);
   }, [examples]);
   const exUi = useMemo<ExamplesUi | undefined>(
-    () => (examples && hasGroups ? { answer: ex, pressError, pressing, onShow: () => void showExamples(), onCancel: () => void cancelExamples() } : undefined),
-    [examples, hasGroups, ex, pressError, pressing, showExamples, cancelExamples],
+    () =>
+      examples && hasGroups
+        ? { answer: ex, pressError, pressing, pr: src.kind === 'pr' ? src.number : null, onShow: () => void showExamples(), onCancel: () => void cancelExamples() }
+        : undefined,
+    [examples, hasGroups, ex, pressError, pressing, src, showExamples, cancelExamples],
   );
   // PLAIN-10.3: a Module with no change is Clean, with no switch; a change arriving later keeps you on Clean.
   if (answer && compared && !hasChange && chosen !== 'clean') setChosen('clean');
@@ -1933,6 +1938,13 @@ const VERDICT_ORDER: readonly NonNullable<PlainPortRow['verdict']>[] = ['covered
 /** PLAIN-12.4: the verdicts that need you, at full strength with their words; the others are quiet. */
 const NEEDS_LOOK: ReadonlySet<string> = new Set(['partly', 'not found', 'still in the spec']);
 
+/** PLAIN-11.15: what a PR's run is doing before its tests. */
+const PREPARING: Record<string, string> = {
+  worktree: 'Checking out the PR…',
+  copying: "Copying the PR's dependencies…",
+  installing: "Installing the PR's dependencies…",
+};
+
 /** PLAIN-11.1, 11.13, 12.5: the Changes card's part for examples: the press, the wait, the failure, the port's tally. */
 function ExamplesBar({ ui }: { ui: ExamplesUi }) {
   const a = ui.answer;
@@ -1955,7 +1967,9 @@ function ExamplesBar({ ui }: { ui: ExamplesUi }) {
           label={
             running?.phase === 'writing'
               ? 'Writing examples…'
-              : running && running.tests > 0
+              : running?.mine && running.phase in PREPARING
+                ? PREPARING[running.phase]!
+                : running && running.tests > 0
                 ? `Running ${plural(running.tests, 'Playwright test', 'Playwright tests')}…`
                 : 'Finding the Playwright tests…'
           }
@@ -1975,7 +1989,13 @@ function ExamplesBar({ ui }: { ui: ExamplesUi }) {
             size="line"
             onClick={ui.onShow}
             disabled={!!running}
-            title={running ? `Examples for ${running.module} are being made` : 'Runs the Playwright tests that name each changed spec, and writes an example of each with Claude'}
+            title={
+              running
+                ? `Examples for ${running.module} are being made`
+                : ui.pr !== null
+                  ? `Runs #${ui.pr}'s Playwright tests that name each changed spec on this Mac, in a worktree of its head, and writes an example of each with Claude`
+                  : 'Runs the Playwright tests that name each changed spec, and writes an example of each with Claude'
+            }
             data-field="spec-examples-show"
           >
             {kept ? 'Show examples again' : 'Show examples'}

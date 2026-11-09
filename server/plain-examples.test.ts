@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { RunOptions } from './exec.ts';
 import { PlainError } from './plain.ts';
+import type { PrWorktree, PrWorktreeRequest } from './plain-worktrees.ts';
 import {
   changedGroups,
   configFor,
@@ -436,6 +437,8 @@ function world() {
       if (sub === 'grep') return "acceptance/specs/crm/deals.spec.ts:4:test('§2.2 deleting asks first', async ({ page }) => {\n";
       if (sub === 'diff') return '';
       if (sub === 'ls-files') return 'knowledge/port/deals.md\0';
+      // A PR's files at its head: the worktree's, as the fake runs every test there.
+      if (sub === 'cat-file') return readFileSync(join(root, args.at(-1)!.split(':').slice(1).join(':')), 'utf8');
     }
     if (file === 'unzip' && args[0] === '-Z1') return 'test.trace\n0-trace.trace\nresources/x.dat\n';
     if (file === 'unzip' && args[2] === 'test.trace') return runnerTrace();
@@ -457,9 +460,11 @@ function world() {
     }
     throw Object.assign(new Error(`unexpected ${file} ${args.join(' ')}`), { code: 'ENOENT' });
   };
-  const tree = { id: 'x', root, repo: 'shop', where: null, baseSha: 'b'.repeat(40), baseName: 'Branch point', commonDir: join(root, '.git'), headSha: null as string | null };
+  const tree = { id: 'x', root, repo: 'shop', where: null as string | null, baseSha: 'b'.repeat(40), baseName: 'Branch point', commonDir: join(root, '.git'), headSha: null as string | null };
   let text = TEXT;
   let now = 1_000_000;
+  let released = 0;
+  let acquire = async (_: PrWorktreeRequest): Promise<PrWorktree> => ({ root, added: true, unchanged: async () => true, release: async () => void released++ });
   const maker = new PlainExamplesMaker({
     plain: { module: async () => ({ tree, realRoot: root, path: 'plain/deals.plain', text, baseText: BASE }) },
     runner,
@@ -469,6 +474,7 @@ function world() {
     env: { PATH: '/usr/bin', CI: '1', NODE_ENV: 'production', LOOKOUT_RES_BIN: '/opt/res', CLAUDE_CODE_ENTRYPOINT: 'cli' },
     now: () => now,
     log: () => {},
+    worktrees: { acquire: (r) => acquire(r) },
   });
   const settle = async () => {
     for (let i = 0; i < 200; i++) {
@@ -489,6 +495,8 @@ function world() {
     setClaude: (s: string) => (claudeOut = s),
     setOnClaude: (f: () => void) => (onClaude = f),
     setPlaywright: (f: (out: string) => void) => (playwright = f),
+    setAcquire: (f: typeof acquire) => (acquire = f),
+    released: () => released,
     /** Playwright waits until the returned function is called. */
     hold: () => {
       let release!: () => void;
@@ -590,7 +598,7 @@ describe('a press (PLAIN-11.1, 11.4, 11.9 to 11.14, 12.4 to 12.6)', () => {
     expect(existsSync(join(w.store, key))).toBe(false);
   });
 
-  it("PLAIN-11.4, PLAIN-11.13: no Playwright refuses the press before anything runs; one Module's run at a time; a PR's Module waits for slice 2; nothing changed refuses", async () => {
+  it("PLAIN-11.4, PLAIN-11.13: no Playwright refuses the press before anything runs; one Module's run at a time; a PR's Module with no worktrees to run in is refused; nothing changed refuses", async () => {
     rmSync(join(w.root, 'node_modules'), { recursive: true });
     await expect(w.maker.start({}, 'plain/deals.plain')).rejects.toThrow(NO_PLAYWRIGHT);
     expect(w.calls.some((c) => c.file === 'claude-bin' || c.args.includes('test'))).toBe(false);
@@ -605,10 +613,89 @@ describe('a press (PLAIN-11.1, 11.4, 11.9 to 11.14, 12.4 to 12.6)', () => {
     release();
     await w.settle();
     w.tree.headSha = 'c'.repeat(40);
-    await expect(w.maker.start({}, 'plain/deals.plain')).rejects.toThrow("Examples for a PR's Module come in a later slice.");
+    (w.maker as unknown as { opts: { worktrees?: object } }).opts.worktrees = undefined;
+    await expect(w.maker.start({ kind: 'pr', repo: 'shop', number: 7 }, 'plain/deals.plain')).rejects.toThrow("Lookout can't run this Module's tests.");
     w.tree.headSha = null;
     w.setText(BASE);
     await expect(w.maker.start({}, 'plain/deals.plain')).rejects.toBeInstanceOf(PlainError);
+  });
+
+  it("PLAIN-11.15: a PR's press runs in a worktree of its head, made ready after the answer and let go after the run; its examples are its own, their fingerprint read at the head", async () => {
+    const path = 'plain/deals.plain';
+    const pr = { kind: 'pr', repo: 'shop', number: 7 };
+    await w.maker.start({}, path);
+    await w.settle();
+    const checkoutKey = (await w.maker.get({}, path)).examples!.key;
+    Object.assign(w.tree, { id: '0123456789abcdef', root: join(w.dir, 'clone'), where: '#7', headSha: 'c'.repeat(40) });
+    w.calls.length = 0;
+    let asked: PrWorktreeRequest | null = null;
+    let ready!: () => void;
+    const gate = new Promise<void>((r) => (ready = r));
+    w.setAcquire(async (r) => {
+      asked = r;
+      r.onPhase('installing');
+      await gate;
+      return { root: w.root, added: true, unchanged: async () => true, release: async () => {} };
+    });
+    await w.maker.start(pr, path);
+    expect((await w.maker.get(pr, path)).running).toEqual({ module: path, mine: true, phase: 'installing', tests: 0 });
+    expect(asked).toMatchObject({ clone: join(w.dir, 'clone'), repo: 'shop', number: 7, headSha: 'c'.repeat(40) });
+    w.setAcquire(async (r) => {
+      asked = r;
+      return { root: w.root, added: true, unchanged: async () => true, release: async () => {} };
+    });
+    ready();
+    await w.settle();
+    expect(w.calls.find((c) => c.args.includes('test'))!.opts.cwd).toBe(w.root);
+    const a = await w.maker.get(pr, path);
+    expect(a.examples!.key).not.toBe(checkoutKey);
+    expect(a.examples!.groups[0]!.outOfDate).toBe(false);
+    expect(w.calls.some((c) => c.args.includes('cat-file') && c.args.includes(`${'c'.repeat(40)}:acceptance/specs/crm/deals.spec.ts`) && c.args.includes(join(w.dir, 'clone')))).toBe(true);
+    // A push that changes the test makes the card out of date.
+    writeFileSync(join(w.root, 'acceptance', 'specs', 'crm', 'deals.spec.ts'), '// changed\n');
+    expect((await w.maker.get(pr, path)).examples!.groups[0]!.outOfDate).toBe(true);
+    // A reused worktree that changed while the tests ran: nothing is written or kept.
+    w.calls.length = 0;
+    w.setAcquire(async () => ({ root: w.root, added: false, unchanged: async () => false, release: async () => {} }));
+    await w.maker.start(pr, path);
+    await w.settle();
+    expect((await w.maker.get(pr, path)).error).toBe(`${w.root} changed while #7's tests ran, so they didn't run the PR's code. Press again.`);
+    expect(w.calls.some((c) => c.file === 'claude-bin')).toBe(false);
+    // A worktree that can't be made ready fails the run, with why.
+    w.setAcquire(async () => {
+      throw Object.assign(new Error('install'), { reason: "Installing #7's dependencies failed: npm error code EBADENGINE" });
+    });
+    await w.maker.start(pr, path);
+    await w.settle();
+    expect((await w.maker.get(pr, path)).error).toBe("Installing #7's dependencies failed: npm error code EBADENGINE");
+    // Let go after a run that ends, and after a Cancel.
+    let lets = 0;
+    w.setAcquire(async () => ({ root: w.root, added: true, unchanged: async () => true, release: async () => void lets++ }));
+    await w.maker.start(pr, path);
+    await w.settle();
+    expect(lets).toBe(1);
+    const held = w.hold();
+    await w.maker.start(pr, path);
+    await new Promise((r) => setTimeout(r, 20));
+    w.maker.cancel();
+    await w.settle();
+    held();
+    expect(lets).toBe(2);
+    expect((await w.maker.get(pr, path)).error).toBe('Cancelled. The examples before it are kept.');
+  });
+
+  it("PLAIN-11.4: Playwright runs on the Node the Checkout's .nvmrc names, the newest nvm has that fits", async () => {
+    const nvm = join(w.dir, 'nvm');
+    for (const v of ['v24.1.0', 'v24.10.0', 'v25.0.0']) {
+      mkdirSync(join(nvm, 'versions', 'node', v, 'bin'), { recursive: true });
+      writeFileSync(join(nvm, 'versions', 'node', v, 'bin', 'node'), '');
+      chmodSync(join(nvm, 'versions', 'node', v, 'bin', 'node'), 0o755);
+    }
+    writeFileSync(join(w.root, '.nvmrc'), '24\n');
+    (w.maker as unknown as { opts: { env: object } }).opts.env = { PATH: '/usr/bin', NVM_DIR: nvm, LOOKOUT_RES_BIN: '/opt/res' };
+    await w.maker.start({}, 'plain/deals.plain');
+    await w.settle();
+    expect(w.calls.find((c) => c.args.includes('test'))!.opts.env!.PATH).toBe(`${join(nvm, 'versions', 'node', 'v24.10.0', 'bin')}:/usr/bin`);
   });
 
   it('PLAIN-11.13: Cancel stops the run and keeps the examples before it; a failure says why', async () => {

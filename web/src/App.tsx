@@ -516,7 +516,7 @@ export function App({ client }: { client: LookoutClient }) {
   const saveChatSeen = useCallback((sessionId: string, seen: { cursor: string; at: number | null }, keepalive: boolean) => client.setChatSeen(sessionId, seen, keepalive), [client]);
   const readPlain = useCallback((source: PlainSource, p: string, fresh: boolean) => client.readPlain(source, p, fresh), [client]);
   const setPlainViewed = useCallback((source: PlainSource, p: string, key: string, viewed: boolean) => client.setPlainViewed(source, p, key, viewed), [client]);
-  // PLAIN-11: a Module's examples, offered on a Session's Checkout (a PR's in slice 2).
+  // PLAIN-11: a Module's examples, offered on a Session's Checkout and on a PR (PLAIN-11.15).
   const plainExamples = useMemo<ExamplesApi>(
     () => ({ load: (source, p) => client.plainExamples(source, p), start: (source, p) => client.startPlainExamples(source, p), cancel: () => client.cancelPlainExamples() }),
     [client],
@@ -1207,6 +1207,7 @@ export function App({ client }: { client: LookoutClient }) {
                 load={readPlain}
                 setViewed={setPlainViewed}
                 onBack={() => navigate(prOpeners.current.get(routePath(route)) ?? { name: 'home' })}
+                examples={plainExamples}
                 onOpenModule={(path, at) => {
                   // An imported Module of the same PR keeps this view's opener.
                   const to: Route = { name: 'plain-pr', repo: route.repo, number: route.number, path };

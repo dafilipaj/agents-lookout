@@ -1308,6 +1308,26 @@ describe('each change beside what it does (PLAIN-11, 12)', () => {
     vi.useRealTimers();
   });
 
+  it("PLAIN-11.15: a PR's Module has the press too, saying its tests run on this Mac; its wait first says it checks out the PR and gets its dependencies", async () => {
+    const pr = { kind: 'pr' as const, repo: 'shop', number: 7 };
+    const readPlain = vi.fn(async () => answer({ source: pr, checkout: { id: '0123456789abcdef', repo: 'shop', where: '#7' }, baseName: 'merge-base with develop' }));
+    const startPlainExamples = vi.fn(async () => {});
+    renderApp('/plain/pr/shop/7/plain%2Frates.plain', { readPlain, plainExamples: async () => ({ examples: null, running: null, error: null }), startPlainExamples });
+    const show = await screen.findByRole('button', { name: 'Show examples' });
+    expect(show.getAttribute('title')).toBe("Runs #7's Playwright tests that name each changed spec on this Mac, in a worktree of its head, and writes an example of each with Claude");
+    await act(async () => show.click());
+    expect(startPlainExamples).toHaveBeenCalledWith(pr, 'plain/rates.plain');
+    for (const [phase, label] of [
+      ['worktree', 'Checking out the PR…'],
+      ['copying', "Copying the PR's dependencies…"],
+      ['installing', "Installing the PR's dependencies…"],
+    ] as const) {
+      cleanup();
+      renderApp('/plain/pr/shop/7/plain%2Frates.plain', { readPlain, plainExamples: async () => ({ examples: null, running: { module: 'plain/rates.plain', mine: true, phase, tests: 0 }, error: null }) });
+      expect(await screen.findByText(label)).toBeTruthy();
+    }
+  });
+
   it("PLAIN-12.5: after a run the Changes card counts the verdicts, only the kinds it has, and the rows left unchecked", async () => {
     open({}, { plainExamples: async () => kept({}, { rowsChecked: 2, rowsTotal: 5 }) });
     expect(await screen.findByText('Port: 1 covered · 1 partly (2 of 5 rows checked)')).toBeTruthy();
