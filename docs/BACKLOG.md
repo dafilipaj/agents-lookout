@@ -219,6 +219,12 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
 
 Discussed and decided against. Each keeps why, so it isn't proposed again without something new.
 
+### Code diffs in the chat (VIEW)
+
+- **What:** an Edit or Write shown in the chat as what it changed (the Transcript's `old_string` and `new_string`, or its structured patch; Codex's `apply_patch`), not only as its tool-call line.
+- **Why dropped:** Dario finds the chat as it is enough; a Session's changed files are already listed and open in VS Code (DIFF).
+- **Added:** from Dario's earlier testing, as research under the Plan's Later. **Dropped:** 2026-11-09, by Dario.
+
 ### Suggest a name for a Session (VIEW-5.12)
 
 - **What:** a "Suggest" action by the header's rename that fills in a name from what the Session is working on, through Fleet's `name <target>` (a model call).
