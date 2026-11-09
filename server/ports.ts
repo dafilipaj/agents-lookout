@@ -4,6 +4,7 @@ import { delimiter, dirname, join, resolve } from 'node:path';
 import { PORTS_INTERVAL_MS, attribute, parseCwds, parseDevctl, parseListeners, parseProcessTimes, type Checkout, type Listener, type PortsSession, type PortsSnapshot } from '../shared/ports.ts';
 import type { RunError, Runner } from './exec.ts';
 import { cleanEnv } from './launcher.ts';
+import { type StopResult, type StopTarget, StopError, stopServer } from './ports-stop.ts';
 import { resolveMemoryBin } from './memory.ts';
 import { sanitizeLine } from './sanitize.ts';
 
@@ -66,6 +67,18 @@ function failure(e: RunError): string {
   return sanitizeLine(e.stderr?.trim().split('\n')[0] || e.message, 200) ?? 'lsof failed';
 }
 
+/**
+ * PORTS-1.1: the listener query's answer: lsof exits 1 and prints nothing when nothing listens (its
+ * warnings say nothing of that), an empty list; any other failure is why it failed.
+ */
+export function listenersFrom(result: PromiseSettledResult<string>): Listener[] | string {
+  if (result.status === 'fulfilled') return parseListeners(result.value);
+  const e = result.reason as RunError;
+  const said = (e.stderr ?? '').split('\n').filter((l) => l.trim() && !/^lsof: WARNING:/.test(l));
+  if (e.code === 1 && !e.timedOut && !e.stdout?.trim() && !said.length) return [];
+  return failure(e);
+}
+
 export interface PortsMonitorOptions {
   runner: Runner;
   sessions(): readonly PortsSession[];
@@ -74,6 +87,8 @@ export interface PortsMonitorOptions {
   env?: NodeJS.ProcessEnv;
   now?: () => number;
   checkout?: (cwd: string) => Checkout | null;
+  /** PORTS-4: the Stop itself; `stopServer` unless a test replaces it. */
+  stop?: typeof stopServer;
 }
 
 /**
@@ -91,6 +106,7 @@ export class PortsMonitor {
   /** PORTS-1.5: each pid and command's start time, from the first read that saw them. */
   private starts = new Map<string, number>();
   private readonly checkouts = new Map<string, { value: Checkout | null; at: number }>();
+  private readonly stopping = new Set<number>();
   private readonly opts: PortsMonitorOptions;
 
   constructor(opts: PortsMonitorOptions) {
@@ -112,6 +128,24 @@ export class PortsMonitor {
       this.watchers = Math.max(0, this.watchers - 1);
       if (!this.watchers) this.clearTimer();
     };
+  }
+
+  /**
+   * PORTS-4: stops one Local server, one Stop per pid at a time, then reads the list again so the
+   * row goes without waiting for the next read.
+   */
+  async stop(target: StopTarget): Promise<StopResult> {
+    if (this.stopping.has(target.pid)) throw new StopError(409, 'Already stopping it.');
+    this.stopping.add(target.pid);
+    try {
+      const result = await (this.opts.stop ?? stopServer)({ runner: this.opts.runner, sessions: this.opts.sessions, pid: this.opts.pid, env: this.opts.env, now: this.opts.now }, target);
+      // A read under way may have started before the Stop; the one after it sees the change.
+      await this.ticking;
+      await this.tick();
+      return result;
+    } finally {
+      this.stopping.delete(target.pid);
+    }
   }
 
   async close(): Promise<void> {
@@ -165,17 +199,10 @@ export class PortsMonitor {
       this.opts.runner(resolveDevctlBin(env), DEVCTL_ARGS, options),
     ]);
     if (this.abort.signal.aborted) return;
-    let listeners: Listener[];
-    if (listen.status === 'fulfilled') listeners = parseListeners(listen.value);
-    else {
-      const e = listen.reason as RunError;
-      // PORTS-1.1: lsof exits 1 and prints nothing when nothing listens; its warnings say nothing of that.
-      const said = (e.stderr ?? '').split('\n').filter((l) => l.trim() && !/^lsof: WARNING:/.test(l));
-      if (e.code === 1 && !e.timedOut && !e.stdout?.trim() && !said.length) listeners = [];
-      else {
-        this.publish({ servers: this.current?.servers ?? [], readAt: this.current?.readAt ?? null, error: failure(e) });
-        return;
-      }
+    const listeners = listenersFrom(listen);
+    if (typeof listeners === 'string') {
+      this.publish({ servers: this.current?.servers ?? [], readAt: this.current?.readAt ?? null, error: listeners });
+      return;
     }
     let cwds = new Map<number, string>();
     if (listeners.length) {

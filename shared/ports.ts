@@ -42,6 +42,24 @@ export interface PortsSnapshot {
   error: string | null;
 }
 
+/** PORTS-4.7: the row the dialog opened on. */
+export interface StopTarget {
+  pid: number;
+  /** The command `lsof` named. */
+  command: string;
+  /** ms since epoch, as the snapshot carried it. */
+  startedAt: number;
+  /** PORTS-4.4: the row was a tb-devctl service, so it's never stopped any other way. */
+  devctl: boolean;
+}
+
+/** How the Stop went: `gone` when it had already stopped, `forced` when SIGKILL was needed. */
+export interface StopResult {
+  how: 'stopped' | 'forced' | 'gone' | 'devctl';
+  /** The processes signalled. */
+  count: number;
+}
+
 export interface Listener {
   pid: number;
   command: string;

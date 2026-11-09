@@ -1,11 +1,15 @@
-import type { LocalServer, PortsSnapshot } from '@shared/ports.ts';
+import type { LocalServer, PortsSnapshot, StopResult } from '@shared/ports.ts';
 import type { SessionRow } from '@shared/types.ts';
-import { type KeyboardEvent, type Ref, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
+import { type KeyboardEvent, type Ref, type RefObject, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
+import { IconButton } from '@/components/ui/icon-button';
 import { Loading } from '@/components/ui/loading';
 import { SessionMarker } from '@/components/ui/session-marker';
+import { ActionIcon } from '@/lib/actions';
 import { clockTime } from '@/lib/chat';
 import { groupServers, upFor } from '@/lib/ports';
 import type { PanelNav } from '@/lib/right-sidebar';
@@ -24,23 +28,29 @@ export interface ServersPanelProps {
   reveal: string | null;
   onRevealed(): void;
   onSelectSession(id: string): void;
+  /** PORTS-4: stops the server the dialog opened on; rejects with why it couldn't (PORTS-4.5). */
+  onStop(server: LocalServer): Promise<StopResult>;
   navRef?: Ref<PanelNav>;
 }
 
 const rowId = (s: LocalServer) => `server-${s.pid}`;
 const open = (s: LocalServer) => window.open(s.url, '_blank', 'noopener,noreferrer');
+/** PORTS-4.6: a shown server other than Lookout's own; "Other listeners" are a Non-goal. */
+const stoppable = (s: LocalServer) => s.shown && !s.lookout;
+const stopName = (s: LocalServer) => `Stop :${s.ports[0]} ${s.name}`;
 
 /**
  * PORTS-3: every Local server, grouped by the Session it belongs to, then "Not in a Session" by
  * repo, then "Elsewhere"; "Show all" adds the other listeners, dimmed. j/k and ↑/↓ move through the
  * rows, Enter opens the selected one's URL.
  */
-export function ServersPanel({ ports, sessions, now, showAll, onShowAll, focusKey, reveal, onRevealed, onSelectSession, navRef }: ServersPanelProps) {
+export function ServersPanel({ ports, sessions, now, showAll, onShowAll, focusKey, reveal, onRevealed, onSelectSession, onStop, navRef }: ServersPanelProps) {
   const groups = groupServers(ports, sessions, showAll);
   const rows = [...groups.sessions.flatMap((g) => g.servers), ...groups.repos.flatMap((g) => g.servers), ...groups.elsewhere, ...groups.others];
   const [selected, setSelected] = useState<number | null>(null);
   const active = rows.find((s) => s.pid === selected) ?? rows[0] ?? null;
   const list = useRef<HTMLDivElement>(null);
+  const [stopping, setStopping] = useState<LocalServer | null>(null);
 
   // SIDE-11.1: opening Servers focuses its list, only when you open it (`focusKey` above 0), never as it mounts.
   useEffect(() => {
@@ -79,11 +89,17 @@ export function ServersPanel({ ports, sessions, now, showAll, onShowAll, focusKe
     } else if (e.key === 'Enter' && active) {
       e.preventDefault();
       open(active);
+    } else if ((e.key === 'x' || e.key === 'X') && !e.shiftKey && active && stoppable(active)) {
+      // PORTS-4.6: the keyboard's Stop, as nothing inside a row takes a Tab stop.
+      e.preventDefault();
+      setStopping(active);
     }
   };
 
   const failed = ports?.error ?? null;
-  const row = (s: LocalServer, dim = false) => <ServerRow key={s.pid} server={s} now={now} active={s === active} dim={dim} onSelect={() => setSelected(s.pid)} />;
+  const row = (s: LocalServer, dim = false) => (
+    <ServerRow key={s.pid} server={s} now={now} active={s === active} dim={dim} onSelect={() => setSelected(s.pid)} onStop={!dim && stoppable(s) ? () => setStopping(s) : undefined} />
+  );
   const heading = (text: string) => <p className="px-2 pt-3 pb-1 text-caption font-medium text-muted-foreground">{text}</p>;
 
   return (
@@ -155,12 +171,98 @@ export function ServersPanel({ ports, sessions, now, showAll, onShowAll, focusKe
           </div>
         </div>
       )}
+      <StopDialog server={stopping} sessions={sessions} onStop={onStop} onClose={() => setStopping(null)} returnFocus={list} />
     </div>
   );
 }
 
+/**
+ * PORTS-4.6: every Stop asks first, in an in-app dialog as End Session's (VIEW-5.6): the server, its
+ * Session or directory, and what stops with it. It binds to the row it opened on (pid, command and
+ * start time, PORTS-4.7), so a server restarted meanwhile is never the one stopped; a failure shows
+ * here and the row stays (PORTS-4.5). On close, focus goes back to the list.
+ */
+function StopDialog({
+  server,
+  sessions,
+  onStop,
+  onClose,
+  returnFocus,
+}: {
+  server: LocalServer | null;
+  sessions: readonly SessionRow[];
+  onStop: ServersPanelProps['onStop'];
+  onClose(): void;
+  returnFocus: RefObject<HTMLElement | null>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // A new server clears the last one's error; adjusting state while rendering, as React documents.
+  const [shownFor, setShownFor] = useState<LocalServer | null>(null);
+  if (server !== shownFor) {
+    setShownFor(server);
+    setError(null);
+  }
+  const unconfirmed = server?.startedAt === null;
+  const confirm = async () => {
+    if (!server || busy || unconfirmed) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await onStop(server);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't stop it.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const session = server?.sessionId ? sessions.find((r) => r.id === server.sessionId) : undefined;
+  const where = session ? `“${session.title}”` : (server?.dir ?? 'an unknown directory');
+  const [stack, service] = server?.devctl ? server.name.split('/') : [];
+  return (
+    <Dialog open={server !== null} onOpenChange={(next) => !busy && !next && onClose()}>
+      <DialogContent
+        className="sm:max-w-md"
+        showCloseButton={false}
+        onCloseAutoFocus={(e) => {
+          e.preventDefault();
+          returnFocus.current?.focus();
+        }}
+      >
+        {server && (
+          <>
+            <DialogTitle className="text-title">
+              Stop :{server.ports[0]} {server.name}?
+            </DialogTitle>
+            <DialogDescription className="text-body leading-5">
+              {server.devctl ? (
+                <>
+                  In {where}. tb-devctl stops the service (tb-devctl down {stack} {service}), so its stack stays right.
+                </>
+              ) : (
+                <>In {where}. It stops with the processes it started: they&apos;re asked to exit, and forced after 3 seconds.</>
+              )}
+            </DialogDescription>
+            {(unconfirmed || error) && <Alert title={unconfirmed ? 'Lookout can’t confirm it’s the same server, so it won’t stop it. Stop it in its terminal.' : error} />}
+            <DialogFooter>
+              <Button variant="secondary" size="form" onClick={onClose} disabled={busy}>
+                Cancel
+              </Button>
+              <Button variant="destructive" size="form" onClick={() => void confirm()} disabled={busy || unconfirmed}>
+                <ActionIcon id="stop" />
+                {busy ? 'Stopping…' : 'Stop'}
+              </Button>
+            </DialogFooter>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 /** PORTS-3.2: the port as a link to the URL, the name, the working directory and how long it's been up. */
-function ServerRow({ server: s, now, active, dim, onSelect }: { server: LocalServer; now: number; active: boolean; dim: boolean; onSelect(): void }) {
+function ServerRow({ server: s, now, active, dim, onSelect, onStop }: { server: LocalServer; now: number; active: boolean; dim: boolean; onSelect(): void; onStop?: () => void }) {
   const age = s.startedAt !== null ? upFor(s.startedAt, now) : null;
   return (
     <div
@@ -170,7 +272,7 @@ function ServerRow({ server: s, now, active, dim, onSelect }: { server: LocalSer
       aria-label={[`:${s.ports.join(', :')}`, s.name, s.dir ?? 'unknown directory', age && `up ${age}`].filter(Boolean).join(' ')}
       data-pid={s.pid}
       onClick={onSelect}
-      className={cn('flex min-w-0 cursor-default items-baseline gap-2 rounded-md px-2 py-1 hover:bg-sidebar-accent/60', active && 'bg-sidebar-accent', dim && 'opacity-60')}
+      className={cn('group/server flex min-w-0 cursor-default items-baseline gap-2 rounded-md px-2 py-1 hover:bg-sidebar-accent/60', active && 'bg-sidebar-accent', dim && 'opacity-60')}
     >
       <a href={s.url} target="_blank" rel="noopener noreferrer" tabIndex={-1} className="shrink-0 text-body tabular-nums underline-offset-2 hover:underline" data-field="port">
         :{s.ports[0]}
@@ -188,6 +290,24 @@ function ServerRow({ server: s, now, active, dim, onSelect }: { server: LocalSer
         <span dir="ltr">{s.dir ?? 'unknown directory'}</span>
       </span>
       {age && <span className="shrink-0 text-meta text-muted-foreground tabular-nums" data-field="age">{age}</span>}
+      {/* PORTS-4.6, UX: on the row under the pointer and the selected one, so quiet rows stay quiet (DS-22);
+          like the port's link it takes no Tab stop inside the listbox: the row's `x` is the keyboard's way. */}
+      {onStop && (
+        <IconButton
+          label={stopName(s)}
+          shortcut="X"
+          tabIndex={-1}
+          data-field="stop"
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelect();
+            onStop();
+          }}
+          className={cn('-my-1 self-center opacity-0 group-hover/server:opacity-100 focus-visible:opacity-100', active && 'opacity-100')}
+        >
+          <ActionIcon id="stop" />
+        </IconButton>
+      )}
     </div>
   );
 }

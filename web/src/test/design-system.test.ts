@@ -1385,6 +1385,7 @@ const BUTTON_SIZE_EXCEPTIONS: Exception[] = [
 
 /** `variant="destructive"`: only the confirming button of a dialog that ends or deletes something (DS-18.1). */
 const DESTRUCTIVE_CONFIRMS: Exception[] = [
+  { path: 'web/src/components/ServersPanel.tsx', fn: 'StopDialog', count: 1, reason: "a Local server's Stop confirms (PORTS-4.6)" },
   { path: 'web/src/components/SessionView.tsx', fn: 'EndSession', count: 1, reason: "End Session's dialog confirms (VIEW-5.6)" },
   { path: 'web/src/components/TopicView.tsx', fn: 'TopicActions', count: 1, reason: "a Topic's Delete confirms (TOPIC-1.6)" },
 ];
@@ -1452,7 +1453,7 @@ describe('buttons by role', () => {
     expect(counts).toEqual(BUTTON_SIZE_EXCEPTIONS.map(({ path, fn, count }) => ({ path, fn, count })));
   });
 
-  it("DS-18.1: the red fill is only a dialog's confirming button, in End Session's and a Topic's Delete", () => {
+  it("DS-18.1: the red fill is only a dialog's confirming button, in End Session's, a Topic's Delete and a Local server's Stop", () => {
     const found = Object.entries(SOURCES)
       .filter(([path]) => /\.tsx$/.test(path) && !path.startsWith('web/src/components/ui/'))
       .flatMap(([path, text]) => buttonRoles(text, path).destructive.map((s) => `${path}:${s}`));

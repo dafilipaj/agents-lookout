@@ -25,6 +25,7 @@ import { LaunchError, TrustError } from './launcher.ts';
 import type { TopicLaunches } from './topic-launches.ts';
 import type { MemoryMonitor } from './memory.ts';
 import type { PortsMonitor } from './ports.ts';
+import { StopError, parseStopTarget } from './ports-stop.ts';
 import type { ResMonitor } from './res.ts';
 import type { SessionMonitor } from './monitor.ts';
 import { type GuardConfig, guardRequest } from './security.ts';
@@ -56,7 +57,7 @@ export interface AppOptions {
   };
   memory: Pick<MemoryMonitor, 'snapshot' | 'watch' | 'setOpen' | 'drop'>;
   /** PORTS-1.2: the Local servers, read while any tab is connected; optional, so handler tests can leave it out. */
-  ports?: Pick<PortsMonitor, 'snapshot' | 'watch'>;
+  ports?: Pick<PortsMonitor, 'snapshot' | 'watch' | 'stop'>;
   /** RES-1.1: `res`'s queue, read while any tab is connected; optional, so handler tests can leave it out. */
   resQueue?: Pick<ResMonitor, 'snapshot' | 'watch'>;
   usage: {
@@ -167,6 +168,8 @@ const MAX_LAUNCH_BODY = 1024 * 1024;
 const MAX_SEND_BODY = MAX_MESSAGE * 8;
 /** VIEW-5.6: `{ pid, procStart }`. */
 const MAX_END_BODY = 1024;
+/** PORTS-4.7: `{ pid, command, startedAt, devctl }`. */
+const MAX_PORTS_STOP_BODY = 1024;
 /** VIEW-4.1: up to 10 answers of 2,000 characters of text each, JSON-escaped, plus their options. */
 const MAX_ANSWER_BODY = 160 * 1024;
 /** VIEW-4.5: `{ status }`, the Status the Esc button was shown in. */
@@ -570,6 +573,19 @@ export function createApp(opts: AppOptions): LookoutApp {
         return json(res, 200, await opts.sessions.end(sessionId, parseEndTarget(body)));
       } catch (err) {
         if (err instanceof EndError) return json(res, err.status, { error: err.message });
+        throw err;
+      }
+    }
+    // PORTS-4: stopping a Local server signals processes, so it's a mutation: the token and Origin
+    // (the guard checks every non-GET). The body names the row the dialog opened on (PORTS-4.7).
+    if (url.pathname === '/api/ports/stop' && req.method === 'POST') {
+      if (!opts.ports) return json(res, 404, { error: 'not found' });
+      const body = await readJson(req, res, MAX_PORTS_STOP_BODY, null);
+      if (body === NO_BODY) return;
+      try {
+        return json(res, 200, await opts.ports.stop(parseStopTarget(body)));
+      } catch (err) {
+        if (err instanceof StopError) return json(res, err.status, { error: err.message });
         throw err;
       }
     }

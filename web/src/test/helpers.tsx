@@ -89,6 +89,7 @@ interface RenderOptions {
   answerTrust?: LookoutClient['answerTrust'];
   sendMessage?: (sessionId: string, text: string) => Promise<void>;
   endSession?: LookoutClient['endSession'];
+  stopServer?: LookoutClient['stopServer'];
   renameSession?: LookoutClient['renameSession'];
   switchModel?: LookoutClient['switchModel'];
   switchEffort?: LookoutClient['switchEffort'];
@@ -184,6 +185,7 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
     // VIEW-1.18: no path is a file unless the test says so.
     checkPaths: vi.fn(options.checkPaths ?? (async (_id: string, paths: string[]): Promise<PathAnswer[]> => paths.map((path) => ({ path, exists: false, absolute: null })))),
     endSession: vi.fn(options.endSession ?? (async () => ({ how: 'exit' as const }))),
+    stopServer: vi.fn(options.stopServer ?? (async () => ({ how: 'stopped' as const, count: 1 }))),
     renameSession: vi.fn(options.renameSession ?? (async () => ({ result: 'renamed' as const }))),
     switchModel: vi.fn(options.switchModel ?? (async (_id: string, req: { model: string }) => ({ model: req.model, confirmed: false }))),
     switchEffort: vi.fn(options.switchEffort ?? (async (_id: string, req: { effort: string }) => ({ effort: req.effort, confirmed: false, saved: req.effort !== 'max' }))),

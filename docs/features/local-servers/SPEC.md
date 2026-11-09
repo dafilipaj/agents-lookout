@@ -3,7 +3,7 @@ title: Local servers
 code: PORTS
 status: In Progress
 created: 2026-10-16
-updated: 2026-11-06
+updated: 2026-11-09
 ---
 
 # Local servers
@@ -43,12 +43,14 @@ Agents start dev servers, in Worktrees and through tb-devctl, and leave them run
 
 ### PORTS-4 Stop a Local server (slice 2)
 
-- [ ] PORTS-4.1 Stop ends the server and the processes it started (for example `pnpm dev` → node → vite), and the port is free afterwards. (test)
-- [ ] PORTS-4.2 Stop never ends a shell, tmux, a Harness process (Claude Code, Codex) or Lookout itself, even when they're ancestors of the server. (test)
-- [ ] PORTS-4.3 A process that ignores the polite signal is force-stopped after 3 s. (test)
-- [ ] PORTS-4.4 A tb-devctl service is stopped through `tb-devctl down`, so its stack's state stays right. (test)
-- [ ] PORTS-4.5 If stopping fails, the row says why and stays. (test)
-- [ ] PORTS-4.6 Each server row in the Servers tab has a Stop button, and every Stop asks first: an in-app dialog, as End Session's (VIEW-5.6, never `window.confirm`), names the server (port, name, and its Session or directory) and what stops with it (the processes it started; for a tb-devctl service, `tb-devctl down` of that service). Buttons: Cancel and Stop (destructive); Stop reads "Stopping…" while it works, and a failure shows in the dialog (PORTS-4.5). (test)
+- [x] PORTS-4.1 Stop ends the server's job: the server, the processes it started, and the ones that started it inside its process group up to the job's top (for example `pnpm dev` → `sh -c vite` → node, all three); the port is free afterwards. (test)
+- [x] PORTS-4.2 Stop never ends tmux, a Harness process (Claude Code, Codex, any Session in Fleet's list), Lookout itself or its ancestors, or a shell outside the server's job: the terminal's shell, and the shell a Harness ran the command in, which leads its own process group. They're never signalled even when they're ancestors of the server; a job that holds one of the first three isn't stopped at all, and says why. A shell inside the job (pnpm's or npm's `sh -c`) is the job's own and stops with it. (test)
+- [x] PORTS-4.3 A process that ignores the polite signal is force-stopped after 3 s. (test)
+- [x] PORTS-4.4 A tb-devctl service is stopped through `tb-devctl down <stack> <service>`, so its stack's state stays right. (test)
+- [x] PORTS-4.5 If stopping fails, the row says why and stays. (test)
+- [x] PORTS-4.6 Each shown server row in the Servers tab, except Lookout's own, has a Stop button, and `x` on the selected row does the same; every Stop asks first: an in-app dialog, as End Session's (VIEW-5.6, never `window.confirm`), names the server (port, name, and its Session or directory) and what stops with it (the processes it started; for a tb-devctl service, `tb-devctl down` of that service). Buttons: Cancel and Stop (destructive); Stop reads "Stopping…" while it works, and a failure shows in the dialog (PORTS-4.5). (test)
+- [x] PORTS-4.7 Stop names the server it was asked for by pid, command and start time, and Lookout's server reads the listeners and processes again right before signalling: a server that stopped meanwhile counts as stopped, and one whose pid now runs something else, or started at another time, isn't stopped and the dialog says so. (test)
+- [ ] PORTS-4.8 The row's Stop button, on the row under the pointer and the selected one, and the dialog read well from 280 px to the sidebar's widest, light and dark. (manual)
 
 ## Non-goals
 
@@ -83,7 +85,7 @@ Servers tab (P)
 
 - The chip is `text-meta`, `muted-foreground`, as the status line's other parts; no colour: a running server is information, not a state to act on (DS-12).
 - Rows are the design system's list rows: port in `tabular-nums`, name in `body`, the directory and age in `meta`.
-- Slice 2: a Stop icon button (DS-7, lucide's `Square`, named "Stop <port> <name>") at the end of each row, opening the confirmation (PORTS-4.6).
+- Slice 2: a Stop icon button (DS-7's `sm`, quiet, the `stop` action's icon from `lib/actions.ts` as DS-18.6 gives every Stop one icon, named "Stop :<port> <name>", its tooltip with `X`) at the end of each row, after the age, shown on the row under the pointer and the selected row so quiet rows stay quiet (DS-22); like the port's link it takes no Tab stop inside the listbox, the row's `x` being the keyboard's way. It opens the confirmation (PORTS-4.6).
 
 ## Technical approach
 
@@ -93,7 +95,12 @@ Servers tab (P)
 - **The working directory rule.** Most Sessions run in `~/Projects/work` on `main` (seen 2026-11-02 over 2,240 Sessions), so a server in `~/Projects/work/repos/api-worktrees/x` is inside every one of them: rule 3 names none then, and the server shows under "Not in a Session", grouped by its checkout. Rules 1 and 2 are what tie such a server to its Session.
 - **Schedule.** As MEM-2.3: a `setTimeout` chain, cancelled on shutdown with its process group killed and waited for. The `ports` event carries start times, not ages, so the tab renders ages itself and an unchanged read sends nothing.
 - **Browser.** `web/src/lib/ports.ts` keeps the event; `PortsChip` in the status line, `ServersPanel` as the fifth `RightTab` (`lib/right-sidebar.ts`, `RIGHT_TABS`).
-- **Slice 2, Stop.** `POST /api/ports/stop {pid}` with the token and Origin (0003): for a tb-devctl service `tb-devctl down <stack> <service>`; else SIGTERM to the server's own process group when its leader isn't protected (PORTS-4.2), else to the server and its descendants, SIGKILL after 3 s, then one `lsof` to check the ports are free. YugoTool's `runner/orphans.ts` is the reference.
+- **Slice 2, Stop: `server/ports-stop.ts`.** `POST /api/ports/stop {pid, command, startedAt, devctl}` with the token and Origin (0003); the body names the row the dialog opened on (PORTS-4.7), and `devctl` keeps a tb-devctl service from being stopped any other way when tb-devctl can't be read.
+  - **Read again.** `tb-devctl ps --json` first, as the slow one, then back to back the listener query (PORTS-1.1's argv) and `ps -axo pid=,ppid=,pgid=,uid=,stat=,etime=,comm=` (the command last, as it can hold spaces; a zombie, `Z`, counts as gone), so what is signalled is what was just seen listening. `etime` counts whole seconds, read sometime during the `ps` run, so one sample places a process's start in a window from the run's start minus `etime` minus 1 s to its end minus `etime`: a slow read widens the window rather than skewing it, and two samples of one process overlap. The pid must still listen, with the same command, `startedAt` within 5 s of its window (the row's own estimate carries the monitor's read lag); not listening is already stopped, anything else is refused with nothing signalled.
+  - **tb-devctl.** A service by PORTS-1.3's join (`listener_pid`, else `pgid`; not `dead`), whose recorded `pgid`, when it has one, is the listener's own (a record left by a pid since reused names another group, and isn't this server's), is stopped with `tb-devctl down -- <stack> <service>` (20 s timeout; tb-devctl itself waits 10 s before SIGKILL); a stack or service name must start with a letter or digit, so none is taken for an option. Every process in the service's process group is checked against PORTS-4.2 first, as `down` signals the whole group. Never `--force`: Lookout's server runs as the user with no Claude Code session id (`cleanEnv`), which tb-devctl lets manage that user's stacks; another user's stack stays refused, with tb-devctl's own reason. Known limit: tb-devctl's own SIGKILL isn't checked again by Lookout, so a service process that execs a Harness while it's being stopped is killed by tb-devctl; guarding that is a tb-devctl change.
+  - **The job.** From the listener, up the `ppid` chain while the parent is in the same process group and isn't protected, a shell leading its process group included (the terminal's, or a Harness's `zsh -c`); the top of that walk and every descendant of it is the job. Protected (PORTS-4.2): pid 1 and below, Lookout's pid and its ancestors, every Session pid in Fleet's list, and any process whose command's last path part (a leading `-` dropped) is `tmux`, `claude` or `codex`; shells are `sh`, `bash`, `zsh`, `fish`, `dash`, `ksh`, `tcsh`, `csh` and `login`. A job holding a protected process, a shell leading a process group, or a process of another user (`uid`) is refused before anything is signalled.
+  - **Signals.** SIGTERM to every process of the job, polled every 250 ms by `ps`; after 3 s, SIGKILL only on a table read just then, to those still there with the same pid and an overlapping start window, and still not protected (a process can exec another program, keeping both); an unreadable table forces nothing and says so. Then up to 1 s for them to go, and the listener query: a port still listened on fails the Stop with who holds it ("Stopped, but :5173 is in use again by node (pid 4242)"), and a query that can't be read after a few tries fails it too, rather than call the port free.
+  - Seen on this Mac (2026-11-09): Claude Code's Bash tool runs a command in a `zsh -c` leading its own group, so the walk stops under it; Claude Code's `comm` is `claude` (its `ucomm` is its version, `2.1.318`), Codex's `codex`.
 - **World needs (TEST-1.5):** `.ports({ listeners, cwds, processes, devctl, fail })` answering the exact `lsof` argvs and `ps -axo pid=,ppid=,pgid=,etime=` from an answer file the test can rewrite mid-test (as `.memory()`'s), with `fail` making a named query exit non-zero or time out. Every World gets `lsof` and `tb-devctl` shims: one without `.ports()` answers no listeners and no stacks, so no World ever reads the Mac's real ports; the `ps` shim answers the new argv from the same file (empty without a declaration).
 - **Amends:** VIEW-5.5 (the status line's new part), SIDE-7.4 (`P`), the Glossary's Local server (belongs to a Session by PORTS-1.3, not by its Worktree alone), decision 0005 (a Consequences note: PORTS reads the OS's listeners in Lookout's server, as MEM reads `ps`; a ports CLI waits for an agent needing one).
 
@@ -105,10 +112,11 @@ Servers tab (P)
 - **Shown: a Session's, a tb-devctl service, or in a git checkout** (Dario, 2026-11-02): on 2026-11-02 twelve of thirteen listeners were the Mac's or apps', so an unfiltered list is mostly noise; "Show all" has the rest.
 - **Every Stop is confirmed** (Dario, 2026-11-04: "If I click stop button I want confirmation window"): a dialog before every Stop, a Session's server and a tb-devctl service alike. The recommendation (one click except for tb-devctl) wasn't taken.
 - **tb-devctl's `owner` first**: it names the Session that started the stack outright, so it beats the tree and the working directory.
+- **Stop checks what it signals** (from Codex's spec review, taken as recommended when slice 2 started, 2026-11-09): a server is named by pid, command and start time and checked again right before signalling, so a reused pid is never signalled (PORTS-4.7), and every process it signals is checked against PORTS-4.2, not only the group's leader, as the Session actions' process identity does (VIEW-5.6).
 
 ## Open questions
 
-- [ ] Slice 2: Stop names a server by pid, command and start time, and the server checks all three again before signalling, so a reused pid is never signalled; every process it signals, not only the group's leader, is checked against PORTS-4.2 (as the Session actions' process identity does, VIEW-5.6). From Codex's spec review.
+None.
 
 ## Changelog
 
@@ -123,3 +131,6 @@ Servers tab (P)
 - 2026-11-04: Dario asked for slice 2 ("I lack buttons to be able to stop servers from the Servers tab") and answered its first Open question: every Stop is confirmed in a dialog. PORTS-4.6 added, the UX gains the row's Stop button, a Key decision replaces the Open question.
 - 2026-11-05: PORTS-3.6 ticked: Dario checked and confirmed it.
 - 2026-11-06: SIDE-11.1 (Plan item 45): the panel no longer takes focus when it mounts or the page loads with it open, only from its key, its tab or a click; with nothing focused the keys are the Session list's.
+- 2026-11-09: Slice 2 started. The Open question taken as recommended (a Key decision now, and PORTS-4.7). PORTS-4.1 and 4.2 made exact: a job is the server's process group up to a protected process, so pnpm's and npm's `sh -c` stop with it while the terminal's shell and a Harness's `zsh -c`, which lead their own groups, never do. PORTS-4.6 leaves out Lookout's own row and adds `x`, as nothing in a listbox row takes a Tab stop. The UX uses the `stop` action's icon (DS-18.6), not `Square`, shown on hover and on the selected row. The Technical approach gains the Stop's reads, the job, the signals and the tb-devctl rule (no `--force`).
+- 2026-11-09: Slice 2 built (`server/ports-stop.ts`, `POST /api/ports/stop`, the row's Stop and `StopDialog`, `x` in the shortcuts list and the hint line) and tried on the running app: a `node` → `sh -c` → `node` job with a child, all four ended and the port freed. Codex review (Sol xhigh, one round): 3 blockers, 2 majors, 1 minor, all fixed: tb-devctl's process group is checked before `down`; protections are checked again before SIGKILL, on a table read then, and nothing is forced when it can't be read; start times come from each `ps` sample's own time; an unreadable final port check fails the Stop; `x` is in the shortcuts list. PORTS-4.1 to 4.7 ticked; PORTS-4.8 waits for Dario's look.
+- 2026-11-09: Codex review round 2 (Sol xhigh): 1 blocker, 4 majors. Fixed: the listeners are read again after tb-devctl, right before `ps`; a tb-devctl record whose `pgid` isn't the listener's is ignored; names must start with a letter or digit and follow `--`; a start time is a window from one sample, so a slow `ps` can't lose a process. Not fixed, a known limit: tb-devctl's own SIGKILL after 10 s isn't guarded, so a service process that execs a Harness while it's being stopped would be killed by tb-devctl; guarding it is a tb-devctl change (cli-toolbox), for a case no service does.

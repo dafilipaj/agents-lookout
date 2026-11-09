@@ -11,6 +11,7 @@ import { type LookoutApp, createApp } from './app.ts';
 import { EndError } from './closer.ts';
 import type { FleetRow } from './fleet.ts';
 import { checkSessionPaths } from './files.ts';
+import { StopError, type StopTarget } from './ports-stop.ts';
 import { HistoryError } from './history.ts';
 import { EFFORT_UNCERTAIN, MODEL_UNCERTAIN, ModelSwitchError } from './model-switch.ts';
 import { RenameError } from './renamer.ts';
@@ -44,6 +45,7 @@ let answers: { sessionId: string; req: AnswerRequest }[] = [];
 let stops: string[] = [];
 let renamed: { sessionId: string; name: string }[] = [];
 let switched: ({ sessionId: string } & (ModelSwitchRequest | EffortSwitchRequest))[] = [];
+let serverStops: StopTarget[] = [];
 
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'lookout-app-'));
@@ -60,6 +62,7 @@ beforeEach(async () => {
   stops = [];
   renamed = [];
   switched = [];
+  serverStops = [];
   const settings = new SettingsStore(join(dir, 'settings.json'));
   await settings.load();
   app = createApp({
@@ -154,6 +157,15 @@ beforeEach(async () => {
       },
     },
     memory: { snapshot: () => null, watch: () => () => {}, setOpen: () => {}, drop: () => {} },
+    ports: {
+      snapshot: () => null,
+      watch: () => () => {},
+      stop: async (target) => {
+        serverStops.push(target);
+        if (target.pid === 409) throw new StopError(409, 'This server was restarted since the list was read, so nothing was stopped.');
+        return { how: 'stopped', count: 3 };
+      },
+    },
     staticDir: null,
   });
   await new Promise<void>((r) => app.server.listen(0, '127.0.0.1', r));
@@ -511,6 +523,29 @@ describe('VIEW-5.6 route', () => {
     expect(JSON.parse((await end('{"pid":61001,"procStart":"--json"}')).body)).toEqual({ error: 'Invalid process start time.' });
     expect((await end(JSON.stringify({ pid: 1, procStart: 'x'.repeat(2000) }))).status).toBe(413);
     expect(ended).toEqual([]);
+  });
+});
+
+describe('PORTS-4 route', () => {
+  it('PORTS-4.7: stopping a Local server is a mutation: our Origin and the token; the body names the row the dialog opened on', async () => {
+    const json = { 'content-type': 'application/json' };
+    const target = { pid: 4242, command: 'node', startedAt: 1_700_000_000_000, devctl: false };
+    const stop = (headers: Record<string, string>, body = JSON.stringify(target)) => call('POST', '/api/ports/stop', { ...json, ...headers }, body);
+    expect((await stop({ 'x-lookout-token': TOKEN })).status).toBe(403); // no Origin
+    expect((await stop({ origin })).status).toBe(403); // no token
+    expect((await stop({ origin: 'https://evil.example', 'x-lookout-token': TOKEN })).status).toBe(403);
+    expect((await call('GET', '/api/ports/stop', { origin })).status).toBe(404);
+    expect(JSON.parse((await stop({ origin, 'x-lookout-token': TOKEN }, '{"pid":"4242"}')).body)).toEqual({ error: 'Invalid process id.' });
+    expect(serverStops).toEqual([]);
+
+    const res = await stop({ origin, 'x-lookout-token': TOKEN });
+    expect([res.status, JSON.parse(res.body)]).toEqual([200, { how: 'stopped', count: 3 }]);
+    expect(serverStops).toEqual([target]);
+  });
+
+  it('PORTS-4.5: a refused Stop answers with its status and why', async () => {
+    const res = await call('POST', '/api/ports/stop', { 'content-type': 'application/json', origin, 'x-lookout-token': TOKEN }, JSON.stringify({ pid: 409, command: 'node', startedAt: 5 }));
+    expect([res.status, JSON.parse(res.body)]).toEqual([409, { error: 'This server was restarted since the list was read, so nothing was stopped.' }]);
   });
 });
 

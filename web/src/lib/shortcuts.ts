@@ -226,6 +226,15 @@ export const SHORTCUTS: readonly Shortcut[] = [
     press: [{ key: 'c' }],
   },
   {
+    id: 'panel-stop',
+    action: 'stop',
+    group: 'panels',
+    keys: ['X'],
+    label: 'Stop the selected Local server',
+    note: 'Servers; it asks first.',
+    press: [{ key: 'x' }],
+  },
+  {
     id: 'send',
     group: 'composer',
     keys: ['Enter'],
@@ -316,7 +325,7 @@ const PANEL_KEYS: Record<RightTab, HintKey[]> = {
   work: [MOVE, EXPAND, OPEN, ADD],
   library: [MOVE, EXPAND, OPEN, ADD],
   topics: [MOVE, EXPAND, OPEN, { id: 'panel-graph', label: 'graph' }],
-  servers: [MOVE, { id: 'panel-enter', label: 'open' }],
+  servers: [MOVE, { id: 'panel-enter', label: 'open' }, { id: 'panel-stop', label: 'stop' }],
 };
 
 /** VIEW-3.12: the hint line's region name and its keys, as the UX table "Hint line" lists them. */

@@ -1,4 +1,5 @@
 import { LibraryPanel } from '@/components/LibraryPanel';
+import type { LocalServer } from '@shared/ports.ts';
 import type { LaunchHarness } from '@shared/settings.ts';
 import type { AnswerRequest, ChatPage, EndTarget, EscStatus, HistoryItem, LaunchRequest, LaunchView, LaunchTrust, ResumeResult, SessionRow, Status } from '@shared/types.ts';
 import type { WorkPr, WorkSessionLink, WorkTask } from '@shared/work.ts';
@@ -938,6 +939,15 @@ export function App({ client }: { client: LookoutClient }) {
     [client],
   );
 
+  // PORTS-4: the row the dialog opened on; the server checks it again before signalling (PORTS-4.7).
+  const stopServer = useCallback(
+    async (server: LocalServer) => {
+      if (server.startedAt === null) throw new Error('Lookout can’t confirm it’s the same server, so it won’t stop it.');
+      return client.stopServer({ pid: server.pid, command: server.command, startedAt: server.startedAt, devctl: server.devctl });
+    },
+    [client],
+  );
+
   // VIEW-5.12: Fleet types the Harness's `/rename`; the new title comes back through the list (VIEW-5.14).
   // VIEW-5.14: a rename made here shows at once, though the Session is selected (SIDE-10.4).
   const renameSession = useCallback(
@@ -1320,6 +1330,7 @@ export function App({ client }: { client: LookoutClient }) {
                   reveal={serversReveal}
                   onRevealed={() => setServersReveal(null)}
                   onSelectSession={(id) => onSelect(id, 'push')}
+                  onStop={stopServer}
                   navRef={serversNav}
                 />
               ),

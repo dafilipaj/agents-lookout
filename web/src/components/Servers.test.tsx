@@ -213,6 +213,79 @@ describe('the Servers tab (PORTS-3)', () => {
   });
 });
 
+describe('Stop (PORTS-4)', () => {
+  const stopButton = (pid: number) => panel().querySelector<HTMLElement>(`[data-pid="${pid}"] [data-field="stop"]`);
+
+  it('PORTS-4.6: a shown row other than Lookout\'s has Stop, its name and key in its tooltip; Cancel stops nothing', async () => {
+    const user = userEvent.setup();
+    const app = open('/s/a');
+    app.emit({ type: 'ports', ports: ports([API, VITE, LOOKOUT, WT1, MYSQL]) });
+    await user.keyboard('p');
+    expect(stopButton(601)).toHaveAccessibleName('Stop :5173 vite');
+    expect(stopButton(601)).toHaveAttribute('title', 'Stop :5173 vite (X)');
+    // No Tab stop inside the listbox, as the port's link.
+    expect(stopButton(601)).toHaveAttribute('tabindex', '-1');
+    expect(stopButton(100)).toBeNull();
+    await user.click(within(panel()).getByRole('checkbox'));
+    expect(stopButton(974)).toBeNull(); // "Other listeners" are a Non-goal
+    // Shown on the row under the pointer and the selected one, so quiet rows stay quiet.
+    expect(stopButton(701)).toHaveClass('opacity-0', 'group-hover/server:opacity-100');
+    expect(stopButton(601)).toHaveClass('opacity-100');
+
+    await user.click(stopButton(701)!);
+    const dialog = screen.getByRole('dialog', { name: 'Stop :3000 node?' });
+    expect(dialog).toHaveTextContent('In api-worktrees/one. It stops with the processes it started: they’re asked to exit, and forced after 3 seconds.'.replace('’', "'"));
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(app.client.stopServer).not.toHaveBeenCalled();
+    expect(within(panel()).getByRole('listbox')).toHaveFocus();
+  });
+
+  it('PORTS-4.6: x on the selected row asks too; a tb-devctl service says tb-devctl down; Stop reads Stopping… and closes once done', async () => {
+    let finish!: () => void;
+    const user = userEvent.setup();
+    const app = open('/s/a');
+    vi.mocked(app.client.stopServer).mockImplementation(() => new Promise((r) => (finish = () => r({ how: 'devctl', count: 0 }))));
+    app.emit({ type: 'ports', ports: ports([API, VITE, LOOKOUT]) });
+    await user.keyboard('p');
+    await user.keyboard('j'); // VITE, then API (Busy first)
+    await user.keyboard('x');
+    const dialog = screen.getByRole('dialog', { name: 'Stop :4301 test-pr-24926/api?' });
+    expect(dialog).toHaveTextContent('In “API rates port”. tb-devctl stops the service (tb-devctl down test-pr-24926 api), so its stack stays right.');
+    await user.click(within(dialog).getByRole('button', { name: 'Stop' }));
+    expect(app.client.stopServer).toHaveBeenCalledWith({ pid: 501, command: 'node', startedAt: API.startedAt, devctl: true });
+    expect(within(dialog).getByRole('button', { name: 'Stopping…' })).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeDisabled();
+    await act(async () => finish());
+    expect(screen.queryByRole('dialog')).toBeNull();
+    // Lookout's own row: x asks nothing.
+    await user.keyboard('j');
+    await user.keyboard('x');
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('PORTS-4.5: a failed Stop says why in the dialog and the row stays; a row without a start time can\'t be confirmed', async () => {
+    const user = userEvent.setup();
+    const app = open('/s/a');
+    vi.mocked(app.client.stopServer).mockRejectedValue(new Error('This server was restarted since the list was read, so nothing was stopped.'));
+    app.emit({ type: 'ports', ports: ports([VITE, { ...WT1, startedAt: null }]) });
+    await user.keyboard('p');
+    await user.click(stopButton(601)!);
+    let dialog = screen.getByRole('dialog', { name: 'Stop :5173 vite?' });
+    expect(dialog).toHaveTextContent('In “Fantastic deal panel”.');
+    await user.click(within(dialog).getByRole('button', { name: 'Stop' }));
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('This server was restarted since the list was read, so nothing was stopped.');
+    expect(screen.getByRole('dialog')).toBe(dialog);
+    expect(panel().querySelector('[data-pid="601"]')).not.toBeNull();
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+
+    await user.click(stopButton(701)!);
+    dialog = screen.getByRole('dialog', { name: 'Stop :3000 node?' });
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('Lookout can’t confirm it’s the same server, so it won’t stop it.');
+    expect(within(dialog).getByRole('button', { name: 'Stop' })).toBeDisabled();
+  });
+});
+
 describe('PORTS-1.5, PORTS-3.2: the browser\'s helpers', () => {
   it('PORTS-1.5: how long a server has been up', () => {
     expect([upFor(NOW - 45_000, NOW), upFor(NOW - 14 * 60_000, NOW), upFor(NOW - 130 * 60_000, NOW), upFor(NOW - 120 * 60_000, NOW), upFor(NOW - 26 * 3600_000, NOW)]).toEqual(['45s', '14m', '2h 10m', '2h', '1d 2h']);

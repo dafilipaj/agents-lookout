@@ -167,6 +167,7 @@ const ELSEWHERE: Record<string, { file: string; criteria: string[] }[]> = {
     { file: 'PrSpecs.test.tsx', criteria: ['PLAIN-5.1'] },
   ],
   'panel-copy': [{ file: 'LibraryPanel.test.tsx', criteria: ['LIB-3.7'] }],
+  'panel-stop': [{ file: 'Servers.test.tsx', criteria: ['PORTS-4.6'] }],
   start: [{ file: 'Launcher.test.tsx', criteria: ['LAUNCH-3.3'] }],
 };
 
@@ -284,7 +285,7 @@ describe('the hint line (VIEW-3.12)', () => {
     expect(line('list', 'work')).toBe('Work · ↑ ↓ move · Enter expand · O open · A add to Topic');
     // A panel's line leaves out the keys its rows don't take: History's rows open nothing with O, Servers' take neither A nor O.
     expect(line('list', 'history')).toBe('History · ↑ ↓ move · Enter expand · A add to Topic');
-    expect(line('list', 'servers')).toBe('Servers · ↑ ↓ move · Enter open');
+    expect(line('list', 'servers')).toBe('Servers · ↑ ↓ move · Enter open · X stop');
     expect(line('panels')).toBe('Panels · H W L T P open');
   });
 });
