@@ -1,7 +1,7 @@
 ---
 title: Library
 code: LIB
-status: In Progress
+status: Done
 created: 2026-10-23
 updated: 2026-11-06
 ---
@@ -56,7 +56,7 @@ Select, then act, as History's and Work's rows (HIST-3.5, WORK-1.12).
 - [x] LIB-3.3 Its first button is **Open**: for an existing `.md` it opens the file in VS Code (`vscode://file/<absolute path>`, VIEW-1.17); for an existing `.html`, `.htm`, `.pdf` or image it opens a new browser tab served by Lookout's read-only file route, with the file's media type and `Content-Security-Policy: sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox` on every answer, errors included, so the page runs in an opaque origin where scripts run, storage APIs don't, links in it open as ordinary tabs, and its own requests to Lookout are refused (`Origin: null`); for an Artifact or Share it opens its URL in a new tab with no referrer (VIEW-1.12). An Artifact row whose folded source file exists has **Open file** as its second button, which opens that file by the same rule for its Type. The route serves only a path one of the server's reads listed since it started and never runs a command (Technical approach, Opening). A gone file has no Open button and says it's gone. Open's tooltip names `O`. (e2e)
 - [x] LIB-3.4 **Copy link**, under "More" (DS-16), copies the URL, or the absolute path for a file, and the row reads "Copied" for 2 s, or "Couldn't copy" when the browser refuses (VIEW-1.14). Its tooltip names `C`. (test)
 - [x] LIB-3.5 Each Session's line (LIB-3.2, DS-21.2) is **Open** when the Session is live (selects it, never starts a second process), **Resume** when it can be resumed (through History's resume route, with its "Starting…" row and 15 s failure, HIST-3.1), or **Show** when it can't (read-only, with why, HIST-3.3); its accessible name says which and the Status, as WORK-4.10's ("Resume fix-eval, past"). A pruned Session's line is text, not a button (LIB-2.6). The first line's tooltip names `S`. (e2e)
-- [ ] LIB-3.6 The expanded row's actions, Open and "More" (Open file, Copy link, Show source file and Add to Topic, DS-16), come last, after its counts (DS-21.1), on one line with DS-7.4's spacing, and the layout holds at a 280 px sidebar, light and dark. (manual)
+- [x] LIB-3.6 The expanded row's actions, Open and "More" (Open file, Copy link, Show source file and Add to Topic, DS-16), come last, after its counts (DS-21.1), on one line with DS-7.4's spacing, and the layout holds at a 280 px sidebar, light and dark. (manual)
 - [x] LIB-3.7 `O`, `C` and `S`, with focus in Library and not in a text field, with no modifier, act on the selected row, expanded or not, once per press: `O` opens the Output exactly as its Open button does (nothing when the file is gone), `C` copies its link as Copy link does, `S` runs the first Session chip (Open, Resume or Show; nothing for a pruned one). They don't move the selection, stand down while a modal is open, and work with Caps Lock on (WORK-6.4's rules). The row's screen-reader description says "O opens it, C copies its link, S opens its Session". (test)
 
 ## Non-goals
@@ -280,3 +280,4 @@ None.
 - 2026-11-06: LIB-3.2 and 3.6 amended and unticked for DS-21 (Plan item 50): the expanded row in DS-21's parts; its path, URL and dates move to the state's tooltip, "Show source file" joins More, its Sessions are a count, and its actions come last. In Progress again.
 - 2026-11-09: LIB-3.2 built on DS-21 (Plan item 50) and ticked: the state line is the kind, the folder, "updated 2h ago", "published 24 times" ("written" for a file, "uploaded" for a Share) and "newer than published"; its path or URL, source, made and source-edited times are the tooltip; every Session a line under the count, its state what it did; "Show source file" under More opens the folded source in VS Code (left out for a Markdown source). LIB-3.5 amended from chips to lines. LIB-3.6 waits for Dario's look.
 - 2026-11-09: LIB-2.7 fix: a hover also ends at the first mouseover outside its row. Since DS-21 (Plan item 50) expanding or collapsing a row swaps its lines, so the element under the pointer could leave the page, the row never heard its mouseleave and new reads stayed held (the Behaviour test failed 2 runs in 10; 20 in 20 pass now).
+- 2026-11-09: LIB-3.6 checked by Dario in the running app and ticked. Every requirement is now ticked, so the status is Done.

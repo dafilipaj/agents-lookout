@@ -62,7 +62,7 @@ A click on the memory line opens a popover, as the usage strip's does (USAGE-2.1
 
 - [x] MEM-4.1 When a Session's tree grows 1 GB or more in 10 minutes, or 30 MB or more while the Mac's memory pressure is warn or critical (MEM-2.5's growth, MEM-1's pressure), its row shows lucide's `TrendingUp` and the amount ("+2.8 GB") in `warning-text` at the start of its second line (DS-22.3), the icon the size of the context ring; its tooltip reads "Memory +2.8 GB in 10 min", the row's accessible name adds "memory growing, +2.8 GB in 10 min" before the Subagent count (SIDE-3.10's order), and its colour keeps 4.5:1 on every row state (SIDE-3.11's test). Growth below that shows nothing on the row: never a "0", never a mark for shrinking. (test)
 - [x] MEM-4.2 The mark follows the samples through the `memory` event: it shows within one sample of the growth (MEM-2.3), goes within one of the 10-minute window no longer holding it, goes with its row when Fleet stops listing the Session, and changes nothing else on the row: not the Status, the marker, the strip, the age or the order (SIDE-3.1, SIDE-3.4). (test)
-- [ ] MEM-4.3 At 280 px the mark is never cut: it leads the second line, where the location and the Session's words truncate first (SIDE-2.14), and sits clear of the Subagent count, the row's lines still aligned (SIDE-3.8). (manual)
+- [x] MEM-4.3 At 280 px the mark is never cut: it leads the second line, where the location and the Session's words truncate first (SIDE-2.14), and sits clear of the Subagent count, the row's lines still aligned (SIDE-3.8). (manual)
 
 ### MEM-5 CPU and load
 
@@ -260,3 +260,4 @@ None.
 - 2026-11-06: MEM-3.10 built with Plan item 47: a tile's last line wraps (`break-words`, no `truncate`), and the trend's icon sits by its first line; the breakdown is drawn from `ui/details.tsx` with the classes it had, which a test reads against the old ones (DS-19.1).
 - 2026-11-09: MEM-3.5 and MEM-4.1 ticked with DS-22 (Plan item 50): growth under the threshold is grey with no icon; the warning is 1 GB in 10 minutes, or 30 MB under warn or critical pressure (`runsAway`, `shared/memory.ts`), in the sidebar and in Memory's list alike.
 - 2026-11-09: MEM-1.4's "N Sessions growing" counts the rows with MEM-4.1's mark (`runsAway`), not every 30 MB of growth.
+- 2026-11-09: MEM-4.3 checked by Dario in the running app and ticked; MEM-3.8 still waits for his look.

@@ -1,7 +1,7 @@
 ---
 title: Usage at a glance
 code: USAGE
-status: In Progress
+status: Done
 created: 2026-10-16
 updated: 2026-11-06
 ---
@@ -33,7 +33,7 @@ Limits show up only when an agent stalls. Claude's usage page and Codex's `/stat
 - [x] USAGE-2.5 "Worth a look" lists each window and each extra usage at 80% or more, tightest first, one line each with its mark: "Codex weekly at 100%, resets Mon 10:35 (in 2d 22h)". With none it isn't there. (test)
 - [x] USAGE-2.6 Then a section per provider under a `SectionLabel`: its name, its monochrome mark (DS-3.1), and at its right its plan and its age ("Team · Max 5x · 1m ago"). Its windows, tightest first, are `Meter`s: the window's name, its % and mark, a 4 px bar with the level as its edge (DS-3.2), and "resets 14:10 · in 2h28" under it, or "reset · refreshing" in its place. Extra usage is a `Meter` too when it has a limit; credits and a provider's reason (USAGE-2.2) are lines under the label. Jev's section comes last: its label with "ready" or "not set up" at its right, then Version, Key from, API and Config as rows, the name at the left and the value at the right, cut short at its start with the whole in its tooltip, then the command that fixes an old tb-jev (TOOLS-2.5) and "Checked without a billed call. Balance: see the Typesafe console." (test)
 - [x] USAGE-2.7 What USAGE-2.1 and 2.2 promise still holds: every window with its bar, % used and reset, tightest first, each provider's plan, Jev's version and key source, and why a provider can't be read; it never shows stale numbers as current, and a stale provider's section is dimmed as before. (test)
-- [ ] USAGE-2.8 Seen at 280 px in both modes, with a limit at 100%, Codex read from its Transcripts and Jev not set up: the popover fits its 22 rem without a horizontal scroll, the tiles keep their values on one line, and it reads as Memory's sibling (DS-19.4). (manual)
+- [x] USAGE-2.8 Seen at 280 px in both modes, with a limit at 100%, Codex read from its Transcripts and Jev not set up: the popover fits its 22 rem without a horizontal scroll, the tiles keep their values on one line, and it reads as Memory's sibling (DS-19.4). (manual)
 
 ### USAGE-3 In the launcher
 - [x] USAGE-3.1 In the launcher's Harness choice, a Harness with a window at 95% or more shows it next to its name (for example "5h limit 100% · resets 17:30"). It stays selectable. (test)
@@ -177,3 +177,4 @@ None.
 - 2026-11-06: Added USAGE-2.3 to 2.8 (Plan item 47, the clarity pass's idea 5): the details are rebuilt in Memory's anatomy (DS-19): a verdict line, three tiles, "Worth a look", a section per provider under an uppercase label, thin meters with the level as an edge, Jev's details as rows. USAGE-1.5 amended for DS-19.3's one age formatter ("1m ago", "last turn · 17m") and unticked until it's rebuilt. In Progress again.
 - 2026-11-06: USAGE-1.1's example and the strip's mock-up follow DS-19.3's one age formatter ("12s ago", "last turn · 5m"); USAGE-1.1 unticked until it's rebuilt. The UX gains the details popover's new mock-up.
 - 2026-11-06: USAGE-2.3 to 2.7 built, and USAGE-1.1 and 1.5 ticked again with their new wording (Plan item 47): the details are drawn from `ui/details.tsx` (DS-19), and every age is `formatAge` with its words ("12s ago", "last turn · 17m", "stale · 6m"; the launcher hint's "as of 20m ago"). Decided in building: extra usage with a limit is one of the limits the verdict and "Worth a look" weigh, as USAGE-2.1 counts it a window; a window whose reset has passed counts in neither, and its meter has no % and an empty bar, "reset · refreshing" under it; a tile's reset reads "in 2h28" within a day and the day's name further off; an old provider's tile is dimmed as its section is; the popover takes Memory's height cap and scrolls; Jev's rows are right to left outside and left to right inside, so a long path keeps its end. Review fix: the verdict's age puts a flagged age first (an unknown age or clock skew, then old numbers), so Claude's failed read 6 minutes ago isn't hidden behind Codex's sound "last turn · 17m"; a provider whose only number is extra usage with a limit counts for the age too. A second round on that fix found nothing more; every order of the ages is tested. USAGE-2.8 waits for Dario's look.
+- 2026-11-09: USAGE-2.8 checked by Dario in the running app and ticked. Every requirement is now ticked, so the status is Done.
