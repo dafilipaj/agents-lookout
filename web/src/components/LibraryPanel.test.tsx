@@ -122,6 +122,17 @@ it('LIB-2.7: refreshes on open, Fleet changes and 60 visible seconds, freezing p
   const before = library.mock.calls.length; await act(async () => vi.advanceTimersByTime(60000));
   expect(library.mock.calls.length).toBeGreaterThan(before);
 });
+
+it('LIB-2.7: a hover also ends at the first mouseover outside its row, for a row whose lines left under the pointer and never heard its mouseleave', async () => {
+  const a = output(), b = output({ key: 'second', title: 'Second report' });
+  let items = [a, b]; const library = vi.fn(async () => ok(items));
+  const app = renderApp('/', { library }); await open(app); await waitFor(() => expect(rows()).toHaveLength(2));
+  fireEvent.mouseEnter(rows()[0]!); items = [b, a];
+  app.snapshot([row({ id: 'fresh' })]); await waitFor(() => expect(library.mock.calls.length).toBeGreaterThan(1));
+  // Inside its own row, the hover holds.
+  fireEvent.mouseOver(rows()[0]!.querySelector('[data-field="title"]')!); expect(rows()[0]).toHaveTextContent('Harbor report');
+  fireEvent.mouseOver(document.body); await waitFor(() => expect(rows()[0]).toHaveTextContent('Second report'));
+});
 it('LIB-2.8: uses Loading, EmptyState, hidden-gone explanation, error Alert and install CommandBlock', async () => {
   const app = renderApp('/', { library: async () => ok([], { hiddenGone: 4 }) }); await open(app);
   expect(await within(panel()).findByText('Nothing matches')).toBeVisible(); expect(panel()).toHaveTextContent('4 gone Outputs are hidden'); expect(panel()).toHaveTextContent('Hide gone'); app.unmount();

@@ -123,6 +123,15 @@ export function LibraryPanel({ focusKey, visible, sessions, now, search, status,
     pending.current = null;
     if (next?.gen === seq.current) setResults(next);
   }, [expanded, hovered]);
+  // Expanding or collapsing a row swaps its lines, so the element under the pointer can leave the page
+  // and the row never hears its mouseleave; the first mouseover outside the row ends the hover too (LIB-2.7).
+  const hoveredRow = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!hovered) return;
+    const over = (e: MouseEvent) => { if (!(e.target instanceof Node) || !hoveredRow.current?.contains(e.target)) { hoveredRow.current = null; setHovered(null); } };
+    document.addEventListener('mouseover', over);
+    return () => document.removeEventListener('mouseover', over);
+  }, [hovered]);
   // SIDE-11.1: only when you open it (`focusKey` above 0), never as it mounts.
   useEffect(() => { if (visible && focusKey) input.current?.focus(); }, [focusKey, visible]);
 
@@ -314,7 +323,7 @@ export function LibraryPanel({ focusKey, visible, sessions, now, search, status,
             {/* LIB-2.1: each day a group of the listbox, named by its heading (DS-17). */}
             {byDay(items, (item) => item.updatedAt, now).map((run, d) => <div key={run.key} role="group" aria-labelledby={`library-day-${d}`} className="flex flex-col">
               <div role="presentation" className="px-2 py-1.5 text-caption font-medium text-muted-foreground"><span id={`library-day-${d}`}>{run.label}</span></div>
-              {run.rows.map(({ item, index: n }) => <OutputRow key={key(item)} item={item} now={now} query={q} active={n === index} expanded={expanded === key(item)} sessions={sessions} enabled={!opening && keyboardEnabled} onSession={(s) => void session(s)} onRow={(e) => { settle(e); setActive(key(item)); setExpanded(key(item)); list.current?.focus(); }} onHover={(on) => setHovered(on ? key(item) : null)} register={(a) => { if (a) actions.current.set(key(item), a); else actions.current.delete(key(item)); }} />)}
+              {run.rows.map(({ item, index: n }) => <OutputRow key={key(item)} item={item} now={now} query={q} active={n === index} expanded={expanded === key(item)} sessions={sessions} enabled={!opening && keyboardEnabled} onSession={(s) => void session(s)} onRow={(e) => { settle(e); setActive(key(item)); setExpanded(key(item)); list.current?.focus(); }} onHover={(el) => { hoveredRow.current = el; setHovered(el ? key(item) : null); }} register={(a) => { if (a) actions.current.set(key(item), a); else actions.current.delete(key(item)); }} />)}
             </div>)}
           </RowSettling>
         </div>
@@ -338,7 +347,7 @@ function Hit({ text, query }: { text: string; query: string }) {
 }
 interface RowProps {
   item: OutputItem; now: number; query: string; active: boolean; expanded: boolean; sessions: ReadonlyMap<string, SessionRow>; enabled: boolean;
-  onSession(s: OutputSession): void; onRow(e: { detail: number }): void; onHover(on: boolean): void; register(actions: Actions | null): void;
+  onSession(s: OutputSession): void; onRow(e: { detail: number }): void; onHover(row: HTMLElement | null): void; register(actions: Actions | null): void;
 }
 function OutputRow({ item, now, query, active, expanded, sessions, enabled, onSession, onRow, onHover, register }: RowProps) {
   const copy = useCopy(item.kind === 'file' ? item.path! : item.url!);
@@ -377,7 +386,7 @@ function OutputRow({ item, now, query, active, expanded, sessions, enabled, onSe
       };
     }),
   } : null;
-  return <div id={id} role="option" aria-selected={active} aria-expanded={expanded} aria-label={[item.title, TYPE_LABEL[t], item.repo, age, item.display, gone && 'gone', live && 'live'].filter(Boolean).join(' ')} aria-describedby={`${id}-keys${expanded ? ` ${id}-details-state ${id}-details` : ''}`} onClick={onRow} onMouseEnter={() => onHover(true)} onMouseLeave={() => onHover(false)} data-slot="row" data-selected={active || undefined} className={cn('flex min-w-0 cursor-default flex-col gap-0.5 rounded-md px-2 py-[7px] text-body hover:bg-sidebar-accent/60', active && 'bg-sidebar-accent')}>
+  return <div id={id} role="option" aria-selected={active} aria-expanded={expanded} aria-label={[item.title, TYPE_LABEL[t], item.repo, age, item.display, gone && 'gone', live && 'live'].filter(Boolean).join(' ')} aria-describedby={`${id}-keys${expanded ? ` ${id}-details-state ${id}-details` : ''}`} onClick={onRow} onMouseEnter={(e) => onHover(e.currentTarget)} onMouseLeave={() => onHover(null)} data-slot="row" data-selected={active || undefined} className={cn('flex min-w-0 cursor-default flex-col gap-0.5 rounded-md px-2 py-[7px] text-body hover:bg-sidebar-accent/60', active && 'bg-sidebar-accent')}>
     <span id={`${id}-keys`} aria-hidden className="sr-only">O opens it, C copies its link, S opens its Session</span>
     <div className={cn('flex min-w-0 gap-1.5', expanded ? 'items-start' : 'items-center')}>
       <span className="flex h-5 shrink-0 items-center"><Icon aria-hidden className="size-3.5 text-muted-foreground" /></span>
