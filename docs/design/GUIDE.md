@@ -137,6 +137,14 @@ Context usage, a usage limit, memory and CPU load, a PR's age.
 - **Don't:** make one choice out of two checkboxes, or a row of pressed buttons.
 - **Guard:** DS-13.3, DS-20.3.
 
+### A text beside another that explains it
+
+- **Use** two columns in rows, as the Spec view's simplified side (PLAIN-14.8): the source at most 34rem on the left, the explanation at most 30rem on the right, sharing what's narrower 34 to 30, 2rem either side of a 1 px `border` line, 3rem of margin to the pane's edges. Each part is one row, so the two halves start level; the right half sticks while its row scrolls, unless it's taller than the view.
+- **Do:** tie the halves both ways: the explanation cites the source's numbers, and hovering either lights the other. A gap (a part nothing explains) is outlined dashed in `muted-foreground` and said in words, with no Status or Warning colour.
+- **Do:** under the width the two need (64rem), swap the explanation in place, with the source a button away.
+- **Don't:** put a toggle for the side inside the switch of ways to show the page: it's a state of its own, beside it.
+- **Guard:** none can check the layout; its look is PLAIN-14.16.
+
 ## Before you ask for review
 
 What no guard checks. A reviewer, person or agent, goes through it for every UI change.

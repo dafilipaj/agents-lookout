@@ -21,7 +21,7 @@ import { type PickTarget, TopicPicker } from '@/components/TopicPicker';
 import { SuggestView } from '@/components/SuggestView';
 import { TopicGraph } from '@/components/TopicGraph';
 import { TopicView } from '@/components/TopicView';
-import { type ExamplesApi, SpecView } from '@/components/SpecView';
+import { type ExamplesApi, type SimpleApi, SpecView } from '@/components/SpecView';
 import type { PrSpecsApi } from '@/lib/pr-specs';
 import type { PlainSource } from '@shared/plain.ts';
 import { ViewErrorBoundary } from '@/components/ViewErrorBoundary';
@@ -519,6 +519,11 @@ export function App({ client }: { client: LookoutClient }) {
   // PLAIN-11: a Module's examples, offered on a Session's Checkout and on a PR (PLAIN-11.15).
   const plainExamples = useMemo<ExamplesApi>(
     () => ({ load: (source, p) => client.plainExamples(source, p), start: (source, p) => client.startPlainExamples(source, p), cancel: () => client.cancelPlainExamples() }),
+    [client],
+  );
+  // PLAIN-14: a Module's changed specs in simple words, beside it.
+  const plainSimple = useMemo<SimpleApi>(
+    () => ({ load: (source, p) => client.plainSimple(source, p), start: (source, p) => client.startPlainSimple(source, p), cancel: (source, p) => client.cancelPlainSimple(source, p) }),
     [client],
   );
   // PLAIN-5: Work's "Specs" on a PR; a Module opens in the Spec view, and Back returns to what the main pane showed.
@@ -1197,6 +1202,7 @@ export function App({ client }: { client: LookoutClient }) {
                 onBack={() => navigate({ name: 'session', id: route.session })}
                 onOpenModule={(path, at) => navigate({ name: 'plain', session: route.session, checkout: route.checkout, path }, { hash: at ? specHash(at) : undefined })}
                 examples={plainExamples}
+                simple={plainSimple}
               />
             ) : route.name === 'plain-pr' ? (
               <SpecView
@@ -1208,6 +1214,7 @@ export function App({ client }: { client: LookoutClient }) {
                 setViewed={setPlainViewed}
                 onBack={() => navigate(prOpeners.current.get(routePath(route)) ?? { name: 'home' })}
                 examples={plainExamples}
+                simple={plainSimple}
                 onOpenModule={(path, at) => {
                   // An imported Module of the same PR keeps this view's opener.
                   const to: Route = { name: 'plain-pr', repo: route.repo, number: route.number, path };

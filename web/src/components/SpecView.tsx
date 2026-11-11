@@ -1,8 +1,8 @@
-import { ABILITY_KEY, compareClauses, compareModules, definitionName, gist, parseClauses, PREDEFINED_CONCEPTS, wordDiff, type AbilityEntry, type AbilityLeafKind, type AbilityRule, type Clause, type Compared, type FunctionalSpec, type PlainAbility, type PlainAnswer, type PlainConcept, type PlainExample, type PlainExampleFrame, type PlainExamplesAnswer, type PlainExampleTest, type PlainPortRow, type PlainSource, type PlainSpecRef, type Touched } from '@shared/plain.ts';
+import { ABILITY_KEY, compareClauses, compareModules, definitionName, gist, numberSpec, parseClauses, PREDEFINED_CONCEPTS, wordDiff, type AbilityEntry, type AbilityLeafKind, type AbilityRule, type Clause, type Compared, type FunctionalSpec, type PlainAbility, type PlainAnswer, type PlainConcept, type PlainExample, type PlainExampleFrame, type PlainExamplesAnswer, type PlainExampleTest, type PlainPortRow, type PlainSimple, type PlainSimpleAnswer, type PlainSimpleBlock, type PlainSource, type PlainSpecRef, type Touched } from '@shared/plain.ts';
 import { formatCost, modelName } from '@shared/topics.ts';
-import { ArrowLeft, ArrowRight, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, ListChecks } from 'lucide-react';
-import { createContext, Fragment, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react';
-import { flushSync } from 'react-dom';
+import { ArrowLeft, ArrowRight, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CircleAlert, Columns2, ListChecks } from 'lucide-react';
+import { createContext, Fragment, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode, type RefObject } from 'react';
+import { createPortal, flushSync } from 'react-dom';
 import { Alert } from '@/components/ui/alert';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Chip } from '@/components/ui/chip';
@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/compone
 import { Button, ButtonDivider } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Loading } from '@/components/ui/loading';
-import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
+import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Segmented, type SegmentedChoice } from '@/components/ui/segmented';
 import { SaveError } from '@/lib/client';
 import { type ChangeKind, firstLine, JUMP_MARGIN_PX, type Mark, stepMark } from '@/lib/marks';
@@ -92,6 +92,48 @@ export interface SpecViewProps {
   onOpenModule(path: string, at?: string): void;
   /** PLAIN-11: a Module's examples, on a Session's Checkout and a PR's (PLAIN-11.15); absent where they aren't offered. */
   examples?: ExamplesApi;
+  /** PLAIN-14: a Module's changed specs in simple words; absent where it isn't offered. */
+  simple?: SimpleApi;
+}
+
+/** PLAIN-14.1, 14.13: reading, starting and cancelling a Module's simplified version. */
+export interface SimpleApi {
+  load(source: PlainSource, path: string): Promise<PlainSimpleAnswer>;
+  start(source: PlainSource, path: string): Promise<void>;
+  cancel(source: PlainSource, path: string): Promise<void>;
+}
+
+/** PLAIN-14.8: from this main pane width (rem), the simplified version sits beside the spec; below it, in place (PLAIN-14.15). */
+export const SIDE_MIN_REM = 64;
+/** PLAIN-14.6: how far a numbered clause's text sits in from its list's edge, its number in that room (rem). */
+const NUM_INDENT_REM = 2.25;
+
+/** PLAIN-14.10: each history entry's choice to show or hide the simplified version, kept as its view is. */
+const sideByEntry = new Map<string, boolean>();
+const entrySide = (): boolean | null => {
+  const id = (window.history.state as { lookoutEntry?: string } | null)?.lookoutEntry;
+  return id ? (sideByEntry.get(id) ?? null) : null;
+};
+
+/** What Module needs to show the simplified version (PLAIN-14). */
+interface SimpleUi {
+  answer: PlainSimpleAnswer | null;
+  /** Why the last press was refused. */
+  pressError: string | null;
+  pressing: boolean;
+  onSimplify(): void;
+  onCancel(): void;
+  /** PLAIN-14.10: it's shown. */
+  side: boolean;
+  /** PLAIN-14.8: the main pane is 64rem or wider, so it sits beside the spec; else it swaps in place (PLAIN-14.15). */
+  wide: boolean;
+  /** PLAIN-14.8: where "On this page" goes as a menu, in the header. */
+  navSlot: HTMLElement | null;
+  /** PLAIN-14.15: the specs whose text is shown under their simplified block. */
+  shownText: ReadonlySet<string>;
+  onShowText(spec: string, shown: boolean): void;
+  /** The view's scroll box, which a block taller than it doesn't stick in (PLAIN-14.8). */
+  box: RefObject<HTMLDivElement | null>;
 }
 
 /** PLAIN-11.1, 11.13: reading, starting and cancelling a Module's examples. */
@@ -181,7 +223,7 @@ function clauseTexts(c: Compared): Set<string> {
  * PLAIN-1 to 5: a Module of a live Session's Checkout or of a PR, whole, its change since the base
  * marked in place, other Modules' Concepts on hover, and its Viewed box.
  */
-export function SpecView({ source, path, backTo, load, setViewed, onBack, onOpenModule, examples }: SpecViewProps) {
+export function SpecView({ source, path, backTo, load, setViewed, onBack, onOpenModule, examples, simple }: SpecViewProps) {
   // The source by value: a new object for the same Checkout or PR never starts the reads over.
   const sourceKey = JSON.stringify(source);
   const src = useMemo(() => JSON.parse(sourceKey) as PlainSource, [sourceKey]);
@@ -340,6 +382,98 @@ export function SpecView({ source, path, backTo, load, setViewed, onBack, onOpen
         : undefined,
     [examples, hasGroups, ex, pressError, pressing, src, showExamples, cancelExamples],
   );
+  // PLAIN-14: the simplified version, read as the examples are, more often while it's written.
+  const [sp, setSp] = useState<PlainSimpleAnswer | null>(null);
+  const [spPressError, setSpPressError] = useState<string | null>(null);
+  const [spPressing, setSpPressing] = useState(false);
+  const [spRead, setSpRead] = useState(0);
+  const spRunning = useRef(false);
+  /** PLAIN-14.10: a press whose run hasn't been seen to end; when it ends with a version, it shows. */
+  const spAwaiting = useRef(false);
+  /** PLAIN-14.10: shown or hidden, chosen here or kept with this history entry; null until chosen. */
+  const [sideChosen, setSideChosen] = useState<boolean | null>(entrySide);
+  // PLAIN-14.12: the spec text the version was read against. A read that sees the text change reads the
+  // version again at once, and a version read for other text isn't shown when that read fails.
+  const spText = answer ? `${answer.text ?? ''}\u0000${answer.baseText ?? ''}` : null;
+  const spFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!simple || !hasGroups) return;
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const read = async () => {
+      try {
+        const next = await simple.load(src, path);
+        if (!alive) return;
+        spFor.current = spText;
+        spRunning.current = !!next.running;
+        if (spAwaiting.current && !next.running) {
+          spAwaiting.current = false;
+          if (next.simple && !next.error) setSideChosen(true);
+        }
+        setSp((x) => (x && JSON.stringify(x) === JSON.stringify(next) ? x : next));
+      } catch {
+        // The Module's own read says what's wrong with it.
+        if (alive && spFor.current !== spText) setSp(null);
+      }
+      if (alive) timer = setTimeout(() => void read(), spRunning.current ? EXAMPLES_RUNNING_POLL_MS : SPEC_POLL_MS);
+    };
+    void read();
+    return () => {
+      alive = false;
+      if (timer) clearTimeout(timer);
+    };
+  }, [simple, hasGroups, src, path, spRead, spText]);
+  const simplify = useCallback(async () => {
+    if (!simple) return;
+    setSpPressError(null);
+    setSpPressing(true);
+    try {
+      await simple.start(src, path);
+      spAwaiting.current = true;
+    } catch (err) {
+      setSpPressError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSpPressing(false);
+    }
+    setSpRead((n) => n + 1);
+  }, [simple, src, path]);
+  const cancelSimplify = useCallback(async () => {
+    try {
+      await simple?.cancel(src, path);
+    } catch (err) {
+      // PLAIN-14.13: a Cancel too late to stop the save says so; the next read shows the version it saved.
+      setSpPressError(err instanceof Error ? err.message : String(err));
+    }
+    setSpRead((n) => n + 1);
+  }, [simple, src, path]);
+  const spKept = sp?.simple ?? null;
+  const hasSimple = !!spKept && (spKept.blocks.length > 0 || !!spKept.lead);
+  /** PLAIN-14.8: whether the main pane has room for the two columns; without a ResizeObserver, it does. */
+  const [wide, setWide] = useState(true);
+  useEffect(() => {
+    const el = box.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const measure = () => {
+      // A read of the root's size, so 64rem follows a browser's own text size.
+      const rem = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('font-size')) || 16;
+      setWide(el.clientWidth >= SIDE_MIN_REM * rem);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const [shownText, setShownText] = useState<ReadonlySet<string>>(() => new Set());
+  const onShowText = useCallback((spec: string, shown: boolean) => {
+    setShownText((x) => {
+      const n = new Set(x);
+      if (shown) n.add(spec);
+      else n.delete(spec);
+      return n;
+    });
+  }, []);
+  const [navSlot, setNavSlot] = useState<HTMLElement | null>(null);
+
   // PLAIN-10.3: a Module with no change is Clean, with no switch; a change arriving later keeps you on Clean.
   if (answer && compared && !hasChange && chosen !== 'clean') setChosen('clean');
   const deleted = answer?.text === null;
@@ -349,6 +483,18 @@ export function SpecView({ source, path, backTo, load, setViewed, onBack, onOpen
   useEffect(() => {
     if (answer) viewByEntry.set(entryId(), view);
   }, [answer, view]);
+  // PLAIN-14.10: a Module with a simplified version opens with it shown; Clean has none.
+  const side = hasSimple && view !== 'clean' && (sideChosen ?? true);
+  useEffect(() => {
+    if (answer && sideChosen !== null) sideByEntry.set(entryId(), sideChosen);
+  }, [answer, sideChosen]);
+  const simpleUi = useMemo<SimpleUi | undefined>(
+    () =>
+      simple && hasGroups
+        ? { answer: sp, pressError: spPressError, pressing: spPressing, onSimplify: () => void simplify(), onCancel: () => void cancelSimplify(), side, wide, navSlot, shownText, onShowText, box }
+        : undefined,
+    [simple, hasGroups, sp, spPressError, spPressing, simplify, cancelSimplify, side, wide, navSlot, shownText, onShowText],
+  );
 
 
   /** PLAIN-10.6: a link's target that is folded is shown first, then landed on. */
@@ -391,7 +537,10 @@ export function SpecView({ source, path, backTo, load, setViewed, onBack, onOpen
       entry = next;
       held.current = null;
       // PLAIN-10.2: in the view that entry was left in, drawn before its position is put back.
-      flushSync(() => setChosen(viewByEntry.get(next) ?? null));
+      flushSync(() => {
+        setChosen(viewByEntry.get(next) ?? null);
+        setSideChosen(sideByEntry.get(next) ?? null);
+      });
       box.scrollTop = scrollByEntry.get(next) ?? 0;
     };
     box.addEventListener('scroll', onScroll, { passive: true });
@@ -405,6 +554,13 @@ export function SpecView({ source, path, backTo, load, setViewed, onBack, onOpen
   const reveal = useCallback((id: string) => {
     const el = document.getElementById(id);
     if (el) return void el.scrollIntoView?.({ block: 'start' });
+    // A spec's closed Notes (PLAIN-9.5) open at once, so what's in them is there to scroll to and focus.
+    const notes = scroller.current?.querySelector<HTMLElement>(`[data-notes-holds~="${id}"]`);
+    if (notes) {
+      notes.dispatchEvent(new Event(OPEN_NOTES));
+      const inside = document.getElementById(id);
+      if (inside) return void inside.scrollIntoView?.({ block: 'start' });
+    }
     const fold = scroller.current?.querySelector<HTMLElement>(`[data-holds~="${id}"]`)?.dataset.fold;
     if (!fold) return;
     landing.current = id;
@@ -450,7 +606,7 @@ export function SpecView({ source, path, backTo, load, setViewed, onBack, onOpen
     held.current = null;
     marksRef.current = next;
     setMarks(next);
-  }, [highlight, view, answer, compared, folds, opened]);
+  }, [highlight, view, answer, compared, folds, opened, side, wide, shownText]);
 
   const [jumped, setJumped] = useState<{ cursor: string } | null>(null);
   const [at, setAt] = useState<number | null>(null);
@@ -465,7 +621,12 @@ export function SpecView({ source, path, backTo, load, setViewed, onBack, onOpen
     const el = box.current;
     if (!el) return [];
     const base = el.getBoundingClientRect().top - el.scrollTop;
-    return marksRef.current.map((m) => (scroller.current?.querySelector(`[data-mark="${m.cursor}"]`)?.getBoundingClientRect().top ?? 0) - base);
+    return marksRef.current.map((m) => {
+      const at = scroller.current?.querySelector<HTMLElement>(`[data-mark="${m.cursor}"]`);
+      // PLAIN-14.15: a change in a spec whose text is hidden under its simplified block sits where its spec does.
+      const shown = at?.closest('[data-spec-text="hidden"]') ? at.closest('[data-spec-id]') : at;
+      return (shown?.getBoundingClientRect().top ?? 0) - base;
+    });
   }, []);
   /** PLAIN-8.2, 8.6: the outline's current entry and the change you're at, from the scroll position. */
   const place = useCallback(() => {
@@ -559,6 +720,9 @@ export function SpecView({ source, path, backTo, load, setViewed, onBack, onOpen
       const el = box.current;
       const target = scroller.current?.querySelector<HTMLElement>(`[data-mark="${cursor}"]`);
       if (!el || !target) return;
+      // PLAIN-14.15: a change inside a spec text hidden under its simplified block shows that text first.
+      const hidden = target.closest<HTMLElement>('[data-spec-text="hidden"]')?.dataset.spec;
+      if (hidden) flushSync(() => onShowText(hidden, true));
       held.current = cursor;
       setJumped({ cursor });
       setAt(marksRef.current.findIndex((m) => m.cursor === cursor));
@@ -571,7 +735,7 @@ export function SpecView({ source, path, backTo, load, setViewed, onBack, onOpen
         target.focus({ preventScroll: true });
       }
     },
-    [],
+    [onShowText],
   );
   const step = useCallback(
     (dir: 1 | -1) => {
@@ -613,6 +777,8 @@ export function SpecView({ source, path, backTo, load, setViewed, onBack, onOpen
         {name}
         <span className="font-normal text-muted-foreground">.plain</span>
       </h1>
+      {/* PLAIN-14.8: beside the simplified version, "On this page" is a menu here. */}
+      {side && wide && <div ref={setNavSlot} className="shrink-0" data-slot="spec-nav-slot" />}
       {highlight && marks.length > 0 && (
         <div className="flex shrink-0 items-center gap-0.5 text-meta" data-field="spec-stepper">
           <IconButton label="Previous change" shortcut="[" onClick={() => step(-1)}>
@@ -627,6 +793,22 @@ export function SpecView({ source, path, backTo, load, setViewed, onBack, onOpen
         </div>
       )}
       {hasChange && <Segmented label="View" choices={deleted ? DELETED_CHOICES : VIEW_CHOICES} value={view} onChange={(v) => setChosen(v)} />}
+      {/* PLAIN-14.10: once there's a simplified version, a toggle shows or hides it; Clean has none. */}
+      {hasSimple && view !== 'clean' && (
+        <Button
+          type="button"
+          variant={side ? 'soft' : 'secondary'}
+          size="default"
+          className="shrink-0"
+          aria-pressed={side}
+          onClick={() => setSideChosen(!side)}
+          title={side ? 'Hide the simplified version' : 'Show the simplified version beside the spec'}
+          data-field="spec-simple-toggle"
+        >
+          <Columns2 aria-hidden />
+          <span className="@max-[40rem]/header:sr-only">Simplified</span>
+        </Button>
+      )}
       {/* PLAIN-10.1: Viewed is last, a mark of its own after a divider (DS-18.5's, 4 px either side of a 12 px gap). */}
       {hasChange && <ButtonDivider className="-mx-2" />}
       <label className={cn('flex shrink-0 items-center gap-1.5 text-meta', !answer && 'opacity-50')} title="Viewed (V)">
@@ -665,6 +847,7 @@ export function SpecView({ source, path, backTo, load, setViewed, onBack, onOpen
               onOpenModule={onOpenModule}
               hrefOf={hrefOf}
               examples={exUi}
+              simple={simpleUi}
             />
           </Reveal.Provider>
         )}
@@ -692,6 +875,42 @@ interface Ctx {
   onFold?(): void;
   /** PLAIN-11.9: the Module's kept examples, by spec id. */
   examples?: { kept: NonNullable<PlainExamplesAnswer['examples']>; of: ReadonlyMap<string, PlainExample> };
+  /** PLAIN-14: the simplified version, while it's shown; absent otherwise. */
+  side?: SideCtx;
+  /** PLAIN-14.6: the spec's clauses, tests and notes by their numbers, inside a spec while the side is shown. */
+  numbers?: ReadonlyMap<Clause, string>;
+  /** The spec a list is in, for its clauses' anchors and what they light (PLAIN-14.7). */
+  specId?: string;
+  /** PLAIN-14.9: present while the Module has a simplified version, the side shown or not. */
+  light?: Light;
+}
+
+/** PLAIN-14.7, 14.9: what the pointer or focus is on: a paragraph (its index), a clause (its number), a block's left-out clauses, or a spec's heading. */
+type Lit = { spec: string; kind: 'paragraph' | 'clause' | 'gap' | 'head'; key: string };
+
+/** PLAIN-14.7, 14.9: what's lit, and lighting it; In short's citations light a heading with the side hidden too. */
+interface Light {
+  lit: { spec: string; clauses: ReadonlySet<string>; paragraphs: ReadonlySet<number>; head: boolean } | null;
+  setLit(l: Lit): void;
+  /** Puts out `l`, if it's still what's lit: a leave or a blur never puts out what another hover or focus lit since. */
+  unlit(l: Lit): void;
+}
+
+interface SideCtx {
+  /** PLAIN-14.8: two columns; else the block swaps in place (PLAIN-14.15). */
+  wide: boolean;
+  kept: PlainSimple;
+  blocks: ReadonlyMap<string, PlainSimpleBlock>;
+  /** The spec lit, and its lit clauses and paragraphs. */
+  lit: Light['lit'];
+  setLit: Light['setLit'];
+  unlit: Light['unlit'];
+  shownText: ReadonlySet<string>;
+  onShowText(spec: string, shown: boolean): void;
+  onSimplify(): void;
+  /** This Module's run is going, so Simplify again waits. */
+  busy: boolean;
+  box: RefObject<HTMLDivElement | null>;
 }
 
 function Module({
@@ -708,6 +927,7 @@ function Module({
   onOpenModule,
   hrefOf,
   examples,
+  simple,
 }: {
   answer: PlainAnswer;
   compared: Compared;
@@ -728,6 +948,8 @@ function Module({
   hrefOf(path: string): string;
   /** PLAIN-11, 12: absent where examples aren't offered or nothing changed. */
   examples?: ExamplesUi;
+  /** PLAIN-14: absent where it isn't offered or nothing changed. */
+  simple?: SimpleUi;
 }) {
   const mod = compared.module;
   const [allSpecs, setAllSpecs] = useState(false);
@@ -755,7 +977,36 @@ function Module({
   const fold = useMemo(() => (view === 'changes' ? { opened, onUnfold } : undefined), [view, opened, onUnfold]);
   const kept = examples?.answer?.examples ?? null;
   const exampleOf = useMemo(() => (kept ? new Map(kept.groups.map((g) => [g.spec, g])) : null), [kept]);
-  const ctx: Ctx = { own, specIds, specById, answer, justChanged, highlight, fold, onTerm, onFold, hrefOf, onOpenModule, examples: kept && exampleOf ? { kept, of: exampleOf } : undefined };
+  // PLAIN-14: the simplified version, beside the spec in a wide pane or in place of it in a narrow one.
+  const sk = simple?.answer?.simple ?? null;
+  const sideOn = !!simple?.side && !!sk && highlight;
+  const wideSide = sideOn && simple!.wide;
+  const narrowSide = sideOn && !simple!.wide;
+  const blocks = useMemo(() => new Map((sk?.blocks ?? []).map((b) => [b.spec, b])), [sk]);
+  const [litOn, setLit] = useState<Lit | null>(null);
+  const lit = useMemo(() => litSets(litOn, blocks), [litOn, blocks]);
+  const unlit = useCallback((l: Lit) => setLit((x) => (x && x.spec === l.spec && x.kind === l.kind && x.key === l.key ? null : x)), []);
+  const light = useMemo<Light | undefined>(() => (sk ? { lit, setLit, unlit } : undefined), [sk, lit, unlit]);
+  const busy = !!simple?.answer?.running || !!simple?.pressing;
+  const sideCtx = useMemo<SideCtx | undefined>(
+    () => (sideOn && sk ? { wide: simple!.wide, kept: sk, blocks, lit, setLit, unlit, shownText: simple!.shownText, onShowText: simple!.onShowText, onSimplify: simple!.onSimplify, busy, box: simple!.box } : undefined),
+    [sideOn, sk, simple, blocks, lit, unlit, busy],
+  );
+  /** PLAIN-14.15: in a narrow pane, a spec's simplified title stands for it in the card's rows and the outline. */
+  const titleOf = (s: FunctionalSpec): string | null => {
+    const b = narrowSide ? blocks.get(s.id) : undefined;
+    return b && !b.stale && b.title ? b.title : null;
+  };
+  const ctx: Ctx = { own, specIds, specById, answer, justChanged, highlight, fold, onTerm, onFold, hrefOf, onOpenModule, examples: kept && exampleOf ? { kept, of: exampleOf } : undefined, side: sideCtx, light };
+  /** PLAIN-14.8: one row of the two columns, or the content alone without them. */
+  const row = (key: string, left: ReactNode, right?: ReactNode) =>
+    wideSide ? (
+      <SideRow key={key} right={right}>
+        {left}
+      </SideRow>
+    ) : (
+      <Fragment key={key}>{left}</Fragment>
+    );
   const jump = useJump();
   const descState = descriptionState(answer, compared);
   const newOrGone = answer.text === null || answer.baseText === null;
@@ -783,7 +1034,11 @@ function Module({
     <nav
       aria-label="On this page"
       data-slot="spec-nav"
-      className="flex shrink-0 flex-col gap-0.5 text-meta @min-[640px]:sticky @min-[640px]:top-0 @min-[640px]:col-start-3 @min-[640px]:row-start-1 @min-[640px]:max-h-[calc(100dvh-6rem)] @min-[640px]:self-start @min-[640px]:overflow-y-auto @min-[640px]:pl-8"
+      className={
+        wideSide
+          ? 'flex flex-col gap-0.5 text-meta'
+          : 'flex shrink-0 flex-col gap-0.5 text-meta @min-[640px]:sticky @min-[640px]:top-0 @min-[640px]:col-start-3 @min-[640px]:row-start-1 @min-[640px]:max-h-[calc(100dvh-6rem)] @min-[640px]:self-start @min-[640px]:overflow-y-auto @min-[640px]:pl-8'
+      }
     >
       <p aria-hidden className="mb-1 pl-2.5 text-caption font-medium text-muted-foreground">
         On this page
@@ -805,7 +1060,9 @@ function Module({
                 data-state={s.state}
               >
                 <span className="shrink-0 tabular-nums text-muted-foreground">{s.id}</span>
-                <span className="line-clamp-2 min-w-0 flex-1">{s.clauses[0] ? gist(s.clauses[0].text) : ''}</span>
+                <span className="line-clamp-2 min-w-0 flex-1" title={titleOf(s) ? specGist(s) : undefined}>
+                  {titleOf(s) ?? (s.clauses[0] ? gist(s.clauses[0].text) : '')}
+                </span>
                 {highlight && <SpecMark spec={s} />}
               </a>
             </li>
@@ -820,19 +1077,29 @@ function Module({
     </nav>
   );
 
+  const inShort = sk?.lead && sideOn ? <InShort lead={sk.lead} kept={sk} ctx={ctx} onSimplify={simple!.onSimplify} busy={busy} /> : null;
+  // PLAIN-14.9: In short is at the top of the Changes card, or beside it with the two columns.
+  const leadInCard = !!sk?.lead && !wideSide && !!simple && highlight;
   return (
     <div
       // PLAIN-8.1: the column is the chat's width, centred while the outline fits on its right; with less room it moves left, then narrows.
-      className="flex min-w-0 flex-col gap-4 @min-[640px]:grid @min-[640px]:grid-cols-[minmax(0,1fr)_minmax(0,48rem)_minmax(15rem,1fr)] @min-[640px]:items-start @min-[640px]:gap-0"
+      // PLAIN-14.8: beside the simplified version, two columns with 3rem of margin either side of the pane.
+      className={wideSide ? 'min-w-0 px-7' : 'flex min-w-0 flex-col gap-4 @min-[640px]:grid @min-[640px]:grid-cols-[minmax(0,1fr)_minmax(0,48rem)_minmax(15rem,1fr)] @min-[640px]:items-start @min-[640px]:gap-0'}
       data-view={view}
       data-slot="spec-layout"
+      data-side={wideSide ? 'beside' : narrowSide ? 'in-place' : undefined}
     >
-      {nav}
+      {wideSide ? simple!.navSlot && createPortal(<OutlineMenu>{nav}</OutlineMenu>, simple!.navSlot) : nav}
       {/* PLAIN-8.1: a long code span or word wraps, so nothing widens the pane. */}
       {/* PLAIN-9.1: at most 42rem, about 85 characters a line, from the column's left edge. */}
-      <article className="flex w-full min-w-0 max-w-[42rem] flex-col gap-5 [overflow-wrap:anywhere] @min-[640px]:col-start-2 @min-[640px]:row-start-1" data-slot="spec-module">
-        <SpecStrip spec={stuck ? mod.specs.find((s) => s.id === stuck) : undefined} highlight={highlight} />
-        <header className="flex flex-col gap-1.5">
+      <article
+        className={cn('flex w-full min-w-0 flex-col [overflow-wrap:anywhere]', wideSide ? '' : 'max-w-[42rem] gap-5 @min-[640px]:col-start-2 @min-[640px]:row-start-1')}
+        data-slot="spec-module"
+      >
+        <SpecStrip spec={stuck ? mod.specs.find((s) => s.id === stuck) : undefined} highlight={highlight} side={wideSide} />
+        {row(
+          'head',
+          <header className="flex flex-col gap-1.5">
           <p className="text-meta text-muted-foreground" data-field="spec-where">
             {answer.path} · {answer.checkout.where ? `${answer.checkout.repo} · ${answer.checkout.where}` : answer.checkout.repo}
           </p>
@@ -863,14 +1130,20 @@ function Module({
               Its text differs from the base, but no clause, note or definition does.
             </p>
           )}
-        </header>
+          </header>,
+          wideSide ? <SimpleHead kept={sk!} /> : null,
+        )}
+        {narrowSide && <SimpleHead kept={sk!} />}
 
-        {answer.fetchError && <Alert tone="info" title={`Showing ${answer.checkout.where ?? 'the PR'} as fetched before`} detail={answer.fetchError} data-field="spec-fetch-error" />}
+        {answer.fetchError && row('fetch', <Alert tone="info" title={`Showing ${answer.checkout.where ?? 'the PR'} as fetched before`} detail={answer.fetchError} data-field="spec-fetch-error" />)}
 
-        {answer.changedSinceViewed && !answer.viewed && <Alert tone="info" title="Changed since you viewed it" data-field="spec-changed-since" />}
+        {answer.changedSinceViewed && !answer.viewed && row('since', <Alert tone="info" title="Changed since you viewed it" data-field="spec-changed-since" />)}
 
-        {showCard && (
+        {showCard &&
+          row(
+            'changes',
           <section id="changes" aria-label="Changes" className="flex flex-col gap-2 rounded-md border border-border p-3" data-slot="spec-changes" data-outline>
+            {leadInCard && <InShort lead={sk!.lead!} kept={sk!} ctx={ctx} onSimplify={simple!.onSimplify} busy={busy} />}
             <h2 className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-body font-semibold">
               Changes
               <span className="text-meta font-normal text-muted-foreground">against {answer.base} ({answer.baseName})</span>
@@ -887,7 +1160,9 @@ function Module({
                     <a href={`#${touchedAnchor(r.where, specIds)}`} onClick={jump(touchedAnchor(r.where, specIds))} className="font-medium underline-offset-2 hover:underline">
                       {r.label}
                     </a>
-                    <span className="truncate">{r.gist}</span>
+                    <span className="truncate" title={r.spec && titleOf(r.spec) ? r.gist : undefined}>
+                      {(r.spec && titleOf(r.spec)) || r.gist}
+                    </span>
                     <span className="flex gap-1.5 tabular-nums">
                       {r.newSpec ? (
                         <span className="text-diff-added-text">new spec</span>
@@ -902,11 +1177,14 @@ function Module({
                 ))}
               </ul>
             )}
-            {examples && <ExamplesBar ui={examples} />}
-          </section>
-        )}
+            {(examples || simple) && <ChangesBar examples={examples} simple={simple} />}
+          </section>,
+            inShort,
+          )}
 
-        {mod.notes.length > 0 && (
+        {mod.notes.length > 0 &&
+          row(
+            'module notes',
           <Folded ctx={ctx} keep={newOrGone} scope="module notes" items={mod.notes} label={plural(mod.notes.length, 'note on the Module', 'notes on the Module')}>
             {(run) => (
               <aside className="flex flex-col gap-1 border-l-2 border-border pl-3 text-prose text-muted-foreground" data-run={run}>
@@ -917,26 +1195,36 @@ function Module({
                 ))}
               </aside>
             )}
-          </Folded>
-        )}
+          </Folded>,
+          )}
 
-        {sectionKeys.map((k) => (
+        {sectionKeys.map((k) =>
+          row(
+            k,
           <section key={k} id={sectionId(k)} aria-label={SECTION_TITLES[k] ?? k} className="flex flex-col gap-2" data-touched={touched.has(k) || undefined} data-outline data-where={SECTION_TITLES[k] ?? k}>
             <SectionTitle title={SECTION_TITLES[k] ?? k} count={(mod.sections[k] ?? []).filter((n) => n.state !== 'removed').length} />
             {k === 'definitions' ? <Definitions nodes={mod.sections[k] ?? []} ctx={ctx} /> : <ClauseList nodes={mod.sections[k] ?? []} ctx={ctx} inset={0} scope={k} />}
             {mod.sectionNotes[k] && <Notes nodes={mod.sectionNotes[k]} ctx={ctx} scope={`${k} notes`} />}
-          </section>
-        ))}
+          </section>,
+          ),
+        )}
 
         {hasSpecs && (
-          <section id={sectionId('functional specs')} aria-label="Functional specs" className="flex flex-col gap-3" data-touched={touched.has('functional specs') || undefined} data-outline data-where="Functional specs">
-            <SectionTitle title="Functional specs" count={live.length} />
-            {mod.sectionNotes['functional specs'] && <Notes nodes={mod.sectionNotes['functional specs']} ctx={ctx} scope="functional specs notes" />}
+          <section id={sectionId('functional specs')} aria-label="Functional specs" className={cn('flex flex-col', !wideSide && 'gap-3')} data-touched={touched.has('functional specs') || undefined} data-outline data-where="Functional specs">
+            {row(
+              'specs title',
+              <>
+                <SectionTitle title="Functional specs" count={live.length} />
+                {mod.sectionNotes['functional specs'] && <Notes nodes={mod.sectionNotes['functional specs']} ctx={ctx} scope="functional specs notes" />}
+              </>,
+            )}
             <SpecList specs={specs} ctx={ctx} />
           </section>
         )}
 
-        {mod.loose.length > 0 && (
+        {mod.loose.length > 0 &&
+          row(
+            'loose',
           <section aria-label="Not in a section" className="flex flex-col gap-2" data-slot="spec-loose">
             <SectionTitle title="Not in a section" count={mod.loose.length} />
             <Folded ctx={ctx} keep={newOrGone} scope="loose" items={mod.loose} label={plural(mod.loose.length, 'line', 'lines')}>
@@ -946,8 +1234,8 @@ function Module({
                 </pre>
               )}
             </Folded>
-          </section>
-        )}
+          </section>,
+          )}
 
         {!sectionKeys.length && !hasSpecs && !mod.loose.length && <p className="text-meta text-muted-foreground">This Module is empty.</p>}
       </article>
@@ -988,13 +1276,14 @@ function changeProps(
   text: string,
   bulleted = false,
   inset?: number,
+  indent = INDENT_REM,
 ): { className?: string; style?: CSSProperties; 'data-change'?: string; 'data-change-text'?: string } {
   if (!highlight || state === 'same') return {};
   const gutter = bulleted && inset !== undefined;
   return {
     // A bulleted clause's bar sits left of its bullet.
     className: cn(BAR, BAR_COLOUR[state], bulleted && 'before:-left-6', gutter && 'before:left-(--bar-x)'),
-    ...(gutter ? { style: { '--bar-x': `-${inset + INDENT_REM + GUTTER_REM}rem` } as CSSProperties } : {}),
+    ...(gutter ? { style: { '--bar-x': `-${inset + indent + GUTTER_REM}rem` } as CSSProperties } : {}),
     'data-change': state,
     'data-change-text': text,
   };
@@ -1031,14 +1320,14 @@ function SpecMark({ spec }: { spec: FunctionalSpec }) {
 
 /** PLAIN-8.4: the Changes card's rows, one per spec or section, its parts' counts summed. */
 function touchedRows(touched: readonly Touched[], specs: readonly FunctionalSpec[]) {
-  const rows = new Map<string, { where: string; label: string; gist: string; added: number; changed: number; removed: number; newSpec: boolean; removedSpec: boolean; tests: boolean; notes: boolean }>();
+  const rows = new Map<string, { where: string; label: string; spec: FunctionalSpec | undefined; gist: string; added: number; changed: number; removed: number; newSpec: boolean; removedSpec: boolean; tests: boolean; notes: boolean }>();
   for (const t of touched) {
     const where = t.where.replace(/ (tests|notes)$/, '');
     let r = rows.get(where);
     if (!r) {
       const spec = specs.find((s) => s.id === where);
       const label = spec ? where : where === 'description' ? 'Description' : (SECTION_TITLES[where] ?? (where === 'functional specs' ? 'Functional specs' : where));
-      r = { where, label, gist: spec?.clauses[0] ? gist(spec.clauses[0].text) : '', added: 0, changed: 0, removed: 0, newSpec: false, removedSpec: false, tests: false, notes: false };
+      r = { where, label, spec, gist: spec?.clauses[0] ? gist(spec.clauses[0].text) : '', added: 0, changed: 0, removed: 0, newSpec: false, removedSpec: false, tests: false, notes: false };
       rows.set(where, r);
     }
     r.added += t.added ?? 0;
@@ -1120,10 +1409,31 @@ function Notes({ nodes, ctx, scope = '' }: { nodes: readonly Clause[]; ctx: Ctx;
   return (
     <div className="flex flex-col gap-1.5 text-prose text-muted-foreground" data-slot="spec-notes">
       {parts.map((part) => {
-        if (part.kind === 'fold') return <FoldLine key={`fold-${part.key}`} runKey={part.key} ctx={ctx} label={plural(part.items.length, 'unchanged note', 'unchanged notes')} />;
+        if (part.kind === 'fold')
+          return (
+            <FoldLine
+              key={`fold-${part.key}`}
+              runKey={part.key}
+              ctx={ctx}
+              label={plural(part.items.length, 'unchanged note', 'unchanged notes')}
+              holds={ctx.numbers && ctx.specId ? anchorsIn(part.items, ctx.numbers, ctx.specId) : undefined}
+            />
+          );
         const n = part.item;
+        const num = ctx.numbers?.get(n);
+        const change = changeProps(n.state, ctx.highlight, n.text);
         return (
-          <p key={`${part.at}-${n.text.slice(0, 40)}`} data-state={n.state} data-just-changed={ctx.justChanged.has(n.text) || undefined} data-run={part.opens} {...changeProps(n.state, ctx.highlight, n.text)}>
+          <p
+            key={`${part.at}-${n.text.slice(0, 40)}`}
+            id={num && ctx.specId ? clauseAnchor(ctx.specId, num) : undefined}
+            data-state={n.state}
+            data-just-changed={ctx.justChanged.has(n.text) || undefined}
+            data-run={part.opens}
+            {...change}
+            className={cn(change.className, num && sideClass(ctx, num))}
+            {...(num ? litHandlers(ctx, num) : {})}
+          >
+            {num && <span className="mr-2 font-mono text-meta tabular-nums text-spec-text" data-field="spec-clause-n">{num}</span>}
             <span className={stateClass(n.state, ctx, n.text)}>
               <Tag state={n.state} ctx={ctx} />
               <ClauseBody n={n} ctx={ctx} />
@@ -1248,27 +1558,38 @@ function ClauseList({
   );
   if (!parts.length) return null;
   const reading = inset !== undefined;
+  // PLAIN-14.6: beside the simplified version, a clause's bullet is its number, in the room a bullet had and more.
+  const numbered = reading && !!ctx.numbers;
+  const indent = numbered ? NUM_INDENT_REM : INDENT_REM;
   return (
-    <ul className={cn('flex list-disc flex-col pl-5 marker:text-muted-foreground', reading ? 'gap-2 text-reading' : 'gap-1 text-prose', className)}>
+    <ul className={cn('flex flex-col', numbered ? 'list-none pl-9' : 'list-disc pl-5 marker:text-muted-foreground', reading ? 'gap-2 text-reading' : 'gap-1 text-prose', className)}>
       {parts.map((part) => {
         if (part.kind === 'fold') {
           return (
             <li key={`fold-${part.key}`} className="list-none">
-              <FoldLine runKey={part.key} ctx={ctx} label={plural(part.items.length, ...noun)} />
+              <FoldLine runKey={part.key} ctx={ctx} label={plural(part.items.length, ...noun)} holds={numbered && ctx.specId ? anchorsIn(part.items, ctx.numbers!, ctx.specId) : undefined} />
             </li>
           );
         }
         const n = part.item;
         const c = part.whole ? whole(ctx) : ctx;
+        const num = numbered ? ctx.numbers!.get(n) : undefined;
+        const change = changeProps(n.state, ctx.highlight, n.text, true, inset, indent);
         return (
-          <li key={`${part.at}-${n.text.slice(0, 40)}`} data-state={n.state} data-just-changed={ctx.justChanged.has(n.text) || undefined} data-run={part.opens}>
-            <div {...changeProps(n.state, ctx.highlight, n.text, true, inset)}>
+          <li key={`${part.at}-${n.text.slice(0, 40)}`} data-state={n.state} data-just-changed={ctx.justChanged.has(n.text) || undefined} data-run={part.opens} className={num ? 'relative' : undefined}>
+            {num && (
+              // Its right edge 0.5rem before the text, so a long number (1.1.1) grows to the left, never into the text.
+              <span className="absolute top-1 right-full mr-2 font-mono text-meta whitespace-nowrap tabular-nums text-spec-text" data-field="spec-clause-n">
+                {num}
+              </span>
+            )}
+            <div {...change} id={num && ctx.specId ? clauseAnchor(ctx.specId, num) : undefined} className={cn(change.className, num && sideClass(ctx, num))} {...(num ? litHandlers(ctx, num) : {})}>
               <span className={stateClass(n.state, ctx, n.text)}>
                 <Tag state={n.state} ctx={ctx} />
                 <ClauseBody n={n} ctx={ctx} />
               </span>
             </div>
-            {n.children.length > 0 && <ClauseList nodes={n.children} ctx={c} className={reading ? 'mt-2' : 'mt-1'} inset={reading ? inset + INDENT_REM : undefined} scope={`${scope}>${n.text}`} />}
+            {n.children.length > 0 && <ClauseList nodes={n.children} ctx={c} className={reading ? 'mt-2' : 'mt-1'} inset={reading ? inset + indent : undefined} scope={`${scope}>${n.text}`} />}
           </li>
         );
       })}
@@ -1385,43 +1706,52 @@ function SpecChange({ spec, highlight, className }: { spec: FunctionalSpec; high
 
 /** PLAIN-10.5: the functional specs, each run of unchanged ones folded in Changes into a line naming the first and last. */
 function SpecList({ specs, ctx }: { specs: readonly FunctionalSpec[]; ctx: Ctx }) {
-  return foldRuns(specs, ctx.fold, 'specs', specTouched, (s) => s.id).map((part) =>
-    part.kind === 'fold' ? (
-      <FoldLine
-        key={`fold-${part.key}`}
-        runKey={part.key}
-        ctx={ctx}
-        holds={part.items.map((s) => specAnchor(s.id))}
-        label={`${plural(part.items.length, 'unchanged spec', 'unchanged specs')}, ${part.items[0]!.id}${part.items.length > 1 ? ` to ${part.items.at(-1)!.id}` : ''}`}
-        className="mt-6"
-      />
-    ) : (
+  return foldRuns(specs, ctx.fold, 'specs', specTouched, (s) => s.id).map((part) => {
+    if (part.kind === 'fold') {
+      const line = (
+        <FoldLine
+          key={`fold-${part.key}`}
+          runKey={part.key}
+          ctx={ctx}
+          holds={part.items.map((s) => specAnchor(s.id))}
+          label={`${plural(part.items.length, 'unchanged spec', 'unchanged specs')}, ${part.items[0]!.id}${part.items.length > 1 ? ` to ${part.items.at(-1)!.id}` : ''}`}
+          className="mt-6"
+        />
+      );
+      // PLAIN-14.8: a fold line has nothing on the right.
+      return ctx.side?.wide ? <SideRow key={`fold-${part.key}`}>{line}</SideRow> : line;
+    }
+    return (
       <Spec key={part.item.id} spec={part.item} ctx={part.whole ? whole(ctx) : ctx} run={part.opens} />
-    ),
-  );
+    );
+  });
 }
 
 /** PLAIN-9.2 to 9.6: a functional spec: its heading, its clauses, its acceptance tests in a box, its notes behind a button. */
-function Spec({ spec, ctx, run }: { spec: FunctionalSpec; ctx: Ctx; run?: string }) {
+function Spec({ spec, ctx: outer, run }: { spec: FunctionalSpec; ctx: Ctx; run?: string }) {
+  const side = outer.side;
+  // PLAIN-14.6: beside the simplified version, its clauses, tests and notes go by their numbers.
+  const numbers = useMemo(() => (side ? new Map(numberSpec(spec).map((x) => [x.clause, x.n])) : undefined), [side, spec]);
+  const ctx: Ctx = side ? { ...outer, numbers, specId: spec.id } : outer;
   const tests = spec.tests.filter((n) => there(n, ctx));
   // PLAIN-10.5: in Changes, a spec's acceptance tests with no change fold into one line in place of their box.
   const testsKey = ctx.fold && !hasChange(spec.tests) ? runKey(`${spec.id} tests`, tests.map((n) => n.text)) : null;
   const testsFolded = testsKey !== null && !ctx.fold!.opened.has(testsKey);
-  return (
-    <article id={specAnchor(spec.id)} aria-label={spec.id} data-state={spec.state} className="mt-6 flex flex-col gap-3" data-outline data-where={spec.id} data-spec-id={spec.id} data-run={run}>
-      {/* PLAIN-9.2: the id hangs in the margin when the pane has room for it, else it sits above the heading. */}
-      <header className="relative flex flex-col gap-0.5" data-spec-head>
-        <span className="font-mono text-meta tabular-nums text-muted-foreground @min-[73rem]:absolute @min-[73rem]:top-1.5 @min-[73rem]:right-full @min-[73rem]:mr-6 @min-[73rem]:whitespace-nowrap" data-field="spec-id">
-          {spec.id}
-        </span>
-        <h3 className="text-reading-title font-semibold tracking-tight">{specGist(spec)}</h3>
-        <SpecChange spec={spec} highlight={ctx.highlight} className="text-meta" />
-      </header>
-      {ctx.highlight && ctx.examples?.of.get(spec.id) && <ExampleCard example={ctx.examples.of.get(spec.id)!} kept={ctx.examples.kept} spec={spec} ctx={ctx} />}
+  // PLAIN-11.2, 14.1: a changed spec is simplified; a removed one isn't.
+  const group = spec.state === 'added' || spec.state === 'changed';
+  const block = side && group ? side.blocks.get(spec.id) : undefined;
+  const fresh = !!block && !block.stale;
+  // PLAIN-14.15: in a narrow pane a fresh block takes the spec text's place, which "Show the spec text" opens under it.
+  const swapped = !!side && !side.wide && fresh && block!.paragraphs.length > 0;
+  const textShown = !swapped || side!.shownText.has(spec.id);
+  const example = ctx.highlight && ctx.examples?.of.get(spec.id) ? <ExampleCard example={ctx.examples.of.get(spec.id)!} kept={ctx.examples.kept} spec={spec} ctx={ctx} /> : null;
+  const headLit = ctx.light?.lit?.spec === spec.id && ctx.light.lit.head;
+  const text = (
+    <>
       <ClauseList nodes={spec.clauses} ctx={ctx} inset={0} scope={spec.id} />
       {tests.length > 0 &&
         (testsFolded ? (
-          <FoldLine runKey={testsKey} ctx={ctx} label={plural(tests.length, 'unchanged acceptance test', 'unchanged acceptance tests')} />
+          <FoldLine runKey={testsKey} ctx={ctx} label={plural(tests.length, 'unchanged acceptance test', 'unchanged acceptance tests')} holds={numbers ? anchorsIn(tests, numbers, spec.id) : undefined} />
         ) : (
           // PLAIN-9.4: the box's border and padding are 0.8125rem, so its bars still reach the gutter.
           <section aria-label="Acceptance tests" className="flex flex-col gap-1.5 rounded-md border border-border bg-card p-3" data-slot="spec-tests" data-run={testsKey ?? undefined}>
@@ -1433,8 +1763,39 @@ function Spec({ spec, ctx, run }: { spec: FunctionalSpec; ctx: Ctx; run?: string
           </section>
         ))}
       {spec.notes.length > 0 && <SpecNotes notes={spec.notes} ctx={ctx} scope={`${spec.id} notes`} />}
+    </>
+  );
+  const article = (
+    <article id={specAnchor(spec.id)} aria-label={spec.id} data-state={spec.state} className="mt-6 flex flex-col gap-3" data-outline data-where={spec.id} data-spec-id={spec.id} data-run={run}>
+      {/* PLAIN-9.2: the id hangs in the margin when the pane has room for it, else it sits above the heading. */}
+      {/* PLAIN-14.8: beside the simplified version, it sits above the heading. */}
+      <header className="relative flex flex-col gap-0.5" data-spec-head>
+        <span className={cn('font-mono text-meta tabular-nums text-muted-foreground', !side && '@min-[73rem]:absolute @min-[73rem]:top-1.5 @min-[73rem]:right-full @min-[73rem]:mr-6 @min-[73rem]:whitespace-nowrap')} data-field="spec-id">
+          {spec.id}
+        </span>
+        <h3 className={cn('text-reading-title font-semibold tracking-tight', headLit && 'rounded-sm bg-spec/10')} title={swapped ? specGist(spec) : undefined}>
+          {swapped && block!.title ? block!.title : specGist(spec)}
+        </h3>
+        <SpecChange spec={spec} highlight={ctx.highlight} className="text-meta" />
+      </header>
+      {!side && example}
+      {side && !side.wide && group && (fresh ? <SimpleBody spec={spec} block={block!} example={example} ctx={ctx} /> : <SimpleMissing spec={spec} block={block} ctx={ctx} example={example} />)}
+      {side && !side.wide && !group && example}
+      {swapped && (
+        <Button type="button" variant="quiet" size="line" className="self-start" aria-expanded={textShown} onClick={() => side!.onShowText(spec.id, !textShown)} data-field="spec-show-text">
+          <ChevronDown aria-hidden className={cn('transition-transform', textShown && 'rotate-180')} />
+          {textShown ? 'Hide the spec text' : 'Show the spec text'}
+        </Button>
+      )}
+      {/* PLAIN-14.15: hidden, not left out, so the stepper and the rail still count its changes. */}
+      <div className="flex flex-col gap-3" data-spec-text={textShown ? 'shown' : 'hidden'} data-spec={spec.id} hidden={!textShown}>
+        {text}
+      </div>
     </article>
   );
+  if (!side?.wide) return article;
+  // PLAIN-14.8: a changed spec's row: its text on the left, its simplified block on the right.
+  return <SideRow right={group ? <SimpleBlock spec={spec} block={block} example={example} ctx={ctx} /> : null}>{article}</SideRow>;
 }
 
 /**
@@ -1445,12 +1806,22 @@ function SpecNotes({ notes, ctx, scope }: { notes: readonly Clause[]; ctx: Ctx; 
   // In Clean nothing is marked, so they open as an unchanged spec's do (PLAIN-10.4).
   const changed = ctx.highlight && hasChange(notes);
   const [open, setOpen] = useState<boolean | null>(null);
+  // PLAIN-14.5, 14.7: a citation of a note, or Show them, opens them closed (reveal's OPEN_NOTES).
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const onOpen = () => flushSync(() => setOpen(true));
+    el.addEventListener(OPEN_NOTES, onOpen);
+    return () => el.removeEventListener(OPEN_NOTES, onOpen);
+  });
   if (ctx.fold && !changed) return <Notes nodes={notes} ctx={ctx} scope={scope} />;
   const isOpen = open ?? changed;
   const count = notes.filter((n) => n.state !== 'removed').length;
   if (!count && !ctx.highlight) return null;
+  const holds = !isOpen && ctx.numbers && ctx.specId ? anchorsIn(notes, ctx.numbers, ctx.specId) : [];
   return (
-    <div className="flex flex-col gap-1.5" data-slot="spec-notes-fold">
+    <div ref={ref} className="flex flex-col gap-1.5" data-slot="spec-notes-fold" data-notes-holds={holds.length ? holds.join(' ') : undefined}>
       <button
         type="button"
         aria-expanded={isOpen}
@@ -1473,11 +1844,9 @@ function SpecNotes({ notes, ctx, scope }: { notes: readonly Clause[]; ctx: Ctx; 
  * PLAIN-9.3: the spec the view's top edge is inside, pinned to the column's top once its heading has
  * scrolled away. It takes no room (`h-0`), so showing it never moves the text.
  */
-function SpecStrip({ spec, highlight }: { spec: FunctionalSpec | undefined; highlight: boolean }) {
+function SpecStrip({ spec, highlight, side }: { spec: FunctionalSpec | undefined; highlight: boolean; side?: boolean }) {
   const jump = useJump();
-  return (
-    <div className="sticky top-0 z-10 h-0" data-slot="spec-strip">
-      {spec && (
+  const strip = spec && (
         <a
           href={`#${specAnchor(spec.id)}`}
           onClick={jump(specAnchor(spec.id))}
@@ -1488,6 +1857,16 @@ function SpecStrip({ spec, highlight }: { spec: FunctionalSpec | undefined; high
           <span className="min-w-0 flex-1 truncate font-medium">{specGist(spec)}</span>
           <SpecChange spec={spec} highlight={highlight} className="shrink-0" />
         </a>
+  );
+  return (
+    <div className="sticky top-0 z-10 h-0" data-slot="spec-strip">
+      {/* PLAIN-14.8: beside the simplified version, the strip spans the spec's column only. */}
+      {side ? (
+        <div className="mx-auto grid w-full max-w-[calc(68rem+1px)] grid-cols-[minmax(0,34fr)_1px_minmax(0,30fr)] gap-x-8">
+          <div className="relative">{strip}</div>
+        </div>
+      ) : (
+        strip
       )}
     </div>
   );
@@ -1946,8 +2325,51 @@ const PREPARING: Record<string, string> = {
   installing: "Installing the PR's dependencies…",
 };
 
-/** PLAIN-11.1, 11.13, 12.5: the Changes card's part for examples: the press, the wait, the failure, the port's tally. */
-function ExamplesBar({ ui }: { ui: ExamplesUi }) {
+/**
+ * PLAIN-11.1, 11.13, 12.5, 14.1, 14.13: the Changes card's presses: Show examples and Simplify side by
+ * side, each run's wait and failure, the port's tally.
+ */
+function ChangesBar({ examples, simple }: { examples?: ExamplesUi; simple?: SimpleUi }) {
+  const sp = simple?.answer ?? null;
+  const simplifying = !!sp?.running || !!simple?.pressing;
+  const simpleError = simple ? (simple.pressError ?? sp?.error ?? null) : null;
+  const simplifyButton = simple && !simplifying && (
+    <Button
+      type="button"
+      variant="soft"
+      size="line"
+      onClick={simple.onSimplify}
+      title="Claude rewrites the changed specs in simple words, shown beside them. Each paragraph cites its clauses."
+      data-field="spec-simplify"
+    >
+      {sp?.simple ? 'Simplify again' : 'Simplify'}
+    </Button>
+  );
+  const simpleRows = (
+    <>
+      {simplifying && (
+        <Loading
+          label={sp?.running ? `Simplifying ${plural(sp.running.specs, 'spec', 'specs')}…` : 'Simplifying…'}
+          hintAfter={0}
+          action={
+            <Button type="button" variant="quiet" size="line" onClick={simple!.onCancel} data-field="spec-simplify-cancel">
+              Cancel
+            </Button>
+          }
+        />
+      )}
+      {simpleError && !simplifying && <Alert title={simpleError} data-field="spec-simplify-error" />}
+    </>
+  );
+  if (!examples) {
+    return (
+      <div className="flex flex-col gap-2 border-t border-border pt-2" data-slot="spec-examples-bar">
+        {simplifyButton && <div className="flex flex-wrap items-center gap-2">{simplifyButton}</div>}
+        {simpleRows}
+      </div>
+    );
+  }
+  const ui = examples;
   const a = ui.answer;
   const kept = a?.examples ?? null;
   const running = a?.running ?? null;
@@ -1964,6 +2386,7 @@ function ExamplesBar({ ui }: { ui: ExamplesUi }) {
         </p>
       )}
       {running?.mine || ui.pressing ? (
+        <>
         <Loading
           label={
             running?.phase === 'writing'
@@ -1984,6 +2407,8 @@ function ExamplesBar({ ui }: { ui: ExamplesUi }) {
             </Button>
           }
         />
+        {simplifyButton && <div className="flex flex-wrap items-center gap-2">{simplifyButton}</div>}
+        </>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
           <Button
@@ -2003,9 +2428,11 @@ function ExamplesBar({ ui }: { ui: ExamplesUi }) {
           >
             {kept ? 'Show examples again' : 'Show examples'}
           </Button>
+          {simplifyButton}
         </div>
       )}
       {error && !running?.mine && <Alert title={error} data-field="spec-examples-error" />}
+      {simpleRows}
     </div>
   );
 }
@@ -2293,3 +2720,447 @@ function FramesDialog({ example: g, kept, at, onAt, onClose }: { example: PlainE
     </Dialog>
   );
 }
+
+// ---------------------------------------------------------------------------------------------
+// PLAIN-14: the simplified version
+
+/** PLAIN-14.7: a numbered clause's anchor in the view. */
+const clauseAnchor = (spec: string, n: string) => `${specAnchor(spec)}-n${n.replace(/\./g, '-')}`;
+/** PLAIN-14.11: a spec's simplified block's anchor. */
+const blockAnchor = (spec: string) => `${specAnchor(spec)}-simple`;
+
+/** PLAIN-10.6, 14.7: the anchors of the numbered clauses a fold holds, nested ones too, so a citation of one opens it. */
+function anchorsIn(items: readonly Clause[], numbers: ReadonlyMap<Clause, string>, spec: string): string[] {
+  const out: string[] = [];
+  const walk = (ns: readonly Clause[]) =>
+    ns.forEach((c) => {
+      const n = numbers.get(c);
+      if (n) out.push(clauseAnchor(spec, n));
+      walk(c.children);
+    });
+  walk(items);
+  return out;
+}
+
+/** The event that opens a spec's closed Notes for a citation (PLAIN-14.7). */
+const OPEN_NOTES = 'lookout-open-notes';
+
+/** PLAIN-14.7, 14.9: what lights for what the pointer or focus is on. */
+function litSets(l: Lit | null, blocks: ReadonlyMap<string, PlainSimpleBlock>): Light['lit'] {
+  if (!l) return null;
+  const b = blocks.get(l.spec);
+  const ps = b && !b.stale ? b.paragraphs : [];
+  if (l.kind === 'head') return { spec: l.spec, clauses: new Set(), paragraphs: new Set(), head: true };
+  if (l.kind === 'gap') return { spec: l.spec, clauses: new Set(b?.leftOut ?? []), paragraphs: new Set(), head: false };
+  if (l.kind === 'paragraph') {
+    const i = Number(l.key);
+    return { spec: l.spec, clauses: new Set(ps[i]?.cites ?? []), paragraphs: new Set([i]), head: false };
+  }
+  return { spec: l.spec, clauses: new Set([l.key]), paragraphs: new Set(ps.flatMap((p, i) => (p.cites.includes(l.key) ? [i] : []))), head: false };
+}
+
+/** PLAIN-14.5, 14.7: a numbered clause lit by what cites it, and outlined when no paragraph does. */
+function sideClass(ctx: Ctx, num: string): string | undefined {
+  const side = ctx.side;
+  if (!side || !ctx.specId) return undefined;
+  const b = side.blocks.get(ctx.specId);
+  const lit = side.lit?.spec === ctx.specId && side.lit.clauses.has(num);
+  const left = !!b && !b.stale && b.leftOut.includes(num);
+  return cn('rounded-sm transition-colors', lit && 'bg-spec/10', left && 'outline-1 outline-offset-4 outline-dashed outline-muted-foreground');
+}
+
+/** PLAIN-14.7: hovering a clause lights the paragraphs that cite it. */
+function litHandlers(ctx: Ctx, num: string) {
+  const side = ctx.side;
+  const spec = ctx.specId;
+  if (!side || !spec) return {};
+  const l: Lit = { spec, kind: 'clause', key: num };
+  return { onPointerEnter: () => side.setLit(l), onPointerLeave: () => side.unlit(l) };
+}
+
+/** Moves focus to an element just scrolled to, once it's drawn. */
+function focusSoon(id: string) {
+  requestAnimationFrame(() => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.tabIndex = -1;
+    el.focus({ preventScroll: true });
+  });
+}
+
+/** PLAIN-14.8: one row of the two columns: the spec on the left, its simplified side on the right, a line between, 2rem from each. */
+function SideRow({ children, right }: { children: ReactNode; right?: ReactNode }) {
+  return (
+    <div className="mx-auto grid w-full max-w-[calc(68rem+1px)] grid-cols-[minmax(0,34fr)_1px_minmax(0,30fr)] gap-x-8" data-slot="spec-row">
+      <div className="min-w-0 pb-5">{children}</div>
+      <div aria-hidden className="bg-border" />
+      <div className="min-w-0 pb-5" data-slot="spec-row-side">
+        {right}
+      </div>
+    </div>
+  );
+}
+
+/** PLAIN-14.8: "On this page" as a menu in the header, while the simplified version takes its place. */
+function OutlineMenu({ children }: { children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button type="button" variant="quiet" size="default" data-field="spec-outline-menu">
+          On this page
+          <ChevronDown aria-hidden />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        className="max-h-[70vh] w-80 overflow-y-auto p-2"
+        onClick={(e) => {
+          if (e.target instanceof Element && e.target.closest('a')) setOpen(false);
+        }}
+      >
+        {children}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/** TOPIC-11.7's line: who wrote it, with what, for how much, how long ago. */
+function writtenBy(kept: PlainSimple, now: number, what: string): string {
+  return [`Written by Claude from ${what}`, modelName(kept.model), kept.costUsd === null ? null : formatCost(kept.costUsd), `${formatAge(now - kept.writtenAt)} ago`].filter(Boolean).join(' · ');
+}
+
+/** PLAIN-14.11: the simplified column's head: who wrote it, and what was checked. */
+function SimpleHead({ kept }: { kept: PlainSimple }) {
+  const now = useNow(60_000);
+  const jump = useJump();
+  const gaps = kept.blocks.filter((b) => !b.stale && b.leftOut.length > 0);
+  const ease = kept.readingEase;
+  return (
+    <section aria-label="Simplified" className="flex flex-col gap-1.5" data-slot="spec-simple-head">
+      <h2 className="text-meta font-medium text-muted-foreground">Simplified</h2>
+      <p className="text-meta text-muted-foreground" data-field="spec-simple-by">
+        {writtenBy(kept, now, kept.specs === 1 ? 'the changed spec' : `the ${kept.specs} changed specs`)}
+      </p>
+      <ul className="flex flex-wrap gap-x-3.5 gap-y-1 text-meta text-muted-foreground" data-field="spec-simple-checks">
+        <li className="flex items-center gap-1">
+          <Check aria-hidden className="size-3.5" />
+          Each paragraph cites its clauses
+        </li>
+        <li className="flex items-center gap-1">
+          <Check aria-hidden className="size-3.5" />
+          Numbers and quotes kept
+        </li>
+        {ease !== null &&
+          (ease >= 60 ? (
+            <li className="flex items-center gap-1">
+              <Check aria-hidden className="size-3.5" />
+              Reading ease {ease}
+            </li>
+          ) : (
+            <li className="flex items-center gap-1 font-medium text-foreground">
+              <CircleAlert aria-hidden className="size-3.5" />
+              Reading ease {ease}, harder than it should be
+            </li>
+          ))}
+        {gaps.length > 0 && (
+          <li>
+            <a href={`#${blockAnchor(gaps[0]!.spec)}`} onClick={jump(blockAnchor(gaps[0]!.spec))} className="flex items-center gap-1 font-medium text-foreground underline-offset-2 hover:underline" data-field="spec-simple-gaps">
+              <CircleAlert aria-hidden className="size-3.5" />
+              {gaps.length === 1 ? '1 spec leaves out clauses' : `${gaps.length} specs leave out clauses`}
+            </a>
+          </li>
+        )}
+      </ul>
+    </section>
+  );
+}
+
+const LEAD_LABEL: Record<NonNullable<PlainSimple['lead']>['lines'][number]['slot'], string> = { changes: 'What changes', who: 'Who gets it', before: 'Unlike before' };
+
+/** PLAIN-14.9: In short: the change in three lines, each citing the specs it comes from. */
+function InShort({ lead, kept, ctx, onSimplify, busy }: { lead: NonNullable<PlainSimple['lead']>; kept: PlainSimple; ctx: Ctx; onSimplify(): void; busy: boolean }) {
+  const now = useNow(60_000);
+  const reveal = useContext(Reveal);
+  return (
+    <section aria-label="In short" className="@container flex flex-col gap-2 rounded-md bg-muted p-3" data-slot="spec-in-short">
+      <h3 className="text-body font-semibold">In short</h3>
+      {lead.stale ? (
+        <p className="flex flex-wrap items-center gap-2 text-meta text-muted-foreground" data-field="spec-in-short-stale">
+          In short is out of date.
+          <Button type="button" variant="soft" size="line" onClick={onSimplify} disabled={busy}>
+            Simplify again
+          </Button>
+        </p>
+      ) : (
+        <dl className="grid grid-cols-1 gap-x-3 gap-y-1 @min-[24rem]:grid-cols-[6.5rem_minmax(0,1fr)] @min-[24rem]:gap-y-2">
+          {lead.lines.map((l) => (
+            <Fragment key={l.slot}>
+              <dt className="text-meta font-medium text-muted-foreground @min-[24rem]:pt-0.5">{LEAD_LABEL[l.slot]}</dt>
+              <dd className="text-prose" data-field={`spec-in-short-${l.slot}`}>
+                {l.text}
+                {l.cites.map((c) => {
+                  const id = c.replace(/ notes?$/, '');
+                  const l: Lit = { spec: id, kind: 'head', key: '' };
+                  return <Cite key={c} label={c} name={`Go to ${c}`} onLit={(on) => (on ? ctx.light?.setLit(l) : ctx.light?.unlit(l))} onClick={() => reveal(specAnchor(id))} />;
+                })}
+              </dd>
+            </Fragment>
+          ))}
+        </dl>
+      )}
+      <p className="text-meta text-muted-foreground" data-field="spec-in-short-by">
+        {writtenBy(kept, now, kept.specs === 1 ? '1 spec' : `${kept.specs} specs`)}
+      </p>
+    </section>
+  );
+}
+
+/** PLAIN-14.6, 14.9: a citation: a clause's number, or a spec's id. The one hand-made button they share. */
+function Cite({ label, name, onLit, onClick, expanded }: { label: string; name: string; onLit(on: boolean, how: 'pointer' | 'focus'): void; onClick(): void; expanded?: boolean }) {
+  return (
+    <button
+      type="button"
+      aria-label={name}
+      aria-expanded={expanded}
+      className="ml-1 rounded-sm bg-spec/10 px-1 align-baseline font-mono text-meta font-medium whitespace-nowrap tabular-nums text-spec-text hover:bg-spec/16"
+      onPointerEnter={() => onLit(true, 'pointer')}
+      onPointerLeave={() => onLit(false, 'pointer')}
+      onFocus={() => onLit(true, 'focus')}
+      onBlur={() => onLit(false, 'focus')}
+      onClick={onClick}
+      data-field="spec-cite"
+    >
+      {label}
+    </button>
+  );
+}
+
+const citeName = (n: string) => (n.startsWith('T') ? `Acceptance test ${n}` : n.startsWith('N') ? `Note ${n}` : `Clause ${n}`);
+
+/**
+ * PLAIN-14.7, 14.15: a paragraph's citation. Beside the spec it goes to the clause and focuses it; in
+ * place of the spec, where the clause isn't shown, it opens the clauses the paragraph cites.
+ */
+function ParagraphCite({ spec, n, cites, items, ctx, onLit }: { spec: string; n: string; cites: readonly string[]; items: ReadonlyMap<string, Clause>; ctx: Ctx; onLit(on: boolean, how: 'pointer' | 'focus'): void }) {
+  const reveal = useContext(Reveal);
+  const [open, setOpen] = useState(false);
+  const wide = !!ctx.side?.wide;
+  if (wide) {
+    return (
+      <Cite
+        label={n}
+        name={citeName(n)}
+        onLit={onLit}
+        onClick={() => {
+          const id = clauseAnchor(spec, n);
+          reveal(id);
+          focusSoon(id);
+        }}
+      />
+    );
+  }
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverAnchor asChild>
+        <span>
+          <Cite label={n} name={citeName(n)} onLit={noopLit} onClick={() => setOpen(!open)} expanded={open} />
+        </span>
+      </PopoverAnchor>
+      <PopoverContent align="start" className="flex w-[min(28rem,calc(100vw-2rem))] flex-col gap-2 p-3" data-slot="spec-cite-card" aria-label={`${spec}, ${cites.length === 1 ? citeName(cites[0]!) : `clauses ${cites.join(', ')}`}`}>
+        <p className="font-mono text-meta text-muted-foreground">{spec}</p>
+        {cites.map((c) => {
+          const clause = items.get(c);
+          return clause ? (
+            <p key={c} className="flex gap-2 text-prose">
+              <span className="w-9 shrink-0 font-mono text-meta tabular-nums text-spec-text">{c}</span>
+              <span className="min-w-0">
+                <ClauseBody n={clause} ctx={ctx} />
+              </span>
+            </p>
+          ) : null;
+        })}
+      </PopoverContent>
+    </Popover>
+  );
+}
+const noopLit = () => {};
+
+/** PLAIN-14.7: a paragraph's text, its terms underlined, each opening the card its name has, or naming what it stands for; a code span stays code. */
+function SimpleText({ text, terms, ctx }: { text: string; terms: readonly { phrase: string; name: string }[]; ctx: Ctx }) {
+  return (
+    <>
+      {text.split(/(`[^`]+`)/).map((part, i) =>
+        part.length > 2 && part.startsWith('`') && part.endsWith('`') ? (
+          <code key={i} className="rounded-sm bg-muted px-1 font-mono text-prose">
+            {part.slice(1, -1)}
+          </code>
+        ) : (
+          <TermsIn key={i} text={part} terms={terms} ctx={ctx} />
+        ),
+      )}
+    </>
+  );
+}
+
+function TermsIn({ text, terms, ctx }: { text: string; terms: readonly { phrase: string; name: string }[]; ctx: Ctx }) {
+  const found = terms
+    .map((t) => ({ t, at: text.indexOf(t.phrase) }))
+    .filter((x) => x.at >= 0)
+    .sort((a, b) => a.at - b.at);
+  const out: ReactNode[] = [];
+  let pos = 0;
+  for (const { t, at } of found) {
+    if (at < pos) continue;
+    out.push(text.slice(pos, at));
+    const kind: CardKind | null = ctx.answer.catalogue && ABILITY_KEY.test(t.name) && ctx.answer.abilities?.[t.name] ? 'ability' : ctx.answer.concepts[t.name] ? 'concept' : null;
+    out.push(
+      kind ? (
+        <button key={at} type="button" className="underline decoration-spec decoration-dotted underline-offset-2" aria-haspopup="dialog" data-term="simple" {...cardHandlers(t.name, kind, ctx)}>
+          {t.phrase}
+        </button>
+      ) : (
+        <span key={at} className="underline decoration-spec decoration-dotted underline-offset-2" title={t.name} data-term="simple">
+          {t.phrase}
+        </span>
+      ),
+    );
+    pos = at + t.phrase.length;
+  }
+  out.push(text.slice(pos));
+  return <>{out}</>;
+}
+
+/** PLAIN-14.7, 14.8: a paragraph: its text, the numbers it cites, the bar its cited clauses share; hovering it lights them. */
+function SimpleParagraph({ spec, p, i, items, ctx }: { spec: string; p: PlainSimpleBlock['paragraphs'][number]; i: number; items: ReadonlyMap<string, Clause>; ctx: Ctx }) {
+  const side = ctx.side!;
+  const lit = side.lit?.spec === spec && side.lit.paragraphs.has(i);
+  const states = new Set(p.cites.map((n) => items.get(n)?.state ?? 'same'));
+  const state: Clause['state'] = states.size === 1 ? [...states][0]! : 'changed';
+  const bar = ctx.highlight && state !== 'same' ? cn(BAR, BAR_COLOUR[state], 'before:-left-1') : undefined;
+  // Lit while the pointer is on it or one of its citations has focus: a citation's own leave or blur
+  // doesn't put it out while the other still holds (a citation is inside the paragraph, so its hover is the paragraph's).
+  const hovered = useRef(false);
+  const focused = useRef(false);
+  const sync = () => {
+    const l: Lit = { spec, kind: 'paragraph', key: String(i) };
+    if (hovered.current || focused.current) side.setLit(l);
+    else side.unlit(l);
+  };
+  const on = (yes: boolean, how: 'pointer' | 'focus') => {
+    if (how === 'pointer') return;
+    focused.current = yes;
+    sync();
+  };
+  const hover = (yes: boolean) => {
+    hovered.current = yes;
+    sync();
+  };
+  return (
+    <p className={cn('-mx-2 rounded-md px-2 py-1 transition-colors', bar, lit && 'bg-spec/10')} onPointerEnter={() => hover(true)} onPointerLeave={() => hover(false)} data-field="spec-simple-p" data-cites={p.cites.join(' ')} data-lit={lit || undefined}>
+      <SimpleText text={p.text} terms={p.terms} ctx={ctx} />
+      {p.cites.map((n) => (
+        <ParagraphCite key={n} spec={spec} n={n} cites={p.cites} items={items} ctx={ctx} onLit={on} />
+      ))}
+    </p>
+  );
+}
+
+/** PLAIN-14.4, 14.5, 14.8: a block's body: the spec's example card, its paragraphs, why it couldn't be simplified, what it leaves out. */
+function SimpleBody({ spec, block, example, ctx }: { spec: FunctionalSpec; block: PlainSimpleBlock; example: ReactNode; ctx: Ctx }) {
+  const items = useMemo(() => new Map(numberSpec(spec).map((x) => [x.n, x.clause])), [spec]);
+  return (
+    <div id={ctx.side?.wide ? undefined : blockAnchor(spec.id)} className="flex flex-col gap-3" data-slot="spec-simple-body">
+      {example}
+      {block.paragraphs.length > 0 && (
+        <div className="flex flex-col gap-2.5 text-reading">
+          {block.paragraphs.map((p, i) => (
+            <SimpleParagraph key={i} spec={spec.id} p={p} i={i} items={items} ctx={ctx} />
+          ))}
+        </div>
+      )}
+      {block.failed && (
+        <p className="text-meta text-muted-foreground" data-field="spec-simple-failed">
+          {block.failed}
+        </p>
+      )}
+      {block.leftOut.length > 0 && <LeftOut spec={spec.id} items={block.leftOut} ctx={ctx} />}
+    </div>
+  );
+}
+
+/** PLAIN-14.5: the clauses a block leaves out, by number, with Show them and Simplify again; no Status or Warning colour. */
+function LeftOut({ spec, items, ctx }: { spec: string; items: readonly string[]; ctx: Ctx }) {
+  const side = ctx.side!;
+  const reveal = useContext(Reveal);
+  const list = items.length === 1 ? items[0]! : `${items.slice(0, -1).join(', ')} and ${items.at(-1)!}`;
+  return (
+    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 rounded-md bg-muted px-3 py-2 text-body" data-field="spec-simple-left-out">
+      <CircleAlert aria-hidden className="size-4 shrink-0" />
+      <span className="min-w-0 flex-1 basis-48">
+        Leaves out {plural(items.length, 'clause', 'clauses')}: {list}
+      </span>
+      <Button
+        type="button"
+        variant="secondary"
+        size="line"
+        onClick={() => {
+          side.setLit({ spec, kind: 'gap', key: '' });
+          if (!side.wide) side.onShowText(spec, true);
+          requestAnimationFrame(() => reveal(clauseAnchor(spec, items[0]!)));
+        }}
+        data-field="spec-simple-show-gaps"
+      >
+        Show them
+      </Button>
+      <Button type="button" variant="quiet" size="line" onClick={side.onSimplify} disabled={side.busy} data-field="spec-simple-again">
+        Simplify again
+      </Button>
+    </div>
+  );
+}
+
+/** PLAIN-14.12: a changed spec with no fresh simplified version: its spec changed since, or it isn't simplified yet. */
+function SimpleMissing({ spec, block, example, ctx }: { spec: FunctionalSpec; block: PlainSimpleBlock | undefined; example: ReactNode; ctx: Ctx }) {
+  const side = ctx.side!;
+  return (
+    <div className="flex flex-col gap-3" data-slot="spec-simple-missing">
+      {example}
+      <p className="flex flex-wrap items-center gap-2 text-meta text-muted-foreground" data-field="spec-simple-missing">
+        {block?.stale ? `${spec.id} changed since it was simplified.` : 'Not simplified yet.'}
+        <Button type="button" variant="soft" size="line" onClick={side.onSimplify} disabled={side.busy}>
+          {block?.stale ? 'Simplify again' : 'Simplify'}
+        </Button>
+      </p>
+    </div>
+  );
+}
+
+/** PLAIN-14.8: a changed spec's simplified block beside its text, sticky while its row scrolls unless it's taller than the view. */
+function SimpleBlock({ spec, block, example, ctx }: { spec: FunctionalSpec; block: PlainSimpleBlock | undefined; example: ReactNode; ctx: Ctx }) {
+  const side = ctx.side!;
+  const ref = useRef<HTMLElement>(null);
+  const [tall, setTall] = useState(false);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    const box = side.box.current;
+    if (!el || !box || typeof ResizeObserver === 'undefined') return;
+    const measure = () => setTall(el.offsetHeight > box.clientHeight - STRIP_PX);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    ro.observe(box);
+    return () => ro.disconnect();
+  }, [side.box]);
+  const fresh = !!block && !block.stale;
+  return (
+    <aside ref={ref} id={blockAnchor(spec.id)} aria-label={`${spec.id} simplified`} className={cn('mt-6 flex flex-col gap-3', !tall && 'sticky top-9')} data-slot="spec-simple" data-spec={spec.id} data-sticky={!tall || undefined}>
+      <header className="flex flex-col gap-0.5">
+        <span className="font-mono text-meta tabular-nums text-muted-foreground">{spec.id} simplified</span>
+        {fresh && <h3 className="text-reading-title font-semibold tracking-tight">{block.title ?? specGist(spec)}</h3>}
+      </header>
+      {fresh ? <SimpleBody spec={spec} block={block} example={example} ctx={ctx} /> : <SimpleMissing spec={spec} block={block} example={example} ctx={ctx} />}
+    </aside>
+  );
+}
+

@@ -40,7 +40,11 @@ export function useMarkFractions(
       const next = new Map<string, number>();
       for (const el of list.querySelectorAll<HTMLElement>('[data-mark]')) {
         const cursor = el.dataset.mark!;
-        if (wanted.current.has(cursor)) next.set(cursor, railFraction(el.getBoundingClientRect().top - base, height));
+        if (!wanted.current.has(cursor)) continue;
+        // A Mark inside something hidden (a spec's text under its simplified block, PLAIN-14.15) sits where its nearest shown ancestor does.
+        let shown: Element | null = el;
+        while (shown && shown !== list && shown.getClientRects().length === 0) shown = shown.parentElement;
+        next.set(cursor, railFraction((shown && shown.getClientRects().length ? shown : el).getBoundingClientRect().top - base, height));
       }
       setFractions((prev) => (sameFractions(prev, next) ? prev : next));
     };

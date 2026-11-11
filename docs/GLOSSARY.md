@@ -82,6 +82,8 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Session name**: What a Session is called, the same everywhere: the name you gave it, else its Harness's own title, else its first prompt. Fleet chooses it (`display_title`). See SIDE-10.
 
+**Simplified version**: A changed functional spec rewritten in simple words by Claude, on a press, and shown beside the spec in the Spec view. Every paragraph cites the clauses it says, and is checked against them before it shows. It comes with In short: three lines on what the Module's change does, who gets it and what's unlike before. See the PLAIN spec.
+
 **Spec view**: A Module shown whole in the main pane, with its change since its base marked in place, and other Modules' Concepts, the specs a `§` names and the Ability keys it names explained on hover. See the PLAIN spec.
 
 **Start directory**: A directory listed in Settings where Lookout can start new Sessions. `~/Projects/work` by default.

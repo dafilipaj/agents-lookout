@@ -30,6 +30,7 @@ import { SettingsStore, defaultSettingsPath, expandHome } from './settings.ts';
 import { trackStartDirectories } from './start-repos.ts';
 import { Changes } from './changes.ts';
 import { PlainExamplesMaker } from './plain-examples.ts';
+import { PlainSimplifier } from './plain-simplify.ts';
 import { PlainWorktrees } from './plain-worktrees.ts';
 import { Plain } from './plain.ts';
 import { PlainPrs } from './plain-prs.ts';
@@ -306,6 +307,16 @@ const plainExamples = new PlainExamplesMaker({
 });
 void plainExamples.prune();
 setInterval(() => void plainExamples.prune(), 24 * 60 * 60 * 1000).unref();
+// PLAIN-14: a Module's changed specs in simple words, on a press; kept 30 days unused.
+const plainSimple = new PlainSimplifier({
+  plain,
+  runner: run,
+  claudeBin: async () => (await launcher.harnessFacts()).find((f) => f.id === 'claude' && f.installed)?.path ?? null,
+  runDir: join(homedir(), '.lookout', 'claude-run'),
+  env,
+});
+void plainSimple.prune();
+setInterval(() => void plainSimple.prune(), 24 * 60 * 60 * 1000).unref();
 settings.onChange(() => recommender.kick());
 
 // WORK-2.8: a saved Productive email drops the Tasks kept for the previous one, and reads its own.
@@ -334,6 +345,7 @@ const app = createApp({
   chatSeen,
   plainClones: () => plainPrs.clones(),
   plainExamples,
+  plainSimple,
   sessions: {
     answer: (id, req) => viewer.answer(id, req),
     stop: (id, status) => viewer.stopSession(id, status),
@@ -402,7 +414,7 @@ const shutdown = async () => {
   app.server.close();
   app.server.closeAllConnections();
   // Cancel the pollers and wait until their processes have exited, so none is orphaned.
-  await Promise.all([recommender.close(), summarizer.close(), suggester.close(), plainExamples.close()]);
+  await Promise.all([recommender.close(), summarizer.close(), suggester.close(), plainExamples.close(), plainSimple.close()]);
   topics.close();
   await Promise.all([usage.close().catch(() => {}), memory.close().catch(() => {}), ports.close().catch(() => {}), resQueue.close().catch(() => {}), work.close().catch(() => {}), tools.close().catch(() => {})]);
   process.exit(0);

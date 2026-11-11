@@ -504,6 +504,33 @@ export function gist(s: string): string {
   return (cut > 20 ? t.slice(0, cut) : t).slice(0, 72);
 }
 
+/** PLAIN-14.6: a spec's clause, acceptance test or note with its number in the spec. */
+export interface NumberedItem {
+  /** `1`, `1.1`, `1.1.1` for a clause; `T1`, `T1.1` for an acceptance test; `N1` for a note. */
+  n: string;
+  kind: 'clause' | 'test' | 'note';
+  depth: number;
+  clause: Clause;
+}
+
+/**
+ * PLAIN-14.6: every clause, acceptance test and note of a spec, numbered by its place as Whole shows
+ * it, removed ones among the others, so a number is the same in Changes and Whole.
+ */
+export function numberSpec(spec: Pick<FunctionalSpec, 'clauses' | 'tests' | 'notes'>): NumberedItem[] {
+  const out: NumberedItem[] = [];
+  const walk = (nodes: readonly Clause[], prefix: string, kind: NumberedItem['kind'], depth: number) =>
+    nodes.forEach((c, i) => {
+      const n = `${prefix}${i + 1}`;
+      out.push({ n, kind, depth, clause: c });
+      walk(c.children, `${n}.`, kind, depth + 1);
+    });
+  walk(spec.clauses, '', 'clause', 0);
+  walk(spec.tests, 'T', 'test', 0);
+  walk(spec.notes, 'N', 'note', 0);
+  return out;
+}
+
 /** PLAIN-2: a Concept from another Module, as the server resolved it. */
 export interface PlainConcept {
   /** The Module it's defined in, as a path in the Checkout without `.plain` (`plain/productive`). */
@@ -703,6 +730,63 @@ export interface PlainExamplesAnswer {
    * worktree and copies or installs its dependencies (PLAIN-11.15).
    */
   running: { module: string; mine: boolean; phase: 'worktree' | 'copying' | 'installing' | 'tests' | 'writing' | 'pictures'; tests: number } | null;
+  /** The last run of this Module failed: why. */
+  error: string | null;
+}
+
+/** PLAIN-14.7: a phrase of a simplified paragraph and the exact name it stands for (a Concept, an Ability key, a code span). */
+export interface PlainSimpleTerm {
+  phrase: string;
+  name: string;
+}
+
+/** PLAIN-14.2, 14.4: one paragraph of a simplified spec, as checked, with the numbers it cites. */
+export interface PlainSimpleParagraph {
+  text: string;
+  cites: string[];
+  terms: PlainSimpleTerm[];
+}
+
+/** PLAIN-14.8: a changed spec's simplified block. */
+export interface PlainSimpleBlock {
+  spec: string;
+  /** PLAIN-14.12: its spec changed since it was simplified; then nothing else of it is sent. */
+  stale: boolean;
+  title: string | null;
+  paragraphs: PlainSimpleParagraph[];
+  /** PLAIN-14.5: the numbers of the changed clauses and notes no shown paragraph cites. */
+  leftOut: string[];
+  /** PLAIN-14.4: why no paragraph is left; null when some are. */
+  failed: string | null;
+}
+
+export type PlainLeadSlot = 'changes' | 'who' | 'before';
+
+/** PLAIN-14.9: In short, its lines in order, each citing spec ids (`§16.50`, `§16.50 notes`). */
+export interface PlainSimpleLead {
+  /** PLAIN-14.12: one of the specs it cites changed since; then it has no lines. */
+  stale: boolean;
+  lines: { slot: PlainLeadSlot; text: string; cites: string[] }[];
+}
+
+/** PLAIN-14.12: a Module's simplified version, as kept. */
+export interface PlainSimple {
+  blocks: PlainSimpleBlock[];
+  lead: PlainSimpleLead | null;
+  writtenAt: number;
+  model: string;
+  costUsd: number | null;
+  /** PLAIN-14.11: the Flesch score over the shown paragraphs; null with too few words to score. */
+  readingEase: number | null;
+  /** How many changed specs it was written from. */
+  specs: number;
+}
+
+/** PLAIN-14.13: what the Spec view shows about a Module's simplified version. */
+export interface PlainSimpleAnswer {
+  simple: PlainSimple | null;
+  /** This Module's run, while it goes. */
+  running: { specs: number } | null;
   /** The last run of this Module failed: why. */
   error: string | null;
 }

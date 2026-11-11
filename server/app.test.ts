@@ -49,6 +49,8 @@ let switched: ({ sessionId: string } & (ModelSwitchRequest | EffortSwitchRequest
 let serverStops: StopTarget[] = [];
 let examplePresses: unknown[][] = [];
 let exampleCancels = 0;
+let simplePresses: unknown[][] = [];
+let simpleCancels: unknown[][] = [];
 
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'lookout-app-'));
@@ -68,6 +70,8 @@ beforeEach(async () => {
   serverStops = [];
   examplePresses = [];
   exampleCancels = 0;
+  simplePresses = [];
+  simpleCancels = [];
   const settings = new SettingsStore(join(dir, 'settings.json'));
   await settings.load();
   app = createApp({
@@ -171,6 +175,16 @@ beforeEach(async () => {
       },
       cancel: () => {
         exampleCancels++;
+      },
+    },
+    plainSimple: {
+      get: async (source, path) => ({ simple: null, running: null, error: `read ${JSON.stringify(source)} ${String(path)}` }),
+      start: async (source, path) => {
+        simplePresses.push([source, path]);
+        if (path === 'plain/none.plain') throw new PlainError(400, 'This Module has no changed functional spec.');
+      },
+      cancel: async (source, path) => {
+        simpleCancels.push([source, path]);
       },
     },
     ports: {
@@ -568,6 +582,35 @@ describe('PLAIN-11 routes', () => {
     const frame = await call('GET', `/api/plain/examples/frame?key=${'k'.repeat(64)}&name=${'f'.repeat(40)}.jpg`);
     expect([frame.status, frame.body]).toEqual([200, 'JPEG']);
     expect((await call('GET', `/api/plain/examples/frame?key=${'k'.repeat(64)}&name=answer.json`)).status).toBe(404);
+  });
+});
+
+describe('PLAIN-14 routes', () => {
+  const json = { 'content-type': 'application/json' };
+  const post = (route: string, headers: Record<string, string>, body: unknown) => call('POST', route, { ...json, ...headers }, JSON.stringify(body));
+
+  it('PLAIN-14.14: the press and its cancel run and stop claude -p, so they are mutations: our Origin and the token; the body names the Module by its source and path, nothing else', async () => {
+    const body = { repo: 'shop', pr: 42, path: 'plain/deals.plain' };
+    for (const route of ['/api/plain/simple', '/api/plain/simple/cancel']) {
+      expect((await post(route, { 'x-lookout-token': TOKEN }, body)).status).toBe(403); // no Origin
+      expect((await post(route, { origin }, body)).status).toBe(403); // no token
+      expect((await post(route, { origin: 'https://evil.example', 'x-lookout-token': TOKEN }, body)).status).toBe(403);
+    }
+    expect([simplePresses, simpleCancels]).toEqual([[], []]);
+    const res = await post('/api/plain/simple', { origin, 'x-lookout-token': TOKEN }, body);
+    expect([res.status, JSON.parse(res.body)]).toEqual([202, { ok: true }]);
+    expect(simplePresses).toEqual([[{ kind: 'pr', repo: 'shop', number: 42 }, 'plain/deals.plain']]);
+    const refused = await post('/api/plain/simple', { origin, 'x-lookout-token': TOKEN }, { ...body, path: 'plain/none.plain' });
+    expect([refused.status, JSON.parse(refused.body)]).toEqual([400, { error: 'This Module has no changed functional spec.' }]);
+    const cancel = await post('/api/plain/simple/cancel', { origin, 'x-lookout-token': TOKEN }, { session: 'a', checkout: '0123456789abcdef', path: 'plain/deals.plain' });
+    expect(cancel.status).toBe(200);
+    expect(simpleCancels).toEqual([[{ kind: 'session', session: 'a', checkout: '0123456789abcdef' }, 'plain/deals.plain']]);
+  });
+
+  it('PLAIN-14.12: the simplified version is a read, by the Module\'s source and path', async () => {
+    const read = await call('GET', '/api/plain/simple?repo=shop&pr=42&path=plain%2Fdeals.plain');
+    expect(read.status).toBe(200);
+    expect(JSON.parse(read.body)).toEqual({ simple: null, running: null, error: 'read {"kind":"pr","repo":"shop","number":"42"} plain/deals.plain' });
   });
 });
 

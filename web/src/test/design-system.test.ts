@@ -296,6 +296,7 @@ const FAMILIES: Record<string, Family> = {
     tokens: ['spec', 'spec-text'],
     files: {
       'web/src/components/ChangesButton.tsx': { why: "a .plain Module's row in a Session's changed files: its tint and icon (PLAIN-3.4, DS-2.6)", uses: ['bg-spec/10', 'bg-spec/16', 'text-spec-text'] },
+      'web/src/components/SpecView.tsx': { why: "the simplified version beside a spec: a clause's number, a citation, a lit clause, paragraph or heading, and a term in a simplified paragraph (PLAIN-14.6, 14.7, 14.9, DS-2.6)", uses: ['bg-spec/10', 'bg-spec/16', 'decoration-spec', 'text-spec-text'] },
     },
   },
   warning: {
@@ -1414,6 +1415,8 @@ const HAND_MADE_BUTTONS: Exception[] = [
   { path: 'web/src/components/SpecView.tsx', fn: 'Term', count: 1, reason: 'an inline link: a term explained in place (PLAIN-7)' },
   { path: 'web/src/components/SpecView.tsx', fn: 'ExampleCard', count: 1, reason: "a picture that opens a spec's frames large (PLAIN-11.10)" },
   { path: 'web/src/components/SpecView.tsx', fn: 'panel', count: 1, reason: "a storyboard panel's picture that opens the spec's pictures large at that step (PLAIN-13.5)" },
+  { path: 'web/src/components/SpecView.tsx', fn: 'Cite', count: 1, reason: "a citation inside a sentence: a clause's number or a spec's id, which lights what it cites (PLAIN-14.6, 14.9)" },
+  { path: 'web/src/components/SpecView.tsx', fn: 'TermsIn', count: 1, reason: 'an inline link: a term of a simplified paragraph explained in place (PLAIN-14.7)' },
   { path: 'web/src/components/StatusMenu.tsx', fn: 'StatusMenu', count: 1, reason: "the status line's model and Effort menus (DS-7.3)" },
   { path: 'web/src/components/SubagentsButton.tsx', fn: 'SubagentsButton', count: 1, reason: "the status line's Subagents (VIEW-8, DS-7.3)" },
   { path: 'web/src/components/TopicGraph.tsx', fn: 'Canvas', count: 1, reason: "the Topic graph's Edge chip, on the line it names (TOPIC-6)" },

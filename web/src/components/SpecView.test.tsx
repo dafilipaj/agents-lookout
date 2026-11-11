@@ -1,11 +1,13 @@
-import type { PlainAnswer, PlainExample, PlainExamples, PlainExamplesAnswer } from '@shared/plain.ts';
+import type { PlainAnswer, PlainExample, PlainExamples, PlainExamplesAnswer, PlainSimple, PlainSimpleAnswer, PlainSimpleBlock } from '@shared/plain.ts';
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SaveError } from '@/lib/client';
 import { parseRoute, routePath } from '@/lib/router';
-import { renderApp, row } from '@/test/helpers';
+import { fakeResizeObserver, movePointer, renderApp, row } from '@/test/helpers';
 import { cropRegion } from '@/lib/plain-shots';
+import css from '@/index.css?raw';
+import { contrast, paint, solid, themeTokens, type Mode } from '@/test/contrast';
 import { JUST_CHANGED_MS, SPEC_POLL_MS, STRIP_PX } from './SpecView';
 
 const CHECKOUT = '0123456789abcdef';
@@ -1458,5 +1460,328 @@ describe('proof shots and a storyboard (PLAIN-13)', () => {
     expect(within(dialog).getByText('Not there')).toBeTruthy();
     await user.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+});
+
+// PLAIN-14: §1.2 gains two clauses, 2 and its 2.1; §1.1 is unchanged.
+const TEXT_14 = BASE.replace('- A rate can be edited inline.', '- A rate can be edited inline.\n- A rate can be deleted by :Mystery:.\n  - Deleting asks "Delete rate?" first.');
+function simpleKept(over: Partial<PlainSimpleBlock> = {}, more: Partial<PlainSimple> = {}, answerMore: Partial<PlainSimpleAnswer> = {}): PlainSimpleAnswer {
+  return {
+    simple: {
+      blocks: [
+        {
+          spec: '§1.2',
+          stale: false,
+          title: 'You can delete a rate',
+          paragraphs: [
+            { text: 'Someone who may delete rates can delete one from a deal.', cites: ['2'], terms: [{ phrase: 'may delete rates', name: 'Mystery' }, { phrase: 'a deal', name: 'Deal' }] },
+            { text: 'Deleting asks "Delete rate?" first.', cites: ['2.1'], terms: [] },
+          ],
+          leftOut: [],
+          failed: null,
+          ...over,
+        },
+      ],
+      lead: { stale: false, lines: [{ slot: 'changes', text: 'You can delete a rate.', cites: ['§1.2'] }, { slot: 'who', text: 'Someone who may delete rates.', cites: ['§1.2'] }] },
+      writtenAt: Date.now() - 2 * 60 * 60 * 1000,
+      model: 'claude-sonnet-5-5',
+      costUsd: 0.04,
+      readingEase: 84,
+      specs: 1,
+      ...more,
+    },
+    running: null,
+    error: null,
+    ...answerMore,
+  };
+}
+
+describe('a simplified version beside the spec (PLAIN-14)', () => {
+  const side = () => document.querySelector<HTMLElement>('[data-slot="spec-simple"][data-spec="§1.2"]');
+  const toggle = () => screen.queryByRole('button', { name: 'Simplified' });
+  const openSimple = (answer14: PlainSimpleAnswer = simpleKept(), options: Parameters<typeof renderApp>[1] = {}) => open({ text: TEXT_14 }, { plainSimple: async () => answer14, ...options });
+  const paragraph = (text: string) => screen.getByText((_, el) => el?.getAttribute('data-field') === 'spec-simple-p' && (el.textContent ?? '').startsWith(text));
+  const numbered = (n: string) => document.getElementById(`plain-s-1-2-n${n.replace(/\./g, '-')}`)!;
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('PLAIN-14.1: the Changes card has "Simplify" after "Show examples"; nothing simplifies on its own; a press starts it for this Module; then it reads "Simplify again"', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const { app } = open({ text: TEXT_14 });
+    const simplify = await screen.findByRole('button', { name: 'Simplify' });
+    expect(simplify.getAttribute('title')).toBe('Claude rewrites the changed specs in simple words, shown beside them. Each paragraph cites its clauses.');
+    expect(simplify.previousElementSibling?.textContent).toBe('Show examples');
+    await act(async () => vi.advanceTimersByTime(SPEC_POLL_MS * 2));
+    expect(app.client.startPlainSimple).not.toHaveBeenCalled();
+    await act(async () => simplify.click());
+    expect(app.client.startPlainSimple).toHaveBeenCalledWith(SRC, 'plain/rates.plain');
+    vi.useRealTimers();
+    cleanup();
+    openSimple();
+    expect(await screen.findByRole('button', { name: 'Simplify again' })).toBeTruthy();
+  });
+
+  it('PLAIN-14.13: while it is written the card shows the wait with Cancel, which cancels this Module; a failure shows why', async () => {
+    const { app } = openSimple(simpleKept({}, {}, { running: { specs: 1 } }));
+    expect(await screen.findByText('Simplifying 1 spec…')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Simplify again' })).toBeNull();
+    await act(async () => document.querySelector<HTMLElement>('[data-field="spec-simplify-cancel"]')!.click());
+    expect(app.client.cancelPlainSimple).toHaveBeenCalledWith(SRC, 'plain/rates.plain');
+    cleanup();
+    openSimple(simpleKept({}, {}, { error: 'It took longer than 120 s and was stopped.' }));
+    expect((await screen.findByText('It took longer than 120 s and was stopped.')).closest('[data-field="spec-simplify-error"]')).not.toBeNull();
+  });
+
+  it('PLAIN-14.10: once there is a version the header has "Simplified", pressed while it shows; it opens shown, hides and shows again; Clean has neither', async () => {
+    openSimple();
+    await waitFor(() => expect(side()).not.toBeNull());
+    expect(toggle()!.getAttribute('aria-pressed')).toBe('true');
+    expect(toggle()!.querySelector('span')!.className).toContain('@max-[40rem]/header:sr-only');
+    act(() => toggle()!.click());
+    expect(side()).toBeNull();
+    expect(toggle()!.getAttribute('aria-pressed')).toBe('false');
+    act(() => toggle()!.click());
+    expect(side()).not.toBeNull();
+    choose('Clean');
+    expect(side()).toBeNull();
+    expect(toggle()).toBeNull();
+    cleanup();
+    open({ text: TEXT_14 });
+    await screen.findByRole('button', { name: 'Simplify' });
+    expect(toggle()).toBeNull();
+  });
+
+  it('PLAIN-14.10: a press shows the side when its run ends', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let state: PlainSimpleAnswer = { simple: null, running: null, error: null };
+    open({ text: TEXT_14 }, { plainSimple: async () => state, startPlainSimple: async () => void (state = { simple: null, running: { specs: 1 }, error: null }) });
+    const simplify = await screen.findByRole('button', { name: 'Simplify' });
+    await act(async () => simplify.click());
+    expect(await screen.findByText('Simplifying 1 spec…')).toBeTruthy();
+    state = simpleKept();
+    await act(async () => vi.advanceTimersByTime(SPEC_POLL_MS * 2));
+    await waitFor(() => expect(side()).not.toBeNull());
+    expect(toggle()!.getAttribute('aria-pressed')).toBe('true');
+    vi.useRealTimers();
+  });
+
+  it('PLAIN-14.8: two columns, a changed spec\'s row with its block on the right; the example card moves there; nothing on the right of an unchanged spec; ids above headings; "On this page" is a header menu', async () => {
+    const user = userEvent.setup();
+    openSimple(simpleKept(), { plainExamples: async () => kept() });
+    await waitFor(() => expect(side()).not.toBeNull());
+    expect(document.querySelector('[data-slot="spec-layout"]')!.getAttribute('data-side')).toBe('beside');
+    const row = side()!.closest<HTMLElement>('[data-slot="spec-row"]')!;
+    expect(within(row).getByRole('article', { name: '§1.2' })).toBeTruthy();
+    expect(row.className).toContain('grid-cols-[minmax(0,34fr)_1px_minmax(0,30fr)]');
+    expect(side()!.getAttribute('aria-label')).toBe('§1.2 simplified');
+    expect(within(side()!).getByRole('heading', { name: 'You can delete a rate' })).toBeTruthy();
+    expect(side()!.querySelector('[data-slot="spec-example"]')).not.toBeNull();
+    expect(within(row).getByRole('article', { name: '§1.2' }).querySelector('[data-slot="spec-example"]')).toBeNull();
+    expect(side()!.className).toContain('sticky');
+    expect(within(module()).getByRole('article', { name: '§1.2' }).querySelector('[data-field="spec-id"]')!.className).not.toContain('absolute');
+    // A fold line, and in Whole an unchanged spec, have nothing on the right.
+    const foldRow = within(module()).getByRole('button', { name: /unchanged spec/ }).closest('[data-slot="spec-row"]')!;
+    expect(foldRow.querySelector('[data-slot="spec-row-side"]')!.childElementCount).toBe(0);
+    choose('Whole');
+    const unchanged = within(module()).getByRole('article', { name: '§1.1' }).closest('[data-slot="spec-row"]')!;
+    expect(unchanged.querySelector('[data-slot="spec-row-side"]')!.childElementCount).toBe(0);
+    choose('Changes');
+    // A paragraph from an added clause takes the added bar.
+    expect(paragraph('Someone who may delete rates').className).toContain('before:bg-diff-added-text');
+    expect(paragraph('Someone who may delete rates').hasAttribute('data-change')).toBe(false);
+    expect(document.querySelector('[data-slot="spec-nav"]')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'On this page' }));
+    expect(await screen.findByRole('navigation', { name: 'On this page' })).toBeTruthy();
+  });
+
+  it('PLAIN-14.6: with the side shown a clause\'s bullet is its number, a test\'s T1, removed ones among the others; each paragraph ends with the numbers it cites', async () => {
+    openSimple();
+    await waitFor(() => expect(side()).not.toBeNull());
+    const spec = within(module()).getByRole('article', { name: '§1.2' });
+    // In Changes the unchanged clause 1 folds; Whole shows it with its number.
+    expect([...spec.querySelectorAll('[data-field="spec-clause-n"]')].map((n) => n.textContent)).toEqual(['2', '2.1']);
+    expect(spec.querySelector('ul')!.className).toContain('list-none');
+    choose('Whole');
+    expect([...within(module()).getByRole('article', { name: '§1.2' }).querySelectorAll('[data-field="spec-clause-n"]')].map((n) => n.textContent)).toEqual(['1', '2', '2.1']);
+    choose('Changes');
+    expect(within(paragraph('Someone who may delete rates')).getByRole('button', { name: 'Clause 2' }).textContent).toBe('2');
+    act(() => toggle()!.click());
+    expect(within(module()).getByRole('article', { name: '§1.2' }).querySelector('[data-field="spec-clause-n"]')).toBeNull();
+  });
+
+  it('PLAIN-14.13: a Cancel too late to stop the save says so, and the version it saved shows', async () => {
+    let running = true;
+    openSimple(simpleKept(), {
+      plainSimple: async () => simpleKept({}, {}, running ? { running: { specs: 1 } } : {}),
+      cancelPlainSimple: async () => {
+        running = false;
+        throw new Error('Too late to cancel: the new version was already saved.');
+      },
+    });
+    expect(await screen.findByText('Simplifying 1 spec…')).toBeTruthy();
+    await act(async () => document.querySelector<HTMLElement>('[data-field="spec-simplify-cancel"]')!.click());
+    await waitFor(() => expect(document.querySelector('[data-field="spec-simplify-error"]')?.textContent).toContain('Too late to cancel: the new version was already saved.'));
+    expect(side()).not.toBeNull();
+  });
+
+  it('PLAIN-14.7: hovering a paragraph lights the clauses it cites, hovering a clause lights its paragraphs; a number goes to its clause; a term opens its card or names what it stands for', async () => {
+    const user = userEvent.setup();
+    openSimple();
+    await waitFor(() => expect(side()).not.toBeNull());
+    const first = paragraph('Someone who may delete rates');
+    movePointer(document.body, first);
+    expect(numbered('2').className).toContain('bg-spec/10');
+    expect(numbered('2.1').className).not.toContain('bg-spec/10');
+    movePointer(first, document.body);
+    expect(numbered('2').className).not.toContain('bg-spec/10');
+    movePointer(document.body, numbered('2.1'));
+    expect(paragraph('Deleting asks').getAttribute('data-lit')).toBe('true');
+    expect(first.hasAttribute('data-lit')).toBe(false);
+    movePointer(numbered('2.1'), document.body);
+    await user.click(within(first).getByRole('button', { name: 'Clause 2' }));
+    await waitFor(() => expect(document.activeElement).toBe(numbered('2')));
+    expect(within(first).getByText('may delete rates').getAttribute('title')).toBe('Mystery');
+    await user.hover(within(first).getByRole('button', { name: 'a deal' }));
+    expect(await screen.findByRole('dialog', { name: 'Deal, defined in api' })).toBeTruthy();
+  });
+
+  it('PLAIN-14.7: a citation\'s leave or blur doesn\'t put out its paragraph while the pointer is on it, nor what another hover lit since', async () => {
+    openSimple();
+    await waitFor(() => expect(side()).not.toBeNull());
+    const first = paragraph('Someone who may delete rates');
+    const cite = within(first).getByRole('button', { name: 'Clause 2' });
+    movePointer(document.body, first);
+    movePointer(first, cite);
+    movePointer(cite, first);
+    expect(numbered('2').className).toContain('bg-spec/10');
+    act(() => cite.focus());
+    movePointer(first, document.body);
+    expect(numbered('2').className).toContain('bg-spec/10');
+    movePointer(document.body, numbered('2.1'));
+    act(() => cite.blur());
+    expect(numbered('2.1').className).toContain('bg-spec/10');
+    expect(paragraph('Deleting asks').getAttribute('data-lit')).toBe('true');
+    movePointer(numbered('2.1'), document.body);
+    expect(numbered('2.1').className).not.toContain('bg-spec/10');
+  });
+
+  it('PLAIN-14.7, 14.5: a citation of a note in closed Notes opens them and goes to it', async () => {
+    const user = userEvent.setup();
+    const withNote = simpleKept({ paragraphs: [...simpleKept().simple!.blocks[0]!.paragraphs, { text: 'A task asked for it.', cites: ['N1'], terms: [] }] });
+    open({ text: `${TEXT_14}\n> Deleting was asked for in a task.\n` }, { plainSimple: async () => withNote });
+    await waitFor(() => expect(side()).not.toBeNull());
+    await user.click(within(module()).getByRole('button', { name: /^Notes/ }));
+    expect(numbered('N1')).toBeNull();
+    await user.click(within(paragraph('A task asked for it.')).getByRole('button', { name: 'Note N1' }));
+    await waitFor(() => expect(document.activeElement).toBe(numbered('N1')));
+  });
+
+  it('PLAIN-14.12: a read that sees the spec change reads the version again; one that can\'t is shown no longer', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const plainSimple = vi.fn(async () => simpleKept());
+    const { readPlain } = open({ text: TEXT_14 }, { plainSimple });
+    await waitFor(() => expect(side()).not.toBeNull());
+    plainSimple.mockRejectedValue(new Error('gone'));
+    readPlain.mockImplementation(async () => answer({ text: TEXT_14.replace('Delete rate?', 'Remove rate?') }));
+    await act(async () => vi.advanceTimersByTime(SPEC_POLL_MS));
+    await waitFor(() => expect(side()).toBeNull());
+    vi.useRealTimers();
+  });
+
+  it('PLAIN-14.9: In short is beside the Changes card with the side shown, at the top of the card with it hidden; a citation lights its spec\'s heading and goes to it', async () => {
+    openSimple();
+    await waitFor(() => expect(side()).not.toBeNull());
+    const short = () => document.querySelector<HTMLElement>('[data-slot="spec-in-short"]')!;
+    expect(short().closest('[data-slot="spec-changes"]')).toBeNull();
+    expect(short().closest('[data-slot="spec-row"]')!.querySelector('[data-slot="spec-changes"]')).not.toBeNull();
+    expect(short().querySelector('[data-field="spec-in-short-changes"]')!.textContent).toBe('You can delete a rate.§1.2');
+    expect(within(short()).getByText('What changes')).toBeTruthy();
+    expect(within(short()).getByText('Who gets it')).toBeTruthy();
+    expect(within(short()).queryByText('Unlike before')).toBeNull();
+    expect(short().querySelector('[data-field="spec-in-short-by"]')!.textContent).toBe('Written by Claude from 1 spec · Sonnet 5.5 · $0.04 · 2h ago');
+    const cite = within(short()).getAllByRole('button', { name: 'Go to §1.2' })[0]!;
+    act(() => cite.focus());
+    expect(within(module()).getByRole('article', { name: '§1.2' }).querySelector('h3')!.className).toContain('bg-spec/10');
+    act(() => cite.blur());
+    act(() => toggle()!.click());
+    expect(short().closest('[data-slot="spec-changes"]')).not.toBeNull();
+    // With the side hidden, its citations still light the heading.
+    act(() => within(short()).getAllByRole('button', { name: 'Go to §1.2' })[0]!.focus());
+    expect(within(module()).getByRole('article', { name: '§1.2' }).querySelector('h3')!.className).toContain('bg-spec/10');
+  });
+
+  it('PLAIN-14.11: the column\'s head says who wrote it and what was checked; a gap and a low reading ease say so', async () => {
+    openSimple(simpleKept({ leftOut: ['2.1'] }, { readingEase: 52 }));
+    await waitFor(() => expect(document.querySelector('[data-slot="spec-simple-head"]')).not.toBeNull());
+    const head = document.querySelector<HTMLElement>('[data-slot="spec-simple-head"]')!;
+    expect(head.querySelector('[data-field="spec-simple-by"]')!.textContent).toBe('Written by Claude from the changed spec · Sonnet 5.5 · $0.04 · 2h ago');
+    const checks = head.querySelector('[data-field="spec-simple-checks"]')!.textContent;
+    expect(checks).toContain('Each paragraph cites its clauses');
+    expect(checks).toContain('Numbers and quotes kept');
+    expect(checks).toContain('Reading ease 52, harder than it should be');
+    expect(within(head).getByRole('link', { name: '1 spec leaves out clauses' }).getAttribute('href')).toBe('#plain-s-1-2-simple');
+  });
+
+  it('PLAIN-14.5: a clause no paragraph cites is outlined; the block says which, with Show them and Simplify again', async () => {
+    const { app } = openSimple(simpleKept({ paragraphs: simpleKept().simple!.blocks[0]!.paragraphs.slice(0, 1), leftOut: ['2.1'] }));
+    await waitFor(() => expect(side()).not.toBeNull());
+    expect(numbered('2.1').className).toContain('outline-dashed');
+    expect(numbered('2').className).not.toContain('outline-dashed');
+    const gap = side()!.querySelector<HTMLElement>('[data-field="spec-simple-left-out"]')!;
+    expect(gap.textContent).toContain('Leaves out 1 clause: 2.1');
+    expect(gap.className).not.toMatch(/warning|destructive/);
+    act(() => within(gap).getByRole('button', { name: 'Show them' }).click());
+    expect(numbered('2.1').className).toContain('bg-spec/10');
+    await act(async () => within(gap).getByRole('button', { name: 'Simplify again' }).click());
+    expect(app.client.startPlainSimple).toHaveBeenCalledWith(SRC, 'plain/rates.plain');
+  });
+
+  it('PLAIN-14.12: a block whose spec changed since says so with Simplify again; In short out of date says so; a spec with none kept is not simplified yet', async () => {
+    openSimple(simpleKept({ stale: true, title: null, paragraphs: [] }, { lead: { stale: true, lines: [] } }));
+    await waitFor(() => expect(side()).not.toBeNull());
+    expect(side()!.querySelector('[data-field="spec-simple-missing"]')!.textContent).toBe('§1.2 changed since it was simplified.Simplify again');
+    expect(document.querySelector('[data-field="spec-in-short-stale"]')!.textContent).toBe('In short is out of date.Simplify again');
+    cleanup();
+    openSimple(simpleKept({ spec: '§9.9' }));
+    await waitFor(() => expect(side()).not.toBeNull());
+    expect(side()!.querySelector('[data-field="spec-simple-missing"]')!.textContent).toBe('Not simplified yet.Simplify');
+  });
+
+  it('PLAIN-14.15: in a narrow pane the block takes the spec text\'s place, its title the heading\'s and the rows\'; a number opens the clauses; "Show the spec text" opens them; a jump to a hidden change shows it', async () => {
+    const ro = fakeResizeObserver();
+    const user = userEvent.setup();
+    openSimple();
+    await waitFor(() => expect(document.querySelector('[data-slot="spec-layout"]')?.getAttribute('data-side')).toBe('in-place'));
+    void ro;
+    const spec = within(module()).getByRole('article', { name: '§1.2' });
+    expect(within(spec).getByRole('heading', { name: 'You can delete a rate' }).getAttribute('title')).toBe('A rate can be edited inline');
+    const text = spec.querySelector<HTMLElement>('[data-spec-text]')!;
+    expect(text.hidden).toBe(true);
+    expect(document.querySelector('[data-slot="spec-changes"] li')!.textContent).toContain('You can delete a rate');
+    await user.click(within(paragraph('Deleting asks')).getByRole('button', { name: 'Clause 2.1' }));
+    const card = await screen.findByRole('dialog', { name: '§1.2, Clause 2.1' });
+    expect(card.textContent).toContain('Deleting asks "Delete rate?" first.');
+    await user.keyboard('{Escape}');
+    await user.click(within(spec).getByRole('button', { name: 'Show the spec text' }));
+    expect(text.hidden).toBe(false);
+    await user.click(within(spec).getByRole('button', { name: 'Hide the spec text' }));
+    expect(text.hidden).toBe(true);
+    // The stepper still counts the hidden changes, and a jump to one shows its spec text.
+    const at = screen.getByText((_, el) => el?.getAttribute('data-field') === 'spec-at');
+    expect(at.textContent).toMatch(/(^| of )2( changes)?$/);
+    await user.keyboard('[[');
+    await user.keyboard(']');
+    expect(text.hidden).toBe(false);
+  });
+
+  it('DS-2.6: the Spec view\'s numbers and citations in spec-text, and its text on a lit clause\'s spec/10 and a citation\'s spec/16 over the background, keep 4.5:1 in both modes', () => {
+    for (const mode of ['light', 'dark'] as Mode[]) {
+      const t = themeTokens(css)[mode];
+      const background = solid(t, 'background');
+      expect(contrast(solid(t, 'spec-text'), background), `${mode} spec-text on background`).toBeGreaterThanOrEqual(4.5);
+      for (const alpha of [0.1, 0.16]) {
+        const on = paint(t, 'spec', background, alpha);
+        for (const text of ['foreground', 'muted-foreground', 'spec-text']) expect(contrast(solid(t, text), on), `${mode} ${text} on spec/${alpha}`).toBeGreaterThanOrEqual(4.5);
+      }
+    }
   });
 });

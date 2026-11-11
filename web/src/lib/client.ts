@@ -1,7 +1,7 @@
 import type { LibraryPage, LibraryQuery } from '@shared/library.ts';
 import type { PathAnswer } from '@shared/files.ts';
 import type { StopResult, StopTarget } from '@shared/ports.ts';
-import type { PlainAnswer, PlainExamplesAnswer, PlainPrFiles, PlainSource } from '@shared/plain.ts';
+import type { PlainAnswer, PlainExamplesAnswer, PlainPrFiles, PlainSimpleAnswer, PlainSource } from '@shared/plain.ts';
 import type { Settings, SettingsView } from '@shared/settings.ts';
 import type { ToolsSnapshot } from '@shared/tools.ts';
 import type { ActivityEntry, NewMember, ProposalAccept, RecommendationAction, SuggestPreview, Topic, TopicOutcome, TopicPosition, TopicState, TopicSummary } from '@shared/topics.ts';
@@ -83,6 +83,12 @@ export interface LookoutClient {
   startPlainExamples(source: PlainSource, path: string): Promise<void>;
   /** PLAIN-11.13: Cancel. */
   cancelPlainExamples(): Promise<void>;
+  /** PLAIN-14.12, 14.13: a Module's simplified version and its run. */
+  plainSimple(source: PlainSource, path: string): Promise<PlainSimpleAnswer>;
+  /** PLAIN-14.1: "Simplify": starts the run; answers once it has started. */
+  startPlainSimple(source: PlainSource, path: string): Promise<void>;
+  /** PLAIN-14.13: Cancel this Module's run. */
+  cancelPlainSimple(source: PlainSource, path: string): Promise<void>;
   /** WORK-8.1: whether this tab has Work open, so the server reads only while some tab does. */
   watchWork(clientId: string, open: boolean): Promise<void>;
   /**
@@ -518,6 +524,15 @@ export function createHttpClient(): LookoutClient {
     },
     cancelPlainExamples: async () => {
       await call(() => send('POST', '/api/plain/examples/cancel', {}), 'Cancelling examples');
+    },
+    plainSimple: (source, path) => call<PlainSimpleAnswer>(() => fetch(`/api/plain/simple?${new URLSearchParams({ ...plainQuery(source), path })}`), 'Reading the simplified version'),
+    startPlainSimple: async (source, path) => {
+      const where = source.kind === 'pr' ? { repo: source.repo, pr: source.number } : { session: source.session, checkout: source.checkout };
+      await call(() => send('POST', '/api/plain/simple', { ...where, path }), 'Simplifying');
+    },
+    cancelPlainSimple: async (source, path) => {
+      const where = source.kind === 'pr' ? { repo: source.repo, pr: source.number } : { session: source.session, checkout: source.checkout };
+      await call(() => send('POST', '/api/plain/simple/cancel', { ...where, path }), 'Cancelling');
     },
     checkPaths: async (sessionId, paths) =>
       (await call<{ paths: PathAnswer[] }>(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/paths`, { paths }), 'Checking paths')).paths,

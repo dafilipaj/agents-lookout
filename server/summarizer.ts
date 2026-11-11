@@ -271,11 +271,11 @@ export function summaryArgs(): string[] {
   return oneShotArgs(SUMMARY_SCHEMA, SUMMARY_SYSTEM_PROMPT, MAX_BUDGET_USD);
 }
 
-/** Decision 0013: a one-shot `claude -p` with Sonnet, no tools, no MCP, no settings and no saved session (TOPIC-11.2, TOPIC-14.2). */
-export function oneShotArgs(schema: object, systemPrompt: string, budgetUsd: string): string[] {
+/** Decision 0013: a one-shot `claude -p` with Sonnet (or the `model` a caller names), no tools, no MCP, no settings and no saved session (TOPIC-11.2, TOPIC-14.2). */
+export function oneShotArgs(schema: object, systemPrompt: string, budgetUsd: string, model = 'sonnet'): string[] {
   return [
     '-p',
-    '--model', 'sonnet',
+    '--model', model,
     '--tools', '',
     '--strict-mcp-config',
     '--disable-slash-commands',

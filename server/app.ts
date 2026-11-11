@@ -19,6 +19,7 @@ import { Avatars } from './avatars.ts';
 import { PathsError } from './files.ts';
 import { PlainError, type Plain } from './plain.ts';
 import type { PlainExamplesMaker } from './plain-examples.ts';
+import type { PlainSimplifier } from './plain-simplify.ts';
 import { ModelSwitchError, parseEffortRequest, parseModelRequest } from './model-switch.ts';
 import { RenameError, parseRenameRequest } from './renamer.ts';
 import { type FindQuery, HistoryError, parseFindQuery } from './history.ts';
@@ -99,6 +100,8 @@ export interface AppOptions {
   plainClones?: () => Promise<string[]>;
   /** PLAIN-11, 12: a Module's examples and port check, made on a press. */
   plainExamples?: Pick<PlainExamplesMaker, 'get' | 'frame' | 'start' | 'cancel'>;
+  /** PLAIN-14: a Module's changed specs in simple words, made on a press. */
+  plainSimple?: Pick<PlainSimplifier, 'get' | 'start' | 'cancel'>;
   /** VIEW-13.1: what you saw of each Session's chat; optional, so a server without it answers 404. */
   chatSeen?: Pick<ChatSeen, 'get' | 'set'>;
   /** VIEW-1.18: which of a batch of paths are files, for one Session's file links (VIEW-1.17). */
@@ -576,6 +579,35 @@ export function createApp(opts: AppOptions): LookoutApp {
     if (route === 'POST /api/plain/examples/cancel' && opts.plainExamples) {
       opts.plainExamples.cancel();
       return json(res, 200, { ok: true });
+    }
+    // PLAIN-14.12, 14.13: a Module's simplified version and its run's state. A read.
+    if (route === 'GET /api/plain/simple' && opts.plainSimple) {
+      const q = url.searchParams;
+      try {
+        return json(res, 200, await opts.plainSimple.get(plainSourceOf(q), q.get('path')));
+      } catch (err) {
+        if (err instanceof PlainError) return json(res, err.status, { error: err.message });
+        throw err;
+      }
+    }
+    // PLAIN-14.14: the press runs `claude -p` and its cancel stops it: mutations, so the token and
+    // Origin. The body names the Module only by its source and path (PLAIN-6.1).
+    if ((route === 'POST /api/plain/simple' || route === 'POST /api/plain/simple/cancel') && opts.plainSimple) {
+      const body = await readJson(req, res, MAX_OPEN_CHANGE_BODY, null);
+      if (body === NO_BODY) return;
+      const b = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
+      try {
+        const source = b.repo !== undefined ? { kind: 'pr', repo: b.repo, number: b.pr } : { kind: 'session', session: b.session, checkout: b.checkout };
+        if (route === 'POST /api/plain/simple') {
+          await opts.plainSimple.start(source, b.path);
+          return json(res, 202, { ok: true });
+        }
+        await opts.plainSimple.cancel(source, b.path);
+        return json(res, 200, { ok: true });
+      } catch (err) {
+        if (err instanceof PlainError) return json(res, err.status, { error: err.message });
+        throw err;
+      }
     }
     const sendMatch = /^\/api\/sessions\/([^/]{1,200})\/send$/.exec(url.pathname);
     if (sendMatch && req.method === 'POST') {

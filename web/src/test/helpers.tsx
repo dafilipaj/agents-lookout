@@ -115,6 +115,9 @@ interface RenderOptions {
   plainExamples?: LookoutClient['plainExamples'];
   startPlainExamples?: LookoutClient['startPlainExamples'];
   cancelPlainExamples?: LookoutClient['cancelPlainExamples'];
+  plainSimple?: LookoutClient['plainSimple'];
+  startPlainSimple?: LookoutClient['startPlainSimple'];
+  cancelPlainSimple?: LookoutClient['cancelPlainSimple'];
   saveSettings?: LookoutClient['saveSettings'];
   tools?: LookoutClient['tools'];
   refreshTools?: LookoutClient['refreshTools'];
@@ -185,6 +188,9 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
     plainExamples: vi.fn(options.plainExamples ?? (async () => ({ examples: null, running: null, error: null }))),
     startPlainExamples: vi.fn(options.startPlainExamples ?? (async () => {})),
     cancelPlainExamples: vi.fn(options.cancelPlainExamples ?? (async () => {})),
+    plainSimple: vi.fn(options.plainSimple ?? (async () => ({ simple: null, running: null, error: null }))),
+    startPlainSimple: vi.fn(options.startPlainSimple ?? (async () => {})),
+    cancelPlainSimple: vi.fn(options.cancelPlainSimple ?? (async () => {})),
     watchWork: vi.fn(async () => {}),
     refreshWork: vi.fn(options.refreshWork ?? (async () => ({ ok: true as const }))),
     sendMessage: vi.fn(options.sendMessage ?? (async () => {})),
