@@ -1608,6 +1608,23 @@ describe('a simplified version beside the spec (PLAIN-14)', () => {
     expect(within(module()).getByRole('article', { name: '§1.2' }).querySelector('[data-field="spec-clause-n"]')).toBeNull();
   });
 
+  it('PLAIN-14.13: a press cancelled while it still reads its Module leaves the side as it was', async () => {
+    let started!: () => void;
+    const plainSimple = vi.fn(async () => simpleKept());
+    const { app } = openSimple(simpleKept(), { plainSimple, startPlainSimple: () => new Promise<void>((r) => (started = r)) });
+    await waitFor(() => expect(side()).not.toBeNull());
+    act(() => toggle()!.click());
+    expect(side()).toBeNull();
+    await act(async () => screen.getByRole('button', { name: 'Simplify again' }).click());
+    await act(async () => document.querySelector<HTMLElement>('[data-field="spec-simplify-cancel"]')!.click());
+    expect(app.client.cancelPlainSimple).toHaveBeenCalledWith(SRC, 'plain/rates.plain');
+    const reads = plainSimple.mock.calls.length;
+    await act(async () => started());
+    await waitFor(() => expect(plainSimple.mock.calls.length).toBeGreaterThan(reads));
+    await act(async () => {});
+    expect(side()).toBeNull();
+  });
+
   it('PLAIN-14.13: a Cancel too late to stop the save says so, and the version it saved shows', async () => {
     let running = true;
     openSimple(simpleKept(), {
@@ -1664,26 +1681,78 @@ describe('a simplified version beside the spec (PLAIN-14)', () => {
     expect(numbered('2.1').className).not.toContain('bg-spec/10');
   });
 
+  it('PLAIN-14.7: when a hover ends, what a focused number still holds lights again', async () => {
+    openSimple();
+    await waitFor(() => expect(side()).not.toBeNull());
+    const first = paragraph('Someone who may delete rates');
+    const second = paragraph('Deleting asks');
+    act(() => within(first).getByRole('button', { name: 'Clause 2' }).focus());
+    expect(numbered('2').className).toContain('bg-spec/10');
+    movePointer(document.body, second);
+    expect(numbered('2.1').className).toContain('bg-spec/10');
+    expect(numbered('2').className).not.toContain('bg-spec/10');
+    movePointer(second, document.body);
+    expect(numbered('2').className).toContain('bg-spec/10');
+    expect(numbered('2.1').className).not.toContain('bg-spec/10');
+    movePointer(document.body, numbered('2.1'));
+    expect(first.hasAttribute('data-lit')).toBe(false);
+    movePointer(numbered('2.1'), document.body);
+    expect(first.getAttribute('data-lit')).toBe('true');
+    act(() => within(first).getByRole('button', { name: 'Clause 2' }).blur());
+    expect(numbered('2').className).not.toContain('bg-spec/10');
+  });
+
   it('PLAIN-14.7, 14.5: a citation of a note in closed Notes opens them and goes to it', async () => {
     const user = userEvent.setup();
     const withNote = simpleKept({ paragraphs: [...simpleKept().simple!.blocks[0]!.paragraphs, { text: 'A task asked for it.', cites: ['N1'], terms: [] }] });
     open({ text: `${TEXT_14}\n> Deleting was asked for in a task.\n` }, { plainSimple: async () => withNote });
     await waitFor(() => expect(side()).not.toBeNull());
+    const note = () => within(module()).getByText('Deleting was asked for in a task.').closest('[data-change]');
+    await waitFor(() => expect(note()).toHaveAttribute('data-mark'));
     await user.click(within(module()).getByRole('button', { name: /^Notes/ }));
     expect(numbered('N1')).toBeNull();
     await user.click(within(paragraph('A task asked for it.')).getByRole('button', { name: 'Note N1' }));
     await waitFor(() => expect(document.activeElement).toBe(numbered('N1')));
+    // Its change is on the rail and in the stepper again, as when the button opens them (PLAIN-9.5).
+    await waitFor(() => expect(note()).toHaveAttribute('data-mark'));
   });
 
-  it('PLAIN-14.12: a read that sees the spec change reads the version again; one that can\'t is shown no longer', async () => {
+  it('PLAIN-14.12: a spec\'s edit hides its block at once, before the version is read again', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const plainSimple = vi.fn(async () => simpleKept());
     const { readPlain } = open({ text: TEXT_14 }, { plainSimple });
-    await waitFor(() => expect(side()).not.toBeNull());
-    plainSimple.mockRejectedValue(new Error('gone'));
+    await waitFor(() => expect(paragraph('Someone who may delete rates')).toBeTruthy());
+    const reads = plainSimple.mock.calls.length;
+    // The read again never lands.
+    plainSimple.mockImplementation(() => new Promise<PlainSimpleAnswer>(() => {}));
     readPlain.mockImplementation(async () => answer({ text: TEXT_14.replace('Delete rate?', 'Remove rate?') }));
     await act(async () => vi.advanceTimersByTime(SPEC_POLL_MS));
-    await waitFor(() => expect(side()).toBeNull());
+    await waitFor(() => expect(side()!.querySelector('[data-field="spec-simple-missing"]')?.textContent).toBe('§1.2 changed since it was simplified.Simplify again'));
+    expect(document.querySelector('[data-field="spec-in-short-stale"]')).not.toBeNull();
+    expect(document.querySelector('[data-field="spec-simple-p"]')).toBeNull();
+    // Read again, as the poll would too; none of them has landed.
+    expect(plainSimple.mock.calls.length).toBeGreaterThan(reads);
+    vi.useRealTimers();
+  });
+
+  it('PLAIN-14.12: an edit elsewhere in the Module, or a read that fails, leaves the other blocks shown', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const plainSimple = vi.fn(async () => simpleKept());
+    const { readPlain } = open({ text: TEXT_14 }, { plainSimple });
+    await waitFor(() => expect(paragraph('Someone who may delete rates')).toBeTruthy());
+    const reads = plainSimple.mock.calls.length;
+    plainSimple.mockRejectedValue(new Error('gone'));
+    readPlain.mockImplementation(async () => answer({ text: TEXT_14.replace('description: Rate cards on a Deal.', 'description: Rate cards on a deal.') }));
+    await act(async () => vi.advanceTimersByTime(SPEC_POLL_MS));
+    await waitFor(() => expect(plainSimple.mock.calls.length).toBeGreaterThan(reads));
+    await act(async () => {});
+    expect(paragraph('Someone who may delete rates')).toBeTruthy();
+    expect(document.querySelector('[data-field="spec-simple-missing"]')).toBeNull();
+    // An edit of the spec itself, with the read failing, hides just its block.
+    readPlain.mockImplementation(async () => answer({ text: TEXT_14.replace('description: Rate cards on a Deal.', 'description: Rate cards on a deal.').replace('Delete rate?', 'Remove rate?') }));
+    await act(async () => vi.advanceTimersByTime(SPEC_POLL_MS));
+    await waitFor(() => expect(side()!.querySelector('[data-field="spec-simple-missing"]')?.textContent).toBe('§1.2 changed since it was simplified.Simplify again'));
+    expect(toggle()).not.toBeNull();
     vi.useRealTimers();
   });
 
@@ -1705,8 +1774,15 @@ describe('a simplified version beside the spec (PLAIN-14)', () => {
     act(() => toggle()!.click());
     expect(short().closest('[data-slot="spec-changes"]')).not.toBeNull();
     // With the side hidden, its citations still light the heading.
-    act(() => within(short()).getAllByRole('button', { name: 'Go to §1.2' })[0]!.focus());
+    const hidden = within(short()).getAllByRole('button', { name: 'Go to §1.2' })[0]!;
+    act(() => hidden.focus());
     expect(within(module()).getByRole('article', { name: '§1.2' }).querySelector('h3')!.className).toContain('bg-spec/10');
+    // The pointer leaving it doesn't put out what its focus holds.
+    movePointer(document.body, hidden);
+    movePointer(hidden, document.body);
+    expect(within(module()).getByRole('article', { name: '§1.2' }).querySelector('h3')!.className).toContain('bg-spec/10');
+    act(() => hidden.blur());
+    expect(within(module()).getByRole('article', { name: '§1.2' }).querySelector('h3')!.className).not.toContain('bg-spec/10');
   });
 
   it('PLAIN-14.11: the column\'s head says who wrote it and what was checked; a gap and a low reading ease say so', async () => {

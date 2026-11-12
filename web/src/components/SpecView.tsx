@@ -392,19 +392,26 @@ export function SpecView({ source, path, backTo, load, setViewed, onBack, onOpen
   const spAwaiting = useRef(false);
   /** PLAIN-14.10: shown or hidden, chosen here or kept with this history entry; null until chosen. */
   const [sideChosen, setSideChosen] = useState<boolean | null>(entrySide);
-  // PLAIN-14.12: the spec text the version was read against. A read that sees the text change reads the
-  // version again at once, and a version read for other text isn't shown when that read fails.
+  // PLAIN-14.12: a read that sees the spec text change reads the version again at once. Till it lands, and
+  // when it fails, a block whose own spec changed since the last read hides, as that read will say.
   const spText = answer ? `${answer.text ?? ''}\u0000${answer.baseText ?? ''}` : null;
-  const spFor = useRef<string | null>(null);
+  const answerNow = useRef(answer);
+  useLayoutEffect(() => {
+    answerNow.current = answer;
+  });
+  /** The Module as this view read it when the version was last read. */
+  const [spAt, setSpAt] = useState<PlainAnswer | null>(null);
   useEffect(() => {
     if (!simple || !hasGroups) return;
     let alive = true;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    // The text this effect reads for: a change of it starts another.
+    const at = answerNow.current;
     const read = async () => {
       try {
         const next = await simple.load(src, path);
         if (!alive) return;
-        spFor.current = spText;
+        setSpAt(at);
         spRunning.current = !!next.running;
         if (spAwaiting.current && !next.running) {
           spAwaiting.current = false;
@@ -412,8 +419,7 @@ export function SpecView({ source, path, backTo, load, setViewed, onBack, onOpen
         }
         setSp((x) => (x && JSON.stringify(x) === JSON.stringify(next) ? x : next));
       } catch {
-        // The Module's own read says what's wrong with it.
-        if (alive && spFor.current !== spText) setSp(null);
+        // The Module's own read says what's wrong with it; the blocks whose specs changed since hide (sinceRead).
       }
       if (alive) timer = setTimeout(() => void read(), spRunning.current ? EXAMPLES_RUNNING_POLL_MS : SPEC_POLL_MS);
     };
@@ -423,13 +429,16 @@ export function SpecView({ source, path, backTo, load, setViewed, onBack, onOpen
       if (timer) clearTimeout(timer);
     };
   }, [simple, hasGroups, src, path, spRead, spText]);
+  /** PLAIN-14.13: counts presses and Cancels, so a press cancelled before it started doesn't open the side. */
+  const spPress = useRef(0);
   const simplify = useCallback(async () => {
     if (!simple) return;
+    const press = ++spPress.current;
     setSpPressError(null);
     setSpPressing(true);
     try {
       await simple.start(src, path);
-      spAwaiting.current = true;
+      if (spPress.current === press) spAwaiting.current = true;
     } catch (err) {
       setSpPressError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -440,13 +449,18 @@ export function SpecView({ source, path, backTo, load, setViewed, onBack, onOpen
   const cancelSimplify = useCallback(async () => {
     try {
       await simple?.cancel(src, path);
+      spPress.current++;
+      spAwaiting.current = false;
     } catch (err) {
       // PLAIN-14.13: a Cancel too late to stop the save says so; the next read shows the version it saved.
       setSpPressError(err instanceof Error ? err.message : String(err));
     }
     setSpRead((n) => n + 1);
   }, [simple, src, path]);
-  const spKept = sp?.simple ?? null;
+  const specKeys = useMemo(() => specTexts(compared), [compared]);
+  const spKeys = useMemo(() => (!spAt ? null : spAt === answer ? specKeys : specTexts(compare(spAt))), [spAt, answer, specKeys]);
+  const spShown = useMemo(() => sinceRead(sp, spKeys, specKeys), [sp, spKeys, specKeys]);
+  const spKept = spShown?.simple ?? null;
   const hasSimple = !!spKept && (spKept.blocks.length > 0 || !!spKept.lead);
   /** PLAIN-14.8: whether the main pane has room for the two columns; without a ResizeObserver, it does. */
   const [wide, setWide] = useState(true);
@@ -491,9 +505,9 @@ export function SpecView({ source, path, backTo, load, setViewed, onBack, onOpen
   const simpleUi = useMemo<SimpleUi | undefined>(
     () =>
       simple && hasGroups
-        ? { answer: sp, pressError: spPressError, pressing: spPressing, onSimplify: () => void simplify(), onCancel: () => void cancelSimplify(), side, wide, navSlot, shownText, onShowText, box }
+        ? { answer: spShown, pressError: spPressError, pressing: spPressing, onSimplify: () => void simplify(), onCancel: () => void cancelSimplify(), side, wide, navSlot, shownText, onShowText, box }
         : undefined,
-    [simple, hasGroups, sp, spPressError, spPressing, simplify, cancelSimplify, side, wide, navSlot, shownText, onShowText],
+    [simple, hasGroups, spShown, spPressError, spPressing, simplify, cancelSimplify, side, wide, navSlot, shownText, onShowText],
   );
 
 
@@ -891,8 +905,9 @@ type Lit = { spec: string; kind: 'paragraph' | 'clause' | 'gap' | 'head'; key: s
 /** PLAIN-14.7, 14.9: what's lit, and lighting it; In short's citations light a heading with the side hidden too. */
 interface Light {
   lit: { spec: string; clauses: ReadonlySet<string>; paragraphs: ReadonlySet<number>; head: boolean } | null;
+  /** Lights `l` over what's lit, till it's put out. */
   setLit(l: Lit): void;
-  /** Puts out `l`, if it's still what's lit: a leave or a blur never puts out what another hover or focus lit since. */
+  /** Puts out `l`, wherever it is among the lights held: what another hover or focus still holds shows again. */
   unlit(l: Lit): void;
 }
 
@@ -983,14 +998,17 @@ function Module({
   const wideSide = sideOn && simple!.wide;
   const narrowSide = sideOn && !simple!.wide;
   const blocks = useMemo(() => new Map((sk?.blocks ?? []).map((b) => [b.spec, b])), [sk]);
-  const [litOn, setLit] = useState<Lit | null>(null);
-  const lit = useMemo(() => litSets(litOn, blocks), [litOn, blocks]);
-  const unlit = useCallback((l: Lit) => setLit((x) => (x && x.spec === l.spec && x.kind === l.kind && x.key === l.key ? null : x)), []);
-  const light = useMemo<Light | undefined>(() => (sk ? { lit, setLit, unlit } : undefined), [sk, lit, unlit]);
+  // PLAIN-14.7: the lights hovers and focus hold, the latest last. It shows; when it ends, the one before shows
+  // again. Show them's light holds only till another lights.
+  const [lights, setLights] = useState<readonly Lit[]>([]);
+  const lit = useMemo(() => litSets(lights.at(-1) ?? null, blocks), [lights, blocks]);
+  const setLit = useCallback((l: Lit) => setLights((xs) => (xs.length && sameLit(xs.at(-1)!, l) ? xs : [...xs.filter((x) => !sameLit(x, l) && x.kind !== 'gap'), l])), []);
+  const unlit = useCallback((l: Lit) => setLights((xs) => (xs.some((x) => sameLit(x, l)) ? xs.filter((x) => !sameLit(x, l)) : xs)), []);
+  const light = useMemo<Light | undefined>(() => (sk ? { lit, setLit, unlit } : undefined), [sk, lit, setLit, unlit]);
   const busy = !!simple?.answer?.running || !!simple?.pressing;
   const sideCtx = useMemo<SideCtx | undefined>(
     () => (sideOn && sk ? { wide: simple!.wide, kept: sk, blocks, lit, setLit, unlit, shownText: simple!.shownText, onShowText: simple!.onShowText, onSimplify: simple!.onSimplify, busy, box: simple!.box } : undefined),
-    [sideOn, sk, simple, blocks, lit, unlit, busy],
+    [sideOn, sk, simple, blocks, lit, setLit, unlit, busy],
   );
   /** PLAIN-14.15: in a narrow pane, a spec's simplified title stands for it in the card's rows and the outline. */
   const titleOf = (s: FunctionalSpec): string | null => {
@@ -1811,7 +1829,11 @@ function SpecNotes({ notes, ctx, scope }: { notes: readonly Clause[]; ctx: Ctx; 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const onOpen = () => flushSync(() => setOpen(true));
+    // As a click does: the changes in them join the rail and the stepper (PLAIN-9.5).
+    const onOpen = () => {
+      flushSync(() => setOpen(true));
+      ctx.onFold?.();
+    };
     el.addEventListener(OPEN_NOTES, onOpen);
     return () => el.removeEventListener(OPEN_NOTES, onOpen);
   });
@@ -2742,8 +2764,40 @@ function anchorsIn(items: readonly Clause[], numbers: ReadonlyMap<Clause, string
   return out;
 }
 
+/** PLAIN-14.12: each functional spec's text as this view reads it, at the base and now. */
+function specTexts(c: Compared | null): ReadonlyMap<string, string> {
+  return new Map((c?.module.specs ?? []).map((s) => [s.id, JSON.stringify(s)]));
+}
+
+/**
+ * PLAIN-14.12: the version as read, with a block whose spec changed since that read hidden at once, as the
+ * next read will say, so an edited spec never shows its old paragraphs beside its new clauses.
+ */
+function sinceRead(sp: PlainSimpleAnswer | null, then: ReadonlyMap<string, string> | null, now: ReadonlyMap<string, string>): PlainSimpleAnswer | null {
+  const kept = sp?.simple;
+  if (!sp || !kept || !then || then === now) return sp;
+  const changed = (id: string) => then.get(id) !== now.get(id);
+  const blocks = kept.blocks.map((b): PlainSimpleBlock => (!b.stale && changed(b.spec) ? { spec: b.spec, stale: true, title: null, paragraphs: [], leftOut: [], failed: null } : b));
+  const lead = kept.lead && !kept.lead.stale && kept.lead.lines.some((l) => l.cites.some((c) => changed(c.replace(/ notes?$/, '')))) ? { stale: true, lines: [] } : kept.lead;
+  if (lead === kept.lead && blocks.every((b, i) => b === kept.blocks[i])) return sp;
+  // PLAIN-14.11: the score was of paragraphs no longer shown; the next read scores what is.
+  return { ...sp, simple: { ...kept, blocks, lead, readingEase: null } };
+}
+
 /** The event that opens a spec's closed Notes for a citation (PLAIN-14.7). */
 const OPEN_NOTES = 'lookout-open-notes';
+
+const sameLit = (a: Lit, b: Lit) => a.spec === b.spec && a.kind === b.kind && a.key === b.key;
+
+/** PLAIN-14.7, 14.9: a light held while the pointer is on it or it has focus: one ending doesn't put out the other. */
+function useHold(light: Pick<Light, 'setLit' | 'unlit'> | undefined, l: Lit): (on: boolean, how: 'pointer' | 'focus') => void {
+  const held = useRef({ pointer: false, focus: false });
+  return (on, how) => {
+    held.current[how] = on;
+    if (held.current.pointer || held.current.focus) light?.setLit(l);
+    else light?.unlit(l);
+  };
+}
 
 /** PLAIN-14.7, 14.9: what lights for what the pointer or focus is on. */
 function litSets(l: Lit | null, blocks: ReadonlyMap<string, PlainSimpleBlock>): Light['lit'] {
@@ -2881,7 +2935,6 @@ const LEAD_LABEL: Record<NonNullable<PlainSimple['lead']>['lines'][number]['slot
 /** PLAIN-14.9: In short: the change in three lines, each citing the specs it comes from. */
 function InShort({ lead, kept, ctx, onSimplify, busy }: { lead: NonNullable<PlainSimple['lead']>; kept: PlainSimple; ctx: Ctx; onSimplify(): void; busy: boolean }) {
   const now = useNow(60_000);
-  const reveal = useContext(Reveal);
   return (
     <section aria-label="In short" className="@container flex flex-col gap-2 rounded-md bg-muted p-3" data-slot="spec-in-short">
       <h3 className="text-body font-semibold">In short</h3>
@@ -2899,11 +2952,9 @@ function InShort({ lead, kept, ctx, onSimplify, busy }: { lead: NonNullable<Plai
               <dt className="text-meta font-medium text-muted-foreground @min-[24rem]:pt-0.5">{LEAD_LABEL[l.slot]}</dt>
               <dd className="text-prose" data-field={`spec-in-short-${l.slot}`}>
                 {l.text}
-                {l.cites.map((c) => {
-                  const id = c.replace(/ notes?$/, '');
-                  const l: Lit = { spec: id, kind: 'head', key: '' };
-                  return <Cite key={c} label={c} name={`Go to ${c}`} onLit={(on) => (on ? ctx.light?.setLit(l) : ctx.light?.unlit(l))} onClick={() => reveal(specAnchor(id))} />;
-                })}
+                {l.cites.map((c) => (
+                  <LeadCite key={c} cite={c} ctx={ctx} />
+                ))}
               </dd>
             </Fragment>
           ))}
@@ -2914,6 +2965,14 @@ function InShort({ lead, kept, ctx, onSimplify, busy }: { lead: NonNullable<Plai
       </p>
     </section>
   );
+}
+
+/** PLAIN-14.9: a lead line's spec id, lighting its heading while hovered or focused, and going to it. */
+function LeadCite({ cite, ctx }: { cite: string; ctx: Ctx }) {
+  const reveal = useContext(Reveal);
+  const id = cite.replace(/ notes?$/, '');
+  const hold = useHold(ctx.light, { spec: id, kind: 'head', key: '' });
+  return <Cite label={cite} name={`Go to ${cite}`} onLit={hold} onClick={() => reveal(specAnchor(id))} />;
 }
 
 /** PLAIN-14.6, 14.9: a citation: a clause's number, or a spec's id. The one hand-made button they share. */
@@ -3038,24 +3097,13 @@ function SimpleParagraph({ spec, p, i, items, ctx }: { spec: string; p: PlainSim
   const states = new Set(p.cites.map((n) => items.get(n)?.state ?? 'same'));
   const state: Clause['state'] = states.size === 1 ? [...states][0]! : 'changed';
   const bar = ctx.highlight && state !== 'same' ? cn(BAR, BAR_COLOUR[state], 'before:-left-1') : undefined;
-  // Lit while the pointer is on it or one of its citations has focus: a citation's own leave or blur
-  // doesn't put it out while the other still holds (a citation is inside the paragraph, so its hover is the paragraph's).
-  const hovered = useRef(false);
-  const focused = useRef(false);
-  const sync = () => {
-    const l: Lit = { spec, kind: 'paragraph', key: String(i) };
-    if (hovered.current || focused.current) side.setLit(l);
-    else side.unlit(l);
-  };
+  // Lit while the pointer is on it or one of its citations has focus. A citation is inside the paragraph, so
+  // its hover is the paragraph's, and only its focus counts.
+  const hold = useHold(side, { spec, kind: 'paragraph', key: String(i) });
   const on = (yes: boolean, how: 'pointer' | 'focus') => {
-    if (how === 'pointer') return;
-    focused.current = yes;
-    sync();
+    if (how === 'focus') hold(yes, 'focus');
   };
-  const hover = (yes: boolean) => {
-    hovered.current = yes;
-    sync();
-  };
+  const hover = (yes: boolean) => hold(yes, 'pointer');
   return (
     <p className={cn('-mx-2 rounded-md px-2 py-1 transition-colors', bar, lit && 'bg-spec/10')} onPointerEnter={() => hover(true)} onPointerLeave={() => hover(false)} data-field="spec-simple-p" data-cites={p.cites.join(' ')} data-lit={lit || undefined}>
       <SimpleText text={p.text} terms={p.terms} ctx={ctx} />

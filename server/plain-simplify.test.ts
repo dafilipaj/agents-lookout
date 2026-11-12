@@ -179,15 +179,26 @@ describe('the checks (PLAIN-14.3, 14.4, 14.5)', () => {
     fingerprint: '',
   });
 
-  it('PLAIN-14.4: a minus is the number\'s: a paragraph\'s -2 isn\'t a clause\'s 2, but "2 days earlier" keeps a clause\'s -2', () => {
+  it('PLAIN-14.4: a minus is the number\'s: a paragraph\'s -2 isn\'t a clause\'s 2, and a clause\'s -2 is kept only as -2', () => {
     expect([...numbersIn('At -2 days, or (−3), in 1-2 weeks')]).toEqual([-2, -3, 1, 2]);
     // A sign beside a currency symbol is the amount's.
     expect([...numbersIn('-€5, €-6, (−£7) and US$8')]).toEqual([-5, -6, -7, 8]);
     expect(checkParagraph(p('The total shows €-5.', ['1']), one([{ n: '1', kind: 'clause', text: 'The total shows €5.' }]))).toMatch(/says -5/);
     expect(checkParagraph(p('A reminder goes out at -2 days.', ['1']), one([{ n: '1', kind: 'clause', text: 'A reminder goes out 2 days before.' }]))).toMatch(/says -2/);
-    const g = one([{ n: '1', kind: 'clause', text: 'A reminder goes out at -2 days.' }]);
-    expect(checkParagraph(p('A reminder goes out 2 days earlier.', ['1']), g)).toBeNull();
-    expect(readGroup({ title: 'Reminders', paragraphs: [{ text: 'A reminder goes out 2 days earlier.', cites: ['1'], terms: [] }] }, g).block.leftOut).toEqual([]);
+    // Codex, 2026-11-11: "2" for -2 could be a changed amount, so it fails, "2 days earlier" with it.
+    const g = one([{ n: '1', kind: 'clause', text: 'The adjustment is -2 dollars.' }]);
+    expect(checkParagraph(p('The adjustment is 2 dollars.', ['1']), g)).toMatch(/says 2/);
+    expect(checkParagraph(p('A reminder goes out 2 days earlier.', ['1']), one([{ n: '1', kind: 'clause', text: 'A reminder goes out at -2 days.' }]))).toMatch(/says 2/);
+    expect(readGroup({ title: 'Adjustments', paragraphs: [{ text: 'The adjustment is 2 dollars.', cites: ['1'], terms: [] }] }, g).block.leftOut).toEqual(['1']);
+    expect(readGroup({ title: 'Adjustments', paragraphs: [{ text: 'The adjustment is -2 dollars.', cites: ['1'], terms: [] }] }, g).block.leftOut).toEqual([]);
+    // A paragraph telling two clauses may say 2 for the other one, yet the -2 must still be said.
+    const two = one([
+      { n: '1', kind: 'clause', text: 'The adjustment is -2 dollars.' },
+      { n: '2', kind: 'clause', text: 'It applies to 2 items.' },
+    ]);
+    const both = readGroup({ title: 'Adjustments', paragraphs: [{ text: 'The adjustment is 2 dollars, on 2 items.', cites: ['1', '2'], terms: [] }] }, two);
+    expect(both.block.leftOut).toEqual(['1']);
+    expect(both.dropped).toContainEqual({ cites: ['1'], reason: 'the paragraphs citing 1 leave out -2' });
   });
 
   it('PLAIN-14.4: a note\'s numbers, and a clause\'s limit of "one", must be said by the paragraphs citing them', () => {
@@ -588,6 +599,21 @@ describe('a press (PLAIN-14.2, 14.12, 14.13)', () => {
     w.setModuleError(null);
     await w.settle();
     expect((await w.simplifier.get({}, 'plain/deals.plain')).error).toBe('Cancelled. What was simplified before is kept.');
+  });
+
+  it('PLAIN-14.13: a Cancel while the press still reads its Module stops it before it starts', async () => {
+    const release = w.holdModule();
+    const pressed = w.simplifier.start({}, 'plain/deals.plain');
+    // Answered at once, from the press's own source and path: no run is registered yet to find.
+    await w.simplifier.cancel({}, 'plain/deals.plain');
+    release();
+    await pressed;
+    expect(w.calls).toHaveLength(0);
+    expect((await w.simplifier.get({}, 'plain/deals.plain')).running).toBeNull();
+    // The next press runs.
+    await w.simplifier.start({}, 'plain/deals.plain');
+    await w.settle();
+    expect(w.calls).toHaveLength(1);
   });
 
   it('PLAIN-14.13: once Lookout shuts down, a press starts nothing, not even one that was reading its Module', async () => {

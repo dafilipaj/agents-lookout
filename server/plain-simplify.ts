@@ -199,8 +199,6 @@ export function clauseNumbers(s: string): Set<number> {
   return out;
 }
 
-/** A number and its size: "2 days earlier" keeps a clause's -2, but a paragraph's -2 isn't a clause's 2. */
-const withSizes = (ns: Set<number>) => new Set([...ns, ...[...ns].map(Math.abs)]);
 
 /** PLAIN-14.11: Flesch reading ease, with syllables estimated as anti-ai-editor allows without textstat; null under 30 words. */
 export function readingEase(text: string): number | null {
@@ -231,7 +229,7 @@ export const SIMPLE_SYSTEM_PROMPT = [
   'For example, the clause "On a :Project:\'s Panel, archived ones included, Archive stands in the header\'s menu, a :GatedControl: on `project.can_archive`; it asks "Archive this project?" before it writes." becomes "Every project has Archive in its header menu, archived ones too. Only people who may archive projects see it. It asks "Archive this project?" before anything changes."',
   'Write one idea per sentence. Short sentences and short paragraphs. Active voice, and "you" where a person acts. Present tense. Specifics, not abstractions. No markdown, no lists, no § ids, no code, no rhetorical questions. Never write an em dash (—): a paragraph with one is thrown away. End the sentence instead.',
   'Say a term in the product\'s words, and list it in `terms`: the phrase as it stands in your paragraph, and the exact name it stands for as the item writes it (a Concept without its colons, such as ApiDeal; an ability key, such as app.can_view_billables; or another code span). Say "a deal", not ApiDeal; "people who may see billing figures", not app.can_view_billables. Use what "Terms" says a name means; never guess a meaning.',
-  'Never add a fact. Keep every number, limit and condition of the items you cite, as digits or as words, and a limit of one as "one" ("at most one"). Never count things yourself: write a number only when the item has it. Quote a label or a message exactly as the item does, in double quotes, and put nothing else in double quotes. Say a removed item as what no longer happens, and a rewritten one as it reads now.',
+  'Never add a fact. Keep every number, limit and condition of the items you cite, as digits or as words, with its minus sign as written ("-2 days", never "2 days earlier"), and a limit of one as "one" ("at most one"). Never count things yourself: write a number only when the item has it. Quote a label or a message exactly as the item does, in double quotes, and put nothing else in double quotes. Say a removed item as what no longer happens, and a rewritten one as it reads now.',
   `Never use these words or phrases, in any form: ${[...new Set(BANNED_WORDS)].join(', ')}, employ (in the sense of use), engage, critical, it is like. Never write "It's not X, it's Y", "Not because X. But because Y.", "Not by doing X, but by doing Y", "No X. No Y. Just Z.", three fragments in a row, "And the X? Y.", or a question you answer at once.`,
   '`lead`: the whole change in three lines of one to three short sentences each, under the same rules. `changes`: what changes for someone using the product. `who`: who gets it, such as who may see or use it. `before`: how it differs from before, only from the notes and from what rewritten or removed items were, never from what you know of another app; null when they say nothing of it. Each line `cites` the spec ids it comes from ("§16.50", or "§16.50 notes" for its notes).',
 ].join(' ');
@@ -362,7 +360,8 @@ export function checkParagraph(p: PlainSimpleParagraph, g: SimpleGroup): string 
   const q = quotes(p.text).find((x) => !quoteFound(x, citedText));
   if (q) return `a paragraph quotes "${q}", which ${p.cites.join(', ')} don't`;
   // Every number it says is its clauses' (that the paragraphs citing a clause keep its numbers is checked per clause, in readGroup).
-  const allowed = withSizes(numbersIn(citedText, 'one'));
+  // A sign is the number's both ways: "2" for a clause's -2 could be a changed amount.
+  const allowed = numbersIn(citedText, 'one');
   const extra = [...numbersIn(p.text, 'two')].find((n) => !allowed.has(n));
   if (extra !== undefined) return `a paragraph says ${extra}, which ${p.cites.join(', ')} don't`;
   const banned = bannedIn(p.text, citedText);
@@ -426,8 +425,8 @@ export function readGroup(o: Record<string, unknown>, g: SimpleGroup): { block: 
   const lostNumber = new Set<string>();
   for (const i of g.items) {
     if (i.kind === 'test' || !shownCites.has(i.n)) continue;
-    const said = withSizes(numbersIn(paragraphs.filter((p) => p.cites.includes(i.n)).map((p) => p.text).join('\n'), 'one'));
-    const lost = [...clauseNumbers(i.text)].find((n) => !said.has(Math.abs(n)));
+    const said = numbersIn(paragraphs.filter((p) => p.cites.includes(i.n)).map((p) => p.text).join('\n'), 'one');
+    const lost = [...clauseNumbers(i.text)].find((n) => !said.has(n));
     if (lost === undefined) continue;
     lostNumber.add(i.n);
     dropped.push({ cites: [i.n], reason: `the paragraphs citing ${i.n} leave out ${lost}` });
@@ -541,13 +540,13 @@ interface Running {
   work: Promise<void>;
 }
 
-/** A press's source and path, as its request said them. */
 /** PLAIN-14.13: Cancel stops a run, unless its answer is already being put in place, which says so. */
 export function stopRun(r: Pick<Running, 'committed' | 'abort'>): void {
   if (r.committed) throw new PlainError(409, 'Too late to cancel: the new version was already saved.');
   r.abort.abort();
 }
 
+/** A press's source and path, as its request said them. */
 const requestKey = (source: unknown, path: unknown): string => {
   try {
     return JSON.stringify([source, path]);
@@ -566,6 +565,8 @@ export class PlainSimplifier {
   private readonly now: () => number;
   /** PLAIN-14.13: one run per Module at a time, by its key. */
   private readonly running = new Map<string, Running>();
+  /** PLAIN-14.13: presses still reading their Module, which has no key yet: a Cancel then stops them before they start. */
+  private readonly pressing = new Set<{ request: string; abort: AbortController }>();
   private readonly errors = new Map<string, string>();
   /** PLAIN-14.12: a Module's folder is written by one of save, touch and prune at a time. */
   private readonly locks = new Map<string, Promise<void>>();
@@ -618,15 +619,24 @@ export class PlainSimplifier {
    */
   async start(source: unknown, path: unknown): Promise<void> {
     if (this.closed) throw new PlainError(503, 'Lookout is shutting down.');
-    const m = await this.opts.plain.module(source, path);
+    const press = { request: requestKey(source, path), abort: new AbortController() };
+    this.pressing.add(press);
+    let m: Awaited<ReturnType<Plain['module']>>;
+    try {
+      m = await this.opts.plain.module(source, path);
+    } finally {
+      this.pressing.delete(press);
+    }
     // A press read while Lookout began to shut down starts nothing that shutdown wouldn't stop.
     if (this.closed) throw new PlainError(503, 'Lookout is shutting down.');
+    // Cancelled while it read: nothing started, so there's nothing to show.
+    if (press.abort.signal.aborted) return;
     const key = this.moduleKey(m.tree, m.path);
     if (this.running.has(key)) throw new PlainError(409, `${m.path} is being simplified.`);
     const { groups, module } = simpleGroups(m.text, m.baseText);
     if (!groups.length) throw new PlainError(400, 'This Module has no changed functional spec.');
-    const abort = new AbortController();
-    const running: Running = { request: requestKey(source, path), abort, committed: false, specs: groups.length, work: Promise.resolve() };
+    const abort = press.abort;
+    const running: Running = { request: press.request, abort, committed: false, specs: groups.length, work: Promise.resolve() };
     this.running.set(key, running);
     this.errors.delete(key);
     this.changed();
@@ -644,6 +654,10 @@ export class PlainSimplifier {
     const request = requestKey(source, path);
     const pressed = request ? [...this.running.values()].find((r) => r.request === request) : undefined;
     if (pressed) return stopRun(pressed);
+    // A press still reading its Module: stopped before it starts.
+    const waiting = request ? [...this.pressing].filter((x) => x.request === request) : [];
+    for (const x of waiting) x.abort.abort();
+    if (waiting.length) return;
     const m = await this.opts.plain.module(source, path);
     const r = this.running.get(this.moduleKey(m.tree, m.path));
     if (r) stopRun(r);
