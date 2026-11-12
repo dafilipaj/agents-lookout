@@ -727,3 +727,4 @@ The region's name is in `foreground`, medium; the rest stays `muted-foreground`.
 - 2026-11-09: VIEW-1.22 checked by Dario in the running app and ticked.
 - 2026-11-09: The hint line's Servers keys gain `X` stop (PORTS-4.6): move, Enter open, X stop.
 - 2026-11-10: Fleet's model table lists Fable 5.2 in place of Fable 5.1, starting at `medium` (VIEW-7's Levels): Claude Code 2.1.322 offers 5.2 and moves a saved 5.1 pick to `fable`, while the new-session screen still offered 5.1. Fork commit `cd1b7d1`; upstream Fleet still lists 5.1, and Dario chose a fork-only fix over merging upstream.
+- 2026-11-12: A question whose header held an arrow ("A→B→A", on a code-review Session) kept its options read-only (VIEW-4.6): Fleet ended a tab's name at any "→", taking it for the tab row's own arrow, so the form was never the question's. Fixed in the fork (`9fe2a34`) and pinned; no change to Lookout's rules.
