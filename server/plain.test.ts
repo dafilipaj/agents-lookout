@@ -133,7 +133,7 @@ describe('reading a Module', () => {
 });
 
 describe('safety', () => {
-  it('PLAIN-6.1: only a live Session\'s Checkout, by id; a path that leaves it, or isn\'t .plain, is refused', async () => {
+  it('PLAIN-6.1: only a Checkout Lookout knows, by id; a path that leaves it, or isn\'t .plain, is refused', async () => {
     const p = plain();
     await expect(p.read(S('other', checkout.id), 'plain/crm.plain')).rejects.toMatchObject({ status: 404 });
     await expect(p.read(S('sess', '0123456789abcdef'), 'plain/crm.plain')).rejects.toMatchObject({ status: 404 });
@@ -169,6 +169,128 @@ describe('safety', () => {
     } finally {
       unlinkSync(climber);
     }
+  });
+});
+
+describe('a Checkout after its Session ends', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  /** A Lookout whose DIFF counts the Checkout while `live.on`, remembering what it read in `file`. */
+  function remembering(file: string, live: { on: boolean; c?: KnownCheckout }, now = () => 1_000_000, runner: Runner = run) {
+    return new Plain({ runner, checkout: (s, id) => (live.on && s === 'sess' && id === (live.c ?? checkout).id ? (live.c ?? checkout) : null), viewedFile: join(root, `viewed-${Math.random()}.json`), checkoutsFile: file, now });
+  }
+
+  it('PLAIN-6.3: a Checkout a view read opens after its Session ends, from a 0600 file, across restarts', async () => {
+    const file = join(root, 'checkouts-keep.json');
+    const live = { on: true };
+    const before = await remembering(file, live).read(S('sess', checkout.id), 'plain/rates.plain');
+    expect(statSync(file).mode & 0o777).toBe(0o600);
+
+    live.on = false; // the Session ended, and Lookout restarted
+    const after = await remembering(file, live).read(S('sess', checkout.id), 'plain/rates.plain');
+    expect([after.text, after.baseText, after.base, after.baseName, after.checkout]).toEqual([before.text, before.baseText, before.base, before.baseName, before.checkout]);
+    expect(after.concepts[':Deal:']).toEqual(before.concepts[':Deal:']);
+  });
+
+  it("PLAIN-6.3: a link never read, or under another Session's id, isn't known", async () => {
+    const file = join(root, 'checkouts-unknown.json');
+    const live = { on: false };
+    const unknown = { status: 404, message: "Lookout doesn't know this Checkout." };
+    await expect(remembering(file, live).read(S('sess', checkout.id), 'plain/crm.plain')).rejects.toMatchObject(unknown);
+    live.on = true;
+    await remembering(file, live).read(S('sess', checkout.id), 'plain/crm.plain');
+    live.on = false;
+    await expect(remembering(file, live).read(S('other', checkout.id), 'plain/crm.plain')).rejects.toMatchObject(unknown);
+    await expect(remembering(file, live).read(S('sess', '0123456789abcdef'), 'plain/crm.plain')).rejects.toMatchObject(unknown);
+  });
+
+  it('PLAIN-6.3: a folder gone, or no longer the top of a working tree of the same repo, says its Checkout is gone', async () => {
+    const wt = join(root, 'wt-gone');
+    git(repo, 'worktree', 'add', '-q', '--detach', wt, 'HEAD');
+    const live = { on: true, c: { ...checkout, id: checkoutId(wt), root: wt, where: 'wt-gone' } };
+    const file = join(root, 'checkouts-gone.json');
+    const read = () => remembering(file, live).read(S('sess', live.c.id), 'plain/crm.plain');
+    const gone = { status: 410, message: 'Its Checkout is gone.' };
+    try {
+      await read();
+      live.on = false;
+      await read();
+
+      rmSync(wt, { recursive: true, force: true });
+      await expect(read()).rejects.toMatchObject(gone);
+      mkdirSync(join(wt, 'plain'), { recursive: true }); // a folder, in no repo
+      cpSync(FIXTURES, join(wt, 'plain'), { recursive: true });
+      await expect(read()).rejects.toMatchObject(gone);
+      git(wt, 'init', '-q'); // another repo at the same path
+      await expect(read()).rejects.toMatchObject(gone);
+    } finally {
+      rmSync(wt, { recursive: true, force: true });
+      git(repo, 'worktree', 'prune');
+    }
+
+    const inside = join(repo, 'wt-inside');
+    git(repo, 'worktree', 'add', '-q', '--detach', inside, 'HEAD');
+    const nested = { on: true, c: { ...checkout, id: checkoutId(inside), root: inside, where: 'wt-inside' } };
+    const nestedFile = join(root, 'checkouts-nested.json');
+    try {
+      await remembering(nestedFile, nested).read(S('sess', nested.c.id), 'plain/crm.plain');
+      nested.on = false;
+      rmSync(inside, { recursive: true, force: true });
+      git(repo, 'worktree', 'prune');
+      // A folder in the repo's own working tree: the same common directory, but not the top of a working tree.
+      mkdirSync(join(inside, 'plain'), { recursive: true });
+      cpSync(FIXTURES, join(inside, 'plain'), { recursive: true });
+      await expect(remembering(nestedFile, nested).read(S('sess', nested.c.id), 'plain/crm.plain')).rejects.toMatchObject(gone);
+    } finally {
+      rmSync(inside, { recursive: true, force: true });
+      git(repo, 'worktree', 'prune');
+    }
+  });
+
+  it("PLAIN-6.3: while DIFF counts the Checkout its answer is used, and the last one it gave is what's remembered", async () => {
+    const other = git(repo, 'commit-tree', `${base}^{tree}`, '-p', base, '-m', 'another branch point');
+    const file = join(root, 'checkouts-live.json');
+    const live = { on: true, c: checkout };
+    expect((await remembering(file, live).read(S('sess', checkout.id), 'plain/crm.plain')).base).toBe(base.slice(0, 7));
+    live.c = { ...checkout, baseSha: other };
+    expect((await remembering(file, live).read(S('sess', checkout.id), 'plain/crm.plain')).base).toBe(other.slice(0, 7));
+    live.on = false;
+    expect((await remembering(file, live).read(S('sess', checkout.id), 'plain/crm.plain')).base).toBe(other.slice(0, 7));
+  });
+
+  it('PLAIN-6.3: an entry not read for 30 days is dropped; one read again within them is kept', async () => {
+    const file = join(root, 'checkouts-ttl.json');
+    const live = { on: true };
+    let now = 1_000_000;
+    const read = () => remembering(file, live, () => now).read(S('sess', checkout.id), 'plain/crm.plain');
+    await read();
+    live.on = false;
+    now += 29 * DAY;
+    await read();
+    now += 29 * DAY; // 58 days after the Session ended, 29 after the last read
+    await read();
+    now += 31 * DAY;
+    await expect(read()).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('PLAIN-6.3, 6.2: checking a remembered folder runs only `git rev-parse`, and not again within 15 s', async () => {
+    const file = join(root, 'checkouts-runs.json');
+    const live = { on: true };
+    await remembering(file, live).read(S('sess', checkout.id), 'plain/shell.plain');
+    live.on = false;
+    const calls: string[][] = [];
+    const spy: Runner = (f, args, opts) => {
+      calls.push([f, ...args]);
+      return run(f, args, opts);
+    };
+    let now = 1_000_000;
+    const p = remembering(file, live, () => now, spy);
+    await p.read(S('sess', checkout.id), 'plain/shell.plain');
+    await p.read(S('sess', checkout.id), 'plain/shell.plain');
+    const checks = () => calls.filter((c) => c[7] === 'rev-parse');
+    expect(checks()).toEqual([['git', '-C', repo, '-c', 'core.hooksPath=/dev/null', '-c', 'core.fsmonitor=false', 'rev-parse', '--path-format=absolute', '--show-toplevel', '--git-common-dir']]);
+    now += 15_001;
+    await p.read(S('sess', checkout.id), 'plain/shell.plain');
+    expect(checks()).toHaveLength(2);
   });
 });
 

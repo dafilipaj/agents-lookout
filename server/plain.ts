@@ -7,12 +7,15 @@ import { abilityKeysIn, clauseLines, definitionName, parseModule, type AbilityEn
 import { isCatalogueFile, namedAbilities, parseCatalogue } from './abilities.ts';
 import type { RunError, Runner } from './exec.ts';
 import type { KnownCheckout } from './changes.ts';
+import { CheckoutMemory } from './plain-checkouts.ts';
 
 /** PLAIN-1.8: a larger file isn't read. */
 export const MAX_MODULE_BYTES = 1024 * 1024;
 /** PLAIN-4.2: a mark not set again for this long is dropped. */
 export const VIEWED_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const GIT_TIMEOUT_MS = 10_000;
+/** PLAIN-6.3: a link to a Checkout neither DIFF counts nor a view read before its Session ended. */
+const UNKNOWN_CHECKOUT = "Lookout doesn't know this Checkout.";
 /** PLAIN-4.2: how often a mark that's still read is saved as used again. */
 const TOUCH_MS = 24 * 60 * 60 * 1000;
 /** How deep imports are followed: far past any real chain, short of a runaway one. */
@@ -73,6 +76,8 @@ export interface PlainOptions {
   checkout(sessionId: string, id: string): KnownCheckout | null;
   /** PLAIN-5: a PR's commits; without it, a PR is refused. */
   prs?: PlainPrSource;
+  /** PLAIN-6.3: where the Checkouts a view read are remembered after their Session ends; none without it. */
+  checkoutsFile?: string;
   /** PLAIN-4.2: `~/.lookout/plain-viewed.json` unless a test says otherwise. */
   viewedFile?: string;
   now?: () => number;
@@ -93,13 +98,14 @@ interface Store {
 const sha = (s: string) => createHash('sha256').update(s).digest('hex');
 
 /**
- * PLAIN-1, 2, 4, 6: reads a Module of a Checkout a live Session counts, at the working tree and at its
+ * PLAIN-1, 2, 4, 6: reads a Module of a Checkout a live Session counts (or counted, PLAIN-6.3), at the working tree and at its
  * Branch point, resolves the Concepts it sees from other Modules, and keeps Viewed marks.
  */
 export class Plain {
   private readonly opts: PlainOptions;
   private readonly now: () => number;
   private readonly viewedFile: string;
+  private readonly memory: CheckoutMemory | null;
   private store: Promise<Store> | null = null;
   /** PLAIN-4.2: saves run one at a time, each writing the store as it is then. */
   private saving: Promise<void> = Promise.resolve();
@@ -115,6 +121,7 @@ export class Plain {
     this.opts = opts;
     this.now = opts.now ?? Date.now;
     this.viewedFile = opts.viewedFile ?? join(homedir(), '.lookout', 'plain-viewed.json');
+    this.memory = opts.checkoutsFile ? new CheckoutMemory({ file: opts.checkoutsFile, runner: opts.runner, now: this.now }) : null;
   }
 
   /** PLAIN-1, PLAIN-2: one Module, its base, and the Concepts it sees; `fresh` as PlainPrSource's. */
@@ -233,16 +240,37 @@ export class Plain {
 
   /** PLAIN-6.1: the tree a source names, if Lookout knows it. */
   private async tree(src: PlainSource, fresh: boolean): Promise<{ tree: PlainTree; error: string | null }> {
-    if (src.kind === 'session') return { tree: checkoutTree(this.known(src.session, src.checkout)), error: null };
+    if (src.kind === 'session') return { tree: checkoutTree(await this.readable(src.session, src.checkout)), error: null };
     if (!this.opts.prs) throw new PlainError(404, "Lookout can't read PRs here.");
     return this.opts.prs.tree(src.repo, src.number, fresh);
   }
 
+  /** PLAIN-6.1: a Checkout DIFF counts for a live Session, by id. */
   private known(sessionId: string, checkoutId: string): KnownCheckout {
-    if (typeof sessionId !== 'string' || typeof checkoutId !== 'string' || !/^[0-9a-f]{16}$/.test(checkoutId)) throw new PlainError(400, 'Unknown Checkout.');
-    const c = this.opts.checkout(sessionId, checkoutId);
-    if (!c) throw new PlainError(404, "This Checkout isn't one of a live Session's any more.");
+    const c = this.live(sessionId, checkoutId);
+    if (!c) throw new PlainError(404, UNKNOWN_CHECKOUT);
     return c;
+  }
+
+  private live(sessionId: string, checkoutId: string): KnownCheckout | null {
+    if (typeof sessionId !== 'string' || typeof checkoutId !== 'string' || !/^[0-9a-f]{16}$/.test(checkoutId)) throw new PlainError(400, 'Unknown Checkout.');
+    return this.opts.checkout(sessionId, checkoutId);
+  }
+
+  /**
+   * PLAIN-6.1, 6.3: the Checkout a view reads: DIFF's while it counts it, remembered as read; else
+   * the one remembered after its Session ended, while its folder is still that repo's working tree.
+   */
+  private async readable(sessionId: string, checkoutId: string): Promise<KnownCheckout> {
+    const c = this.live(sessionId, checkoutId);
+    if (c) {
+      await this.memory?.remember(sessionId, c).catch(() => {});
+      return c;
+    }
+    const r = await this.memory?.recall(sessionId, checkoutId);
+    if (r === 'gone') throw new PlainError(410, 'Its Checkout is gone.');
+    if (r) return r.checkout;
+    throw new PlainError(404, UNKNOWN_CHECKOUT);
   }
 
   private async realRoot(c: PlainTree): Promise<string> {
@@ -594,7 +622,7 @@ export class Plain {
   }
 }
 
-/** A live Session's Checkout as a tree: its working tree, at DIFF's Branch point. */
+/** A Session's Checkout as a tree: its working tree, at DIFF's Branch point (the last it gave, PLAIN-6.3). */
 function checkoutTree(c: KnownCheckout): PlainTree {
   return { id: c.id, root: c.root, repo: c.repo, where: c.where, baseSha: c.baseSha, baseName: 'Branch point', commonDir: c.commonDir, headSha: null };
 }

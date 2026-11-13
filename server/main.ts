@@ -151,7 +151,7 @@ const plainPrs = new PlainPrs({
 });
 void plainPrs.prune();
 setInterval(() => void plainPrs.prune(), 60 * 60 * 1000).unref();
-const plain = new Plain({ runner: run, checkout: (sessionId, id) => changes.checkout(sessionId, id), prs: plainPrs });
+const plain = new Plain({ runner: run, checkout: (sessionId, id) => changes.checkout(sessionId, id), prs: plainPrs, checkoutsFile: join(homedir(), '.lookout', 'plain-checkouts.json') });
 
 // VIEW-6, VIEW-7: the status line's switches share one gate, one switch per Session process at a time.
 const switcher: ModelSwitcherOptions = {
