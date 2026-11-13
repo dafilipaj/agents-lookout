@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { Plus, WifiOff } from 'lucide-react';
+import { AppWindow, Milestone, Plus, WifiOff } from 'lucide-react';
 import { describe, expect, it, vi } from 'vitest';
 import { ClockContext } from '@/lib/time';
 import { Alert } from './alert';
@@ -314,6 +314,25 @@ describe('shared pieces', () => {
     expect(screen.getByText('old')).toHaveClass('bg-info-soft', 'text-info-text');
     expect(screen.getByText('Needs you')).toHaveClass('bg-needs-you', 'text-needs-you-foreground');
     expect(screen.getByText('Busy')).toHaveClass('bg-busy-soft', 'text-busy-text');
+  });
+
+  it("DS-8.3: a Chip's icon leads at 14 px in the chip's colour, its left padding 4 px; an icon in its children keeps its own size", () => {
+    render(
+      <>
+        <Chip tone="muted" icon={AppWindow}>Pages</Chip>
+        <Chip><Milestone aria-hidden className="size-3" />milestone</Chip>
+      </>,
+    );
+    const chip = screen.getByText('Pages');
+    const icon = chip.firstElementChild!;
+    expect(icon).toHaveClass('lucide-app-window', 'size-3.5', 'shrink-0'); expect(icon).toHaveAttribute('aria-hidden', 'true');
+    expect(icon.getAttribute('class')).not.toMatch(/text-/);
+    expect(chip).toHaveClass('pl-1', 'gap-0.5', 'border-border', 'text-muted-foreground');
+    // Work's milestone chip and the Done chip write their 12 px icon into the children: nothing in Chip resizes it.
+    const plain = screen.getByText('milestone');
+    expect(plain).toHaveClass('px-1.5'); expect(plain).not.toHaveClass('pl-1');
+    expect(plain.firstElementChild).toHaveClass('size-3'); expect(plain.firstElementChild).not.toHaveClass('size-3.5');
+    expect(plain.className).not.toMatch(/svg/);
   });
 
   it('DS-8.4: Kbd is one key: caption monospace, bordered, at least 20 px wide', () => {

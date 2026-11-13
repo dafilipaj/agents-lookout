@@ -125,6 +125,7 @@ Context usage, a usage limit, memory and CPU load, a PR's age.
 
 - **Use** `lucide-react`, sized and stroked like its neighbours, coloured with tokens (0008). Only the listed shapes draw their own: `StatusMarker`, the chat rail's Marks, `TaskStatusDot`, `Avatar`, `HarnessIcon` and `LookoutMark`.
 - In a button, 14 or 16 px; 20 px only in a labelled row button.
+- In a `Chip`, pass it as `icon` (DS-8.3): 14 px before the word, in the chip's colour.
 - An action's icon comes from `lib/actions.ts`, the same on its button, in menus and in the shortcuts list (DS-18.6).
 - **Don't:** emoji, a Unicode symbol, or a second icon for an action that already has one.
 - **Guard:** 0008's icons guard, DS-7.2.

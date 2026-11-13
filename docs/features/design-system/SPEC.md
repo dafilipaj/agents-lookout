@@ -3,7 +3,7 @@ title: "Design system"
 code: "DS"
 status: "In Progress"
 created: "2026-10-22"
-updated: "2026-11-06"
+updated: "2026-11-13"
 ---
 
 # Design system
@@ -111,7 +111,7 @@ Patterns the review found three or more times, each drawn slightly differently.
 
 - [x] DS-8.1 `EmptyState` (a title, a hint, an optional icon and an optional action) replaces the sidebar's and History's `Message`, the chat's `Notice` and the main pane's hint. (test)
 - [x] DS-8.2 `CommandBlock` shows a command to copy: monospace `caption`, wrapped, selected whole on click. Fleet's and tb-session's "isn't installed" and Work's problems use it. (test)
-- [x] DS-8.3 `Chip` is one pill in `caption`, with a tone: `neutral`, `info` or a Status, and for Work's PR states `muted` (draft) and `ok` (approved, WORK-3.2), and `warning` for memory growth (MEM-3.5), with a `warning/40` border and `warning-text`. It replaces the "old", "live", "headless", "milestone" and PR state chips and the chat's message tag. (test)
+- [x] DS-8.3 `Chip` is one pill in `caption`, with a tone: `neutral`, `info` or a Status, and for Work's PR states `muted` (draft) and `ok` (approved, WORK-3.2), and `warning` for memory growth (MEM-3.5), with a `warning/40` border and `warning-text`. It replaces the "old", "live", "headless", "milestone" and PR state chips and the chat's message tag. A Chip's `icon` leads with a lucide icon, 14 px in the chip's colour, before its word, the left padding then 4 px: Library's Type chips (LIB-2.2). An icon written into its children keeps its own size: Work's milestone chip and the Done chip (SIDE-2.17), 12 px. (test)
 - [x] DS-8.4 `Kbd` is one key: the Filter box's `/`, the main pane's hints, the launcher's ⌘↵ and the composer hint's `i`. A sentence is never a key: the launcher's "Esc to close · your input is kept" (or "is discarded", in a launcher opened from Work or a Topic view, LAUNCH-1.3) keeps only "Esc" in a `Kbd`. (test)
 - [x] DS-8.5 `Avatar` is a person's picture in a circle, 16 px in a row: an image from Lookout's own origin over the person's initial (the first letter, upper-case, `caption`, `muted-foreground` on `muted`), which stays when the image fails or hasn't loaded. Its accessible name is the person's login. It and the Spec view's example pictures (PLAIN-11.9, 11.10: frames Lookout keeps and serves from its own origin) are the only `<img>`s (0012); the guard fails on an `<img>` anywhere else. (test)
 
@@ -733,3 +733,4 @@ None.
 - 2026-11-09: Check 9's red fill gains a third confirm, a Local server's Stop (PORTS-4.6, `ServersPanel.tsx`'s `StopDialog`).
 - 2026-11-09: PLAIN-11's example card: DS-8.5's `<img>` guard allows the Spec view's example pictures, frames Lookout serves from its own origin; DS-18.7's list of hand-made buttons gains the picture that opens them large (`ExampleCard`). Its port verdicts use no warning colour, since a verdict isn't a level heading toward a limit.
 - 2026-11-11: DS-2.6's `spec` family is also the Spec view's simplified version (PLAIN-14): a clause's number and a citation in `spec-text`, a lit clause, paragraph or heading on `spec/10`, a citation's hover on `spec/16`, a term underlined in `spec`; its contrast is measured over the background too. DS-18.7's list of hand-made buttons gains a citation (`Cite`) and a term of a simplified paragraph (`SimpleText`). `docs/design/GUIDE.md` gains "A text beside another that explains it".
+- 2026-11-13: DS-8.3: `Chip` gains `icon`, a lucide icon drawn 14 px in the chip's colour before its word, the left padding then 4 px, for Library's Type chips (LIB-2.2, Dario's proposal A). It's a prop, not a rule on the chip's children, so the milestone and Done chips' own 12 px icons are untouched, and a Button around the chip can't resize it (an Opus review found a children rule did both). GUIDE's "An icon" says so.

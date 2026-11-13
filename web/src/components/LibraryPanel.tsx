@@ -22,7 +22,7 @@ import { byDay, formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { SEARCH_DEBOUNCE_MS } from './HistoryPanel';
 import { outputSessionMembers, useAddToTopicItem, useTopics, useTopicLinks } from '@/lib/topics';
-import { OUTPUT_ICON, TYPE_LABEL, openFile, openOutput } from '@/lib/outputs';
+import { CHIP_ICON, OUTPUT_ICON, TYPE_LABEL, openFile, openOutput } from '@/lib/outputs';
 import { vscodeHref } from '@/lib/files';
 
 const FILTER_LABEL: Record<LibraryType, string> = { pages: 'Pages', pdf: 'PDF', markdown: 'Markdown', image: 'Image', share: 'Share' };
@@ -288,7 +288,8 @@ export function LibraryPanel({ focusKey, visible, sessions, now, search, status,
       </div>}
       <div role="group" aria-label="Output Types" className="flex flex-wrap gap-1">
         {LIBRARY_TYPES.map((t) => <Button key={t} variant="quiet" size="line" className="px-1" type="button" aria-pressed={filter.types.includes(t)} title={t === 'pages' ? 'HTML files and Artifacts' : FILTER_LABEL[t]} onClick={(e) => typeToggle(t, e.altKey)}>
-          <Chip tone={filter.types.includes(t) ? 'neutral' : 'muted'}>
+          {/* LIB-2.2: the chip starts with its rows' icon, greyed with its word when off. */}
+          <Chip tone={filter.types.includes(t) ? 'neutral' : 'muted'} icon={CHIP_ICON[t]}>
             {FILTER_LABEL[t]}
           </Chip>
         </Button>)}
@@ -388,8 +389,9 @@ function OutputRow({ item, now, query, active, expanded, sessions, enabled, onSe
   } : null;
   return <div id={id} role="option" aria-selected={active} aria-expanded={expanded} aria-label={[item.title, TYPE_LABEL[t], item.repo, age, item.display, gone && 'gone', live && 'live'].filter(Boolean).join(' ')} aria-describedby={`${id}-keys${expanded ? ` ${id}-details-state ${id}-details` : ''}`} onClick={onRow} onMouseEnter={(e) => onHover(e.currentTarget)} onMouseLeave={() => onHover(null)} data-slot="row" data-selected={active || undefined} className={cn('flex min-w-0 cursor-default flex-col gap-0.5 rounded-md px-2 py-[7px] text-body hover:bg-sidebar-accent/60', active && 'bg-sidebar-accent')}>
     <span id={`${id}-keys`} aria-hidden className="sr-only">O opens it, C copies its link, S opens its Session</span>
-    <div className={cn('flex min-w-0 gap-1.5', expanded ? 'items-start' : 'items-center')}>
-      <span className="flex h-5 shrink-0 items-center"><Icon aria-hidden className="size-3.5 text-muted-foreground" /></span>
+    <div className={cn('flex min-w-0 gap-1', expanded ? 'items-start' : 'items-center')}>
+      {/* LIB-2.2: its chip's icon, 16 px in the text colour; 16 + 4 px keeps the lines below at pl-5. */}
+      <span className="flex h-5 shrink-0 items-center"><Icon aria-hidden className="size-4 text-foreground" /></span>
       <RowTitle expanded={expanded} className="flex-1 font-medium">
         <Hit text={item.title} query={query} />
       </RowTitle>

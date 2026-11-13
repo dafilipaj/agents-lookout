@@ -59,6 +59,42 @@ it('LIB-2.2: rows expose title, Type, repo, age, path and live/gone chips as opt
   const option = within(list).getByRole('option', { name: /Harbor report HTML project .*~\/report.html gone live/ });
   expect(option.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
 });
+it("LIB-2.2: a row's icon is its chip's, 16 px in the text colour: a window for an HTML file and an Artifact, a page for a PDF, # for Markdown, a picture for an image, linked dots for a Share", async () => {
+  const items = [
+    output({ key: 'html', title: 'An HTML file' }),
+    output({ key: 'artifact', kind: 'artifact', title: 'An Artifact', path: null, url: 'https://example.invalid/artifact', display: 'example.invalid/artifact' }),
+    output({ key: 'pdf', type: 'pdf', title: 'A PDF', path: '/a.pdf', display: '~/a.pdf' }),
+    output({ key: 'md', type: 'markdown', title: 'A Markdown file', path: '/a.md', display: '~/a.md' }),
+    output({ key: 'png', type: 'image', title: 'An image', path: '/a.png', display: '~/a.png' }),
+    output({ key: 'share', kind: 'share', title: 'A Share', path: null, url: 'https://example.invalid/s/1', display: 'example.invalid/s/1' }),
+  ];
+  const app = renderApp('/', { library: async () => ok(items) }); await open(app);
+  await waitFor(() => expect(rows()).toHaveLength(6));
+  const icon = (title: string) => within(panel()).getByRole('option', { name: new RegExp(`^${title} `) }).querySelector('svg')!;
+  for (const [title, shape] of [['An HTML file', 'app-window'], ['An Artifact', 'app-window'], ['A PDF', 'file'], ['A Markdown file', 'hash'], ['An image', 'image'], ['A Share', 'share-2']] as const) {
+    expect(icon(title)).toHaveClass(`lucide-${shape}`, 'size-4', 'text-foreground');
+    expect(icon(title)).toHaveAttribute('aria-hidden', 'true');
+  }
+  // Each row's icon is its chip's (LIB-2.3).
+  for (const [title, chip] of [['An HTML file', 'Pages'], ['An Artifact', 'Pages'], ['A PDF', 'PDF'], ['A Markdown file', 'Markdown'], ['An image', 'Image'], ['A Share', 'Share']] as const) {
+    expect(within(panel()).getByRole('button', { name: chip }).querySelector('svg')!.getAttribute('class')!.split(' ').find((c) => c.startsWith('lucide-'))).toBe([...icon(title).classList].find((c) => c.startsWith('lucide-')));
+  }
+});
+it("LIB-2.2: each Type chip starts with its rows' 14 px icon, before its word, greyed with it when the chip is off", async () => {
+  const app = renderApp(); await open(app);
+  const group = within(panel()).getByRole('group', { name: 'Output Types' });
+  for (const [name, shape, on] of [['Pages', 'app-window', true], ['PDF', 'file', true], ['Markdown', 'hash', false], ['Image', 'image', false], ['Share', 'share-2', false]] as const) {
+    const chip = within(group).getByRole('button', { name }).querySelector('[data-slot="chip"]')!;
+    const svg = chip.firstElementChild!;
+    expect(svg.tagName.toLowerCase()).toBe('svg');
+    expect(svg).toHaveClass(`lucide-${shape}`, 'size-3.5'); expect(svg).toHaveAttribute('aria-hidden', 'true');
+    expect(chip).toHaveClass('pl-1');
+    expect(chip).toHaveTextContent(name);
+    // The icon takes the chip's text colour: the foreground when on, muted when off (DS-8.3).
+    expect(chip).toHaveAttribute('data-tone', on ? 'neutral' : 'muted');
+    expect(svg.getAttribute('class')).not.toMatch(/text-/);
+  }
+});
 it('LIB-2.3: chips default to Pages/PDF, toggle or Alt-isolate, keep one on, remember filters and share History’s headless value', async () => {
   const app = renderApp(); await open(app);
   expect(within(panel()).getByRole('button', { name: 'Pages' })).toHaveAttribute('aria-pressed', 'true');
