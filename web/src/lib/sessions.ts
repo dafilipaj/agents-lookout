@@ -78,16 +78,6 @@ export function isLongIdle(row: SessionRow, now: number, thresholdHours: number)
   return row.status === 'idle' && row.statusSince !== null && now - row.statusSince > thresholdHours * 3_600_000;
 }
 
-/**
- * SIDE-5.4, SIDE-2.13: the filter matches a row's name, repo, Worktree and branch, (TOPIC-3.5) its
- * Topics' titles, and (SIDE-10.5) its first prompt, whether or not its name is that prompt.
- */
-export function matchesFilter(row: SessionRow, query: string, topics: readonly string[] = []): boolean {
-  const q = query.trim().toLowerCase();
-  if (!q) return true;
-  return [row.title, row.git?.repo, row.git?.worktree, row.git?.branch, row.firstPrompt, ...topics].some((f) => f?.toLowerCase().includes(q));
-}
-
 /** DS-9.1: a sidebar row's option id, which the Session listbox's `aria-activedescendant` names. Stable for the Session. */
 export const sessionOptionId = (id: string) => `session-${id}`;
 

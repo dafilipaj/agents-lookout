@@ -8,6 +8,7 @@ import type { WorkSnapshot } from '@shared/work.ts';
 import { Keyboard, Plus, Search, Settings as SettingsIcon, TriangleAlert, WifiOff } from 'lucide-react';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
 import { CommandBlock } from '@/components/ui/command-block';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Loading } from '@/components/ui/loading';
@@ -15,7 +16,8 @@ import { IconButton } from '@/components/ui/icon-button';
 import { Kbd } from '@/components/ui/kbd';
 import { LookoutMark } from '@/components/ui/lookout-mark';
 import { linkedPrs, nameSuffixes } from '@/lib/names';
-import { isLongIdle, matchesFilter, sessionOptionId } from '@/lib/sessions';
+import { filterRow, queryWords, type RowMatch, sessionWork } from '@/lib/filter';
+import { isLongIdle, sessionOptionId } from '@/lib/sessions';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { MemoryLine } from './MemoryLine';
@@ -65,6 +67,8 @@ export interface SidebarProps {
   topicTitles?(row: SessionRow): string[];
   /** SIDE-10.3: Work's list, for a Session's Linked PR; null before it has loaded. */
   work?: WorkSnapshot | null;
+  /** SIDE-12.7: the filter's query handed to History's search (HIST-2.13). */
+  onSearchMessages?(query: string): void;
 }
 
 export function Sidebar(props: SidebarProps) {
@@ -93,13 +97,26 @@ export function Sidebar(props: SidebarProps) {
   // SIDE-10.3: rows that share a name tell themselves apart by a suffix after it.
   const prs = useMemo(() => linkedPrs(props.work ?? null), [props.work]);
   const suffixes = useMemo(() => nameSuffixes(sessions, prs), [sessions, prs]);
-  const { controllable, viewOnly, visible } = useMemo(() => {
-    const rows = orderedIds.map((id) => byId.get(id)).filter((r): r is SessionRow => !!r && matchesFilter(r, filter, topicTitles?.(r)));
+  // SIDE-12.2: each Session's Linked PR and Task, from Work's list when it has loaded.
+  const workBySession = useMemo(() => sessionWork(props.work ?? null), [props.work]);
+  const query = filter.trim();
+  const { controllable, viewOnly, visible, matches } = useMemo(() => {
+    // SIDE-12.1, 12.4: every word matches somewhere; the rows that match keep their order and sections.
+    const matches = new Map<string, RowMatch>();
+    const rows = orderedIds
+      .map((id) => byId.get(id))
+      .filter((r): r is SessionRow => {
+        if (!r) return false;
+        const m = filterRow(r, filter, topicTitles?.(r), workBySession.get(r.id));
+        if (m) matches.set(r.id, m);
+        return !!m;
+      });
     const controllable = rows.filter((r) => r.controllable);
     const viewOnly = rows.filter((r) => !r.controllable);
     // Keyboard order follows what's on screen: the first section, then the second.
-    return { controllable, viewOnly, visible: [...controllable, ...viewOnly] };
-  }, [orderedIds, byId, filter, topicTitles]);
+    return { controllable, viewOnly, visible: [...controllable, ...viewOnly], matches };
+  }, [orderedIds, byId, filter, topicTitles, workBySession]);
+  const hasQuery = queryWords(query).length > 0;
   // DS-12.6: the "Needs you" header's count, live. Whether it takes room is held with the order
   // during a hover (SIDE-3.4), so its coming or going doesn't move the rows under the pointer.
   const needsYouCount = controllable.filter((r) => r.status === 'needs-you').length;
@@ -111,9 +128,9 @@ export function Sidebar(props: SidebarProps) {
     () => [...launches.map((l) => ({ kind: 'launch' as const, id: l.id, failed: l.state === 'failed', needsYou: l.state === 'trust' })), ...visible.map((r) => ({ kind: 'session' as const, id: r.id, needsYou: r.status === 'needs-you' }))],
     [launches, visible],
   );
-  const latest = useRef({ rows, selectedId, selectedLaunchId, onSelect, onSelectLaunch, enabled: props.keyboardEnabled, settingsOpen: props.settingsOpen, onOpenSettings: props.onOpenSettings });
+  const latest = useRef({ rows, selectedId, selectedLaunchId, onSelect, onSelectLaunch, enabled: props.keyboardEnabled, settingsOpen: props.settingsOpen, onOpenSettings: props.onOpenSettings, onSearchMessages: props.onSearchMessages });
   useEffect(() => {
-    latest.current = { rows, selectedId, selectedLaunchId, onSelect, onSelectLaunch, enabled: props.keyboardEnabled, settingsOpen: props.settingsOpen, onOpenSettings: props.onOpenSettings };
+    latest.current = { rows, selectedId, selectedLaunchId, onSelect, onSelectLaunch, enabled: props.keyboardEnabled, settingsOpen: props.settingsOpen, onOpenSettings: props.onOpenSettings, onSearchMessages: props.onSearchMessages };
   });
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -166,6 +183,13 @@ export function Sidebar(props: SidebarProps) {
         } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
           e.preventDefault();
           step(e.key === 'ArrowDown' ? 1 : -1);
+        } else if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+          // SIDE-12.7: Enter hands the query to History's search; with no query it does nothing.
+          const q = filterRef.current?.value.trim() ?? '';
+          if (q) {
+            e.preventDefault();
+            latest.current.onSearchMessages?.(q);
+          }
         }
         return;
       }
@@ -223,11 +247,43 @@ export function Sidebar(props: SidebarProps) {
         Press <Code>N</Code> to start one here, or run <Code>claude</Code> or <Code>codex</Code> in iTerm2.
       </>
     );
+    // SIDE-12.7: with a query, the list ends with a way on to History's search of what Sessions said.
+    const searchMessages = hasQuery && props.onSearchMessages && (
+      <div className="px-1.5 pb-2">
+        <Button
+          variant="quiet"
+          size="line"
+          className="w-full min-w-0 justify-start"
+          title="Search every prompt and reply in History (Enter in the filter)"
+          onClick={() => props.onSearchMessages?.(query)}
+          data-field="search-messages"
+        >
+          <Search aria-hidden />
+          <span className="min-w-0 flex-1 truncate text-left">Search all messages for “{query}”</span>
+          <Kbd aria-hidden className="ml-0.5 text-muted-foreground">
+            ↵
+          </Kbd>
+        </Button>
+      </div>
+    );
     if (sessions.length === 0) {
-      if (props.launches.length) return null;
-      return <EmptyState title="No live Sessions" hint={startHint} />;
+      // Starting rows show above; with none live, the way on to History stays (SIDE-12.7).
+      if (props.launches.length) return searchMessages || null;
+      return (
+        <>
+          <EmptyState title="No live Sessions" hint={startHint} />
+          {searchMessages}
+        </>
+      );
     }
-    if (visible.length === 0) return <EmptyState title="No matching Sessions" hint="Esc clears the filter." />;
+    if (visible.length === 0) {
+      return (
+        <>
+          <EmptyState title="No matching Sessions" hint="Esc clears the filter." />
+          {searchMessages}
+        </>
+      );
+    }
     const item = (row: SessionRow) => (
       <SessionItem
         key={row.id}
@@ -238,6 +294,7 @@ export function Sidebar(props: SidebarProps) {
         onSelect={selectId}
         suffix={suffixes.get(row.id) ?? null}
         pressure={props.memory?.pressure ?? null}
+        match={hasQuery ? (matches.get(row.id) ?? null) : null}
       />
     );
     // DS-9.1: the list takes focus as History's does: the selected Session is its active option, none
@@ -247,7 +304,7 @@ export function Sidebar(props: SidebarProps) {
     const active = selectedId !== null && visible.some((r) => r.id === selectedId) ? sessionOptionId(selectedId) : undefined;
     // Held during a hover with none left, the header keeps its room but shows and says nothing.
     const headerEmpty = headerShown && needsYouCount === 0;
-    return (
+    const list = (
       <div
         role="listbox"
         aria-label="Sessions"
@@ -285,6 +342,12 @@ export function Sidebar(props: SidebarProps) {
           </ul>
         )}
       </div>
+    );
+    return (
+      <>
+        {list}
+        {searchMessages}
+      </>
     );
   })();
 

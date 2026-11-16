@@ -146,6 +146,13 @@ Context usage, a usage limit, memory and CPU load, a PR's age.
 - **Don't:** put a toggle for the side inside the switch of ways to show the page: it's a state of its own, beside it.
 - **Guard:** none can check the layout; its look is PLAIN-14.16.
 
+### A search hit
+
+- **Use** `Hits` (`ui/hits.tsx`) with the ranges that matched: a `mark` in `highlight`, the foreground on it (DS-3.4). A hit isn't something to act on, so it's never Needs you's amber or Primary.
+- In a sidebar row, pass `tight`: no padding, so the row truncates where it would without the mark (SIDE-12.5).
+- **Do:** when a row matched on something it doesn't show, say where in a quiet line under it (SIDE-12.6), so no row matches for a reason you can't see.
+- **Guard:** DS-2.3's colour guard, where `ui/hits.tsx` is the only file that uses `highlight`; DS-3.4.
+
 ## Before you ask for review
 
 What no guard checks. A reviewer, person or agent, goes through it for every UI change.

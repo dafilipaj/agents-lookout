@@ -462,6 +462,15 @@ export function App({ client }: { client: LookoutClient }) {
     },
     [updateLayout],
   );
+  // SIDE-12.7, HIST-2.13: the Session filter hands its query to History's search, which takes it once.
+  const [historyAsk, setHistoryAsk] = useState<{ query: string } | null>(null);
+  const searchMessages = useCallback(
+    (query: string) => {
+      setHistoryAsk({ query });
+      showTab('history', true);
+    },
+    [showTab],
+  );
   // HIST-1.1, WORK-1.1: H and W, when focus isn't in a text field and no modal is open.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -1105,6 +1114,7 @@ export function App({ client }: { client: LookoutClient }) {
           onUsageOpen={() => void client.refreshJev().catch(() => {})}
           topicTitles={topicTitles}
           work={state.work}
+          onSearchMessages={searchMessages}
         />
         {/* tabIndex -1: focus lands here after the selected start is dismissed (LAUNCH UX). */}
         <main className={cn(SHELL_COLUMN, 'relative outline-none')} data-shell-column="main" tabIndex={-1}>
@@ -1348,7 +1358,7 @@ export function App({ client }: { client: LookoutClient }) {
                   navRef={serversNav}
                 />
               ),
-              history: <HistoryPanel headless={layout.headless} onHeadless={(headless) => updateLayout({ headless })} focusKey={rightFocus.history} sessions={state.sessions} now={now} search={searchHistory} peek={peekPast} onOpen={openPast} navRef={historyNav} />,
+              history: <HistoryPanel ask={historyAsk} onAsked={() => setHistoryAsk(null)} headless={layout.headless} onHeadless={(headless) => updateLayout({ headless })} focusKey={rightFocus.history} sessions={state.sessions} now={now} search={searchHistory} peek={peekPast} onOpen={openPast} navRef={historyNav} />,
               work: (
                 <WorkPanel
                   work={state.work}

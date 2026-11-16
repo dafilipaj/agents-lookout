@@ -3,9 +3,11 @@ import type { SessionRow } from '@shared/types.ts';
 import { Bot, CircleCheck, FolderGit2, GitBranch, Hourglass, SquareTerminal, TrendingUp } from 'lucide-react';
 import { memo, useEffect, useRef } from 'react';
 import { clockTime } from '@/lib/chat';
+import { type HiddenHit, hiddenHit, rangesOf, type RowMatch } from '@/lib/filter';
 import type { NameSuffix } from '@/lib/names';
 import { BACKGROUND_SHELL_TIP, CONTEXT_LEVEL_CLASS, queuedTip, ROW_TONE, STATUS_LABEL, STATUS_STRIP_CLASS, contextLevel, location, locationTip, sessionOptionId } from '@/lib/sessions';
 import { Chip } from '@/components/ui/chip';
+import { Hits } from '@/components/ui/hits';
 import { SessionMarker } from '@/components/ui/session-marker';
 import { formatBytes } from '@/lib/memory';
 import { formatAge } from '@/lib/time';
@@ -25,12 +27,14 @@ interface Props {
   suffix?: NameSuffix | null;
   /** MEM-4.1: the Mac's memory pressure, which lowers the bar for memory running away; null before a sample. */
   pressure?: Pressure | null;
+  /** SIDE-12: where the filter's query matched this row; null without a query. */
+  match?: RowMatch | null;
 }
 
 const NOT_CONTROLLABLE = 'Not Controllable: this Session runs in another app, so Lookout can only show it.';
 
 /** One sidebar row (SIDE-2). */
-export const SessionItem = memo(function SessionItem({ row, selected, dimmed, now, onSelect, suffix = null, pressure = null }: Props) {
+export const SessionItem = memo(function SessionItem({ row, selected, dimmed, now, onSelect, suffix = null, pressure = null, match = null }: Props) {
   const ref = useRef<HTMLLIElement>(null);
   useEffect(() => {
     if (selected) ref.current?.scrollIntoView?.({ block: 'nearest' });
@@ -59,9 +63,23 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
   const slotEmpty = !showRepo && !loc && !wordsInSlot;
   const age = row.statusSince !== null ? formatAge(now - row.statusSince) : null;
   const running = row.subagents?.running ?? 0;
+  // SIDE-12.5: the filter's hits, marked where the row shows them; SIDE-12.6: a word that matched
+  // only what the row doesn't show names that field on a line of its own.
+  const shownIds = new Set<string>(['title']);
+  // A Worktree or branch the row shows, by its text: a plain checkout's Worktree suffix is its branch
+  // (SIDE-10.3), and a Worktree may be named as its branch is.
+  const gitFields = (text: string) => (['worktree', 'branch'] as const).filter((k) => row.git?.[k] === text);
+  const suffixFields = suffix?.kind === 'pr' ? ['pr-number'] : suffix?.kind === 'worktree' || suffix?.kind === 'branch' ? gitFields(suffix.text) : [];
+  const suffixField = suffixFields[0] ?? null;
+  for (const id of suffixFields) shownIds.add(id);
+  if (showRepo && row.git) shownIds.add('repo');
+  if (loc) for (const id of gitFields(loc.name)) shownIds.add(id);
+  if (words) shownIds.add(words.field);
+  const hidden = hiddenHit(match, (f) => shownIds.has(f.id));
+  const marked = (id: string | null, text: string) => (match && id ? <Hits tight text={text} ranges={rangesOf(match, id)} /> : text);
   const wordsLine = (className: string, title: string) => words && (
     <span className={cn(className, words.className)} title={title} data-field={words.field}>
-      {words.text}
+      {marked(words.field, words.text)}
     </span>
   );
   const subagentLabel = `${running} Subagent${running === 1 ? '' : 's'} running`;
@@ -108,11 +126,11 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
             title={row.title}
             data-field="title"
           >
-            {row.title}
+            {marked('title', row.title)}
           </span>
           {suffix && (
             <span className={cn('min-w-0 max-w-[calc(100%-12ch)] truncate text-body leading-5', tone.quiet)} title={suffix.tip} data-field="name-suffix" data-kind={suffix.kind}>
-              <span aria-hidden>·</span> {suffix.text}
+              <span aria-hidden>·</span> {marked(suffixField, suffix.text)}
             </span>
           )}
         </span>
@@ -172,7 +190,7 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
         >
           {showRepo && (
             <span className="max-w-[45%] shrink-0 truncate" data-field={row.git ? 'repo' : 'cwd'}>
-              {row.git ? row.git.repo : basename(row.cwd!)}
+              {row.git ? marked('repo', row.git.repo) : basename(row.cwd!)}
             </span>
           )}
           {showRepo && loc && <span aria-hidden>·</span>}
@@ -184,7 +202,7 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
                 <GitBranch aria-label="Branch" data-icon="branch" className="size-3 shrink-0" />
               )}
               <span className="truncate" data-field="location">
-                {loc.name}
+                {marked(loc.kind, loc.name)}
               </span>
             </span>
           )}
@@ -222,9 +240,31 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
         </span>
       </div>
       {words && !wordsInSlot && wordsLine('block truncate pl-6.5 text-meta leading-4', words.text)}
+      {hidden && <MatchLine hit={hidden} className={tone.quiet} />}
     </li>
   );
 });
+
+/** Characters kept before a hidden match, so the line starts near it and the match stays in view. */
+const MATCH_LEAD = 16;
+
+/**
+ * SIDE-12.6: the field a word matched that the row doesn't show: its label, then its text from a
+ * little before that word's match (not a shown word's, earlier in the text), the hits marked, cut to one line.
+ */
+function MatchLine({ hit, className }: { hit: HiddenHit; className: string }) {
+  let cut = hit.at > MATCH_LEAD ? hit.at - MATCH_LEAD : 0;
+  // Never split a surrogate pair.
+  if (cut > 0 && /[\uDC00-\uDFFF]/.test(hit.field.text[cut] ?? '')) cut--;
+  const text = hit.field.text.slice(cut);
+  const ranges = hit.ranges.filter(([, to]) => to > cut).map(([from, to]) => [Math.max(0, from - cut), to - cut] as const);
+  return (
+    <span className={cn('block truncate pl-6.5 text-meta leading-4', className)} title={`${hit.field.label} ${hit.field.text}`} data-field="match" data-key={hit.field.key}>
+      {hit.field.label} {cut > 0 && '…'}
+      <Hits tight text={text} ranges={ranges} />
+    </span>
+  );
+}
 
 /** A tiny pie of the context window used. */
 function ContextRing({ pct }: { pct: number }) {

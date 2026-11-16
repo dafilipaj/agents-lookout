@@ -355,8 +355,7 @@ const FAMILIES: Record<string, Family> = {
   highlight: {
     tokens: ['highlight'],
     files: {
-      'web/src/components/HistoryPanel.tsx': { why: "History's search hits (DS-3.4)", uses: ['bg-highlight'] },
-      'web/src/components/LibraryPanel.tsx': { why: "Library's title, path and URL search hits (LIB-2.4, DS-3.4)", uses: ['bg-highlight'] },
+      'web/src/components/ui/hits.tsx': { why: "a search hit: History's snippets, Library's title, path and URL, the Session filter's (DS-3.4, LIB-2.4, SIDE-12.5)", uses: ['bg-highlight'] },
     },
   },
   primary: {

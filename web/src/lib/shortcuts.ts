@@ -80,7 +80,7 @@ export const SHORTCUTS: readonly Shortcut[] = [
     group: 'sessions',
     keys: ['/'],
     label: 'Filter Sessions',
-    note: 'Esc clears the filter.',
+    note: 'Esc clears the filter; Enter searches every message in History.',
     press: [{ key: '/' }],
     global: true,
     empty: { label: 'Filter', views: ['select'] },

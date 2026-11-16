@@ -3,7 +3,7 @@ title: History
 code: HIST
 status: In Progress
 created: 2026-10-16
-updated: 2026-11-06
+updated: 2026-11-13
 ---
 
 # History
@@ -40,6 +40,7 @@ Once History is in Lookout, a stray click on a result resumes a past Session, wh
 - [x] HIST-2.10 The first prompt and the last message are read when a result is expanded, not for every result: one `tb-session show` for that Session (Technical approach, Expanded result). While it's read, the result shows "Loading…"; a failed read shows an error line and the buttons still work. With tb-session 0.2, which can't tail, the last message is left out and the first prompt only is shown. (test)
 - [x] HIST-2.11 One result is expanded at a time; expanding another collapses the first. Esc, with focus in History's list or search box, collapses the expanded result and leaves it selected. An expanded result grows in the panel and the list scrolls to keep it in view; the main pane keeps showing the current Session. (test)
 - [x] HIST-2.12 With an empty query, the results are grouped by the day they were last active, in the browser's local time: "Today", "Yesterday", then the date ("Nov 3, 2026"), as the Library's (LIB-2.1), each day a `group` of the listbox named by its heading, with no count. A result with no last-active time is under "No date". While a query is typed the list is best match first (HIST-2.2), so it has no headings, nor have a search's results still shown while the cleared query's are read. A day keeps its rows when its heading changes ("Today" becoming "Yesterday" at midnight) or a newer result arrives above it, so an open menu stays open. ↑/↓ and j/k run across the days as through one list. (test)
+- [x] HIST-2.13 History opened from the Session filter's last row, or Enter in the filter (SIDE-12.7), shows History with that query in its search box, searched as if typed there (HIST-2.2), and the box focused. A query typed there before is replaced; the same query asked again still opens and focuses it. (test)
 
 ### HIST-3 Resume from a result
 
@@ -239,3 +240,4 @@ None.
 - 2026-11-06: Its waits take DS-6.6's words and the orbiting Lens (Plan item 49): "Searching History…" with a query, "Reading History…" without, "Reading what it said…".
 - 2026-11-06: HIST-2.9 amended and unticked for DS-21 (Plan item 50): the expanded result in DS-21's parts; its start directory moves to the state's tooltip, and "can be resumed" shows only when it can't, with why.
 - 2026-11-09: HIST-2.9 built on DS-21 (Plan item 50) and ticked: the state line is the Harness, repo, branch, age, when it was last active, and "live" or why it can't be resumed, with the start directory its tooltip; the "live" chip gives way to the state's word; the summary is the matching snippet (HIST-2.3), the first prompt and the last message, which starts with who said it ("Codex: …"), with no label column.
+- 2026-11-13: Added HIST-2.13 (SIDE-12.7, Plan item 35): the Session filter hands a query to History's search, for what Sessions said.

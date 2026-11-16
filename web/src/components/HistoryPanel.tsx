@@ -5,6 +5,7 @@ import { type KeyboardEvent, type MouseEvent, type Ref, useEffect, useImperative
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Chip } from '@/components/ui/chip';
+import { Hit } from '@/components/ui/hits';
 import { CommandBlock } from '@/components/ui/command-block';
 import { EmptyState } from '@/components/ui/empty-state';
 import { IconButton, RowSettling, useRowSettle } from '@/components/ui/icon-button';
@@ -50,6 +51,10 @@ export interface HistoryPanelProps {
   onOpen(item: HistoryItem, live: boolean): Promise<void>;
   /** WORK-1.7: how the tab strip moves History's results. */
   navRef?: Ref<PanelNav>;
+  /** HIST-2.13: a query handed over from the Session filter (SIDE-12.7), searched as if typed; taken once. */
+  ask?: { query: string } | null;
+  /** HIST-2.13: the query was taken, so a later mount doesn't take it again. */
+  onAsked?(): void;
 }
 
 type Results =
@@ -72,7 +77,7 @@ type Peek = { state: 'loading' } | { state: 'ok'; peek: HistoryPeek } | { state:
  * A click or Enter selects a result and expands it in place (HIST-3.5); its one button, or Enter on
  * the expanded result, resumes, opens or shows it (HIST-3.1 to 3.3).
  */
-export function HistoryPanel({ focusKey, sessions, now, search, peek, onOpen, navRef, headless, onHeadless }: HistoryPanelProps) {
+export function HistoryPanel({ focusKey, sessions, now, search, peek, onOpen, navRef, headless, onHeadless, ask, onAsked }: HistoryPanelProps) {
   const [query, setQuery] = useState('');
   const topics = useTopics();
   // HIST-2.8: both by default; one can be switched off, never both. Remembered across reloads.
@@ -122,6 +127,23 @@ export function HistoryPanel({ focusKey, sessions, now, search, peek, onOpen, na
     setQuery(next);
     setExpanded(null);
   };
+  // HIST-2.13: the Session filter's query replaces what was typed here (adjusted while rendering, as
+  // React documents for state derived from a prop), then the box takes focus and the ask is taken.
+  const [takenAsk, setTakenAsk] = useState<{ query: string } | null>(null);
+  if (ask && ask !== takenAsk) {
+    setTakenAsk(ask);
+    setQuery(ask.query);
+    setExpanded(null);
+  }
+  const onAskedRef = useRef(onAsked);
+  useEffect(() => {
+    onAskedRef.current = onAsked;
+  });
+  useEffect(() => {
+    if (!ask) return;
+    inputRef.current?.focus();
+    onAskedRef.current?.();
+  }, [ask]);
   useEffect(() => {
     const mine = ++seq.current;
     const timer = setTimeout(
@@ -591,15 +613,7 @@ function Result({ index, item, status, since, active, expanded, peek, opening, b
 function Snippet({ text, className }: { text: string; className?: string }) {
   return (
     <p className={cn('line-clamp-2 text-meta text-muted-foreground', className)} data-field="snippet">
-      {snippetParts(text).map((p, i) =>
-        p.hit ? (
-          <mark key={i} className="rounded-sm bg-highlight px-0.5 text-foreground">
-            {p.text}
-          </mark>
-        ) : (
-          <span key={i}>{p.text}</span>
-        ),
-      )}
+      {snippetParts(text).map((p, i) => (p.hit ? <Hit key={i}>{p.text}</Hit> : <span key={i}>{p.text}</span>))}
     </p>
   );
 }

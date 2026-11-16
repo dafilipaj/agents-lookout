@@ -3,7 +3,7 @@ title: Session sidebar
 code: SIDE
 status: In Progress
 created: 2026-10-16
-updated: 2026-11-06
+updated: 2026-11-16
 ---
 
 # Session sidebar
@@ -86,7 +86,7 @@ The "Needs you" and "View only" headers are not Session rows: ↑/↓, j/k, ⌘1
 - [x] SIDE-5.1 ↑/↓ and j/k move the selection. ↑/↓ pressed inside the chat scroll the chat instead (VIEW-1.11). (manual)
 - [x] SIDE-5.2 ⌘1–⌘9 select the first to ninth row. (manual)
 - [x] SIDE-5.3 ⌘J selects the next Session that needs you. (manual)
-- [x] SIDE-5.4 `/` focuses a filter box; typing filters rows by title, repo, Worktree or branch; Esc clears it. (test)
+- [x] SIDE-5.4 `/` focuses a filter box; typing filters rows by their words (SIDE-12); Esc clears it. (test)
 
 ### SIDE-6 When Fleet fails
 
@@ -145,6 +145,23 @@ The same keys do different things in the Session list, the composer, a panel's s
 - [x] SIDE-11.4 The edge keeps 3:1 or more against each column's header, the sidebar's and the main pane's, in both modes. (test)
 - [ ] SIDE-11.5 Seen in both modes at 1440 px, moving between the Session list, the composer and each panel by key and by mouse: where the keys are is clear at a glance, and the edge reads as "you are here", never as a Status, a selection or a Primary button. (manual)
 
+### SIDE-12 The filter finds a Session by any of its words
+
+The filter took the whole query as one piece of a row's title, repo, Worktree, branch, first prompt or a Topic's title (SIDE-2.13, 10.5, TOPIC-3.5). So `rates fix` missed `fix/rates`, a typo missed everything, nothing said why a row had matched, and nothing pointed to History, which searches what Sessions said (HIST-2.2). Decided with Dario on 2026-11-13 (Plan item 35): each word on its own, more fields, short names matched fuzzily, what matched marked, and the messages handed to History.
+
+- [x] SIDE-12.1 The query is split at whitespace into words, and a row matches when every word matches one of its fields: each word in any field, the words in any order. `rates fix` finds a Session on `fix/rates`, and `work rates` one in the repo `work` on that branch. Case is ignored for all of Unicode, folded as Library's filter folds it (LIB-2.4). (test)
+- [x] SIDE-12.2 A row's fields are its names and its text:
+  - Names: its title (SIDE-10.1), repo, Worktree, branch, Harness (`claude`, `codex`) and model, the titles of its Topics (TOPIC-3.5), and, when Work's list has them (WORK-4), its Linked PR's number (`#3719`) and title and its Linked Task's title.
+  - Text: its first prompt (SIDE-10.5), what it waits for (SIDE-2.3), what it's doing (SIDE-2.11) and its Done note (SIDE-2.17).
+
+  Each is matched whether or not the row shows it. (test)
+- [x] SIDE-12.3 A word matches a name that contains it, or, from 3 characters, a name in which its letters appear in order with gaps between them, as fzf matches: `frts` finds `fix/rates` and `crmrt` finds `crm-rates`. A word matches text only where the text contains it, so a few letters can't match every long prompt: `frts` doesn't match a prompt for having an f, r, t and s in that order. (test)
+- [x] SIDE-12.4 The filter only leaves rows out. The rows that match keep their order and sections (SIDE-3.1), the Needs you header and its count included; nothing is ranked by how well it matched. (test)
+- [x] SIDE-12.5 What matched is marked where the row shows it, in the `highlight` token (DS-3.4): the matched letters in the title, in the name's suffix (SIDE-10.3), in the repo, Worktree or branch, and in the Session's words. A mark adds no width, so the row truncates where it would without one. (test)
+- [x] SIDE-12.6 While the filter has a query, a row with a word that matched only fields it doesn't show gets one more line under its others, in the row's quieter colour: the first such field, in SIDE-12.2's order, as its label and its text around the match, the match marked. For example `Prompt: …fix the rates rounding on…`, `PR #3719: Fix rates rounding`, `Topic: Rates`, `Model: claude-opus-5-5`. It's one line, cut to fit with that word's match kept in view, even when a word the row shows matched earlier in the same text. A row whose every word matched what it shows gets no such line, and clearing the query takes the lines away. (test)
+- [x] SIDE-12.7 With a query, the list ends with a row "Search all messages for "<query>"", lucide `Search` before it; when nothing matches it sits under "No matching Sessions", and with no live Sessions under "No live Sessions". A click on it, or Enter in the filter, opens History searching the query (HIST-2.13) with History's search box focused. The filter keeps its query, and Esc clears it as before. With no query there's no such row, and Enter in the filter does nothing. (test)
+- [ ] SIDE-12.8 Seen in both modes at 280 px and wider, with ten or more Sessions and a query that matches some rows by name, some fuzzily and some only by their prompt: the marks read as why a row matched, never as a Status or a selection; the extra line reads quieter than the row's own words; the last row reads as a way onward, not a Session. (manual)
+
 ## Non-goals
 
 - Grouping by repo. Almost every Session runs in `work` today; revisit if that changes.
@@ -160,6 +177,7 @@ The same keys do different things in the Session list, the composer, a panel's s
 - Where your keys go (SIDE-11): changing where Tab or Esc take focus, or what a key does; a key that types into the composer from the Session list (`i` stays, VIEW-3.6); a key strip outside the composer's hint line (VIEW-3.12); shortening the empty main pane's shortcut sheet (VIEW-5.4, DS-6.4).
 - One name per Session (SIDE-10): generating names (Fleet's `fleet name`; the Harness already titles each Session); a suffix outside the sidebar (History, Work and the Library show the repo, branch and time on every row already); renaming the Session host after the Harness's title (Lookout never shows tmux, 0001); renaming Sessions VIEW-5.12 doesn't allow.
 - Running Subagents (SIDE-9): their names, types or descriptions on the row, or a list of them; stopping or steering one; counting background shell commands (Claude Code's `run_in_background` Bash) or Agent-team teammates, which aren't Subagents; a Status of its own for "Idle with Subagents running" (Key decisions); the ones done in the Turn on the row (the status line has them, VIEW-8); a "quiet" mark for a Subagent that hasn't written for a while (Key decisions; a Known gap); the count for a pi Session.
+- The filter (SIDE-12): searching what Sessions said beyond their first prompt (History does, HIST-2.2); matching the working directory (Dario, 2026-11-13: not picked); typo tolerance beyond letters in order (an edit distance); ranking rows by how well they matched; fuzzy matching of long text; operators such as quotes, `-word` or `field:`; remembering a query across reloads.
 
 ## UX
 
@@ -204,6 +222,18 @@ The same keys do different things in the Session list, the composer, a panel's s
 - Background shell (SIDE-2.6): lucide's `SquareTerminal` at the context ring's size, in Idle's text shade (`idle-text`), in the numbers group after the Subagent count and before the age; its tooltip "A background shell command is still running". No number and no word: it's on or off. It isn't a Status: the row stays an Idle row, marker and strip included.
 - ⚙ opens Settings.
 - Empty state: "No live Sessions", with a hint to start one (N, or `claude` / `codex` in iTerm2). With only view-only Sessions, the same hint sits above the "View only" header.
+- Filtering (SIDE-12): the rows that match, in their places; `‹›` marks a hit in `highlight`; the extra line is `text-meta` in the row's quieter colour, indented as the second line; the last row is a quiet button in the list's width, as a Load more row is.
+
+  ```
+  │ ⌕ rates fix               + ⚙  │
+  │ ● ‹Fix› the rounding      [cl] │
+  │   [br] ‹fix›/‹rates›    2m 23% │
+  │ ○ Invoices export         [cx] │
+  │   12m 41%                      │
+  │   Prompt: …‹fix› the ‹rates› r…│
+  │ ⌕ Search all messages for      │
+  │   "rates fix"                ↵ │
+  ```
 - Error states: see SIDE-6. The banners for a stale Fleet list (SIDE-6.2) and a lost server are in the design system's info tone (DS-3.3), grey, not amber: staleness doesn't need you. "Fleet isn't installed" (SIDE-6.1) is an error box with its command in a command block (DS-4, DS-8.2). New Session and Settings are 24 px icon buttons, 4 px apart (DS-7), and the empty states are the design system's EmptyState (DS-8.1).
 
 ## Technical approach
@@ -297,6 +327,13 @@ The same keys do different things in the Session list, the composer, a panel's s
     - The default is the repo's, not the Start directory's checkout: a Session on `main` in a clone that sits on `develop` upstream shows `main`. That's the point of the rule, and a Session in a clone left on an old branch shows it.
     - A Needs you or Busy row in a Worktree is three lines; a list of many Worktrees is taller than today's. Rows with no Worktree are shorter.
 
+- **The filter (SIDE-12).** All in the browser, from what it holds already: the Session list, `topicTitles` (TOPIC-3.5) and Work's list (`state.work`, WORK-4). No keystroke asks the server or a CLI.
+  - `web/src/lib/filter.ts` replaces `matchesFilter`: `filterRow(row, words, extra)` returns null for no match, else, per field, the ranges of the row's text that matched. A field is `{ key, label, text, kind: 'name' | 'text' }`. Folding is LIB-2.4's, per code point; a code point can fold to more than one (ß to ss), so each folded position maps back to the code point it came from, as `libraryMatches` maps a hit, and a mark covers whole characters.
+  - A word against a name: a substring first, which marks the stretch; else, from 3 code points, fzf's v1: a forward scan for the first place all its letters appear in order, then a backward scan from that end for the latest start, so the marked letters are as close together as that scan finds. Against text: a substring only.
+  - Linked PR and Task per Session: one pass over Work's list, as `linkedPrs` (`lib/names.ts`) makes its numbers. A PR's Session Links that don't come through a Task (WORK-4), and a Task's direct Session Links; the first in Work's order wins, as SIDE-10.3's suffix does.
+  - `Sidebar` computes each row's match once per query and Session list (`useMemo`), filters with it, and passes the matched ranges to `SessionItem`. `SessionItem` knows what it shows (the title, the suffix, the slot's repo and location, the words), marks those ranges with `ui/hits.tsx` (DS-3.4), and draws the extra line from the first matched field it doesn't show.
+  - The hand-off: `Sidebar` gets `onSearchMessages(query)`. App opens the right sidebar on History (`showTab('history', true)`) and passes the query to `HistoryPanel` as a request object, a new one each time, so the same query asked twice still lands; History clears it once taken.
+
 ### Key decisions
 
 - **Order by Status, not by repo**: the sidebar's job is "who needs me", not "where is it".
@@ -347,6 +384,12 @@ The same keys do different things in the Session list, the composer, a panel's s
 - **The edge in `ring`, Primary's focus shade (SIDE-11.3)**: it says where focus is, as `ring` does for one control; dark `ring` measures 7.8:1 on the background where dark `primary` measures 3.6:1.
 - **The edge for the mouse too (SIDE-11.3)**: clicking into a panel moves the keys as surely as Tab does.
 - **A name holds while you look at it (SIDE-10.4)**: a row or header renaming itself in front of you is disorienting; it catches up when you look away.
+- **Each word on its own (SIDE-12.1)** (Dario, 2026-11-13): what you remember of a Session comes in pieces, a branch word and a repo, in no set order.
+- **Letters in order, for names only (SIDE-12.3)** (Dario, 2026-11-13: fuzzy, then names only): fuzzy catches a typo or an abbreviation of a branch or title. A first prompt is up to 300 characters and an activity up to 120, and in text that long almost any three or four letters appear in order, so fuzzy there would match nearly every row.
+- **Rows keep their places (SIDE-12.4)** (Dario, 2026-11-13): the sidebar is ordered by what needs you, and the live Sessions are few enough that a weaker match is still easy to see.
+- **Say why a row matched (SIDE-12.5, 12.6)** (Dario, 2026-11-13): the more hidden fields the filter reads, the more rows match for a reason you can't see. The extra line shows only while filtering, so a row's height changes only then.
+- **Messages go to History (SIDE-12.7)** (Dario, 2026-11-13): History already searches every prompt and reply in full text and marks the live results; tb-session's index can lag and lock (WORK-4.9), and the filter has to answer on every keystroke.
+- **Not the working directory (SIDE-12.2)** (Dario, 2026-11-13): the repo, Worktree and branch already say where a Session works; its path would match nearly every row on a word like `Projects`.
 
 ## Open questions
 
@@ -419,3 +462,6 @@ None.
 - 2026-11-09: The fork's `2e8f860` pushed (Dario) and pinned: `e2e/pins.json`, the install command (`shared/defaults.ts`, TOOLS-2.3) and the README; the e2e passes on it (115).
 - 2026-11-09: SIDE-2.6 and SIDE-9.1 ticked with DS-22 (Plan item 50): a background shell and the Subagent count are marks at the start of the row's second line, in their colour with their icon.
 - 2026-11-09: SIDE-10.6 checked by Dario in the running app and ticked; SIDE-11.5 still waits for his look.
+- 2026-11-13: Added SIDE-12, the filter finds a Session by any of its words (Plan item 35), grilled with Dario in six questions: each word on its own; the row's words, Harness, model, and the Linked PR and Task as more fields, not the directory; fuzzy for names, by words for text (Dario chose fuzzy over the recommended none, then names only); rows keep their order; what matched marked, with a line for a hidden match; messages handed to History, by a last row and Enter. SIDE-5.4 points at it. The spec is In Progress until SIDE-12 is built.
+- 2026-11-13: SIDE-12.1 to 12.7 built and ticked (Plan item 35), with HIST-2.13 and DS-3.4: `lib/filter.ts` matches each word, fuzzily for names (fzf v1) and by substring for text, and returns what matched where; the row marks its hits through `ui/hits.tsx` and adds the line for a hidden match; the last row and Enter hand the query to History. Seen in the running app on :4747 with four live Sessions: `list lookout` marks both words in a title, `opus` adds `Model: claude-opus-5-5` under every row, Enter opens History searching `opus` with its box focused, and `hndvr` finds Handover-slice-5 with its letters marked. SIDE-12.8 waits for Dario's look.
+- 2026-11-16: A Codex review (gpt-6.1-sol, xhigh) of SIDE-12, four findings fixed. SIDE-12.3: fuzzy matching compares whole code points, so halves of two emoji no longer make a third. SIDE-12.5, 12.6: a plain checkout's suffix beside a Worktree twin, which is its branch (SIDE-10.3), is marked and counts as shown. SIDE-12.6: the extra line keeps the hidden word's match in view, not a shown word's earlier in the same text (amended to say so). SIDE-12.7: the last row stays with no live Sessions, under "No live Sessions" (amended). The Technical approach's "request with a counter" now says what was built, a new request object each time. The Keyboard shortcuts dialog's filter entry notes Enter (SIDE-7.4).

@@ -5,7 +5,7 @@
  * folding's expansions (ß and ẞ → ss, ﬃ → ffi, İ → i̇), with dotless ı kept apart from I as
  * Unicode's default folding does, and final ς folded with σ.
  */
-function foldPoint(c: string): string {
+export function foldPoint(c: string): string {
   if (c === 'ı') return c;
   return c.toLowerCase().toUpperCase().toLowerCase().replace(/ς/g, 'σ');
 }

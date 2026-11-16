@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Chip } from '@/components/ui/chip';
 import { CommandBlock } from '@/components/ui/command-block';
 import { EmptyState } from '@/components/ui/empty-state';
+import { Hits } from '@/components/ui/hits';
 import { IconButton, RowSettling, useRowSettle } from '@/components/ui/icon-button';
 import { RowActions } from '@/components/ui/row-actions';
 import { RowDetails, type RowLinkGroup, RowTitle } from '@/components/ui/row-details';
@@ -336,15 +337,7 @@ export function LibraryPanel({ focusKey, visible, sessions, now, search, status,
 
 /** Literal hits (LIB-2.4), marked by the same folding the server searched with; no regex or HTML from the query. */
 function Hit({ text, query }: { text: string; query: string }) {
-  const hits = libraryMatches(text, query);
-  if (!hits.length) return text;
-  const parts = []; let at = 0;
-  for (const [from, to] of hits) {
-    parts.push(text.slice(at, from), <mark key={from} className="rounded-sm bg-highlight px-0.5 text-foreground">
-      {text.slice(from, to)}
-    </mark>); at = to;
-  }
-  parts.push(text.slice(at)); return parts;
+  return <Hits text={text} ranges={libraryMatches(text, query)} />;
 }
 interface RowProps {
   item: OutputItem; now: number; query: string; active: boolean; expanded: boolean; sessions: ReadonlyMap<string, SessionRow>; enabled: boolean;
