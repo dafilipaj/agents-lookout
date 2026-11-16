@@ -32,7 +32,7 @@ import type { ClaudeUsageDecl, HarnessId, SessionDecl } from '../world/builder.t
  */
 
 /** A declared fake command or Fleet usage override, run from e2e/fakes/<name>.ts. */
-export type FakeCommand = 'claude' | 'codex' | 'tb-jev' | 'curl' | 'tb-prod' | 'tb-pr' | 'tb-session' | 'ps' | 'sysctl' | 'lsof' | 'tb-devctl' | 'fleet-usage';
+export type FakeCommand = 'claude' | 'codex' | 'tb-jev' | 'curl' | 'tb-prod' | 'tb-pr' | 'tb-session' | 'ps' | 'sysctl' | 'lsof' | 'tb-devctl' | 'fleet-usage' | 'pmset' | 'caffeinate';
 
 /** What a Fake Harness reads from the World when it starts. */
 export interface FakeHarnessConfig {

@@ -1,3 +1,4 @@
+import type { AwakeMode, AwakeSnapshot } from '@shared/awake.ts';
 import type { LibraryPage, LibraryQuery } from '@shared/library.ts';
 import type { PathAnswer } from '@shared/files.ts';
 import type { StopResult, StopTarget } from '@shared/ports.ts';
@@ -36,6 +37,8 @@ export interface LookoutClient {
   endSession(sessionId: string, target: EndTarget): Promise<EndResult>;
   /** PORTS-4: stops a Local server: the row the dialog opened on, checked again by the server first (PORTS-4.7). */
   stopServer(target: StopTarget): Promise<StopResult>;
+  /** AWAKE-1.1: keep-awake's mode; a refusal is a SaveError with its reason and, for AWAKE-3.2, `kind: amphetamine-busy`. */
+  setAwake(mode: AwakeMode, replace?: boolean): Promise<AwakeSnapshot>;
   /** VIEW-5.12: renames the Session through Fleet: the Harness's own `/rename`, only while it's Idle. */
   renameSession(sessionId: string, title: string): Promise<RenameResult>;
   /**
@@ -486,6 +489,7 @@ export function createHttpClient(): LookoutClient {
     endSession: (sessionId, target) =>
       call<EndResult>(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/end`, target), 'Ending the Session'),
     stopServer: (target) => call<StopResult>(() => send('POST', '/api/ports/stop', target), 'Stopping the server'),
+    setAwake: (mode, replace = false) => call<AwakeSnapshot>(() => send('POST', '/api/awake', replace ? { mode, replace } : { mode }), 'Changing keep-awake'),
     renameSession: (sessionId, title) =>
       call<RenameResult>(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/rename`, { title }), 'Renaming'),
     switchModel: (sessionId, req) =>

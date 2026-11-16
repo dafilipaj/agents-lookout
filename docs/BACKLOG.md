@@ -104,21 +104,6 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
 - **Costs and risks:** two breakpoints in the shell's grid, an overlay that needs focus handling and Esc, and the dock row's resting height (SIDE-8.1) checked at each width. Screenshots at 520, 560 and 900 px are in the review.
 - **Added:** 2026-10-22, from the design review; Dario: agreed, postponed.
 
-## Keep the Mac awake while Sessions run (new spec)
-
-- **What:** a header button with three states: Off, Awake (no idle sleep), and Lid closed (keeps running with the lid shut, only on power). It covers one Session or all of them, and turns itself off when the Sessions it covers stop working. A covered Session's row shows a small cup.
-- **Why:** long agent runs stop when the Mac sleeps.
-- **How:** follows Matej's recipe for his Electron app ([Recipe: caffeinate button](https://claude.ai/artifact/PpJ1wTcY9JBKiuZ5wHFNCA)). The state lives in the server, so it outlives the browser tab:
-  - **Awake:** the server spawns `caffeinate -i -w <server pid>`, so it also ends with the server. This replaces Electron's `powerSaveBlocker`.
-  - **Lid closed:** drives Amphetamine over AppleScript (`start new session …`, `enable closed display mode`, `end session`). The fallback is `caffeinate -s` with an external display.
-  - Lookout only ends an Amphetamine session it started, and keeps an `owned` flag so it can clean up after a crash.
-  - On battery it steps down to Awake.
-  - "Stopped" uses the Busy state Lookout already has.
-- **Open:**
-  - check by hand that `enable closed display mode` really keeps the Mac running with the lid shut;
-  - the one-time setup on each Mac: Amphetamine's Power Protect helper and the Automation permission.
-- **Added:** 2026-10-23.
-
 ## Notes on a question with previews (VIEW)
 
 - **What:** a Notes field for a question whose options have previews (VIEW-10), sent as the terminal's `n`, the note, then Enter. Claude Code records it with the pick (`toolUseResult.annotations[question].notes`), and the agent reads it with the answer.

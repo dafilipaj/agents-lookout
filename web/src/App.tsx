@@ -1,3 +1,4 @@
+import type { AwakeMode } from '@shared/awake.ts';
 import { LibraryPanel } from '@/components/LibraryPanel';
 import type { LocalServer } from '@shared/ports.ts';
 import type { LaunchHarness } from '@shared/settings.ts';
@@ -11,6 +12,7 @@ import { ShortcutsDialog } from '@/components/ShortcutsDialog';
 import { MainPane } from '@/components/MainPane';
 import { PastSessionView } from '@/components/PastSessionView';
 import { RightRail, RightSidebar } from '@/components/RightSidebar';
+import { KeepAwakeFooter, KeepAwakeRail } from '@/components/KeepAwake';
 import { SettingsPage } from '@/components/SettingsPage';
 import { KeysProvider } from '@/components/KeysProvider';
 import { KeysEdge, SHELL_COLUMN, SHELL_GRID } from '@/components/Shell';
@@ -959,6 +961,16 @@ export function App({ client }: { client: LookoutClient }) {
   );
 
   // PORTS-4: the row the dialog opened on; the server checks it again before signalling (PORTS-4.7).
+  // AWAKE-4.4: the server's answer goes into the store at once; its event went out before it, and the
+  // store keeps whichever is newer by `rev` (AWAKE-1.1).
+  const setAwake = useCallback(
+    async (mode: AwakeMode, replace?: boolean) => {
+      const awake = await client.setAwake(mode, replace);
+      dispatch({ type: 'event', event: { type: 'awake', awake } });
+      return awake;
+    },
+    [client, dispatch],
+  );
   const stopServer = useCallback(
     async (server: LocalServer) => {
       if (server.startedAt === null) throw new Error('Lookout can’t confirm it’s the same server, so it won’t stop it.');
@@ -1380,9 +1392,15 @@ export function App({ client }: { client: LookoutClient }) {
             nav={{ history: historyNav, work: workNav, library: libraryNav, topics: topicsNav, servers: serversNav }}
             counts={{ topics: state.topics?.recommendations.length ?? 0 }}
             servers={state.ports ? shownCount(state.ports) : undefined}
+            corner={<KeepAwakeFooter awake={state.awake} now={now} onSet={setAwake} />}
           />
         ) : (
-          <RightRail onOpen={toggleRight} counts={{ topics: state.topics?.recommendations.length ?? 0 }} servers={state.ports ? shownCount(state.ports) : undefined} />
+          <RightRail
+            onOpen={toggleRight}
+            counts={{ topics: state.topics?.recommendations.length ?? 0 }}
+            servers={state.ports ? shownCount(state.ports) : undefined}
+            corner={<KeepAwakeRail awake={state.awake} now={now} onSet={setAwake} />}
+          />
         )}
         <Launcher
           open={launcherOpen}

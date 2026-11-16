@@ -23,6 +23,7 @@ import { SessionMonitor } from './monitor.ts';
 import { parsePort } from './port.ts';
 import { PortsMonitor } from './ports.ts';
 import { ResMonitor } from './res.ts';
+import { KeepAwake } from './awake.ts';
 import { sessionId } from './normalize.ts';
 import { queuedFor } from '../shared/res.ts';
 import { localAllowLists } from './security.ts';
@@ -107,7 +108,11 @@ const monitor: SessionMonitor = new SessionMonitor({
   changes: (row) => changes.rowChanges(row),
   // RES-3: read when the rows are derived, which runs only after start-up, once resQueue exists.
   queued: (row) => queuedFor(resQueue.snapshot(), row.id),
-  onEvent: (e) => app.broadcast(e),
+  onEvent: (e) => {
+    app.broadcast(e);
+    // AWAKE-2.1: who's At work follows every change to the rows.
+    if (e.type === 'sessions') awake.sessionsChanged();
+  },
   onList: (rows) => {
     changes.observe(monitor.snapshot().sessions);
     memory.prune();
@@ -231,6 +236,18 @@ const resQueue = new ResMonitor({
   },
 });
 
+// AWAKE: keep-awake, held by the server so it outlives the tab; restored from its file on start.
+const awake = new KeepAwake({
+  runner: run,
+  sessions: () => monitor.snapshot().sessions,
+  onChange: (a) => app.broadcast({ type: 'awake', awake: a }),
+  file: join(homedir(), '.lookout', 'keep-awake.json'),
+  pid: process.pid,
+  env,
+  // AWAKE-2.1: while on, it reads Fleet's list itself, so who's At work is known with no tab open.
+  watchSessions: () => monitor.watch(),
+});
+
 /** TOPIC-12.2, TOPIC-8.4: a Topics store that fails while recording activity is one log line; Lookout keeps running. */
 function observeTopics(fn: () => void): void {
   try {
@@ -339,6 +356,7 @@ const app = createApp({
   memory,
   ports,
   resQueue,
+  awake,
   work,
   changes,
   plain,
@@ -392,6 +410,8 @@ const app = createApp({
 
 // TOOLS-1.4: the first read, when the server starts.
 void tools.start();
+// AWAKE-1.3: the saved mode comes back; an Amphetamine call may wait on macOS, so not before listening.
+void awake.start();
 
 app.server.listen(requestedPort, '127.0.0.1', () => {
   const { port } = app.server.address() as AddressInfo;
@@ -416,6 +436,8 @@ const shutdown = async () => {
   // Cancel the pollers and wait until their processes have exited, so none is orphaned.
   await Promise.all([recommender.close(), summarizer.close(), suggester.close(), plainExamples.close(), plainSimple.close()]);
   topics.close();
+  // AWAKE-1.4: caffeinate and an owned Amphetamine session end before the server does.
+  await awake.close().catch(() => {});
   await Promise.all([usage.close().catch(() => {}), memory.close().catch(() => {}), ports.close().catch(() => {}), resQueue.close().catch(() => {}), work.close().catch(() => {}), tools.close().catch(() => {})]);
   process.exit(0);
 };

@@ -12,6 +12,8 @@ import { EndError } from './closer.ts';
 import type { FleetRow } from './fleet.ts';
 import { checkSessionPaths } from './files.ts';
 import { StopError, type StopTarget } from './ports-stop.ts';
+import { AwakeError } from './awake.ts';
+import type { AwakeSnapshot } from '../shared/awake.ts';
 import { PlainError } from './plain.ts';
 import { HistoryError } from './history.ts';
 import { EFFORT_UNCERTAIN, MODEL_UNCERTAIN, ModelSwitchError } from './model-switch.ts';
@@ -28,6 +30,7 @@ let origin: string;
 const hosts = new Set<string>();
 const origins = new Set<string>();
 const TOKEN = 'test-token';
+const AWAKE_SNAPSHOT: AwakeSnapshot = { mode: 'off', holding: 'off', atWork: 0, offAt: null, lid: { available: false, reason: 'Needs the charger' }, note: null, rev: 0 };
 let launched: unknown[] = [];
 const USAGE = {
   providers: [],
@@ -47,6 +50,7 @@ let stops: string[] = [];
 let renamed: { sessionId: string; name: string }[] = [];
 let switched: ({ sessionId: string } & (ModelSwitchRequest | EffortSwitchRequest))[] = [];
 let serverStops: StopTarget[] = [];
+let awakeSets: [string, boolean][] = [];
 let examplePresses: unknown[][] = [];
 let exampleCancels = 0;
 let simplePresses: unknown[][] = [];
@@ -68,6 +72,7 @@ beforeEach(async () => {
   renamed = [];
   switched = [];
   serverStops = [];
+  awakeSets = [];
   examplePresses = [];
   exampleCancels = 0;
   simplePresses = [];
@@ -194,6 +199,15 @@ beforeEach(async () => {
         serverStops.push(target);
         if (target.pid === 409) throw new StopError(409, 'This server was restarted since the list was read, so nothing was stopped.');
         return { how: 'stopped', count: 3 };
+      },
+    },
+    awake: {
+      snapshot: () => AWAKE_SNAPSHOT,
+      watch: () => () => {},
+      set: async (mode, replace) => {
+        awakeSets.push([mode, replace ?? false]);
+        if (mode === 'lid' && replace !== true) throw new AwakeError(409, 'Amphetamine already has a session running.', 'amphetamine-busy');
+        return { ...AWAKE_SNAPSHOT, mode, holding: mode };
       },
     },
     staticDir: null,
@@ -634,6 +648,34 @@ describe('PORTS-4 route', () => {
   it('PORTS-4.5: a refused Stop answers with its status and why', async () => {
     const res = await call('POST', '/api/ports/stop', { 'content-type': 'application/json', origin, 'x-lookout-token': TOKEN }, JSON.stringify({ pid: 409, command: 'node', startedAt: 5 }));
     expect([res.status, JSON.parse(res.body)]).toEqual([409, { error: 'This server was restarted since the list was read, so nothing was stopped.' }]);
+  });
+});
+
+describe('AWAKE-1 route', () => {
+  it('AWAKE-1.1: setting the mode is a mutation: our Origin and the token; the answer is the new snapshot, a refusal 409 with why and its kind', async () => {
+    const json = { 'content-type': 'application/json' };
+    const set = (headers: Record<string, string>, body: string) => call('POST', '/api/awake', { ...json, ...headers }, body);
+    expect((await set({ 'x-lookout-token': TOKEN }, '{"mode":"awake"}')).status).toBe(403); // no Origin
+    expect((await set({ origin }, '{"mode":"awake"}')).status).toBe(403); // no token
+    expect((await call('GET', '/api/awake', { origin })).status).toBe(404);
+    const bad = await set({ origin, 'x-lookout-token': TOKEN }, '{"mode":"forever"}');
+    expect([bad.status, JSON.parse(bad.body)]).toEqual([400, { error: 'mode must be off, awake or lid' }]);
+    expect(awakeSets).toEqual([]);
+
+    const ok = await set({ origin, 'x-lookout-token': TOKEN }, '{"mode":"awake"}');
+    expect([ok.status, JSON.parse(ok.body)]).toEqual([200, { ...AWAKE_SNAPSHOT, mode: 'awake', holding: 'awake' }]);
+    const busy = await set({ origin, 'x-lookout-token': TOKEN }, '{"mode":"lid"}');
+    expect([busy.status, JSON.parse(busy.body)]).toEqual([409, { error: 'Amphetamine already has a session running.', kind: 'amphetamine-busy' }]);
+    const replaced = await set({ origin, 'x-lookout-token': TOKEN }, '{"mode":"lid","replace":true}');
+    expect(replaced.status).toBe(200);
+    expect(awakeSets).toEqual([['awake', false], ['lid', false], ['lid', true]]);
+  });
+
+  it('AWAKE-1.1: the snapshot carries keep-awake', async () => {
+    const events = openEvents();
+    const first = await events.next();
+    events.close();
+    expect(first.type === 'snapshot' && first.awake).toEqual(AWAKE_SNAPSHOT);
   });
 });
 

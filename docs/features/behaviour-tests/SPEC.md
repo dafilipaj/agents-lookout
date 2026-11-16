@@ -3,7 +3,7 @@ title: Behaviour tests
 code: TEST
 status: In Progress
 created: 2026-10-17
-updated: 2026-11-06
+updated: 2026-11-16
 ---
 
 # Behaviour tests
@@ -28,7 +28,7 @@ What a Behaviour test runs in. A World is built fresh for each Behaviour test an
 - [x] TEST-1.1 When a Behaviour test starts, its World has its own temporary HOME, its own settings file, a private tmux server and a Lookout server on a free port. That port is never 4747 or 4748. Nothing from the user's HOME, tmux server, keychain or settings is visible to Lookout, Fleet, tb-session or the Fake Harnesses. (test)
 - [ ] TEST-1.2 PATH holds only what the World declares:
   - **real:** Fleet, tb-session, tmux (through a shim to the private `-L` server), git, ps for discovery (through the shim of TEST-1.10; memory sampling is faked, MEM-2.1), lsof (through a shim: the Local server reads are faked, PORTS-1.1), sh, node, and the plain system tools these need;
-  - **fake:** claude, codex, tb-jev, curl, tb-prod and tb-pr, each only when declared; the memory sampler’s `ps` and `sysctl`, always injected with deterministic defaults or a `.memory()` declaration (MEM);
+  - **fake:** claude, codex, tb-jev, curl, tb-prod and tb-pr, each only when declared; the memory sampler’s `ps` and `sysctl`, always injected with deterministic defaults or a `.memory()` declaration (MEM); keep-awake's `pmset`, which answers AC power, and `caffeinate`, which holds nothing, always injected (AWAKE-4.5);
   - **absent:** security, gh, ssh and osascript.
 
   A command the World doesn't declare can't be found, also not through Fleet's fallback directories (`/opt/homebrew/bin`, `/usr/local/bin`). (test)
@@ -446,3 +446,4 @@ None.
 - 2026-11-06: TEST-4.5 added (Dario, PLAN item 37): with `res` installed, the pre-push hook's unit and Behaviour tests queue through it, so a push no longer runs its tests beside other Sessions' runs. Without `res`, nothing changes.
 - 2026-11-06: TEST-3.8 added ([0015](../../decisions/0015-design-guidelines-by-task.md), Plan item 43): `req-check` also reads the requirement ids the design guide names, and fails on one that doesn't exist or is struck through, so the guide can't point at something gone.
 - 2026-11-06: TEST-3.8 built: `req-check` reads every id `docs/design/GUIDE.md` names, in code too, and fails with the guide's line when one is unknown or struck through.
+- 2026-11-16: TEST-1.2: every World now has keep-awake's fake `pmset` (on the charger) and `caffeinate` (it holds nothing and ends with the process it waits on). Its server's `LOOKOUT_AMPHETAMINE_APP` points to a path that doesn't exist, so a World never reads or changes the runner's power and never finds Amphetamine (AWAKE-4.5). `osascript` stays absent.

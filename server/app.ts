@@ -29,6 +29,8 @@ import type { MemoryMonitor } from './memory.ts';
 import type { PortsMonitor } from './ports.ts';
 import { StopError, parseStopTarget } from './ports-stop.ts';
 import type { ResMonitor } from './res.ts';
+import { type KeepAwake, AwakeError } from './awake.ts';
+import { parseAwakeRequest } from '../shared/awake.ts';
 import type { SessionMonitor } from './monitor.ts';
 import { type GuardConfig, guardRequest } from './security.ts';
 import type { SettingsStore } from './settings.ts';
@@ -62,6 +64,8 @@ export interface AppOptions {
   ports?: Pick<PortsMonitor, 'snapshot' | 'watch' | 'stop'>;
   /** RES-1.1: `res`'s queue, read while any tab is connected; optional, so handler tests can leave it out. */
   resQueue?: Pick<ResMonitor, 'snapshot' | 'watch'>;
+  /** AWAKE-1.1: keep-awake; optional, so handler tests can leave it out. */
+  awake?: Pick<KeepAwake, 'snapshot' | 'watch' | 'set'>;
   usage: {
     snapshot(): UsageSnapshot | null;
     watch(): () => void;
@@ -176,6 +180,7 @@ const MAX_SEND_BODY = MAX_MESSAGE * 8;
 const MAX_END_BODY = 1024;
 /** PORTS-4.7: `{ pid, command, startedAt, devctl }`. */
 const MAX_PORTS_STOP_BODY = 1024;
+const MAX_AWAKE_BODY = 256;
 /** VIEW-4.1: up to 10 answers of 2,000 characters of text each, JSON-escaped, plus their options. */
 const MAX_ANSWER_BODY = 160 * 1024;
 /** VIEW-4.5: `{ status }`, the Status the Esc button was shown in. */
@@ -242,12 +247,14 @@ export function createApp(opts: AppOptions): LookoutApp {
       ...(opts.topics ? { topics: opts.topics.view() } : {}),
       ...(opts.ports ? { ports: opts.ports.snapshot() } : {}),
       ...(opts.resQueue ? { res: opts.resQueue.snapshot() } : {}),
+      ...(opts.awake ? { awake: opts.awake.snapshot() } : {}),
     });
     clients.set(clientId, res);
     const unwatch = opts.monitor.watch();
     const unwatchMemory = opts.memory.watch();
     const unwatchPorts = opts.ports?.watch();
     const unwatchRes = opts.resQueue?.watch();
+    const unwatchAwake = opts.awake?.watch();
     const unwatchUsage = opts.usage.watch(); // one usage poller for every open tab
     const keepAlive = setInterval(() => res.write(': keep-alive\n\n'), opts.keepAliveMs ?? 15_000);
     req.on('close', () => {
@@ -257,6 +264,7 @@ export function createApp(opts: AppOptions): LookoutApp {
       unwatchMemory();
       unwatchPorts?.();
       unwatchRes?.();
+      unwatchAwake?.();
       opts.memory.drop(clientId);
       workOpen.get(clientId)?.();
       workOpen.delete(clientId);
@@ -658,6 +666,21 @@ export function createApp(opts: AppOptions): LookoutApp {
         return json(res, 200, await opts.ports.stop(parseStopTarget(body)));
       } catch (err) {
         if (err instanceof StopError) return json(res, err.status, { error: err.message });
+        throw err;
+      }
+    }
+    // AWAKE-1.1: keep-awake starts and ends processes on the Mac, so it's a mutation: the token and
+    // Origin (the guard checks every non-GET). AWAKE-3.1, 3.2: a refusal is 409 with why.
+    if (url.pathname === '/api/awake' && req.method === 'POST') {
+      if (!opts.awake) return json(res, 404, { error: 'not found' });
+      const body = await readJson(req, res, MAX_AWAKE_BODY, null);
+      if (body === NO_BODY) return;
+      const request = parseAwakeRequest(body);
+      if (!request) return json(res, 400, { error: 'mode must be off, awake or lid' });
+      try {
+        return json(res, 200, await opts.awake.set(request.mode, request.replace));
+      } catch (err) {
+        if (err instanceof AwakeError) return json(res, err.status, err.kind ? { error: err.message, kind: err.kind } : { error: err.message });
         throw err;
       }
     }

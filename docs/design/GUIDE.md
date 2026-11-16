@@ -55,6 +55,16 @@ What opens from a reading to explain it: Memory's and Usage's, from the sidebar'
 - **Guard:** DS-19.2 (a bar or track drawn outside `Meter` and the usage strip's bar fails, and so does `uppercase` outside `SectionLabel` and the chat's message tag).
 - **See:** MEM-3, USAGE-2, DS-19, DS-3.2.
 
+### A line in a column's footer
+
+A reading or a switch about the Mac, at the bottom of a column: the Memory line (and the Usage strip above it) in the Session sidebar, keep-awake in the right sidebar.
+
+- **Use** `FOOTER_LINE_TRIGGER` from `ui/footer-line.tsx` (DS-23): a 28 px line with a top border, the muted wash and `caption` text, its icon at 14 px. The whole line is the trigger of what it opens: Memory's details popover, keep-awake's menu (`KeepAwake.tsx`). The menu opens upward, at the line's end (`side="top"`).
+- Lines at the bottom of two columns sit level, so their top borders make one line across the window. A column too narrow for words, the closed right sidebar's rail, ends in the same 28 px line (`FOOTER_LINE`) holding the icon alone, as an `IconButton` (`sm`), pressed while what it switches is on (AWAKE-4.1).
+- **Do:** say the state in words on the line ("Awake · 2 at work"), with an exception's note in the tooltip.
+- **Don't:** add a third line to the Session sidebar's dock: its height is the composer's (SIDE-8.1).
+- **Guard:** DS-23.1 (the line's border and wash only in `ui/footer-line.tsx`). No guard can check the alignment; its look is AWAKE-4.6.
+
 ### A list row
 
 A row of the right sidebar's lists (Work, History, Library, Topics); the Session sidebar's rows follow SIDE-3.

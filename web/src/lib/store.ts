@@ -2,6 +2,7 @@ import { type SettingsView, defaultSettings } from '@shared/settings.ts';
 import type { ChangesView, ChatPage, FleetHealth, LaunchView, ServerEvent, SessionRow } from '@shared/types.ts';
 import type { MemorySnapshot } from '@shared/memory.ts';
 import type { PortsSnapshot } from '@shared/ports.ts';
+import type { AwakeSnapshot } from '@shared/awake.ts';
 import type { ResSnapshot } from '@shared/res.ts';
 import type { ToolsSnapshot } from '@shared/tools.ts';
 import type { TopicsView } from '@shared/topics.ts';
@@ -64,6 +65,8 @@ export interface LookoutState {
   ports: PortsSnapshot | null;
   /** RES-1.1: `res`'s queue; null before the first read and without `res`. */
   res: ResSnapshot | null;
+  /** AWAKE-1.1: keep-awake; null before the first snapshot and from a server without it. */
+  awake: AwakeSnapshot | null;
   /** WORK: the latest PRs and Refresh state, or null before the server sent any. */
   work: WorkSnapshot | null;
   /** TOOLS: the last read of every Tool, or null before the server sent one. */
@@ -157,6 +160,7 @@ export const initialState: LookoutState = {
   memory: null,
   ports: null,
   res: null,
+  awake: null,
   work: null,
   tools: null,
   topics: null,
@@ -240,6 +244,7 @@ export function reducer(state: LookoutState, action: Action): LookoutState {
         memory: e.memory,
         ports: e.ports !== undefined ? e.ports : state.ports,
         res: e.res !== undefined ? e.res : state.res,
+        awake: e.awake !== undefined ? e.awake : state.awake,
         work: e.work ?? state.work,
         tools: e.tools ?? state.tools,
         topics: e.topics ?? state.topics,
@@ -270,6 +275,9 @@ export function reducer(state: LookoutState, action: Action): LookoutState {
       return { ...state, ports: e.ports };
     case 'res':
       return { ...state, res: e.res };
+    case 'awake':
+      // AWAKE-1.1: an event and a pick's answer can arrive either way round; the newest stays.
+      return state.awake && e.awake.rev < state.awake.rev ? state : { ...state, awake: e.awake };
     case 'changes':
       return { ...state, changes: new Map(state.changes).set(e.sessionId, e.changes) };
     case 'usage':

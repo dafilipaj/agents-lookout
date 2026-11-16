@@ -34,6 +34,8 @@ export interface RightSidebarProps {
   counts?: Partial<Record<RightTab, number>>;
   /** PORTS-3.1: the shown Local servers, counted in the Servers tab's tooltip. */
   servers?: number;
+  /** AWAKE-4.2: the keep-awake footer line under the panels, in the bottom-right corner. */
+  corner?: ReactNode;
 }
 
 /** TOPIC-9.4: a neutral count, never Needs you's amber (UX, Markers). */
@@ -57,7 +59,7 @@ const PANEL_KEYS: Record<string, 1 | -1> = { j: 1, ArrowDown: 1, k: -1, ArrowUp:
  * own controls below it. On the header, j/k and ↑/↓ go to the open panel, never to the Session
  * sidebar, and ←/→ move between the tabs, as a tablist does (WORK-1.7).
  */
-export function RightSidebar({ width, onResize, tab, onTab, onClose, refresh, onRefresh, now, panels, nav, counts, servers }: RightSidebarProps) {
+export function RightSidebar({ width, onResize, tab, onTab, onClose, refresh, onRefresh, now, panels, nav, counts, servers, corner }: RightSidebarProps) {
   // A hidden panel stays mounted, so History keeps its query while you look at Work.
   const [shown, setShown] = useState<ReadonlySet<RightTab>>(() => new Set([tab]));
   if (!shown.has(tab)) setShown(new Set(shown).add(tab));
@@ -205,6 +207,8 @@ export function RightSidebar({ width, onResize, tab, onTab, onClose, refresh, on
             {panels[t]}
           </div>
         ))}
+        {/* AWAKE-4.2: the corner's footer line, under the panels, level with the Memory line. */}
+        {corner}
       </ShellCell>
       <KeysEdge column="right" />
     </aside>
@@ -212,7 +216,7 @@ export function RightSidebar({ width, onResize, tab, onTab, onClose, refresh, on
 }
 
 /** HIST-1.1, WORK-1.1: closed, the right sidebar is a narrow rail with a button per tab; its header cell carries the top line on. */
-export function RightRail({ onOpen, counts, servers }: { onOpen(tab: RightTab): void; counts?: Partial<Record<RightTab, number>>; servers?: number }) {
+export function RightRail({ onOpen, counts, servers, corner }: { onOpen(tab: RightTab): void; counts?: Partial<Record<RightTab, number>>; servers?: number; corner?: ReactNode }) {
   const button = (t: RightTab) => {
     const Icon = TAB_ICON[t];
     const n = counts?.[t] ?? 0;
@@ -233,6 +237,8 @@ export function RightRail({ onOpen, counts, servers }: { onOpen(tab: RightTab): 
         {button('library')}
         {button('topics')}
         {button('servers')}
+        {/* AWAKE-4.1: the rail ends in the corner's line, level with the Memory line. */}
+        {corner}
       </ShellCell>
       <KeysEdge column="right" />
     </div>

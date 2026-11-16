@@ -623,6 +623,13 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
     await mkdir(fakeDir('lsof'), { recursive: true });
     ports.answer(spec.ports);
     await writeExecutable(join(bin, 'sysctl'), fillTemplate('sysctl', { REAL_SYSCTL: '/usr/sbin/sysctl', NAME: 'sysctl', LOG: callsLog, NODE: process.execPath, SCRIPT: join(FAKES, 'sysctl.ts'), STATE: fakeDir('ps'), VIOLATIONS: violationsLog }));
+    // AWAKE: every World is on the charger and keeps nothing awake: its `pmset` answers AC power and
+    // its `caffeinate` holds no assertion, so a World never reads or changes the runner's power.
+    for (const [name, answer] of [['pmset', { power: 'ac' }], ['caffeinate', {}]] as const) {
+      await mkdir(fakeDir(name), { recursive: true });
+      await writeFile(join(fakeDir(name), 'answer.json'), JSON.stringify(answer));
+      await writeExecutable(join(bin, name), fillTemplate('fake', { NAME: name, LOG: callsLog, NODE: process.execPath, SCRIPT: join(FAKES, `${name}.ts`), STATE: fakeDir(name), VIOLATIONS: violationsLog }));
+    }
     if (spec.usage) {
       await mkdir(usageDir, { recursive: true });
       await writeFile(join(usageDir, 'answer.json'), JSON.stringify(spec.usage));
@@ -679,6 +686,8 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
       LOOKOUT_SETTINGS: settingsPath,
       // WORK-3.9: no avatar is fetched from GitHub; Review requests show their author's initial.
       LOOKOUT_AVATARS: 'off',
+      // AWAKE-3.1: Amphetamine is never found in a World, whatever the runner has installed.
+      LOOKOUT_AMPHETAMINE_APP: join(root, 'no-amphetamine', 'Amphetamine.app'),
       ...(bins.fleet ? { LOOKOUT_FLEET_BIN: join(bin, 'fleet') } : {}),
       ...(bins.tbSession ? { LOOKOUT_TB_SESSION_BIN: join(bin, 'tb-session') } : {}),
       TMUX_TMPDIR: tmuxTmpdir,

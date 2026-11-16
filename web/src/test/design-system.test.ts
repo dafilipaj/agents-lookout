@@ -1896,3 +1896,31 @@ describe('waits', () => {
     expect(orbits.sort()).toEqual(['web/src/components/LaunchItem.tsx LaunchItem', 'web/src/components/StartingView.tsx StartingView', 'web/src/components/ui/loading.tsx Loading']);
   });
 });
+
+/** DS-23.1: a sidebar footer line written in one class string: its border with the muted wash. */
+function footerLines(text: string): string[] {
+  return [...text.matchAll(/(['"`])([^'"`\n]*)\1/g)]
+    .map((m) => m[2]!)
+    .filter((s) => /(^|\s)border-sidebar-border\/70(\s|$)/.test(s) && /(^|\s)bg-muted\/30(\s|$)/.test(s));
+}
+
+const FOOTER_LINE_FILE = 'web/src/components/ui/footer-line.tsx';
+
+describe('footer lines', () => {
+  it('DS-23.1: the guard catches a footer line written by hand, however it is quoted, and lets the status line and other borders through', () => {
+    expect(footerLines('<div className="flex h-7 border-t border-sidebar-border/70 bg-muted/30">')).toHaveLength(1);
+    expect(footerLines("cn('mt-auto', 'h-7 bg-muted/30 border-t border-sidebar-border/70 px-2')")).toHaveLength(1);
+    expect(footerLines('`h-7 border-sidebar-border/70 bg-muted/30`')).toHaveLength(1);
+    expect(footerLines("'h-7 border-t border-border/70 bg-muted/30'")).toEqual([]);
+    expect(footerLines("'border-t border-sidebar-border/70 bg-muted/40'")).toEqual([]);
+  });
+
+  it('DS-23.1: a column’s footer line comes only from ui/footer-line.tsx, and the Memory line and keep-awake draw theirs from it', () => {
+    const found = Object.entries(SOURCES)
+      .filter(([path]) => path !== FOOTER_LINE_FILE)
+      .flatMap(([path, text]) => footerLines(text).map((s) => `${path}: ${s}`));
+    expect(found).toEqual([]);
+    expect(footerLines(SOURCES[FOOTER_LINE_FILE] ?? '')).toHaveLength(1);
+    for (const path of ['web/src/components/MemoryLine.tsx', 'web/src/components/KeepAwake.tsx']) expect(SOURCES[path], path).toMatch(/from '@\/components\/ui\/footer-line'/);
+  });
+});

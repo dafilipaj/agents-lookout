@@ -89,7 +89,8 @@ describe('the Topics tab (TOPIC-3)', () => {
     await user.keyboard('t');
     expect(screen.queryByTestId('topics-panel')).toBeNull();
     const rail = screen.getByRole('button', { name: 'Library' }).parentElement!;
-    const buttons = within(rail).getAllByRole('button').map((b) => b.getAttribute('aria-label'));
+    // The rail's tab buttons; it ends in keep-awake's line (AWAKE-4.1).
+    const buttons = within(rail).getAllByRole('button').map((b) => b.getAttribute('aria-label')).filter((l) => !l?.startsWith('Keep the Mac awake'));
     expect(buttons.slice(-3, -1)).toEqual(['Library', 'Topics']);
     await user.click(screen.getByRole('button', { name: 'Topics' }));
     expect(screen.getByTestId('topics-panel')).toBeVisible();

@@ -4,6 +4,7 @@ import type { SessionRow } from '@shared/types.ts';
 import { Hourglass, TrendingDown, TrendingUp } from 'lucide-react';
 import { useId, useState } from 'react';
 import type { UsageLevel } from '@shared/usage.ts';
+import { FOOTER_LINE_TRIGGER } from '@/components/ui/footer-line';
 import { Meter, type MeterTone, SectionLabel, Tile, Tiles, Verdict, WorthALook as WorthALookBox } from '@/components/ui/details';
 import { Loading } from '@/components/ui/loading';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -37,7 +38,7 @@ export function MemoryLine({ memory, res = null, sessions, now, open, onOpenChan
         aria-label="Memory details"
         aria-describedby={summaryId}
         title={description}
-        className="mt-auto flex h-7 w-full shrink-0 items-center gap-1.5 border-t border-sidebar-border/70 bg-muted/30 px-2.5 text-left text-caption leading-4 whitespace-nowrap outline-none hover:bg-sidebar-accent/50 focus-visible:bg-sidebar-accent/60"
+        className={cn('mt-auto', FOOTER_LINE_TRIGGER)}
       >
         <span id={summaryId} className="sr-only">{description}</span>
         <span aria-hidden data-field="memory-glyph" className={cn('h-3 w-[3px] shrink-0 rounded-full transition-colors duration-700 motion-reduce:transition-none', MEMORY_GLYPH[memory ? watchedLevel(memory) : 'normal'])} />

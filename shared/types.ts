@@ -1,6 +1,7 @@
 import type { LaunchHarness, SettingsView } from './settings.ts';
 import type { MemorySnapshot } from './memory.ts';
 import type { PortsSnapshot } from './ports.ts';
+import type { AwakeSnapshot } from './awake.ts';
 import type { Queued, ResSnapshot } from './res.ts';
 import type { UsageSnapshot } from './usage.ts';
 import type { ToolsSnapshot } from './tools.ts';
@@ -315,6 +316,8 @@ export type ServerEvent =
       ports?: PortsSnapshot | null;
       /** RES-1.1: `res`'s queue, null before the first read and without `res`; optional so that UI tests and a server without it can leave it out. */
       res?: ResSnapshot | null;
+      /** AWAKE-1.1: keep-awake's mode and what it shows; optional so that UI tests and a server without it can leave it out. */
+      awake?: AwakeSnapshot;
     }
   /** TOPIC-8.3: the whole set of Topics, to every tab, when it changed. */
   | { type: 'topics'; topics: TopicsView }
@@ -327,6 +330,8 @@ export type ServerEvent =
   | { type: 'ports'; ports: PortsSnapshot }
   /** RES-1.1: `res`'s queue (sent to every tab, only when something changed); null without `res`. */
   | { type: 'res'; res: ResSnapshot | null }
+  /** AWAKE-1.1: keep-awake changed (sent to every tab, only when something changed). */
+  | { type: 'awake'; awake: AwakeSnapshot }
   /** DIFF-3.6: a Session's changed files, sent to the tabs that have its list open; null when none count. */
   | { type: 'changes'; sessionId: string; changes: ChangesView | null }
   /** WORK: the latest PRs, Tasks and Refresh state (sent to every tab, only when something changed). */

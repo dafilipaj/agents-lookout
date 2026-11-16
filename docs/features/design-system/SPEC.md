@@ -3,7 +3,7 @@ title: "Design system"
 code: "DS"
 status: "In Progress"
 created: "2026-10-22"
-updated: "2026-11-13"
+updated: "2026-11-16"
 ---
 
 # Design system
@@ -244,6 +244,12 @@ A Session row's second line held up to seven coded values with no labels: a memo
 - [x] DS-22.3 An exception has its colour and an icon or words, never colour alone, and leads the second line, before the location and the Session's words, which truncate first: memory running away (MEM-4.1: `TrendingUp` and "+2.8 GB" in `warning-text`), a job queued in `res` (RES-3.1), Subagents running (SIDE-9.7: `Bot` and the count in `busy-text`) and a background shell (SIDE-2.6), in that order, as today's numbers group has them. Context past 40% keeps its column, in its level's colour with its ring (DS-3.5). (test)
 - [x] DS-22.4 A component test renders a row with routine values only (changes, an age, context at 40%, memory growing under MEM-4.1's threshold) and finds no coloured text besides the Status's marker, strip and tag; with each exception on, finds it in its place and colour; and finds the columns in their order and widths in every Status. SIDE-3.11's contrast test covers the grey changes. (test)
 - [ ] DS-22.5 Seen in both modes with five or more live Sessions, at 280 px and wider: a row says in half a second whether it needs you, the columns line up, and the one exception on the list is the thing you see. (manual)
+
+### DS-23 One line in a column's footer
+
+Three lines sit at the bottom of a column, all about the Mac: the Session sidebar's Memory line, and keep-awake's line in the right sidebar and on its closed rail (AWAKE-4). They sit level, so their top borders make one line across the window. Until 2026-11-16 each wrote the same classes by hand.
+
+- [x] DS-23.1 A column's footer line comes from `ui/footer-line.tsx`: `FOOTER_LINE`, or `FOOTER_LINE_TRIGGER` for a line that opens something. It is 28 px with a top border in `sidebar-border/70` and `bg-muted/30`. The design-system guard finds that border and wash written together anywhere else. It also checks that the Memory line and keep-awake draw theirs from it. (test)
 
 ## Non-goals
 
@@ -736,3 +742,4 @@ None.
 - 2026-11-13: DS-8.3: `Chip` gains `icon`, a lucide icon drawn 14 px in the chip's colour before its word, the left padding then 4 px, for Library's Type chips (LIB-2.2, Dario's proposal A). It's a prop, not a rule on the chip's children, so the milestone and Done chips' own 12 px icons are untouched, and a Button around the chip can't resize it (an Opus review found a children rule did both). GUIDE's "An icon" says so.
 - 2026-11-13: DS-3.4 amended and unticked for SIDE-12.5 (Plan item 35): the Session filter marks its hits too, and the three places mark through one piece, `ui/hits.tsx`; in a sidebar row a mark adds no width, so truncation doesn't move as you type.
 - 2026-11-13: DS-3.4 built and ticked: History's snippets, Library's hits and the Session filter's mark through `ui/hits.tsx`'s `Hit`, the DS-2.3 guard's `highlight` row now lists that file alone.
+- 2026-11-16: Added and built DS-23 (Plan item 51), from a review of AWAKE. Keep-awake's footer line and the rail's line had copied the Memory line's classes. All three now come from `ui/footer-line.tsx`, guarded in `design-system.test.ts`.
