@@ -32,11 +32,11 @@ Tokens live in `web/src/index.css`, components in `web/src/components/ui/`, deci
   |---|---|---|---|
   | Primary | indigo fill | the action the surface exists for: Send, Start, Submit, Save | one per surface |
   | Soft | `primary-soft` fill, `primary-text` label and icon | the next step in a dense place: a row's Enter action, a past Session's Resume | one per row |
-  | Secondary | outline | a real alternative: Stop, Cancel, Review | |
+  | Secondary | outline | a real alternative: Cancel, Review | |
   | Quiet | ghost | frequent, low-stakes actions in headers and toolbars: Add to Topic, More, Copy | |
   | Danger | red text and icon | End Session, Delete: visible where you use it often, last in its group, behind a `ButtonDivider` | a red fill (`destructive`) only in its confirm |
 
-  Sizes, named by place (DS-18.3): `line` (24 px) inside a line of text, a card's line or the status line, `default` (28 px) in headers, rows, panels and toolbars, `form` (32 px) in dialogs and Settings' forms. End Session sits last in the header, after a divider (DS-18.5). An action's icon and word come from `lib/actions.ts` (DS-18.6): a row's first action and a menu item name their `action`, and a `Button` draws `<ActionIcon id>`.
+  Sizes, named by place (DS-18.3): `line` (24 px) inside a line of text, a card's line or the status line, `default` (28 px) in headers, rows, panels and toolbars, `form` (32 px) in dialogs and Settings' forms. The Session header's actions are `IconButton`s (`md`, 4 px apart), End Session last, after a divider, in the `danger` role (DS-18.5); its Stop and Esc sit in the Status tag, as `StatusTagAction` (`ui/status-tag.tsx`, DS-18.9), so the actions never move when the Status changes. An action's icon and word come from `lib/actions.ts` (DS-18.6): a row's first action and a menu item name their `action`, and a `Button` draws `<ActionIcon id>`.
 - **Do:** pick the role by what the action is for, then the height by where it sits.
 - **Don't:** set a height, padding or text size in a Button's `className` (`<Button size="sm" className="h-7">`); copy a button's look onto a hand-made `<button>`.
 - **Guard:** DS-7.2 (icon buttons), DS-12.4 (Primary's places), DS-16.4 (row actions), DS-18.7 (no height, padding or text size in a Button's `className`; the red fill only in a confirm; a hand-made `<button>` only where the list says why; one icon per action, menus included).

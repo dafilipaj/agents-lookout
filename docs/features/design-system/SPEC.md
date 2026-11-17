@@ -3,7 +3,7 @@ title: "Design system"
 code: "DS"
 status: "In Progress"
 created: "2026-10-22"
-updated: "2026-11-16"
+updated: "2026-11-17"
 ---
 
 # Design system
@@ -203,10 +203,11 @@ Lookout had 66 `Button`s in six variants and five heights: outline alone came in
 - [x] DS-18.2 `index.css` defines `primary-text`, the Primary family's text shade (`oklch(0.52 0.2 281)` light, `oklch(0.74 0.14 281)` dark): on `primary-soft` over the background, the sidebar and `sidebar-accent` it keeps 4.5:1 or more in both modes, where dark `primary` measures 2.5 to 3.1:1. `destructive-text` keeps 4.5:1 on the same three planes. The colour guard's Primary row pins `bg-primary-soft` and `text-primary-text` to `button.tsx` and `icon-button.tsx` for buttons, beside its existing pins (DS-12.4). (test)
 - [x] DS-18.3 A `Button` has three sizes, named by place: `line`, 24 px, `meta` text and a 14 px icon, inside a line of text, a card's line or the status line; `default`, 28 px, `body` text and a 16 px icon, in headers, rows, panels, toolbars and the chat; `form`, 32 px, `body` text and a 16 px icon, in dialogs and Settings' forms. shadcn's `xs`, `sm`, `lg` and 36 px `default` go; icon sizes stay inside `components/ui/` (DS-7). The labelled row button keeps its 28 px with a 20 px icon (DS-7.1). (test)
 - [x] DS-18.4 A surface has at most one `primary` button: a view, a dialog, or a form with its own Save (each of Settings' sections is one). A row's first action is `soft` (DS-16.1), and so is a past Session view's Resume; a row's "More" is `quiet`, with its word. Component tests render each view and dialog in the Places list (Technical approach, "Buttons") and count its `primary` buttons. (test)
-- [x] DS-18.5 A danger action stays where you use it: End Session in the Session header, last, after a divider (a 1 px line in `border`, 16 px tall, 4 px either side), as `danger` with its icon and word (the word gives way below 26 rem, as today); Delete last in its menu, after its divider (DS-16.2). Its confirming button in the dialog it opens is the red fill, `destructive` (VIEW-5.6, TOPIC's Delete). In the header, Stop and Esc are `secondary`, Add to Topic and Copy session ID `quiet`. (test)
+- [x] DS-18.5 A danger action stays where you use it: End Session in the Session header, last, after a divider (a 1 px line in `border`, 16 px tall, 4 px either side), as `danger`; Delete last in its menu, after its divider (DS-16.2). Its confirming button in the dialog it opens is the red fill, `destructive` (VIEW-5.6, TOPIC's Delete). The Session header's actions are icon buttons (`IconButton`, `md`, 4 px apart): Add to Topic and Copy session ID `quiet`, End Session `danger`, its icon in `destructive-text` (`IconButton` takes the `danger` role for it); a Done card's End Session keeps its word (VIEW-5.17). Stop and Esc are in the Status tag (DS-18.9). (test)
 - [x] DS-18.6 Each action has one icon, in one table, `lib/actions.ts` (UX, "Actions"), with its word and its key when it has one. A `RowActions` first action and a menu item name their action, never an icon of their own, so their icon and word come from the table; a `Button` that runs a table action draws its icon with `ActionIcon`; the Keyboard shortcuts dialog shows a shortcut's icon before its label when it runs a table action. Opening something inside Lookout (a Session, a Topic view, the Spec view) and leaving Lookout (GitHub, Fantastic, a file in its app, a URL) have different icons. Every item of an action menu has its icon; a menu of choices (the model, Effort and Status menus) doesn't. (test)
 - [x] DS-18.7 The guard (Technical approach, check 9) fails on: a `Button` or `labelledButtonLook` whose `className` sets a height, minimum or maximum height, padding or text size; `variant="destructive"` outside the listed confirm dialogs; a hand-made `<button>` outside `components/ui/` that isn't in the list of allowed ones, each with its reason (rows, tabs, chips, Marks, the status line's menus, inline links, a picture that opens large); a `RowMenuItem` or `RowActions` first action with an `icon` of its own; and a `Button` whose text is a table action's word without that action's `ActionIcon`. (test)
-- [x] DS-18.8 Seen in both modes at 1440 px and with the right sidebar at 280 px: in the Session header, Stop, Add to Topic and End Session read as three kinds of action, and End Session as the one to be careful with; an expanded row's Soft action reads as its next step without competing with a Needs you tint or a Busy marker; no button reads as a Status; and a row's actions, a header's and a dialog's sit on the heights the place gives. (manual)
+- [ ] DS-18.8 Seen in both modes at 1440 px and with the right sidebar at 280 px: in the Session header, the actions read as one row of tools, End Session as the one to be careful with, and Stop or Esc as part of the Status; an expanded row's Soft action reads as its next step without competing with a Needs you tint or a Busy marker; no other button reads as a Status; and a row's actions, a header's and a dialog's sit on the heights the place gives. (manual)
+- [x] DS-18.9 A Status tag can hold the action that belongs to its Status: `StatusTag` and `StatusTagAction` (`ui/status-tag.tsx`), for the Session header's Stop and Esc (VIEW-4.4, VIEW-4.5). The action follows the Status after a 1 px line in the tag's text colour at 30%; it is the icon (14 px) and its word in `meta`, in the tag's own colours, with a 10% tint of its text colour under the pointer and the ring for keyboard focus. The tag is 24 px tall with an action and 20 px without; its colours stay VIEW-5.9's. (test)
 
 ### DS-19 One anatomy for details popovers
 
@@ -430,7 +431,7 @@ SideNav, wide                         Tabs
 |---|---|---|---|
 | `primary` | `primary` fill, `primary-foreground` | the action the surface exists for: Send, Start, a question's submit, a dialog's confirm, Save | one per surface |
 | `soft` | `primary-soft` fill, `primary-text` label and icon | the next step in a dense place: a row's first action, a past Session's Resume | one per row |
-| `secondary` | 1 px `border`, `background`, `foreground` | a real alternative: Stop, Esc, Cancel, a Session chip | |
+| `secondary` | 1 px `border`, `background`, `foreground` | a real alternative: Cancel, Review, a Session chip | |
 | `quiet` | no fill or border; `muted-foreground`, `accent` under the pointer | frequent, low-stakes actions in headers and toolbars: Add to Topic, More, Copy, Show more | |
 | `danger` | `quiet`'s look in `destructive-text` | End Session, Delete, where they're used: last, after a divider | |
 | `destructive` | `destructive` fill | only the confirming button of a dialog that ends or deletes | |
@@ -471,8 +472,8 @@ SideNav, wide                         Tabs
 
 ```
 Session header
- Fix rates rounding   Busy · 8m      [■ Stop]  (⊕ Add to Topic)  (⧉) │ (⏻ End Session)
-                                      secondary  quiet            quiet   danger
+ Fix rates rounding   Claude Code        (Busy · 8m │ ■ Stop)  (⊕) (⧉) │ (⏻)
+                                          Status tag + action   quiet     danger
 
 An expanded row
  [→ Open Session ↵]  (… More)
@@ -743,3 +744,4 @@ None.
 - 2026-11-13: DS-3.4 amended and unticked for SIDE-12.5 (Plan item 35): the Session filter marks its hits too, and the three places mark through one piece, `ui/hits.tsx`; in a sidebar row a mark adds no width, so truncation doesn't move as you type.
 - 2026-11-13: DS-3.4 built and ticked: History's snippets, Library's hits and the Session filter's mark through `ui/hits.tsx`'s `Hit`, the DS-2.3 guard's `highlight` row now lists that file alone.
 - 2026-11-16: Added and built DS-23 (Plan item 51), from a review of AWAKE. Keep-awake's footer line and the rail's line had copied the Memory line's classes. All three now come from `ui/footer-line.tsx`, guarded in `design-system.test.ts`.
+- 2026-11-17: The Session header's buttons were five looks in one row (a filled Status tag beside an outlined Stop, a quiet button with its word, a quiet icon and a red word), and Dario found it untidy; he chose to combine two of four drawn options. DS-18.5 amended: the header's actions are `md` icon buttons, End Session `danger` with its icon alone, and `IconButton` takes the `danger` role. Added DS-18.9, a Status tag that holds its Status's action, for Stop and Esc. DS-18.8 amended and unticked, for Dario to see the new header live.

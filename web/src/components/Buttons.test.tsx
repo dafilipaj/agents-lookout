@@ -7,8 +7,8 @@ import { launchView, renderApp, row } from '@/test/helpers';
 
 /**
  * DS-18: buttons by role, in the places that use them. A surface (a view, a dialog, a form with its
- * own Save) has at most one `primary` button (DS-18.4); the Session header's actions are three kinds,
- * End Session last after its divider (DS-18.5).
+ * own Save) has at most one `primary` button (DS-18.4); the Session header's actions are icon buttons,
+ * End Session last after its divider (DS-18.5), and Stop or Esc sit in the Status tag (DS-18.9).
  */
 
 const main = () => document.querySelector<HTMLElement>('main')!;
@@ -75,32 +75,64 @@ describe('one primary per surface (DS-18.4)', () => {
   });
 });
 
-describe('the Session header (DS-18.5)', () => {
-  it('DS-18.5: Stop is secondary, Add to Topic and Copy session ID quiet, End Session danger, last, after a divider; all 28 px', () => {
-    const app = renderApp('/s/3f2b8c1e-9a47-4d6e-b0c5-7e1d2a9f4b68');
-    app.snapshot([row({ id: '3f2b8c1e-9a47-4d6e-b0c5-7e1d2a9f4b68', status: 'busy', ownHost: true })]);
-    const actions = header().querySelector<HTMLElement>('[data-slot="header-actions"]')!;
-    const stop = within(actions).getByRole('button', { name: 'Stop' });
-    const copy = within(actions).getByRole('button', { name: 'Copy session ID' });
-    const end = within(actions).getByRole('button', { name: 'End Session' });
-    expect(role(stop)).toBe('secondary');
-    expect(role(copy)).toBe('quiet');
-    expect(role(end)).toBe('danger');
-    const addToTopic = actions.querySelector('[data-action="add-to-topic"]');
-    if (addToTopic) expect(role(addToTopic)).toBe('quiet');
-    const children = [...actions.children];
+describe('the Session header (DS-18.5, DS-18.9)', () => {
+  const ID = '3f2b8c1e-9a47-4d6e-b0c5-7e1d2a9f4b68';
+  const actions = () => header().querySelector<HTMLElement>('[data-slot="header-actions"]')!;
+  const tag = () => header().querySelector<HTMLElement>('[data-field="status"]')!;
+
+  it('DS-18.5: the actions are 28 px icon buttons, 4 px apart: Add to Topic and Copy session ID quiet, End Session danger, last, after a divider', () => {
+    const app = renderApp(`/s/${ID}`);
+    app.snapshot([row({ id: ID, status: 'busy', ownHost: true })]);
+    const buttons = within(actions()).getAllByRole('button');
+    // Add to Topic shows where Topics are on.
+    const names = buttons.map((b) => b.getAttribute('aria-label'));
+    expect(names.filter((n) => n !== 'Add to Topic')).toEqual(['Copy session ID', 'End Session']);
+    expect(actions()).toHaveClass('gap-1');
+    for (const b of buttons) {
+      expect(b, b.getAttribute('aria-label')!).toHaveAttribute('data-slot', 'icon-button');
+      expect(b, b.getAttribute('aria-label')!).toHaveAttribute('data-size', 'md');
+      expect(b, b.getAttribute('aria-label')!).toHaveTextContent('');
+      expect(b.getAttribute('data-variant'), b.getAttribute('aria-label')!).toBe(b.getAttribute('aria-label') === 'End Session' ? 'danger' : 'quiet');
+    }
+    const end = within(actions()).getByRole('button', { name: 'End Session' });
+    expect(end).toHaveClass('text-destructive-text');
+    const children = [...actions().children];
     expect(children.at(-1)).toBe(end);
+    // The row's 4 px gap puts it 4 px from each neighbour, with no margin of its own.
     expect(children.at(-2)).toHaveAttribute('data-slot', 'button-divider');
-    for (const b of within(actions).getAllByRole('button')) expect(sizeOf(b), b.textContent ?? '').toBe('default');
-    expect(primaries(actions)).toEqual([]);
+    expect(children.at(-2)).toHaveClass('mx-0');
+    // Stop isn't among them: it's in the Status tag (DS-18.9).
+    expect(within(actions()).queryByRole('button', { name: 'Stop' })).toBeNull();
+    expect(primaries(actions())).toEqual([]);
   });
 
   it('DS-18.5: without End Session there is no divider', () => {
-    const app = renderApp('/s/3f2b8c1e-9a47-4d6e-b0c5-7e1d2a9f4b68');
-    app.snapshot([row({ id: '3f2b8c1e-9a47-4d6e-b0c5-7e1d2a9f4b68', ownHost: false })]);
-    const actions = header().querySelector<HTMLElement>('[data-slot="header-actions"]')!;
-    expect(within(actions).queryByRole('button', { name: 'End Session' })).toBeNull();
-    expect(actions.querySelector('[data-slot="button-divider"]')).toBeNull();
+    const app = renderApp(`/s/${ID}`);
+    app.snapshot([row({ id: ID, ownHost: false })]);
+    expect(within(actions()).queryByRole('button', { name: 'End Session' })).toBeNull();
+    expect(actions().querySelector('[data-slot="button-divider"]')).toBeNull();
+  });
+
+  it("DS-18.9: Stop sits in the Status tag after a 1 px line, in the tag's own colours; the tag is 24 px with it and 20 px without", () => {
+    const app = renderApp(`/s/${ID}`);
+    app.snapshot([row({ id: ID, status: 'busy', ownHost: true })]);
+    expect(tag()).toHaveAttribute('data-slot', 'status-tag');
+    expect(tag()).toHaveClass('h-6', 'rounded-full', 'text-meta', 'bg-busy-soft', 'text-busy-text');
+    const stop = within(tag()).getByRole('button', { name: 'Stop' });
+    expect(stop).toHaveAttribute('data-slot', 'status-tag-action');
+    expect(stop.querySelector('svg')).toHaveClass('lucide-circle-stop');
+    // No colour of its own: the tag's text colour, and a tint of it under the pointer.
+    expect([...stop.classList].filter((c) => c.startsWith('text-') || c.startsWith('bg-'))).toEqual([]);
+    expect(stop).toHaveClass('hover:bg-current/10', 'focus-visible:ring-2', 'focus-visible:ring-ring', 'h-full');
+    const line = stop.previousElementSibling!;
+    expect(line).toHaveAttribute('data-slot', 'status-tag-line');
+    expect(line).toHaveAttribute('aria-hidden', 'true');
+    expect(line).toHaveClass('w-px', 'bg-current', 'opacity-30');
+    // Idle has no action: the tag is 20 px, with nothing but the Status.
+    app.emit({ type: 'sessions', upsert: [row({ id: ID, status: 'idle', ownHost: true })], remove: [] });
+    expect(tag()).toHaveClass('h-5');
+    expect(within(tag()).queryByRole('button')).toBeNull();
+    expect(tag().querySelector('[data-slot="status-tag-line"]')).toBeNull();
   });
 });
 

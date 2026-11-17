@@ -82,7 +82,7 @@ export function PastSessionView({ harness, sessionId, now, load }: Props) {
           <HarnessIcon harness={item.harness} tone="brand" className="size-4" />
           {HARNESS_NAME[item.harness]}
         </span>
-        <span className="@container ml-auto flex shrink-0 items-center">
+        <span className="ml-auto flex shrink-0 items-center">
           <AddToTopicButton member={historyMember(item)} label={item.title} />
         </span>
         <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-meta font-medium text-muted-foreground">

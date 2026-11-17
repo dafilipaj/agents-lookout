@@ -118,8 +118,8 @@ export interface IconButtonProps extends Omit<ComponentProps<'button'>, 'aria-la
   /** A tooltip that says more than the name (why it's disabled, the whole ID it copies). */
   tip?: string;
   size?: 'sm' | 'md';
-  /** Its role (DS-18.1): `quiet` by default, `secondary` where it sits among outlined controls. */
-  variant?: 'quiet' | 'secondary';
+  /** Its role (DS-18.1): `quiet` by default, `secondary` where it sits among outlined controls, `danger` for the Session header's End Session (DS-18.5). */
+  variant?: 'quiet' | 'secondary' | 'danger';
 }
 
 /**
@@ -134,9 +134,11 @@ export function IconButton({ label, shortcut, tip, size = 'sm', variant = 'quiet
       type={type}
       data-slot="icon-button"
       data-size={size}
+      data-variant={variant}
       aria-label={label}
       title={tip ?? (shortcut ? `${label} (${shortcut})` : label)}
-      className={cn(buttonVariants({ variant, size: null }), iconButtonVariants({ size }), className)}
+      // The size's muted colour is the quiet look's; danger keeps its red (DS-18.5).
+      className={cn(buttonVariants({ variant, size: null }), iconButtonVariants({ size }), variant === 'danger' && 'text-destructive-text', className)}
       {...props}
     />
   );

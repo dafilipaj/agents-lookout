@@ -275,7 +275,7 @@ describe('Session view header', () => {
       expect(tag()).toHaveTextContent(labels[status]);
       for (const c of any) expect(tag().classList.contains(c), `${status}: ${c}`).toBe((colours[status] as readonly string[]).includes(c));
       // The age reads in the tag's own colour: dimmed, it fell below 4.5:1 (sessions.test.ts measures them).
-      const age = tag().querySelector('span')!;
+      const age = tag().querySelector('[data-slot="status-age"]')!;
       expect(age).toHaveTextContent(/^· \d+[smhd]$/);
       expect([...age.classList].filter((c) => c.startsWith('opacity-') || c.startsWith('text-'))).toEqual([]);
     }
@@ -299,7 +299,7 @@ describe('Session view header', () => {
       vi.useRealTimers();
     });
 
-    it('VIEW-5.10: a Session with a session_id has a "Copy session ID" button in the header whose tooltip shows the whole ID; a click copies it and reads "Copied" for 2 s', async () => {
+    it('VIEW-5.10: a Session with a session_id has a "Copy session ID" button in the header whose tooltip shows the whole ID; a click copies it, and for 2 s its icon is a check and a status says "Copied"', async () => {
       const id = '3f2b8c1e-9a47-4d6e-b0c5-7e1d2a9f4b68';
       const writeText = vi.fn(async () => {});
       clipboard(writeText);
@@ -317,13 +317,17 @@ describe('Session view header', () => {
       fireEvent.click(button);
       await act(async () => {});
       expect(writeText).toHaveBeenCalledWith(id);
-      expect(button).toHaveTextContent('Copied');
+      // An icon button: the outcome is its icon and its tooltip, never a word beside it.
+      expect(button.querySelector('svg.lucide-check')).not.toBeNull();
+      expect(button).toHaveTextContent('');
+      expect(button).toHaveAttribute('title', `Copied: ${id}`);
       expect(button).toHaveAccessibleName('Copy session ID'); // it keeps its name…
       expect(within(header()).getByRole('status')).toHaveTextContent('Copied'); // …and says the outcome
       act(() => vi.advanceTimersByTime(COPY_FEEDBACK_MS - 1));
-      expect(button).toHaveTextContent('Copied');
+      expect(button.querySelector('svg.lucide-check')).not.toBeNull();
       act(() => vi.advanceTimersByTime(1));
-      expect(button).not.toHaveTextContent('Copied');
+      expect(button.querySelector('svg.lucide-copy')).not.toBeNull();
+      expect(button).toHaveAttribute('title', `Copy session ID: ${id}`);
       expect(within(header()).getByRole('status')).toHaveTextContent('');
     });
 
@@ -334,8 +338,10 @@ describe('Session view header', () => {
       const app = renderApp('/s/a');
       app.snapshot([row({ id: 'a' })]);
       fireEvent.click(copyButton()!);
-      expect(await within(copyButton()!).findByText("Couldn't copy")).toBeInTheDocument();
+      await waitFor(() => expect(within(header()).getByRole('status')).toHaveTextContent("Couldn't copy"));
       expect(copyButton()).toHaveClass('text-destructive');
+      expect(copyButton()!.querySelector('svg.lucide-copy')).not.toBeNull();
+      expect(copyButton()).toHaveAttribute('title', "Couldn't copy: a");
     });
 
     it('VIEW-5.10: it is reachable with Tab, and Enter copies', async () => {
@@ -368,14 +374,16 @@ describe('Session view header', () => {
       expect(copyButton()).toHaveAttribute('title', expect.stringContaining('orca'));
     });
 
-    it('VIEW-5.10: it never shrinks, and its word goes below 26rem like the other buttons’', async () => {
+    it('VIEW-5.10: it never shrinks: an icon button, 28 px, as the header’s other actions (DS-18.5)', async () => {
       clipboard(async () => {});
       const app = renderApp('/s/a');
       app.snapshot([row({ id: 'a' })]);
       expect(copyButton()).toHaveClass('shrink-0');
+      expect(copyButton()).toHaveAttribute('data-slot', 'icon-button');
+      expect(copyButton()).toHaveAttribute('data-size', 'md');
       fireEvent.click(copyButton()!);
       await act(async () => {});
-      expect(within(copyButton()!).getByText('Copied')).toHaveClass('@max-[26rem]:sr-only');
+      expect(copyButton()).toHaveTextContent('');
     });
   });
 

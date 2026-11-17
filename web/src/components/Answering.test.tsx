@@ -734,7 +734,7 @@ describe('Stop (VIEW-4.4)', () => {
 
   afterEach(() => vi.useRealTimers());
 
-  it('VIEW-4.4: Stop is in the header’s actions only while a Controllable Session is Busy', () => {
+  it('VIEW-4.4: Stop is in the header’s Status tag only while a Controllable Session is Busy', () => {
     const app = renderApp('/s/busy');
     app.snapshot([
       row({ id: 'busy', status: 'busy' }),
@@ -743,7 +743,9 @@ describe('Stop (VIEW-4.4)', () => {
       row({ id: 'orca', status: 'busy', backend: 'unknown', controllable: false }),
     ]);
     expect(stopButton()).toHaveTextContent('Stop');
-    expect(header().querySelector('[data-slot="header-actions"]')).toContainElement(stopButton());
+    // In the tag, after the Status (DS-18.9), never among the actions.
+    expect(header().querySelector('[data-field="status"]')).toContainElement(stopButton());
+    expect(header().querySelector('[data-slot="header-actions"]')).not.toContainElement(stopButton());
     for (const id of ['idle', 'waits', 'orca']) {
       act(() => window.history.pushState(null, '', `/s/${id}`));
       act(() => window.dispatchEvent(new PopStateEvent('popstate')));
@@ -785,7 +787,7 @@ describe('Stop (VIEW-4.4)', () => {
     expect(stopButton()).toBeEnabled();
   });
 
-  it('VIEW-4.4: a failed Stop says why beside the button, cut to the header’s one line, and Stop can be pressed again', async () => {
+  it('VIEW-4.4: a failed Stop says why beside the Status tag, cut to the header’s one line, and Stop can be pressed again', async () => {
     const user = userEvent.setup();
     const why = 'Couldn’t stop it: the Session host refused, and this reason is long enough to fill the whole header on its own. Check the terminal.';
     const stopSession = vi.fn<(id: string) => Promise<void>>().mockRejectedValueOnce(new SaveError(why, null, 502)).mockResolvedValueOnce(undefined);
@@ -815,18 +817,17 @@ describe('Stop (VIEW-4.4)', () => {
     expect(narrow).toHaveAttribute('role', 'alert');
     expect(narrow).toHaveTextContent(why);
     expect(narrow).toHaveClass('sr-only', 'hidden', '@max-[20rem]:block');
-    // There, Stop itself turns the error's colour, so the failure still shows.
-    expect(stopButton()).toHaveClass('@max-[20rem]:text-destructive');
+    // It sits right before the tag that holds Stop.
+    expect(header().querySelector('[data-slot="header-info"]')!.nextElementSibling).toBe(header().querySelector('[data-field="status"]'));
     // Pressed again, and this time it stops: the error goes, from Stop's tooltip and description too.
     await user.click(stopButton()!);
     await waitFor(() => expect(stopButton()).toHaveTextContent('Stopping…'));
     expect(header().querySelector('[data-slot="stop-error"]')).toBeNull();
     expect(stopButton()).toHaveAttribute('title', 'Stopping…');
-    expect(stopButton()).not.toHaveClass('@max-[20rem]:text-destructive');
     expect(stopButton()).not.toHaveAttribute('aria-describedby');
   });
 
-  it('VIEW-4.4: the header stays one line with a long error: only the buttons never shrink, the error gives way first, then the title, down to an ellipsis (class contract; jsdom can’t measure)', async () => {
+  it('VIEW-4.4: the header stays one line with a long error: only the Status tag and the buttons never shrink, the error gives way first, then the title, down to an ellipsis (class contract; jsdom can’t measure)', async () => {
     const user = userEvent.setup();
     const why = 'x'.repeat(400);
     const app = renderApp('/s/a', { stopSession: vi.fn(async () => Promise.reject(new SaveError(why, null, 409))) });
@@ -834,39 +835,40 @@ describe('Stop (VIEW-4.4)', () => {
     await user.click(stopButton()!);
     const rowEl = header().querySelector('[data-slot="header-row"]')!;
     expect(rowEl).toHaveClass('flex', 'min-w-0', 'whitespace-nowrap');
-    // The title truncates, down to an ellipsis, before the buttons are touched.
+    // The title truncates, down to an ellipsis, before the tag and the buttons are touched.
     const h1 = within(header()).getByRole('heading', { level: 1 });
     expect(h1).toHaveClass('truncate', 'min-w-5');
     expect(h1).not.toHaveClass('min-w-16');
-    // The error gets only the room left over (basis 0), at least 3rem, and sits outside the actions.
+    // The error gets only the room left over (basis 0), at least 3rem, and sits outside the tag and the actions.
     const error = header().querySelector('[data-slot="stop-error"]')!;
     expect(error).toHaveClass('min-w-12', 'flex-[1_1_0]');
     expect(error).not.toHaveClass('shrink-0', 'flex-auto');
+    const tag = header().querySelector<HTMLElement>('[data-field="status"]')!;
     const actions = header().querySelector('[data-slot="header-actions"]')!;
     expect(actions).not.toContainElement(error as HTMLElement);
-    // Only the buttons never shrink: the rest of the line is a box of its own that shrinks to nothing
-    // and cuts off what doesn't fit, so a very narrow pane never cuts the buttons.
+    expect(tag).not.toContainElement(error as HTMLElement);
+    // Only the tag and the buttons never shrink: the rest of the line is a box of its own that shrinks
+    // to nothing and cuts off what doesn't fit, so a very narrow pane never cuts Stop or the buttons.
     const info = header().querySelector('[data-slot="header-info"]')!;
     expect(info).toHaveClass('min-w-0', 'flex-1', 'overflow-x-clip');
     expect(info).not.toHaveClass('shrink-0');
     expect(info.lastElementChild).toBe(error);
-    expect(info.nextElementSibling).toBe(actions);
-    expect([...rowEl.children]).toEqual([info, actions]);
+    expect([...rowEl.children]).toEqual([info, tag, actions]);
+    expect(tag).toHaveClass('shrink-0');
     expect(actions).toHaveClass('shrink-0');
-    // (VIEW-5.10's icon-only Copy session ID comes after them; its own test covers it.)
-    const buttons = within(actions as HTMLElement).getAllByRole('button', { name: /^(Stop|End Session)/ });
-    expect(buttons.map((b) => b.textContent)).toEqual(['Stop', 'End Session']);
-    for (const b of buttons) expect(b).toHaveClass('shrink-0');
     expect([...info.children].filter((c) => c.classList.contains('shrink-0')).map((c) => c.getAttribute('data-field') ?? c.getAttribute('role'))).toEqual([
       'img', // the Status marker
       'harness',
-      'status',
     ]);
-    // Narrow headers (a container query on the header) drop the Harness's name and the age, then the buttons' words, which stay their names.
+    // Narrow headers (a container query on the header) drop the Harness's name and the age, then Stop's word, which stays its name.
     expect(header()).toHaveClass('@container');
     expect(within(header().querySelector('[data-field="harness"]') as HTMLElement).getByText('Claude Code', { selector: 'span' })).toHaveClass('@max-[32rem]:sr-only');
-    for (const b of buttons) expect(b.querySelector('span')).toHaveClass('@max-[26rem]:sr-only');
-    expect(buttons.map((b) => b.getAttribute('title'))).toEqual([`Stop\n${why}`, 'End Session']);
+    expect(tag.querySelector('[data-slot="status-age"]')).toHaveClass('@max-[32rem]:hidden');
+    expect(stopButton()!.querySelector('span')).toHaveClass('@max-[26rem]:sr-only');
+    expect(stopButton()).toHaveAttribute('title', `Stop\n${why}`);
+    // The actions are icons alone, named by their tooltips (DS-18.5).
+    expect(within(actions as HTMLElement).getByRole('button', { name: 'End Session' })).toHaveAttribute('title', 'End Session');
+    expect(within(actions as HTMLElement).getByRole('button', { name: 'End Session' })).toHaveTextContent('');
   });
 
   it('VIEW-4.4: a lost connection may have pressed Esc: it says so and opens the terminal', async () => {
@@ -895,7 +897,7 @@ describe('Esc (VIEW-4.5)', () => {
 
   afterEach(() => vi.useRealTimers());
 
-  it('VIEW-4.5: Esc is in the header’s actions while a Controllable Session Needs you and a read of this spell shows no answer buttons; never with Stop, nor before that read', () => {
+  it('VIEW-4.5: Esc is in the header’s Status tag while a Controllable Session Needs you and a read of this spell shows no answer buttons; never with Stop, nor before that read', () => {
     const app = waiting();
     // No read of this spell yet: a permission prompt's buttons may be a second away.
     expect(escButton()).toBeNull();
@@ -905,7 +907,8 @@ describe('Esc (VIEW-4.5)', () => {
     expect(escButton()).toHaveTextContent('Esc');
     expect(escButton()).toHaveAttribute('title', ESC_HINT);
     expect(escButton()!.querySelector('svg')).toHaveClass('lucide-octagon-x');
-    expect(header().querySelector('[data-slot="header-actions"]')).toContainElement(escButton());
+    expect(header().querySelector('[data-field="status"]')).toContainElement(escButton());
+    expect(header().querySelector('[data-slot="header-actions"]')).not.toContainElement(escButton());
     expect(stopButton()).toBeNull();
     // A permission prompt Lookout answers: its buttons, and no Esc beside them.
     app.read(PERMISSION);
@@ -975,7 +978,7 @@ describe('Esc (VIEW-4.5)', () => {
     expect(escButton()).toBeEnabled();
   });
 
-  it('VIEW-4.5: a failed Esc says why beside the button, as Stop’s does, and it can be pressed again', async () => {
+  it('VIEW-4.5: a failed Esc says why beside the Status tag, as Stop’s does, and it can be pressed again', async () => {
     const user = userEvent.setup();
     const why = 'This Session isn’t waiting on you now, so Esc wasn’t pressed.';
     const escSession = vi.fn<(id: string) => Promise<void>>().mockRejectedValueOnce(new SaveError(why, null, 409)).mockResolvedValueOnce(undefined);
@@ -988,7 +991,7 @@ describe('Esc (VIEW-4.5)', () => {
     expect(escButton()).toBeEnabled();
     expect(escButton()).toHaveAttribute('title', `${ESC_HINT}\n${why}`);
     expect(escButton()).toHaveAccessibleDescription(why);
-    expect(escButton()).toHaveClass('@max-[20rem]:text-destructive', 'shrink-0');
+    expect(escButton()).toHaveClass('shrink-0');
     expect(escButton()!.querySelector('span')).toHaveClass('@max-[26rem]:sr-only');
     await user.click(escButton()!);
     await waitFor(() => expect(escButton()).toHaveTextContent('Pressing Esc…'));

@@ -325,9 +325,10 @@ const FAMILIES: Record<string, Family> = {
       'web/src/components/LaunchItem.tsx': { why: 'a failed Starting row', uses: ['bg-destructive/8', 'ring-destructive/40', 'text-destructive'] },
       'web/src/components/StartingView.tsx': { why: "a failed start's icon and status pill", uses: ['bg-destructive/10', 'ring-destructive/30', 'text-destructive'] },
       'web/src/components/WorkPanel.tsx': { why: 'CI failing', uses: ['text-destructive'] },
-      'web/src/components/SessionView.tsx': { why: 'a Stop that failed, and a failed copy', uses: ['text-destructive'] },
+      'web/src/components/SessionView.tsx': { why: 'a Stop that failed, beside the Status tag, and a failed copy', uses: ['text-destructive'] },
       'web/src/components/Markdown.tsx': { why: 'a failed copy', uses: ['text-destructive'] },
       'web/src/components/ui/row-actions.tsx': { why: "Delete in an expanded row's More (DS-16.2)", uses: ['text-destructive-text'] },
+      'web/src/components/ui/icon-button.tsx': { why: "the danger role's icon button: the Session header's End Session (DS-18.5)", uses: ['text-destructive-text'] },
       'web/src/components/Sidebar.tsx': { why: "the Settings button's dot: a Tool missing or behind (TOOLS-2.4)", uses: ['bg-destructive'] },
       'web/src/components/SettingsPage.tsx': { why: "the Tools link's dot, the Settings button's (TOOLS-2.4, SIDE-7.6)", uses: ['bg-destructive'] },
     },
@@ -383,6 +384,7 @@ const FAMILIES: Record<string, Family> = {
       'web/src/components/ui/input.tsx': { why: 'keyboard focus and a focused field', uses: ['border-ring', 'ring-ring/50'] },
       'web/src/components/ui/textarea.tsx': { why: 'keyboard focus and a focused field', uses: ['border-ring', 'ring-ring/50'] },
       'web/src/components/ui/tabs.tsx': { why: 'keyboard focus on a tab (DS-13.2)', uses: ['ring-ring/50'] },
+      'web/src/components/ui/status-tag.tsx': { why: "keyboard focus on the Status tag's Stop or Esc (DS-18.9)", uses: ['ring-ring'] },
       'web/src/components/ui/side-nav.tsx': { why: 'keyboard focus on a sub-page link (DS-13.1)', uses: ['ring-ring/50'] },
       'web/src/components/ui/segmented.tsx': { why: 'keyboard focus on a choice (DS-20.1)', uses: ['ring-ring/50'] },
       'web/src/components/ui/row-details.tsx': { why: "keyboard focus on an expanded Topic's counts and links (DS-21.2, TOPIC-3.4)", uses: ['ring-ring/50'] },
@@ -1158,7 +1160,6 @@ function iconOnlyButtons(source: string, path = 'x.tsx'): string[] {
 
 /** Icon-only buttons that aren't `IconButton`s, outside `components/ui/`: where, and why. */
 const ICON_ONLY_BUTTON_EXCEPTIONS: Exception[] = [
-  { path: 'web/src/components/SessionView.tsx', fn: 'CopySessionId', count: 1, reason: 'Copy session ID shows "Copied" beside its icon for 2 s (VIEW-5.10), which a fixed square can\'t hold; 28 px tall' },
   { path: 'web/src/components/Markdown.tsx', fn: 'CopyButton', count: 1, reason: 'a code block\'s copy button: 24 px tall, shows "Copied" beside its icon for 2 s (VIEW-1.14), which a fixed square can\'t hold' },
   { path: 'web/src/components/ChatRail.tsx', fn: 'ChatRail', count: 1, reason: "a Mark on the chat's rail: a 12 px-tall target on the 16 px rail by design (VIEW-1.11), a toolbar's roving stop; not a button in a row" },
 ];

@@ -4,6 +4,8 @@ import { Check, ChevronDown, CircleCheck, CircleSlash, FolderGit2, GitBranch, Ho
 import { type ComponentPropsWithRef, type ComponentPropsWithoutRef, type KeyboardEvent, type PointerEvent, type ReactNode, type RefObject, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Button, ButtonDivider } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
+import { StatusTag, StatusTagAction } from '@/components/ui/status-tag';
 import { Loading } from '@/components/ui/loading';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '@/components/ui/dialog';
 import { turnRunning } from '@/lib/activity';
@@ -540,13 +542,13 @@ function Header({
   return (
     // Positioned, so the bubble with Stop's whole error sizes to the pane and stays inside it.
     <PaneHeader aria-label="Session" className="@container relative">
-      {/* One line, whatever is in it, and the buttons always whole: only they never shrink. Stop's
-          error gets only the room left over (at least 3rem) and is cut to fit; the title gives way
-          next, down to an ellipsis. A narrow header drops the Harness's name and the Status's age
-          (below 32rem), then the buttons' words (below 26rem; they keep them as their names and
-          tooltips), then the inline error (below 20rem; Stop's tooltip and description keep it).
-          Narrower still, what's left of the line before the buttons is cut off, never the buttons:
-          it's a box of its own (its 4 px of padding keep the error's focus ring). */}
+      {/* One line, whatever is in it, with the Status tag and the buttons always whole: only they never
+          shrink. Stop's error gets only the room left over (at least 3rem), beside the tag that holds Stop,
+          and is cut to fit; the title gives way next, down to an ellipsis. A narrow header drops the
+          Harness's name and the Status's age (below 32rem), then Stop's or Esc's word (below 26rem; it
+          stays its name and tooltip), then the inline error (below 20rem; Stop's tooltip and description
+          keep it). Narrower still, what's left of the line before the tag is cut off, never the tag or the
+          buttons: it's a box of its own (its 4 px of padding keep the error's focus ring). */}
       <div className="flex min-w-0 flex-1 items-center gap-1.5 whitespace-nowrap" data-slot="header-row">
         <div data-slot="header-info" className="flex min-w-0 flex-1 items-center gap-2.5 overflow-x-clip pr-1">
           {!ended && <StatusMarker status={row.status} since={row.statusSince} />}
@@ -555,29 +557,31 @@ function Header({
             <HarnessIcon harness={row.harness} tone="brand" className="size-4" />
             <span className="@max-[32rem]:sr-only">{HARNESS_NAME[row.harness]}</span>
           </span>
-          <span
-            className={cn(
-              'ml-auto shrink-0 rounded-full px-2 py-0.5 text-meta font-medium',
-              // VIEW-5.9: in its Status's colour; the age in the same colour (dimmed, it fell below 4.5:1).
-              ended ? 'bg-muted text-muted-foreground' : STATUS_TAG_CLASS[row.status],
-            )}
-            data-field="status"
-          >
-            {ended ? 'Ended' : STATUS_LABEL[row.status]}
-            {!ended && age && <span className="font-normal @max-[32rem]:hidden"> · {age}</span>}
-          </span>
           {renamed.note && <HeaderNote slot="rename-note" id={renamed.note.id} message={renamed.note.message} tone={renamed.note.tone} />}
           {key?.error && <HeaderNote slot="stop-error" id={stopErrorId} message={key.error} />}
         </div>
-        {/* ITERM's "Open in iTerm2" goes here too. */}
-        <div data-slot="header-actions" className="flex shrink-0 items-center gap-1.5 empty:hidden">
-          {key && <EscKey {...key} errorId={stopErrorId} />}
+        {/* VIEW-5.9: in its Status's colour; the age in the same colour (dimmed, it fell below 4.5:1).
+            VIEW-4.4, VIEW-4.5: Stop or Esc sits in it (DS-18.9), so the buttons after it never move. */}
+        <StatusTag
+          data-field="status"
+          className={ended ? 'bg-muted text-muted-foreground' : STATUS_TAG_CLASS[row.status]}
+          action={key && <EscKey {...key} errorId={stopErrorId} />}
+        >
+          {ended ? 'Ended' : STATUS_LABEL[row.status]}
+          {!ended && age && (
+            <span data-slot="status-age" className="font-normal @max-[32rem]:hidden">
+              {' '}
+              · {age}
+            </span>
+          )}
+        </StatusTag>
+        {/* DS-18.5: the actions are icon buttons, 4 px apart; End Session last, after its divider. ITERM's "Open in iTerm2" goes here too. */}
+        <div data-slot="header-actions" className="flex shrink-0 items-center gap-1 empty:hidden">
           {/* TOPIC-2.2: disabled, saying why, for a Session with no session id yet. */}
           <AddToTopicButton member={rowMember(row)} label={row.title} />
           {/* VIEW-5.10: a Session without a session_id has `<harness>:<pid>` for its id: no button then. */}
           {row.id !== processKey(row) && <CopySessionId sessionId={row.id} />}
-          {/* DS-18.5: the danger action last, after its divider. */}
-          <EndSession row={row} eligible={!ended && row.controllable && row.ownHost} onEnd={onEnd} fallbackFocus={title} />
+          <EndSession row={row} eligible={!ended && row.controllable && row.ownHost} onEnd={onEnd} fallbackFocus={title} inHeader />
         </div>
       </div>
     </PaneHeader>
@@ -586,31 +590,24 @@ function Header({
 
 /**
  * VIEW-5.10: copies the Session's session_id, for resuming it or finding it with `tb-session`.
- * Icon-only, its tooltip the whole ID; "Copied" (or "Couldn't copy") shows beside the icon for 2 s
- * as the code blocks' copy button does (VIEW-1.14), and goes below 26rem like the other buttons'
- * words. The button keeps its name; the outcome is read out in a polite status.
+ * An icon button (DS-18.5), its tooltip the whole ID. For 2 s after a click its icon is a check
+ * ("Copied"), or the copy icon in the destructive colour ("Couldn't copy"); the button keeps its name,
+ * and the outcome is read out in a polite status.
  */
 function CopySessionId({ sessionId }: { sessionId: string }) {
   const { state, said, copy } = useCopy(sessionId);
   return (
     <>
-      {/* Not an IconButton (DS-7): "Copied" shows beside its icon for 2 s, which a fixed square can't hold. It's 28 px tall, as its neighbours. */}
-      <Button
-        variant="quiet"
-        size="default"
-        className={cn('shrink-0', state === 'failed' && 'text-destructive hover:text-destructive')}
-        aria-label="Copy session ID"
-        title={`Copy session ID: ${sessionId}`}
+      <IconButton
+        size="md"
+        label="Copy session ID"
+        tip={said ? `${said}: ${sessionId}` : `Copy session ID: ${sessionId}`}
+        className={cn(state === 'failed' && 'text-destructive hover:text-destructive')}
         data-copy={state}
         onClick={() => void copy()}
       >
         {state === 'copied' ? <Check aria-hidden /> : <ActionIcon id="copy" />}
-        {said && (
-          <span aria-hidden className="@max-[26rem]:sr-only">
-            {said}
-          </span>
-        )}
-      </Button>
+      </IconButton>
       <span role="status" className="sr-only">
         {said}
       </span>
@@ -635,25 +632,17 @@ interface EscKeyProps {
  * the Status leaves Busy or 10 s pass, since in Claude Code a second Esc opens its rewind menu.
  * VIEW-4.5: the Esc button is the same for a Session that Needs you with no answer buttons
  * ("Pressing Esc…" until the Status leaves Needs you), its tooltip saying what Esc does there.
- * Why the last one failed is its tooltip and its description too, so it's there when the header
- * is too narrow to show it beside the button; there, the button turns the error's colour instead.
+ * Both sit in the Status tag, after the Status (DS-18.9). Why the last one failed is its tooltip and
+ * its description too, so it's there when the header is too narrow to show it beside the tag.
  */
 function EscKey({ label, pressingLabel, hint, icon, pressing, error, errorId, onPress }: EscKeyProps & { errorId: string }) {
   const shown = pressing ? pressingLabel : label;
   const tip = pressing ? pressingLabel : (hint ?? label);
   return (
-    <Button
-      variant="secondary"
-      size="default"
-      className={cn('shrink-0', error && '@max-[20rem]:text-destructive')}
-      title={error ? `${tip}\n${error}` : tip}
-      aria-describedby={error ? errorId : undefined}
-      disabled={pressing}
-      onClick={onPress}
-    >
+    <StatusTagAction title={error ? `${tip}\n${error}` : tip} aria-describedby={error ? errorId : undefined} disabled={pressing} onClick={onPress}>
       {icon}
       <span className="@max-[26rem]:sr-only">{shown}</span>
-    </Button>
+    </StatusTagAction>
   );
 }
 
@@ -715,11 +704,14 @@ function EndSession({
   eligible,
   onEnd,
   fallbackFocus,
+  inHeader = false,
 }: {
   row: SessionRow;
   eligible: boolean;
   onEnd: SessionViewProps['onEnd'];
   fallbackFocus: RefObject<HTMLElement | null>;
+  /** DS-18.5: in the header, its icon alone, as the actions beside it; in the Done card, its word too. */
+  inHeader?: boolean;
 }) {
   const [target, setTarget] = useState<EndTarget | null>(null);
   const [ending, setEnding] = useState(false);
@@ -743,26 +735,26 @@ function EndSession({
       setEnding(false);
     }
   };
+  const ask = () => {
+    setError(null);
+    endedHere.current = false;
+    setTarget({ pid: row.pid, procStart: row.procStart });
+  };
   return (
     <>
-      {eligible && <ButtonDivider />}
-      {eligible && (
-        <Button
-          variant="danger"
-          size="default"
-          className="shrink-0"
-          ref={trigger}
-          title="End Session"
-          onClick={() => {
-            setError(null);
-            endedHere.current = false;
-            setTarget({ pid: row.pid, procStart: row.procStart });
-          }}
-        >
-          <ActionIcon id="end-session" />
-          <span className="@max-[26rem]:sr-only">End Session</span>
-        </Button>
-      )}
+      {/* The header's actions are 4 px apart, so its divider needs no margin of its own to sit 4 px from each. */}
+      {eligible && <ButtonDivider className={inHeader ? 'mx-0' : undefined} />}
+      {eligible &&
+        (inHeader ? (
+          <IconButton size="md" variant="danger" ref={trigger} label="End Session" onClick={ask}>
+            <ActionIcon id="end-session" />
+          </IconButton>
+        ) : (
+          <Button variant="danger" size="default" className="shrink-0" ref={trigger} title="End Session" onClick={ask}>
+            <ActionIcon id="end-session" />
+            End Session
+          </Button>
+        ))}
       <Dialog open={open} onOpenChange={(next) => !ending && !next && close()}>
         <DialogContent
           className="sm:max-w-md"
