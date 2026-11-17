@@ -80,7 +80,8 @@ export function RowActions({ primary, more, name, open, onOpenChange, focusable 
     <div data-field="actions" className={cn('mt-1.5 mb-1 flex min-w-0 flex-nowrap items-center gap-2', className)}>
       {primary && (
         <RowAction
-          {...primary}
+          // `action` names the icon and word; it isn't an attribute of the button (React would warn on a span).
+          {...omitAction(primary)}
           look="soft"
           label={primary.label ?? actionWord(primary.action)}
           icon={<ActionIcon id={primary.action} />}
@@ -143,6 +144,10 @@ export function RowActions({ primary, more, name, open, onOpenChange, focusable 
       )}
     </div>
   );
+}
+
+function omitAction({ action: _, ...rest }: RowPrimary) {
+  return rest;
 }
 
 /** `onRun` before an item acts: focus back on the panel's list, so a dialog the item opens gives it back there. */

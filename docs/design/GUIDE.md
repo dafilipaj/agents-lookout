@@ -67,11 +67,12 @@ A reading or a switch about the Mac, at the bottom of a column: the Memory line 
 
 ### A list row
 
-A row of the right sidebar's lists (Work, History, Library, Topics); the Session sidebar's rows follow SIDE-3.
+A row of the right sidebar's lists (Work, History, Library, Topics, Setup); the Session sidebar's rows follow SIDE-3.
 
 - **Use** `data-slot="row"` on the row and `data-selected` while it's selected: the hairline between rows comes from one rule in `index.css`. Rows have 7 px of padding above and below and no gap. A Session's marker is a `SessionMarker`. An expanded row's actions are `RowActions`.
 - A selected row is neutral (`sidebar-accent` and its ring, SIDE-3.9), never Primary.
 - **Coming (DS-21, DS-22):** an expanded row is built from `ui/row-details.tsx`, in one order: title, state, summary, links, actions last; its title is whole; its links are counts that list in place, three at most, each link drawn as one line; facts you rarely need go into More or a tooltip. A Session row's numbers sit in three fixed columns and are grey; an exception leads the second line in its colour, with an icon or words.
+- **A group that folds** (Setup's sources, SETUP-1.3): its line is a listbox option of its own, 32 px, a 14 px `ChevronRight` turned when open, the group's 14 px icon in `muted-foreground`, its name in `body` medium, its count in `muted-foreground` and a version in `meta` at the right. Its rows are inset under its name and set `--row-inset` to where their names start, so the hairline begins there. Enter, → and ← open and close it; a filter with text shows every group with a match open.
 - **Do:** let the row's parts come from the shared pieces, so the row reads like its siblings.
 - **Don't:** draw a border, margin or card between rows; give an expanded row a second labelled button.
 - **Guard:** DS-5.1 (markers), DS-16.4 (row actions), DS-17.1 (row marks and padding); coming: DS-21.4, DS-22.4.
@@ -143,7 +144,7 @@ Context usage, a usage limit, memory and CPU load, a PR's age.
 ### A page in parts, or one thing shown a few ways
 
 - **Use** `SideNav` (`ui/side-nav.tsx`) when the parts are separate places (Settings), `Tabs` (`ui/tabs.tsx`) when they're one thing seen in parts (a Topic). The open part is in the path.
-- **Use** `Segmented` (`ui/segmented.tsx`) when it's the same thing shown two to four ways: the Spec view's Changes, Whole and Clean, Work's All, Tasks and PRs (DS-20.1). The chosen way is raised on `accent`, never Primary.
+- **Use** `Segmented` (`ui/segmented.tsx`) when it's the same thing shown two to four ways: the Spec view's Changes, Whole and Clean, Work's All, Tasks and PRs (DS-20.1); five only for a kind filter that starts with All, Setup's (SETUP-1.2). The chosen way is raised on `accent`, never Primary.
 - **Do:** keep a state that isn't a way of showing (Viewed) out of the switch, after a divider (PLAIN-10.1).
 - **Don't:** make one choice out of two checkboxes, or a row of pressed buttons.
 - **Guard:** DS-13.3, DS-20.3.

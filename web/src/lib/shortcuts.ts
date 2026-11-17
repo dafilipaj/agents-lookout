@@ -133,12 +133,12 @@ export const SHORTCUTS: readonly Shortcut[] = [
   {
     id: 'panels',
     group: 'panels',
-    keys: ['H', 'W', 'L', 'T', 'P'],
-    label: 'Open or close History, Work, Library, Topics, Servers',
+    keys: ['H', 'W', 'L', 'T', 'P', 'U'],
+    label: 'Open or close History, Work, Library, Topics, Servers, Setup',
     note: 'Not in a text field.',
-    press: [{ key: 'h' }, { key: 'w' }, { key: 'l' }, { key: 't' }, { key: 'p' }],
+    press: [{ key: 'h' }, { key: 'w' }, { key: 'l' }, { key: 't' }, { key: 'p' }, { key: 'u' }],
     global: true,
-    empty: { label: 'History, Work, Library, Topics, Servers', views: ['select', 'none'] },
+    empty: { label: 'History, Work, Library, Topics, Servers, Setup', views: ['select', 'none'] },
   },
   {
     id: 'tabs',
@@ -235,6 +235,15 @@ export const SHORTCUTS: readonly Shortcut[] = [
     press: [{ key: 'x' }],
   },
   {
+    id: 'panel-switch',
+    action: 'turn-off',
+    group: 'panels',
+    keys: ['X'],
+    label: 'Turn the selected skill or plugin off or on',
+    note: 'Setup; turning a plugin off asks first.',
+    press: [{ key: 'x' }],
+  },
+  {
     id: 'send',
     group: 'composer',
     keys: ['Enter'],
@@ -326,6 +335,7 @@ const PANEL_KEYS: Record<RightTab, HintKey[]> = {
   library: [MOVE, EXPAND, OPEN, ADD],
   topics: [MOVE, EXPAND, OPEN, { id: 'panel-graph', label: 'graph' }],
   servers: [MOVE, { id: 'panel-enter', label: 'open' }, { id: 'panel-stop', label: 'stop' }],
+  setup: [MOVE, EXPAND, { id: 'panel-switch', label: 'off or on' }],
 };
 
 /** VIEW-3.12: the hint line's region name and its keys, as the UX table "Hint line" lists them. */

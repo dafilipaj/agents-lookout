@@ -1,5 +1,5 @@
 import type { WorkSnapshot } from '@shared/work.ts';
-import { BookOpen, BriefcaseBusiness, History as HistoryIcon, Layers, RefreshCw, Server, X } from 'lucide-react';
+import { BookOpen, BriefcaseBusiness, History as HistoryIcon, Layers, Puzzle, RefreshCw, Server, X } from 'lucide-react';
 import { type ComponentType, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject, useEffect, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { IconButton } from '@/components/ui/icon-button';
@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils';
 import { refreshState } from '@/lib/work';
 import { KeysEdge, SHELL_COLUMN, ShellCell } from './Shell';
 
-const TAB_ICON: Record<RightTab, ComponentType<{ className?: string }>> = { history: HistoryIcon, work: BriefcaseBusiness, library: BookOpen, topics: Layers, servers: Server };
+const TAB_ICON: Record<RightTab, ComponentType<{ className?: string }>> = { history: HistoryIcon, work: BriefcaseBusiness, library: BookOpen, topics: Layers, servers: Server, setup: Puzzle };
 
 /** PORTS-3.1: a tab's title, with the shown Local servers counted on Servers'. */
 const tabTitle = (t: RightTab, servers: number | undefined) => (t === 'servers' && servers !== undefined ? `${TAB_LABEL[t]}, ${servers} running` : TAB_LABEL[t]);
@@ -237,6 +237,7 @@ export function RightRail({ onOpen, counts, servers, corner }: { onOpen(tab: Rig
         {button('library')}
         {button('topics')}
         {button('servers')}
+        {button('setup')}
         {/* AWAKE-4.1: the rail ends in the corner's line, level with the Memory line. */}
         {corner}
       </ShellCell>

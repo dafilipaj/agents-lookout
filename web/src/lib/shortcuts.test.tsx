@@ -72,7 +72,7 @@ const PROBES: Record<string, (user: UserEvent, press: Press) => Promise<void>> =
   async panels(user, press) {
     fresh('/');
     await pressKey(user, press);
-    const name = { h: 'History', w: 'Work', l: 'Library', t: 'Topics', p: 'Servers' }[press.key]!;
+    const name = { h: 'History', w: 'Work', l: 'Library', t: 'Topics', p: 'Servers', u: 'Setup' }[press.key]!;
     expect(tab(name)).toHaveAttribute('aria-selected', 'true');
   },
   async tabs(user, press) {
@@ -81,7 +81,7 @@ const PROBES: Record<string, (user: UserEvent, press: Press) => Promise<void>> =
     await user.click(tab('History'));
     tab('History').focus();
     await pressKey(user, press);
-    expect(tab(press.key === 'ArrowRight' ? 'Work' : 'Servers')).toHaveAttribute('aria-selected', 'true');
+    expect(tab(press.key === 'ArrowRight' ? 'Work' : 'Setup')).toHaveAttribute('aria-selected', 'true');
     // DS-20.2: a choice of views too, Work's Show.
     await user.click(tab('Work'));
     const show = within(screen.getByRole('radiogroup', { name: 'Show' }));
@@ -168,6 +168,7 @@ const ELSEWHERE: Record<string, { file: string; criteria: string[] }[]> = {
   ],
   'panel-copy': [{ file: 'LibraryPanel.test.tsx', criteria: ['LIB-3.7'] }],
   'panel-stop': [{ file: 'Servers.test.tsx', criteria: ['PORTS-4.6'] }],
+  'panel-switch': [{ file: 'SetupPanel.test.tsx', criteria: ['SETUP-4.5'] }],
   start: [{ file: 'Launcher.test.tsx', criteria: ['LAUNCH-3.3'] }],
 };
 
@@ -286,7 +287,7 @@ describe('the hint line (VIEW-3.12)', () => {
     // A panel's line leaves out the keys its rows don't take: History's rows open nothing with O, Servers' take neither A nor O.
     expect(line('list', 'history')).toBe('History · ↑ ↓ move · Enter expand · A add to Topic');
     expect(line('list', 'servers')).toBe('Servers · ↑ ↓ move · Enter open · X stop');
-    expect(line('panels')).toBe('Panels · H W L T P open');
+    expect(line('panels')).toBe('Panels · H W L T P U open');
   });
 });
 

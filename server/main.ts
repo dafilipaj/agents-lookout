@@ -24,6 +24,7 @@ import { parsePort } from './port.ts';
 import { PortsMonitor } from './ports.ts';
 import { ResMonitor } from './res.ts';
 import { KeepAwake } from './awake.ts';
+import { Setup } from './setup.ts';
 import { sessionId } from './normalize.ts';
 import { queuedFor } from '../shared/res.ts';
 import { localAllowLists } from './security.ts';
@@ -236,6 +237,13 @@ const resQueue = new ResMonitor({
   },
 });
 
+// SETUP: what Claude Code and Codex load for every Session, read from their files when the tab opens.
+const setup = new Setup({
+  home: homedir(),
+  runner: run,
+  claudeBin: async () => (await launcher.harnessFacts()).find((f) => f.id === 'claude' && f.installed)?.path ?? null,
+});
+
 // AWAKE: keep-awake, held by the server so it outlives the tab; restored from its file on start.
 const awake = new KeepAwake({
   runner: run,
@@ -357,6 +365,7 @@ const app = createApp({
   ports,
   resQueue,
   awake,
+  setup,
   work,
   changes,
   plain,

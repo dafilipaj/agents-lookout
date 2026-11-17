@@ -30,6 +30,8 @@ import type { PortsMonitor } from './ports.ts';
 import { StopError, parseStopTarget } from './ports-stop.ts';
 import type { ResMonitor } from './res.ts';
 import { type KeepAwake, AwakeError } from './awake.ts';
+import { type Setup, SetupFailure } from './setup.ts';
+import { parsePluginSwitch, parseSkillSwitch } from '../shared/setup.ts';
 import { parseAwakeRequest } from '../shared/awake.ts';
 import type { SessionMonitor } from './monitor.ts';
 import { type GuardConfig, guardRequest } from './security.ts';
@@ -66,6 +68,8 @@ export interface AppOptions {
   resQueue?: Pick<ResMonitor, 'snapshot' | 'watch'>;
   /** AWAKE-1.1: keep-awake; optional, so handler tests can leave it out. */
   awake?: Pick<KeepAwake, 'snapshot' | 'watch' | 'set'>;
+  /** SETUP: what the Harnesses load, read when the tab opens, and its two switches; optional, so a server without it has no `/api/setup` (404). */
+  setup?: Pick<Setup, 'read' | 'setSkill' | 'setPlugin'>;
   usage: {
     snapshot(): UsageSnapshot | null;
     watch(): () => void;
@@ -181,6 +185,8 @@ const MAX_END_BODY = 1024;
 /** PORTS-4.7: `{ pid, command, startedAt, devctl }`. */
 const MAX_PORTS_STOP_BODY = 1024;
 const MAX_AWAKE_BODY = 256;
+/** SETUP-4: a skill's name or a plugin's id, and on or off. */
+const MAX_SETUP_BODY = 1024;
 /** VIEW-4.1: up to 10 answers of 2,000 characters of text each, JSON-escaped, plus their options. */
 const MAX_ANSWER_BODY = 160 * 1024;
 /** VIEW-4.5: `{ status }`, the Status the Esc button was shown in. */
@@ -391,6 +397,27 @@ export function createApp(opts: AppOptions): LookoutApp {
     // TOOLS-1.4: Refresh re-reads the installed versions now, joining a read in flight; the GitHub
     // release check keeps its once-a-minute limit. A POST, so the token and Origin apply.
     if (route === 'POST /api/tools/refresh' && opts.tools) return json(res, 200, await opts.tools.read({ force: true }));
+    // SETUP-1.8: the tab opened, or came back: a fresh read of the files. It only reads, so it's a GET.
+    if (route === 'GET /api/setup' && opts.setup) return json(res, 200, await opts.setup.read());
+    // SETUP-4: a switch changes a Harness's configuration, so it's a mutation: the token and Origin
+    // (the guard checks every non-GET). The answer is the read that follows it.
+    if ((route === 'POST /api/setup/skill' || route === 'POST /api/setup/plugin') && opts.setup) {
+      const body = await readJson(req, res, MAX_SETUP_BODY, null);
+      if (body === NO_BODY) return;
+      try {
+        if (route === 'POST /api/setup/skill') {
+          const skill = parseSkillSwitch(body);
+          if (!skill) return json(res, 400, { error: 'name must be a skill name and on a boolean' });
+          return json(res, 200, { snapshot: await opts.setup.setSkill(skill.name, skill.on) });
+        }
+        const plugin = parsePluginSwitch(body);
+        if (!plugin) return json(res, 400, { error: 'id must be a plugin id (name@marketplace) and on a boolean' });
+        return json(res, 200, { snapshot: await opts.setup.setPlugin(plugin.id, plugin.on) });
+      } catch (err) {
+        if (err instanceof SetupFailure) return json(res, err.status, { error: err.message });
+        throw err;
+      }
+    }
     if (route === 'POST /api/usage/refresh') {
       // A window's reset time passed (USAGE-2.2): read the limits again (at most every 15 s).
       await opts.usage.refresh();

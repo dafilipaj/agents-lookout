@@ -395,6 +395,7 @@ const FAMILIES: Record<string, Family> = {
       'web/src/components/SubagentsButton.tsx': { why: "keyboard focus on the status line's Subagents", uses: ['ring-ring'] },
       'web/src/components/PortsChip.tsx': { why: "keyboard focus on the status line's Local servers (PORTS-2.2)", uses: ['ring-ring'] },
       'web/src/components/ServersPanel.tsx': { why: 'keyboard focus on the list of Local servers (PORTS-3.2)', uses: ['ring-ring/30'] },
+      'web/src/components/SetupPanel.tsx': { why: 'keyboard focus on the filter and the list (SETUP-1.2)', uses: ['ring-ring/30'] },
       'web/src/components/TopicGraph.tsx': { why: 'keyboard focus, and drawing an Edge: its line, the dashed target and the handle (DS-12.4, TOPIC-6.1)', uses: ['border-primary', 'ring-ring/50', 'stroke-primary', 'text-primary'] },
     },
   },
@@ -1778,8 +1779,8 @@ describe('expanded rows', () => {
     expect('<RowDetails id={id} state={[]} links={[]} actions={a} /> <SessionChipsLike /> sessionLinks(s)').not.toMatch(HAND_DRAWN_DETAILS);
   });
 
-  it('DS-21.4: Work, History, Library and Topics build their expanded rows from ui/row-details; a Session chip is drawn only in a Topic view\'s member list', () => {
-    for (const panel of ['WorkPanel', 'HistoryPanel', 'LibraryPanel', 'TopicsPanel']) {
+  it('DS-21.4: Work, History, Library, Topics and Setup build their expanded rows from ui/row-details; a Session chip is drawn only in a Topic view\'s member list', () => {
+    for (const panel of ['WorkPanel', 'HistoryPanel', 'LibraryPanel', 'TopicsPanel', 'SetupPanel']) {
       const text = SOURCES[`web/src/components/${panel}.tsx`] ?? '';
       expect(text, panel).toMatch(/<RowDetails\b/);
       expect(text, panel).toMatch(/<RowTitle\b/);

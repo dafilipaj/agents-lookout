@@ -14,21 +14,6 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
   - It costs one extra screen read per poll for every busy Session.
 - **Added:** 2026-10-17, after the first live use of the chat.
 
-## What's loaded into a Session (CTX)
-
-- **What:** per Session, what its Harness has loaded:
-  - instruction files (`CLAUDE.md`/`AGENTS.md` chain and `@` imports);
-  - memory;
-  - hooks, plugins, skills and MCP servers;
-  - permission mode and model.
-  - For Codex: `config.toml`, its profile, the `AGENTS.md` chain, approval and sandbox mode.
-- **Why per Session:** it depends on the Harness, the start directory and the environment (e.g. `CLAUDE_CONFIG_DIR`), so a global settings page would be wrong for most Sessions.
-- **How (proposal):** two sources, always labelled:
-  - **Resolved:** Lookout or a CLI applies the Harness's loading rules to the Session's directory. This can drift from what the Harness really does.
-  - **Observed:** what the Transcript shows actually happened, e.g. hook runs are recorded as attachments.
-- **Open:** the most design-heavy idea here; grill it before speccing.
-- **Added:** 2026-10-17.
-
 ## Hide a Harness you don't use (USAGE)
 
 - **What:** when a Harness isn't installed, leave it out of the usage strip instead of showing "Codex: not installed" (USAGE-2.2). The details could still say it's not installed.
@@ -111,13 +96,6 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
 - **How:** a Fleet commit after the [contract](contracts/fleet-question-previews.md)'s (C6): `--answers` takes `notes` for a question with previews; one capture first, of notes in a form with several questions (in a one-question form, Enter in the notes field submits the whole answer).
 - **Added:** 2026-10-28, split out of VIEW-10 by Dario.
 
-## A catalogue of agents (new)
-
-- **What:** one place listing the custom agents a Session can spawn: Claude Code's from `~/.claude/agents/`, a project's `.claude/agents/` and installed plugins, with each one's description, model, effort, tools and where it's defined; Codex's equivalents once it has them. Per agent, how often it ran lately and what it cost, from the Transcripts' Subagent sidecars (`subagents/*.meta.json` name the agent type).
-- **Why:** frequent prompts are moving into agents (e.g. a reviewer pinned to Opus at high effort, an Output Index agent on Sonnet), and today you can't see which exist, which a project overrides, or which are expensive without opening files and Transcripts by hand.
-- **How:** read the agent files' frontmatter directly (no Harness call needed); usage and cost from the same Transcript reads LIB and the token analysis use. Open questions: a sidebar tab or a Settings page; whether picking one starts a Session with it (LAUNCH) or only shows it; whether to show plugin agents a project disables.
-- **Added:** 2026-10-30, by Dario.
-
 ## Open a Subagent's own log (VIEW)
 
 - **What:** from a row of the Subagents list (VIEW-8.6), its own messages and tool calls, as the chat shows a Session's.
@@ -158,6 +136,7 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
 - **What:** typing `/` in the composer offers the Session's slash commands and skills, and `@` offers files from its folder, as the Harnesses' own prompts do.
 - **Why it's here:** Fleet upstream has it (from its November guide). It wasn't taken in the 2026-11-03 sync because the Session view spec lists it as a Non-goal ("Slash-command autocomplete, `@` file mentions and voice in the composer").
 - **Decide:** lift the Non-goal or keep it. Lifting it is a VIEW spec change. A slash-command draft already sits in another worktree (VIEW Open question 1) and has to be renumbered off VIEW-3.7–3.14, which are taken.
+- **Planned:** `/` as SETUP's slice 3 (2026-11-17): the composer offers the skills Setup lists. `@` is still open.
 - **Added:** 2026-11-03, by Dario, from the Fleet upstream sync.
 
 ## Decide: review comments sent to the Session as a prompt (DIFF)

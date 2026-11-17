@@ -23,6 +23,8 @@ import {
   ScanEye,
   Sparkles,
   SquareTerminal,
+  ToggleLeft,
+  ToggleRight,
   Trash2,
 } from 'lucide-react';
 import { createElement } from 'react';
@@ -55,6 +57,9 @@ export const ACTIONS = {
   esc: { word: 'Esc', icon: OctagonX },
   'end-session': { word: 'End Session', icon: Power },
   'show-terminal': { word: 'Show terminal', icon: SquareTerminal },
+  /** SETUP-4: a Claude Code skill or plugin, for Sessions started from now on. */
+  'turn-off': { word: 'Turn off', icon: ToggleLeft },
+  'turn-on': { word: 'Turn on', icon: ToggleRight },
   refresh: { word: 'Refresh', icon: RefreshCw },
   retry: { word: 'Retry', icon: RotateCw },
   suggest: { word: 'Suggest', icon: Sparkles },

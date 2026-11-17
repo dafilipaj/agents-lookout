@@ -22,3 +22,4 @@ One row per feature. Update the status here and in the spec's frontmatter togeth
 | Spec view: a `.plain` Module and its change, with other Modules' Concepts on hover, opened from a Session's changed files or a PR | PLAIN | In Progress | [SPEC](plain-specs/SPEC.md) |
 | Test queue: what `res`, the machine-wide queue for heavy jobs, runs and who waits, in the Memory line and on a waiting Session | RES | In Progress | [SPEC](test-queue/SPEC.md) |
 | Keep the Mac awake: one switch in the bottom-right corner holds off idle sleep, or lid-closed sleep on the charger through Amphetamine, while Sessions are at work | AWAKE | In Progress | [SPEC](keep-awake/SPEC.md) |
+| Setup: the skills, agents, hooks and MCP servers Claude Code and Codex load, in a right-sidebar tab, with a Claude Code skill or plugin turned off and on | SETUP | In Progress | [SPEC](setup/SPEC.md) |

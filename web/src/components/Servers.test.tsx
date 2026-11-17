@@ -124,11 +124,11 @@ describe('the Servers tab (PORTS-3)', () => {
     expect(screen.getByRole('button', { name: 'Servers, 2 running' })).toBeInTheDocument();
     await user.keyboard('p');
     const tabs = screen.getAllByRole('tab');
-    expect(tabs.map((t) => t.textContent)).toEqual(['History', 'Work', 'Library', 'Topics', 'Servers']);
+    expect(tabs.map((t) => t.textContent)).toEqual(['History', 'Work', 'Library', 'Topics', 'Servers', 'Setup']);
     expect(tabs[4]).toHaveAttribute('aria-selected', 'true');
     expect(tabs[4]).toHaveAttribute('title', 'Servers, 2 running (P)');
     // Only the open tab's name shows; the others keep theirs for screen readers and in the tooltip.
-    expect(tabs.map((t) => t.querySelector('[data-slot="tab-name"]')!.classList.contains('sr-only'))).toEqual([true, true, true, true, false]);
+    expect(tabs.map((t) => t.querySelector('[data-slot="tab-name"]')!.classList.contains('sr-only'))).toEqual([true, true, true, true, false, true]);
     act(() => (document.activeElement as HTMLElement).blur());
     await user.keyboard('p');
     expect(screen.queryByRole('tab', { name: 'Servers' })).toBeNull();

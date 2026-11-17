@@ -29,6 +29,7 @@ import type { PlainSource } from '@shared/plain.ts';
 import { ViewErrorBoundary } from '@/components/ViewErrorBoundary';
 import { TopicsPanel } from '@/components/TopicsPanel';
 import { ServersPanel } from '@/components/ServersPanel';
+import { SetupPanel } from '@/components/SetupPanel';
 import { type LookoutClient, SaveError } from '@/lib/client';
 import { ComposerAttachments, preventDropNavigation } from '@/lib/attachments';
 import { tidySentAt } from '@/lib/activity';
@@ -438,7 +439,7 @@ export function App({ client }: { client: LookoutClient }) {
   // this browser (HIST-1.3, WORK-1.2, WORK-1.5).
   const [layout, setLayout] = useState<RightLayout>(loadLayout);
   /** Bumped to move focus into the panel just opened or switched to (HIST-1.1), only by your key or click; at 0, never asked, a panel takes none (SIDE-11.1). */
-  const [rightFocus, setRightFocus] = useState<Record<RightTab, number>>({ history: 0, work: 0, library: 0, topics: 0, servers: 0 });
+  const [rightFocus, setRightFocus] = useState<Record<RightTab, number>>({ history: 0, work: 0, library: 0, topics: 0, servers: 0, setup: 0 });
   const updateLayout = useCallback((patch: Partial<RightLayout>) => {
     setLayout((l) => {
       const next = { ...l, ...patch };
@@ -478,7 +479,7 @@ export function App({ client }: { client: LookoutClient }) {
     const onKey = (e: KeyboardEvent) => {
       if (e.isComposing || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
       const key = e.key.toLowerCase();
-      const tab = ({ h: 'history', w: 'work', l: 'library', t: 'topics', p: 'servers' } as const)[key as 'h' | 'w' | 'l' | 't' | 'p'];
+      const tab = ({ h: 'history', w: 'work', l: 'library', t: 'topics', p: 'servers', u: 'setup' } as const)[key as 'h' | 'w' | 'l' | 't' | 'p' | 'u'];
       if (!tab) return;
       if (modalOpen || isTextField(e.target)) return;
       e.preventDefault();
@@ -582,6 +583,7 @@ export function App({ client }: { client: LookoutClient }) {
   );
   // WORK-1.7: the tab strip's ↑/↓ and j/k, handed to the open panel.
   const libraryNav = useRef<PanelNav>(null);
+  const setupNav = useRef<PanelNav>(null);
   const historyNav = useRef<PanelNav>(null);
   const workNav = useRef<PanelNav>(null);
   const topicsNav = useRef<PanelNav>(null);
@@ -1370,6 +1372,21 @@ export function App({ client }: { client: LookoutClient }) {
                   navRef={serversNav}
                 />
               ),
+              setup: (
+                <SetupPanel
+                  visible={layout.tab === 'setup'}
+                  focusKey={rightFocus.setup}
+                  read={() => client.setup()}
+                  switchSkill={(name, on) => client.switchSkill(name, on)}
+                  switchPlugin={(id, on) => client.switchPlugin(id, on)}
+                  filter={layout.setupFilter}
+                  onFilter={(setupFilter) => updateLayout({ setupFilter })}
+                  open={layout.setupOpen}
+                  onOpen={(setupOpen) => updateLayout({ setupOpen })}
+                  keyboardEnabled={!modalOpen}
+                  navRef={setupNav}
+                />
+              ),
               history: <HistoryPanel ask={historyAsk} onAsked={() => setHistoryAsk(null)} headless={layout.headless} onHeadless={(headless) => updateLayout({ headless })} focusKey={rightFocus.history} sessions={state.sessions} now={now} search={searchHistory} peek={peekPast} onOpen={openPast} navRef={historyNav} />,
               work: (
                 <WorkPanel
@@ -1389,7 +1406,7 @@ export function App({ client }: { client: LookoutClient }) {
                 />
               ),
             }}
-            nav={{ history: historyNav, work: workNav, library: libraryNav, topics: topicsNav, servers: serversNav }}
+            nav={{ history: historyNav, work: workNav, library: libraryNav, topics: topicsNav, servers: serversNav, setup: setupNav }}
             counts={{ topics: state.topics?.recommendations.length ?? 0 }}
             servers={state.ports ? shownCount(state.ports) : undefined}
             corner={<KeepAwakeFooter awake={state.awake} now={now} onSet={setAwake} />}

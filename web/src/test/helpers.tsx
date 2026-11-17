@@ -123,6 +123,9 @@ interface RenderOptions {
   saveSettings?: LookoutClient['saveSettings'];
   tools?: LookoutClient['tools'];
   refreshTools?: LookoutClient['refreshTools'];
+  setup?: LookoutClient['setup'];
+  switchSkill?: LookoutClient['switchSkill'];
+  switchPlugin?: LookoutClient['switchPlugin'];
   /** TOPIC: the fake server's Topics, sent with each snapshot and changed by the Topics calls, as the server does. */
   topics?: Topic[];
   /** TOPIC-9.4: the fake server's pending recommendations; Accept, Dismiss and Other Topic… resolve them. */
@@ -178,6 +181,9 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
     refreshJev: vi.fn(async () => {}),
     tools: vi.fn(options.tools ?? (async () => ({ rows: [], checkedAt: null, reading: false }))),
     refreshTools: vi.fn(options.refreshTools ?? (async () => ({ rows: [], checkedAt: null, reading: false }))),
+    setup: vi.fn(options.setup ?? (async () => ({ items: [], errors: [], readAt: 0 }))),
+    switchSkill: vi.fn(options.switchSkill ?? (async () => ({ snapshot: { items: [], errors: [], readAt: 0 } }))),
+    switchPlugin: vi.fn(options.switchPlugin ?? (async () => ({ snapshot: { items: [], errors: [], readAt: 0 } }))),
     refreshUsage: vi.fn(async () => {}),
     watchMemory: vi.fn(async () => {}),
     watchChanges: vi.fn(options.watchChanges ?? (async () => {})),
