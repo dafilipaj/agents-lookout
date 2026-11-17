@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  AMPHETAMINE_STORE_URL,
   CLAUDE_UPDATE_COMMAND,
   CODEX_UPDATE_COMMAND,
   FLEET_INSTALL_COMMAND,
@@ -11,12 +12,13 @@ import {
   TB_PR_INSTALL_COMMAND,
   TB_SESSION_INSTALL_COMMAND,
 } from '../shared/defaults.ts';
-import { FLEET_VERSION_LINE, TOOLS, TOOL_IDS, TOOL_STATES, type ToolId, type ToolRow, type ToolsSnapshot, compareVersions, parseTbLatest, toolsAttention } from '../shared/tools.ts';
+import { FLEET_VERSION_LINE, TOOLS, TOOL_GROUPS, TOOL_IDS, TOOL_STATES, type ToolId, type ToolRow, type ToolsSnapshot, compareVersions, parseTbLatest, toolName, toolsAttention } from '../shared/tools.ts';
 import type { JevStatus } from '../shared/usage.ts';
+import { findAmphetamine, resolveSystemBin } from './awake.ts';
 import { type RunOptions, run } from './exec.ts';
 import { type HarnessFact, Launcher } from './launcher.ts';
 import { refusedAsTooOld } from './too-old.ts';
-import { TOOLS_READ_MIN_MS, ToolsMonitor, cargoRevisionFor, onPath } from './tools.ts';
+import { AMPHETAMINE_NOT_INSTALLED, AMPHETAMINE_NO_HELPER, TOOLS_READ_MIN_MS, ToolsMonitor, amphetamineRow, cargoRevisionFor, onPath } from './tools.ts';
 
 const FIXTURES = new URL('./fixtures/tools/', import.meta.url);
 const fixture = (name: string) => readFileSync(new URL(name, FIXTURES), 'utf8');
@@ -26,17 +28,20 @@ const FAKE_FLEET = new URL('./fixtures/fleet/messages/fake-fleet.mjs', import.me
 /** `e2e/pins.json`'s Fleet revision today. */
 const PIN = '5e2afd8c9d532c700d1ae48a802d6d87f1202b5a';
 const NOW = Date.parse('2026-10-30T12:00:00Z');
-const FIELDS = ['checkedAt', 'fix', 'id', 'needs', 'number', 'path', 'pin', 'purpose', 'reason', 'revision', 'state', 'version', 'via'];
+const FIELDS = ['checkedAt', 'fix', 'id', 'link', 'needs', 'number', 'path', 'pin', 'purpose', 'reason', 'revision', 'state', 'version', 'via'];
 
 let dir: string;
 let home: string;
 let bin: string;
 let cargo: string;
+/** Where the tests' Amphetamine is (`LOOKOUT_AMPHETAMINE_APP`), so one installed on this Mac never answers. */
+let app: string;
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'lookout-tools-'));
   home = join(dir, 'home');
   bin = join(dir, 'bin');
   cargo = join(dir, 'cargo');
+  app = join(dir, 'apps', 'Amphetamine.app');
   for (const d of [home, bin, cargo]) mkdirSync(d);
 });
 afterEach(() => {
@@ -78,7 +83,19 @@ const GOOD_LINES: Record<string, string> = {
   'tb-prod': 'tb-prod 1.2.0 (latest)',
   git: 'git version 2.54.0 (Apple Git-157)',
   tmux: 'tmux 3.6a',
+  // TOOLS-5.3: Amphetamine's `CFBundleShortVersionString`, as `plutil -extract … raw` prints it.
+  plutil: '5.3.2',
 };
+/** AWAKE-3.1's Power Protect helper, under the test's home. */
+const helper = () => join(home, 'Library', 'Application Scripts', 'com.if.Amphetamine', 'powerProtect.scpt');
+/** TOOLS-5.3: Amphetamine at `app`, with its helper unless told otherwise. */
+function amphetamine({ withHelper = true } = {}) {
+  mkdirSync(join(app, 'Contents'), { recursive: true });
+  if (withHelper) {
+    mkdirSync(dirname(helper()), { recursive: true });
+    writeFileSync(helper(), '');
+  }
+}
 
 interface Setup {
   env?: NodeJS.ProcessEnv;
@@ -90,7 +107,8 @@ interface Setup {
 }
 /** Every Tool on `bin` (PATH), new enough, unless the test says otherwise. */
 function everything(): Setup {
-  for (const name of ['fleet', 'tb-session', 'tb-pr', 'tb-prod', 'tb-jev', 'git', 'tmux']) exe(join(bin, name));
+  for (const name of ['fleet', 'tb-session', 'tb-pr', 'tb-prod', 'tb-jev', 'git', 'tmux', 'caffeinate', 'plutil']) exe(join(bin, name));
+  amphetamine();
   return { answers: GOOD_LINES, facts: [fact('claude'), fact('codex')] };
 }
 function monitor(setup: Setup = {}) {
@@ -103,7 +121,7 @@ function monitor(setup: Setup = {}) {
   });
   const m = new ToolsMonitor({
     runner,
-    env: setup.env ?? { HOME: home, PATH: bin, CARGO_HOME: cargo },
+    env: { LOOKOUT_AMPHETAMINE_APP: app, ...(setup.env ?? { HOME: home, PATH: bin, CARGO_HOME: cargo }) },
     now: setup.now ?? (() => NOW),
     harnesses,
     jev,
@@ -120,7 +138,7 @@ const readWith = async (setup: Setup) => (await monitor(setup).m.read());
 describe('Settings › Tools: the rows (TOOLS-1)', () => {
   it('TOOLS-1.1: one row per Tool in the spec’s order, each with what it is for, its path and version (null when unknown), its state, a plain reason, a fix or null, and when it was read', async () => {
     const t = await readWith(everything());
-    expect(t.rows.map((r) => r.id)).toEqual(['fleet', 'claude', 'codex', 'tb-session', 'tb-pr', 'tb-prod', 'tb-jev', 'git', 'tmux']);
+    expect(t.rows.map((r) => r.id)).toEqual(['fleet', 'claude', 'codex', 'tb-session', 'tb-pr', 'tb-prod', 'tb-jev', 'git', 'tmux', 'caffeinate', 'amphetamine']);
     expect(TOOL_IDS).toEqual(t.rows.map((r) => r.id));
     expect(t).toMatchObject({ checkedAt: NOW, reading: false });
     for (const r of t.rows) {
@@ -129,12 +147,13 @@ describe('Settings › Tools: the rows (TOOLS-1)', () => {
       expect(r.purpose).toBe(TOOLS[r.id].purpose);
       expect(r.reason, r.id).toMatch(/\S/);
       expect(r.fix === null || typeof r.fix === 'string').toBe(true);
+      expect(r.link, r.id).toBeNull();
       expect(r.checkedAt).toBe(NOW);
     }
     expect(t.rows.map((r) => [r.id, r.state])).toEqual(TOOL_IDS.map((id) => [id, 'ok']));
     // Found nowhere: every path and version is null, and every Tool still has its row.
-    const none = await readWith({ env: { HOME: home, PATH: join(dir, 'empty'), CARGO_HOME: cargo } });
-    expect(none.rows).toHaveLength(9);
+    const none = await readWith({ env: { HOME: home, PATH: join(dir, 'empty'), CARGO_HOME: cargo, LOOKOUT_AMPHETAMINE_APP: join(dir, 'nowhere', 'Amphetamine.app') } });
+    expect(none.rows).toHaveLength(11);
     for (const r of none.rows) expect([r.id, r.path, r.version]).toEqual([r.id, null, null]);
     expect(rowOf(none, 'tb-pr')).toMatchObject({ state: 'missing', reason: 'Not found on PATH or in ~/.local/bin.', fix: TB_PR_INSTALL_COMMAND });
   });
@@ -197,6 +216,7 @@ describe('Settings › Tools: the rows (TOOLS-1)', () => {
         ['tb-prod', ['--version'], 5000],
         ['tb-session', ['--version'], 5000],
         ['tmux', ['-V'], 5000],
+        ['plutil', ['-extract', 'CFBundleShortVersionString', 'raw', '-o', '-', join(app, 'Contents', 'Info.plist')], 5000],
       ].sort(),
     );
     for (const [, , opts] of runner.mock.calls) {
@@ -283,7 +303,7 @@ describe('Settings › Tools: the rows (TOOLS-1)', () => {
     });
     const m = new ToolsMonitor({
       runner,
-      env: { HOME: home, PATH: `${bin}:${ghDir}`, CARGO_HOME: cargo },
+      env: { HOME: home, PATH: `${bin}:${ghDir}`, CARGO_HOME: cargo, LOOKOUT_AMPHETAMINE_APP: app },
       now: () => NOW,
       harnesses: async () => setup.facts as HarnessFact[],
       jev: async () => READY_JEV,
@@ -305,7 +325,7 @@ describe('Settings › Tools: the rows (TOOLS-1)', () => {
     // The refreshed rows still say what the one check found.
     for (const t of [first, second]) expect(rowOf(t, 'tb-pr')).toMatchObject({ state: 'update-available', reason: '9.1.0 is out.' });
     // A minute on, the check runs again.
-    const later = new ToolsMonitor({ runner, env: { HOME: home, PATH: `${bin}:${ghDir}`, CARGO_HOME: cargo }, now: (() => { let n = NOW; return () => (n += TOOLS_READ_MIN_MS); })(), harnesses: async () => setup.facts as HarnessFact[], jev: async () => READY_JEV, onChange: () => {}, pin: PIN, tmuxDirs: [] });
+    const later = new ToolsMonitor({ runner, env: { HOME: home, PATH: `${bin}:${ghDir}`, CARGO_HOME: cargo, LOOKOUT_AMPHETAMINE_APP: app }, now: (() => { let n = NOW; return () => (n += TOOLS_READ_MIN_MS); })(), harnesses: async () => setup.facts as HarnessFact[], jev: async () => READY_JEV, onChange: () => {}, pin: PIN, tmuxDirs: [] });
     await later.read();
     await later.read({ force: true });
     expect(ghCalls()).toBe(9);
@@ -320,7 +340,7 @@ describe('Settings › Tools: the rows (TOOLS-1)', () => {
       if (opts.signal?.aborted) throw Object.assign(new Error('cancelled'), { aborted: true });
       return 'git version 2.54.0';
     });
-    const m = new ToolsMonitor({ runner, env: { HOME: home, PATH: bin, CARGO_HOME: cargo }, harnesses: async () => setup.facts as HarnessFact[], jev: async () => READY_JEV, onChange: () => {}, pin: PIN, tmuxDirs: [] });
+    const m = new ToolsMonitor({ runner, env: { HOME: home, PATH: bin, CARGO_HOME: cargo, LOOKOUT_AMPHETAMINE_APP: app }, harnesses: async () => setup.facts as HarnessFact[], jev: async () => READY_JEV, onChange: () => {}, pin: PIN, tmuxDirs: [] });
     const reading = m.read();
     const closed = m.close();
     release();
@@ -345,6 +365,8 @@ describe('what Lookout needs (TOOLS-2)', () => {
       'tb-jev': [['the usage strip', '0.2.0']],
       git: [],
       tmux: [],
+      caffeinate: [],
+      amphetamine: [],
     });
     for (const id of TOOL_IDS) for (const n of TOOLS[id].needs) expect(n.why, `${id} ${n.feature}`).toMatch(/\S/);
     const setup = everything();
@@ -497,7 +519,7 @@ describe('a newer one exists (TOOLS-3)', () => {
     expect(rowOf(running, 'claude')).toMatchObject({ state: 'newer-than-known', fix: null });
   });
 
-  it('TOOLS-3.4: Lookout never runs an install or update command: a read runs `--version` and `tmux -V` only, and every fix is text for the page to show', async () => {
+  it('TOOLS-3.4: Lookout never runs an install or update command: a read runs `--version`, `tmux -V` and plutil on Amphetamine’s Info.plist only, and every fix is text for the page to show', async () => {
     mkdirSync(join(home, '.claude'));
     copyFileSync(new URL('claude-last-update-failed.json', FIXTURES), join(home, '.claude', '.last-update-result.json'));
     const { m, runner } = monitor({ ...everything(), facts: [fact('claude', { version: '2.1.309 (Claude Code)' }), fact('codex')], answers: { ...GOOD_LINES, 'tb-pr': 'tb-pr 0.2.0 (latest: 0.3.1 — upgrade available)', fleet: 'fleet 0.1.0 (38a461c)' } });
@@ -505,8 +527,9 @@ describe('a newer one exists (TOOLS-3)', () => {
     await m.read({ force: true });
     const fixes = t.rows.flatMap((r) => (r.fix ? [r.fix] : []));
     expect(fixes).toEqual(expect.arrayContaining([FLEET_INSTALL_COMMAND, TB_PR_INSTALL_COMMAND, CLAUDE_UPDATE_COMMAND]));
+    const plist = ['-extract', 'CFBundleShortVersionString', 'raw', '-o', '-', join(app, 'Contents', 'Info.plist')];
     for (const [file, args] of runner.mock.calls) {
-      expect([['--version'], ['-V']], basename(file)).toContainEqual([...args]);
+      expect([['--version'], ['-V'], plist], basename(file)).toContainEqual([...args]);
       expect(fixes.some((f) => f.includes(basename(file)) && args.length > 1)).toBe(false);
     }
   });
@@ -568,5 +591,74 @@ describe('a Harness newer than Fleet knows (TOOLS-4)', () => {
       ['claude', null, null],
       ['codex', null, null],
     ]);
+  });
+});
+
+describe('third-party programs, keep-awake’s too (TOOLS-5)', () => {
+  it('TOOLS-5.1: two groups, Building blocks then Third-party, hold every Tool exactly once; Amphetamine is named as an app', () => {
+    expect(TOOL_GROUPS.map((g) => [g.label, [...g.ids]])).toEqual([
+      ['Building blocks', ['fleet', 'tb-session', 'tb-pr', 'tb-prod', 'tb-jev']],
+      ['Third-party', ['claude', 'codex', 'git', 'tmux', 'caffeinate', 'amphetamine']],
+    ]);
+    expect(TOOL_GROUPS.flatMap((g) => g.ids).sort()).toEqual([...TOOL_IDS].sort());
+    expect(toolName('amphetamine')).toBe('Amphetamine');
+    expect(toolName('caffeinate')).toBe('caffeinate');
+  });
+
+  it('TOOLS-5.2: caffeinate is found on PATH alone, where keep-awake looks; never run, it is ok with no version; found nowhere it is missing, with nothing to install, and marks the Settings button', async () => {
+    const { m, runner } = monitor(everything());
+    const t = await m.read();
+    expect(rowOf(t, 'caffeinate')).toMatchObject({ state: 'ok', path: join(bin, 'caffeinate'), version: null, number: null, reason: 'Comes with macOS; any version works.', fix: null, link: null });
+    expect(resolveSystemBin('caffeinate', { PATH: bin })).toBe(join(bin, 'caffeinate'));
+    expect(runner.mock.calls.filter(([file]) => basename(file) === 'caffeinate')).toEqual([]);
+
+    rmSync(join(bin, 'caffeinate'));
+    const gone = await readWith({ answers: GOOD_LINES, facts: [fact('claude'), fact('codex')] });
+    expect(rowOf(gone, 'caffeinate')).toMatchObject({ state: 'missing', path: null, reason: 'Not found on PATH. It comes with macOS, at /usr/bin/caffeinate.', fix: null, link: null });
+    expect(toolsAttention(gone)).toContain('caffeinate is missing');
+  });
+
+  it('TOOLS-5.3: Amphetamine is looked for where keep-awake looks; its version is the bundle’s, any version works, and it is ok only with its Power Protect helper', async () => {
+    // LOOKOUT_AMPHETAMINE_APP alone when set; else /Applications, then ~/Applications.
+    const at = (...there: string[]) => (p: string) => there.includes(p);
+    const mine = join(home, 'Applications', 'Amphetamine.app');
+    expect(findAmphetamine({ HOME: home, LOOKOUT_AMPHETAMINE_APP: app }, at(app, '/Applications/Amphetamine.app'))).toBe(app);
+    expect(findAmphetamine({ HOME: home, LOOKOUT_AMPHETAMINE_APP: app }, at('/Applications/Amphetamine.app'))).toBeNull();
+    expect(findAmphetamine({ HOME: home }, at('/Applications/Amphetamine.app', mine))).toBe('/Applications/Amphetamine.app');
+    expect(findAmphetamine({ HOME: home }, at(mine))).toBe(mine);
+    expect(findAmphetamine({ HOME: home }, at())).toBeNull();
+
+    const t = await readWith(everything());
+    // TOOLS-1.2: found by LOOKOUT_AMPHETAMINE_APP, which the row names.
+    expect(rowOf(t, 'amphetamine')).toMatchObject({ state: 'ok', path: app, via: 'LOOKOUT_AMPHETAMINE_APP', version: '5.3.2', number: '5.3.2', reason: 'Ready for Lid closed.', fix: null, link: null });
+    // Found in a usual place, it names no variable.
+    expect(amphetamineRow({ app: join(home, 'Applications', 'Amphetamine.app'), via: null, helper: true, read: { line: '5.3.2' }, home, checkedAt: NOW })).toMatchObject({ path: '~/Applications/Amphetamine.app', via: null, state: 'ok' });
+    // An old one is as good: any version works.
+    expect(rowOf(await readWith({ ...everything(), answers: { ...GOOD_LINES, plutil: '4.0' } }), 'amphetamine')).toMatchObject({ state: 'ok', number: '4.0' });
+    // A version that can't be read is said, and the helper still decides.
+    const unread = await readWith({ ...everything(), answers: { ...GOOD_LINES, plutil: { code: 1, stderr: 'Could not extract value' } } });
+    expect(rowOf(unread, 'amphetamine')).toMatchObject({ state: 'ok', version: null, reason: "Ready for Lid closed. Version unknown: plutil reading Amphetamine's version failed (exit 1): Could not extract value" });
+  });
+
+  it('TOOLS-5.4: Amphetamine not installed links to its Mac App Store page; installed without its helper says where that comes from; neither marks the Settings button', async () => {
+    const setup = everything();
+    rmSync(app, { recursive: true });
+    const none = await readWith(setup);
+    expect(rowOf(none, 'amphetamine')).toMatchObject({
+      state: 'missing',
+      path: null,
+      reason: AMPHETAMINE_NOT_INSTALLED,
+      fix: null,
+      link: { label: 'Get it on the Mac App Store', href: AMPHETAMINE_STORE_URL },
+    });
+    expect(AMPHETAMINE_STORE_URL).toBe('https://apps.apple.com/app/amphetamine/id937984704');
+    expect(none.rows.filter((r) => r.link).map((r) => r.id)).toEqual(['amphetamine']);
+    expect(toolsAttention(none)).toEqual([]);
+
+    rmSync(helper());
+    amphetamine({ withHelper: false });
+    const half = await readWith(setup);
+    expect(rowOf(half, 'amphetamine')).toMatchObject({ state: 'missing', path: app, version: '5.3.2', reason: AMPHETAMINE_NO_HELPER, fix: null, link: null });
+    expect(toolsAttention(half)).toEqual([]);
   });
 });

@@ -1,5 +1,5 @@
-import { FLEET_INSTALL_COMMAND, TB_PR_INSTALL_COMMAND, TB_SESSION_INSTALL_COMMAND } from '@shared/defaults.ts';
-import { TOOLS, TOOL_IDS, type ToolRow, type ToolsSnapshot } from '@shared/tools.ts';
+import { AMPHETAMINE_STORE_URL, FLEET_INSTALL_COMMAND, TB_PR_INSTALL_COMMAND, TB_SESSION_INSTALL_COMMAND } from '@shared/defaults.ts';
+import { TOOLS, TOOL_GROUPS, TOOL_IDS, type ToolRow, type ToolsSnapshot } from '@shared/tools.ts';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
@@ -19,6 +19,7 @@ const row = (id: ToolRow['id'], over: Partial<ToolRow> = {}): ToolRow => ({
   state: 'ok',
   reason: 'New enough for everything Lookout does.',
   fix: null,
+  link: null,
   checkedAt: NOW - 120_000,
   ...over,
 });
@@ -34,6 +35,15 @@ const TROUBLE = snapshot({
   'tb-session': { state: 'behind', reason: 'The Library needs 0.4.0.', fix: TB_SESSION_INSTALL_COMMAND, number: '0.3.0' },
   'tb-pr': { path: null, version: null, number: null, state: 'missing', reason: 'Not found on PATH or in ~/.local/bin.', fix: TB_PR_INSTALL_COMMAND },
   git: { state: 'unknown', version: null, number: null, reason: 'git --version took longer than 5 s.' },
+  caffeinate: { path: '/usr/bin/caffeinate', version: null, number: null, reason: 'Comes with macOS; any version works.' },
+  amphetamine: {
+    path: null,
+    version: null,
+    number: null,
+    state: 'missing',
+    reason: "Keep-awake's Lid closed needs it; Awake works without it.",
+    link: { label: 'Get it on the Mac App Store', href: AMPHETAMINE_STORE_URL },
+  },
 });
 
 const toolsLink = () => within(screen.getByRole('navigation', { name: 'Settings' })).getByRole('link', { name: 'Tools' });
@@ -53,7 +63,7 @@ async function openSettings(tools: ToolsSnapshot | null, client: Parameters<type
 describe('Settings › Tools', () => {
   it('TOOLS-1.1: every Tool has a row with what it is for, where it was found and how, its version and its state; Fleet with its revision', async () => {
     const { section, item } = await openSettings(TROUBLE);
-    expect([...section.querySelectorAll('[data-tool]')].map((e) => e.getAttribute('data-tool'))).toEqual([...TOOL_IDS]);
+    expect([...section.querySelectorAll('[data-tool]')].map((e) => e.getAttribute('data-tool'))).toEqual(TOOL_GROUPS.flatMap((g) => g.ids));
     expect(item('tb-pr')).toHaveTextContent('Work reads PRs through it');
     expect(within(item('fleet')).getByText('~/.cargo/bin/fleet (LOOKOUT_FLEET_BIN)')).toBeInTheDocument();
     expect(item('fleet').querySelector('[data-field="version"]')).toHaveTextContent('0.1.0 @ 38a461c');
@@ -92,8 +102,9 @@ describe('Settings › Tools', () => {
     for (const [id, fix] of [['fleet', FLEET_INSTALL_COMMAND], ['tb-session', TB_SESSION_INSTALL_COMMAND], ['tb-pr', TB_PR_INSTALL_COMMAND], ['codex', 'codex update']] as const) {
       expect(item(id).querySelector('[data-slot="command-block"]'), id).toHaveTextContent(fix);
     }
-    // The only button in the section reads versions.
+    // The only button in the section reads versions; the one link leaves for the App Store, which installs (TOOLS-5.4).
     expect(within(section).getAllByRole('button').map((b) => b.textContent?.trim())).toEqual(['Refresh']);
+    expect(within(section).getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual([AMPHETAMINE_STORE_URL]);
   });
 
   it('TOOLS-4.2 (support): missing and behind are error Alerts, update-available and newer-than-known info ones, ok plain text', async () => {
@@ -109,11 +120,47 @@ describe('Settings › Tools', () => {
       ['tb-jev', null],
       ['git', null],
       ['tmux', null],
+      ['caffeinate', null],
+      ['amphetamine', 'info'],
     ]);
     expect(within(item('tb-pr')).getByRole('alert')).toHaveTextContent('tb-pr is missing');
     expect(within(item('claude')).getByRole('status')).toHaveTextContent('Newer than Fleet knows (2.1.312)');
     // The Harness rows keep their fix-free state: nothing to run for a re-check.
     expect(item('claude').querySelector('[data-slot="command-block"]')).toBeNull();
+  });
+});
+
+describe('third-party programs (TOOLS-5)', () => {
+  it('TOOLS-5.1: the rows sit in two lists, Building blocks then Third-party, each under its heading; Amphetamine is named as an app, the rest by their command', async () => {
+    const { section, item } = await openSettings(TROUBLE);
+    const lists = within(section).getAllByRole('list');
+    expect(lists.map((l) => l.getAttribute('aria-labelledby') && section.querySelector(`#${l.getAttribute('aria-labelledby')}`)?.textContent)).toEqual(['Building blocks', 'Third-party']);
+    expect(within(section).getByRole('list', { name: 'Building blocks' }).querySelectorAll('[data-tool]')).toHaveLength(5);
+    const third = within(section).getByRole('list', { name: 'Third-party' });
+    expect([...third.querySelectorAll('[data-tool]')].map((e) => e.getAttribute('data-tool'))).toEqual(['claude', 'codex', 'git', 'tmux', 'caffeinate', 'amphetamine']);
+    expect(within(section).getByRole('heading', { name: 'Third-party' })).toHaveClass('text-caption', 'font-medium', 'text-muted-foreground');
+    expect(within(item('amphetamine')).getByText('Amphetamine')).not.toHaveClass('font-mono');
+    expect(within(item('caffeinate')).getByText('caffeinate')).toHaveClass('font-mono');
+    expect(item('caffeinate').querySelector('[data-field="version"]')).toHaveTextContent('—');
+  });
+
+  it('TOOLS-5.4: Amphetamine not installed is an info Alert with the Mac App Store link, opening in a new tab; without its helper it says so with no link; neither marks the Settings button', async () => {
+    const { app, item } = await openSettings(TROUBLE);
+    const alert = within(item('amphetamine')).getByRole('status');
+    expect(alert).toHaveAttribute('data-tone', 'info');
+    expect(alert).toHaveTextContent("Not installedKeep-awake's Lid closed needs it; Awake works without it.");
+    const link = within(alert).getByRole('link', { name: 'Get it on the Mac App Store' });
+    expect(link).toHaveAttribute('href', AMPHETAMINE_STORE_URL);
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link.getAttribute('rel')).toContain('noopener');
+    expect(link.querySelector('svg')).toHaveClass('lucide-external-link');
+    expect(screen.getByRole('button', { name: 'Settings' }).getAttribute('title')).not.toMatch(/amphetamine/i);
+
+    app.emit({ type: 'tools', tools: snapshot({ amphetamine: { path: '/Applications/Amphetamine.app', state: 'missing', reason: "Lid closed also needs its Power Protect helper, from Amphetamine's settings." } }, NOW) });
+    const half = within(item('amphetamine')).getByRole('status');
+    expect(half).toHaveTextContent("Not set upLid closed also needs its Power Protect helper, from Amphetamine's settings.");
+    expect(within(half).queryByRole('link')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Settings' })).toHaveAttribute('title', 'Settings');
   });
 });
 

@@ -3,7 +3,7 @@ title: "Keep the Mac awake"
 code: "AWAKE"
 status: "In Progress"
 created: "2026-11-16"
-updated: "2026-11-16"
+updated: "2026-11-17"
 ---
 
 # Keep the Mac awake
@@ -187,3 +187,4 @@ None.
     - A pick's answer could replace a newer event; snapshots now carry `rev` (AWAKE-1.1).
     - The arrows and Enter, and the panels giving up 28 px, weren't tested (AWAKE-4.2, AWAKE-4.3).
     - The footer line was copied by hand, and is now `ui/footer-line.tsx` (DS-23).
+- 2026-11-17: Settings › Tools lists `caffeinate` and Amphetamine (TOOLS-5), found by the same lookups keep-awake uses, now exported from `server/awake.ts` (`findSystemBin`, `findAmphetamine`, `amphetamineHelperPath`). No requirement changed.

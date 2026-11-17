@@ -1,4 +1,4 @@
-import { TOOLS, TOOL_IDS, type ToolRow, type ToolsSnapshot } from '@shared/tools.ts';
+import { TOOLS, TOOL_GROUPS, TOOL_IDS, type ToolRow, type ToolsSnapshot, toolName } from '@shared/tools.ts';
 import { CircleArrowUp } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
@@ -7,9 +7,10 @@ import { CommandBlock } from '@/components/ui/command-block';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { ActionIcon } from '@/lib/actions';
+import { LINK_REL } from '@/lib/links';
 
 /** TOOLS-3.4: said once, at the top of the section. */
-export const NEVER_RUNS = 'These are the CLIs Lookout runs. Lookout never installs or updates them; copy a command and run it.';
+export const NEVER_RUNS = 'These are the programs Lookout runs. Lookout never installs or updates them: copy a command and run it, or follow the link to the App Store.';
 
 interface Props {
   /** The server's last read, or null before it sent one. */
@@ -35,6 +36,7 @@ const CHECKING: ToolRow[] = TOOL_IDS.map((id) => ({
   state: 'unknown',
   reason: '',
   fix: null,
+  link: null,
   checkedAt: null,
 }));
 
@@ -85,11 +87,23 @@ export function ToolsSection({ tools, now, load, refresh }: Props) {
         {NEVER_RUNS}
       </p>
       {error && <Alert layout="inline" title={error} className="mt-2" />}
-      <ul aria-label="Tools" className="mt-3 flex flex-col divide-y divide-border rounded-md border border-border">
-        {rows.map((row) => (
-          <ToolItem key={row.id} row={row} />
-        ))}
-      </ul>
+      {/* TOOLS-5.1: Building blocks, then Third-party, each a list under its heading (a group in a list). */}
+      {TOOL_GROUPS.map((group) => {
+        const id = `tools-group-${group.label.toLowerCase().replace(/\W+/g, '-')}`;
+        return (
+          <div key={group.label} className="mt-3 flex flex-col gap-1">
+            <h3 id={id} className="text-caption font-medium text-muted-foreground">
+              {group.label}
+            </h3>
+            <ul aria-labelledby={id} className="flex flex-col divide-y divide-border rounded-md border border-border">
+              {group.ids.map((tool) => {
+                const row = rows.find((r) => r.id === tool);
+                return row ? <ToolItem key={tool} row={row} /> : null;
+              })}
+            </ul>
+          </div>
+        );
+      })}
     </section>
   );
 }
@@ -105,7 +119,8 @@ function ToolItem({ row }: { row: ToolRow }) {
   return (
     <li data-tool={row.id} data-state={row.checkedAt === null ? 'checking' : row.state} className="flex min-w-0 flex-col gap-1.5 px-3 py-2.5">
       <div className="flex min-w-0 items-baseline gap-2">
-        <span className="shrink-0 font-mono text-body font-medium">{row.id}</span>
+        {/* TOOLS-5.1: a CLI by its command, an app by its name. */}
+        <span className={cn('shrink-0 text-body font-medium', !TOOLS[row.id].appName && 'font-mono')}>{toolName(row.id)}</span>
         <span className="min-w-0 flex-1 truncate text-meta text-muted-foreground" data-field="purpose" title={row.purpose}>
           {row.purpose}
         </span>
@@ -122,11 +137,32 @@ function ToolItem({ row }: { row: ToolRow }) {
   );
 }
 
+/** TOOLS-5.4: a page that installs it, in a new tab; leaving Lookout has its own icon (DS-18.6). */
+function InstallLink({ link }: { link: NonNullable<ToolRow['link']> }) {
+  return (
+    <Button asChild variant="secondary" size="default" className="self-start">
+      <a href={link.href} target="_blank" rel={LINK_REL} data-field="install-link">
+        <ActionIcon id="open-external" />
+        {link.label}
+      </a>
+    </Button>
+  );
+}
+
 /** TOOLS-4.2: the state's tone; the reason, and the fix to copy. */
 function ToolStateView({ row }: { row: ToolRow }) {
   const fix = row.fix && <CommandBlock>{row.fix}</CommandBlock>;
   // TOOLS-2.2: Fleet's pin beside a revision that can't be read; `ok` and `behind` name it in their reason.
   const pinned = row.pin ? ` · pinned ${row.pin}` : '';
+  // TOOLS-5.4: what only a mode you choose needs is information; an app links to the page that installs it.
+  if (row.state === 'missing' && TOOLS[row.id].optional) {
+    return (
+      <Alert tone="info" title={row.path ? 'Not set up' : 'Not installed'} detail={row.reason}>
+        {fix}
+        {row.link && <InstallLink link={row.link} />}
+      </Alert>
+    );
+  }
   switch (row.state) {
     case 'missing':
     case 'behind':

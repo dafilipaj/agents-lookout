@@ -39,3 +39,6 @@ export const CLAUDE_UPDATE_COMMAND = 'claude update';
 
 /** TOOLS-3.2: Codex's own update, for a newer release Codex recorded or a version below Lookout's need. */
 export const CODEX_UPDATE_COMMAND = 'codex update';
+
+/** TOOLS-5.4: Amphetamine's Mac App Store page, the only place that installs it; Lookout links to it, never installs. */
+export const AMPHETAMINE_STORE_URL = 'https://apps.apple.com/app/amphetamine/id937984704';

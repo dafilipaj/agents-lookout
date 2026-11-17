@@ -1,7 +1,8 @@
-import { accessSync, constants, readFileSync, realpathSync, statSync } from 'node:fs';
+import { accessSync, constants, existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, delimiter, dirname, isAbsolute, join } from 'node:path';
+import { AMPHETAMINE_STORE_URL } from '../shared/defaults.ts';
 import {
   FLEET_VERSION_LINE,
   TOOLS,
@@ -15,6 +16,7 @@ import {
   semver,
 } from '../shared/tools.ts';
 import type { JevStatus } from '../shared/usage.ts';
+import { amphetamineHelperPath, findAmphetamine, findSystemBin, resolveSystemBin } from './awake.ts';
 import { readCargoRecord } from './cargo-record.ts';
 import type { RunError, Runner } from './exec.ts';
 import { resolveFleetBin } from './fleet.ts';
@@ -27,7 +29,8 @@ import { resolveWorkBin } from './work.ts';
 /**
  * TOOLS: every CLI Lookout runs, where it was found, its version, and whether it's missing, behind,
  * has an update out or is newer than Fleet knows. Lookout shows and explains; it never installs
- * or updates anything (TOOLS-3.4): the only commands it runs here are `--version` (and `tmux -V`).
+ * or updates anything (TOOLS-3.4): the only commands it runs here are `--version`, `tmux -V` and
+ * `plutil` on Amphetamine's `Info.plist` (TOOLS-5.3).
  */
 
 /** TOOLS-1.4: the start's read and a page opening read at most this often; so does the GitHub release check, Refresh included. */
@@ -38,7 +41,9 @@ const MAX_VERSION = 60;
 /** Bounds what's read of a Tool's own record before it's parsed (TOOLS-3). */
 const MAX_FILE_BYTES = 64 * 1024;
 
-type Located = Exclude<ToolId, 'claude' | 'codex'>;
+/** The Tools `findTool` looks for; a Harness is Fleet's to find, and keep-awake's two are found its way (TOOLS-5). */
+type Located = Exclude<ToolId, 'claude' | 'codex' | 'caffeinate' | 'amphetamine'>;
+const LOCATED = TOOL_IDS.filter((id): id is Located => id !== 'claude' && id !== 'codex' && id !== 'caffeinate' && id !== 'amphetamine');
 
 /** Where a Tool was found: its path, and the environment variable that named it, if one did (TOOLS-1.2). */
 export interface Found {
@@ -116,9 +121,8 @@ export function findTool(id: Located, env: NodeJS.ProcessEnv, tmuxDirs: readonly
 /** What a version read gave: its first line, raw (bounded), or why there's none. */
 export type VersionRead = { line: string } | { error: string };
 
-/** TOOLS-1.3: argv only, LAUNCH's cleaned environment, 5 s. Never throws. */
-export async function readVersion(runner: Runner, id: ToolId, path: string, argv: readonly string[], env: NodeJS.ProcessEnv, signal?: AbortSignal): Promise<VersionRead> {
-  const what = `${id} ${argv.join(' ')}`;
+/** TOOLS-1.3: argv only, LAUNCH's cleaned environment, 5 s. Never throws. `what` names the run in a reason; `<id> <argv>` by default. */
+export async function readVersion(runner: Runner, id: ToolId, path: string, argv: readonly string[], env: NodeJS.ProcessEnv, signal?: AbortSignal, what = `${id} ${argv.join(' ')}`): Promise<VersionRead> {
   try {
     const out = await runner(path, argv, { timeoutMs: TOOL_TIMEOUT_MS, env, signal });
     const line = out.split(/\r?\n/).find((l) => l.trim() !== '')?.trim().slice(0, 200);
@@ -238,6 +242,7 @@ function blank(id: ToolId, checkedAt: number | null, pin: string | null): ToolRo
     state: 'unknown',
     reason: checkedAt === null ? 'Checking…' : '',
     fix: null,
+    link: null,
     checkedAt,
   };
 }
@@ -396,6 +401,34 @@ export function plainRow(id: 'git' | 'tmux', input: RowInput): ToolRow {
   return judge(versioned(row, input.read.line));
 }
 
+/** TOOLS-5.2: `caffeinate` prints no version; it comes with macOS, so nothing but macOS installs it. */
+export function caffeinateRow(input: { path: string | null; home: string; checkedAt: number }): ToolRow {
+  const row = blank('caffeinate', input.checkedAt, null);
+  if (!input.path) return missing(row, 'Not found on PATH. It comes with macOS, at /usr/bin/caffeinate.', null);
+  return { ...row, path: tildify(input.path, input.home), state: 'ok', reason: 'Comes with macOS; any version works.' };
+}
+
+export const AMPHETAMINE_NOT_INSTALLED = "Keep-awake's Lid closed needs it; Awake works without it.";
+export const AMPHETAMINE_NO_HELPER = "Lid closed also needs its Power Protect helper, from Amphetamine's settings.";
+/** TOOLS-5.4: the one install Lookout offers that isn't a command: the App Store installs it. */
+export const AMPHETAMINE_LINK = { label: 'Get it on the Mac App Store', href: AMPHETAMINE_STORE_URL } as const;
+
+/**
+ * TOOLS-5.3, TOOLS-5.4: Amphetamine where keep-awake finds it, any version, `ok` only with its
+ * Power Protect helper. Not installed, it links to its Mac App Store page; without the helper it
+ * says where that comes from. A version that can't be read is said, and leaves the state to the helper.
+ */
+export function amphetamineRow(input: { app: string | null; via: string | null; helper: boolean; read: VersionRead | null; home: string; checkedAt: number }): ToolRow {
+  const row = blank('amphetamine', input.checkedAt, null);
+  if (!input.app) return { ...missing(row, AMPHETAMINE_NOT_INSTALLED, null), link: { ...AMPHETAMINE_LINK } };
+  // TOOLS-1.2: the path, and the variable that named it.
+  const found = { ...row, path: tildify(input.app, input.home), via: input.via };
+  const read = input.read && 'line' in input.read ? versioned(found, input.read.line) : found;
+  const unread = !input.read ? '' : 'error' in input.read ? ` Version unknown: ${input.read.error}` : read.number === null ? ` Lookout can't read a version in "${read.version}".` : '';
+  if (!input.helper) return missing(read, `${AMPHETAMINE_NO_HELPER}${unread}`, null);
+  return { ...read, state: 'ok', reason: `Ready for Lid closed.${unread}` };
+}
+
 /** cargo's record of the binary at `path`: `<root>/bin/fleet` → `<root>/.crates2.json`, the link's target too. */
 export function cargoRevisionFor(path: string, pkg = 'fleet'): string | null {
   const candidates = [path];
@@ -538,7 +571,10 @@ export class ToolsMonitor {
     const clean = cleanEnv(env);
     const signal = this.abort.signal;
     const checkedAt = this.now();
-    const lookups = Object.fromEntries((TOOL_IDS.filter((id) => id !== 'claude' && id !== 'codex') as Located[]).map((id) => [id, findTool(id, env, this.opts.tmuxDirs)])) as Record<Located, Lookup>;
+    const lookups = Object.fromEntries(LOCATED.map((id) => [id, findTool(id, env, this.opts.tmuxDirs)])) as Record<Located, Lookup>;
+    // TOOLS-5.2, TOOLS-5.3: keep-awake's two, where keep-awake looks.
+    const caffeinate = findSystemBin('caffeinate', env);
+    const amphetamine = findAmphetamine(env);
     // TOOLS-1.4: every read re-reads the installed versions, but tb's `--version` calls `gh` for the
     // latest release; within a minute of the last such call it runs without `gh` and the last answer stands.
     const withinMinute = this.now() - this.lastGh < TOOLS_READ_MIN_MS;
@@ -558,13 +594,15 @@ export class ToolsMonitor {
       return undefined;
     };
     const fleet = !!lookups.fleet.found;
-    const [fleetRead, sessionRead, prRead, prodRead, gitRead, tmuxRead, facts, jev, codexFile, claudeFile, jevCache] = await Promise.all([
+    const plist = ['-extract', 'CFBundleShortVersionString', 'raw', '-o', '-', join(amphetamine ?? '', 'Contents', 'Info.plist')];
+    const [fleetRead, sessionRead, prRead, prodRead, gitRead, tmuxRead, amphetamineRead, facts, jev, codexFile, claudeFile, jevCache] = await Promise.all([
       read('fleet'),
       read('tb-session'),
       read('tb-pr'),
       read('tb-prod'),
       read('git'),
       read('tmux'),
+      amphetamine ? readVersion(this.opts.runner, 'amphetamine', resolveSystemBin('plutil', env), plist, clean, signal, "plutil reading Amphetamine's version") : Promise.resolve(null),
       fleet ? this.opts.harnesses(force).catch((err: unknown) => ({ error: sanitizeLine(err instanceof Error ? err.message : String(err), 160) ?? 'unknown error' })) : Promise.resolve(null),
       lookups['tb-jev'].found ? this.opts.jev().catch(() => null) : Promise.resolve(null),
       readSmall(join(env.CODEX_HOME || join(home, '.codex'), 'version.json')),
@@ -592,6 +630,8 @@ export class ToolsMonitor {
       'tb-jev': jevRow({ ...base, lookup: lookups['tb-jev'], jev, cache: parseTbCacheFile(jevCache), now }),
       git: plainRow('git', { ...base, lookup: lookups.git, read: gitRead }),
       tmux: plainRow('tmux', { ...base, lookup: lookups.tmux, read: tmuxRead }),
+      caffeinate: caffeinateRow({ ...base, path: caffeinate }),
+      amphetamine: amphetamineRow({ ...base, app: amphetamine, via: env.LOOKOUT_AMPHETAMINE_APP ? 'LOOKOUT_AMPHETAMINE_APP' : null, helper: amphetamine !== null && existsSync(amphetamineHelperPath(env)), read: amphetamineRead }),
     };
     if (!this.pin) rows.fleet = { ...rows.fleet, state: rows.fleet.state === 'missing' ? 'missing' : 'unknown', reason: rows.fleet.state === 'missing' ? rows.fleet.reason : "Lookout's pin (e2e/pins.json) can't be read." };
     return TOOL_IDS.map((id) => rows[id]);

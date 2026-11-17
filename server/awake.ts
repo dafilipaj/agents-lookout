@@ -79,9 +79,10 @@ export const spawnHeld: Spawner = (file, args) => {
 
 /**
  * AWAKE-1.2: a system command on PATH alone, which holds `/usr/bin` for a server started from a
- * terminal or by launchd, and a World's fakes only in a World (whose PATH is its `bin/`).
+ * terminal or by launchd, and a World's fakes only in a World (whose PATH is its `bin/`). Null
+ * when it's on none; Settings › Tools looks for `caffeinate` with this too (TOOLS-5.2).
  */
-export function resolveSystemBin(name: string, env: NodeJS.ProcessEnv = process.env): string {
+export function findSystemBin(name: string, env: NodeJS.ProcessEnv = process.env): string | null {
   for (const dir of (env.PATH ?? '').split(delimiter).filter(Boolean)) {
     const candidate = join(dir, name);
     try {
@@ -91,7 +92,27 @@ export function resolveSystemBin(name: string, env: NodeJS.ProcessEnv = process.
       // not here
     }
   }
-  return name;
+  return null;
+}
+
+/** `findSystemBin`, or the bare name, which fails to run with ENOENT when it's on no PATH directory. */
+export function resolveSystemBin(name: string, env: NodeJS.ProcessEnv = process.env): string {
+  return findSystemBin(name, env) ?? name;
+}
+
+/**
+ * AWAKE-3.1: where Amphetamine is: `LOOKOUT_AMPHETAMINE_APP` when it's set, else
+ * `/Applications/Amphetamine.app`, then `~/Applications/Amphetamine.app`; null when it's in none.
+ * Settings › Tools looks with this too (TOOLS-5.3).
+ */
+export function findAmphetamine(env: NodeJS.ProcessEnv = process.env, exists: (path: string) => boolean = existsSync): string | null {
+  if (env.LOOKOUT_AMPHETAMINE_APP) return exists(env.LOOKOUT_AMPHETAMINE_APP) ? env.LOOKOUT_AMPHETAMINE_APP : null;
+  return ['/Applications/Amphetamine.app', join(env.HOME || homedir(), 'Applications', 'Amphetamine.app')].find((p) => exists(p)) ?? null;
+}
+
+/** AWAKE-3.1: Amphetamine's Power Protect helper, which Lid closed needs too (TOOLS-5.3). */
+export function amphetamineHelperPath(env: NodeJS.ProcessEnv = process.env): string {
+  return join(env.HOME || homedir(), 'Library', 'Application Scripts', 'com.if.Amphetamine', 'powerProtect.scpt');
 }
 
 /** AWAKE-3.1: `pmset -g batt`'s first line names the power source. */
@@ -428,18 +449,9 @@ export class KeepAwake {
   /** AWAKE-3.1: the charger, the app, its helper, in that order; a refusal is said but stays retryable. */
   private lidState(): AwakeSnapshot['lid'] {
     if (this.power !== 'ac') return { available: false, reason: LID_NEEDS_CHARGER };
-    if (!this.appInstalled()) return { available: false, reason: LID_NEEDS_APP };
-    if (!this.exists(join(this.home(), 'Library', 'Application Scripts', 'com.if.Amphetamine', 'powerProtect.scpt'))) return { available: false, reason: LID_NEEDS_HELPER };
+    if (findAmphetamine(this.env, this.exists) === null) return { available: false, reason: LID_NEEDS_APP };
+    if (!this.exists(amphetamineHelperPath(this.env))) return { available: false, reason: LID_NEEDS_HELPER };
     return { available: true, reason: this.refused ? LID_AUTOMATION : null };
-  }
-
-  private appInstalled(): boolean {
-    if (this.env.LOOKOUT_AMPHETAMINE_APP) return this.exists(this.env.LOOKOUT_AMPHETAMINE_APP);
-    return this.exists('/Applications/Amphetamine.app') || this.exists(join(this.home(), 'Applications', 'Amphetamine.app'));
-  }
-
-  private home(): string {
-    return this.env.HOME || homedir();
   }
 
   // --- caffeinate ---

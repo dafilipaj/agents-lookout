@@ -98,7 +98,7 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Task**: A Productive task assigned to you that isn't closed.
 
-**Tool**: A CLI Lookout runs on this Mac: Fleet, `claude`, `codex`, `tb-session`, `tb-pr`, `tb-prod`, `tb-jev`, `git` and `tmux`. Every Building block is a Tool; not every Tool is a Building block. See the TOOLS spec.
+**Tool**: A program Lookout runs on this Mac: Fleet, `claude`, `codex`, `tb-session`, `tb-pr`, `tb-prod`, `tb-jev`, `git`, `tmux`, `caffeinate`, and Amphetamine, an app it drives through AppleScript. Every Building block is a Tool; not every Tool is a Building block. Settings › Tools lists Fleet and the `tb-*` CLIs as Building blocks and the rest as Third-party. See the TOOLS spec.
 
 **Topic**: A wrapper you make by hand for one piece of your work: the Sessions, PR, Task and, later, `tb-flow` run that belong to it, all or some, with your notes and a state, Open or Archived. Its members are references to what the Building blocks know; Lookout keeps them in `~/.lookout/topics.db`. See the TOPIC spec.
 

@@ -14,9 +14,15 @@ import {
  * (TOOLS-2.5), so a needed version is written down once.
  */
 
-/** TOOLS-1.1: every Tool, in the order Settings › Tools lists them. */
-export const TOOL_IDS = ['fleet', 'claude', 'codex', 'tb-session', 'tb-pr', 'tb-prod', 'tb-jev', 'git', 'tmux'] as const;
+/** TOOLS-1.1: every Tool, in the order `GET /api/tools` answers them. */
+export const TOOL_IDS = ['fleet', 'claude', 'codex', 'tb-session', 'tb-pr', 'tb-prod', 'tb-jev', 'git', 'tmux', 'caffeinate', 'amphetamine'] as const;
 export type ToolId = (typeof TOOL_IDS)[number];
+
+/** TOOLS-5.1: Settings › Tools' two groups, each a list under its heading, in this order; every Tool is in one. */
+export const TOOL_GROUPS: readonly { label: string; ids: readonly ToolId[] }[] = [
+  { label: 'Building blocks', ids: ['fleet', 'tb-session', 'tb-pr', 'tb-prod', 'tb-jev'] },
+  { label: 'Third-party', ids: ['claude', 'codex', 'git', 'tmux', 'caffeinate', 'amphetamine'] },
+];
 
 export const TOOL_STATES = ['ok', 'missing', 'behind', 'update-available', 'newer-than-known', 'unknown'] as const;
 export type ToolState = (typeof TOOL_STATES)[number];
@@ -31,6 +37,10 @@ export interface ToolNeed {
 
 export interface ToolDefinition {
   id: ToolId;
+  /** TOOLS-5.1: how the page names an app, which has no command to name it by (Amphetamine); a CLI is named by its id. */
+  appName?: string;
+  /** TOOLS-5.4: only a mode you choose needs it, so its absence is information: an info Alert, never the Settings button's dot. */
+  optional?: boolean;
   /** What Lookout runs it for, one short sentence. */
   purpose: string;
   /** TOOLS-2.1: empty when any version works (git, tmux) or when a pin judges it instead (Fleet, TOOLS-2.2). */
@@ -147,7 +157,32 @@ export const TOOLS: Readonly<Record<ToolId, ToolDefinition>> = {
     parse: match(/^tmux (\S+)$/),
     fix: null,
   },
+  caffeinate: {
+    id: 'caffeinate',
+    purpose: 'Keep-awake holds the Mac awake with it',
+    needs: [],
+    checkedUpTo: null,
+    // TOOLS-5.2: it prints no version.
+    versionArgv: null,
+    parse: () => null,
+    fix: null,
+  },
+  amphetamine: {
+    id: 'amphetamine',
+    appName: 'Amphetamine',
+    optional: true,
+    purpose: "Keep-awake's Lid closed keeps the Mac awake through it",
+    needs: [],
+    checkedUpTo: null,
+    // TOOLS-5.3: the bundle's `CFBundleShortVersionString`, read with `plutil`, e.g. `5.3.2`.
+    versionArgv: null,
+    parse: match(/^(\d[\d.]*)$/),
+    fix: null,
+  },
 };
+
+/** TOOLS-5.1: the name Settings › Tools shows: an app's own, else the command. */
+export const toolName = (id: ToolId): string => TOOLS[id].appName ?? id;
 
 /** What a tb-* `--version` line says of the latest release (TOOLS-3.1). */
 export type TbLatest = { kind: 'latest' } | { kind: 'newer'; version: string } | { kind: 'no-gh' } | { kind: 'none' };
@@ -192,6 +227,12 @@ export function tooOld(tool: ToolId, feature: string, installed: string | null):
   return `${tool}${installed ? ` ${installed}` : ''} is older than ${feature} needs (${neededVersion(tool, feature)})`;
 }
 
+/** TOOLS-5.4: a page that installs a Tool, opened in a new tab. */
+export interface ToolLink {
+  label: string;
+  href: string;
+}
+
 /** One row of Settings › Tools (TOOLS-1.1). */
 export interface ToolRow {
   id: ToolId;
@@ -214,6 +255,8 @@ export interface ToolRow {
   reason: string;
   /** A command to copy, never run (TOOLS-3.4); null when there's nothing to run. */
   fix: string | null;
+  /** TOOLS-5.4: the page that installs an app with no command to copy (Amphetamine's on the Mac App Store); null otherwise. */
+  link: ToolLink | null;
   /** When this row was read; null before the first read. */
   checkedAt: number | null;
 }
@@ -231,13 +274,14 @@ export interface ToolsSnapshot {
 const HARNESS_IDS: readonly ToolId[] = ['claude', 'codex'];
 
 /**
- * TOOLS-2.4: only `missing` and `behind` mark the Settings button; `update-available` and
+ * TOOLS-2.4: only `missing` and `behind` mark the Settings button, and not an optional Tool (TOOLS-5.4); `update-available` and
  * `newer-than-known` don't. A missing Harness counts only when no Harness is installed, because
  * then Lookout can't start a Session (Dario, 2026-10-30); a too-old one always counts.
  */
 export function needsAttention(row: ToolRow, rows: readonly ToolRow[]): boolean {
   if (row.state === 'behind') return true;
-  if (row.state !== 'missing') return false;
+  // TOOLS-5.4: Amphetamine, which only Lid closed needs, never marks it.
+  if (row.state !== 'missing' || TOOLS[row.id].optional) return false;
   if (!HARNESS_IDS.includes(row.id)) return true;
   return rows.filter((r) => HARNESS_IDS.includes(r.id)).every((r) => r.state === 'missing');
 }
