@@ -8,6 +8,10 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Acceptance criterion**: A checkable condition under a Requirement, ID'd `<CODE>-n.m`, verified by a test or by looking at the running app.
 
+**Architecture**: A repo's structure as Lookout shows it: its Areas, its Import graph and its Findings, and what a Session's Changes do to them. See the ARCH spec.
+
+**Area**: One unit of a repo's code: a workspace package where the repo declares workspaces, else a top-level folder. Every file belongs to one. See ARCH-1.4.
+
 **At work**: A Session that is Busy, or that has a Subagent or a background shell command still running, whatever its Status. Needs you, Idle and Done alone are not at work. Keep awake holds the Mac up while any Session is. See the AWAKE spec.
 
 **Attachment**: A file you drop or paste into a Session's composer that Lookout copies, because the browser can't see its path (from Finder, or the clipboard): saved under `~/.lookout/attachments/<YYYY-MM-DD>/` and put into your message by its absolute path, so the Harness reads it with its own tools. Deleted after 14 days. A file dragged with its real path (from VS Code) isn't one: its own path goes in. See VIEW-9.
@@ -36,6 +40,8 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Fake Harness**: A stand-in for Claude Code or Codex in a World. It runs in the World's tmux, registers and writes Transcripts the way the real Harness does, and answers from a script, so the real Fleet and tb-session see it as a Session. It never calls a model.
 
+**Finding**: A structural problem Lookout reports in a repo, of one kind: a *Cycle* (files that import each other in a circle), a *Hub* (a file that many files import and that imports many itself), a *God file* (a large file imported from many Areas) or a *Hotspot* (a large file that changes often). Against the repo a week earlier it's new, growing, steady, shrinking or gone. One you mark as *Known* stays quiet until it grows. See ARCH-2 and ARCH-3.9.
+
 **Harness**: The agent CLI a Session runs: Claude Code or Codex. (Fleet also knows pi; not a goal for Lookout.)
 
 **Headless Session**: A Session started without a terminal to type into, such as `claude -p` or an Agent SDK run. History hides them by default.
@@ -43,6 +49,8 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 **History**: Past Sessions, found by searching their Transcripts, and resumable.
 
 **Host**: A machine that runs Sessions. For now only this Mac.
+
+**Import graph**: Which of a tree's TypeScript and JavaScript files import which, as the scanner reads them from a commit or from a Checkout's working tree. An import of a package isn't in it. See ARCH-1.
 
 **Keep awake**: Lookout holding the Mac out of sleep while Sessions are At work: *Awake* stops idle sleep, *Lid closed* also keeps it running with the lid shut, on the charger, through the Amphetamine app. It turns itself off after 5 minutes with no Session At work, and the display still sleeps. See the AWAKE spec.
 
