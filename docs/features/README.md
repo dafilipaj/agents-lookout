@@ -24,3 +24,4 @@ One row per feature. Update the status here and in the spec's frontmatter togeth
 | Keep the Mac awake: one switch in the bottom-right corner holds off idle sleep, or lid-closed sleep on the charger through Amphetamine, while Sessions are at work | AWAKE | In Progress | [SPEC](keep-awake/SPEC.md) |
 | Setup: the skills, agents, hooks and MCP servers Claude Code and Codex load, in a right-sidebar tab, with a Claude Code skill or plugin turned off and on | SETUP | In Progress | [SPEC](setup/SPEC.md) |
 | Architecture: a repo's structural problems as ranked Findings, new and growing first, and what a Session's Changes do to them | ARCH | Draft | [SPEC](architecture/SPEC.md) |
+| Pings: threads in watched Slack channels that mention you, listed beside your Sessions, each opening, resuming or starting the Session that answers it | PING | Draft | [SPEC](pings/SPEC.md) |

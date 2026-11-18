@@ -8,7 +8,7 @@ What's being worked on next, in order. Each item points at where its truth lives
 - **When an item is done,** remove it. Git history keeps it.
 - **When an item is dropped,** move it to the Backlog's "Dropped" section with the reason, so it isn't proposed again.
 
-Updated: 2026-11-18 (item 53: Architecture, drafted as ARCH from a conversation with Dario, a probe of fantastic-productive's Import graph and research into prior art; not grilled). 2026-11-17 (item 52: Setup, grilled with Dario and drafted as SETUP, canvas B chosen and slice 1 built; the Backlog's "What's loaded into a Session" and "A catalogue of agents" folded into it. Earlier the same day, cleanup: items 14, 22, 27, 28, 30, 39, 40 and 41 were done and are removed; item 18's run member and the Behaviour tests items 18 and 24 waited on moved to Later; the answered Open question removed). Earlier updates are in git history.
+Updated: 2026-11-18 (item 53: Architecture, drafted as ARCH from a conversation with Dario, a probe of fantastic-productive's Import graph and research into prior art; not grilled. Item 54: Pings, drafted as PING from a conversation with Dario and a check of `tb-slack`, Fleet's Slack links and the `#ai-ci-cd` channel; not grilled). 2026-11-17 (item 52: Setup, grilled with Dario and drafted as SETUP, canvas B chosen and slice 1 built; the Backlog's "What's loaded into a Session" and "A catalogue of agents" folded into it. Earlier the same day, cleanup: items 14, 22, 27, 28, 30, 39, 40 and 41 were done and are removed; item 18's run member and the Behaviour tests items 18 and 24 waited on moved to Later; the answered Open question removed). Earlier updates are in git history.
 
 ## Now
 
@@ -66,6 +66,18 @@ Items 45 and 50 are what's left of the clarity pass (Dario 2026-11-06: "Look at 
     - the scanner as a Building block, its contract written first.
 
   Next: a grill. Its blocking questions are which slice comes first, the scanner's engine, where a repo's Findings live (a canvas), and the thresholds checked on real repos. The research with its sources, the probe's numbers by file and the probe script are in Dario's `output/lookout-2026-11-18-architecture/`.
+54. **PING: Slack threads that ask for you, beside your Sessions** ([spec](features/pings/SPEC.md), Draft 2026-11-18). Dario 2026-11-18: in the new Slack channel `#ai-ci-cd` an "ai bot might ping me if release fails", which is the trigger for a new Session, so "some kind of tracker/listener for that ai channel might be a feature for Lookout". Checked the same day:
+    - the bot that runs fantastic-productive's releases mentions a pull request's author when the pull request blocks a release, then waits 45 minutes and reverts it; it also mentions them when it changed their app code or quarantined their test. The mention is usually in a thread reply;
+    - `tb-slack` (cli-toolbox, 0.3.4) reads and writes Slack one call at a time, with no listener and no list of mentions. On this Mac it's 0.2.1 and its token is rejected;
+    - Fleet's Slack links wake a Session on mentions of the app, not of you.
+
+  Drafted as PING:
+    - Watched channels in Settings, read once a minute through `tb-slack search` and `thread`;
+    - one Ping per thread that mentions you, open until you answer in the thread or dismiss it, in a section of Work and on a line above the Session list;
+    - from a Ping: open or resume the Session that opened the pull request it names, or "Start Session…" with the thread's link as the prompt. Nothing starts without a press, and Lookout never writes to Slack;
+    - slice 2: which Pings wait for an answer, judged by Jev, with the time left.
+
+  Next: a grill. Its blocking questions are a `tb-slack` token that lasts, how late and how completely `tb-slack search` finds a bot's replies, and where Pings live (a canvas). What was read in the channel, with its ids, is in Dario's `output/lookout-2026-11-18-pings/`.
 
 ## Later, or waiting on something
 

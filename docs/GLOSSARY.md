@@ -74,6 +74,8 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Page**: An Output that opens as a page in a browser tab: an HTML file or an Artifact. The Library's "Pages" chip shows both.
 
+**Ping**: A thread in a Watched channel with a message that mentions you, written by someone else. *Open* until you write in the thread after its latest mention (*answered*) or dismiss it (*dismissed*); a later mention opens it again. *Waiting* when it asks for your answer and says it will go on without one. Lookout reads Pings through `tb-slack` and never writes to Slack. See the PING spec.
+
 **PR**: An open GitHub pull request in a `productiveio/*` repo that you opened, or that is a Review request to you, as `tb-pr` lists it.
 
 **Pressure**: macOS's memory pressure level, `kern.memorystatus_vm_pressure_level`: normal (1), warn (2) or critical (4). Read by the Memory overview; critical forces its red.
@@ -125,6 +127,8 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 **Type**: What a file Output is, from its extension, by the table in LIB-2.10: `markdown`, `html`, `pdf` or `image`. Lookout derives it; tb-session's `events` has only the extension (`--ext`). In the Library an Artifact's and a Share's Type word is its Kind.
 
 **Turn**: What a Session does for one prompt of yours: from that prompt, sent from Lookout or typed in its terminal, until your next one. Work the Session picks up on its own in between, such as a reply to a Subagent's result, belongs to the same Turn, and Idle doesn't end it. A tool's result, a task notification, another Session's message and a slash command the Harness handles itself (`/effort`) aren't prompts. Fleet finds where the current one starts (SIDE-9). Not Codex's own "turn" (`task_started` to `task_complete`), which ends whenever the agent stops.
+
+**Watched channel**: A Slack channel listed in Settings whose mentions of you Lookout reads as Pings.
 
 **Work**: The right-sidebar tab, next to History, that lists your Tasks and PRs with their Links. See the WORK spec.
 
