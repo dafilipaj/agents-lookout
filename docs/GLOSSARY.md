@@ -40,6 +40,8 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Fake Harness**: A stand-in for Claude Code or Codex in a World. It runs in the World's tmux, registers and writes Transcripts the way the real Harness does, and answers from a script, so the real Fleet and tb-session see it as a Session. It never calls a model.
 
+**Evidence**: What backs the work of an Idle or Done Session with Changes, as Lookout reads it from the Session's Transcript and its Checkouts, never from what the Session says: its Test runs and how each ended, whether its Changes changed after its last Test run, and the test files among its Changes, summed up in a verdict. Shown in its status line and a popover, in its Done card, and as a mark on its row when the verdict is a warning. See the EVID spec.
+
 **Finding**: A structural problem Lookout reports in a repo, of one kind: a *Cycle* (files that import each other in a circle), a *Hub* (a file that many files import and that imports many itself), a *God file* (a large file imported from many Areas) or a *Hotspot* (a large file that changes often). Against the repo a week earlier it's new, growing, steady, shrinking or gone. One you mark as *Known* stays quiet until it grows. See ARCH-2 and ARCH-3.9.
 
 **Harness**: The agent CLI a Session runs: Claude Code or Codex. (Fleet also knows pi; not a goal for Lookout.)
@@ -109,6 +111,8 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 **Subagent**: A helper agent a Session starts and that reports back to it: Claude Code's Agent tool, in the foreground or the background, a fork included, and one a Subagent starts in turn (nested); or Codex's `spawn_agent`. A background shell command isn't one. Its own messages (the sidechain) aren't shown; its result shows in the chat as one line (VIEW-1.3), how many are running shows on its Session's row (SIDE-9) and status line (VIEW-8), and how many finished in the current Turn on the status line, which also lists them (VIEW-8.6).
 
 **Task**: A Productive task assigned to you that isn't closed.
+
+**Test run**: A shell command of a Session, or of one of its Subagents, whose output ends with a test runner's summary line, or whose command names a test runner. It ends *passed*, *failed*, *no tests*, *timed out*, *interrupted*, *running* or *unknown*, read from that summary line; the exit code decides only when the runner is the command's last part and nothing pipes its output away. A command a hook or a permission refused isn't one, nor is one that only reads a saved log. See EVID-2.
 
 **Tool**: A program Lookout runs on this Mac: Fleet, `claude`, `codex`, `tb-session`, `tb-pr`, `tb-prod`, `tb-jev`, `git`, `tmux`, `caffeinate`, and Amphetamine, an app it drives through AppleScript. Every Building block is a Tool; not every Tool is a Building block. Settings › Tools lists Fleet and the `tb-*` CLIs as Building blocks and the rest as Third-party. See the TOOLS spec.
 
