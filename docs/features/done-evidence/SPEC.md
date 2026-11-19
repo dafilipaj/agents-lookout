@@ -76,20 +76,22 @@ Which commands run tests, and how each ended, are Lookout's rules ([0010](../../
 ### EVID-5 Where Evidence shows
 
 - [ ] EVID-5.1 The status line (VIEW-5.5) shows a Session's Evidence as a part right after its Changes count (DIFF-1.3): the verdict's icon and its short words, in its tone ("Changed since tests"). It's a button that opens the Evidence popover. It truncates as the line's other parts do, and its tooltip says the whole verdict. (e2e)
-- [ ] EVID-5.2 The Evidence popover is a details popover as the design guide builds one (Memory's anatomy, unchanged): the design system's `Verdict` with the verdict in words, its dot at the warning level for a warning verdict and at the normal level for the others, and when Lookout last read it; a "Test runs" section; and a "Test files" section. When DIFF left some files out (DIFF-2.7), a line under the verdict says "Read from 500 of 1,240 changed files". (test)
-- [ ] EVID-5.3 The "Test runs" section opens with one line: "12 test runs · last passed 14:20, 2,180 tests · 3 files changed since", or "12 test runs · none passed". Under it, the runs, newest first, 20 at most and then "8 more": each one's end as a clock time, its outcome in words, its counts, "Subagent" when a Subagent ran it, and its command on one line, cut, the whole command in its tooltip. (test)
-- [ ] EVID-5.4 The "Test files" section says "4 of 11 changed files · 1 added · 1 deleted · +120 −340", or "No test files changed" ("at least 4" when DIFF left files out). It's a button: a press closes the Evidence popover and opens the list of changed files (DIFF-3), which keeps its own focus rules (DIFF-3.4). (test)
-- [ ] EVID-5.5 A Done Session's Done card (VIEW-5.17) shows the verdict under the note, its icon and its words in its tone. A press on it opens the Evidence popover. The Done chip and its tooltip (SIDE-2.17) don't change. (test)
+- [ ] EVID-5.2 The Evidence popover is a details popover as the design guide builds one (Memory's anatomy): the design system's `Verdict` with the verdict in words, its dot at the warning level for a warning verdict and at the normal level for the others, and when Lookout last read it; under it three `Tiles`, Last pass, Changed since and Test files (EVID-5.3, EVID-5.4); then a "Changed since the last pass" section (EVID-5.10) and a "Test runs" section (EVID-5.11). When DIFF left some files out (DIFF-2.7), a line under the verdict says "Read from 500 of 1,240 changed files". (test)
+- [ ] EVID-5.3 The **Last pass** tile shows the end of the latest Test run that passed as a clock time ("14:26") and under it that run's count ("2,180 tests passed"); with no Test run that passed, "None" at the warning level and under it "12 test runs", or "No test run". The **Changed since** tile shows how many changed files have a modification time later than that run's end ("3 files"), at the warning level when there's one or more and "None" otherwise, and under it the last change as a clock time ("last at 14:31"); with no Test run that passed, it counts every changed file that has a modification time. (test)
+- [ ] EVID-5.4 The **Test files** tile shows "4 of 11" and under it "1 added · 1 deleted · +64 −8", leaving out a part that's 0; with no test file, "None" and under it "of 11 changed files"; "at least 4" when DIFF left files out. It's a button, a `Tile` that DS-19.1 gains in the same change, with a chevron at its value's end: a press closes the Evidence popover and opens the list of changed files (DIFF-3), which keeps its own focus rules (DIFF-3.4). (test)
+- [ ] EVID-5.5 A Done Session's Done card (VIEW-5.17) shows one line under the note: the verdict's icon and its words in its tone, then, in the muted colour, the first two tiles in words ("last pass 14:26, 3 files changed since", "last pass 14:30", "no run passed", or nothing more with no Test run), cut to one line with the whole in its tooltip, and an "Evidence" button at its end that opens the Evidence popover. The card never grows past that line. The Done chip and its tooltip (SIDE-2.17) don't change. (test)
 - [ ] EVID-5.6 A Session whose verdict's tone is warning shows a mark on its sidebar row: lucide `FlaskConicalOff` in `warning-text`, leading the second line after DS-22.3's other marks, its tooltip the verdict. The row's accessible name (SIDE-2.15) says the verdict where the mark is. An ok or quiet verdict, and a Session without Evidence, have no mark. (e2e)
 - [ ] EVID-5.7 In the status line's part and the Done card, a verdict's icon is lucide `CircleCheck` in `ok` for ok, `TriangleAlert` in `warning-text` for warning, and `Info` in the muted colour for quiet. Never a colour alone (design guide, principle 4). The popover's verdict has `Verdict`'s dot instead (EVID-5.2). (test)
-- [ ] EVID-5.8 The part and the Done card's verdict are buttons that Tab reaches and Enter opens. In the popover, Tab moves between its buttons: "8 more" and the Test files section; the runs are text and don't take focus. Esc closes the popover and returns focus to whichever opened it. When the Session's Evidence goes while the popover is open (it went Busy, or lost its Changes), the popover closes and focus goes to the composer, or to the chat without one, as DIFF-3.3 does. (test)
-- [ ] EVID-5.9 The part, the popover, the Done card's verdict and the row's mark look right in light and dark mode, at 280 px for the row and at any width of the Session view, without sideways scrolling. (manual)
+- [ ] EVID-5.8 The part and the Done card's Evidence button are buttons that Tab reaches and Enter opens. In the popover, Tab moves between its buttons: the Test files tile, each changed file and each "N more"; the other tiles and the runs are text and don't take focus. Esc closes the popover and returns focus to whichever opened it. When the Session's Evidence goes while the popover is open (it went Busy, or lost its Changes), the popover closes and focus goes to the composer, or to the chat without one, as DIFF-3.3 does. (test)
+- [ ] EVID-5.9 The part, the popover, the Done card's line and the row's mark look right in light and dark mode, at 280 px for the row and at any width of the Session view, without sideways scrolling, and match canvas D (UX). (manual)
+- [ ] EVID-5.10 The "Changed since the last pass" section lists the files the Changed since tile counts, latest change first, 10 at most and then "N more", which opens DIFF-3's list as the Test files tile does. Each row shows its path, cut at the folder first with the whole in its tooltip (as DIFF-3.5), its modification time as a clock time and its `+ −`; a press opens it as DIFF-4 does. With no Test run that passed, or no file changed since, the section is left out. (test)
+- [ ] EVID-5.11 The "Test runs" section's label has a note at its right: the number of Test runs, then how many failed, timed out, were stopped, ran no tests or are unread, each left out at 0 ("12 · 2 failed · 1 unread"). Under it, the runs, newest first, 20 at most and then "8 more", one line each: its end as a clock time, its outcome in a word (passed, failed, timed out, stopped, no tests, running, unread), its count when its summary gave one ("2,180 tests", "2 of 2,180" for a failure), and its command, cut, the whole in its tooltip, after "Subagent ·" when a Subagent ran it. (test)
 
 ## Planned slices
 
 Specced after slice 1 ships, in this order:
 
-2. **A review by another model:** whether the work went through one, from Skill calls (`p-codex:review`, `p-codex:dual-review`, `p-codex:run`) and `codex exec` commands. Which Skills count is a list per setup. In Osmani's and Yegge's terms, the maker doesn't grade itself.
+2. **A review by another model:** whether the work went through one, from Skill calls (`p-codex:review`, `p-codex:dual-review`, `p-codex:run`) and `codex exec` commands. Which Skills count is a list per setup. In Osmani's and Yegge's terms, the maker doesn't grade itself. Drawn on a canvas of directions once slice 1 runs, before it's specced (Dario, 2026-11-19).
 
 Then, in no order yet:
 
@@ -111,45 +113,48 @@ Then, in no order yet:
 
 ## UX
 
-A sketch only. The command and the numbers are invented.
+Drawn on a canvas of four directions on 2026-11-19 (https://claude.ai/artifact/PKVD4kDjoYfvdtbUu6g641); Dario chose D, which takes A's status line part and run list and B's three tiles, and keeps the Done card to one line with an Evidence button. The sketch below follows D. The command and the numbers are invented.
 
 ```
 The status line, under the composer
-shop · fix/rates · +120 −30 · 4 files · [warn] Changed since tests · opus · 23%
+shop · fix/rates · +120 −30 · 11 files · [warn] Changed since tests · opus · 23%
 
-The Evidence popover, from that part
-┌──────────────────────────────────────────────────┐
-│ [dot] Changed after its last test run      3s ago │
-│ TEST RUNS                                        │
-│ 12 test runs · last passed 14:20, 2,180 tests ·  │
-│ 3 files changed since                            │
-│   14:28  failed   2 failed, 2,178 passed         │
-│          pnpm test 2>&1 | tail -5                │
-│   14:20  passed   2,180 passed                   │
-│          pnpm exec vitest run                    │
-│   14:02  unknown  Subagent                       │
-│          pnpm test 2>&1 | grep FAIL              │
-│   9 more                                         │
-│ TEST FILES                                       │
-│ 4 of 11 changed files · 1 added · 1 deleted ·    │
-│ +120 −340                                        │
-└──────────────────────────────────────────────────┘
+The Evidence popover, from that part or from the Done card's Evidence button
+┌────────────────────────────────────────────────────────┐
+│ [dot] Changed after its last test run           3s ago │
+│ ┌──────────────┐ ┌──────────────┐ ┌──────────────────┐ │
+│ │ Last pass    │ │ Changed since│ │ Test files       │ │
+│ │ 14:26        │ │ [warn] 3 files│ │ 4 of 11       [>] │ │
+│ │ 2,180 tests  │ │ last at 14:31│ │ 1 added · +64 −8 │ │
+│ └──────────────┘ └──────────────┘ └──────────────────┘ │
+│ CHANGED SINCE THE LAST PASS                            │
+│   src/invoice/format.ts                 14:31   +3 −3  │
+│   src/invoice/round.ts                  14:30   +6 −2  │
+│   src/invoice/totals.ts                 14:29  +18 −9  │
+│ TEST RUNS                      12 · 2 failed · 1 unread │
+│   14:26  passed  2,180 tests  pnpm exec vitest run     │
+│   14:24  failed  2 of 2,180   pnpm test 2>&1 | tail -5 │
+│   14:11  unread  Subagent · pnpm test 2>&1 | grep FAIL │
+│   13:58  passed  412 tests    pnpm vitest run src/inv… │
+│   8 more                                               │
+└────────────────────────────────────────────────────────┘
 
 The Done card, at the end of the chat
-┌──────────────────────────────────────────────────┐
-│ [ok] Done · 14:32                                │
-│      Rounding in the invoice totals is fixed.    │  the note: the Session's words
-│      [warn] Changed after its last test run      │  the verdict: Lookout's
-│                                  [End Session]   │
-└──────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────┐
+│ [ok] Done · 14:32                        [End Session] │
+│      Rounding in the invoice totals is fixed.          │  the note: the Session's words
+│      ──────────────────────────────────────────────    │
+│      [warn] Changed after its last test run · last     │  the verdict and two facts: Lookout's
+│      pass 14:26, 3 files changed since   [Evidence ^]  │  one line, cut, in the app
+└────────────────────────────────────────────────────────┘
 
 The sidebar row
 ● Fix rounding in totals                     Done
   [flask-off] [br] fix/rates   +120 −30  5m  23%
 ```
 
-- `[ok]`, `[warn]` and `[flask-off]` stand for lucide `CircleCheck`, `TriangleAlert` and `FlaskConicalOff` ([0008](../../decisions/0008-lucide-icons-only.md)); `[dot]` is the `Verdict`'s dot, amber here.
-- The popover takes Memory's anatomy (`ui/details.tsx`) and adds no piece of its own.
+- `[ok]`, `[warn]` and `[flask-off]` stand for lucide `CircleCheck`, `TriangleAlert` and `FlaskConicalOff` ([0008](../../decisions/0008-lucide-icons-only.md)); `[dot]` is the `Verdict`'s dot, amber here; `[>]` and `[^]` are `ChevronRight` and `ChevronUp`.
+- The popover takes Memory's anatomy (`ui/details.tsx`): `Verdict`, `Tiles` and `SectionLabel`. It adds one piece to it, a `Tile` that's a button (EVID-5.4).
 - An ok verdict leaves the row quiet; the status line still says "Tests passed".
 
 ## Technical approach
@@ -217,10 +222,11 @@ When slice 1 is built, a line in Dario's `~/.claude/CLAUDE.md` and `~/.codex/AGE
 ### Other specs, when built
 
 - VIEW-5.5: the status line gains the Evidence part after the Changes count, before RES-3.2's Queued part.
-- VIEW-5.17: the Done card shows the verdict.
+- VIEW-5.17: the Done card gains the Evidence line and its button (EVID-5.5).
+- DS-19.1: `Tile` gains a button form, with a chevron and a hover, for the Test files tile (EVID-5.4).
 - DS-22.3: a new exception, the Evidence mark, last in its order; DS-22.4's component test covers it.
 - SIDE-2.15: the row's accessible name reads the verdict where the mark is.
-- DIFF: Evidence reads its answer and its fingerprint; the Test files section opens DIFF-3's list.
+- DIFF: Evidence reads its answer and its fingerprint; the Test files tile and the changed files' "N more" open DIFF-3's list, and a changed file opens as DIFF-4 does.
 - ARCH-1.3: EVID-4.1 puts its patterns in Lookout as a path rule; ARCH's grill decides whether its scanner uses it. ARCH-4.7's mark stays a separate part; ARCH's grill decides whether it joins the Evidence popover.
 - TOOLS: the tb-session version with the command kind.
 - TEST: a World whose fake Harness writes `Bash` calls and results, and a tb-session that answers command rows.
@@ -233,6 +239,7 @@ Grilled with Dario on 2026-11-18.
 - **Read, never told:** Evidence comes from the Transcript and the Checkouts. The Session's note stays its own line.
 - **Idle and Done Sessions with Changes, not only Done:** a Session that stops without `fleet done` has worked too, and without Changes there's nothing to back.
 - **In the status line, with a popover:** every selected Session has a status line, Idle ones included, and a details popover is how Lookout explains a reading. The Done card repeats the verdict where a Done Session is read.
+- **Tiles on top, a one-line Done card (canvas D, 2026-11-19):** the three tiles say at a glance when tests last passed, what changed since and how many test files changed, and the files changed since the last pass are what wasn't tested. The Done card keeps one line however many runs there are, and its Evidence button opens the same popover as the status line. Dario chose D over the first popover (A), a timeline of edits and runs (B), which added a piece for little more, and an Evidence card in the chat (C), which grew the card every time.
 - **A row mark only when it isn't backed:** an exception leads a quiet row (DS-22.3); a backed row stays quiet.
 - **The Done chip doesn't change:** Done is the Session's word, and the mark carries the verdict.
 - **The output decides a Test run's outcome, not the exit code:** Sessions pipe test output, and every one of the 370 failed runs measured exited 0.
@@ -260,3 +267,4 @@ None.
 - 2026-11-18: Grilled with Dario (eleven questions). Evidence covers Idle Sessions with Changes as well as Done ones, lives in the status line with a popover and on the Done card, and marks a row only when it isn't backed. An unreadable result warns. Modification times give the last change. Runs count Session-wide. Typecheck and lint are out. tb-session is the Building block. A review by another model is slice 2.
 - 2026-11-18: Codex review (gpt-6.1-sol, xhigh): 18 findings, curated with Dario, none rejected. Applied: the read takes `--all-projects` and pages with the Library's limits; reads on entering scope, a background shell's end and a Subagent's end; edge cases of the last change (at or after, deletions only, a failed `stat`, DIFF's 500-file cap); the order of a run's state, its summary and its exit code, with the exit code only for the command's last part; log reads aren't runs; no-tests lines per runner; "last readable" wording; the test-file rule owned here; focus with two openers; the popover's `Verdict` unchanged. The contract gained an ordered K4 with `errored`, null rules, JSON examples and its upgrade (K11). Requirements renumbered (EVID-1.3 to 1.8, 2.2 to 2.6, 3.4, 4.2), as a Draft allows.
 - 2026-11-18: Ready (Dario), after the grill and the Codex review's fixes.
+- 2026-11-19: Dario chose canvas D of four (UX). The popover gains three `Tiles`, Last pass, Changed since and Test files (EVID-5.2 to 5.4), and a list of the files changed since the last pass (EVID-5.10); the runs move to EVID-5.11, one line each, their counts in the label's note. The Done card shows one line and an Evidence button (EVID-5.5). Focus and the manual check follow (EVID-5.8, 5.9). Slice 2 gets a canvas once slice 1 runs. Still Ready.
