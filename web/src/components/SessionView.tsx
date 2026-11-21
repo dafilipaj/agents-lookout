@@ -2,11 +2,12 @@ import type { LocalServer, PortsSnapshot } from '@shared/ports.ts';
 import type { EvidenceView } from '@shared/evidence.ts';
 import type { AnswerRequest, ChangesView, ChatPage, EndTarget, Harness, RenameResult, SessionRow } from '@shared/types.ts';
 import { Check, ChevronDown, CircleCheck, CircleSlash, FolderGit2, GitBranch, Hourglass, Info, Paperclip, SendHorizontal, TerminalSquare } from 'lucide-react';
-import { type ComponentPropsWithRef, type ComponentPropsWithoutRef, type KeyboardEvent, type PointerEvent, type ReactNode, type RefObject, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { type ComponentPropsWithRef, type ComponentPropsWithoutRef, Fragment, type KeyboardEvent, type PointerEvent, type ReactNode, type RefObject, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Button, ButtonDivider } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { StatusTag, StatusTagAction } from '@/components/ui/status-tag';
+import { PART_ROW_STATIC, PartRowContent, type PartLook } from '@/components/ui/status-part';
 import { Loading } from '@/components/ui/loading';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '@/components/ui/dialog';
 import { turnRunning } from '@/lib/activity';
@@ -33,11 +34,12 @@ import {
 } from '@/lib/answers';
 import type { HarnessState } from '@/lib/launch';
 import { canSwitchEffort, checkedEffort, effortFootnote, effortOptions, effortUnverified, shownEffort } from '@/lib/effort-switch';
-import { type ModelTarget, canSwitchModel, checkedModel, modelFootnote, modelOptions, shownModel } from '@/lib/model-switch';
+import { type ModelTarget, canSwitchModel, checkedModel, modelFootnote, modelLabel, modelOptions, shownModel } from '@/lib/model-switch';
 import { FROM_NEXT_REPLY, type MenuOptions, type SwitchState, type SwitchWhat, plainWhy, switchWhy } from '@/lib/status-switch';
 import type { Chat as ChatState, Preview } from '@/lib/store';
 import { chipText, sessionServers } from '@/lib/ports';
-import { BACKGROUND_SHELL_TIP, CONTEXT_LEVEL_CLASS, HARNESS_NAME, STATUS_LABEL, STATUS_TAG_CLASS, contextLevel, location, queuedTip } from '@/lib/sessions';
+import { BACKGROUND_SHELL_TIP, CONTEXT_LEVEL_CLASS, HARNESS_NAME, STATUS_LABEL, STATUS_TAG_CLASS, contextLevel, location, locationTip, queuedTip } from '@/lib/sessions';
+import { FOLD_RANK, type FoldingPart, LOCATION_MIN_CHARS, MORE_ORDER, type StatusPart, foldParts } from '@/lib/status-fold';
 import { HEIGHT_STEP, clampHeight, drawerHeight, heightBounds, keepHeight, parseHeights, readHeightsRaw, subscribeHeights } from '@/lib/terminal-height';
 import { clockTime } from '@/lib/chat';
 import { formatAge, useClock } from '@/lib/time';
@@ -54,8 +56,9 @@ import { StatusMenu } from './StatusMenu';
 import { ChangesButton, type ChangesButtonProps } from './ChangesButton';
 import { DoneEvidenceLine, EvidenceButton, EvidencePart, EvidencePopover } from './Evidence';
 import { PortsChip } from './PortsChip';
+import { StatusMore } from './StatusMore';
 import { SubagentsButton, type SubagentsButtonProps } from './SubagentsButton';
-import { changesTip } from '@/lib/changes';
+import { changesTip, hasLines } from '@/lib/changes';
 import { AddToTopicButton } from './TopicLinks';
 import { rowMember } from '@/lib/topics';
 import { ActionIcon } from '@/lib/actions';
@@ -336,16 +339,18 @@ export function SessionView({
   useLayoutEffect(() => {
     openers.current = { view: evidenceView, card: cardShown };
   });
-  const evidencePopover = (from: 'status' | 'card', trigger: (view: EvidenceView) => ReactNode) =>
-    shownEvidence && (evidenceView || evidenceOpen === from) ? (
+  const evidenceShown = (from: 'status' | 'card') => !!shownEvidence && (!!evidenceView || evidenceOpen === from);
+  const evidencePopover = (from: 'status' | 'card', trigger: (view: EvidenceView) => ReactNode, look: PartLook = 'line') =>
+    shownEvidence && evidenceShown(from) ? (
       <EvidencePopover
         view={shownEvidence}
         // EVID-5.8: the Evidence went: it closes, and stays mounted until its focus has moved.
         open={!!evidenceView && evidenceOpen === from}
         // Opening one opener's popover closes the other's, whose own close mustn't undo it.
         onOpenChange={(open) => setEvidenceOpen((cur) => (open ? from : cur === from ? null : cur))}
-        side="top"
-        align={from === 'status' ? 'start' : 'end'}
+        // VIEW-5.19: from a row of the status line's "N more", beside the row.
+        side={look === 'row' ? 'right' : 'top'}
+        align={from === 'status' && look === 'line' ? 'start' : 'end'}
         trigger={trigger(shownEvidence)}
         onOpenFile={(f) => {
           // PLAIN-3.1: a `.plain` Module opens in the Spec view, as the changed-files list opens it.
@@ -381,7 +386,7 @@ export function SessionView({
         }}
       />
     ) : null;
-  const statusEvidence = evidencePopover('status', (view) => <EvidencePart evidence={view.verdict} />);
+  const statusEvidence = evidenceShown('status') ? (look: PartLook) => evidencePopover('status', (view) => <EvidencePart evidence={view.verdict} look={look} />, look) : null;
   const cardEvidence = evidencePopover('card', () => <EvidenceButton />);
 
   // VIEW-3.6: `i` (or `I` with Caps Lock on, never with Shift) focuses the composer when focus isn't in a text field.
@@ -876,12 +881,44 @@ function EndSession({
 /** VIEW-5.16: the status line's part for an Idle Session's background shell command. */
 const SHELL_RUNNING = 'shell running';
 
+/** VIEW-5.19: what the line knows of its parts' widths; a folded part keeps its last one. */
+interface Measured {
+  widths: Partial<Record<StatusPart, number>>;
+  /** A separator between two parts of an end: the end's gap, the dot and the slot's gap. */
+  separator: number;
+  /** One character of the line's monospace face. */
+  char: number;
+  /** The location's least width: its icon and 8 characters, or its whole name when shorter. */
+  locationMin: number | null;
+  /** "from the next reply", with its gap. */
+  note: number | null;
+  /** "N more" as last drawn. */
+  more: { count: number; width: number } | null;
+}
+
+const NO_FOLD: ReadonlySet<FoldingPart> = new Set();
+const sameSet = (a: ReadonlySet<string>, b: ReadonlySet<string>) => a.size === b.size && [...a].every((x) => b.has(x));
+const gapOf = (el: Element | null) => (el ? parseFloat(getComputedStyle(el).columnGap) || 0 : 0);
+
+/** VIEW-5.19: a folded part's name, in "N more"'s button and tooltip. */
+const PART_NAME: Record<(typeof MORE_ORDER)[number], string> = {
+  changes: 'Changes',
+  evidence: 'Evidence',
+  queued: 'Queued',
+  servers: 'Local servers',
+  subagents: 'Subagents',
+  shell: 'Background shell',
+  model: 'Model',
+  effort: 'Effort',
+};
+
 /**
- * VIEW-5.5: where the Session works, its model and context use, on one line under the composer
- * (at the bottom of the pane when there's none), like a terminal's status line. At narrow widths
- * each part truncates; the whole line is in its tooltip. VIEW-5.11: the Effort follows the model.
- * VIEW-6, VIEW-7: for a Controllable Claude Code Session, the model's name and the Effort are menus
- * that switch them. VIEW-5.16: an Idle Session's background shell comes last, in Idle's grey.
+ * VIEW-5.5: where the Session works and what it changed on the left, how the agent is doing on the
+ * right, on one line under the composer (at the bottom of the pane when there's none), like a
+ * terminal's status line; the whole line is in its tooltip. VIEW-5.19: when it runs out of room its
+ * parts leave whole by rank, into "N more", and only the Worktree or branch is cut.
+ * VIEW-6, VIEW-7: for a Controllable Claude Code or Codex Session, the model and the Effort are menus
+ * that switch them, on the line or from their rows in "N more".
  */
 function StatusLine({
   row,
@@ -908,8 +945,8 @@ function StatusLine({
   statusSwitch: SwitchState | undefined;
   /** DIFF-1.3: the count and its list; null for an ended Session or without the feature. */
   changes: ChangesButtonProps | null;
-  /** EVID-5.1: the Evidence part and its popover; null without Evidence. */
-  evidence: ReactNode;
+  /** EVID-5.1: the Evidence part and its popover, on the line or as a row; null without Evidence. */
+  evidence: ((look: PartLook) => ReactNode) | null;
   /** EVID-5.1: its short words, for the whole line's tooltip. */
   evidenceText: string | null;
   /** PORTS-2.1: the Session's Local servers; none for an ended Session or without the feature. */
@@ -922,20 +959,18 @@ function StatusLine({
   const where = row.git ? row.git.repo : row.cwd;
   const context = row.contextPct !== null ? `${row.contextPct}% context` : null;
   const ctxLevel = row.contextPct !== null ? contextLevel(row.contextPct) : null;
-  // VIEW-6.7, VIEW-7.7: a switched model or Effort shows at once, until the next reply reaches the
-  // Transcript, marked once for both (they go with the same reply): after the Effort when one shows,
-  // else after the model.
   const model = shownModel(row);
   const effort = shownEffort(row);
-  // An ended Session has no next reply: no mark. While the Effort switches its note is hidden, so a
-  // pending model carries the mark then.
+  // VIEW-6.1: the model by its label in Fleet's list, read once a Session view shows a model.
+  const label = model ? modelLabel(models, row.harness, model.id) : null;
+  const hasModel = model !== null;
+  useEffect(() => {
+    if (hasModel && models.state === 'loading') onLoadModels();
+  }, [hasModel, models.state, onLoadModels]);
+  // VIEW-6.7, VIEW-7.7: a switched model or Effort shows at once, until the next reply reaches the
+  // Transcript, marked once for both (they go with the same reply). An ended Session has no next reply.
   const pending = !ended && !!(model?.pending || effort?.pending);
   const effortSwitching = statusSwitch?.what === 'effort' && statusSwitch.switching;
-  const effortNote = pending && effort !== null && !(effortSwitching && model?.pending);
-  const modelNote = pending && !effortNote;
-  const marked = (value: string, note: boolean) => (note ? `${value} (${FROM_NEXT_REPLY})` : value);
-  const modelPart = model ? marked(model.id, modelNote) : null;
-  const effortPart = effort ? marked(effort.level, effortNote) : null;
   const shell = row.backgroundShell && !ended ? SHELL_RUNNING : null;
   const running = row.subagents?.running ?? 0;
   const count = running || row.subagents?.finished || 0;
@@ -945,190 +980,391 @@ function StatusLine({
   // RES-3.2: a job of this Session waits in res; its wait counts on the app's one-second clock.
   const now = useClock();
   const queued = row.queued && !ended ? row.queued : null;
-  const queuedPart = queued ? `Queued: ${queued.tool} · ${formatAge(Math.max(0, now - queued.since))}` : null;
-  const parts = [where, loc?.name, changed, evidenceText, queuedPart, serversPart, modelPart, effortPart, context, shell, subagents].filter((p): p is string => !!p);
+  const queuedAge = queued ? formatAge(Math.max(0, now - queued.since)) : null;
+  const queuedPart = queued ? `Queued: ${queued.tool} · ${queuedAge}` : null;
+
+  // VIEW-5.19: the parts that left the line, from the widths measured below.
+  const [folded, setFolded] = useState<ReadonlySet<FoldingPart>>(NO_FOLD);
+  const on = (p: FoldingPart) => !folded.has(p);
+  const [line, setLine] = useState<HTMLDivElement | null>(null);
+  const [, setResized] = useState(0);
+  const measured = useRef<Measured>({ widths: {}, separator: 0, char: 0, locationMin: null, note: null, more: null });
+  const [moreOpen, setMoreOpen] = useState(false);
+
+  // The parts the line has now; a folded one is still here, in "N more".
+  const present: Partial<Record<StatusPart, boolean>> = {
+    repo: !!where,
+    location: !!loc,
+    changes: !!changes?.changes,
+    files: hasLines(changes?.changes),
+    evidence: !!evidence,
+    queued: !!queued,
+    servers: servers.length > 0,
+    subagents: !!subagents,
+    shell: !!shell,
+    model: !!model,
+    effort: !!effort,
+    context: !!context,
+  };
+  const shows = (p: FoldingPart) => !!present[p] && on(p);
+  // "from the next reply" goes with the Effort while it's on the line, else with the model; with both
+  // folded, on the Effort's row (the model's without one). While the Effort switches its note is hidden,
+  // so a pending model carries it then.
+  const effortCarries = !!effort && !(effortSwitching && model?.pending) && (on('effort') || !model || !on('model'));
+  const effortNote = pending && effortCarries;
+  const modelNote = pending && !effortNote && !!model;
+  const moreNames = MORE_ORDER.filter((p) => present[p] && folded.has(p)).map((p) => PART_NAME[p]);
+
+  // EVID-5.4: the Evidence popover's Test files tile opens the changed-files list; folded, from its row.
+  const request = changes?.openRequest;
+  const [seenRequest, setSeenRequest] = useState(request);
+  const [rowRequest, setRowRequest] = useState(0);
+  // With "N more" closed, its Changes row mounts with the list open; until "N more" closes again.
+  const [rowOpens, setRowOpens] = useState(false);
+  if (request !== seenRequest) {
+    setSeenRequest(request);
+    if (request !== undefined && folded.has('changes')) {
+      if (moreOpen) setRowRequest((n) => n + 1);
+      else {
+        setRowOpens(true);
+        setMoreOpen(true);
+      }
+    }
+  }
+  const onMoreOpen = useCallback((open: boolean) => {
+    setMoreOpen(open);
+    if (!open) setRowOpens(false);
+  }, []);
+
+  // After every render, before the browser paints: it measures what the render drew. It sets the
+  // fold only when it changes, and the widths it reads don't change with it, so it settles.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- every render, on purpose
+  useLayoutEffect(() => {
+    if (!line) return;
+    const m = measured.current;
+    for (const slot of line.querySelectorAll<HTMLElement>('[data-part]')) {
+      const id = slot.dataset.part as StatusPart;
+      const inner = gapOf(slot);
+      const dot = slot.querySelector<HTMLElement>(':scope > [data-slot="status-dot"]');
+      if (dot) m.separator = gapOf(slot.parentElement) + dot.offsetWidth + inner;
+      let w = slot.offsetWidth - (dot ? dot.offsetWidth + inner : 0);
+      const files = slot.querySelector<HTMLElement>('[data-subpart="files"]');
+      if (files) {
+        m.widths.files = files.offsetWidth + gapOf(files.parentElement);
+        w -= m.widths.files;
+      }
+      const note = slot.querySelector<HTMLElement>('[data-subpart="note"]');
+      if (note) {
+        m.note = note.offsetWidth + inner;
+        w -= m.note;
+      }
+      const name = slot.querySelector<HTMLElement>('[data-subpart="location-name"]');
+      if (id === 'location' && name) {
+        // The line is monospace: a character is the name's width over its length.
+        const whole = name.scrollWidth;
+        m.char = whole / Math.max(1, name.textContent?.length ?? 1);
+        m.locationMin = w - name.offsetWidth + Math.min(whole, LOCATION_MIN_CHARS * m.char);
+      } else if (id === 'more') m.more = { count: moreNames.length, width: w };
+      else if (id !== 'location') {
+        m.widths[id] = w;
+        if (id === 'repo' && !m.char) m.char = w / Math.max(1, slot.textContent?.length ?? 1);
+      }
+    }
+    // VIEW-5.19: nothing folds or comes back while one of the line's menus, lists or popovers is open.
+    if (line.querySelector('[aria-expanded="true"]')) return;
+    const style = getComputedStyle(line);
+    const room = line.clientWidth - (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0);
+    const widths: Partial<Record<StatusPart, number>> = {};
+    for (const p of [...FOLD_RANK, 'context' as const]) if (present[p] && m.widths[p] !== undefined) widths[p] = m.widths[p];
+    const char = m.char;
+    const next = foldParts({
+      room,
+      widths,
+      locationMin: present.location ? m.locationMin : null,
+      separator: m.separator,
+      seam: gapOf(line),
+      // The Ellipsis, its gap and its words; as last drawn when it was, for another count.
+      more: (n) => (m.more ? m.more.width + (String(n).length - String(m.more.count).length) * char : 18 + `${n} more`.length * char),
+      note: pending ? (m.note ?? (FROM_NEXT_REPLY.length + 2) * char) : null,
+    });
+    if (!sameSet(next, folded)) setFolded(next);
+  });
+  // Again when the line's width changes: the window, a sidebar opening or closing.
+  useEffect(() => {
+    if (!line || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => setResized((n) => n + 1));
+    ro.observe(line);
+    return () => ro.disconnect();
+  }, [line]);
+
+  const marked = (value: string, note: boolean) => (note ? `${value} (${FROM_NEXT_REPLY})` : value);
+  const modelPart = label ? marked(label, modelNote) : null;
+  const effortPart = effort ? marked(effort.level, effortNote) : null;
+  const parts = [where, loc?.name, changed, evidenceText, queuedPart, serversPart, subagents, shell, modelPart, effortPart, context].filter((p): p is string => !!p);
   if (!parts.length) return null;
-  const dot = (
-    <span aria-hidden className="shrink-0 opacity-60">
-      ·
-    </span>
-  );
+
   const menu = { row, onLoadModels, onSwitch, statusSwitch };
-  return (
-    // Below 36rem (StatusBar's container query) the model and Effort parts are left out whole
-    // (they're in the tooltip) rather than cut to a letter or two beside the parts that say where the work is.
-    <StatusBar role="group" aria-label="Status line" title={parts.join(' · ')}>
-      {where && (
-        <span className="min-w-0 truncate" data-field={row.git ? 'repo' : 'cwd'} title={row.cwd ?? undefined}>
-          {where}
-        </span>
-      )}
-      {loc && (
-        <>
-          {where && dot}
-          <span className="flex min-w-0 items-center gap-1" data-field="location" title={loc.name}>
-            {loc.kind === 'worktree' ? (
-              <FolderGit2 aria-label="Worktree" className="size-3.5 shrink-0" />
-            ) : (
-              <GitBranch aria-label="Branch" className="size-3.5 shrink-0" />
-            )}
-            <span className="truncate">{loc.name}</span>
-          </span>
-        </>
-      )}
-      {changes && (changes.changes || changes.list !== undefined) && (
-        <ChangesSlot dot={(where || loc) && dot} {...changes} />
-      )}
-      {/* EVID-5.1: right after the Changes count, before RES-3.2's Queued part. */}
-      {evidence && (
-        <>
-          {(where || loc || changed) && dot}
-          {evidence}
-        </>
-      )}
-      {queued && (
-        <>
-          {(where || loc || changed || evidence) && dot}
-          <span className="flex min-w-0 shrink-0 items-center gap-1" data-field="queued" title={queuedTip(queued, now)}>
-            <Hourglass aria-hidden className="size-3.5 shrink-0" />
-            <span className="truncate">{queuedPart}</span>
-          </span>
-        </>
-      )}
-      <PortsChip servers={servers} onShowAll={onShowServers} focusFallback={focusFallback} dot={(where || loc || changed || evidence || queued) && dot} />
-      {model && (
-        <span className="contents @max-[36rem]:hidden" data-slot="status-model">
-          {(where || loc) && dot}
-          {canSwitchModel(row, ended) ? (
-            <SwitchMenu
-              {...menu}
-              what="model"
-              value={model.id}
-              pending={model.pending && !ended}
-              note={modelNote}
-              options={modelOptions(models, row.harness)}
-              checked={(options) => checkedModel(options, model.id)}
-              footnote={modelFootnote(row.harness)}
-            />
-          ) : (
-            <PlainPart field="model" value={model.id} why={plainWhy('model', row, ended)} note={modelNote} />
-          )}
-        </span>
-      )}
-      {effort && (
-        <span className="contents @max-[36rem]:hidden" data-slot="status-effort">
-          {(where || loc || model) && dot}
-          {canSwitchEffort(row, ended) ? (
-            <SwitchMenu
-              {...menu}
-              what="effort"
-              value={effort.level}
-              pending={effort.pending && !ended}
-              note={effortNote}
-              options={effortOptions(models, row)}
-              checked={(options) => checkedEffort(options, effort.level, effortUnverified(row))}
-              footnote={effortFootnote(row.harness)}
-            />
-          ) : (
-            <PlainPart field="effort" value={effort.level} why={plainWhy('effort', row, ended)} note={effortNote} />
-          )}
-        </span>
-      )}
-      {context && (
-        <>
-          {(where || loc || model || effort) && dot}
-          <span
-            className={cn('shrink-0', ctxLevel && CONTEXT_LEVEL_CLASS[ctxLevel])}
-            data-field="context"
-            data-level={ctxLevel ?? undefined}
-          >
-            {context}
-          </span>
-          {onCompact && (
-            <Button
-              variant="secondary"
-              size="line"
-              className="shrink-0"
-              title="Compact the conversation (/compact)"
-              onClick={onCompact}
-              data-field="compact"
-            >
-              Compact
-            </Button>
-          )}
-        </>
-      )}
-      {shell && (
-        <>
-          {(where || loc || model || effort || context) && dot}
-          <span className="min-w-0 truncate text-idle-text" data-field="background-shell" title={BACKGROUND_SHELL_TIP}>
-            {shell}
-          </span>
-        </>
-      )}
-      {row.subagents?.items ? (
-        // VIEW-8.6: with Fleet's list, the part opens it; an ended Session's has no part (VIEW-8.4), which
-        // closes an open list (VIEW-8.10).
-        <SubagentsSlot
-          dot={(where || loc || model || effort || context || shell) && dot}
-          text={subagents}
-          running={running > 0}
-          subagents={row.subagents}
-          focusFallback={focusFallback}
+  const modelMenu = (look: PartLook) =>
+    model && label ? (
+      canSwitchModel(row, ended) ? (
+        <SwitchMenu
+          {...menu}
+          what="model"
+          value={label}
+          detail={model.id}
+          pending={model.pending && !ended}
+          note={modelNote}
+          options={modelOptions(models, row.harness)}
+          checked={(options) => checkedModel(options, model.id)}
+          footnote={modelFootnote(row.harness)}
+          look={look}
         />
       ) : (
-        subagents && (
-          <>
-            {(where || loc || model || effort || context || shell) && dot}
-            <span
-              className={cn('min-w-0 truncate', running ? 'text-busy-text' : 'text-idle-text')}
-              data-field="subagents"
-              data-state={running ? 'running' : 'done'}
-            >
-              {subagents}
+        <PlainPart field="model" value={label} detail={model.id} why={plainWhy('model', row, ended)} note={modelNote} look={look} />
+      )
+    ) : null;
+  const effortMenu = (look: PartLook) =>
+    effort ? (
+      canSwitchEffort(row, ended) ? (
+        <SwitchMenu
+          {...menu}
+          what="effort"
+          value={effort.level}
+          pending={effort.pending && !ended}
+          note={effortNote}
+          options={effortOptions(models, row)}
+          checked={(options) => checkedEffort(options, effort.level, effortUnverified(row))}
+          footnote={effortFootnote(row.harness)}
+          look={look}
+        />
+      ) : (
+        <PlainPart field="effort" value={effort.level} why={plainWhy('effort', row, ended)} note={effortNote} look={look} />
+      )
+    ) : null;
+  const subagentsColour = running ? 'text-busy-text' : 'text-idle-text';
+
+  // VIEW-5.5: each end's parts in order, a separator before each that has one shown before it.
+  const leftOn = { repo: shows('repo'), location: !!loc, changes: shows('changes'), evidence: shows('evidence'), queued: shows('queued'), servers: shows('servers') };
+  const leftBefore = (p: keyof typeof leftOn | 'more') => {
+    const order = ['repo', 'location', 'changes', 'evidence', 'queued', 'servers'] as const;
+    const at = p === 'more' ? order.length : order.indexOf(p);
+    return order.slice(0, at).some((q) => leftOn[q]);
+  };
+  const rightOn = { subagents: shows('subagents'), shell: shows('shell'), model: shows('model'), effort: shows('effort') };
+  const rightBefore = (p: keyof typeof rightOn | 'context') => {
+    const order = ['subagents', 'shell', 'model', 'effort'] as const;
+    const at = p === 'context' ? order.length : order.indexOf(p);
+    return order.slice(0, at).some((q) => rightOn[q]);
+  };
+
+  // VIEW-5.19: "N more"'s rows, in the line's order, each the part's own component in its row look.
+  const rows: ReactNode[] = [];
+  for (const p of MORE_ORDER) {
+    if (!folded.has(p)) continue;
+    // DIFF-3.3, VIEW-8.10: a Changes or Subagents row whose part went stays while its list is open, as
+    // on the line, so the list closes itself and sends focus on; nothing folds while it's open.
+    const lingers = (p === 'changes' && !!changes && changes.list !== undefined) || (p === 'subagents' && !!row.subagents?.items);
+    if (!present[p] && !lingers) continue;
+    if (p === 'changes' && changes) rows.push(<ChangesSlot key={p} look="row" dot={false} {...changes} openRequest={rowRequest} initialOpen={rowOpens} />);
+    else if (p === 'evidence' && evidence) rows.push(<Fragment key={p}>{evidence('row')}</Fragment>);
+    else if (p === 'queued' && queued)
+      rows.push(<StaticRow key={p} field="queued" name="Queued" title={queuedTip(queued, now)} icon={<Hourglass className="size-3.5" />} value={`${queued.tool} · ${queuedAge}`} />);
+    else if (p === 'servers') rows.push(<PortsChip key={p} look="row" servers={servers} onShowAll={onShowServers} focusFallback={focusFallback} />);
+    else if (p === 'subagents')
+      rows.push(
+        row.subagents?.items ? (
+          <SubagentsSlot key={p} look="row" dot={false} text={subagents} running={running > 0} subagents={row.subagents} focusFallback={focusFallback} />
+        ) : (
+          <StaticRow key={p} field="subagents" state={running ? 'running' : 'done'} name="Subagents" value={<span className={subagentsColour}>{subagents}</span>} />
+        ),
+      );
+    else if (p === 'shell') rows.push(<StaticRow key={p} field="background-shell" name="Background shell" title={BACKGROUND_SHELL_TIP} value="running" />);
+    else if (p === 'model') rows.push(<Fragment key={p}>{modelMenu('row')}</Fragment>);
+    else if (p === 'effort') rows.push(<Fragment key={p}>{effortMenu('row')}</Fragment>);
+  }
+
+  return (
+    <StatusBar ref={setLine} role="group" aria-label="Status line" title={parts.join(' · ')}>
+      <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden" data-slot="status-left">
+        {leftOn.repo && (
+          <PartSlot id="repo" dot={false}>
+            <span className="whitespace-nowrap" data-field={row.git ? 'repo' : 'cwd'} title={row.cwd ?? undefined}>
+              {where}
             </span>
-          </>
-        )
-      )}
+          </PartSlot>
+        )}
+        {loc && (
+          // VIEW-5.19: the one part that's cut; its tooltip names the repo, which may have left.
+          <PartSlot id="location" dot={leftBefore('location')} className="min-w-0 shrink">
+            <span className="flex min-w-0 items-center gap-1" data-field="location" title={locationTip(row) ?? loc.name}>
+              {loc.kind === 'worktree' ? <FolderGit2 aria-label="Worktree" className="size-3.5 shrink-0" /> : <GitBranch aria-label="Branch" className="size-3.5 shrink-0" />}
+              <span className="truncate" data-subpart="location-name">
+                {loc.name}
+              </span>
+            </span>
+          </PartSlot>
+        )}
+        {changes && on('changes') && (changes.changes || changes.list !== undefined) && <ChangesSlot dot={leftBefore('changes')} filesFolded={folded.has('files')} {...changes} />}
+        {/* EVID-5.1: right after the Changes count, before RES-3.2's Queued part. */}
+        {evidence && on('evidence') && (
+          <PartSlot id="evidence" dot={leftBefore('evidence')}>
+            {evidence('line')}
+          </PartSlot>
+        )}
+        {leftOn.queued && queued && (
+          <PartSlot id="queued" dot={leftBefore('queued')}>
+            <span className="flex shrink-0 items-center gap-1 whitespace-nowrap" data-field="queued" title={queuedTip(queued, now)}>
+              <Hourglass aria-hidden className="size-3.5 shrink-0" />
+              {queuedPart}
+            </span>
+          </PartSlot>
+        )}
+        {leftOn.servers && (
+          <PartSlot id="servers" dot={leftBefore('servers')}>
+            <PortsChip servers={servers} onShowAll={onShowServers} focusFallback={focusFallback} />
+          </PartSlot>
+        )}
+        <StatusMore
+          names={moreNames}
+          open={moreOpen}
+          onOpenChange={onMoreOpen}
+          focusFallback={focusFallback}
+          wrap={(button) => (
+            <PartSlot id="more" dot={leftBefore('more')}>
+              {button}
+            </PartSlot>
+          )}
+        >
+          {rows}
+        </StatusMore>
+      </div>
+      <div className="flex shrink-0 items-center gap-1.5" data-slot="status-right">
+        {row.subagents?.items
+          ? // VIEW-8.6: with Fleet's list, the part opens it; an ended Session's has no part (VIEW-8.4), which
+            // closes an open list (VIEW-8.10).
+            on('subagents') && <SubagentsSlot look="line" dot={false} text={subagents} running={running > 0} subagents={row.subagents} focusFallback={focusFallback} />
+          : rightOn.subagents && (
+              <PartSlot id="subagents" dot={false}>
+                <span className={cn('shrink-0 whitespace-nowrap', subagentsColour)} data-field="subagents" data-state={running ? 'running' : 'done'}>
+                  {subagents}
+                </span>
+              </PartSlot>
+            )}
+        {rightOn.shell && (
+          <PartSlot id="shell" dot={rightBefore('shell')}>
+            <span className="shrink-0 whitespace-nowrap text-idle-text" data-field="background-shell" title={BACKGROUND_SHELL_TIP}>
+              {shell}
+            </span>
+          </PartSlot>
+        )}
+        {rightOn.model && (
+          <PartSlot id="model" dot={rightBefore('model')}>
+            {modelMenu('line')}
+          </PartSlot>
+        )}
+        {rightOn.effort && (
+          <PartSlot id="effort" dot={rightBefore('effort')}>
+            {effortMenu('line')}
+          </PartSlot>
+        )}
+        {context && (
+          <PartSlot id="context" dot={rightBefore('context')}>
+            <span className={cn('shrink-0 whitespace-nowrap', ctxLevel && CONTEXT_LEVEL_CLASS[ctxLevel])} data-field="context" data-level={ctxLevel ?? undefined}>
+              {context}
+            </span>
+            {onCompact && (
+              <Button variant="secondary" size="line" className="shrink-0" title="Compact the conversation (/compact)" onClick={onCompact} data-field="compact">
+                Compact
+              </Button>
+            )}
+          </PartSlot>
+        )}
+      </div>
     </StatusBar>
   );
 }
 
-/** VIEW-8.6: the Subagents part and its list; it stays while the list is open, to close it (VIEW-8.10). */
-function SubagentsSlot({ dot, ...props }: Omit<SubagentsButtonProps, 'open' | 'onOpenChange'> & { dot: ReactNode }) {
-  const [open, setOpen] = useState(false);
-  if (!props.text && !open) return null;
+/** VIEW-5.5: the line's separator between two parts of an end. */
+const Dot = () => (
+  <span aria-hidden className="shrink-0 opacity-60" data-slot="status-dot">
+    ·
+  </span>
+);
+
+/** VIEW-5.19: one part of the line, measured by its box (`data-part`), its separator before it. */
+function PartSlot({ id, dot, className, children }: { id: StatusPart; dot: boolean; className?: string; children: ReactNode }) {
   return (
-    <>
-      {props.text && dot}
-      <SubagentsButton {...props} open={open} onOpenChange={setOpen} />
-    </>
+    <span className={cn('flex shrink-0 items-center gap-1.5', className)} data-part={id}>
+      {dot && <Dot />}
+      {children}
+    </span>
   );
 }
 
-/** DIFF-1.3: the count, with its dot only while the button shows. */
-function ChangesSlot({ dot, ...props }: ChangesButtonProps & { dot: ReactNode }) {
+/** VIEW-5.19: a folded part that opens nothing (a queued job, a background shell, a plain model): a row read by its words. */
+function StaticRow({ field, state, name, value, icon, title }: { field?: string; state?: string; name: string; value: ReactNode; icon?: ReactNode; title?: string }) {
+  return (
+    <div className={PART_ROW_STATIC} tabIndex={-1} data-part-row data-field={field} data-state={state} title={title}>
+      <PartRowContent name={name} value={value} icon={icon} />
+    </div>
+  );
+}
+
+/** VIEW-8.6: the Subagents part and its list; it stays while the list is open, to close it (VIEW-8.10). */
+function SubagentsSlot({ look, dot, ...props }: Omit<SubagentsButtonProps, 'open' | 'onOpenChange'> & { look: PartLook; dot: boolean }) {
+  const [open, setOpen] = useState(false);
+  if (!props.text && !open) return null;
+  const button = <SubagentsButton {...props} look={look} open={open} onOpenChange={setOpen} />;
+  if (look === 'row') return button;
+  return (
+    <PartSlot id="subagents" dot={dot && !!props.text}>
+      {button}
+    </PartSlot>
+  );
+}
+
+/** DIFF-1.3: the count, with its separator only while the button shows; it stays while its list is open (DIFF-3.3). */
+function ChangesSlot({ dot, look = 'line', ...props }: ChangesButtonProps & { dot: boolean }) {
   const [open, setOpen] = useState(false);
   if (!props.changes && !open) return null;
+  const button = (
+    <ChangesButton
+      {...props}
+      look={look}
+      onOpenChange={(next) => {
+        setOpen(next);
+        props.onOpenChange(next);
+      }}
+    />
+  );
+  if (look === 'row') return button;
   return (
-    <>
-      {dot}
-      <ChangesButton
-        {...props}
-        onOpenChange={(next) => {
-          setOpen(next);
-          props.onOpenChange(next);
-        }}
-      />
-    </>
+    <PartSlot id="changes" dot={dot && !!props.changes}>
+      {button}
+    </PartSlot>
   );
 }
 
 /** A status-line value that isn't a menu (VIEW-6.2, VIEW-7.2): its tooltip says why where it's only its terminal host. */
-function PlainPart({ field, value, why, note }: { field: SwitchWhat; value: string; why: string | null; note: boolean }) {
+function PlainPart({ field, value, detail = null, why, note, look }: { field: SwitchWhat; value: string; detail?: string | null; why: string | null; note: boolean; look: PartLook }) {
+  const shown = detail && detail !== value ? `${value} · ${detail}` : value;
+  const title = why ? `${shown}\n${why}` : shown;
+  if (look === 'row')
+    return (
+      <StaticRow
+        name={SWITCH_NAME[field]}
+        title={title}
+        value={
+          <>
+            <span data-field={field}>{value}</span>
+            {note && <span data-slot={`${field}-note`}> · {FROM_NEXT_REPLY}</span>}
+          </>
+        }
+      />
+    );
   return (
     <>
-      <span className="min-w-0 truncate" data-field={field} title={why ? `${value}\n${why}` : value}>
+      <span className="shrink-0 whitespace-nowrap" data-field={field} title={title}>
         {value}
       </span>
       {note && <NextReplyNote field={field} />}
@@ -1136,10 +1372,10 @@ function PlainPart({ field, value, why, note }: { field: SwitchWhat; value: stri
   );
 }
 
-/** VIEW-6.7, VIEW-7.7: "· from the next reply", muted; it truncates like the line's other parts, shrinking half as fast. */
+/** VIEW-6.7, VIEW-7.7: "· from the next reply", muted and whole; the line measures it on its own (VIEW-5.19). */
 function NextReplyNote({ field }: { field: string }) {
   return (
-    <span className="min-w-0 shrink-[0.5] truncate opacity-70" data-slot={`${field}-note`} title={FROM_NEXT_REPLY}>
+    <span className="shrink-0 whitespace-nowrap opacity-70" data-slot={`${field}-note`} data-subpart="note" title={FROM_NEXT_REPLY}>
       · {FROM_NEXT_REPLY}
     </span>
   );
@@ -1157,6 +1393,7 @@ function SwitchMenu({
   what,
   row,
   value,
+  detail = null,
   pending,
   note,
   options,
@@ -1165,10 +1402,13 @@ function SwitchMenu({
   onLoadModels,
   onSwitch,
   statusSwitch,
+  look,
 }: {
   what: SwitchWhat;
   row: SessionRow;
   value: string;
+  /** VIEW-6.1: the model's id, in its tooltip, when the line shows its label. */
+  detail?: string | null;
   /** This value is a switch's (VIEW-6.7, VIEW-7.7): its tooltip says from the next reply. */
   pending: boolean;
   /** This part carries the line's one "from the next reply". */
@@ -1179,6 +1419,7 @@ function SwitchMenu({
   onLoadModels(): void;
   onSwitch: SessionViewProps['onSwitch'];
   statusSwitch: SwitchState | undefined;
+  look: PartLook;
 }) {
   const opened = useRef<ModelTarget | null>(null);
   const mine = statusSwitch?.what === what;
@@ -1187,6 +1428,7 @@ function SwitchMenu({
       field={what}
       name={SWITCH_NAME[what]}
       value={value}
+      detail={detail}
       note={note ? FROM_NEXT_REPLY : null}
       tipNote={pending ? FROM_NEXT_REPLY : null}
       why={switchWhy(what, row.status, statusSwitch)}
@@ -1195,6 +1437,7 @@ function SwitchMenu({
       checked={checked(options)}
       footnote={footnote}
       error={mine ? statusSwitch.error : null}
+      look={look}
       onOpen={() => {
         opened.current = { pid: row.pid, procStart: row.procStart };
         onLoadModels();
@@ -1204,12 +1447,12 @@ function SwitchMenu({
   );
 }
 
-/** The status line's one-line bar, also a past Session's "where it ran" and part of DockRest (SIDE-8.1). */
-export function StatusBar({ className, ...rest }: ComponentPropsWithoutRef<'div'>) {
+/** The status line's one-line bar, also a past Session's "where it ran" and part of DockRest (SIDE-8.1); its two ends 12 px apart (VIEW-5.5). */
+export function StatusBar({ className, ...rest }: ComponentPropsWithRef<'div'>) {
   return (
     <div
       className={cn(
-        '@container flex h-7 min-w-0 shrink-0 items-center gap-1.5 overflow-hidden border-t border-border/70 bg-muted/30 px-5 font-mono text-meta whitespace-nowrap text-muted-foreground',
+        'flex h-7 min-w-0 shrink-0 items-center gap-3 overflow-hidden border-t border-border/70 bg-muted/30 px-5 font-mono text-meta whitespace-nowrap text-muted-foreground',
         className,
       )}
       {...rest}

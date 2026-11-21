@@ -34,7 +34,7 @@ describe('Session view header', () => {
     }
   });
 
-  it('VIEW-8.1: running Subagents are the last status-line part in Busy blue, whatever the main thread Status', () => {
+  it("VIEW-8.1: running Subagents are the first part of the status line's right end in Busy blue, whatever the main thread Status", () => {
     const app = renderApp('/s/a');
     const base = row({ id: 'a', contextPct: 23, model: 'claude-opus-5-5' });
     app.snapshot([base]);
@@ -45,8 +45,11 @@ describe('Session view header', () => {
         expect(part).toHaveTextContent(running === 1 ? /^1 subagent$/ : /^2 subagents$/);
         expect(part).toHaveClass('text-busy-text');
         expect(part).toHaveAttribute('data-state', 'running');
-        expect(statusLine().lastElementChild).toBe(part);
-        expect(part.previousElementSibling!.previousElementSibling).toHaveAttribute('data-field', 'context');
+        // First in the right end, before the model; the context usage keeps the right edge.
+        const right = statusLine().querySelector('[data-slot="status-right"]')!;
+        expect(right.firstElementChild).toBe(part.closest('[data-part]'));
+        expect(part.closest('[data-part]')!.nextElementSibling).toHaveAttribute('data-part', 'model');
+        expect(right.lastElementChild).toHaveAttribute('data-part', 'context');
       }
     }
   });
@@ -69,7 +72,7 @@ describe('Session view header', () => {
     }
   });
 
-  it('VIEW-8.3: list updates move running to done to cleared, keeping a truncated part and the whole line in its tooltip', () => {
+  it('VIEW-8.3: list updates move running to done to cleared, keeping the part whole and the whole line in its tooltip', () => {
     const app = renderApp('/s/a');
     const base = row({ id: 'a', contextPct: 23, effort: 'high', model: 'claude-opus-5-5' });
     app.snapshot([{ ...base, subagents: { running: 2, finished: 0 } }]);
@@ -78,9 +81,10 @@ describe('Session view header', () => {
     for (const subagents of [{ running: 1, finished: 2 }, { running: 0, finished: 3 }, { running: 0, finished: 0 }]) {
       app.emit({ type: 'sessions', upsert: [{ ...base, subagents }], remove: [] });
       const text = subagents.running ? '1 subagent' : subagents.finished ? '3 subagents done' : null;
-      expect(line).toHaveAttribute('title', `work · main · claude-opus-5-5 · high · 23% context${text ? ` · ${text}` : ''}`);
+      expect(line).toHaveAttribute('title', `work · main${text ? ` · ${text}` : ''} · claude-opus-5-5 · high · 23% context`);
       const part = line.querySelector('[data-field="subagents"]');
-      if (text) expect(part).toHaveClass('min-w-0', 'truncate');
+      // VIEW-5.19: whole on the line; it folds at its rank instead of being cut.
+      if (text) expect(part).toHaveClass('shrink-0', 'whitespace-nowrap');
       else expect(part).toBeNull();
     }
   });
@@ -152,16 +156,33 @@ describe('Session view header', () => {
     expect(line.querySelector('[data-field="context"]')).toHaveTextContent('55% context');
   });
 
-  it('VIEW-5.5: at narrow widths it stays one line: nothing wraps, long parts truncate, and the tooltip has it all', () => {
+  it('VIEW-5.5: two ends, the work on the left and the agent on the right, one line; only the Worktree or branch is cut, its tooltip naming the repo', () => {
     const long = 'a-very-long-worktree-name-that-would-never-fit-at-a-narrow-width-'.repeat(3);
     const app = renderApp('/s/a');
-    app.snapshot([row({ id: 'a', model: 'claude-opus-5-5', contextPct: 9, git: { repo: 'work', worktree: long, branch: 'x', commonDir: '/Users/me/Projects/work/.git', defaultBranch: 'main' } })]);
+    app.snapshot([
+      row({ id: 'a', model: 'claude-opus-5-5', effort: 'high', contextPct: 41, backgroundShell: true, subagents: { running: 2, finished: 0 }, queued: { tool: 'vitest', since: Date.now(), position: 1 }, changes: { additions: 1412, deletions: 212, files: 23 }, git: { repo: 'work', worktree: long, branch: 'x', commonDir: '/Users/me/Projects/work/.git', defaultBranch: 'main' } }),
+    ]);
     const line = statusLine();
     expect(line).toHaveClass('whitespace-nowrap', 'overflow-hidden', 'h-7');
-    for (const f of ['repo', 'model']) expect(line.querySelector(`[data-field="${f}"]`)).toHaveClass('truncate', 'min-w-0');
+    const parts = (end: string) => [...line.querySelectorAll(`[data-slot="status-${end}"] > [data-part]`)].map((e) => e.getAttribute('data-part'));
+    expect(parts('left')).toEqual(['repo', 'location', 'changes', 'queued']);
+    expect(parts('right')).toEqual(['subagents', 'shell', 'model', 'effort', 'context']);
+    // The left end takes what's left and is the one that gives way; the right keeps its width at the edge.
+    expect(line.querySelector('[data-slot="status-left"]')).toHaveClass('min-w-0', 'flex-1');
+    expect(line.querySelector('[data-slot="status-right"]')).toHaveClass('shrink-0');
+    // Every part whole but the Worktree or branch.
+    for (const slot of line.querySelectorAll('[data-part]')) {
+      if (slot.getAttribute('data-part') === 'location') expect(slot).toHaveClass('min-w-0', 'shrink');
+      else expect(slot).toHaveClass('shrink-0');
+    }
+    expect(line.querySelectorAll('.truncate')).toHaveLength(1);
     expect(line.querySelector('[data-field="location"] .truncate')).toHaveTextContent(long);
-    expect(line.querySelector('[data-field="location"]')).toHaveAttribute('title', long);
+    expect(line.querySelector('[data-field="location"]')).toHaveAttribute('title', `work · Worktree ${long} (branch x)`);
     expect(line.getAttribute('title')).toContain(long);
+    // A separator between two parts of an end, none at the seam.
+    expect(line.querySelector('[data-slot="status-left"] > [data-part]')!.querySelector('[data-slot="status-dot"]')).toBeNull();
+    expect(line.querySelector('[data-slot="status-right"] > [data-part]')!.querySelector('[data-slot="status-dot"]')).toBeNull();
+    expect(line.querySelectorAll('[data-slot="status-dot"]')).toHaveLength(3 + 4);
   });
 
   it('VIEW-5.11: the Effort follows the model as its own part, updating live, and nothing takes its place without one', () => {
@@ -172,8 +193,7 @@ describe('Session view header', () => {
     const effort = () => line.querySelector('[data-field="effort"]');
     expect(effort()).toHaveTextContent(/^medium$/);
     // Right after the model, before the context usage.
-    // (Both are menus here, VIEW-6 and VIEW-7: the parts are in order, whatever wraps them.)
-    const parts = [...line.querySelectorAll('[data-field]')].map((e) => e.getAttribute('data-field'));
+    const parts = [...line.querySelectorAll('[data-part]')].map((e) => e.getAttribute('data-part'));
     expect(parts.slice(parts.indexOf('model'), parts.indexOf('model') + 3)).toEqual(['model', 'effort', 'context']);
     expect(line).toHaveAttribute('title', 'work · crm-rates · claude-opus-5-5 · medium · 41% context');
 
@@ -186,31 +206,33 @@ describe('Session view header', () => {
     expect(effort()).toBeNull();
     expect(line).toHaveAttribute('title', 'work · crm-rates · claude-opus-5-5 · 42% context');
     // VIEW-5.18: an Idle Session at 42% is offered Compact after its context usage.
-    expect(line.textContent).toBe('work·crm-rates·claude-opus-5-5·42% contextCompact');
+    // Two ends: no separator at the seam (VIEW-5.5).
+    expect(line.textContent).toBe('work·crm-ratesclaude-opus-5-5·42% contextCompact');
   });
 
-  it('VIEW-5.11: it keeps the line one line: the Effort truncates like the other parts', () => {
+  it('VIEW-5.11: it keeps the line one line: the Effort is whole, and folds at its rank', () => {
     const app = renderApp('/s/a');
     // View only, so the Effort is plain text (a switchable one is VIEW-7's button).
     app.snapshot([row({ id: 'a', model: 'gpt-6-luna', harness: 'codex', controllable: false, backend: 'unknown', effort: 'xhigh', contextPct: 9 })]);
     const line = statusLine();
     expect(line).toHaveClass('whitespace-nowrap', 'overflow-hidden', 'h-7');
-    expect(line.querySelector('[data-field="effort"]')).toHaveClass('truncate', 'min-w-0');
+    expect(line.querySelector('[data-field="effort"]')).toHaveClass('shrink-0', 'whitespace-nowrap');
     expect(line.querySelector('[data-field="effort"]')).toHaveAttribute('title', 'xhigh');
     expect(line.getAttribute('title')).toContain('gpt-6-luna · xhigh');
   });
 
-  it('VIEW-5.16: an Idle Session with a background shell running is Idle in the pane, and the status line ends with `shell running` in Idle\'s grey', () => {
+  it("VIEW-5.16: an Idle Session with a background shell running is Idle in the pane, and the status line's right end shows `shell running` in Idle's grey before the model", () => {
     const app = renderApp('/s/a');
     const git = { repo: 'work', worktree: 'crm-rates', branch: 'x', commonDir: '/Users/me/Projects/work/.git', defaultBranch: 'main' };
     app.snapshot([row({ id: 'a', title: 'fix-rates', model: 'claude-opus-5-5', effort: 'high', contextPct: 41, git, backgroundShell: true })]);
     const line = statusLine();
     const shell = () => line.querySelector('[data-field="background-shell"]');
     expect(shell()).toHaveTextContent(/^shell running$/);
-    expect(shell()).toHaveClass('text-idle-text', 'truncate', 'min-w-0');
+    expect(shell()).toHaveClass('text-idle-text', 'shrink-0', 'whitespace-nowrap');
     expect(shell()).toHaveAttribute('title', 'A background shell command is still running');
-    expect(line.lastElementChild).toBe(shell());
-    expect(line).toHaveAttribute('title', 'work · crm-rates · claude-opus-5-5 · high · 41% context · shell running');
+    expect(line.querySelector('[data-slot="status-right"]')!.firstElementChild).toBe(shell()!.closest('[data-part]'));
+    expect(shell()!.closest('[data-part]')!.nextElementSibling).toHaveAttribute('data-part', 'model');
+    expect(line).toHaveAttribute('title', 'work · crm-rates · shell running · claude-opus-5-5 · high · 41% context');
     // Idle in every way: the header's tag, the composer, renaming and the model menu.
     expect(header().querySelector('[data-field="status"]')).toHaveTextContent('Idle');
     expect(screen.getByRole('textbox', { name: 'Message' })).toBeEnabled();

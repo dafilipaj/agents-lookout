@@ -75,7 +75,7 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
 
 ## Narrow widths: collapse columns instead of crushing them (SIDE, VIEW)
 
-- **What:** below about 1000 px the layout stops working rather than degrading. At 560 px with History open the main pane is 0 px wide. At 900 px the header's title and every status-line part are cut to one or two letters.
+- **What:** below about 1000 px the layout stops working rather than degrading. At 560 px with History open the main pane is 0 px wide. At 900 px the header's title is cut to one or two letters. (The status line's own part of this proposal, parts that leave whole by rank, was built on 2026-11-21: VIEW-5.19.)
 - **Why:** half of a 13-inch screen is a real width, and WCAG 1.4.10 asks for reflow. Dario uses Lookout full screen, so not now.
 - **How (proposal, from the design review of 2026-10-22, suggestion 2):**
   - Keep SIDE-8's one grid, whose reason (lines that line up by construction) still holds, but change which columns it holds by width:
@@ -84,7 +84,6 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
     - the main pane never gets narrower than 20rem.
   - The right sidebar's width is tied to the window: never more than 40% of it (today a fixed 280–720 px, `lib/right-sidebar.ts`).
   - Header: below 32rem, End Session and Copy session ID fold into one "…" menu and the title keeps at least 8rem; Stop and the Esc button stay whole. Changes VIEW UX's "the buttons always whole; the title gives way".
-  - Status line: drop whole parts by priority (repo first, then branch, then Effort; keep the model and context usage), with the dropped ones in its tooltip, instead of cutting every part short. Changes VIEW-5.5's "parts that don't fit are truncated".
   - Small ones: "Jump to latest" gets room under the chat's last line instead of covering it; Work's filter labels fit at 300 px.
 - **Costs and risks:** two breakpoints in the shell's grid, an overlay that needs focus handling and Esc, and the dock row's resting height (SIDE-8.1) checked at each width. Screenshots at 520, 560 and 900 px are in the review.
 - **Added:** 2026-10-22, from the design review; Dario: agreed, postponed.

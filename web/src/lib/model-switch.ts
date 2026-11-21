@@ -61,6 +61,16 @@ export function modelOptions(harnesses: HarnessState, harness: string): MenuOpti
   return { state: 'ready', items: (own?.models ?? []).filter((m) => m.id !== '').map((m) => ({ value: m.id, label: m.label, detail: m.id })) };
 }
 
+/**
+ * VIEW-6.1: the status line's name for a model: its label in Fleet's list for the Harness (`Sonnet 5.5`),
+ * matched as the menu checks it; its id when it isn't listed, or before the list is read.
+ */
+export function modelLabel(harnesses: HarnessState, harness: string, id: string): string {
+  if (harnesses.state !== 'ready') return id;
+  const own = harnesses.harnesses.find((h) => h.id === harness);
+  return own?.models.find((m) => m.id !== '' && sameModel(m.id, id))?.label ?? id;
+}
+
 /** VIEW-6.1: the listed model the Session runs, a `[1m]` or a date suffix aside; null when it isn't listed. */
 export function checkedModel(options: MenuOptions, current: string): string | null {
   if (options.state !== 'ready') return null;

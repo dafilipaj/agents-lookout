@@ -1,9 +1,10 @@
 import { OUTCOME_WORD, ROUND_WORD, roundsNote, runsNote, type EvidenceFile, type EvidenceReviewer, type EvidenceRound, type EvidenceRun, type EvidenceView, type RowEvidence, type VerdictTone } from '@shared/evidence.ts';
-import { ChevronUp, CircleCheck, Info, TriangleAlert } from 'lucide-react';
+import { ChevronRight, ChevronUp, CircleCheck, Info, TriangleAlert } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { SectionLabel, Tile, Tiles, Verdict } from '@/components/ui/details';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { PART_ROW, PartRowContent, type PartLook } from '@/components/ui/status-part';
 import { splitPath } from '@/lib/changes';
 import { clock, doneFacts, number, plural, reviewerWords, reviewState, ROUND_VALUE, TONE_TEXT } from '@/lib/evidence';
 import { HARNESS_NAME } from '@/lib/sessions';
@@ -45,7 +46,8 @@ interface PopoverProps extends EvidenceActions {
   onOpenChange(open: boolean): void;
   /** What opens it: the status line's part, or the Done card's button. */
   trigger: ReactNode;
-  side: 'top' | 'bottom';
+  /** `right` from a row of the status line's "N more" (VIEW-5.19). */
+  side: 'top' | 'bottom' | 'right';
   align: 'start' | 'end';
   /** EVID-5.8: focus doesn't return to the opener (the files list takes it, or the Evidence went). */
   onCloseAutoFocus?(event: Event): void;
@@ -316,21 +318,33 @@ function RunRow({ run }: { run: EvidenceRun }) {
  * EVID-5.1: the status line's part: the verdict's icon and its short words in its tone, a button
  * that opens the popover; its tooltip the whole verdict.
  */
-export const EvidencePart = ({ evidence, ...rest }: { evidence: RowEvidence } & ComponentProps<'button'>) => (
+export const EvidencePart = ({ evidence, look = 'line', ...rest }: { evidence: RowEvidence; look?: PartLook } & ComponentProps<'button'>) => (
   <button
     type="button"
     data-field="evidence"
     aria-label={`Evidence: ${evidence.text}`}
     title={evidence.text}
-    className={cn(
-      // DS-7.3: a 24 px tall target in the 28 px line, as the status line's other buttons.
-      'flex h-6 min-w-0 shrink items-center gap-1 rounded-sm px-1 -mx-1 text-meta outline-none focus-visible:ring-2 focus-visible:ring-ring',
-      'hover:bg-accent data-[state=open]:bg-accent',
-    )}
+    data-part-row={look === 'row' || undefined}
+    className={
+      look === 'row'
+        ? PART_ROW
+        : cn(
+            // DS-7.3: a 24 px tall target in the 28 px line, as the status line's other buttons.
+            'flex h-6 min-w-0 shrink-0 items-center gap-1 rounded-sm px-1 -mx-1 text-meta outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            'hover:bg-accent data-[state=open]:bg-accent',
+          )
+    }
     {...rest}
   >
-    <VerdictIcon tone={evidence.tone} />
-    <span className={cn('truncate', TONE_TEXT[evidence.tone])}>{evidence.short}</span>
+    {look === 'row' ? (
+      // VIEW-5.19: folded into "N more", its row opens the same popover.
+      <PartRowContent name="Evidence" icon={<VerdictIcon tone={evidence.tone} />} value={<span className={TONE_TEXT[evidence.tone]}>{evidence.short}</span>} trail={<ChevronRight className="size-3.5" />} />
+    ) : (
+      <>
+        <VerdictIcon tone={evidence.tone} />
+        <span className={cn('whitespace-nowrap', TONE_TEXT[evidence.tone])}>{evidence.short}</span>
+      </>
+    )}
   </button>
 );
 

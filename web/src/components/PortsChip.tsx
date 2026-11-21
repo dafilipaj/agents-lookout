@@ -1,6 +1,8 @@
 import type { LocalServer } from '@shared/ports.ts';
 import { Server } from 'lucide-react';
-import { type ReactNode, useLayoutEffect, useRef } from 'react';
+import { useLayoutEffect, useRef } from 'react';
+import { PART_ROW, PartRowContent, type PartLook } from '@/components/ui/status-part';
+import { ActionIcon } from '@/lib/actions';
 import { chipLabel, chipText, serverLine } from '@/lib/ports';
 import { useClock } from '@/lib/time';
 
@@ -11,15 +13,15 @@ export interface PortsChipProps {
   onShowAll(): void;
   /** PORTS-2.3, VIEW-8.10: where focus goes when the chip goes while it has it. */
   focusFallback(): void;
-  /** The status line's separator, shown before the chip. */
-  dot: ReactNode;
+  /** VIEW-5.19: on the line, or a row of "N more"'s list, doing what a click on the chip does. */
+  look?: PartLook;
 }
 
 /**
  * PORTS-2: the status line's Local servers: `:4301 test-pr-24926/api` for one, which a click
  * opens in a new browser tab, or `3 servers`, which opens the Servers tab. Its tooltip lists each.
  */
-export function PortsChip({ servers, onShowAll, focusFallback, dot }: PortsChipProps) {
+export function PortsChip({ servers, onShowAll, focusFallback, look = 'line' }: PortsChipProps) {
   const now = useClock();
   // A focused button that is removed may not get a blur: focus is known gone only while it's still in the page.
   const focused = useRef(false);
@@ -36,25 +38,35 @@ export function PortsChip({ servers, onShowAll, focusFallback, dot }: PortsChipP
   }, []);
   if (!servers.length) return null;
   const one = servers.length === 1 ? servers[0]! : null;
+  const row = look === 'row';
   return (
-    <>
-      {dot}
-      <button
-        type="button"
-        data-field="servers"
-        aria-label={chipLabel(servers)}
-        title={servers.map((s) => serverLine(s, now)).join('\n')}
-        onClick={() => (one ? window.open(one.url, '_blank', 'noopener,noreferrer') : onShowAll())}
-        onFocus={() => (focused.current = true)}
-        onBlur={(e) => {
-          if (e.currentTarget.isConnected) focused.current = false;
-        }}
-        // DS-7.3: a 24 px tall target in the 28 px line, as the status line's other buttons.
-        className="flex h-6 min-w-0 shrink items-center gap-1 rounded-sm px-1 -mx-1 outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        <Server aria-hidden className="size-3.5 shrink-0" />
-        <span className="truncate">{chipText(servers)}</span>
-      </button>
-    </>
+    <button
+      type="button"
+      data-field="servers"
+      aria-label={chipLabel(servers)}
+      title={servers.map((s) => serverLine(s, now)).join('\n')}
+      onClick={() => (one ? window.open(one.url, '_blank', 'noopener,noreferrer') : onShowAll())}
+      onFocus={() => (focused.current = true)}
+      onBlur={(e) => {
+        if (e.currentTarget.isConnected) focused.current = false;
+      }}
+      data-part-row={row || undefined}
+      className={
+        row
+          ? PART_ROW
+          : // DS-7.3: a 24 px tall target in the 28 px line, as the status line's other buttons.
+            'flex h-6 min-w-0 shrink-0 items-center gap-1 rounded-sm px-1 -mx-1 outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring'
+      }
+    >
+      {row ? (
+        // PORTS-2.2: one server is a page in the browser, several the Servers tab, inside Lookout.
+        <PartRowContent name={one ? 'Local server' : 'Local servers'} value={chipText(servers)} icon={<Server className="size-3.5" />} trail={<ActionIcon id={one ? 'open-external' : 'open'} className="size-3.5" />} />
+      ) : (
+        <>
+          <Server aria-hidden className="size-3.5 shrink-0" />
+          <span className="whitespace-nowrap">{chipText(servers)}</span>
+        </>
+      )}
+    </button>
   );
 }

@@ -1,9 +1,10 @@
 import { FLEET_INSTALL_COMMAND } from '@shared/defaults.ts';
 import type { HarnessOption, HistoryDetail, ServerEvent } from '@shared/types.ts';
-import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NOW, launchView, renderApp, row, rowEl, settings } from '@/test/helpers';
+import { PART_ROW, PART_ROW_STATIC, PartRowContent } from '@/components/ui/status-part';
 
 /**
  * The design system's components in the places that use them (DS-4 to DS-8): each place draws its
@@ -175,6 +176,24 @@ describe('the status line', () => {
     for (const name of [/^Model: /, /^Effort: /]) {
       const button = within(statusLine()).getByRole('button', { name });
       expect(button).toHaveClass('h-6', 'px-1', 'text-meta');
+    }
+  });
+
+  it("DS-7.3: a part folded into \"N more\" (VIEW-5.19) is a 28 px row, its name in body and its value in the line's meta", () => {
+    render(
+      <>
+        <button type="button" className={PART_ROW} data-testid="row">
+          <PartRowContent name="Model" value="Sonnet 5.5" />
+        </button>
+        <div className={PART_ROW_STATIC} data-testid="static">
+          <PartRowContent name="Queued" value="vitest · 2m" />
+        </div>
+      </>,
+    );
+    for (const id of ['row', 'static']) {
+      const row = screen.getByTestId(id);
+      expect(row).toHaveClass('h-7', 'text-body');
+      expect(row.querySelector('[data-slot="part-value"]')).toHaveClass('font-mono', 'text-meta', 'text-muted-foreground', 'truncate');
     }
   });
 });

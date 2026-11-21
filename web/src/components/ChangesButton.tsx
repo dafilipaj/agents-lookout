@@ -1,10 +1,11 @@
 import type { ChangedCheckout, ChangedFile, ChangesView, RowChanges } from '@shared/types.ts';
-import { Check, Code, ScrollText } from 'lucide-react';
+import { Check, ChevronRight, Code, ScrollText } from 'lucide-react';
 import { IconButton } from '@/components/ui/icon-button';
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { routePath } from '@/lib/router';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Loading } from '@/components/ui/loading';
+import { PART_ROW, PartRowContent, type PartLook } from '@/components/ui/status-part';
 import { changesButtonLabel, changesTip, fileSignature as signature, filesPart, hasLines, kindLabel, noOpenReason, splitPath, viewedFiles } from '@/lib/changes';
 import { cn } from '@/lib/utils';
 import { ChangesCount } from './ChangesCount';
@@ -34,17 +35,24 @@ export interface ChangesButtonProps {
   focusFallback(): void;
   /** EVID-5.4: a new number opens the list, as a press on the count does (the Evidence popover's Test files tile). */
   openRequest?: number;
+  /** VIEW-5.19: on the line, or a row of "N more"'s list, the list opening from the row. */
+  look?: PartLook;
+  /** VIEW-5.19: the number of files left the line (the count's tooltip has it); only with lines to show. */
+  filesFolded?: boolean;
+  /** VIEW-5.19, EVID-5.4: a folded count's row mounts with its list open, as the Test files tile asked. */
+  initialOpen?: boolean;
 }
 
 /**
  * DIFF-1.3, DIFF-3: the status line's count, `+120 −30 · 4 files`, a button that opens the list of
  * changed files; a file opens its Changes in VS Code (DIFF-4).
  */
-export function ChangesButton({ sessionId, changes, list, onOpenChange, onOpenFile, onOpenSpec, plainViewed, focusFallback, openRequest }: ChangesButtonProps) {
+export function ChangesButton({ sessionId, changes, list, onOpenChange, onOpenFile, onOpenSpec, plainViewed, focusFallback, openRequest, look = 'line', filesFolded = false, initialOpen = false }: ChangesButtonProps) {
   const [, setViewedTick] = useState(0);
   /** PLAIN-3.3: the Viewed Modules of the open list, `<root>\0<path>`, as the server last said. */
   const [plainMarks, setPlainMarks] = useState<ReadonlySet<string>>(new Set());
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initialOpen);
+  const openedOnMount = useRef(initialOpen);
   const [errors, setErrors] = useState<ReadonlyMap<string, string>>(new Map());
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
@@ -59,6 +67,12 @@ export function ChangesButton({ sessionId, changes, list, onOpenChange, onOpenFi
     told.current = onOpenChange;
   });
   useEffect(() => () => told.current(false), []);
+  // VIEW-5.19: mounted open, the server is told so, as a press would (DIFF-3.6).
+  useEffect(() => {
+    if (!openedOnMount.current) return;
+    openedOnMount.current = false;
+    told.current(true);
+  }, []);
   // EVID-5.4: opened from elsewhere; the list keeps its own focus rules (DIFF-3.4).
   const request = useRef(openRequest);
   useEffect(() => {
@@ -122,6 +136,8 @@ export function ChangesButton({ sessionId, changes, list, onOpenChange, onOpenFi
     return false;
   };
 
+  const row = look === 'row';
+  const filesText = changes ? `${hasLines(changes) ? '· ' : ''}${filesPart(changes)}` : 'No changes';
   return (
     <Popover open={open} onOpenChange={setOpenAndTell}>
       <PopoverTrigger asChild>
@@ -130,19 +146,44 @@ export function ChangesButton({ sessionId, changes, list, onOpenChange, onOpenFi
           data-field="changes"
           aria-label={changes ? changesButtonLabel(changes) : 'No changes, show changed files'}
           title={changes ? changesTip(changes) : 'No changes'}
-          className={cn(
-            // DS-7.3: a 24 px tall target in the 28 px line, as the status line's menus.
-            'flex h-6 min-w-0 shrink-0 items-center gap-1 rounded-sm px-1 -mx-1 text-meta outline-none focus-visible:ring-2 focus-visible:ring-ring',
-            'hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground',
-          )}
+          data-part-row={row || undefined}
+          className={
+            row
+              ? PART_ROW
+              : cn(
+                  // DS-7.3: a 24 px tall target in the 28 px line, as the status line's menus.
+                  'flex h-6 min-w-0 shrink-0 items-center gap-1 rounded-sm px-1 -mx-1 text-meta outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  'hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground',
+                )
+          }
         >
-          {hasLines(changes) && <ChangesCount additions={changes.additions} deletions={changes.deletions} />}
-          <span className="truncate">{changes ? `${hasLines(changes) ? '· ' : ''}${filesPart(changes)}` : 'No changes'}</span>
+          {row ? (
+            <PartRowContent
+              name="Changes"
+              value={
+                <>
+                  {hasLines(changes) && <ChangesCount additions={changes.additions} deletions={changes.deletions} className="inline-flex" />}
+                  {hasLines(changes) ? ` ${filesText}` : filesText}
+                </>
+              }
+              trail={<ChevronRight className="size-3.5" />}
+            />
+          ) : (
+            <>
+              {hasLines(changes) && <ChangesCount additions={changes.additions} deletions={changes.deletions} />}
+              {/* VIEW-5.19: the number of files leaves first, silently; the line measures it on its own. */}
+              {!(filesFolded && hasLines(changes)) && (
+                <span className="whitespace-nowrap" data-subpart={hasLines(changes) ? 'files' : undefined}>
+                  {filesText}
+                </span>
+              )}
+            </>
+          )}
         </button>
       </PopoverTrigger>
       <PopoverContent
-        side="top"
-        align="start"
+        side={row ? 'right' : 'top'}
+        align={row ? 'end' : 'start'}
         className="max-h-[60vh] w-[min(36rem,calc(100vw-2rem))] overflow-y-auto p-1"
         data-slot="changes-list"
         onKeyDown={onArrows}

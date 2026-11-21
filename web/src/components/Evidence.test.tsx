@@ -65,10 +65,12 @@ describe('EVID-5: where Evidence shows', () => {
     expect(p).toHaveTextContent('Changed since tests');
     expect(p).toHaveAttribute('title', 'Changed after its last test run');
     expect(p).toHaveAccessibleName('Evidence: Changed after its last test run');
-    // Right after the Changes count, a dot between.
+    // Right after the Changes count, a dot between; whole, it folds at its rank instead (VIEW-5.19).
     const changes = statusLine().querySelector('[data-field="changes"]')!;
-    expect(changes.nextElementSibling!.nextElementSibling).toBe(p);
-    expect(p.querySelector('.truncate')).toBeTruthy();
+    expect(changes.closest('[data-part]')!.nextElementSibling).toBe(p.closest('[data-part="evidence"]'));
+    expect(p.previousElementSibling).toHaveAttribute('data-slot', 'status-dot');
+    expect(p).toHaveClass('shrink-0');
+    expect(p.querySelector('.truncate')).toBeNull();
     expect(statusLine().getAttribute('title')).toContain('Changed since tests');
   });
 
@@ -204,7 +206,7 @@ describe('EVID-5: where Evidence shows', () => {
       app.emit({ type: 'evidence', sessionId: 'a', evidence: evidence({ verdict: verdict(key) }) });
       const svg = part()!.querySelector('svg')!;
       expect(svg).toHaveClass(icon, colour);
-      expect(part()!.querySelector('.truncate')).toHaveClass(words);
+      expect(part()!.querySelector('span')).toHaveClass(words);
       expect(part()!.textContent).toBe(verdict(key).short);
     }
   });

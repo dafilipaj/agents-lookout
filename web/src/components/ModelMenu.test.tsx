@@ -82,6 +82,32 @@ describe('switching the model from the status line (VIEW-6)', () => {
     expect(items()).toHaveLength(3); // no extra row for it
   });
 
+  it('VIEW-6.1: the line shows the model by its label in Fleet’s list, read once a view shows a model, its id in the tooltip; one Fleet doesn’t list shows its id', async () => {
+    const list = deferred<HarnessOption[]>();
+    const app = renderApp('/s/a', { harnesses: () => list.promise });
+    app.snapshot([row({ id: 'a', model: 'claude-sonnet-5-5[1m]', effort: 'high', contextPct: 31 })]);
+    // The id until the list is read; the view asks for it, once.
+    expect(modelButton()).toHaveTextContent('claude-sonnet-5-5[1m]');
+    expect(app.client.harnesses).toHaveBeenCalledTimes(1);
+    await act(async () => list.resolve(HARNESSES));
+    expect(modelButton()).toHaveTextContent(/^Sonnet 5\.5$/);
+    expect(modelButton()).toHaveAccessibleName('Model: Sonnet 5.5');
+    expect(modelButton()).toHaveAttribute('title', 'Model: Sonnet 5.5 · claude-sonnet-5-5[1m]');
+    expect(statusLine()).toHaveAttribute('title', 'work · main · Sonnet 5.5 · high · 31% context');
+    // Read, it isn't asked for again by the line.
+    app.emit({ type: 'sessions', upsert: [row({ id: 'a', model: 'claude-opus-5-5', effort: 'high', contextPct: 31 })], remove: [] });
+    expect(modelButton()).toHaveTextContent(/^Opus 5\.5$/);
+    expect(app.client.harnesses).toHaveBeenCalledTimes(1);
+    // Not in the list: its id, as the menu checks nothing (above).
+    app.emit({ type: 'sessions', upsert: [row({ id: 'a', model: 'claude-mythos-1', contextPct: 31 })], remove: [] });
+    expect(modelButton()).toHaveTextContent(/^claude-mythos-1$/);
+    expect(modelButton()).toHaveAttribute('title', 'Model: claude-mythos-1');
+    // A plain one (View only) shows its label too, its id in its tooltip.
+    app.emit({ type: 'sessions', upsert: [row({ id: 'a', controllable: false, backend: 'unknown', harness: 'codex', model: 'gpt-6-astra' })], remove: [] });
+    expect(statusLine().querySelector('[data-field="model"]')).toHaveTextContent(/^GPT-6 Astra$/);
+    expect(statusLine().querySelector('[data-field="model"]')).toHaveAttribute('title', 'GPT-6 Astra · gpt-6-astra');
+  });
+
   it('VIEW-6.1: with no model known yet, the line shows no model and there’s no button', () => {
     const app = renderApp('/s/a');
     app.snapshot([row({ id: 'a', model: null, contextPct: 12 })]);
@@ -123,7 +149,8 @@ describe('switching the model from the status line (VIEW-6)', () => {
     for (const status of ['busy', 'needs-you', 'unknown'] as const) {
       app.snapshot([row({ id: 'a', model: 'claude-opus-5-5', status })]);
       expect(modelButton()).toHaveAttribute('aria-disabled', 'true');
-      expect(modelButton()).toHaveAttribute('title', MODEL_WHY[status]);
+      // What it is, its id included, then why (VIEW-6.1).
+      expect(modelButton().getAttribute('title')!.split('\n')).toEqual([expect.stringMatching(/^Model: .*claude-opus-5-5/), MODEL_WHY[status]]);
       await user.click(modelButton());
       expect(screen.queryByRole('menu')).toBeNull();
     }
@@ -147,24 +174,26 @@ describe('switching the model from the status line (VIEW-6)', () => {
     expect(app.client.switchModel).toHaveBeenCalledWith('a', { model: 'claude-sonnet-5-5', pid: 4242, procStart: '2026-10-14T09:30:00Z' });
     expect(modelButton()).toHaveTextContent('Switching…');
     expect(modelButton()).toHaveAttribute('aria-disabled', 'true');
-    expect(modelButton()).toHaveAttribute('title', MODEL_WHY.switching);
+    expect(modelButton().getAttribute('title')!.split('\n')).toEqual([expect.stringMatching(/^Model: .*claude-opus-5-5/), MODEL_WHY.switching]);
     await user.click(modelButton());
     expect(screen.queryByRole('menu')).toBeNull();
 
     // The server sends the row with its pending model, then answers.
     app.emit({ type: 'sessions', upsert: [{ ...base, pendingModel: { model: 'claude-sonnet-5-5', since: '2026-10-22T10:00:00Z' } }], remove: [] });
     await act(async () => pending.resolve({ model: 'claude-sonnet-5-5', confirmed: true }));
-    expect(modelButton()).toHaveTextContent('claude-sonnet-5-5');
+    expect(modelButton()).toHaveTextContent('Sonnet 5.5');
     expect(statusLine().querySelector('[data-slot="model-note"]')).toHaveTextContent(`· ${FROM_NEXT_REPLY}`);
-    // VIEW-5.5: at narrow widths it truncates like the line's other parts.
-    expect(statusLine().querySelector('[data-slot="model-note"]')).toHaveClass('min-w-0', 'truncate');
-    expect(statusLine().querySelector('[data-slot="model-note"]')).not.toHaveClass('shrink-0');
-    expect(statusLine()).toHaveAttribute('title', expect.stringContaining(`claude-sonnet-5-5 (${FROM_NEXT_REPLY})`));
+    // VIEW-5.19: whole, with the part it marks; the line measures it on its own.
+    expect(statusLine().querySelector('[data-slot="model-note"]')).toHaveClass('shrink-0', 'whitespace-nowrap');
+    expect(statusLine().querySelector('[data-slot="model-note"]')).toHaveAttribute('data-subpart', 'note');
+    expect(statusLine().querySelector('[data-slot="model-note"]')!.closest('[data-part]')).toHaveAttribute('data-part', 'model');
+    expect(statusLine()).toHaveAttribute('title', expect.stringContaining(`Sonnet 5.5 (${FROM_NEXT_REPLY})`));
+    expect(modelButton()).toHaveAttribute('title', `Model: Sonnet 5.5 · claude-sonnet-5-5 (${FROM_NEXT_REPLY})`);
     expect(modelButton()).not.toHaveAttribute('aria-disabled');
 
     // The next reply reached the Transcript: Fleet's model, whichever it is, unmarked.
     app.emit({ type: 'sessions', upsert: [{ ...base, model: 'claude-sonnet-5-5', pendingModel: null }], remove: [] });
-    expect(modelButton()).toHaveTextContent('claude-sonnet-5-5');
+    expect(modelButton()).toHaveTextContent('Sonnet 5.5');
     expect(statusLine().querySelector('[data-slot="model-note"]')).toBeNull();
   });
 
@@ -249,7 +278,7 @@ describe('switching the model from the status line (VIEW-6)', () => {
     // An inline Alert (DS-4.1): its one line is cut to fit.
     expect(error).toHaveClass('min-w-0');
     expect(error.querySelector('.truncate')).toHaveTextContent(held);
-    expect(modelButton()).toHaveTextContent('claude-opus-5-5');
+    expect(modelButton()).toHaveTextContent('Opus 5.5');
     expect(modelButton().getAttribute('title')).toContain(held);
     expect(switchModel).toHaveBeenCalledTimes(1);
     // A refusal Lookout is sure of leaves the terminal closed.
@@ -303,11 +332,11 @@ describe('switching the model from the status line (VIEW-6)', () => {
     await user.click(modelButton());
     await user.click(within(menu()).getByRole('menuitemradio', { name: /Sonnet 5\.5/ }));
     view('b');
-    expect(modelButton()).toHaveTextContent('claude-opus-5-5');
+    expect(modelButton()).toHaveTextContent('Opus 5.5');
     view('a');
     expect(modelButton()).toHaveTextContent('Switching…');
     expect(modelButton()).toHaveAttribute('aria-disabled', 'true');
-    expect(modelButton()).toHaveAttribute('title', MODEL_WHY.switching);
+    expect(modelButton().getAttribute('title')!.split('\n')).toEqual([expect.stringMatching(/^Model: .*claude-opus-5-5/), MODEL_WHY.switching]);
 
     // It fails while another Session is in view: the error waits for you.
     view('b');
@@ -316,7 +345,7 @@ describe('switching the model from the status line (VIEW-6)', () => {
     expect(within(statusLine()).queryByRole('alert')).toBeNull();
     view('a');
     expect(within(statusLine()).getByRole('alert')).toHaveTextContent(notIdle);
-    expect(modelButton()).toHaveTextContent('claude-opus-5-5');
+    expect(modelButton()).toHaveTextContent('Opus 5.5');
     expect(modelButton()).not.toHaveAttribute('aria-disabled');
     expect(app.client.switchModel).toHaveBeenCalledTimes(1);
   });
@@ -343,7 +372,7 @@ describe('switching the model from the status line (VIEW-6)', () => {
     // The next reply came from Opus again: it didn't switch, and the error goes all the same.
     app.emit({ type: 'sessions', upsert: [{ ...base, modelAt: '2026-10-22T10:05:00Z' }], remove: [] });
     await waitFor(() => expect(within(statusLine()).queryByRole('alert')).toBeNull());
-    expect(modelButton()).toHaveTextContent('claude-opus-5-5');
+    expect(modelButton()).toHaveTextContent('Opus 5.5');
 
     // "Not Idle" goes with the reply that ends the turn, here one from Sonnet (a switch made in the terminal).
     answer = async () => {
@@ -382,7 +411,7 @@ describe('switching the model from the status line (VIEW-6)', () => {
     app.emit({ type: 'sessions', upsert: [], remove: ['a'] });
     app.emit({ type: 'sessions', upsert: [row({ id: 'c', pid: 4242, procStart: null, model: 'claude-opus-5-5' })], remove: [] });
     view('c');
-    expect(modelButton()).toHaveTextContent('claude-opus-5-5');
+    expect(modelButton()).toHaveTextContent('Opus 5.5');
     expect(within(statusLine()).queryByRole('alert')).toBeNull();
 
     // With start times, a reused pid is another process at once, listed or not.

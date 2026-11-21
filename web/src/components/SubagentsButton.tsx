@@ -1,6 +1,8 @@
 import type { SessionRow } from '@shared/types.ts';
+import { ChevronRight } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, type KeyboardEvent } from 'react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { PART_ROW, PartRowContent, type PartLook } from '@/components/ui/status-part';
 import { moreSubagents, subagentKind, subagentLabel, subagentLines, subagentTime, subagentTitle, type SubagentLine } from '@/lib/subagents';
 import { useClock } from '@/lib/time';
 import { cn } from '@/lib/utils';
@@ -15,18 +17,24 @@ export interface SubagentsButtonProps {
   onOpenChange(open: boolean): void;
   /** VIEW-8.10: where focus goes when the list closes after the part went away. */
   focusFallback(): void;
+  /** VIEW-5.19: on the line, or a row of "N more"'s list, the list opening from the row. */
+  look?: PartLook;
 }
+
+/** VIEW-8.1, 8.2: running in Busy's text shade, done in Idle's. */
+const subagentsColour = (running: boolean) => (running ? 'text-busy-text' : 'text-idle-text');
 
 /**
  * VIEW-8.6–8.13: the status line's Subagents part as a button that opens the list of the Subagents it
  * counts: what each was asked, its type and model, its time, and its last tool call or how it ended.
  */
-export function SubagentsButton({ text, running, subagents, open, onOpenChange, focusFallback }: SubagentsButtonProps) {
+export function SubagentsButton({ text, running, subagents, open, onOpenChange, focusFallback, look = 'line' }: SubagentsButtonProps) {
   // VIEW-8.10: the part went while its list was open: close it, focus goes to the composer.
   useEffect(() => {
     if (!text && open) onOpenChange(false);
   }, [text, open, onOpenChange]);
   if (!text && !open) return null;
+  const row = look === 'row';
   return (
     <Popover open={open && !!text} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
@@ -35,18 +43,23 @@ export function SubagentsButton({ text, running, subagents, open, onOpenChange, 
           data-field="subagents"
           data-state={running ? 'running' : 'done'}
           aria-label={text ? `${text}, show them` : 'Subagents'}
-          className={cn(
-            'min-w-0 truncate',
-            running ? 'text-busy-text' : 'text-idle-text',
-            // DS-7.3: a 24 px tall target in the 28 px line, as the status line's other buttons.
-            'h-6 shrink rounded-sm px-1 -mx-1 outline-none focus-visible:ring-2 focus-visible:ring-ring hover:bg-accent aria-expanded:bg-accent',
-          )}
+          data-part-row={row || undefined}
+          className={
+            row
+              ? PART_ROW
+              : cn(
+                  'shrink-0 whitespace-nowrap',
+                  subagentsColour(running),
+                  // DS-7.3: a 24 px tall target in the 28 px line, as the status line's other buttons.
+                  'h-6 rounded-sm px-1 -mx-1 outline-none focus-visible:ring-2 focus-visible:ring-ring hover:bg-accent aria-expanded:bg-accent',
+                )
+          }
         >
-          {text}
+          {row ? <PartRowContent name="Subagents" value={<span className={subagentsColour(running)}>{text}</span>} trail={<ChevronRight className="size-3.5" />} /> : text}
         </button>
       </PopoverTrigger>
       <PopoverContent
-        side="top"
+        side={row ? 'right' : 'top'}
         align="end"
         className="max-h-[60vh] w-[min(32rem,calc(100vw-2rem))] overflow-y-auto p-1"
         data-slot="subagents-list"

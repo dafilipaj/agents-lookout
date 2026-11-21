@@ -64,7 +64,10 @@ describe('the count', () => {
     app.snapshot([row({ id: 'a', model: 'claude-opus-5-5', changes: { additions: 120, deletions: 30, files: 4 } })]);
     const button = within(statusLine()).getByRole('button', { name: /show changed files/ });
     expect(button).toHaveTextContent('+120−30· 4 files');
-    expect(statusLine().textContent).toMatch(/\+120−30· 4 files·.*claude-opus-5-5/);
+    // In the left end, after the location; the model is in the right end (VIEW-5.5).
+    expect(button.closest('[data-slot="status-left"]')).toBeTruthy();
+    expect(button.closest('[data-part]')!.previousElementSibling).toHaveAttribute('data-part', 'location');
+    expect(statusLine().textContent).toMatch(/^work·main·\+120−30· 4 files.*claude-opus-5-5/);
     app.emit({ type: 'sessions', upsert: [row({ id: 'a', changes: { additions: 0, deletions: 0, files: 2 } })], remove: [] });
     expect(within(statusLine()).getByRole('button', { name: /show changed files/ })).toHaveTextContent(/^2 files$/);
     app.emit({ type: 'sessions', upsert: [row({ id: 'a', changes: null })], remove: [] });

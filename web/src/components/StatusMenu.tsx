@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Loading } from '@/components/ui/loading';
+import { PART_ROW, PartRowContent, type PartLook } from '@/components/ui/status-part';
 import type { MenuOptions } from '@/lib/status-switch';
 import { cn } from '@/lib/utils';
 
@@ -11,8 +12,10 @@ export interface StatusMenuProps {
   field: string;
   /** What it switches, for its name and tooltip (`Model`, `Effort`). */
   name: string;
-  /** The value shown in the line. */
+  /** The value shown in the line (VIEW-6.1: the model's label). */
   value: string;
+  /** In the tooltip after the value, when it says more (VIEW-6.1: the model's id). */
+  detail?: string | null;
   /** Muted, after the value (VIEW-6.7's "from the next reply"); null for none. */
   note: string | null;
   /** In the tooltip, after the value, when it differs from `note` (VIEW-7.7: the line's one note sits on another part). */
@@ -30,6 +33,8 @@ export interface StatusMenuProps {
   /** The menu opened: its choices may be read again. */
   onOpen(): void;
   onPick(value: string): void;
+  /** VIEW-5.19: on the line, or a row of "N more"'s list, the menu opening from the row. */
+  look?: PartLook;
 }
 
 /**
@@ -40,13 +45,17 @@ export interface StatusMenuProps {
  * While it can't be switched it stays focusable (`aria-disabled`) so its tooltip says why; an open
  * menu closes once that happens. While a switch runs it reads "Switching…".
  */
-export function StatusMenu({ field, name, value, note, tipNote = note, why, switching, options, checked, footnote, error, onOpen, onPick }: StatusMenuProps) {
+export function StatusMenu({ field, name, value, detail = null, note, tipNote = note, why, switching, options, checked, footnote, error, onOpen, onPick, look = 'line' }: StatusMenuProps) {
   const [open, setOpen] = useState(false);
   const blocked = switching || why !== null;
   // The Session stopped qualifying (or a switch began): the menu goes.
   if (open && blocked) setOpen(false);
   const shown = switching ? 'Switching…' : value;
-  const tip = why ?? `${name}: ${value}${tipNote ? ` (${tipNote})` : ''}`;
+  const about = `${name}: ${value}${detail && detail !== value ? ` · ${detail}` : ''}${tipNote ? ` (${tipNote})` : ''}`;
+  // VIEW-6.1, VIEW-6.3: blocked, it says why under what it is, so the model's id never goes out of reach.
+  const tip = why ? `${about}\n${why}` : about;
+  const row = look === 'row';
+  const shownNote = note && !switching ? note : null;
   return (
     <>
       <DropdownMenu
@@ -65,19 +74,41 @@ export function StatusMenu({ field, name, value, note, tipNote = note, why, swit
             aria-label={`${name}: ${shown}`}
             aria-disabled={blocked || undefined}
             title={error ? `${tip}\n${error}` : tip}
-            className={cn(
-              // DS-7.3: a 24 px tall target with 4 px on each side, in the 28 px line.
-              'flex h-6 min-w-0 items-center gap-0.5 rounded-sm px-1 -mx-1 font-mono text-meta outline-none focus-visible:ring-2 focus-visible:ring-ring',
-              blocked ? 'cursor-default opacity-70' : 'hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground',
-            )}
+            data-part-row={row || undefined}
+            // VIEW-5.19: in "N more"'s list Up and Down move between rows (Enter or Space opens the menu).
+            onKeyDown={row ? (e) => (e.key === 'ArrowDown' || e.key === 'ArrowUp') && e.preventDefault() : undefined}
+            className={
+              row
+                ? PART_ROW
+                : cn(
+                    // DS-7.3: a 24 px tall target with 4 px on each side, in the 28 px line.
+                    'flex h-6 min-w-0 shrink-0 items-center gap-0.5 rounded-sm px-1 -mx-1 font-mono text-meta outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                    blocked ? 'cursor-default opacity-70' : 'hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground',
+                  )
+            }
           >
-            <span className="min-w-0 truncate" data-field={field}>
-              {shown}
-            </span>
-            <ChevronDown aria-hidden className="size-3 shrink-0" />
+            {row ? (
+              <PartRowContent
+                name={name}
+                value={
+                  <>
+                    <span data-field={field}>{shown}</span>
+                    {shownNote && <span data-slot={`${field}-note`}> · {shownNote}</span>}
+                  </>
+                }
+                trail={<ChevronDown className="size-3.5" />}
+              />
+            ) : (
+              <>
+                <span className="shrink-0 whitespace-nowrap" data-field={field}>
+                  {shown}
+                </span>
+                <ChevronDown aria-hidden className="size-3 shrink-0" />
+              </>
+            )}
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent side="top" align="start" className="min-w-56">
+        <DropdownMenuContent side={row ? 'right' : 'top'} align={row ? 'end' : 'start'} className="min-w-56">
           {options.state === 'loading' && (
             <DropdownMenuItem disabled>
               <Loading label="Reading the choices…" />
@@ -109,13 +140,13 @@ export function StatusMenu({ field, name, value, note, tipNote = note, why, swit
           )}
         </DropdownMenuContent>
       </DropdownMenu>
-      {note && !switching && (
-        // VIEW-5.5: it truncates like the line's other parts, shrinking half as fast as the value.
-        <span className="min-w-0 shrink-[0.5] truncate opacity-70" data-slot={`${field}-note`} title={note}>
-          · {note}
+      {shownNote && !row && (
+        // VIEW-5.19: whole, with the part it marks; the line measures it on its own (`data-subpart`).
+        <span className="shrink-0 whitespace-nowrap opacity-70" data-slot={`${field}-note`} data-subpart="note" title={shownNote}>
+          · {shownNote}
         </span>
       )}
-      {error && <Alert layout="inline" oneLine title={error} data-slot={`${field}-error`} />}
+      {error && <Alert layout="inline" oneLine title={error} data-slot={`${field}-error`} className={row ? 'px-2 pb-1' : 'max-w-64'} />}
     </>
   );
 }

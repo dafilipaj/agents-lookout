@@ -134,7 +134,7 @@ describe('switching the Effort from the status line (VIEW-7)', () => {
     for (const status of ['busy', 'needs-you', 'unknown'] as const) {
       app.snapshot([claude({ id: 'a', status })]);
       expect(effortButton()).toHaveAttribute('aria-disabled', 'true');
-      expect(effortButton()).toHaveAttribute('title', EFFORT_WHY[status]);
+      expect(effortButton().getAttribute('title')!.split('\n')).toEqual([expect.stringMatching(/^Effort: /), EFFORT_WHY[status]]);
       await user.click(effortButton());
       expect(screen.queryByRole('menu')).toBeNull();
     }
@@ -158,7 +158,7 @@ describe('switching the Effort from the status line (VIEW-7)', () => {
     expect(modelButton()).toHaveTextContent('Switching…');
     expect(effortButton()).toHaveTextContent('medium');
     expect(effortButton()).toHaveAttribute('aria-disabled', 'true');
-    expect(effortButton()).toHaveAttribute('title', MODEL_WHY.switching);
+    expect(effortButton().getAttribute('title')!.split('\n')).toEqual([expect.stringMatching(/^Effort: /), MODEL_WHY.switching]);
     await user.click(effortButton());
     expect(screen.queryByRole('menu')).toBeNull();
     await act(async () => model.resolve({ model: 'claude-sonnet-5-5', confirmed: false }));
@@ -167,9 +167,9 @@ describe('switching the Effort from the status line (VIEW-7)', () => {
     await user.click(effortButton());
     await user.click(level('high'));
     expect(effortButton()).toHaveTextContent('Switching…');
-    expect(effortButton()).toHaveAttribute('title', EFFORT_WHY.switching);
+    expect(effortButton().getAttribute('title')!.split('\n')).toEqual([expect.stringMatching(/^Effort: /), EFFORT_WHY.switching]);
     expect(modelButton()).toHaveAttribute('aria-disabled', 'true');
-    expect(modelButton()).toHaveAttribute('title', EFFORT_WHY.switching);
+    expect(modelButton().getAttribute('title')!.split('\n')).toEqual([expect.stringMatching(/^Model: /), EFFORT_WHY.switching]);
     expect(EFFORT_WHY.switching).toBe('A switch of its Effort is under way.');
     await act(async () => effort.resolve({ effort: 'high', confirmed: false, saved: true }));
     expect(modelButton()).not.toHaveAttribute('aria-disabled');
@@ -270,8 +270,10 @@ describe('switching the Effort from the status line (VIEW-7)', () => {
     await act(async () => pending.resolve({ effort: 'xhigh', confirmed: true, saved: true }));
     expect(effortButton()).toHaveTextContent('xhigh');
     expect(statusLine().querySelector('[data-slot="effort-note"]')).toHaveTextContent(`· ${FROM_NEXT_REPLY}`);
-    expect(statusLine().querySelector('[data-slot="effort-note"]')).toHaveClass('min-w-0', 'truncate');
-    expect(statusLine()).toHaveAttribute('title', expect.stringContaining(`claude-opus-5-5 · xhigh (${FROM_NEXT_REPLY}) · 41% context`));
+    // VIEW-5.19: whole, with the Effort it marks.
+    expect(statusLine().querySelector('[data-slot="effort-note"]')).toHaveClass('shrink-0', 'whitespace-nowrap');
+    expect(statusLine().querySelector('[data-slot="effort-note"]')!.closest('[data-part]')).toHaveAttribute('data-part', 'effort');
+    expect(statusLine()).toHaveAttribute('title', expect.stringContaining(`Opus 5.5 · xhigh (${FROM_NEXT_REPLY}) · 41% context`));
     expect(effortButton()).toHaveAttribute('title', `Effort: xhigh (${FROM_NEXT_REPLY})`);
 
     // The next reply ran at what Claude Code made of it (a level the model lacks runs as its highest): Fleet's, unmarked.

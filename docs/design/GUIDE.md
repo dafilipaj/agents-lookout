@@ -66,6 +66,17 @@ A reading or a switch about the Mac, at the bottom of a column: the Memory line 
 - **Don't:** add a third line to the Session sidebar's dock: its height is the composer's (SIDE-8.1).
 - **Guard:** DS-23.1 (the line's border and wash only in `ui/footer-line.tsx`). No guard can check the alignment; its look is AWAKE-4.6.
 
+### A part of the status line
+
+What describes a Session, on the line under its composer (VIEW-5.5): where it works, what it changed, how the agent is doing.
+
+- **Its end:** the left end is where the Session works and what it changed (repo, Worktree or branch, Changes, Evidence, a queued job, Local servers); the right end is how the agent is doing (Subagents, a background shell, the model and Effort), with the context usage and Compact at the right edge. What comes and goes sits at the seam, "N more" closing the left end.
+- **Its rank (VIEW-5.19):** when the line runs out of room a part leaves whole, lowest rank first, into "N more"; what the Session is doing now outranks what it did, which outranks how it's set up. Only the Worktree or branch is cut. A new part names its end and its rank in `lib/status-fold.ts` and in its requirement.
+- **Use** `PartSlot` in `StatusLine` (`SessionView.tsx`) for its place on the line; its component draws one button with a `look` (`ui/status-part.tsx`): on the line, a 24 px target in the line's `meta` text (DS-7.3), whole (`shrink-0`, `whitespace-nowrap`); as a row of "N more", `PART_ROW` with `PartRowContent` (its name, its value as the line shows it, then a chevron down for a menu, right for a list or popover, `ExternalLink` for a page in the browser, `ArrowRight` inside Lookout). A part that opens nothing is a `PART_ROW_STATIC` row. The row is the part's own component, so its menu, list or popover opens from the row.
+- **Do:** give a part's words their own `data-subpart` when one of them can leave on its own (the files count, "from the next reply"), so the line measures it apart.
+- **Don't:** truncate a part, or hide one below a width with a container query: give it a rank.
+- **Guard:** VIEW-5.19's guard in `lib/status-fold.test.ts` (every `PartSlot` has an end, every part that can leave a rank, "N more"'s rows in the line's order); DS-18.7 lists each part's hand-made button. No guard can check the look; it's VIEW-5.20.
+
 ### A list row
 
 A row of the right sidebar's lists (Work, History, Library, Topics, Setup); the Session sidebar's rows follow SIDE-3.
