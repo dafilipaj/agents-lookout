@@ -1,5 +1,6 @@
 import { type SettingsView, defaultSettings } from '@shared/settings.ts';
 import type { ChangesView, ChatPage, FleetHealth, LaunchView, ServerEvent, SessionRow } from '@shared/types.ts';
+import type { EvidenceView } from '@shared/evidence.ts';
 import type { MemorySnapshot } from '@shared/memory.ts';
 import type { PortsSnapshot } from '@shared/ports.ts';
 import type { AwakeSnapshot } from '@shared/awake.ts';
@@ -75,6 +76,8 @@ export interface LookoutState {
   topics: TopicsView | null;
   /** DIFF-3: the changed files of the Session whose list this tab has open, as the server last sent them. */
   changes: ReadonlyMap<string, ChangesView | null>;
+  /** EVID: each Session's Evidence, as the server last sent it; a Session without any isn't in it. */
+  evidence: ReadonlyMap<string, EvidenceView>;
   /**
    * VIEW-1: the chat of the Session in view, plus a few recently viewed ones (cut to their latest
    * entries) for switching back. Kept across reconnects, and after the Session ends.
@@ -165,6 +168,7 @@ export const initialState: LookoutState = {
   tools: null,
   topics: null,
   changes: new Map(),
+  evidence: new Map(),
   chats: new Map(),
   chatOrder: [],
   chatViewing: null,
@@ -248,6 +252,7 @@ export function reducer(state: LookoutState, action: Action): LookoutState {
         work: e.work ?? state.work,
         tools: e.tools ?? state.tools,
         topics: e.topics ?? state.topics,
+        evidence: e.evidence ? new Map(e.evidence.map((v) => [v.sessionId, v])) : state.evidence,
       };
     }
     case 'sessions': {
@@ -280,6 +285,12 @@ export function reducer(state: LookoutState, action: Action): LookoutState {
       return state.awake && e.awake.rev < state.awake.rev ? state : { ...state, awake: e.awake };
     case 'changes':
       return { ...state, changes: new Map(state.changes).set(e.sessionId, e.changes) };
+    case 'evidence': {
+      const evidence = new Map(state.evidence);
+      if (e.evidence) evidence.set(e.sessionId, e.evidence);
+      else evidence.delete(e.sessionId);
+      return { ...state, evidence };
+    }
     case 'usage':
       return { ...state, usage: e.usage };
     case 'work':

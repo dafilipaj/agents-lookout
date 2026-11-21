@@ -1,4 +1,5 @@
 import { FLEET_INSTALL_COMMAND } from '../shared/defaults.ts';
+import type { RowEvidence } from '../shared/evidence.ts';
 import type { Queued } from '../shared/res.ts';
 import type { FleetHealth, PendingEffort, PendingModel, RowChanges, SessionRow, Status } from '../shared/types.ts';
 import type { FleetListResult, FleetRow } from './fleet.ts';
@@ -28,6 +29,8 @@ export interface MonitorOptions {
   changes?(row: SessionRow): RowChanges | null;
   /** RES-3: the Session's job waiting in `res`, carried with its row. */
   queued?(row: SessionRow): Queued | null;
+  /** EVID-5.6: the Session's verdict, carried with its row. */
+  evidence?(row: SessionRow): RowEvidence | null;
   intervalMs?: number;
   now?: () => number;
 }
@@ -172,6 +175,7 @@ export class SessionMonitor {
     for (const row of next) row.memoryGrowthBytes = this.opts.memoryGrowth?.(row) ?? null;
     if (this.opts.changes) for (const row of next) row.changes = this.opts.changes(row);
     if (this.opts.queued) for (const row of next) row.queued = this.opts.queued(row);
+    if (this.opts.evidence) for (const row of next) row.evidence = this.opts.evidence(row);
 
     const upsert: SessionRow[] = [];
     const nextRows = new Map<string, SessionRow>();

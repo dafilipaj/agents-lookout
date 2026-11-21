@@ -1,4 +1,5 @@
 import type { UsageLevel } from '@shared/usage.ts';
+import { ChevronRight } from 'lucide-react';
 import type { HTMLAttributes, ReactNode } from 'react';
 import { UsageLevelIcon } from '@/components/UsageLevelIcon';
 import { MEMORY_GLYPH, MEMORY_TEXT } from '@/lib/memory';
@@ -36,18 +37,27 @@ export function Tiles({ children }: { children: ReactNode }) {
 /**
  * DS-19.1: one tile: a label in `caption`, a value in `body` medium `tabular-nums` (in its level's
  * text colour, with its icon, when it isn't normal), and a line in `caption` under it, which wraps
- * rather than being cut short (MEM-3.10).
+ * rather than being cut short (MEM-3.10). With `onClick` it's a button (EVID-5.4): a `ChevronRight`
+ * at its value's end, and a hover, as a list's rows have; its name is its label, value and line, or `aria-label`.
  */
-export function Tile({ label, value, level = 'normal', field, className, children }: { label: string; value: ReactNode; level?: UsageLevel; field?: string; className?: string; children?: ReactNode }) {
-  return (
-    <div className={cn('min-w-0 rounded-md bg-muted/60 px-2 py-1.5', className)} data-field={field}>
+export function Tile({ label, value, level = 'normal', field, className, children, onClick, 'aria-label': ariaLabel }: { label: string; value: ReactNode; level?: UsageLevel; field?: string; className?: string; children?: ReactNode; onClick?: () => void; 'aria-label'?: string }) {
+  const body = (
+    <>
       <div className="text-caption text-muted-foreground">{label}</div>
       <div className={cn('flex items-center gap-1 font-medium whitespace-nowrap tabular-nums', level !== 'normal' && MEMORY_TEXT[level])}>
         {level !== 'normal' && <UsageLevelIcon level={level} label={level} />}
         {value}
+        {onClick && <ChevronRight aria-hidden data-icon="tile-chevron" className="ml-auto size-3.5 shrink-0 text-muted-foreground" />}
       </div>
       <div className="text-caption break-words text-muted-foreground">{children}</div>
-    </div>
+    </>
+  );
+  const look = cn('min-w-0 rounded-md bg-muted/60 px-2 py-1.5', className);
+  if (!onClick) return <div className={look} data-field={field}>{body}</div>;
+  return (
+    <button type="button" className={cn(look, 'block w-full text-left outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring/50')} data-field={field} aria-label={ariaLabel} onClick={onClick}>
+      {body}
+    </button>
   );
 }
 

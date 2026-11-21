@@ -78,7 +78,7 @@ const fact = (id: 'claude' | 'codex', over: Partial<HarnessFact> = {}): HarnessF
 });
 const GOOD_LINES: Record<string, string> = {
   fleet: 'fleet 0.1.0 (5e2afd8)',
-  'tb-session': 'tb-session 0.4.0 (latest)',
+  'tb-session': 'tb-session 0.5.0 (latest)',
   'tb-pr': 'tb-pr 0.3.1 (latest)',
   'tb-prod': 'tb-prod 1.2.0 (latest)',
   git: 'git version 2.54.0 (Apple Git-157)',
@@ -359,7 +359,7 @@ describe('what Lookout needs (TOOLS-2)', () => {
       fleet: [],
       claude: [["the sidebar's Subagent count", '2.1.301']],
       codex: [['Fleet', '0.163.0']],
-      'tb-session': [['History', '0.3.0'], ['the Library', '0.4.0']],
+      'tb-session': [['History', '0.3.0'], ['the Library', '0.4.0'], ['Evidence', '0.5.0']],
       'tb-pr': [['Work', '0.3.1']],
       'tb-prod': [['Work', '1.2.0']],
       'tb-jev': [['the usage strip', '0.2.0']],
@@ -376,7 +376,7 @@ describe('what Lookout needs (TOOLS-2)', () => {
       facts: [fact('claude', { version: '2.1.300 (Claude Code)' }), fact('codex', { version: 'codex-cli 0.162.0' })],
       jev: { ...READY_JEV, state: 'unavailable', version: null },
     });
-    expect(rowOf(t, 'tb-session')).toMatchObject({ state: 'behind', reason: 'History needs 0.3.0; the Library needs 0.4.0.', fix: TB_SESSION_INSTALL_COMMAND });
+    expect(rowOf(t, 'tb-session')).toMatchObject({ state: 'behind', reason: 'History needs 0.3.0; the Library needs 0.4.0; Evidence needs 0.5.0.', fix: TB_SESSION_INSTALL_COMMAND });
     expect(rowOf(t, 'tb-pr')).toMatchObject({ state: 'behind', reason: 'Work needs 0.3.1.', fix: TB_PR_INSTALL_COMMAND });
     // `(install gh to check for updates)` leaves the state as it is, with the reason (TOOLS-3.1).
     expect(rowOf(t, 'tb-prod')).toMatchObject({ state: 'behind', reason: 'Work needs 1.2.0. Install gh to check for updates.', fix: TB_PROD_INSTALL_COMMAND });
@@ -386,11 +386,16 @@ describe('what Lookout needs (TOOLS-2)', () => {
     // Only the Library's need unmet.
     const library = await readWith({ ...everything(), answers: { ...GOOD_LINES, 'tb-session': 'tb-session 0.3.0 (latest)' } });
     // `(latest)` says nothing beside a need a release doesn't meet.
-    expect(rowOf(library, 'tb-session')).toMatchObject({ state: 'behind', reason: 'The Library needs 0.4.0.' });
+    expect(rowOf(library, 'tb-session')).toMatchObject({ state: 'behind', reason: 'The Library needs 0.4.0; Evidence needs 0.5.0.' });
     // git and tmux: any version; a pre-release elsewhere is unknown.
     const any = await readWith({ ...everything(), answers: { ...GOOD_LINES, git: 'git version 1.0.0', tmux: 'tmux next-3.7', 'tb-pr': 'tb-pr 0.4.0-rc.1 (latest)' } });
     expect([rowOf(any, 'git').state, rowOf(any, 'tmux').state]).toEqual(['ok', 'ok']);
     expect(rowOf(any, 'tb-pr')).toMatchObject({ state: 'unknown', reason: "0.4.0-rc.1 isn't a version Lookout can compare." });
+  });
+
+  it('EVID-1.7: a tb-session without the command kind is too old, naming Evidence among what needs the newer one', async () => {
+    const t = await readWith({ ...everything(), answers: { ...GOOD_LINES, 'tb-session': 'tb-session 0.4.0 (latest)' } });
+    expect(rowOf(t, 'tb-session')).toMatchObject({ state: 'behind', reason: 'Evidence needs 0.5.0.', fix: TB_SESSION_INSTALL_COMMAND });
   });
 
   it('TOOLS-2.2: Fleet is judged by revision against the pin, from `fleet --version` once it prints one, else cargo’s install record; another revision is behind, none unknown with the pinned install command', async () => {
@@ -426,7 +431,7 @@ describe('what Lookout needs (TOOLS-2)', () => {
   it('TOOLS-2.4: only missing and behind need attention, each named in the Settings button’s tooltip; update-available and newer-than-known don’t', async () => {
     const t = await readWith({
       ...everything(),
-      answers: { ...GOOD_LINES, 'tb-session': 'tb-session 0.4.0 (latest: 0.4.1 — upgrade available)', 'tb-prod': 'tb-prod 1.1.1 (latest)' },
+      answers: { ...GOOD_LINES, 'tb-session': 'tb-session 0.5.0 (latest: 0.5.1 — upgrade available)', 'tb-prod': 'tb-prod 1.1.1 (latest)' },
       facts: [fact('claude', { version: '2.1.314 (Claude Code)' }), fact('codex', { installed: false })],
     });
     expect(t.rows.map((r) => [r.id, r.state]).filter(([, s]) => s !== 'ok')).toEqual([
@@ -470,7 +475,8 @@ describe('a newer one exists (TOOLS-3)', () => {
       answers: { ...GOOD_LINES, 'tb-session': LINES['tb-session'][2]!.line, 'tb-pr': LINES['tb-pr'][1]!.line },
     });
     expect(rowOf(t, 'tb-pr')).toMatchObject({ state: 'update-available', version: 'tb-pr 0.4.0 (latest: 0.4.1 — upgrade available)', number: '0.4.0', reason: '0.4.1 is out.', fix: TB_PR_INSTALL_COMMAND });
-    expect(rowOf(t, 'tb-session')).toMatchObject({ state: 'ok', reason: 'Install gh to check for updates.' });
+    // 0.4.0 is below Evidence's need (EVID-1.7); the gh note still follows the reason.
+    expect(rowOf(t, 'tb-session')).toMatchObject({ state: 'behind', reason: 'Evidence needs 0.5.0. Install gh to check for updates.' });
     expect(rowOf(t, 'tb-prod')).toMatchObject({ state: 'ok', reason: 'The latest release.' });
   });
 

@@ -100,10 +100,11 @@ export const TOOLS: Readonly<Record<ToolId, ToolDefinition>> = {
   },
   'tb-session': {
     id: 'tb-session',
-    purpose: 'History and the Library read past Sessions through it',
+    purpose: 'History, the Library and Evidence read Sessions through it',
     needs: [
       { feature: 'History', version: '0.3.0', why: "HIST's Harness and Headless filters; 0.2 still lists" },
       { feature: 'the Library', version: '0.4.0', why: '`events` (LIB-2.1)' },
+      { feature: 'Evidence', version: '0.5.0', why: '`events --kind command` (EVID-1.2)' },
     ],
     checkedUpTo: null,
     versionArgv: ['--version'],

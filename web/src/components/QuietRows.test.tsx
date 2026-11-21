@@ -1,3 +1,4 @@
+import { verdict } from '@shared/evidence.ts';
 import { GB, MB } from '@shared/memory.ts';
 import type { SessionRow, Status } from '@shared/types.ts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -45,7 +46,7 @@ describe('quiet rows, loud exceptions (DS-22)', () => {
     expect(field('hot', 'context')).toHaveClass('text-warning-text');
   });
 
-  it('DS-22.3: an exception leads the second line in its colour with an icon or words: memory running away, a queued job, Subagents running, a background shell, in that order, before the slot', () => {
+  it('DS-22.3: an exception leads the second line in its colour with an icon or words: memory running away, a queued job, Subagents running, a background shell, work Evidence doesn\'t back, in that order, before the slot', () => {
     const app = renderApp();
     app.snapshot([
       routine('all', {
@@ -53,11 +54,12 @@ describe('quiet rows, loud exceptions (DS-22)', () => {
         queued: { tool: 'vitest', since: NOW - 180_000, position: 2 },
         subagents: { running: 2, finished: 0 },
         backgroundShell: true,
+        evidence: verdict('changed'),
         git: { repo: 'work', worktree: 'crm-rates', branch: 'fix/rates', commonDir: '/Users/me/Projects/work/.git', defaultBranch: 'main' },
       }),
     ]);
     const marks = field('all', 'marks')!;
-    expect([...marks.children].map((c) => c.getAttribute('data-field'))).toEqual(['memory-growth', 'queued', 'subagents', 'background-shell']);
+    expect([...marks.children].map((c) => c.getAttribute('data-field'))).toEqual(['memory-growth', 'queued', 'subagents', 'background-shell', 'evidence']);
     expect(marks).toHaveClass('shrink-0', 'gap-1');
     expect(marks.previousElementSibling).toBeNull();
     expect(marks.nextElementSibling).toBe(field('all', 'slot'));
@@ -67,8 +69,9 @@ describe('quiet rows, loud exceptions (DS-22)', () => {
     expect(field('all', 'subagents')).toHaveClass('text-busy-text');
     expect(field('all', 'subagents')).toHaveTextContent('2');
     expect(field('all', 'background-shell')).toHaveClass('text-idle-text');
+    expect(field('all', 'evidence')).toHaveClass('text-warning-text');
     // Each has its icon: colour is never alone.
-    for (const f of ['memory-growth', 'queued', 'subagents', 'background-shell']) expect(field('all', f)!.querySelector('svg'), f).not.toBeNull();
+    for (const f of ['memory-growth', 'queued', 'subagents', 'background-shell', 'evidence']) expect(field('all', f)!.querySelector('svg'), f).not.toBeNull();
     // The slot truncates first.
     expect(field('all', 'slot')).toHaveClass('min-w-0', 'flex-1');
     expect(field('all', 'location')).toHaveClass('truncate');
@@ -82,7 +85,10 @@ describe('quiet rows, loud exceptions (DS-22)', () => {
       expect(field(id, 'marks')).toBeNull();
     }
     // One exception at a time: it alone has colour, in the marks' place.
-    app.snapshot([routine('mem', { memoryGrowthBytes: GB }), routine('sub', { subagents: { running: 1, finished: 0 } }), routine('ctx', { contextPct: 81 })]);
+    app.snapshot([routine('mem', { memoryGrowthBytes: GB }), routine('sub', { subagents: { running: 1, finished: 0 } }), routine('ctx', { contextPct: 81 }), routine('evid', { evidence: verdict('no-run') }), routine('ok', { evidence: verdict('passed') })]);
+    expect(coloured(rowEl('evid')).map((e) => e.dataset.field)).toEqual(['evidence']);
+    // EVID-5.6: a backed row stays quiet.
+    expect(coloured(rowEl('ok'))).toEqual([]);
     expect(coloured(rowEl('mem')).map((e) => e.dataset.field)).toEqual(['memory-growth']);
     expect(coloured(rowEl('sub')).map((e) => e.dataset.field)).toEqual(['subagents']);
     expect(coloured(rowEl('ctx')).map((e) => e.dataset.field)).toEqual(['context']);

@@ -126,8 +126,14 @@ export function subagents(value: unknown): SessionRow['subagents'] {
 
 /** SIDE-2.6: a background shell command still runs: Fleet's `background.shells`, or an older Fleet's `shell`. */
 export function backgroundShell(r: Pick<FleetRow, 'status' | 'background'>): boolean {
+  return backgroundShells(r) > 0;
+}
+
+/** EVID-1.3: how many background shell commands run, so one ending while another runs is seen; at least 1 for `shell`. */
+export function backgroundShells(r: Pick<FleetRow, 'status' | 'background'>): number {
   const shells = typeof r.background === 'object' && r.background !== null ? r.background.shells : undefined;
-  return r.status === 'shell' || (typeof shells === 'number' && Number.isInteger(shells) && shells > 0);
+  const count = typeof shells === 'number' && Number.isInteger(shells) && shells > 0 && shells <= 1000 ? shells : 0;
+  return r.status === 'shell' ? Math.max(1, count) : count;
 }
 
 const MAX_ACTIVITY = 120;
@@ -223,6 +229,7 @@ export function normalizeRows(rows: readonly FleetRow[], deps: NormalizeDeps): S
       // SIDE-2.11: only while Busy, so a stale value never shows on another Status.
       activity: status === 'busy' ? activity(r.activity) : null,
       backgroundShell: status === 'idle' && backgroundShell(r),
+      backgroundShells: backgroundShells(r),
       procStart: procStart(r.proc_start),
       done: done(r.done),
       pendingModel: null,

@@ -1,6 +1,6 @@
 import { type Pressure, runsAway } from '@shared/memory.ts';
 import type { SessionRow } from '@shared/types.ts';
-import { Bot, CircleCheck, FolderGit2, GitBranch, Hourglass, SquareTerminal, TrendingUp } from 'lucide-react';
+import { Bot, CircleCheck, FlaskConicalOff, FolderGit2, GitBranch, Hourglass, SquareTerminal, TrendingUp } from 'lucide-react';
 import { memo, useEffect, useRef } from 'react';
 import { clockTime } from '@/lib/chat';
 import { type HiddenHit, hiddenHit, rangesOf, type RowMatch } from '@/lib/filter';
@@ -85,7 +85,9 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
   const subagentLabel = `${running} Subagent${running === 1 ? '' : 's'} running`;
   // DS-22.3: the exceptions that lead the second line.
   const runaway = runsAway(row.memoryGrowthBytes, pressure);
-  const hasMarks = runaway || !!row.queued || running > 0 || row.backgroundShell;
+  // EVID-5.6: work that isn't backed; an ok or quiet verdict leaves the row quiet.
+  const unbacked = row.evidence?.tone === 'warning' ? row.evidence : null;
+  const hasMarks = runaway || !!row.queued || running > 0 || row.backgroundShell || !!unbacked;
 
   return (
     <li
@@ -178,6 +180,12 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
             {row.backgroundShell && (
               <span title={BACKGROUND_SHELL_TIP} className="flex items-center text-idle-text" data-field="background-shell">
                 <SquareTerminal role="img" aria-label="background shell running" className="size-3" />
+              </span>
+            )}
+            {/* EVID-5.6: its Evidence warns; last of DS-22.3's marks. */}
+            {unbacked && (
+              <span title={unbacked.text} className="flex items-center text-warning-text" data-field="evidence">
+                <FlaskConicalOff role="img" aria-label={unbacked.text} className="size-3" />
               </span>
             )}
           </span>

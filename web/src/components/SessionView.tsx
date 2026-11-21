@@ -1,4 +1,5 @@
 import type { LocalServer, PortsSnapshot } from '@shared/ports.ts';
+import type { EvidenceView } from '@shared/evidence.ts';
 import type { AnswerRequest, ChangesView, ChatPage, EndTarget, RenameResult, SessionRow } from '@shared/types.ts';
 import { Check, ChevronDown, CircleCheck, CircleSlash, FolderGit2, GitBranch, Hourglass, Info, Paperclip, SendHorizontal, TerminalSquare } from 'lucide-react';
 import { type ComponentPropsWithRef, type ComponentPropsWithoutRef, type KeyboardEvent, type PointerEvent, type ReactNode, type RefObject, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
@@ -51,6 +52,7 @@ import { PaneHeader, ShellCell, ShellView } from './Shell';
 import { StatusMarker } from './StatusMarker';
 import { StatusMenu } from './StatusMenu';
 import { ChangesButton, type ChangesButtonProps } from './ChangesButton';
+import { DoneEvidenceLine, EvidenceButton, EvidencePart, EvidencePopover } from './Evidence';
 import { PortsChip } from './PortsChip';
 import { SubagentsButton, type SubagentsButtonProps } from './SubagentsButton';
 import { changesTip } from '@/lib/changes';
@@ -118,6 +120,8 @@ export interface SessionViewProps {
   changes?: ReadonlyMap<string, ChangesView | null>;
   /** DIFF-3.6: the Session's list of changed files opened or closed. */
   onChangesOpen?(sessionId: string, open: boolean): void;
+  /** EVID: each Session's Evidence, as the server last sent it. */
+  evidence?: ReadonlyMap<string, EvidenceView>;
   /** DIFF-4: opens a changed file's Changes in VS Code; rejects with the reason to show. */
   onOpenChange?(sessionId: string, root: string, path: string): Promise<void>;
   /** PLAIN-3.1: a changed `.plain` file opens in the Spec view. */
@@ -173,6 +177,7 @@ export function SessionView({
   statusSwitch,
   changes,
   onChangesOpen,
+  evidence,
   onOpenChange,
   onOpenSpec,
   plainViewed,
@@ -312,6 +317,65 @@ export function SessionView({
   };
 
   const composerRef = useRef<HTMLTextAreaElement>(null);
+
+  // EVID-5: the Session's Evidence, its popover open from the status line or the Done card, never both.
+  const evidenceView = !ended ? (evidence?.get(row.id) ?? null) : null;
+  const [evidenceOpen, setEvidenceOpen] = useState<'status' | 'card' | null>(null);
+  const [changesRequest, setChangesRequest] = useState(0);
+  // What the popover shows while it closes after the Evidence went (EVID-5.8).
+  const [shownEvidence, setShownEvidence] = useState<EvidenceView | null>(evidenceView);
+  if (evidenceView && evidenceView !== shownEvidence) setShownEvidence(evidenceView);
+  const toChanges = useRef(false);
+  // EVID-5.8: whether each opener is still there when a popover's focus returns (it returns after the commit).
+  const cardShown = !!row.done && !ended;
+  if (evidenceOpen === 'card' && !cardShown) setEvidenceOpen(null);
+  const openers = useRef({ view: evidenceView, card: cardShown });
+  useLayoutEffect(() => {
+    openers.current = { view: evidenceView, card: cardShown };
+  });
+  const evidencePopover = (from: 'status' | 'card', trigger: (view: EvidenceView) => ReactNode) =>
+    shownEvidence && (evidenceView || evidenceOpen === from) ? (
+      <EvidencePopover
+        view={shownEvidence}
+        // EVID-5.8: the Evidence went: it closes, and stays mounted until its focus has moved.
+        open={!!evidenceView && evidenceOpen === from}
+        // Opening one opener's popover closes the other's, whose own close mustn't undo it.
+        onOpenChange={(open) => setEvidenceOpen((cur) => (open ? from : cur === from ? null : cur))}
+        side="top"
+        align={from === 'status' ? 'start' : 'end'}
+        trigger={trigger(shownEvidence)}
+        onOpenFile={(f) => {
+          // PLAIN-3.1: a `.plain` Module opens in the Spec view, as the changed-files list opens it.
+          if (onOpenSpec && f.path.endsWith('.plain') && !f.binary) {
+            setEvidenceOpen(null);
+            onOpenSpec(row.id, f.checkout, f.path);
+            return Promise.resolve();
+          }
+          return onOpenChange ? onOpenChange(row.id, f.root, f.path) : Promise.reject(new Error("Lookout can't open files here."));
+        }}
+        onOpenChanges={() => {
+          toChanges.current = true;
+          setEvidenceOpen(null);
+        }}
+        onCloseAutoFocus={(e) => {
+          if (toChanges.current) {
+            // EVID-5.4: the changed-files list opens and takes focus (DIFF-3.4).
+            toChanges.current = false;
+            e.preventDefault();
+            setChangesRequest((n) => n + 1);
+          } else if (!openers.current.view || (from === 'card' && !openers.current.card)) {
+            // EVID-5.8: its opener is going (the Evidence went, or the Done card), so focus goes where the
+            // Session view would have it (DIFF-3.3).
+            e.preventDefault();
+            setEvidenceOpen((cur) => (cur === from ? null : cur));
+            focusComposerOrChat(composerRef.current);
+          }
+        }}
+      />
+    ) : null;
+  const statusEvidence = evidencePopover('status', (view) => <EvidencePart evidence={view.verdict} />);
+  const cardEvidence = evidencePopover('card', () => <EvidenceButton />);
+
   // VIEW-3.6: `i` (or `I` with Caps Lock on, never with Shift) focuses the composer when focus isn't in a text field.
   useEffect(() => {
     if (!controls) return;
@@ -388,7 +452,14 @@ export function SessionView({
                     terminal={answering.terminal}
                   />
                 )}
-                {row.done && !ended && <DoneCard row={row} onEnd={onEnd} fallbackFocus={composerRef} />}
+                {row.done && !ended && (
+                  <DoneCard
+                    row={row}
+                    onEnd={onEnd}
+                    fallbackFocus={composerRef}
+                    evidence={shownEvidence && cardEvidence ? <DoneEvidenceLine view={shownEvidence} button={cardEvidence} /> : null}
+                  />
+                )}
                 <ChatActivity row={row} ended={ended} entries={chat?.entries} sentAt={sentAt} arriving={arriving} />
               </>
             }
@@ -440,6 +511,8 @@ export function SessionView({
           servers={!ended && onShowServers ? sessionServers(ports ?? null, row.id) : []}
           onCompact={compactOffered(row, ended) && !sending.has(row.id) ? () => void send(row.id, '/compact') : null}
           onShowServers={() => onShowServers?.(row.id)}
+          evidence={statusEvidence}
+          evidenceText={evidenceView?.verdict.short ?? null}
           changes={
             !ended && onChangesOpen && onOpenChange
               ? {
@@ -452,6 +525,7 @@ export function SessionView({
                   ...(plainViewed ? { plainViewed: (checkout: string) => plainViewed(row.id, checkout) } : {}),
                   // DIFF-3.3: the count went away while its list was open.
                   focusFallback: () => focusComposerOrChat(composerRef.current),
+                  openRequest: changesRequest,
                 }
               : null
           }
@@ -476,7 +550,7 @@ function compactOffered(row: SessionRow, ended: boolean): boolean {
  * VIEW-5.17: a Done Session's chat ends with what it reported: when, its note, and End Session when
  * the header offers it (its own dialog, the same as the header's).
  */
-function DoneCard({ row, onEnd, fallbackFocus }: { row: SessionRow; onEnd: SessionViewProps['onEnd']; fallbackFocus: RefObject<HTMLElement | null> }) {
+function DoneCard({ row, onEnd, fallbackFocus, evidence }: { row: SessionRow; onEnd: SessionViewProps['onEnd']; fallbackFocus: RefObject<HTMLElement | null>; evidence: ReactNode }) {
   const at = clockTime(new Date(row.done!.at).toISOString());
   return (
     // The chat's column, as the permission card (PromptCard) sits in it.
@@ -486,6 +560,8 @@ function DoneCard({ row, onEnd, fallbackFocus }: { row: SessionRow; onEnd: Sessi
         <div className="min-w-0 flex-1">
           <p className="font-medium">Done{at ? ` · ${at}` : ''}</p>
           {row.done!.note && <p className="text-muted-foreground" data-field="done-note">{row.done!.note}</p>}
+          {/* EVID-5.5: one line, however many runs; the card never grows past it. */}
+          {evidence}
         </div>
         <EndSession row={row} eligible={row.controllable && row.ownHost} onEnd={onEnd} fallbackFocus={fallbackFocus} />
       </div>
@@ -807,6 +883,8 @@ function StatusLine({
   onSwitch,
   statusSwitch,
   changes,
+  evidence,
+  evidenceText,
   servers,
   onShowServers,
   focusFallback,
@@ -822,6 +900,10 @@ function StatusLine({
   statusSwitch: SwitchState | undefined;
   /** DIFF-1.3: the count and its list; null for an ended Session or without the feature. */
   changes: ChangesButtonProps | null;
+  /** EVID-5.1: the Evidence part and its popover; null without Evidence. */
+  evidence: ReactNode;
+  /** EVID-5.1: its short words, for the whole line's tooltip. */
+  evidenceText: string | null;
   /** PORTS-2.1: the Session's Local servers; none for an ended Session or without the feature. */
   servers: readonly LocalServer[];
   onShowServers(): void;
@@ -856,7 +938,7 @@ function StatusLine({
   const now = useClock();
   const queued = row.queued && !ended ? row.queued : null;
   const queuedPart = queued ? `Queued: ${queued.tool} · ${formatAge(Math.max(0, now - queued.since))}` : null;
-  const parts = [where, loc?.name, changed, queuedPart, serversPart, modelPart, effortPart, context, shell, subagents].filter((p): p is string => !!p);
+  const parts = [where, loc?.name, changed, evidenceText, queuedPart, serversPart, modelPart, effortPart, context, shell, subagents].filter((p): p is string => !!p);
   if (!parts.length) return null;
   const dot = (
     <span aria-hidden className="shrink-0 opacity-60">
@@ -889,16 +971,23 @@ function StatusLine({
       {changes && (changes.changes || changes.list !== undefined) && (
         <ChangesSlot dot={(where || loc) && dot} {...changes} />
       )}
-      {queued && (
+      {/* EVID-5.1: right after the Changes count, before RES-3.2's Queued part. */}
+      {evidence && (
         <>
           {(where || loc || changed) && dot}
+          {evidence}
+        </>
+      )}
+      {queued && (
+        <>
+          {(where || loc || changed || evidence) && dot}
           <span className="flex min-w-0 shrink-0 items-center gap-1" data-field="queued" title={queuedTip(queued, now)}>
             <Hourglass aria-hidden className="size-3.5 shrink-0" />
             <span className="truncate">{queuedPart}</span>
           </span>
         </>
       )}
-      <PortsChip servers={servers} onShowAll={onShowServers} focusFallback={focusFallback} dot={(where || loc || changed || queued) && dot} />
+      <PortsChip servers={servers} onShowAll={onShowServers} focusFallback={focusFallback} dot={(where || loc || changed || evidence || queued) && dot} />
       {model && (
         <span className="contents @max-[36rem]:hidden" data-slot="status-model">
           {(where || loc) && dot}

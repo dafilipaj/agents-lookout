@@ -30,6 +30,7 @@ import type { PortsMonitor } from './ports.ts';
 import { StopError, parseStopTarget } from './ports-stop.ts';
 import type { ResMonitor } from './res.ts';
 import { type KeepAwake, AwakeError } from './awake.ts';
+import type { Evidence } from './evidence.ts';
 import { type Setup, SetupFailure } from './setup.ts';
 import { parsePluginSwitch, parseSkillSwitch } from '../shared/setup.ts';
 import { parseAwakeRequest } from '../shared/awake.ts';
@@ -68,6 +69,8 @@ export interface AppOptions {
   resQueue?: Pick<ResMonitor, 'snapshot' | 'watch'>;
   /** AWAKE-1.1: keep-awake; optional, so handler tests can leave it out. */
   awake?: Pick<KeepAwake, 'snapshot' | 'watch' | 'set'>;
+  /** EVID: each Session's Evidence, for a new tab; optional, so handler tests can leave it out. */
+  evidence?: Pick<Evidence, 'views'>;
   /** SETUP: what the Harnesses load, read when the tab opens, and its two switches; optional, so a server without it has no `/api/setup` (404). */
   setup?: Pick<Setup, 'read' | 'setSkill' | 'setPlugin'>;
   usage: {
@@ -254,6 +257,7 @@ export function createApp(opts: AppOptions): LookoutApp {
       ...(opts.ports ? { ports: opts.ports.snapshot() } : {}),
       ...(opts.resQueue ? { res: opts.resQueue.snapshot() } : {}),
       ...(opts.awake ? { awake: opts.awake.snapshot() } : {}),
+      ...(opts.evidence ? { evidence: opts.evidence.views() } : {}),
     });
     clients.set(clientId, res);
     const unwatch = opts.monitor.watch();

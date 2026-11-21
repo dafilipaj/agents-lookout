@@ -454,3 +454,15 @@ describe('opening a file in VS Code', () => {
     }
   });
 });
+
+describe('Evidence hears of every answer that changed (EVID-1.5)', () => {
+  it('EVID-1.5: a new list, and a new fingerprint with the same list (a file edited again), each tell Evidence; an unchanged answer doesn’t', async () => {
+    const onChanged = vi.fn();
+    const same = [cand('/r/a')];
+    const { changes } = setup([answer(same, 'f1'), answer(same, 'f2'), unchanged('f2'), answer([cand('/r/a', { stats: { files: 1, additions: 9, deletions: 1 } })], 'f3')], { onChanged });
+    changes.observe([row()]);
+    for (let n = 0; n < 4; n++) await changes.pump().then(() => changes.observe([row({ status: n % 2 ? 'idle' : 'unknown' })]));
+    expect(onChanged.mock.calls).toEqual([['s1'], ['s1'], ['s1']]);
+    changes.stop();
+  });
+});

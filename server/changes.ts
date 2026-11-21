@@ -102,6 +102,8 @@ export interface ChangesOptions {
   fleetBin(): string;
   /** A row's count changed: the monitor re-derives its rows. */
   onRowsChanged(): void;
+  /** EVID-1.5: a Session's answer changed (null: every Session's). */
+  onChanged?(sessionId: string | null): void;
   sendTo(clientId: string, event: ServerEvent): void;
   /** DIFF-4.3: `~/.lookout/diffs` unless a test says otherwise. */
   diffsDir?: string;
@@ -174,6 +176,11 @@ export class Changes {
     const checkouts = this.fresh(sessionId);
     if (!checkouts?.length) return null;
     return { sessionId, checkouts: checkouts.map(({ baseSha: _, commonDir: __, ...c }) => c) };
+  }
+
+  /** EVID-3.1: a live Session's counted Checkouts while its answer is fresh; null without one. */
+  checkouts(sessionId: string): ChangedCheckout[] | null {
+    return this.fresh(sessionId);
   }
 
   /** PLAIN-5.2: every live Session's counted Checkouts, where a PR's repo may have a clone. */
@@ -292,14 +299,18 @@ export class Changes {
     e.okAt = this.now();
     if (obj.unchanged === true && e.checkouts) return;
     const before = JSON.stringify(e.checkouts);
+    const fingerprint = e.fingerprint;
     e.fingerprint = typeof obj.fingerprint === 'string' ? obj.fingerprint : null;
     e.checkouts = parseCandidates(obj.candidates, e.row.harness);
     if (JSON.stringify(e.checkouts) !== before) this.changed(e.row.id);
+    // EVID-1.5: a file edited again with the same counts changes only the fingerprint; Evidence re-reads its times.
+    else if (e.fingerprint !== fingerprint) this.opts.onChanged?.(e.row.id);
   }
 
   /** A Session's answer changed (null: every Session's): rows re-derive, open lists get the new one. */
   private changed(sessionId: string | null): void {
     this.opts.onRowsChanged();
+    this.opts.onChanged?.(sessionId);
     for (const [clientId, watched] of this.watchers) {
       if (sessionId === null || watched === sessionId) {
         this.opts.sendTo(clientId, { type: 'changes', sessionId: watched, changes: this.view(watched) });

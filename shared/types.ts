@@ -2,6 +2,7 @@ import type { LaunchHarness, SettingsView } from './settings.ts';
 import type { MemorySnapshot } from './memory.ts';
 import type { PortsSnapshot } from './ports.ts';
 import type { AwakeSnapshot } from './awake.ts';
+import type { EvidenceView, RowEvidence } from './evidence.ts';
 import type { Queued, ResSnapshot } from './res.ts';
 import type { UsageSnapshot } from './usage.ts';
 import type { ToolsSnapshot } from './tools.ts';
@@ -113,6 +114,8 @@ export interface SessionRow {
   changes?: RowChanges | null;
   /** RES-3: its longest-waiting job in `res`, the machine-wide queue; null or missing for none. */
   queued?: Queued | null;
+  /** EVID-5.6: its Evidence's verdict, for the row's mark and the status line's part; null or missing without Evidence. */
+  evidence?: RowEvidence | null;
   /** SIDE-2.11: what a Busy Session is doing now, one line, at most 120 characters; null otherwise. */
   activity: string | null;
   /**
@@ -120,6 +123,8 @@ export interface SessionRow {
    * status, from Claude Code 2.1.308). Always false for any other Status.
    */
   backgroundShell: boolean;
+  /** EVID-1.3: how many background shell commands run, whatever the Status; missing from an older server. */
+  backgroundShells?: number;
   /**
    * VIEW-5.6: the agent process's start time (RFC 3339, UTC) as Fleet read it; null when it
    * couldn't. With `pid` it names this process generation, so End Session never closes a
@@ -318,6 +323,8 @@ export type ServerEvent =
       res?: ResSnapshot | null;
       /** AWAKE-1.1: keep-awake's mode and what it shows; optional so that UI tests and a server without it can leave it out. */
       awake?: AwakeSnapshot;
+      /** EVID: every Session's Evidence; optional so that UI tests and a server without it can leave it out. */
+      evidence?: EvidenceView[];
     }
   /** TOPIC-8.3: the whole set of Topics, to every tab, when it changed. */
   | { type: 'topics'; topics: TopicsView }
@@ -334,6 +341,8 @@ export type ServerEvent =
   | { type: 'awake'; awake: AwakeSnapshot }
   /** DIFF-3.6: a Session's changed files, sent to the tabs that have its list open; null when none count. */
   | { type: 'changes'; sessionId: string; changes: ChangesView | null }
+  /** EVID: a Session's Evidence changed (sent to every tab); null when it has none. */
+  | { type: 'evidence'; sessionId: string; evidence: EvidenceView | null }
   /** WORK: the latest PRs, Tasks and Refresh state (sent to every tab, only when something changed). */
   | { type: 'work'; work: WorkSnapshot }
   /** VIEW-2: what the Session's terminal shows, as plain text; sent only to tabs previewing it. */

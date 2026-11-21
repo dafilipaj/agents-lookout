@@ -47,13 +47,14 @@ What opens from a reading to explain it: Memory's and Usage's, from the sidebar'
 
 - **Use** `Popover` (`ui/popover.tsx`), `w-[22rem] p-0`, and the pieces in `ui/details.tsx`, top to bottom, as Memory's (`MemoryLine.tsx`) and Usage's (`UsageStrip.tsx`) are:
   - `Verdict`: a dot in its level's colour, the verdict in words ("The Mac has room"), and the reading's age at the right ("3s ago", or "stale · 3s" in `info-text`); its `id` can name the popover;
-  - `Tiles` and `Tile`: up to three, each a label, a value and a line under it, which wraps;
+  - `Tiles` and `Tile`: up to three, each a label, a value and a line under it, which wraps; a tile that opens something more is a `Tile` with `onClick`, a button with a chevron at its value's end (Evidence's Test files, EVID-5.4);
   - `WorthALook`: a box listing what's past a threshold, in words, or nothing at all;
   - sections: each under a `SectionLabel` (below), its rows `Meter`s, thin 4 px bars, the level as an edge.
 - **Do:** start from Memory's popover and drop the parts you don't need.
 - **Don't:** invent a new header, a bar height or a way of saying "critical".
 - **Guard:** DS-19.2 (a bar or track drawn outside `Meter` and the usage strip's bar fails, and so does `uppercase` outside `SectionLabel` and the chat's message tag).
-- **See:** MEM-3, USAGE-2, DS-19, DS-3.2.
+- **Two openers, one popover:** Evidence's opens from the status line and from the Done card (`SessionView.tsx`); one is open at a time, and Esc returns focus to whichever opened it (EVID-5.8).
+- **See:** MEM-3, USAGE-2, EVID-5, DS-19, DS-3.2.
 
 ### A line in a column's footer
 
@@ -71,6 +72,7 @@ A row of the right sidebar's lists (Work, History, Library, Topics, Setup); the 
 
 - **Use** `data-slot="row"` on the row and `data-selected` while it's selected: the hairline between rows comes from one rule in `index.css`. Rows have 7 px of padding above and below and no gap. A Session's marker is a `SessionMarker`. An expanded row's actions are `RowActions`.
 - A selected row is neutral (`sidebar-accent` and its ring, SIDE-3.9), never Primary.
+- **A Session row's marks (DS-22.3):** memory running away, a queued job, Subagents running, a background shell, then work its Evidence doesn't back (`FlaskConicalOff`, EVID-5.6), each in its colour with an icon, its words its accessible name.
 - **Coming (DS-21, DS-22):** an expanded row is built from `ui/row-details.tsx`, in one order: title, state, summary, links, actions last; its title is whole; its links are counts that list in place, three at most, each link drawn as one line; facts you rarely need go into More or a tooltip. A Session row's numbers sit in three fixed columns and are grey; an exception leads the second line in its colour, with an icon or words.
 - **A group that folds** (Setup's sources, SETUP-1.3): its line is a listbox option of its own, 32 px, a 14 px `ChevronRight` turned when open, the group's 14 px icon in `muted-foreground`, its name in `body` medium, its count in `muted-foreground` and a version in `meta` at the right. Its rows are inset under its name and set `--row-inset` to where their names start, so the hairline begins there. Enter, → and ← open and close it; a filter with text shows every group with a match open.
 - **Do:** let the row's parts come from the shared pieces, so the row reads like its siblings.

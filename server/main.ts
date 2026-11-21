@@ -31,6 +31,7 @@ import { localAllowLists } from './security.ts';
 import { SettingsStore, defaultSettingsPath, expandHome } from './settings.ts';
 import { trackStartDirectories } from './start-repos.ts';
 import { Changes } from './changes.ts';
+import { Evidence } from './evidence.ts';
 import { PlainExamplesMaker } from './plain-examples.ts';
 import { PlainSimplifier } from './plain-simplify.ts';
 import { PlainWorktrees } from './plain-worktrees.ts';
@@ -109,8 +110,12 @@ const monitor: SessionMonitor = new SessionMonitor({
   changes: (row) => changes.rowChanges(row),
   // RES-3: read when the rows are derived, which runs only after start-up, once resQueue exists.
   queued: (row) => queuedFor(resQueue.snapshot(), row.id),
+  // EVID-5.6: the verdict for the row's mark, read when the rows are derived.
+  evidence: (row) => evidence.rowEvidence(row.id),
   onEvent: (e) => {
     app.broadcast(e);
+    // EVID-1.3: who stopped with Changes, was marked Done again, or had a shell or a Subagent end.
+    if (e.type === 'sessions') evidence.observe(monitor.snapshot().sessions);
     // AWAKE-2.1: who's At work follows every change to the rows.
     if (e.type === 'sessions') awake.sessionsChanged();
   },
@@ -133,8 +138,19 @@ const changes = new Changes({
   runner: run,
   fleetBin: () => resolveFleetBin(env),
   onRowsChanged: () => monitor.refreshDerived(),
+  // EVID-1.5: a Session's Changes changed: its verdict is worked out again.
+  onChanged: (sessionId) => evidence.changesChanged(sessionId),
   sendTo: (clientId, e) => app.sendTo(clientId, e),
   env,
+});
+// EVID: what backs a Session's work when it stops, from its commands (tb-session) and its Changes.
+const evidence = new Evidence({
+  runner: run,
+  bin: () => resolveTbSessionBin(env),
+  env,
+  checkouts: (sessionId) => changes.checkouts(sessionId),
+  broadcast: (e) => app.broadcast(e),
+  onRowsChanged: () => monitor.refreshDerived(),
 });
 // DIFF-4.3: base copies older than a day go, at start and once a day.
 void changes.prune();
@@ -368,6 +384,7 @@ const app = createApp({
   setup,
   work,
   changes,
+  evidence,
   plain,
   chatSeen,
   plainClones: () => plainPrs.clones(),

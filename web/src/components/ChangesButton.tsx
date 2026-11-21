@@ -32,13 +32,15 @@ export interface ChangesButtonProps {
   plainViewed?(checkout: string): Promise<string[]>;
   /** DIFF-3.3: where focus goes when the list closes after its count went away. */
   focusFallback(): void;
+  /** EVID-5.4: a new number opens the list, as a press on the count does (the Evidence popover's Test files tile). */
+  openRequest?: number;
 }
 
 /**
  * DIFF-1.3, DIFF-3: the status line's count, `+120 −30 · 4 files`, a button that opens the list of
  * changed files; a file opens its Changes in VS Code (DIFF-4).
  */
-export function ChangesButton({ sessionId, changes, list, onOpenChange, onOpenFile, onOpenSpec, plainViewed, focusFallback }: ChangesButtonProps) {
+export function ChangesButton({ sessionId, changes, list, onOpenChange, onOpenFile, onOpenSpec, plainViewed, focusFallback, openRequest }: ChangesButtonProps) {
   const [, setViewedTick] = useState(0);
   /** PLAIN-3.3: the Viewed Modules of the open list, `<root>\0<path>`, as the server last said. */
   const [plainMarks, setPlainMarks] = useState<ReadonlySet<string>>(new Set());
@@ -57,6 +59,14 @@ export function ChangesButton({ sessionId, changes, list, onOpenChange, onOpenFi
     told.current = onOpenChange;
   });
   useEffect(() => () => told.current(false), []);
+  // EVID-5.4: opened from elsewhere; the list keeps its own focus rules (DIFF-3.4).
+  const request = useRef(openRequest);
+  useEffect(() => {
+    if (openRequest === undefined || openRequest === request.current) return;
+    request.current = openRequest;
+    setOpen(true);
+    told.current(true);
+  }, [openRequest]);
 
   // PLAIN-3.3: each answer while the list is open asks which of its Modules are Viewed.
   const askMarks = useRef(plainViewed);

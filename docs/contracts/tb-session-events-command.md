@@ -2,7 +2,7 @@
 
 What Lookout's Evidence ([EVID](../features/done-evidence/SPEC.md)) needs from tb-session: a new kind of row in `events`, one per shell command a Session ran, with how it ended and the end of its output. It doesn't exist yet. It's built in cli-toolbox as one PR and verified there, in tb-session's own tests; Lookout's fake tb-session follows this file, and `pnpm req-check` never looks here (the criteria are EVID-1 to EVID-5). Points are numbered K1 to K11 so the PR's tests can cite them. It extends [`tb-session-events.md`](tb-session-events.md) (E1 to E11), whose rules hold for this kind unless a point here says otherwise. Every field and flag is add-only.
 
-Written 2026-11-18 from a probe of Dario's Transcripts of the 14 days before (243 Claude Code Sessions with their Subagents, 265 Codex Sessions). The record shapes below are what those Transcripts hold, not a Harness's documentation. Reviewed the same day by Codex (gpt-6.1-sol, xhigh), whose fixes are in K1, K2, K4, K5, K10 and K11.
+Written 2026-11-18 from a probe of Dario's Transcripts of the 14 days before (243 Claude Code Sessions with their Subagents, 265 Codex Sessions). The record shapes below are what those Transcripts hold, not a Harness's documentation. Reviewed the same day by Codex (gpt-6.1-sol, xhigh), whose fixes are in K1, K2, K4, K5, K10 and K11. Amended 2026-11-21 from building it (tb-session 0.5.0) against all 3,129 of Dario's Transcripts: K4 row 6's refusal texts, row 8's `returnCodeInterpretation`, and K5's notifications, which newer Claude Code records as a queued attachment.
 
 ## Why `events`, not Fleet
 
@@ -76,19 +76,21 @@ The first row that matches the recorded result decides:
 | 3 | `toolUseResult.interrupted` true | `interrupted` | the same |
 | 4 | `is_error` true, text starting `Exit code N` | `exited` | N |
 | 5 | `is_error` true, text starting `PreToolUse:` and containing `hook error`, or starting `<tool_use_error>Blocked` | `refused`, `refused_by: "hook"` | null |
-| 6 | `is_error` true, text starting `Permission for this` or naming the auto-mode classifier's refusal | `refused`, `refused_by: "permission"` | null |
+| 6 | `is_error` true, text starting `Permission for this` or `Permission to use`, saying the command `requires approval` or `was blocked. For security`, starting `The user doesn't want to proceed`, or naming the auto-mode classifier's refusal | `refused`, `refused_by: "permission"` | null |
 | 7 | any other `is_error` true | `errored` | null |
 | 8 | `is_error` false | `exited` | 0 |
 
 - `refused` means the command never ran: only rows 5 and 6, whose texts the probe saw. Seen: 393 hook refusals, most of them `res-guard` sending a test run through `res`.
 - `errored` is an error tb-session can't place. The command may or may not have run. Lookout counts it as a run whose result is unknown.
 - `exit_code` is the shell's: for a piped command, the last command of the pipe's. tb-session doesn't read the command to say whether it's piped (K8).
+- Row 8 holds for a result Claude Code didn't count as an error although the shell returned non-zero, which it explains in `returnCodeInterpretation` (`grep` with no match, `diff` with differences): `exited` with 0, as recorded. No test runner's result has been seen with it.
+- Rows 2 and 3 weren't seen in the Transcripts: every timeout also carried `backgroundTaskId` (row 1), and no result had `interrupted: true`. They stay for Harness versions that record them.
 
 ## K5. Background commands
 
-- A background call's first result carries `backgroundTaskId`. Its end arrives later in a user record holding a `<task-notification>` with `<tool-use-id>`, `<status>` and a summary that may end "(exit code N)".
-- On that notification the row becomes `exited` with N, or with null when the summary carries no code; `interrupted` for a `killed` status. Its `timestamp` becomes the notification's. Its `output_tail` stays the first result's text: the output went to the Harness's file, which tb-session doesn't read (E11).
-- A background command with no notification stays `running`, its `timestamp` its first result's.
+- A background call's first result carries `backgroundTaskId`. Its end arrives later as a `<task-notification>` with `<tool-use-id>`, `<status>` and a summary that may say "(exit code N)", "(exit code N: …)" or "failed with exit code N". Older Claude Code records it in a user record; newer records a `queue-operation` `enqueue` and then delivers it as an `attachment` of type `queued_command`. Any of the three ends the command, the delivery's timestamp before the enqueue's; replays and `remove` records don't.
+- On that notification the row becomes `exited` with N, or with null when the summary carries no code; `interrupted` for a `killed` or `stopped` status ("didn't finish before the previous session ended"). Its `timestamp` becomes the notification's. Its `output_tail` stays the first result's text: the output went to the Harness's file, which tb-session doesn't read (E11).
+- A background command with no notification stays `running`, its `timestamp` its first result's. A Subagent's background command notified in the parent's Transcript isn't joined across files, so it stays `running` too.
 
 ## K6. The output's tail
 

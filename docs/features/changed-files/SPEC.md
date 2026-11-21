@@ -173,3 +173,4 @@ None.
 - 2026-11-04: A `.plain` file in the list opens in the Spec view, with "Open in VS Code" as its second action, and its Viewed mark is PLAIN-4's (DIFF-3.7, DIFF-4.1; PLAIN-3.1, 3.3). Each Checkout in the list carries an id (PLAIN-6.1).
 - 2026-11-05: DIFF-3.1: a `.plain` Module is listed first in its Checkout, tinted, with an icon (PLAIN-3.4); the other files keep their path order.
 - 2026-11-06: DIFF-1.1 amended for DS-22 (Plan item 50, the clarity pass's idea 3): on the row the count is grey, in the first of three fixed columns; its green and red stay in the status line and the list, where it reads as a diff.
+- 2026-11-19: EVID reads DIFF's answer for a Session's changed files, their kinds and `+ −` (`Changes.checkouts`), and is told when it changes (EVID-1.5). Its Test files tile and "N more" open DIFF-3's list as the count does, and a file changed since the last pass opens as DIFF-4 does. No DIFF criterion changes.

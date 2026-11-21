@@ -1298,6 +1298,7 @@ export function App({ client }: { client: LookoutClient }) {
                 onLoadModels={loadHarnesses}
                 onSwitch={(what, row, value, opened) => void switchSetting(what, row, value, opened)}
                 changes={state.changes}
+                evidence={state.evidence}
                 onChangesOpen={onChangesOpen}
                 onOpenChange={openChange}
                 onOpenSpec={openSpec}
