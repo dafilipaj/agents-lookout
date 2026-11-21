@@ -40,7 +40,7 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Fake Harness**: A stand-in for Claude Code or Codex in a World. It runs in the World's tmux, registers and writes Transcripts the way the real Harness does, and answers from a script, so the real Fleet and tb-session see it as a Session. It never calls a model.
 
-**Evidence**: What backs the work of an Idle or Done Session with Changes, as Lookout reads it from the Session's Transcript and its Checkouts, never from what the Session says: its Test runs and how each ended, whether its Changes changed after its last Test run, and the test files among its Changes, summed up in a verdict. Shown in its status line and a popover, in its Done card, and as a mark on its row when the verdict is a warning. See the EVID spec.
+**Evidence**: What backs the work of an Idle or Done Session with Changes, as Lookout reads it from the Session's Transcript and its Checkouts, never from what the Session says: its Test runs and how each ended, whether its Changes changed after its last Test run, and the test files among its Changes, summed up in a verdict, and its Review rounds beside the verdict. Shown in its status line and a popover, in its Done card, and as a mark on its row when the verdict is a warning. See the EVID spec.
 
 **Finding**: A structural problem Lookout reports in a repo, of one kind: a *Cycle* (files that import each other in a circle), a *Hub* (a file that many files import and that imports many itself), a *God file* (a large file imported from many Areas) or a *Hotspot* (a large file that changes often). Against the repo a week earlier it's new, growing, steady, shrinking or gone. One you mark as *Known* stays quiet until it grows. See ARCH-2 and ARCH-3.9.
 
@@ -91,6 +91,8 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 **Requirement**: One capability a feature provides, ID'd `<CODE>-n`.
 
 **Review request**: An open PR on which you are a requested reviewer by name, whoever requested you. Requests sent to a team you're in don't count.
+
+**Review round**: One review of a Session's work, by any model. It is made of the review runs that overlapped in time: Subagents, or headless Codex or Claude Code runs, that the Session started and whose words say review. A dual review's two reviewers are one round. Lookout reads when a round ran, how it ended and who its reviewers were, never what they said. Not a Review request, which is a person's review of a PR. See EVID-6.
 
 **Session**: One agent conversation: a Harness process with a session ID and a working directory. Every Session Lookout starts runs in its own Session host.
 
