@@ -100,7 +100,7 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Session name**: What a Session is called, the same everywhere: the name you gave it, else its Harness's own title, else its first prompt. Fleet chooses it (`display_title`). See SIDE-10.
 
-**Setup**: What Claude Code and Codex load for every Session on this Mac: skills, agents, hooks and MCP servers, your own and from plugins. Also the right-sidebar tab that lists them, where a Claude Code skill or plugin can be turned off and on. A repo's own items and instruction files are what one Session loads, not the Setup. See the SETUP spec.
+**Setup**: What Claude Code and Codex load for every Session on this Mac: skills, agents, hooks and MCP servers, your own and from plugins. Also the right-sidebar tab that lists them, where a Claude Code skill or plugin can be turned off and on. A repo's own items and instruction files are what one Session loads, not the Setup. The tab has two views: Everywhere, the Setup, and This Session, what the selected Session loaded and used (slice 2). See the SETUP spec.
 
 **Simplified version**: A changed functional spec rewritten in simple words by Claude, on a press, and shown beside the spec in the Spec view. Every paragraph cites the clauses it says, and is checked against them before it shows. It comes with In short: three lines on what the Module's change does, who gets it and what's unlike before. See the PLAIN spec.
 

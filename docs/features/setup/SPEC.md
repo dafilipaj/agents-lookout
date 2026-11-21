@@ -3,14 +3,14 @@ title: "Setup: the skills, agents, hooks and MCP servers your Harnesses load"
 code: "SETUP"
 status: "In Progress"
 created: "2026-11-17"
-updated: "2026-11-17"
+updated: "2026-11-21"
 ---
 
 # Setup
 
 ## Summary
 
-A right-sidebar tab, Setup, lists what Claude Code and Codex load for every Session on this Mac: skills, agents, hooks and MCP servers, by kind and then by where they come from, with what each does, how it's called and where it's defined. A Claude Code skill or plugin can be turned off and on from it. Later slices add what one Session loaded, skills offered in the composer, and how often each item is used.
+A right-sidebar tab, Setup, lists what Claude Code and Codex load for every Session on this Mac: skills, agents, hooks and MCP servers, by kind and then by where they come from, with what each does, how it's called and where it's defined. A Claude Code skill or plugin can be turned off and on from it. Slice 2, Ready, adds This Session: what the selected Session loaded and what it used, read from its Transcript. Later slices add skills offered in the composer and how often each item is used.
 
 ## Problem
 
@@ -22,7 +22,7 @@ A right-sidebar tab, Setup, lists what Claude Code and Codex load for every Sess
 
 ## Requirements
 
-Slice 1, what you have.
+Slice 1, what you have, is SETUP-1 to SETUP-5, all ticked. Slice 2, what one Session loaded, is SETUP-6 to SETUP-10: Ready, grilled on 2026-11-21. Lookout's server reads the open Session's Transcript for it, one file when it shows (Technical approach).
 
 ### SETUP-1 The Setup tab
 
@@ -36,7 +36,7 @@ The right sidebar's sixth tab lists the Setup by kind, then by source, each sour
 - [x] SETUP-1.6 A hook is one row per command, Harness and source: the same command on several events is one row, its description its events ("15 events") or its one event and matcher ("PreToolUse · Bash"). Its name is the file name of the script it runs, with its folder when the file is named `hook` or `index` (`pr-gate/hook.mjs`); a command with no script is named by the first path in it, else by its first word. (test)
 - [x] SETUP-1.7 Skills and Agents start with a quiet line: "Plus the ones built into Claude Code, which Lookout can't read." (test)
 - [x] SETUP-1.8 Setup is read when the tab opens and again after a switch (SETUP-4). A read while a switch is under way (the tab closed and opened again) waits for it. (test)
-- [ ] SETUP-1.9 The tab, a folded and an open group, an expanded row and the off line look right in light and dark mode at 280 and 720 px. (manual)
+- [x] SETUP-1.9 The tab, a folded and an open group, an expanded row and the off line look right in light and dark mode at 280 and 720 px. (manual)
 
 ### SETUP-2 What's read, and from where
 
@@ -78,11 +78,44 @@ Only where Claude Code has a switch of its own.
 
 - [x] SETUP-5.1 Items that are off are left out of their groups and their counts. The section ends in a line, "<n> off", which opens and closes like a group and lists them, quieter than the rest, each with its source and why it's off: turned off in `skillOverrides` (an entry that names no skill on disk says "not found on disk"), its plugin is off, a Codex hook with no trust recorded (with no `config.toml` too), or turned off in `config.toml` (`enabled = false`). (test)
 
+### SETUP-6 This Session (slice 2)
+
+What the selected Session loaded and what it used, read from its Transcript, as a second view of the tab. Drawn on canvas A of slice 2 (UX).
+
+- [ ] SETUP-6.1 Above the kind filter, a `Segmented` (DS-20) chooses what the tab shows: Everywhere, slice 1's list, or This Session, remembered across reloads. This Session follows the Session open in the main pane, live or past. With none open, or a Codex Session open, its choice is disabled, its tooltip saying why ("Open a Session to see what it loaded", "Claude Code Sessions only, for now"), and the tab shows Everywhere. (test)
+- [ ] SETUP-6.2 In This Session, the kind filter gives way to the Session's line: its `HarnessIcon` and title, and under it in `meta` its directory and when it loaded what's shown, its start or its latest compaction ("~/Projects/ledger-web · as it loaded at 10:12"). The text filter stays, as "Filter this Session's Setup", and matches as SETUP-1.2's does. (test)
+- [ ] SETUP-6.3 Its sections, in this order: Instructions and Memory (SETUP-7), Ran in this Session (SETUP-8) and This repo's own (SETUP-9), each a `SectionLabel` with its note; a section with nothing is left out. They end in one quiet line that switches to Everywhere and counts what the Session's lists named from outside its repo: "It also loaded 97 skills, 8 agents, 16 hooks and 3 MCP servers from Everywhere". (test)
+- [ ] SETUP-6.4 This Session is read when it's chosen, when another Session opens in the main pane, on the tab's Refresh, and, while it shows, when the Session's turn ends. (test)
+- [ ] SETUP-6.5 Everything in This Session comes from the Session's Transcript, found by its id under `~/.claude/projects`, and the disk as SETUP-7.3 and SETUP-9 say. A Transcript that's gone or can't be read is one error row naming it (SETUP-2.3); an entry Lookout doesn't know is skipped. (test)
+
+### SETUP-7 Instructions and memory (slice 2)
+
+- [ ] SETUP-7.1 Instructions lists the instruction files of the Session's latest load, in the order Claude Code loaded them, grouped as SETUP-1.3's groups are: Yours (`~/.claude/CLAUDE.md`) and This repo (lucide `FolderGit2`: its `CLAUDE.md` files and `CLAUDE.local.md`). A row: lucide `FileText`, the file's path from the repo (from `~` for Yours), and in `meta` its lines and its size in tokens, estimated as its text's length / 4 ("48 lines · ~0.9k tokens"). The label's note is the files and tokens in all ("5 files · ~4.6k tokens"). Files Claude Code loaded later, a subfolder's `CLAUDE.md` once the Session read a file there, follow in the order they loaded, their `meta` ending in when ("loaded at 10:42"). (test)
+- [ ] SETUP-7.2 A file another one imports (`@AGENTS.md` in the importer's loaded text) sits under its importer, indented, its icon lucide `CornerDownRight`; the importer's `meta` says "imports 2". (test)
+- [ ] SETUP-7.3 A file whose text on disk differs from the text the Session loaded has a "changed" chip in the warning tone; one no longer on disk, "gone". (test)
+- [ ] SETUP-7.4 An instruction file's row expands (DS-21): its path whole; a state line of its source, its importer, its lines and tokens, the full path in the tooltip; for a changed file, a summary of when it changed and what the Session works from ("Edited on disk at 11:03, after the Session loaded it at 10:12. It works from the 10:12 text until it compacts."); and "Open in VS Code" (Enter), opening the file on disk. (test)
+- [ ] SETUP-7.5 Memory is the memory index the Session loaded (`MEMORY.md`, Claude Code's `AutoMem`) as a group, lucide `Bookmark`, its count the entries, and one row per entry line (`- [Title](file.md) — …`): its title and, in `meta`, the type in its file's front matter (`user`, `feedback`, `project`, `reference`). The label's note is the entries and tokens. An entry's row opens its file in VS Code. (test)
+
+### SETUP-8 Ran in this Session (slice 2)
+
+- [ ] SETUP-8.1 Ran in this Session is grouped by kind, in this order, each under a quiet kind label with its count, the most runs first within it: Skills by their calls (the Skill tool or a slash command), Agents (Subagents) by type, built-in ones too, MCP servers by their tools' calls, then Hooks by their command's runs. A row: the name as SETUP-1.5 shows it, in `meta` its source and, for a hook, its events and its failed runs ("Yours · 15 events · 2 failed"), and its count at the right ("212×", "9 calls"). The label's note is the number of rows. (test)
+- [ ] SETUP-8.2 A row that is an item Setup lists, Everywhere or in This repo's own, expands as that item's row does (SETUP-3), its count in the state line; a hook run is that item by its command. An item of this repo's that ran shows here and in This repo's own, its count only here. A built-in Subagent's row says it's built into Claude Code and has no action. (test)
+- [ ] SETUP-8.3 Counts cover the whole Session, across compactions, as of its last read (SETUP-6.4). (test)
+
+### SETUP-9 This repo's own (slice 2)
+
+- [ ] SETUP-9.1 This repo's own lists what the Session's directory adds to Claude Code: skills in `.claude/skills` and `.claude/commands`, agents in `.claude/agents`, hooks in `.claude/settings.json` and `.claude/settings.local.json`, MCP servers in `.mcp.json`, and the plugins installed for it (`claude plugin list --json`'s project scope for that directory). A row: its name, and in `meta` its kind and where it's defined ("Skill · .claude/skills", "MCP · .mcp.json · stdio"). They're read as SETUP-2's are, with its error rows (SETUP-2.3) and its hiding of credentials (SETUP-2.4). An item that ran is listed here too, without its count (SETUP-8.2). (test)
+- [ ] SETUP-9.2 An item on disk that the Session's lists don't name ends the section as "<n> not loaded", opening like SETUP-5.1's off line, lucide `CircleOff`, each row at 60% saying why when it's known: added after the latest load ("added at 11:20, after it started"), an `.mcp.json` server not approved, else "not in its lists". (test)
+- [ ] SETUP-9.3 Its rows expand as SETUP-3's do, with "Open in VS Code" and no switches (SETUP-4.4). (test)
+
+### SETUP-10 The look (slice 2)
+
+- [ ] SETUP-10.1 This Session with five instruction files, one of them changed and expanded, a memory index, ten rows that ran and a "1 not loaded" line looks right in light and dark mode at 280 and 720 px, and matches the slice 2 sketch (UX). (manual)
+
 ## Planned slices
 
-Specced after slice 1 ships, in this order for slice 2. Slices 3 and 4 have no order yet.
+Slices 3 and 4 have no order yet.
 
-2. **Loaded in this Session:** for the selected Session, its repo's own items (`.claude/`, `.mcp.json`), its instruction files (the `CLAUDE.md` or `AGENTS.md` chain and its imports) and memory. Resolved (the Harness's loading rules applied to its directory) and observed (what its Transcript shows ran) are labelled apart. From the Backlog's "What's loaded into a Session".
 3. **Starting:** `/` in the composer offers the skills Setup lists. This lifts VIEW's Non-goal on slash-command autocomplete (Backlog: "Decide: `/` and `@` autocomplete").
 4. **Usage and clean-up:** each skill's, agent's and MCP server's calls in 30 days and its last use, from facts tb-session gives, with what's gone unused marked; claude.ai connectors as Transcripts show them. From the Backlog's "A catalogue of agents".
 
@@ -94,7 +127,13 @@ Specced after slice 1 ships, in this order for slice 2. Slices 3 and 4 have no o
 - An MCP server's environment and header values (SETUP-2.4).
 - Switches for agents, hooks and MCP servers, and Codex's switches until they're checked (Open questions).
 - Claude Code's built-in skills and agents: they aren't on disk (SETUP-1.7).
-- Plugins installed for one project (`claude plugin list`'s project scope): they're what a Session in that repo loads, so slice 2's.
+- Plugins installed for one project (`claude plugin list`'s project scope) in Everywhere: they're what a Session in that repo loads, so This Session's (SETUP-9.1).
+- Editing an instruction file or a memory entry, or showing its whole text in the tab: Open in VS Code (slice 2).
+- What a new Session in a directory would load: This Session shows what one did load (slice 2).
+- Codex Sessions in This Session: their rollout records `AGENTS.md` only per directory, and no hook runs (slice 2).
+- Which memory entries a Session read: the index is what loads (slice 2).
+- Earlier loads of a Session's instruction files: This Session shows the latest, what it works from now (slice 2).
+- What other Sessions loaded or ran, or counts across Sessions: This Session reads one Transcript when it shows (slice 2). Slice 4's usage decides its own source.
 - claude.ai's connectors in slice 1: the only record on disk is an undocumented list of the ones that ever connected (slice 4).
 - Usage counts in slice 1 (slice 4).
 
@@ -111,6 +150,18 @@ Drawn on a canvas of three directions on 2026-11-17 (https://claude.ai/artifact/
 - **After a switch:** an info `Alert` (inline) above the list: "Turned off p-codex. Sessions started from now on won't load it; running ones keep what they loaded."
 - **The plugin confirmation:** a dialog as Stop's (PORTS-4.6): "Turn off plugin p-codex?", "It turns off 3 skills, 1 agent and 1 hook, for Sessions started from now on.", Cancel and Turn off.
 
+### Slice 2
+
+Drawn on a canvas of two looks on 2026-11-21 (https://claude.ai/artifact/KnrDKjoRVhUxLck7Kxomim); Dario chose A, "This Session, a view of its own", as the simpler.
+
+- **The switch:** a `Segmented` of Everywhere and This Session above the kind filter, the panel's width.
+- **The Session's line:** its `HarnessIcon` (14 px) and title in `body` medium, cut; under it, inset to the title, the directory and "as it loaded at 10:12" in `meta`.
+- **Instructions:** group lines as slice 1's (`User`, `FolderGit2`); a row as a list row, `FileText` for a file, `CornerDownRight` and 16 px more inset for an import, "changed" a warning-tone chip at the right.
+- **Memory:** a `Bookmark` group of the entries, each entry's title in `body` medium and its type in `meta`.
+- **Ran in this Session:** a quiet kind label per kind (Skills, Agents, MCP servers, Hooks), then one-line rows, not inset: the name in `body` medium (up to 56% of the row), "Yours · 15 events" in `meta`, the count in `meta`, `tabular-nums`, at the right.
+- **This repo's own:** the same rows, then the "1 not loaded" line.
+- **The closing line:** `meta` in `muted-foreground`, a lucide `ArrowRight` at its end, a row's hover.
+
 ## Technical approach
 
 - Lookout's server reads the files itself, as MEM reads `lsof` and TOOLS looks for binaries ([0010](../../decisions/0010-single-consumer-rules-stay-with-the-consumer.md)). Lookout is the only consumer today. The reading moves to a Building block in cli-toolbox when a second one appears ([0005](../../decisions/0005-building-blocks-live-outside-lookout.md)).
@@ -119,6 +170,21 @@ Drawn on a canvas of three directions on 2026-11-17 (https://claude.ai/artifact/
 - `skillOverrides` is written the way Claude Code keeps the file: read, change one key, write to a temporary file and rename it. It takes `"on"`, `"name-only"`, `"user-invocable-only"` and `"off"` (checked in Claude Code 2.1.326); only `"off"` hides a skill from both you and the model.
 - A plugin is switched only through `claude plugin enable` and `disable`, with `--scope user` as it was listed, never by editing `enabledPlugins`.
 - The API: `GET /api/setup` reads now and answers `{ items, errors, readAt }`; `POST /api/setup/skill` (`{ name, on }`) and `POST /api/setup/plugin` (`{ id, on }`) switch and answer the read that follows. Both POSTs take the token and `Origin`, as every mutation.
+
+### Slice 2
+
+**Measured** (2026-11-21, on this Mac):
+
+- A Claude Code Transcript records each load of the instruction files as an `instructions` attachment: every file with its path, its type (`User`, `Project`, `AutoMem`) and its text. One Session had 8, at its start and after each compaction. It also records the lists the model was given: `skill_listing` (116 names), `agent_listing_delta` (the built-in types among them) and `mcp_instructions_delta` (server names).
+- Each hook run is a `hook_success` attachment with its command, event and matcher, exit code and duration: 1,690 in that Session. A skill call is a `Skill` tool call naming the skill; an MCP call is a tool named `mcp__<server>__<tool>`.
+- A Codex rollout records its `AGENTS.md` text as one message per directory ("# AGENTS.md instructions for <dir>"), not per file, and its skills as one list of `SKILL.md` paths (105). It records no hook runs, and the last 40 rollouts hold no MCP call.
+
+- Claude Code records a subfolder's `CLAUDE.md` loaded mid-Session as a `nested_memory` attachment with its path and text (1,798 across this Mac's Transcripts), and a hook that failed or was cancelled as `hook_non_blocking_error` or `hook_cancelled`, with its command and exit code (80).
+- Indexing these facts for every Session in tb-session would add 257,820 hook runs, 15,256 MCP calls, 5,829 skill calls and 3,050 loads of about four files' text, against the 1,064 Subagent rows of 0.6.0, and another schema bump with a full re-parse (the first query after 0.6.0's took 21 s). Reading one Transcript in one pass takes 0.10 s for 32 MB (1,754 hook runs) and 0.37 s for the biggest, 201 MB.
+
+**Reading the Transcript:** Lookout's server reads the open Session's Transcript when This Session shows, finding it by the Session's id under `~/.claude/projects`, in one pass: the latest `instructions` attachment and the `nested_memory` ones after it, the latest skill, agent and MCP lists, every `hook_success`, `hook_non_blocking_error` and `hook_cancelled`, and the tool calls (`Skill`, `Agent`, `mcp__<server>__<tool>`) and slash commands. Entries it doesn't know are skipped. Tests read an invented Transcript. A Consequence of [0005](../../decisions/0005-building-blocks-live-outside-lookout.md), as PORTS's read of the Mac's listeners: one file on demand, no index and no state another tool needs. It moves to tb-session if a second consumer wants the same.
+
+**Lookout's rules** (`server/setup.ts`): an import is an `@path` in a loaded text; a file changed when its text on disk differs from the loaded one; This repo's own is read from disk as SETUP-2 reads the rest; "not loaded" is an item on disk that the lists don't name; the groups, the order of what ran and the closing line's counts. `GET /api/setup/session/<id>` answers `{ loadedAt, instructions, memory, ran, repo, everywhere, errors }`; `SetupPanel.tsx` gets the switch and the This Session view.
 
 ### Key decisions
 
@@ -141,9 +207,28 @@ Drawn on a canvas of three directions on 2026-11-17 (https://claude.ai/artifact/
 - **Slice 2 is one Session's view:** Dario's choice over starting skills from the composer.
 - **`Puzzle` and `U`:** the usual sign for extensions; `Wrench` would clash with Settings' Tools and `SlidersHorizontal` reads as a filter. `S` is Specs; `U` is free and in "setup".
 
+Slice 2, from canvas A (Dario, 2026-11-21):
+
+- **A view of its own, switched at the top:** it reads as the Session's story, what it loaded, what it used, then what its repo adds, and Everywhere stays as it is. Dario chose it as the simpler, over B: the Session's layer on the whole list, with a band of what took its start context, run counts on rows and a "Ran here" filter.
+- **What it loaded, from its Transcript:** Claude Code records each load and the lists the model was given. Its loading rules applied to a directory would be a guess that drifts with each release, and would miss a file edited since. The disk is read only to say what changed.
+- **Everything else in one line:** a Session loads every item Everywhere lists; listing them again would bury the few that are its own or that ran.
+- **Tokens as an estimate:** the text's length / 4, marked "~", is enough to see which file is big.
+
+Grilled with Dario on 2026-11-21:
+
+- **Lookout reads the one Transcript, not tb-session:** Dario's worry was tb-session growing slow. Indexing these facts for every Session would be its biggest growth yet (257,820 hook runs, Measured) for a view that needs one Session at a time, and reading that one file takes under half a second. Dario passed over a tb-session command that reads one file without indexing it, and over new event kinds.
+- **Claude Code Sessions only:** a Codex rollout records its `AGENTS.md` text per directory, not per file, and no hook runs, so its view would be half of this. Dario passed over showing that half, and over working out Codex's files from its loading rules.
+- **Which memory entries were read, dropped:** it needed a third kind of fact, and the index is what loads. Dropped for good, not deferred.
+- **The latest load:** what the Session works from now. Dario passed over noting earlier loads' differences, and a menu of loads.
+- **Ran by kind, Hooks last:** in one Session a hook ran 1,757 times and three skills 9, so one list by count would always open on hooks. Dario passed over that, and over hooks folded into one line.
+- **An item of the repo's that ran is in both sections:** each answers its own question whole, what was used and what the repo has; the count is only under Ran.
+- **Files loaded later and failed hooks, from the record:** Claude Code records both (Measured), so Instructions lists a subfolder's `CLAUDE.md` once it loaded, and a hook's row says how many of its runs failed.
+
 ## Open questions
 
 - [ ] Codex's switches: which `config.toml` keys turn off a skill, a hook or an MCP server, checked against the installed Codex.
+
+None for slice 2: its grill answered its four and two more (Key decisions).
 
 ## Changelog
 
@@ -153,3 +238,6 @@ Drawn on a canvas of three directions on 2026-11-17 (https://claude.ai/artifact/
 - 2026-11-17: Codex review, round 1. SETUP-2.4 covers credentials in an MCP server's arguments and URL, and parse errors (JSON's and TOML's own messages quote the file). SETUP-4.1: switches run one at a time (a plugin's too, as `claude plugin` writes the same file), a linked settings file keeps its link, and a write starts again if the file changed under it. SETUP-4.5 added: `X` switches the selected row, as More's switches had no key and the listbox keeps More out of the Tab order. SETUP-5.1: with no `config.toml`, a Codex hook is untrusted. Fixed without a spec change: an off plugin's skill with a `skillOverrides` entry no longer adds a "not found on disk" row, and a top-level MCP server in `~/.claude.json` opens at its own line, not a project's of the same name.
 - 2026-11-17: Codex review, round 2. SETUP-2.4: a URL's whole user info is hidden (a token can be the user, or the password with no user), a flag's value is scrubbed too (`--env=API_TOKEN=…`), and `claude plugin`'s errors are scrubbed before they reach the tab. SETUP-1.8: a read waits for a switch under way, so closing and opening the tab mid-switch shows its result. SETUP-4.1 now says what the check before the rename covers: another writer between Lookout's read and its write. One in the instant between that check and the rename can still be lost, as between Claude Code's own writers, since none of them lock the file.
 - 2026-11-17: Codex review, round 3. SETUP-2.4: a URL's user info is hidden through its last `@` (a password can hold one), and a CLI's error hides a secret-named flag's value after a space too (`--api-key …`). SETUP-1.8: a plugin switch joins the queue before looking for the `claude` binary, so a read in that moment waits as well. SETUP-3.1: an unquoted `argument-hint: [issue-number]`, a YAML list, stays in the skill's call.
+- 2026-11-21: SETUP-1.9 ticked: Dario checked the Setup tab on 4747. Every slice 1 criterion is ticked. No requirement changed.
+- 2026-11-21: Slice 2 drafted from canvas A (https://claude.ai/artifact/KnrDKjoRVhUxLck7Kxomim, Dario's pick over B, as the simpler): SETUP-6 to SETUP-10, This Session, a second view of the tab with the instruction files and memory the selected Session loaded, what ran in it and its repo's own items, read from its Transcript through tb-session (Gaps 1 and 2). Measured what a Claude Code Transcript and a Codex rollout record. Planned slice 2 moves into Requirements; a project's plugins join This repo's own. Draft until its grill (Open questions).
+- 2026-11-21: Slice 2 grilled with Dario (six questions, Key decisions) and Ready. Its facts come from Lookout's server reading the open Session's Transcript, not from tb-session, which needs no new release: Gaps go, SETUP-6.5 now says where the facts come from (it named a tb-session version), and Technical approach measures the read and what indexing would cost. Claude Code Sessions only (SETUP-6.1); SETUP-7.1 adds files loaded later; SETUP-8.1 groups by kind, Hooks last, with a hook's failed runs; SETUP-8.2 and 9.1 list an item of the repo's that ran in both sections. Non-goals gain Codex Sessions, memory entries read, earlier loads and counts across Sessions.
