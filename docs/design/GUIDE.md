@@ -47,7 +47,7 @@ What opens from a reading to explain it: Memory's and Usage's, from the sidebar'
 
 - **Use** `Popover` (`ui/popover.tsx`), `w-[22rem] p-0`, and the pieces in `ui/details.tsx`, top to bottom, as Memory's (`MemoryLine.tsx`) and Usage's (`UsageStrip.tsx`) are:
   - `Verdict`: a dot in its level's colour, the verdict in words ("The Mac has room"), and the reading's age at the right ("3s ago", or "stale · 3s" in `info-text`); its `id` can name the popover;
-  - `Tiles` and `Tile`: up to three, each a label, a value and a line under it, which wraps; a tile that opens something more is a `Tile` with `onClick`, a button with a chevron at its value's end (Evidence's Test files, EVID-5.4);
+  - `Tiles` and `Tile`: up to three side by side, or four in two rows of two (Evidence's Review tile, EVID-6.4), each a label, a value and a line under it, which wraps; a tile that opens something more is a `Tile` with `onClick`, a button with a chevron at its value's end (Evidence's Test files, EVID-5.4);
   - `WorthALook`: a box listing what's past a threshold, in words, or nothing at all;
   - sections: each under a `SectionLabel` (below), its rows `Meter`s, thin 4 px bars, the level as an edge.
 - **Do:** start from Memory's popover and drop the parts you don't need.

@@ -1,12 +1,12 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { verdict, type EvidenceRun, type EvidenceView, type VerdictKey } from '@shared/evidence.ts';
+import { verdict, type EvidenceRound, type EvidenceRun, type EvidenceView, type VerdictKey } from '@shared/evidence.ts';
 import type { ChangesView, SessionRow } from '@shared/types.ts';
 import { renderApp, row } from '@/test/helpers';
-import { Tile } from '@/components/ui/details';
+import { Tile, Tiles } from '@/components/ui/details';
 import { render } from '@testing-library/react';
-import { doneFacts } from '@/lib/evidence';
+import { doneFacts, reviewWords } from '@/lib/evidence';
 
 // An invented Session and its Evidence (UX sketch).
 const T = (hhmm: string) => new Date(`2026-11-18T${hhmm}:00`).getTime();
@@ -40,6 +40,8 @@ const evidence = (over: Partial<EvidenceView> = {}): EvidenceView => ({
   changedFiles: 11,
   listedFiles: 11,
   runs,
+  rounds: [],
+  changedSinceReview: 0,
   ...over,
 });
 
@@ -75,7 +77,7 @@ describe('EVID-5: where Evidence shows', () => {
     expect(part()).toBeNull();
   });
 
-  it('EVID-5.2: the popover: the verdict with its warning dot and age, three tiles, then the files changed since the last pass and the runs', async () => {
+  it('EVID-5.2: the popover: the verdict with its warning dot and age, the tiles, then the files changed since the last pass and the runs', async () => {
     show();
     const { pop } = await openPopover();
     expect(pop).toHaveAccessibleName('Evidence: Changed after its last test run');
@@ -83,7 +85,7 @@ describe('EVID-5: where Evidence shows', () => {
     expect(v).toHaveTextContent('Changed after its last test run');
     expect(v.querySelector('.bg-warning')).toBeTruthy();
     expect(pop.querySelector('[data-field="verdict-age"]')).toHaveTextContent(/^\ds ago$/);
-    expect([...pop.querySelectorAll('[data-field^="tile-"]')].map((t) => t.getAttribute('data-field'))).toEqual(['tile-last-pass', 'tile-changed-since', 'tile-test-files']);
+    expect([...pop.querySelectorAll('[data-field^="tile-"]')].map((t) => t.getAttribute('data-field'))).toEqual(['tile-last-pass', 'tile-changed-since', 'tile-test-files', 'tile-review']);
     expect([...pop.querySelectorAll('section')].map((s) => s.getAttribute('aria-label'))).toEqual(['Changed since the last pass', 'Test runs']);
     expect(pop.querySelector('[data-field="evidence-capped"]')).toBeNull();
   });
@@ -154,9 +156,9 @@ describe('EVID-5: where Evidence shows', () => {
     show(evidence(), session({ done: { at: T('14:32'), note: 'Rounding in the invoice totals is fixed.' } }));
     const card = screen.getByTestId('done-card');
     const line = card.querySelector<HTMLElement>('[data-field="done-evidence"]')!;
-    expect(line).toHaveTextContent(/^Changed after its last test run · last pass \d\d:\d\d(?: [AP]M)?, 3 files changed sinceEvidence$/);
+    expect(line).toHaveTextContent(/^Changed after its last test run · last pass \d\d:\d\d(?: [AP]M)?, 3 files changed since · no reviewEvidence$/);
     const words = line.querySelector('.truncate')!;
-    expect(words).toHaveAttribute('title', expect.stringMatching(/^Changed after its last test run · last pass \d\d:\d\d(?: [AP]M)?, 3 files changed since$/));
+    expect(words).toHaveAttribute('title', expect.stringMatching(/^Changed after its last test run · last pass \d\d:\d\d(?: [AP]M)?, 3 files changed since · no review$/));
     expect(line.querySelector('[data-icon="verdict-warning"]')).toHaveClass('text-warning-text');
     // The Done chip and its tooltip don't change.
     expect(document.querySelector('[data-field="done"]')).toHaveAttribute('title', expect.stringMatching(/^Done at \d\d:\d\d(?: [AP]M)?\nRounding/));
@@ -167,10 +169,10 @@ describe('EVID-5: where Evidence shows', () => {
   });
 
   it('EVID-5.5: the facts in words: a pass with nothing changed since, no run passed, and no run at all', () => {
-    expect(doneFacts(evidence({ changedSince: 0 }))).toMatch(/^last pass \d\d:\d\d(?: [AP]M)?$/);
-    expect(doneFacts(evidence({ changedSince: 1 }))).toMatch(/^last pass \d\d:\d\d(?: [AP]M)?, 1 file changed since$/);
-    expect(doneFacts(evidence({ lastPass: null }))).toBe('no run passed');
-    expect(doneFacts(evidence({ lastPass: null, runCount: 0 }))).toBe('');
+    expect(doneFacts(evidence({ changedSince: 0 }))).toMatch(/^last pass \d\d:\d\d(?: [AP]M)? · no review$/);
+    expect(doneFacts(evidence({ changedSince: 1 }))).toMatch(/^last pass \d\d:\d\d(?: [AP]M)?, 1 file changed since · no review$/);
+    expect(doneFacts(evidence({ lastPass: null }))).toBe('no run passed · no review');
+    expect(doneFacts(evidence({ lastPass: null, runCount: 0 }))).toBe('no review');
   });
 
   it('EVID-5.6: a warning verdict marks the row last among its marks, with its words; ok and quiet don’t', () => {
@@ -350,4 +352,157 @@ it('DS-19.1: a Tile with an action is a button, with a chevron at its value’s 
   const plain = document.querySelector('[data-field="p"]')!;
   expect(plain.tagName).toBe('DIV');
   expect(plain.querySelector('[data-icon="tile-chevron"]')).toBeNull();
+});
+
+// Invented Review rounds (EVID-6, the slice 2 sketch).
+const CODEX_ID = '01a1ff23-0000-7000-8000-000000000001';
+const CLAUDE_ID = '6c2d0000-0000-4000-8000-000000000002';
+const dual: EvidenceRound = {
+  key: 'c1', outcome: 'finished', start: T('14:14'), end: T('14:21'),
+  runs: ['codex-run.sh /tmp/p-codex-dual-review-1 /shop gpt-6.1-sol xhigh', 'claude-run.sh /tmp/p-codex-dual-review-1 /shop'],
+  reviewers: [
+    { kind: 'headless', harness: 'codex', sessionId: CODEX_ID, transcriptMissing: false, model: 'gpt-6.1-sol', effort: 'xhigh' },
+    { kind: 'headless', harness: 'claude', sessionId: CLAUDE_ID, transcriptMissing: false, model: 'claude-opus-5-5', effort: null },
+  ],
+};
+const subagents: EvidenceRound = { key: 'a1', outcome: 'finished', start: T('13:58'), end: T('14:02'), runs: ['Code review round 1', 'Review the tests'], reviewers: [{ kind: 'subagent', model: 'claude-opus-5-5', count: 4 }] };
+const round = (over: Partial<EvidenceRound>): EvidenceRound => ({ ...subagents, ...over });
+const reviewTile = (pop: HTMLElement) => pop.querySelector<HTMLElement>('[data-field="tile-review"]')!;
+
+describe('EVID-6: Review rounds', () => {
+  it('EVID-6.4: four tiles in two rows of two, the Review tile last: none, finished with the files since, running, and an unfinished outcome; never a warning', async () => {
+    const cases: [EvidenceRound[], number, string, string][] = [
+      [[], 0, 'None', 'no review run'],
+      [[dual, subagents], 4, '14:21', '2 rounds · 4 files since'],
+      [[subagents], 0, '14:02', '1 round'],
+      [[round({ key: 'r', outcome: 'running', start: T('14:15'), end: null }), dual], 0, 'Running', 'since 14:15 · 2 rounds'],
+      [[round({ key: 'r', outcome: 'running', start: T('14:15'), end: null })], 0, 'Running', 'since 14:15'],
+      [[round({ key: 'r2', outcome: 'failed' }), round({ key: 'r1', outcome: 'stopped' })], 0, 'Failed', '2 rounds'],
+      [[round({ outcome: 'timed-out' })], 0, 'Timed out', '1 round'],
+      [[round({ outcome: 'unread' })], 0, 'Unread', '1 round'],
+    ];
+    for (const [rounds, since, value, line] of cases) {
+      const app = show(evidence({ rounds, changedSinceReview: since }));
+      const { pop } = await openPopover();
+      expect(pop.querySelector('[data-tiles="2x2"]')).toHaveClass('grid-cols-2');
+      const tile = reviewTile(pop);
+      expect(tile.tagName).toBe('DIV');
+      const re = (text: string) => new RegExp(`^${text.replace(/\d\d:\d\d/, '\\d\\d:\\d\\d(?: [AP]M)?')}$`);
+      expect(tile.children[1]!.textContent).toMatch(re(value));
+      expect(tile.children[2]!.textContent).toMatch(re(line));
+      expect(tile.querySelector('[data-icon]')).toBeNull();
+      app.unmount();
+    }
+  });
+
+  it('EVID-6.5: the Reviews section sits between the changed files and the runs; its note counts the rounds; each round its time, outcome, duration and reviewers joined by +', async () => {
+    show(evidence({ rounds: [round({ key: 'r', outcome: 'running', start: Date.now() - 45_000, end: null, reviewers: [{ kind: 'subagent', model: null, count: 1 }] }), dual, subagents] }));
+    const { pop } = await openPopover();
+    expect([...pop.querySelectorAll('section')].map((s) => s.getAttribute('aria-label'))).toEqual(['Changed since the last pass', 'Reviews', 'Test runs']);
+    const section = pop.querySelector<HTMLElement>('[data-section="reviews"]')!;
+    expect(section).toHaveTextContent(/^Reviews3 · 1 running/);
+    const rows = [...section.querySelectorAll<HTMLElement>('[data-round]')];
+    expect(rows.map((r) => r.getAttribute('data-outcome'))).toEqual(['running', 'finished', 'finished']);
+    expect(rows[0]!.querySelector('[data-field="took"]')!.textContent).toMatch(/^4[5-9]s$/);
+    expect(rows[0]!.querySelector('[data-field="reviewers"]')).toHaveTextContent('Subagent');
+    expect(rows[1]!.querySelector('[data-field="round-time"]')!.textContent).toMatch(/^\d\d:\d\d(?: [AP]M)?$/);
+    expect(rows[1]!.querySelector('[data-field="outcome"]')).toHaveTextContent('finished');
+    expect(rows[1]!.querySelector('[data-field="took"]')).toHaveTextContent('7m');
+    expect(rows[1]!.querySelector('[data-field="reviewers"]')).toHaveTextContent('Codex · gpt-6.1-sol · xhigh+Claude Code · claude-opus-5-5');
+    // Reviewers that don't fit go on to more lines, under the first.
+    expect(rows[1]!.querySelector('[data-field="reviewers"]')).toHaveClass('flex-wrap', 'min-w-0', 'flex-1');
+    expect(rows[2]!.querySelector('[data-field="reviewers"]')).toHaveTextContent('Subagent · claude-opus-5-5 × 4');
+    // The time's tooltip lists its commands and Subagent descriptions, one a line.
+    expect(rows[1]!.querySelector('[data-field="round-time"]')).toHaveAttribute('title', dual.runs.join('\n'));
+    expect(rows[2]!.querySelector('[data-field="round-time"]')).toHaveAttribute('title', 'Code review round 1\nReview the tests');
+  });
+
+  it('EVID-6.5: without a round the section is left out; failed, timed out, stopped and unread count in the note', async () => {
+    const app = show(evidence());
+    const { pop } = await openPopover();
+    expect(pop.querySelector('[data-section="reviews"]')).toBeNull();
+    app.unmount();
+    show(evidence({ rounds: [round({ key: 'a', outcome: 'failed' }), round({ key: 'b', outcome: 'timed-out' }), round({ key: 'c', outcome: 'stopped' }), round({ key: 'd', outcome: 'unread' }), round({ key: 'e' })] }));
+    const again = await openPopover();
+    expect(again.pop.querySelector('[data-section="reviews"]')).toHaveTextContent(/^Reviews5 · 1 failed · 1 timed out · 1 stopped · 1 unread/);
+    // EVID-6.8: a review never warns, not even one that failed.
+    expect(again.pop.querySelector('[data-section="reviews"] .text-warning-text, [data-section="reviews"] [data-icon]')).toBeNull();
+  });
+
+  it('EVID-6.6: a headless reviewer is a button that closes the popover and opens it read-only; a Subagent, or one whose Transcript is gone, is text', async () => {
+    const gone: EvidenceRound = { ...dual, key: 'g', reviewers: [{ ...dual.reviewers[0]!, transcriptMissing: true } as EvidenceRound['reviewers'][number]] };
+    const pastSession = vi.fn(async () => { throw new Error('not here'); });
+    show(evidence({ rounds: [dual, subagents, gone] }), session(), { pastSession });
+    const { user, pop } = await openPopover();
+    const buttons = [...pop.querySelectorAll<HTMLElement>('[data-reviewer]')];
+    expect(buttons.map((b) => [b.tagName, b.getAttribute('data-reviewer')])).toEqual([['BUTTON', 'headless'], ['BUTTON', 'headless'], ['SPAN', 'subagent'], ['SPAN', 'headless']]);
+    expect(buttons[0]).toHaveAccessibleName(/^Show the Codex review of \d\d:\d\d(?: [AP]M)?$/);
+    expect(buttons[1]).toHaveAccessibleName(/^Show the Claude Code review of \d\d:\d\d(?: [AP]M)?$/);
+    await user.click(buttons[0]!);
+    await waitFor(() => expect(popover()).toBeNull());
+    expect(window.location.pathname).toBe(`/h/codex/${CODEX_ID}`);
+    await waitFor(() => expect(pastSession).toHaveBeenCalledWith('codex', CODEX_ID));
+  });
+
+  it('EVID-6.6: Tab reaches each reviewer button after the changed files; Esc returns focus to the opener', async () => {
+    show(evidence({ changedSince: 1, changedSinceFiles: evidence().changedSinceFiles.slice(0, 1), rounds: [dual] }));
+    const { user, pop } = await openPopover();
+    const name = () => {
+      const el = document.activeElement as HTMLElement;
+      return el.getAttribute('data-field') ?? el.getAttribute('data-file') ?? el.getAttribute('data-reviewer') ?? el.tagName;
+    };
+    // The popover opens on its first button, the Test files tile.
+    const order = [name()];
+    for (let i = 0; i < 3; i++) {
+      await user.tab();
+      order.push(name());
+    }
+    expect(order).toEqual(['tile-test-files', '/r/shop\u0000src/invoice/format.ts', 'headless', 'headless']);
+    expect(pop.contains(document.activeElement)).toBe(true);
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(popover()).toBeNull());
+    expect(document.activeElement).toBe(part());
+  });
+
+  it('EVID-6.7: the Done card’s line adds the rounds in words, muted, one line with the whole in its tooltip', () => {
+    show(evidence({ rounds: [dual, subagents] }), session({ done: { at: T('14:32'), note: 'Fixed.' } }));
+    const line = screen.getByTestId('done-card').querySelector<HTMLElement>('[data-field="done-evidence"]')!;
+    const words = line.querySelector('.truncate')!;
+    expect(words).toHaveAttribute('title', expect.stringMatching(/ · reviewed twice$/));
+    expect(words.querySelector('.text-muted-foreground')).toHaveTextContent(/· reviewed twice$/);
+    expect(reviewWords([])).toBe('no review');
+    expect(reviewWords([subagents])).toBe('reviewed once');
+    expect(reviewWords([dual, subagents, round({ key: 'x' })])).toBe('reviewed 3 times');
+    expect(reviewWords([round({ key: 'r', outcome: 'running', end: null }), dual])).toBe('a review is running');
+    expect(reviewWords([round({ outcome: 'failed' }), round({ key: 'b', outcome: 'stopped' })])).toBe('the review failed');
+    expect(reviewWords([round({ outcome: 'timed-out' })])).toBe('the review timed out');
+    expect(reviewWords([round({ outcome: 'stopped' })])).toBe('the review was stopped');
+    expect(reviewWords([round({ outcome: 'unread' })])).toBe('the review is unread');
+  });
+
+  it('EVID-6.8: rounds never change the status line’s part or the row’s mark', async () => {
+    // No review, the verdict ok: no warning, no mark.
+    const before = show(evidence({ verdict: verdict('passed'), rounds: [] }), session({ evidence: verdict('passed') }));
+    expect(part()).toHaveTextContent('Tests passed');
+    expect(document.querySelector('[data-session-id="a"] [data-field="evidence"]')).toBeNull();
+    before.unmount();
+    // A review that failed, the verdict ok: the part and the row are the same.
+    show(evidence({ verdict: verdict('passed'), rounds: [round({ outcome: 'failed' })] }), session({ evidence: verdict('passed') }));
+    expect(part()).toHaveTextContent('Tests passed');
+    expect(part()).toHaveAttribute('title', 'Tests passed after its last change');
+    expect(document.querySelector('[data-session-id="a"] [data-field="evidence"]')).toBeNull();
+  });
+
+  it('EVID-6.9: a reviewer without a model shows as its Harness alone', async () => {
+    show(evidence({ rounds: [{ ...dual, reviewers: [{ kind: 'headless', harness: 'codex', sessionId: CODEX_ID, transcriptMissing: false, model: null, effort: null }] }] }));
+    const { pop } = await openPopover();
+    expect(pop.querySelector('[data-field="reviewers"]')!.textContent).toBe('Codex');
+  });
+});
+
+it('DS-19.1: four tiles take two rows of two; three stay side by side', () => {
+  const { container, rerender } = render(<Tiles><Tile label="a" value="1" /><Tile label="b" value="2" /><Tile label="c" value="3" /></Tiles>);
+  expect(container.firstElementChild).toHaveClass('grid-cols-3');
+  rerender(<Tiles><Tile label="a" value="1" /><Tile label="b" value="2" /><Tile label="c" value="3" /><Tile label="d" value="4" /></Tiles>);
+  expect(container.firstElementChild).toHaveClass('grid-cols-2');
 });

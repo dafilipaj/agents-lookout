@@ -653,6 +653,8 @@ export function App({ client }: { client: LookoutClient }) {
   const libraryStatus = useCallback(() => client.libraryStatus(), [client]);
   const searchHistory = useCallback((q: Parameters<LookoutClient['history']>[0]) => client.history(q), [client]);
   const loadPast = useCallback((harness: HistoryItem['harness'], id: string) => client.pastSession(harness, id), [client]);
+  // EVID-6.6: a headless reviewer opens read-only, as HIST-3.3's Show opens a past Session.
+  const showReviewer = useCallback((harness: HistoryItem['harness'], id: string) => navigate({ name: 'past', harness, id }), [navigate]);
   const peekPast = useCallback((harness: HistoryItem['harness'], id: string) => client.pastPeek(harness, id), [client]);
   // HIST-3: a live Session is selected (3.2); one that can't be resumed opens read-only (3.3);
   // any other is resumed, its "Starting…" row selected as a start's is (3.1, LAUNCH-4.2).
@@ -1302,6 +1304,7 @@ export function App({ client }: { client: LookoutClient }) {
                 onChangesOpen={onChangesOpen}
                 onOpenChange={openChange}
                 onOpenSpec={openSpec}
+                onShowReviewer={showReviewer}
                 plainViewed={plainViewed}
                 ports={state.ports}
                 onShowServers={showServers}

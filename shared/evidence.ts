@@ -76,6 +76,45 @@ export interface TestFiles {
   deletions: number;
 }
 
+/** EVID-6.3: how a Review round ended, by the word the popover shows (EVID-6.5). */
+export type ReviewOutcome = 'finished' | 'failed' | 'timed-out' | 'stopped' | 'running' | 'unread';
+
+/** EVID-6.5: one reviewer of a Review round. */
+export type EvidenceReviewer =
+  | {
+      kind: 'headless';
+      /** Its Harness: "Codex" or "Claude Code". */
+      harness: 'codex' | 'claude';
+      /** Its Session, which EVID-6.6's button opens read-only. */
+      sessionId: string;
+      /** EVID-6.6: its Transcript is gone, so it's text, not a button. */
+      transcriptMissing: boolean;
+      /** EVID-6.9: as tb-session gives them, from 0.6.0; null before, or when its Transcript records none. */
+      model: string | null;
+      effort: string | null;
+    }
+  | {
+      kind: 'subagent';
+      /** EVID-6.9: as tb-session gives it; null when it gives none. */
+      model: string | null;
+      /** EVID-6.5: the Subagents with the same words, shown once. */
+      count: number;
+    };
+
+/** EVID-6.3, EVID-6.5: a Review round, as the popover lists it. */
+export interface EvidenceRound {
+  /** Its first run's key, unique within the Session. */
+  key: string;
+  outcome: ReviewOutcome;
+  /** The earliest start among its runs, ms since epoch. */
+  start: number;
+  /** The latest end among its runs; null while it runs (its duration is then now less its start). */
+  end: number | null;
+  /** EVID-6.5: the time's tooltip, its commands and Subagent descriptions, each whole up to 20,000 characters. */
+  runs: string[];
+  reviewers: EvidenceReviewer[];
+}
+
 /** EVID-5.2: a Session's Evidence, sent to every tab when it changes (`evidence` event). */
 export interface EvidenceView {
   sessionId: string;
@@ -102,7 +141,28 @@ export interface EvidenceView {
   listedFiles: number;
   /** EVID-5.11: every Test run, newest first. */
   runs: EvidenceRun[];
+  /** EVID-6.3, EVID-6.5: every Review round, the latest start first. */
+  rounds: EvidenceRound[];
+  /** EVID-6.4: changed files with a modification time later than the latest finished round's end; 0 without one. */
+  changedSinceReview: number;
 }
+
+/** EVID-6.5: the label's note: "2 · 1 running", each part left out at 0. */
+export function roundsNote(rounds: readonly Pick<EvidenceRound, 'outcome'>[]): string {
+  const count = (o: ReviewOutcome) => rounds.filter((r) => r.outcome === o).length;
+  const parts: [number, string][] = [[count('running'), 'running'], [count('failed'), 'failed'], [count('timed-out'), 'timed out'], [count('stopped'), 'stopped'], [count('unread'), 'unread']];
+  return [String(rounds.length), ...parts.filter(([n]) => n > 0).map(([n, w]) => `${n} ${w}`)].join(' · ');
+}
+
+/** EVID-6.5: a round's outcome in a word. */
+export const ROUND_WORD: Record<ReviewOutcome, string> = {
+  finished: 'finished',
+  failed: 'failed',
+  'timed-out': 'timed out',
+  stopped: 'stopped',
+  running: 'running',
+  unread: 'unread',
+};
 
 /** EVID-5.11: the label's note: "12 · 2 failed · 1 unread", each part left out at 0. */
 export function runsNote(runs: readonly Pick<EvidenceRun, 'outcome'>[]): string {

@@ -1,6 +1,6 @@
 import type { UsageLevel } from '@shared/usage.ts';
 import { ChevronRight } from 'lucide-react';
-import type { HTMLAttributes, ReactNode } from 'react';
+import { Children, type HTMLAttributes, type ReactNode } from 'react';
 import { UsageLevelIcon } from '@/components/UsageLevelIcon';
 import { MEMORY_GLYPH, MEMORY_TEXT } from '@/lib/memory';
 import { BAR_EDGE } from '@/lib/usage';
@@ -29,9 +29,10 @@ export function Verdict({ level, age, flagged = false, id, children }: { level: 
   );
 }
 
-/** DS-19.1: up to three tiles, side by side, their tops aligned. */
+/** DS-19.1: up to three tiles, side by side, their tops aligned; four take two rows of two (EVID-6.4). */
 export function Tiles({ children }: { children: ReactNode }) {
-  return <div className="grid grid-cols-3 gap-1.5">{children}</div>;
+  const four = Children.toArray(children).length === 4;
+  return <div className={four ? 'grid grid-cols-2 gap-1.5' : 'grid grid-cols-3 gap-1.5'} data-tiles={four ? '2x2' : undefined}>{children}</div>;
 }
 
 /**

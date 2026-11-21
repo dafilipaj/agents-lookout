@@ -105,6 +105,7 @@ export const TOOLS: Readonly<Record<ToolId, ToolDefinition>> = {
       { feature: 'History', version: '0.3.0', why: "HIST's Harness and Headless filters; 0.2 still lists" },
       { feature: 'the Library', version: '0.4.0', why: '`events` (LIB-2.1)' },
       { feature: 'Evidence', version: '0.5.0', why: '`events --kind command` (EVID-1.2)' },
+      { feature: "Review rounds by Subagents, and a reviewer's model", version: '0.6.0', why: '`events --kind agent` and a Session\'s `model` and `effort` (EVID-6.9)' },
     ],
     checkedUpTo: null,
     versionArgv: ['--version'],

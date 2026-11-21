@@ -1,15 +1,18 @@
-import { OUTCOME_WORD, runsNote, type EvidenceFile, type EvidenceRun, type EvidenceView, type RowEvidence, type VerdictTone } from '@shared/evidence.ts';
+import { OUTCOME_WORD, ROUND_WORD, roundsNote, runsNote, type EvidenceFile, type EvidenceReviewer, type EvidenceRound, type EvidenceRun, type EvidenceView, type RowEvidence, type VerdictTone } from '@shared/evidence.ts';
 import { ChevronUp, CircleCheck, Info, TriangleAlert } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { SectionLabel, Tile, Tiles, Verdict } from '@/components/ui/details';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { splitPath } from '@/lib/changes';
-import { clock, doneFacts, number, plural, TONE_TEXT } from '@/lib/evidence';
+import { clock, doneFacts, number, plural, reviewerWords, reviewState, ROUND_VALUE, TONE_TEXT } from '@/lib/evidence';
+import { HARNESS_NAME } from '@/lib/sessions';
 import { formatAge, useNow } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { ChangesCount } from './ChangesCount';
 
+/** EVID-5.11: outcomes in the warning colour; EVID-6.5: in the normal text colour, never the warning one. */
+const BAD = new Set(['failed', 'timed-out']);
 /** EVID-5.10, EVID-5.11: rows before "N more". */
 export const RUNS_SHOWN = 20;
 /** DIFF-4.5: how long a file's row shows why it didn't open, as the changed-files list does. */
@@ -32,6 +35,8 @@ export interface EvidenceActions {
   onOpenFile(file: EvidenceFile): Promise<void>;
   /** EVID-5.4: closes the popover and opens the changed-files list (DIFF-3). */
   onOpenChanges(): void;
+  /** EVID-6.6: closes the popover and opens a headless reviewer's Session read-only (HIST-3.3). */
+  onShowReviewer(harness: 'codex' | 'claude', sessionId: string): void;
 }
 
 interface PopoverProps extends EvidenceActions {
@@ -68,8 +73,8 @@ export function EvidencePopover({ view, open, onOpenChange, trigger, side, align
   );
 }
 
-/** EVID-5.2 to 5.4, 5.10, 5.11: the verdict, three tiles, what changed since the last pass, and the runs. */
-export function EvidenceDetails({ view, onOpenFile, onOpenChanges }: { view: EvidenceView } & EvidenceActions) {
+/** EVID-5.2 to 5.4, 5.10, 5.11, EVID-6.4, 6.5: the verdict, four tiles, what changed since the last pass, the Review rounds and the runs. */
+export function EvidenceDetails({ view, onOpenFile, onOpenChanges, onShowReviewer }: { view: EvidenceView } & EvidenceActions) {
   const now = useNow();
   const age = formatAge(Math.max(0, now - view.readAt));
   const t = view.testFiles;
@@ -114,9 +119,11 @@ export function EvidenceDetails({ view, onOpenFile, onOpenChanges }: { view: Evi
           <Tile label="Test files" value={testValue} field="tile-test-files" onClick={onOpenChanges} aria-label={testName}>
             {testLine}
           </Tile>
+          <ReviewTile view={view} />
         </Tiles>
       </header>
-      {lastPass && view.changedSinceFiles.length > 0 && <ChangedSince view={view} onOpenFile={onOpenFile} onOpenChanges={onOpenChanges} />}
+      {lastPass && view.changedSinceFiles.length > 0 && <ChangedSince view={view} onOpenFile={onOpenFile} onOpenChanges={onOpenChanges} onShowReviewer={onShowReviewer} />}
+      {(view.rounds ?? []).length > 0 && <Reviews rounds={view.rounds} now={now} onShowReviewer={onShowReviewer} />}
       <Runs runs={view.runs} />
     </div>
   );
@@ -181,6 +188,89 @@ function ChangedSince({ view, onOpenFile, onOpenChanges }: { view: EvidenceView 
   );
 }
 
+/** EVID-6.4: the Review tile: a running round, else the latest finished one, else the latest's outcome, else none. Text, never a warning. */
+function ReviewTile({ view }: { view: EvidenceView }) {
+  const rounds = view.rounds ?? [];
+  const { running, finished, latest } = reviewState(rounds);
+  const count = plural(rounds.length, 'round');
+  let value: string;
+  let line: string;
+  if (running) {
+    value = 'Running';
+    line = `since ${clock(running.start)}${rounds.length > 1 ? ` · ${count}` : ''}`;
+  } else if (finished) {
+    value = clock(finished.end!);
+    line = [count, view.changedSinceReview ? `${plural(view.changedSinceReview, 'file')} since` : null].filter(Boolean).join(' · ');
+  } else if (latest) {
+    value = ROUND_VALUE[latest.outcome as keyof typeof ROUND_VALUE] ?? 'Unread';
+    line = count;
+  } else {
+    value = 'None';
+    line = 'no review run';
+  }
+  return (
+    <Tile label="Review" value={value} field="tile-review">
+      {line}
+    </Tile>
+  );
+}
+
+/** EVID-6.5, EVID-6.6: the Review rounds, the latest start first; each headless reviewer opens its Session read-only. */
+function Reviews({ rounds, now, onShowReviewer }: { rounds: readonly EvidenceRound[]; now: number } & Pick<EvidenceActions, 'onShowReviewer'>) {
+  return (
+    <section className="px-3.5 py-3" aria-label="Reviews" data-section="reviews">
+      <SectionLabel className="mb-1" note={roundsNote(rounds)}>Reviews</SectionLabel>
+      <ul className="flex flex-col gap-0.5 text-meta">
+        {rounds.map((r) => <RoundRow key={r.key} round={r} now={now} onShowReviewer={onShowReviewer} />)}
+      </ul>
+    </section>
+  );
+}
+
+function RoundRow({ round, now, onShowReviewer }: { round: EvidenceRound; now: number } & Pick<EvidenceActions, 'onShowReviewer'>) {
+  const at = clock(round.end ?? round.start);
+  const took = formatAge(Math.max(0, (round.end ?? now) - round.start));
+  return (
+    <li className="flex min-w-0 items-baseline gap-2" data-round={round.key} data-outcome={round.outcome}>
+      <span className="shrink-0 text-muted-foreground tabular-nums" title={round.runs.join('\n')} data-field="round-time">{at}</span>
+      {/* EVID-6.8: a review is a fact, never a warning: no warning colour, even for one that failed. */}
+      <span className={cn('w-14 shrink-0', round.outcome === 'finished' || BAD.has(round.outcome) ? 'text-foreground' : 'text-muted-foreground')} data-field="outcome">
+        {ROUND_WORD[round.outcome]}
+      </span>
+      <span className="w-7 shrink-0 tabular-nums text-muted-foreground" data-field="took">{took}</span>
+      {/* EVID-6.5: reviewers that don't fit go on to more lines, under the first. */}
+      <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-1" data-field="reviewers">
+        {round.reviewers.map((r, i) => (
+          <span key={r.kind === 'headless' ? r.sessionId : `subagent:${r.model ?? ''}`} className="flex min-w-0 max-w-full items-baseline gap-1">
+            {i > 0 && <span aria-hidden className="text-muted-foreground">+</span>}
+            <Reviewer reviewer={r} at={at} onShowReviewer={onShowReviewer} />
+          </span>
+        ))}
+      </span>
+    </li>
+  );
+}
+
+/** EVID-6.6: a headless reviewer is a button that opens it read-only; a Subagent, or one whose Transcript is gone, is text. */
+function Reviewer({ reviewer, at, onShowReviewer }: { reviewer: EvidenceReviewer; at: string } & Pick<EvidenceActions, 'onShowReviewer'>) {
+  const words = reviewerWords(reviewer);
+  if (reviewer.kind === 'subagent' || reviewer.transcriptMissing) {
+    return <span className="min-w-0 truncate text-muted-foreground" title={words} data-reviewer={reviewer.kind}>{words}</span>;
+  }
+  return (
+    <button
+      type="button"
+      data-reviewer="headless"
+      className="min-w-0 truncate rounded-sm px-1 -mx-1 text-left text-foreground outline-none hover:bg-accent focus-visible:bg-accent focus-visible:ring-2 focus-visible:ring-ring/50"
+      title={words}
+      aria-label={`Show the ${HARNESS_NAME[reviewer.harness]} review of ${at}`}
+      onClick={() => onShowReviewer(reviewer.harness, reviewer.sessionId)}
+    >
+      {words}
+    </button>
+  );
+}
+
 /** EVID-5.11: the Test runs, newest first, one line each; the label's note counts them. */
 function Runs({ runs }: { runs: readonly EvidenceRun[] }) {
   const [all, setAll] = useState(false);
@@ -204,7 +294,6 @@ function Runs({ runs }: { runs: readonly EvidenceRun[] }) {
   );
 }
 
-const BAD = new Set(['failed', 'timed-out']);
 
 function RunRow({ run }: { run: EvidenceRun }) {
   const total = (run.passed ?? 0) + (run.failed ?? 0);

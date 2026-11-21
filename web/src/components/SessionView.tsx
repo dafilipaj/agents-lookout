@@ -1,6 +1,6 @@
 import type { LocalServer, PortsSnapshot } from '@shared/ports.ts';
 import type { EvidenceView } from '@shared/evidence.ts';
-import type { AnswerRequest, ChangesView, ChatPage, EndTarget, RenameResult, SessionRow } from '@shared/types.ts';
+import type { AnswerRequest, ChangesView, ChatPage, EndTarget, Harness, RenameResult, SessionRow } from '@shared/types.ts';
 import { Check, ChevronDown, CircleCheck, CircleSlash, FolderGit2, GitBranch, Hourglass, Info, Paperclip, SendHorizontal, TerminalSquare } from 'lucide-react';
 import { type ComponentPropsWithRef, type ComponentPropsWithoutRef, type KeyboardEvent, type PointerEvent, type ReactNode, type RefObject, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Alert } from '@/components/ui/alert';
@@ -126,6 +126,8 @@ export interface SessionViewProps {
   onOpenChange?(sessionId: string, root: string, path: string): Promise<void>;
   /** PLAIN-3.1: a changed `.plain` file opens in the Spec view. */
   onOpenSpec?(sessionId: string, checkout: string, path: string): void;
+  /** EVID-6.6: a headless reviewer's Session opens read-only, as HIST-3.3's Show opens one. */
+  onShowReviewer?(harness: Harness, sessionId: string): void;
   /** PLAIN-3.3: the Checkout's changed Modules that are Viewed. */
   plainViewed?(sessionId: string, checkout: string): Promise<string[]>;
   /** PORTS-2: the Local servers, as the server last sent them; the chip shows this Session's. */
@@ -180,6 +182,7 @@ export function SessionView({
   evidence,
   onOpenChange,
   onOpenSpec,
+  onShowReviewer,
   plainViewed,
   ports,
   onShowServers,
@@ -356,6 +359,11 @@ export function SessionView({
         onOpenChanges={() => {
           toChanges.current = true;
           setEvidenceOpen(null);
+        }}
+        onShowReviewer={(harness, id) => {
+          // EVID-6.6: the popover closes and the reviewer opens in the main pane.
+          setEvidenceOpen(null);
+          onShowReviewer?.(harness, id);
         }}
         onCloseAutoFocus={(e) => {
           if (toChanges.current) {

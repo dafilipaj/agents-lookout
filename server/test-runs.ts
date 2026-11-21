@@ -400,6 +400,9 @@ export interface CommandRow {
   exitCode: number | null;
   outputTail: string | null;
   subagent: boolean;
+  /** EVID-6.1: the record's working directory, and the tool call's time; null when tb-session gives none. */
+  cwd?: string | null;
+  startedAt?: number | null;
 }
 
 /** EVID-2: a Test run, or null for a command that isn't one. */

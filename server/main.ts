@@ -151,6 +151,8 @@ const evidence = new Evidence({
   checkouts: (sessionId) => changes.checkouts(sessionId),
   broadcast: (e) => app.broadcast(e),
   onRowsChanged: () => monitor.refreshDerived(),
+  // EVID-6.2: Subagent calls are asked for from the tb-session that has them.
+  toolVersion: () => tools.version('tb-session'),
 });
 // DIFF-4.3: base copies older than a day go, at start and once a day.
 void changes.prune();
@@ -223,7 +225,11 @@ const tools: ToolsMonitor = new ToolsMonitor({
   env,
   harnesses: (force) => launcher.harnessFacts(force),
   jev: () => usage.jevStatus(),
-  onChange: (t) => app.broadcast({ type: 'tools', tools: t }),
+  onChange: (t) => {
+    app.broadcast({ type: 'tools', tools: t });
+    // EVID-6.2: a tb-session version that changes whether Subagent calls can be asked for reads again.
+    evidence.toolsChanged();
+  },
 });
 
 const memory = new MemoryMonitor({
