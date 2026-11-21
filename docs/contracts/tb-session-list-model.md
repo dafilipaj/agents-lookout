@@ -19,7 +19,7 @@ effort   // the reasoning effort it last ran with, as its Transcript names it, o
 | Harness | `model` | `effort` |
 |---|---|---|
 | Codex | the last `turn_context` record's `payload.model` | that record's `payload.effort` |
-| Claude Code | the last assistant record's `message.model` | that record's `effort` (seen 2026-11-21 on a headless run's records, beside `message.model`), else null |
+| Claude Code | the last assistant record's `message.model`, Claude Code's `<synthetic>` placeholders and records of another Transcript (`isSidechain` unlike the Transcript's own) left out | that record's `effort` (seen 2026-11-21 on a headless run's records, beside `message.model`), else null |
 | Pi | null | null |
 
 - "Last" is the last such record in the Transcript, so a Session that switched model mid-way gives the one it ended on.
