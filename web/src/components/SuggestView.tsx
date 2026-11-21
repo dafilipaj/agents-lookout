@@ -1,6 +1,6 @@
-import { MAX_SUGGEST_NOTE, MAX_TOPIC_TITLE, type Proposal, type ProposalAccept, type SuggestPreview, type TopicsView, formatCost, modelName } from '@shared/topics.ts';
+import { MAX_SUGGEST_NOTE, MAX_TOPIC_TITLE, type Proposal, type ProposalAccept, type Recommendation, type RecommendationAction, type SuggestPreview, type TopicsView, formatCost, modelName } from '@shared/topics.ts';
 import type { SessionRow } from '@shared/types.ts';
-import { ArrowRight, Check, X } from 'lucide-react';
+import { ArrowRight, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Loading } from '@/components/ui/loading';
 import { formatAge } from '@/lib/time';
 import { ActionIcon } from '@/lib/actions';
-import { MemberMark } from './Recommendations';
+import { MemberMark, Recommendations } from './Recommendations';
 import { PlainView } from './Shell';
 
 export interface SuggestViewProps {
@@ -22,6 +22,9 @@ export interface SuggestViewProps {
   cancelSuggest(): Promise<unknown>;
   acceptProposal(id: string, accept: ProposalAccept): Promise<unknown>;
   dismissProposal(id: string): Promise<unknown>;
+  /** TOPIC-14.5: Accept, Dismiss or Other Topic… on a "New Topic" recommendation Jev made before slice 8. */
+  recommend(action: RecommendationAction): Promise<unknown>;
+  onOtherTopic(rec: Recommendation): void;
 }
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
@@ -63,6 +66,8 @@ export function SuggestView({ view, sessions, now, ...props }: SuggestViewProps)
   };
   const ordered = [...proposals].sort((a, b) => (a.kind === b.kind ? 0 : a.kind === 'new' ? -1 : 1));
   const topics = view?.state === 'ok' ? view.topics : [];
+  // TOPIC-9.4, TOPIC-14.5: Jev's old "New Topic" recommendations have no Topic to sit on in the tab.
+  const fromJev = view?.state === 'ok' ? view.recommendations.filter((r) => r.topicId === null) : [];
   return (
     <PlainView
       aria-label="Suggest Topics"
@@ -100,6 +105,14 @@ export function SuggestView({ view, sessions, now, ...props }: SuggestViewProps)
           <Alert title="No Topics were suggested" detail={state.error.reason} data-field="suggest-error">
             {state.error.fix && <CommandBlock>{state.error.fix}</CommandBlock>}
           </Alert>
+        )}
+        {fromJev.length > 0 && (
+          <section aria-labelledby="suggest-from-jev" className="flex min-w-0 flex-col gap-1.5 rounded-lg border border-border p-3" data-field="suggest-from-jev">
+            <h2 id="suggest-from-jev" className="text-title font-semibold">
+              From Jev
+            </h2>
+            <Recommendations label="From Jev" recommendations={fromJev} topics={topics} sessions={sessions} showTopic recommend={props.recommend} onOtherTopic={props.onOtherTopic} onProblem={setProblem} />
+          </section>
         )}
         {ordered.length === 0 && state?.run && !running && <p className="text-body text-muted-foreground">Nothing is waiting. Everything proposed was accepted or dismissed.</p>}
         {ordered.map((p) => (
@@ -185,11 +198,11 @@ function ProposalCard({ proposal: p, topics, sessions, accept, dismiss }: { prop
           data-action="accept-proposal"
           onClick={() => run(accept({ ...(p.kind === 'new' ? { title, note } : {}), members: [...members], edges: [...edges] }), "Couldn't accept it.")}
         >
-          <Check />
+          <ActionIcon id="accept" />
           Accept
         </Button>
         <Button variant="secondary" size="default" disabled={busy} data-action="dismiss-proposal" onClick={() => run(dismiss(), "Couldn't dismiss it.")}>
-          <X />
+          <ActionIcon id="dismiss" />
           Dismiss
         </Button>
       </div>

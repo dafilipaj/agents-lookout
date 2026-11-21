@@ -142,4 +142,47 @@ describe('RowDetails (DS-21)', () => {
     await user.keyboard('{Enter}');
     expect(lines()).toHaveLength(5);
   });
+  it('DS-21.2: a count of items waiting on you opens when the row expands, however many it holds; each line puts its reason under its name with one Secondary line button and a More of its own; its presses never reach the row', async () => {
+    const accept = vi.fn();
+    const dismiss = vi.fn();
+    const onRow = vi.fn();
+    const waiting: RowLinkGroup = {
+      kind: 'recommended',
+      noun: ['recommended', 'recommended'],
+      eager: true,
+      items: [1, 2, 3, 4].map((n) => ({ key: `r${n}`, glyph: <svg data-glyph />, name: `Item ${n}`, label: `Item ${n}, reason ${n}`, decide: { why: `reason ${n}`, primary: { action: 'accept', onPress: () => accept(n) }, more: [{ id: 'dismiss', action: 'dismiss', onSelect: () => dismiss(n) }] } })),
+    };
+    const user = userEvent.setup();
+    render(
+      <div role="list" aria-label="Rows">
+        <div role="listitem" onClick={onRow}>
+          <RowDetails id="d" focusable state={[]} links={[group('sessions', 2), waiting]} actions={<div data-field="actions" />} />
+        </div>
+      </div>,
+    );
+    expect(counts().map((c) => [c.textContent, c.getAttribute('aria-expanded')])).toEqual([
+      ['2 Sessions', 'false'],
+      ['4 recommended', 'true'],
+    ]);
+    const groups = screen.getAllByRole('group');
+    expect(groups).toHaveLength(3);
+    expect(screen.getByText('Show all 4')).toBeInTheDocument();
+    const first = screen.getByRole('group', { name: 'Item 1, reason 1' });
+    const reason = first.querySelector<HTMLElement>('[data-field="reason"]')!;
+    expect(reason).toHaveTextContent('reason 1');
+    expect(reason).toHaveClass('text-meta', 'truncate');
+    expect(first.querySelector('[data-field="item"]')!.compareDocumentPosition(reason) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const button = within(first).getByRole('button', { name: 'Accept' });
+    expect(button).toHaveAttribute('data-variant', 'secondary');
+    expect(button).toHaveAttribute('data-size', 'line');
+    await user.click(button);
+    expect(accept).toHaveBeenCalledWith(1);
+    const moreButton = within(first).getByRole('button', { name: 'More for Item 1' });
+    // An IconButton, its trigger's own data-slot set by the menu.
+    expect(moreButton).toHaveAttribute('data-size', 'sm');
+    await user.click(moreButton);
+    await user.click(screen.getByRole('menuitem', { name: 'Dismiss' }));
+    expect(dismiss).toHaveBeenCalledWith(1);
+    expect(onRow).not.toHaveBeenCalled();
+  });
 });

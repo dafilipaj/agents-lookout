@@ -1,5 +1,5 @@
 import type { OutputSession } from '@shared/library.ts';
-import { type MemberKind, type NewMember, type SummaryState, type Topic, type TopicEdge, type TopicMember, type TopicOutcome, type TopicsView, historyMember, memberKey, sortTopics } from '@shared/topics.ts';
+import { type MemberKind, type NewMember, type Recommendation, type SummaryState, type Topic, type TopicEdge, type TopicMember, type TopicOutcome, type TopicsView, historyMember, memberKey, sortTopics } from '@shared/topics.ts';
 export { historyMember, prMember, rowMember, sessionMember, taskMember } from '@shared/topics.ts';
 import type { SessionRow, Status } from '@shared/types.ts';
 import type { WorkPr, WorkSnapshot, WorkTask } from '@shared/work.ts';
@@ -231,3 +231,6 @@ export function useTopicLinks(members: readonly NewMember[]): RowLinkGroup | nul
     })),
   };
 }
+
+/** TOPIC-9.4: a recommendation's item as its row names it: a PR's repo and number before its title. */
+export const recommendationTitle = (r: Recommendation) => (r.member.kind === 'pr' ? `${r.member.snapshot.repo} #${r.member.snapshot.number} ${r.member.snapshot.title}` : r.member.snapshot.title);

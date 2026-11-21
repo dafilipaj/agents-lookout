@@ -1,6 +1,9 @@
 import { ChevronRight } from 'lucide-react';
-import { Fragment, type KeyboardEvent, type MouseEvent, type ReactNode, useContext, useState } from 'react';
-import { RowSettling } from '@/components/ui/icon-button';
+import { Fragment, type KeyboardEvent, type MouseEvent, type ReactNode, useContext, useRef, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { IconButton, RowSettling } from '@/components/ui/icon-button';
+import { ActionIcon, type ActionId, actionWord } from '@/lib/actions';
 import { cn } from '@/lib/utils';
 
 /**
@@ -15,7 +18,20 @@ export function RowTitle({ expanded, className, children, ...rest }: { expanded:
   );
 }
 
-/** DS-21.2: one link of a row: a Session, a PR, a Task or a Topic. */
+/**
+ * DS-21.2: an item waiting on you, a Topic's recommendation (TOPIC-9.4): why, under its name, and
+ * what you can do with it.
+ */
+export interface RowLinkDecision {
+  /** Its reason, in `meta`, cut to its line; the whole in its hover. */
+  why: string;
+  /** Its one action, a Secondary `line` button: the row's Soft action stays its only one (DS-18.4). */
+  primary: { action: ActionId; label?: string; onPress(): void };
+  /** The rest, under a More of its own. */
+  more: readonly { id: string; action: ActionId; label?: string; onSelect(): void }[];
+}
+
+/** DS-21.2: one link of a row: a Session, a PR, a Task or a Topic, or an item waiting on you. */
 export interface RowLink {
   key: string;
   /** A Session's Status marker (DS-5.1), or the kind's icon. */
@@ -35,14 +51,18 @@ export interface RowLink {
   action?: string;
   sessionId?: string;
   topicId?: string;
+  /** An item waiting on you: its line puts its reason and actions under its name. */
+  decide?: RowLinkDecision;
 }
 
 /** DS-21.2: the links of one kind, as a count: "3 Sessions". */
 export interface RowLinkGroup {
-  kind: 'sessions' | 'prs' | 'tasks' | 'topics';
+  kind: 'sessions' | 'prs' | 'tasks' | 'topics' | 'recommended';
   /** The noun, one and many: ["Session", "Sessions"]. */
   noun: readonly [string, string];
   items: readonly RowLink[];
+  /** Items waiting on you: open when the row expands, however many it holds. */
+  eager?: boolean;
 }
 
 /** DS-21.2: an open count lists this many lines, then "Show all N". */
@@ -79,6 +99,11 @@ function usePress(run: (() => void) | undefined, focusable: boolean, enabled = t
  * end. A press does what WORK-4.10's chip did, with the same accessible name and hover.
  */
 export function LinkLine({ link, focusable = false }: { link: RowLink; focusable?: boolean }) {
+  if (link.decide) return <DecisionLine link={link} decide={link.decide} focusable={focusable} />;
+  return <PlainLine link={link} focusable={focusable} />;
+}
+
+function PlainLine({ link, focusable }: { link: RowLink; focusable: boolean }) {
   const press = usePress(link.onPress, focusable, link.enabled !== false);
   const body = (
     <>
@@ -112,6 +137,87 @@ export function LinkLine({ link, focusable = false }: { link: RowLink; focusable
   );
 }
 
+/**
+ * DS-21.2: an item waiting on you: its marks and name, then its reason with its one action, a
+ * Secondary `line` button, and a More of its own. Its presses are its own, never the row's.
+ */
+function DecisionLine({ link, decide, focusable }: { link: RowLink; decide: RowLinkDecision; focusable: boolean }) {
+  const settling = useContext(RowSettling);
+  const off = settling || link.enabled === false;
+  const tab = focusable ? undefined : -1;
+  const own = (e: { stopPropagation(): void }) => e.stopPropagation();
+  // As RowActions' home(): focus is on More before an item acts, so a dialog the item opens (the
+  // Topic picker) has a place to give it back to once the menu and its items are gone.
+  const moreRef = useRef<HTMLButtonElement>(null);
+  return (
+    <div role="group" aria-label={link.label} data-field="link" data-decide="" className={cn('flex min-w-0 flex-col py-0.5', link.enabled === false && 'opacity-50')}>
+      <span className="flex h-6 min-w-0 items-center gap-1.5 px-1 text-body" title={link.tip}>
+        <span className="flex shrink-0 items-center gap-1.5 text-muted-foreground [&_svg:not([class*='size-'])]:size-3.5">{link.glyph}</span>
+        <span className="min-w-0 flex-1 truncate" data-field="item">
+          {link.name}
+        </span>
+        {link.state && <span className="shrink-0 text-meta text-muted-foreground">{link.state}</span>}
+      </span>
+      <span className="flex min-w-0 items-center gap-1 pr-1 pl-6">
+        <span className="min-w-0 flex-1 truncate text-meta text-muted-foreground" title={decide.why} data-field="reason">
+          {decide.why}
+        </span>
+        <Button
+          type="button"
+          variant="secondary"
+          size="line"
+          tabIndex={tab}
+          disabled={off}
+          data-action={decide.primary.action}
+          onClick={(e) => {
+            own(e);
+            if (e.detail <= 1) decide.primary.onPress();
+          }}
+        >
+          <ActionIcon id={decide.primary.action} />
+          {decide.primary.label ?? actionWord(decide.primary.action)}
+        </Button>
+        {decide.more.length > 0 && (
+          <DropdownMenu modal={false}>
+            <DropdownMenuTrigger asChild>
+              <IconButton ref={moreRef} size="sm" label={`More for ${link.name}`} tip={actionWord('more')} tabIndex={tab} disabled={off} data-action="more" onClick={own}>
+                <ActionIcon id="more" />
+              </IconButton>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              className="min-w-44 [&_svg:not([class*='size-'])]:size-4"
+              data-slot="row-menu"
+              onClick={own}
+              onKeyDown={own}
+              onCloseAutoFocus={(e) => {
+                // Back to More, unless focus went on to another control (the picker's filter).
+                e.preventDefault();
+                const now = document.activeElement;
+                if (!now || now === document.body || !now.isConnected || !!now.closest('[data-slot="row-menu"]')) moreRef.current?.focus();
+              }}
+            >
+              {decide.more.map((m) => (
+                <DropdownMenuItem
+                  key={m.id}
+                  data-action={m.id}
+                  onSelect={() => {
+                    moreRef.current?.focus();
+                    m.onSelect();
+                  }}
+                >
+                  <ActionIcon id={m.action} />
+                  <span className="min-w-0 truncate">{m.label ?? actionWord(m.action)}</span>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </span>
+    </div>
+  );
+}
+
 /** "3 Sessions", "1 PR". */
 export const countWords = (n: number, [one, many]: readonly [string, string]) => `${n} ${n === 1 ? one : many}`;
 
@@ -136,9 +242,10 @@ function Count({ group, open, focusable, onToggle }: { group: RowLinkGroup; open
 }
 
 /**
- * DS-21.2: a row's links as counts on one line, each a disclosure. The first is open when the row
- * expands if it holds LINKS_SHOWN or fewer; opening one closes the other. An open one lists its
- * links in place, LINKS_SHOWN of them, then "Show all N".
+ * DS-21.2: a row's links as counts on one line, each a disclosure. A count of items waiting on you
+ * (`eager`) is open when the row expands; else the first is, if it holds LINKS_SHOWN or fewer.
+ * Opening one closes the other. An open one lists its links in place, LINKS_SHOWN of them, then
+ * "Show all N".
  */
 export function RowLinks({ groups, focusable = false }: { groups: readonly RowLinkGroup[]; focusable?: boolean }) {
   const shown = groups.filter((g) => g.items.length > 0);
@@ -148,9 +255,12 @@ export function RowLinks({ groups, focusable = false }: { groups: readonly RowLi
   const [picked, setPicked] = useState<{ kind: RowLinkGroup['kind'] | null } | null>(null);
   // Once open on its own, it stays open as it grows past LINKS_SHOWN: no list closes under the pointer.
   const [auto, setAuto] = useState<RowLinkGroup['kind'] | null>(null);
-  const derived = first && first.items.length <= LINKS_SHOWN ? first.kind : null;
-  if (!picked && !auto && derived) setAuto(derived);
-  const open = picked ? picked.kind : (auto ?? derived);
+  const eager = shown.find((g) => g.eager);
+  const derived = eager ? eager.kind : first && first.items.length <= LINKS_SHOWN ? first.kind : null;
+  // One that opened on its own and has gone (the last recommendation accepted) gives way to the rule.
+  const live = auto !== null && shown.some((g) => g.kind === auto) ? auto : null;
+  if (!picked && !live && derived && derived !== auto) setAuto(derived);
+  const open = picked ? picked.kind : (live ?? derived);
   const [all, setAll] = useState(false);
   const showAll = usePress(() => setAll(true), focusable);
   if (!shown.length) return null;

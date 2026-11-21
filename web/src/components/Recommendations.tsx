@@ -1,11 +1,12 @@
 import type { NewMember, Recommendation, RecommendationAction, Topic } from '@shared/topics.ts';
 import type { SessionRow } from '@shared/types.ts';
-import { ArrowRight, Check, FolderInput, RotateCcw, TriangleAlert, X } from 'lucide-react';
+import { ArrowRight, RotateCcw, TriangleAlert } from 'lucide-react';
 import { useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { SessionMarker } from '@/components/ui/session-marker';
-import { liveRow } from '@/lib/topics';
+import { ActionIcon } from '@/lib/actions';
+import { liveRow, recommendationTitle } from '@/lib/topics';
 import { HarnessIcon } from './HarnessIcon';
 import { TaskStatusDot } from './TaskStatusDot';
 import { PrIcon } from './WorkPanel';
@@ -14,7 +15,7 @@ export interface RecommendationsProps {
   recommendations: readonly Recommendation[];
   topics: readonly Topic[];
   sessions: ReadonlyMap<string, SessionRow>;
-  /** In the list at the top, each row names its Topic; inside an expanded Topic it's that one. */
+  /** In the Suggest view, each names its new Topic (TOPIC-14.5); in a Topic view it's that one. */
   showTopic: boolean;
   recommend(action: RecommendationAction): Promise<unknown>;
   /** "Other Topic…": the Topic picker, for this recommendation. */
@@ -25,9 +26,11 @@ export interface RecommendationsProps {
 }
 
 /**
- * TOPIC-9.4: pending recommendations, newest first: the item as its row would look, the Topic or
- * "New Topic: <title>", and the reason, with Accept, Other Topic… and Dismiss. Nothing is added
- * until you press one (TOPIC-9.5).
+ * TOPIC-10.5, TOPIC-14.5: pending recommendations as a list, newest first, in a Topic view (its own)
+ * and in the Suggest view (the "New Topic" ones Jev made before slice 8): the item as its row would
+ * look, the Topic or "New Topic: <title>", and the reason, with Accept, Other Topic… and Dismiss.
+ * The Topics tab draws them on their Topics instead (TOPIC-9.4). Nothing is added until you press
+ * one (TOPIC-9.5).
  */
 export function Recommendations({ recommendations, topics, sessions, showTopic, recommend, onOtherTopic, onProblem, label = 'Recommended' }: RecommendationsProps) {
   const [busy, setBusy] = useState<string | null>(null);
@@ -43,7 +46,7 @@ export function Recommendations({ recommendations, topics, sessions, showTopic, 
     <div role="list" aria-label={label} className="flex min-w-0 flex-col gap-1" data-field="recommendations">
       {recommendations.map((r) => {
         const target = r.topicId === null ? `New Topic: ${r.newTitle}` : (topics.find((t) => t.id === r.topicId)?.title ?? 'a Topic');
-        const title = r.member.kind === 'pr' ? `${r.member.snapshot.repo} #${r.member.snapshot.number} ${r.member.snapshot.title}` : r.member.snapshot.title;
+        const title = recommendationTitle(r);
         const off = busy === id(r);
         return (
           <div key={id(r)} role="listitem" aria-label={`${title}, for ${target}`} className="flex min-w-0 flex-col gap-0.5" data-field="recommendation">
@@ -53,7 +56,7 @@ export function Recommendations({ recommendations, topics, sessions, showTopic, 
                 {title}
               </span>
             </div>
-            {/* The Topic on its own line, so neither it nor the item is cut to a few letters in a 360 px tab. */}
+            {/* The Topic on its own line, so neither it nor the item is cut to a few letters. */}
             {showTopic && (
               <div className="flex min-w-0 items-center gap-1.5 pl-0.5">
                 <ArrowRight aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
@@ -67,15 +70,15 @@ export function Recommendations({ recommendations, topics, sessions, showTopic, 
             </span>
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <Button type="button" variant="soft" size="line" disabled={off} onClick={() => act(r, 'accept')}>
-                <Check />
+                <ActionIcon id="accept" />
                 Accept
               </Button>
               <Button type="button" variant="secondary" size="line" disabled={off} onClick={() => onOtherTopic(r)}>
-                <FolderInput />
+                <ActionIcon id="other-topic" />
                 Other Topic…
               </Button>
               <Button type="button" variant="secondary" size="line" disabled={off} onClick={() => act(r, 'dismiss')}>
-                <X />
+                <ActionIcon id="dismiss" />
                 Dismiss
               </Button>
             </div>

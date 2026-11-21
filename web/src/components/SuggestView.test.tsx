@@ -104,4 +104,21 @@ describe('Suggest Topics (TOPIC-14)', () => {
     expect(app.client.dismissProposal).toHaveBeenCalledWith('1:1');
     await waitFor(() => expect(within(card).getByText('That proposal is no longer pending.')).toBeInTheDocument());
   });
+  it('TOPIC-14.5, TOPIC-9.4: above the proposals, under "From Jev", the "New Topic" recommendations Jev made before slice 8, with Accept, Other Topic… and Dismiss', async () => {
+    const OLD = { key: PR.key, member: { kind: PR.kind, ref: PR.ref, snapshot: PR.snapshot }, topicId: null, newTitle: 'Anvil care', source: 'jev', confidence: 0.71, reason: 'Jev, 71%', createdAt: NOW - 1_000 } as const;
+    const app = renderApp('/topics/suggest');
+    app.snapshot([row({ id: 'alpha' })]);
+    app.emit({ type: 'topics', topics: { ...suggestView({ proposals: [ADD] }), recommendations: [OLD] } });
+    const user = userEvent.setup();
+    const section = view().querySelector<HTMLElement>('[data-field="suggest-from-jev"]')!;
+    expect(within(section).getByRole('heading', { name: 'From Jev' })).toBeInTheDocument();
+    expect(section.compareDocumentPosition(view().querySelector('[data-proposal="1:1"]')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const one = within(section).getByRole('listitem', { name: /anvil #7 Sharpen the anvil, for New Topic: Anvil care/ });
+    expect(one.querySelector('[data-field="reason"]')).toHaveTextContent('Jev, 71%');
+    expect(within(one).getAllByRole('button').map((b) => b.textContent)).toEqual(['Accept', 'Other Topic…', 'Dismiss']);
+    await user.click(within(one).getByRole('button', { name: 'Accept' }));
+    expect(app.client.recommend).toHaveBeenCalledWith({ action: 'accept', key: PR.key, topicId: null });
+    app.emit({ type: 'topics', topics: suggestView({ proposals: [ADD] }) });
+    expect(view().querySelector('[data-field="suggest-from-jev"]')).toBeNull();
+  });
 });

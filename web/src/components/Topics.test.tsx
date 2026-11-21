@@ -568,24 +568,58 @@ describe('recommendations (TOPIC-9)', () => {
   const fromLink: Recommendation = { key: memberKey('session', FIX.ref), member: FIX, topicId: id(1), newTitle: null, source: 'link', confidence: null, reason: 'started on PR #812', createdAt: NOW - 1_000 };
   const fromJev: Recommendation = { key: memberKey('pr', PR_MEMBER.ref), member: PR_MEMBER, topicId: null, newTitle: 'Sharpen the anvil corners', source: 'jev', confidence: 0.71, reason: 'Jev, 71%', createdAt: NOW - 500 };
   const usage = (jev: Partial<UsageSnapshot['jev']> = {}): UsageSnapshot => ({ providers: [], checkedAt: NOW, jev: { state: 'ready', version: '0.2.0', keySource: 'env TYPESAFE_API_KEY', baseUrl: 'https://api.typesafe.ai', configPath: null, reason: null, ...jev } });
-  const recommended = () => within(panel()).getByRole('list', { name: 'Recommended' });
-  const rec = (name: RegExp) => within(recommended()).getByRole('listitem', { name });
+  /** TOPIC-9.4: a recommendation's line inside its expanded Topic. */
+  const rec = (name: RegExp) => within(panel()).getByRole('group', { name });
+  const line = () => panel().querySelector<HTMLElement>('[data-field="recommended-line"]');
+  const chip = (title: string) => item(title).querySelector<HTMLElement>('[data-field="recommended-count"]');
+  const recCount = (title: string) => item(title).querySelector<HTMLElement>('[data-field="count"][data-kind="recommended"]');
+  const more = async (user: ReturnType<typeof userEvent.setup>, name: RegExp, action: 'other-topic' | 'dismiss') => {
+    await user.click(within(rec(name)).getByRole('button', { name: /^More for / }));
+    await user.click(screen.getByRole('menuitem', { name: action === 'dismiss' ? 'Dismiss' : 'Other Topic…' }));
+  };
 
-  it('TOPIC-9.4: "Recommended" at the top, newest first, each with the item, its Topic or "New Topic: <title>" and the reason; the rail and the tab show how many, a neutral count', async () => {
-    openApp([topic(1, { title: 'Proposals rates' })], work(), { recommendations: [fromJev, fromLink] });
+  it('TOPIC-9.4, TOPIC-3.2: no list above the Topics; a Topic with pending ones has "N recommended", a neutral Chip; one line says how many and where; the rail and the tab show how many, a neutral count', async () => {
+    openApp([topic(1, { title: 'Proposals rates' }), topic(2, { title: 'Anvil care' })], work(), { recommendations: [fromJev, fromLink] });
     expect(screen.getByRole('button', { name: 'Topics, 2 recommended' })).toBeInTheDocument();
     await openTopics();
     expect(screen.getByRole('tab', { name: /Topics/ }).querySelector('[data-field="count"]')).toHaveTextContent('2');
-    const rows = within(recommended()).getAllByRole('listitem');
-    expect(rows.map((r) => [r.querySelector('[data-field="item"]')!.textContent, r.querySelector('[data-field="target"]')!.textContent, r.querySelector('[data-field="reason"]')!.textContent])).toEqual([
-      ['anvil #2101 Sharpen the anvil corners', 'New Topic: Sharpen the anvil corners', 'Jev, 71%'],
-      ['rates-port', 'Proposals rates', 'started on PR #812'],
-    ]);
-    expect(within(rows[1]!).getAllByRole('button').map((b) => b.textContent)).toEqual(['Accept', 'Other Topic…', 'Dismiss']);
+    expect(within(panel()).queryByRole('list', { name: 'Recommended' })).toBeNull();
+    expect(chip('Proposals rates')).toHaveTextContent('1 recommended');
+    expect(chip('Proposals rates')).toHaveAttribute('data-tone', 'neutral');
+    expect(chip('Proposals rates')!.querySelector('svg')).not.toBeNull();
+    expect(header('Proposals rates')).toHaveAccessibleName(/, 1 recommended$/);
+    expect(chip('Anvil care')).toBeNull();
+    // The "New Topic" one Jev made before slice 8 sits in the Suggest view; the line counts it.
+    expect(line()).toHaveTextContent('1 recommended in 1 Topic, 1 for a new Topic');
+    expect(within(line()!).getByRole('button', { name: 'Next' })).toBeInTheDocument();
   });
 
-  it('TOPIC-9.4, TOPIC-9.5: Accept adds it with where it came from; Dismiss adds nothing; "Recommended" goes once nothing is pending; the Topic view repeats its own', async () => {
-    const app = openApp([topic(1, { title: 'Proposals rates' })], work(), { recommendations: [fromJev, fromLink] });
+  it('TOPIC-9.4, TOPIC-3.4: expanded, a Topic\'s recommendations are a count after its Sessions, open however many it holds; each line is the item, then its reason with Accept (Secondary) and More', async () => {
+    const recs = [1, 2, 3, 4].map((n): Recommendation => ({ ...fromLink, key: `session:claude:${n}`, member: { ...FIX, ref: { harness: 'claude', sessionId: `s-${n}` }, snapshot: { ...FIX.snapshot, title: `fix ${n}` } }, reason: `started on PR #${n}`, createdAt: NOW - n }));
+    openApp([topic(1, { title: 'Proposals rates', members: [member(SESSION)] })], work(), { recommendations: recs });
+    const user = await openTopics();
+    await user.click(header('Proposals rates'));
+    const counts = [...item('Proposals rates').querySelectorAll<HTMLElement>('[data-field="count"]')];
+    expect(counts.map((c) => [c.textContent, c.getAttribute('aria-expanded')])).toEqual([
+      ['1 Session', 'false'],
+      ['4 recommended', 'true'],
+    ]);
+    const lines = within(item('Proposals rates')).getAllByRole('group');
+    expect(lines.map((l) => [l.querySelector('[data-field="item"]')!.textContent, l.querySelector('[data-field="reason"]')!.textContent])).toEqual([
+      ['fix 1', 'started on PR #1'],
+      ['fix 2', 'started on PR #2'],
+      ['fix 3', 'started on PR #3'],
+    ]);
+    expect(within(item('Proposals rates')).getByText('Show all 4')).toBeInTheDocument();
+    const accept = within(lines[0]!).getByRole('button', { name: 'Accept' });
+    expect(accept).toHaveAttribute('data-variant', 'secondary');
+    expect(within(lines[0]!).getByRole('button', { name: 'More for fix 1' })).toBeInTheDocument();
+    // The row's one Soft action is still its "Open".
+    expect(within(item('Proposals rates')).getAllByRole('button').filter((b) => b.getAttribute('data-variant') === 'soft' || b.className.includes('bg-primary-soft')).map((b) => b.textContent?.replace('↵', '').trim())).toEqual(['Open']);
+  });
+
+  it('TOPIC-9.4, TOPIC-9.5: Accept adds it with where it came from; Dismiss under More adds nothing; the count, the Chip and the line go once nothing is pending; the Topic view repeats its own', async () => {
+    const app = openApp([topic(1, { title: 'Proposals rates' })], work(), { recommendations: [fromLink] });
     const user = await openTopics();
     await openView(user, 'Proposals rates', 'Members');
     expect(within(topicView().querySelector<HTMLElement>('[data-field="topic-recommended"]')!).getByRole('listitem', { name: /rates-port/ })).toBeInTheDocument();
@@ -593,20 +627,64 @@ describe('recommendations (TOPIC-9)', () => {
     expect(app.client.recommend).toHaveBeenCalledWith({ action: 'accept', key: fromLink.key, topicId: id(1) });
     await waitFor(() => expect(topicView().querySelector('[data-field="topic-recommended"]')).toBeNull());
     expect(topicView().querySelector('[data-field="sessions"]')).toHaveTextContent('rates-port');
-    await user.click(within(rec(/^anvil/)).getByRole('button', { name: 'Dismiss' }));
-    expect(app.client.recommend).toHaveBeenLastCalledWith({ action: 'dismiss', key: fromJev.key, topicId: null });
-    await waitFor(() => expect(within(panel()).queryByRole('list', { name: 'Recommended' })).toBeNull());
+    expect(chip('Proposals rates')).toBeNull();
+    expect(recCount('Proposals rates')).toBeNull();
+    expect(line()).toBeNull();
     expect(screen.getByRole('tab', { name: /Topics/ }).querySelector('[data-field="count"]')).toBeNull();
   });
 
-  it('TOPIC-9.4: "Other Topic…" opens the Topic picker; a pick moves the item there', async () => {
+  it('TOPIC-9.4, TOPIC-9.5: Dismiss is under the line\'s More, and adds nothing', async () => {
+    const app = openApp([topic(1, { title: 'Proposals rates' })], work(), { recommendations: [fromLink] });
+    const user = await openTopics();
+    await user.click(header('Proposals rates'));
+    await more(user, /^rates-port/, 'dismiss');
+    expect(app.client.recommend).toHaveBeenCalledWith({ action: 'dismiss', key: fromLink.key, topicId: id(1) });
+    expect(app.client.recommend).toHaveBeenCalledTimes(1);
+  });
+
+  it('TOPIC-9.4: "Other Topic…", under the line\'s More, opens the Topic picker; a pick moves the item there', async () => {
     const app = openApp([topic(1, { title: 'Proposals rates' }), topic(2, { title: 'Anvil care' })], work(), { recommendations: [fromLink] });
     const user = await openTopics();
-    await user.click(within(rec(/^rates-port/)).getByRole('button', { name: 'Other Topic…' }));
+    await user.click(header('Proposals rates'));
+    await more(user, /^rates-port/, 'other-topic');
     const dialog = screen.getByRole('dialog', { name: 'Other Topic' });
     await user.click(within(dialog).getByRole('option', { name: 'Anvil care' }));
     expect(app.client.recommend).toHaveBeenCalledWith({ action: 'move', key: fromLink.key, topicId: id(1), to: id(2) });
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
+  it('TOPIC-9.4: the Topic picker, opened from a line\'s More and cancelled, gives focus back to that More', async () => {
+    openApp([topic(1, { title: 'Proposals rates' }), topic(2, { title: 'Anvil care' })], work(), { recommendations: [fromLink] });
+    const user = await openTopics();
+    await user.click(header('Proposals rates'));
+    await more(user, /^rates-port/, 'other-topic');
+    expect(screen.getByRole('dialog', { name: 'Other Topic' })).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(within(rec(/^rates-port/)).getByRole('button', { name: 'More for rates-port' })).toHaveFocus();
+  });
+
+  it('TOPIC-9.4: Next selects and expands the next Topic that has any, after the expanded one, round to the first, clearing a filter that hides it', async () => {
+    const forTopic = (n: number, t: number): Recommendation => ({ ...fromLink, key: `session:claude:n${n}`, member: { ...FIX, ref: { harness: 'claude', sessionId: `n-${n}` }, snapshot: { ...FIX.snapshot, title: `item ${n}` } }, topicId: id(t), createdAt: NOW - n });
+    // The list is newest-changed first: Topic 1, then 2, then 3.
+    openApp([topic(1, { title: 'Alpha' }), topic(2, { title: 'Bravo' }), topic(3, { title: 'Charlie' })], work(), { recommendations: [forTopic(1, 2), forTopic(2, 3), forTopic(3, 3)] });
+    const user = await openTopics();
+    expect(line()).toHaveTextContent('3 recommended in 2 Topics');
+    const next = () => within(line()!).getByRole('button', { name: 'Next' });
+    const expanded = () => within(panel()).getAllByRole('button', { expanded: true }).filter((b) => b.id.startsWith('topic-')).map((b) => b.querySelector('[data-field="title"]')!.textContent);
+    await user.click(next());
+    expect(expanded()).toEqual(['Bravo']);
+    expect(item('Bravo')).toHaveAttribute('data-selected', 'true');
+    expect(recCount('Bravo')).toHaveAttribute('aria-expanded', 'true');
+    await user.click(next());
+    expect(expanded()).toEqual(['Charlie']);
+    await user.click(next());
+    expect(expanded()).toEqual(['Bravo']);
+    // A filter that hides the next one is cleared.
+    await user.type(screen.getByRole('searchbox', { name: 'Filter Topics' }), 'Bravo');
+    await user.click(next());
+    expect(screen.getByRole('searchbox', { name: 'Filter Topics' })).toHaveValue('');
+    expect(expanded()).toEqual(['Charlie']);
   });
 
   it('TOPIC-9.3: Settings has "Recommend Topics with Jev", off by default, saying each judgment is billed, at most 30 an hour, and how many ran today; with Jev not set up it says so with the fix', async () => {

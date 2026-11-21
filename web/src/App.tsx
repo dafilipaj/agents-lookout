@@ -1183,6 +1183,8 @@ export function App({ client }: { client: LookoutClient }) {
                 cancelSuggest={() => client.cancelSuggest()}
                 acceptProposal={(id, accept) => client.acceptProposal(id, accept)}
                 dismissProposal={(id) => client.dismissProposal(id)}
+                recommend={(action) => client.recommend(action)}
+                onOtherTopic={otherTopic}
               />
             ) : route.name === 'topic' ? (
               <TopicView

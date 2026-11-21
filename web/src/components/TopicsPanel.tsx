@@ -1,7 +1,7 @@
 import { MAX_TOPIC_TITLE, type Recommendation, type RecommendationAction, type Topic, type TopicsView, activityWords, memberKey, rowMember, sortTopics } from '@shared/topics.ts';
 import type { SessionRow } from '@shared/types.ts';
 import type { WorkSnapshot } from '@shared/work.ts';
-import { Plus, Search } from 'lucide-react';
+import { ChevronDown, Inbox, Plus, Search } from 'lucide-react';
 import { type FormEvent, type KeyboardEvent, type ReactNode, type Ref, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -9,16 +9,16 @@ import { Chip } from '@/components/ui/chip';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Loading } from '@/components/ui/loading';
 import { SessionMarker } from '@/components/ui/session-marker';
-import { RowDetails, type RowLinkGroup, RowTitle } from '@/components/ui/row-details';
+import { RowDetails, type RowLink, type RowLinkGroup, RowTitle, countWords } from '@/components/ui/row-details';
 import { STATUS_LABEL } from '@/lib/sessions';
 import { type PanelNav, focusTab } from '@/lib/right-sidebar';
-import { OUTCOME_WORD, SUMMARY_STATE_WORD, liveRow, looksDone, matchesTopic, memberCounts, orderSessions, topicMarker } from '@/lib/topics';
+import { OUTCOME_WORD, SUMMARY_STATE_WORD, liveRow, looksDone, matchesTopic, memberCounts, orderSessions, recommendationTitle, topicMarker } from '@/lib/topics';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { ActionIcon } from '@/lib/actions';
 import { Markdown } from './Markdown';
 import type { ArchivePatch } from './ArchiveDialog';
-import { JevSetAside, Recommendations } from './Recommendations';
+import { JevSetAside, MemberMark } from './Recommendations';
 import { type SessionMember, TopicActions } from './TopicView';
 
 /** TOPIC-3.4: the expanded Topic shows this many lines of its notes. */
@@ -232,15 +232,43 @@ export function TopicsPanel(props: TopicsPanelProps) {
     return m !== null && !filed.has(memberKey(m.kind, m.ref));
   }).length : 0;
 
-  // TOPIC-9.4: at the top, only while something is pending.
+  // TOPIC-9.4: each Topic carries its own; one line says how many and where, with Next.
   const pending = view?.state === 'ok' ? view.recommendations : [];
-  const recommended = pending.length > 0 && (
-    <section aria-labelledby="topics-recommended" className="flex flex-col gap-1 border-b border-border px-2.5 pt-1 pb-2 text-meta" data-field="recommended">
-      <h3 id="topics-recommended" className="font-medium text-muted-foreground">
-        Recommended
-      </h3>
-      <Recommendations recommendations={pending} topics={all} sessions={sessions} showTopic recommend={props.recommend} onOtherTopic={props.onOtherTopic} onProblem={setProblem} />
-    </section>
+  const forTopic = new Map<string, Recommendation[]>();
+  for (const r of pending) if (r.topicId !== null) forTopic.set(r.topicId, [...(forTopic.get(r.topicId) ?? []), r]);
+  const placed = all.filter((t) => forTopic.has(t.id));
+  const placedCount = placed.reduce((n, t) => n + forTopic.get(t.id)!.length, 0);
+  const forNew = pending.filter((r) => r.topicId === null).length;
+  /** Next: the next Topic in the list that has any, after the expanded one (the first, when none is), round to the first. */
+  const next = () => {
+    if (!placed.length) return;
+    const at = open === null ? -1 : all.findIndex((t) => t.id === open);
+    const target = all.slice(at + 1).find((t) => forTopic.has(t.id)) ?? placed[0]!;
+    if (!shown.some((t) => t.id === target.id)) setQuery('');
+    onSelect(target.id);
+    setExpanded(target.id);
+  };
+  const recommendedLine = pending.length > 0 && (
+    <div className="flex min-w-0 items-center gap-2 text-meta text-muted-foreground" data-field="recommended-line">
+      <span className="min-w-0 truncate">
+        {[placedCount > 0 && `${placedCount} recommended in ${countWords(placed.length, ['Topic', 'Topics'])}`, forNew > 0 && (placedCount > 0 ? `${forNew} for a new Topic` : `${forNew} recommended for a new Topic`)].filter(Boolean).join(', ')}
+      </span>
+      {placedCount > 0 ? (
+        <Button type="button" variant="secondary" size="line" onClick={next} data-action="next-recommended" title="Expand the next Topic with recommendations">
+          <ChevronDown />
+          Next
+        </Button>
+      ) : (
+        // Only "New Topic" ones: they're in the Suggest view; its button, unless the line above has it.
+        props.onSuggest &&
+        unfiled === 0 && (
+          <Button type="button" variant="secondary" size="line" onClick={props.onSuggest}>
+            <ActionIcon id="suggest" />
+            Suggest Topics
+          </Button>
+        )
+      )}
+    </div>
   );
 
   let body: ReactNode;
@@ -272,6 +300,7 @@ export function TopicsPanel(props: TopicsPanelProps) {
             expanded={t.id === open}
             sessions={sessions}
             work={work}
+            recommendations={forTopic.get(t.id) ?? []}
             onHeader={(keyboard) => {
               // TOPIC-3.4: Enter on an expanded Topic runs its first button, "Open"; a click only selects.
               if (keyboard && t.id === open) return props.onOpenTopic(t.id);
@@ -330,6 +359,7 @@ export function TopicsPanel(props: TopicsPanelProps) {
             </Button>
           </div>
         )}
+        {recommendedLine}
         {creating && (
           <form onSubmit={create} className="flex min-w-0 items-center gap-1.5" data-field="new-topic">
             <input
@@ -361,7 +391,6 @@ export function TopicsPanel(props: TopicsPanelProps) {
       {problem && <Alert title={problem} className="mx-2.5 mb-2" data-field="topics-problem" />}
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
         {view?.state === 'ok' && <JevSetAside setAside={view.jevSetAside} recommend={props.recommend} onProblem={setProblem} className="mx-2.5 mb-2" />}
-        {recommended}
         {body}
       </div>
     </div>
@@ -374,6 +403,8 @@ interface TopicItemProps {
   expanded: boolean;
   sessions: ReadonlyMap<string, SessionRow>;
   work: WorkSnapshot | null;
+  /** TOPIC-9.4: its pending recommendations, newest first. */
+  recommendations: readonly Recommendation[];
   /** `keyboard`: pressed with Enter or Space, not clicked. */
   onHeader(keyboard: boolean): void;
   panel: TopicsPanelProps;
@@ -384,7 +415,7 @@ interface TopicItemProps {
  * TOPIC-3.2: one Topic: its marker, title and member counts, and "looks done" (TOPIC-1.5). Expanded
  * (TOPIC-3.4), its title and notes to edit, its members grouped by kind, its Outputs and its buttons.
  */
-function TopicItem({ topic, selected, expanded, sessions, work, onHeader, panel, onProblem }: TopicItemProps) {
+function TopicItem({ topic, selected, expanded, sessions, work, recommendations, onHeader, panel, onProblem }: TopicItemProps) {
   const marker = topicMarker(topic, sessions);
   const done = looksDone(topic, work);
   const counts = memberCounts(topic.members);
@@ -398,7 +429,7 @@ function TopicItem({ topic, selected, expanded, sessions, work, onHeader, panel,
         type="button"
         aria-expanded={expanded}
         aria-current={selected || undefined}
-        aria-label={[topic.title, counts, topic.state === 'archived' && (topic.outcome ? `archived, ${OUTCOME_WORD[topic.outcome]}` : 'archived'), done && 'looks done', fresh > 0 && `${fresh} new`].filter(Boolean).join(', ')}
+        aria-label={[topic.title, counts, topic.state === 'archived' && (topic.outcome ? `archived, ${OUTCOME_WORD[topic.outcome]}` : 'archived'), done && 'looks done', fresh > 0 && `${fresh} new`, recommendations.length > 0 && `${recommendations.length} recommended`].filter(Boolean).join(', ')}
         // A click from the keyboard has no pointer, so `detail` is 0.
         onClick={(e) => onHeader(e.detail === 0)}
         className="flex min-w-0 cursor-default flex-col gap-0.5 rounded-md px-2 py-[7px] text-left text-body outline-none hover:bg-sidebar-accent/60 focus-visible:ring-2 focus-visible:ring-ring/50"
@@ -421,6 +452,11 @@ function TopicItem({ topic, selected, expanded, sessions, work, onHeader, panel,
               {fresh} new
             </Chip>
           )}
+          {recommendations.length > 0 && (
+            <Chip tone="neutral" icon={Inbox} title="Recommended for this Topic, waiting for you to accept or dismiss" data-field="recommended-count">
+              {recommendations.length} recommended
+            </Chip>
+          )}
         </span>
         {!expanded && (
           <span className="truncate pl-5 text-meta text-muted-foreground" data-field="counts">
@@ -433,7 +469,7 @@ function TopicItem({ topic, selected, expanded, sessions, work, onHeader, panel,
           </span>
         )}
       </button>
-      {expanded && <TopicSummary topic={topic} sessions={sessions} panel={panel} onProblem={onProblem} done={done} />}
+      {expanded && <TopicSummary topic={topic} sessions={sessions} recommendations={recommendations} panel={panel} onProblem={onProblem} done={done} />}
     </div>
   );
 }
@@ -443,8 +479,37 @@ function TopicItem({ topic, selected, expanded, sessions, work, onHeader, panel,
  * (members, when it was last updated), its summary (TOPIC-11.8's, then the notes' first lines), its
  * Sessions as a count, live first, then its buttons, "Open" first.
  */
-function TopicSummary({ topic, sessions, panel, onProblem, done }: Omit<TopicItemProps, 'selected' | 'expanded' | 'onHeader' | 'work'> & { done: boolean }) {
+function TopicSummary({ topic, sessions, recommendations, panel, onProblem, done }: Omit<TopicItemProps, 'selected' | 'expanded' | 'onHeader' | 'work'> & { done: boolean }) {
   const pruned = panel.view?.pruned ?? [];
+  // TOPIC-9.4: one at a time; a line waits while its own Accept or Dismiss is under way.
+  const [busy, setBusy] = useState<string | null>(null);
+  const decide = (r: Recommendation, action: 'accept' | 'dismiss') => {
+    setBusy(r.key);
+    onProblem(null);
+    panel
+      .recommend({ action, key: r.key, topicId: r.topicId })
+      .catch((err: unknown) => onProblem(err instanceof Error ? err.message : "Couldn't save that."))
+      .finally(() => setBusy(null));
+  };
+  const recommended: RowLink[] = recommendations.map((r) => {
+    const title = recommendationTitle(r);
+    return {
+      key: `rec:${r.key}`,
+      glyph: <MemberMark member={{ ...r.member, key: r.key }} sessions={sessions} />,
+      name: title,
+      label: `${title}, ${r.reason}`,
+      tip: title,
+      enabled: busy !== r.key,
+      decide: {
+        why: r.reason,
+        primary: { action: 'accept', onPress: () => decide(r, 'accept') },
+        more: [
+          { id: 'other-topic', action: 'other-topic', onSelect: () => panel.onOtherTopic(r) },
+          { id: 'dismiss', action: 'dismiss', onSelect: () => decide(r, 'dismiss') },
+        ],
+      },
+    };
+  });
   const members = orderSessions(
     topic.members.filter((m): m is SessionMember => m.kind === 'session'),
     sessions,
@@ -481,6 +546,7 @@ function TopicSummary({ topic, sessions, panel, onProblem, done }: Omit<TopicIte
         },
       ]
     : [];
+  if (recommended.length) links.push({ kind: 'recommended', noun: ['recommended', 'recommended'], items: recommended, eager: true });
   return (
     <RowDetails
       id={`${headerId(topic.id)}-details`}

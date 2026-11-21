@@ -3,6 +3,7 @@ import {
   ArchiveRestore,
   ArrowLeftRight,
   ArrowRight,
+  Check,
   CircleStop,
   Code,
   Copy,
@@ -10,6 +11,7 @@ import {
   ExternalLink,
   Eye,
   FileText,
+  FolderInput,
   History,
   Layers,
   type LucideIcon,
@@ -26,6 +28,7 @@ import {
   ToggleLeft,
   ToggleRight,
   Trash2,
+  X,
 } from 'lucide-react';
 import { createElement } from 'react';
 
@@ -64,6 +67,10 @@ export const ACTIONS = {
   retry: { word: 'Retry', icon: RotateCw },
   suggest: { word: 'Suggest', icon: Sparkles },
   more: { word: 'More', icon: Ellipsis },
+  /** TOPIC-9.4, TOPIC-14.5: a recommendation or a proposal, taken, moved or let go. */
+  accept: { word: 'Accept', icon: Check },
+  'other-topic': { word: 'Other Topic…', icon: FolderInput },
+  dismiss: { word: 'Dismiss', icon: X },
 } as const satisfies Record<string, { word: string; icon: LucideIcon; key?: string }>;
 
 export type ActionId = keyof typeof ACTIONS;
