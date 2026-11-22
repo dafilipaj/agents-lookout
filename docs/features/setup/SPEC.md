@@ -3,7 +3,7 @@ title: "Setup: the skills, agents, hooks and MCP servers your Harnesses load"
 code: "SETUP"
 status: "In Progress"
 created: "2026-11-17"
-updated: "2026-11-21"
+updated: "2026-11-22"
 ---
 
 # Setup
@@ -22,7 +22,7 @@ A right-sidebar tab, Setup, lists what Claude Code and Codex load for every Sess
 
 ## Requirements
 
-Slice 1, what you have, is SETUP-1 to SETUP-5, all ticked. Slice 2, what one Session loaded, is SETUP-6 to SETUP-10: built on 2026-11-21, SETUP-10.1's look waiting for Dario. Lookout's server reads the open Session's Transcript for it, one file when it shows (Technical approach).
+Slice 1, what you have, is SETUP-1 to SETUP-5, all ticked. Slice 2, what one Session loaded, is SETUP-6 to SETUP-10, all ticked. Lookout's server reads the open Session's Transcript for it, one file when it shows (Technical approach).
 
 ### SETUP-1 The Setup tab
 
@@ -110,7 +110,7 @@ What the selected Session loaded and what it used, read from its Transcript, as 
 
 ### SETUP-10 The look (slice 2)
 
-- [ ] SETUP-10.1 This Session with five instruction files, one of them changed and expanded, a memory index, ten rows that ran and a "1 not loaded" line looks right in light and dark mode at 280 and 720 px, and matches the slice 2 sketch (UX). (manual)
+- [x] SETUP-10.1 This Session with five instruction files, one of them changed and expanded, a memory index, ten rows that ran and a "1 not loaded" line looks right in light and dark mode at 280 and 720 px, and matches the slice 2 sketch (UX). (manual)
 
 ## Planned slices
 
@@ -244,3 +244,4 @@ None for slice 2: its grill answered its four and two more (Key decisions).
 - 2026-11-21: Slice 2 built. SETUP-6.4: the tab had no Refresh, so Setup gains Work's, which reads the view that shows. SETUP-7.1: This Session's file and memory groups start open, as canvas A drew them. SETUP-6.3: the closing line counts Everywhere's hooks that are on, as no list in a Transcript names hooks, and is a list option for the keys. SETUP-8.2: a ran MCP server no item matches says where it's from, and This Session has no switches. SETUP-9.2: hooks are never not loaded, and an MCP server is unlisted only while tools were deferred. Technical approach: the read as measured in Node, 0.26 s for 211 MB. SETUP-7.4: the state line puts the file's size first and its source last, as at 280 px every fact was cut.
 - 2026-11-21: SETUP-6.1 to 9.3 ticked: their tests pass. SETUP-10.1, the look, waits for Dario.
 - 2026-11-21: Codex reviewed slice 2 (Sol, xhigh): three findings, all fixed. SETUP-9.2: a skill or agent list recorded empty names nothing, so the repo's items aren't loaded, while a Transcript with none recorded says nothing. SETUP-9.1: commands in `.claude/commands`' subfolders are read, named by their file. SETUP-6.3, 9.2: a server whose deferred tools were all removed leaves the MCP lists.
+- 2026-11-22: SETUP-10.1 ticked: Dario checked This Session on 4747. Every slice 2 criterion is ticked. No requirement changed.
