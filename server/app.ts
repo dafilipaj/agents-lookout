@@ -25,6 +25,7 @@ import { RenameError, parseRenameRequest } from './renamer.ts';
 import { type FindQuery, HistoryError, parseFindQuery } from './history.ts';
 import { LaunchError, TrustError } from './launcher.ts';
 import type { TopicLaunches } from './topic-launches.ts';
+import type { HandoffLaunches } from './handoffs.ts';
 import type { MemoryMonitor } from './memory.ts';
 import type { PortsMonitor } from './ports.ts';
 import { StopError, parseStopTarget } from './ports-stop.ts';
@@ -87,6 +88,8 @@ export interface AppOptions {
     drop(clientId: string): void;
     send(sessionId: string, input: unknown): Promise<void>;
     earlier(sessionId: string, cursor: unknown): Promise<ChatPage>;
+    /** HAND-2.3: the latest entries of a Session's chat, whether or not it's viewed; optional, so a server without it has no route (404). */
+    latest?(sessionId: string): Promise<ChatPage>;
   };
   /** VIEW-5.6: ends a Session through `fleet close`; VIEW-4: answers its prompt, or stops it. */
   sessions: {
@@ -150,6 +153,8 @@ export interface AppOptions {
   };
   /** TOPIC-5.2: Sessions started for a Topic join it once Fleet reports them; optional, so a server without it refuses a start with a Topic. */
   topicLaunches?: Pick<TopicLaunches, 'check' | 'expect' | 'forget'>;
+  /** HAND-3.3: starts from a Handover, recorded once Fleet reports them; optional, so a server without it refuses one. */
+  handoffLaunches?: Pick<HandoffLaunches, 'check' | 'expect' | 'forget'>;
   /** TOPIC: Lookout's own store of Topics; optional, so a server without it has no `/api/topics` (404). */
   topics?: Pick<Topics, 'view' | 'create' | 'update' | 'delete' | 'addMember' | 'removeMember' | 'link' | 'editEdge' | 'unlink' | 'place'> & {
     /** TOPIC-9.4: Accept, Dismiss, Other Topic… or Judge again on a recommendation. */
@@ -354,6 +359,15 @@ export function createApp(opts: AppOptions): LookoutApp {
         // TOPIC-5.2: the Topic the Session joins, checked first and expected before the start is
         // sent, so a Fleet report that comes before this answer still finds it.
         const v = typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : {};
+        // HAND-3.3: the Session a start from a Handover continues, checked before anything is expected.
+        let continues;
+        try {
+          continues = opts.handoffLaunches?.check(v.continues) ?? null;
+        } catch (err) {
+          return json(res, 400, { error: err instanceof Error ? err.message : 'Invalid Session to continue.', field: 'continues' });
+        }
+        if (v.continues !== undefined && v.continues !== null && !opts.handoffLaunches) return json(res, 400, { error: 'Hand-offs are off on this server.', field: 'continues' });
+        if (continues && typeof v.launchId !== 'string') return json(res, 400, { error: 'A start from a Handover needs its launch id.', field: 'continues' });
         let launchId: string | null = null;
         if (v.topic !== undefined && v.topic !== null) {
           if (!opts.topicLaunches) return json(res, 400, { error: 'Topics are off on this server.', field: 'topic' });
@@ -370,10 +384,19 @@ export function createApp(opts: AppOptions): LookoutApp {
             launchId = v.launchId;
           }
         }
+        let handoffId: string | null = null;
+        if (continues) {
+          if (!opts.handoffLaunches!.expect(v.launchId as string, continues)) {
+            if (launchId) opts.topicLaunches?.forget(launchId);
+            return json(res, 409, { error: 'That launch id is taken.' });
+          }
+          handoffId = v.launchId as string;
+        }
         try {
           return json(res, 200, { launch: await opts.launcher.start(body) });
         } catch (err) {
           if (launchId) opts.topicLaunches?.forget(launchId);
+          if (handoffId) opts.handoffLaunches?.forget(handoffId);
           if (err instanceof LaunchError) return json(res, err.status, { error: err.message, field: err.field });
           throw err;
         }
@@ -813,6 +836,23 @@ export function createApp(opts: AppOptions): LookoutApp {
         return json(res, 200, { paths: await opts.files.check(sessionId, body) });
       } catch (err) {
         if (err instanceof PathsError) return json(res, err.status, { error: err.message });
+        throw err;
+      }
+    }
+    // HAND-2.3: a Session's latest chat entries, whether or not a tab views it: where the
+    // Handover is read from once its Turn ends. A read, as "Show earlier" is.
+    const latestMatch = /^\/api\/sessions\/([^/]{1,200})\/latest$/.exec(url.pathname);
+    if (latestMatch && req.method === 'GET' && opts.viewer.latest) {
+      let sessionId: string;
+      try {
+        sessionId = decodeURIComponent(latestMatch[1]!);
+      } catch {
+        return json(res, 400, { error: 'invalid session id' });
+      }
+      try {
+        return json(res, 200, await opts.viewer.latest!(sessionId));
+      } catch (err) {
+        if (err instanceof ViewError) return json(res, err.status, { error: err.message, field: err.field });
         throw err;
       }
     }

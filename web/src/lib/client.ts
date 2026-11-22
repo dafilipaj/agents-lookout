@@ -28,6 +28,8 @@ export interface LookoutClient {
   answerTrust(id: string, req: TrustRequest): Promise<LaunchView | null>;
   /** VIEW-1.6: "Show earlier": the chat entries before `before`. */
   earlierMessages(sessionId: string, before: string): Promise<ChatPage>;
+  /** HAND-2.3: a Session's latest chat entries, whether or not this tab views it. */
+  latestMessages(sessionId: string): Promise<ChatPage>;
   /** Tells the server what this tab views, and whether its terminal drawer is open (VIEW-2). */
   watch(clientId: string, sessionId: string | null, preview: boolean): Promise<void>;
   /** VIEW-3: types a message into the Session and submits it. */
@@ -440,6 +442,8 @@ export function createHttpClient(): LookoutClient {
         () => fetch(`/api/sessions/${encodeURIComponent(sessionId)}/messages?before=${encodeURIComponent(before)}`),
         'Loading earlier messages',
       ),
+    latestMessages: (sessionId) =>
+      call<ChatPage>(() => fetch(`/api/sessions/${encodeURIComponent(sessionId)}/latest`), 'Reading the Handover'),
     watch: async (clientId, sessionId, preview) => {
       wanted = { clientId, sessionId, preview };
       wake?.();

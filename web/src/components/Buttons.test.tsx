@@ -80,13 +80,13 @@ describe('the Session header (DS-18.5, DS-18.9)', () => {
   const actions = () => header().querySelector<HTMLElement>('[data-slot="header-actions"]')!;
   const tag = () => header().querySelector<HTMLElement>('[data-field="status"]')!;
 
-  it('DS-18.5: the actions are 28 px icon buttons, 4 px apart: Add to Topic and Copy session ID quiet, End Session danger, last, after a divider', () => {
+  it('DS-18.5: the actions are 28 px icon buttons, 4 px apart: Hand off… (first, HAND-1.1), Add to Topic and Copy session ID quiet, End Session danger, last, after a divider', () => {
     const app = renderApp(`/s/${ID}`);
     app.snapshot([row({ id: ID, status: 'busy', ownHost: true })]);
     const buttons = within(actions()).getAllByRole('button');
     // Add to Topic shows where Topics are on.
     const names = buttons.map((b) => b.getAttribute('aria-label'));
-    expect(names.filter((n) => n !== 'Add to Topic')).toEqual(['Copy session ID', 'End Session']);
+    expect(names.filter((n) => n !== 'Add to Topic')).toEqual(['Hand off…', 'Copy session ID', 'End Session']);
     expect(actions()).toHaveClass('gap-1');
     for (const b of buttons) {
       expect(b, b.getAttribute('aria-label')!).toHaveAttribute('data-slot', 'icon-button');

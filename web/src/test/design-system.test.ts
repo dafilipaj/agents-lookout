@@ -272,6 +272,7 @@ const FAMILIES: Record<string, Family> = {
       'web/src/components/SessionView.tsx': { why: "VIEW-8's running Subagents in the status line", uses: ['text-busy-text'] },
       'web/src/components/SubagentsButton.tsx': { why: "VIEW-8's running Subagents in the status line's count and its popover", uses: ['text-busy-text'] },
       'web/src/components/SessionItem.tsx': { why: "SIDE-9.7's running Subagents on a sidebar row, as the status line's", uses: ['text-busy-text'] },
+      'web/src/components/HandOff.tsx': { why: '"Hand off…"\'s dot while the Session writes its Handover: it is Busy (HAND-2.2)', uses: ['bg-busy'] },
     },
   },
   idle: {
@@ -334,6 +335,7 @@ const FAMILIES: Record<string, Family> = {
       'web/src/components/ui/icon-button.tsx': { why: "the danger role's icon button: the Session header's End Session (DS-18.5)", uses: ['text-destructive-text'] },
       'web/src/components/Sidebar.tsx': { why: "the Settings button's dot: a Tool missing or behind (TOOLS-2.4)", uses: ['bg-destructive'] },
       'web/src/components/SettingsPage.tsx': { why: "the Tools link's dot, the Settings button's (TOOLS-2.4, SIDE-7.6)", uses: ['bg-destructive'] },
+      'web/src/components/HandOff.tsx': { why: '"Hand off…"\'s dot when writing the Handover failed (HAND-2.4)', uses: ['bg-destructive'] },
     },
   },
   ok: {
@@ -345,6 +347,7 @@ const FAMILIES: Record<string, Family> = {
       'web/src/components/Evidence.tsx': { why: "an ok verdict's icon (EVID-5.7)", uses: ['text-ok'] },
       'web/src/lib/evidence.ts': { why: "an ok verdict's words (EVID-5.1, 5.5)", uses: ['text-ok-text'] },
       'web/src/lib/work.ts': { why: 'a PR under 3 days', uses: ['text-ok-text'] },
+      'web/src/components/HandOff.tsx': { why: '"Hand off…"\'s dot when the Handover is ready (HAND-2.3)', uses: ['bg-ok'] },
     },
   },
   info: {
@@ -738,8 +741,8 @@ describe('colour by meaning', () => {
     expect(pinDrift(families, { 'x.tsx': `cn('bg-idle')` })).toEqual([`busy: x.tsx: pinned ["text-busy"], uses []`]); // a stale pin can't stay
   });
 
-  it('DS-3.6: Busy\'s colour is only a Status\'s: the marker, strip, tag, "Working…" dot and the running Subagents of VIEW-8 and SIDE-9.7', () => {
-    expect(Object.keys(FAMILIES.busy!.files).sort()).toEqual(['web/src/components/ChatActivity.tsx', 'web/src/components/SessionItem.tsx', 'web/src/components/SessionView.tsx', 'web/src/components/StatusMarker.tsx', 'web/src/components/SubagentsButton.tsx', 'web/src/lib/sessions.ts']);
+  it('DS-3.6: Busy\'s colour is only a Status\'s: the marker, strip, tag, "Working…" dot, the running Subagents of VIEW-8 and SIDE-9.7, and "Hand off…"\'s dot while the Session writes (HAND-2.2)', () => {
+    expect(Object.keys(FAMILIES.busy!.files).sort()).toEqual(['web/src/components/ChatActivity.tsx', 'web/src/components/HandOff.tsx', 'web/src/components/SessionItem.tsx', 'web/src/components/SessionView.tsx', 'web/src/components/StatusMarker.tsx', 'web/src/components/SubagentsButton.tsx', 'web/src/lib/sessions.ts']);
     // No link, spinner, chip, search hit or Mark takes Busy's blue: the places that did are neutral now.
     for (const path of ['web/src/lib/links.tsx', 'web/src/components/Markdown.tsx', 'web/src/components/WorkPanel.tsx', 'web/src/components/HistoryPanel.tsx', 'web/src/components/ChatRail.tsx']) {
       expect(classesOf('busy', path), path).toEqual([]);

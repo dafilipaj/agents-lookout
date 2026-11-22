@@ -105,6 +105,15 @@ export const SHORTCUTS: readonly Shortcut[] = [
     global: true,
   },
   {
+    id: 'hand-off',
+    action: 'hand-off',
+    group: 'session',
+    keys: ['F'],
+    label: 'Hand off to a new Session',
+    note: 'Not in a text field; while the Session is Idle, or to see its Handover being written.',
+    press: [{ key: 'f' }],
+  },
+  {
     id: 'rail-move',
     group: 'session',
     keys: ['↑', '↓'],

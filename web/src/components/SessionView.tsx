@@ -62,6 +62,23 @@ import { changesTip, hasLines } from '@/lib/changes';
 import { AddToTopicButton } from './TopicLinks';
 import { rowMember } from '@/lib/topics';
 import { ActionIcon } from '@/lib/actions';
+import { type HandoffWait, type ShownLink, canHandOff } from '@/lib/handoff';
+import { HandOffButton, HandoffLinks } from './HandOff';
+
+/** HAND: each Session's wait for its Handover, and what can be done with it and with its links (App keeps them). */
+export interface HandoffControls {
+  waits: ReadonlyMap<string, HandoffWait>;
+  /** HAND-1.3: sends the request, with the piece when one is given. */
+  write(row: SessionRow, piece: string): void;
+  /** HAND-2.1: stops waiting. */
+  cancel(row: SessionRow): void;
+  /** HAND-2.3: opens the launcher with the Handover; `opener` gets focus back if it closes without a start. */
+  launch(row: SessionRow, opener: HTMLElement | null): void;
+  /** HAND-4: the Session's links, resolved against the live Sessions. */
+  links(row: SessionRow): { from: ShownLink | null; into: ShownLink[] };
+  /** HAND-4.1, HAND-4.2: opens a linked Session: live, or past, read-only. */
+  open(link: ShownLink): void;
+}
 
 export interface SessionViewProps {
   attachments: ComposerAttachments;
@@ -148,6 +165,8 @@ export interface SessionViewProps {
   onStop(row: SessionRow): void;
   /** VIEW-4.5: presses Esc in a Session that Needs you with no answer buttons. */
   onEsc(row: SessionRow): void;
+  /** HAND: "Hand off…" and the links; absent, neither shows. */
+  handoff?: HandoffControls;
 }
 
 /** VIEW: the selected Session. Mounted per Session (`key`), so its local state is its own. */
@@ -196,6 +215,7 @@ export function SessionView({
   onStop,
   onEsc,
   attachments,
+  handoff,
 }: SessionViewProps) {
   const controls = row.controllable && !ended;
   const [dragging, setDragging] = useState(false);
@@ -438,6 +458,7 @@ export function SessionView({
         onStop={() => onStop(row)}
         esc={esc}
         onEsc={() => onEsc(row)}
+        handoff={handoff}
       />
       <ShellCell row="body" className="flex flex-col overflow-hidden">
         <AnswerContext.Provider value={answering}>
@@ -606,6 +627,7 @@ function Header({
   onStop,
   esc,
   onEsc,
+  handoff,
 }: {
   row: SessionRow;
   ended: boolean;
@@ -616,6 +638,7 @@ function Header({
   onStop(): void;
   esc: ReturnType<typeof escButton>;
   onEsc(): void;
+  handoff?: HandoffControls;
 }) {
   const age = row.statusSince !== null ? formatAge(now - row.statusSince) : null;
   const title = useRef<HTMLHeadingElement>(null);
@@ -628,6 +651,7 @@ function Header({
     : esc
       ? { label: 'Esc', pressingLabel: 'Pressing Esc…', hint: ESC_HINT, icon: <ActionIcon id="esc" />, pressing: esc.pressing, error: esc.error, onPress: onEsc }
       : null;
+  const handOff = useHandOff(row, ended, handoff);
   return (
     // Positioned, so the bubble with Stop's whole error sizes to the pane and stays inside it.
     <PaneHeader aria-label="Session" className="@container relative">
@@ -646,6 +670,8 @@ function Header({
             <HarnessIcon harness={row.harness} tone="brand" className="size-4" />
             <span className="@max-[32rem]:sr-only">{HARNESS_NAME[row.harness]}</span>
           </span>
+          {/* HAND-4.1, HAND-4.2: what this Session continues, and what continues it. */}
+          {handoff && <HandoffLinks {...handoff.links(row)} onOpen={handoff.open} />}
           {renamed.note && <HeaderNote slot="rename-note" id={renamed.note.id} message={renamed.note.message} tone={renamed.note.tone} />}
           {key?.error && <HeaderNote slot="stop-error" id={stopErrorId} message={key.error} />}
         </div>
@@ -666,6 +692,8 @@ function Header({
         </StatusTag>
         {/* DS-18.5: the actions are icon buttons, 4 px apart; End Session last, after its divider. ITERM's "Open in iTerm2" goes here too. */}
         <div data-slot="header-actions" className="flex shrink-0 items-center gap-1 empty:hidden">
+          {/* HAND-1.1: the first action, for a Controllable Session with a session id that hasn't ended, or that ended with a wait. */}
+          {handOff && <HandOffButton {...handOff} />}
           {/* TOPIC-2.2: disabled, saying why, for a Session with no session id yet. */}
           <AddToTopicButton member={rowMember(row)} label={row.title} />
           {/* VIEW-5.10: a Session without a session_id has `<harness>:<pid>` for its id: no button then. */}
@@ -675,6 +703,59 @@ function Header({
       </div>
     </PaneHeader>
   );
+}
+
+/**
+ * HAND-1, HAND-2: "Hand off…"'s state in the header: its popover, opened by the button or `F` (HAND-1.4)
+ * when focus isn't in a text field; null where it isn't offered. The popover closes once the wait it
+ * showed ends (the launcher opened, or Cancel), and opening it on a ready Handover opens the launcher.
+ */
+function useHandOff(row: SessionRow, ended: boolean, handoff: HandoffControls | undefined) {
+  const [open, setOpen] = useState(false);
+  const wait = handoff?.waits.get(row.id);
+  // A Session that ended with a wait keeps the button, so its failure, or its Handover, still shows (HAND-2.4).
+  const offered = !!handoff && (canHandOff(row, ended) || !!wait);
+  const press = useCallback(() => {
+    if (!handoff || !offered) return;
+    if (wait?.state === 'ready') {
+      setOpen(false);
+      handoff.launch(row, document.querySelector<HTMLElement>('[data-slot="header-actions"] [data-action="hand-off"]'));
+      return;
+    }
+    if (!wait && row.status !== 'idle') return;
+    setOpen(true);
+  }, [handoff, offered, wait, row]);
+  // A wait that ends while the popover shows it (the launcher opened, or another tab's Cancel) closes it.
+  const [shown, setShown] = useState(wait);
+  if (shown !== wait) {
+    setShown(wait);
+    if (open && shown && (shown.state === 'sending' || shown.state === 'writing') && (!wait || wait.state === 'ready')) setOpen(false);
+  }
+  useEffect(() => {
+    if (!offered) return;
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key.toLowerCase() !== 'f' || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || e.isComposing || e.defaultPrevented) return;
+      if (isTextField(e.target) || document.querySelector('[role="dialog"]')) return;
+      e.preventDefault();
+      press();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [offered, press]);
+  if (!handoff || !offered) return null;
+  return {
+    status: row.status,
+    ended,
+    wait,
+    open,
+    onPress: press,
+    onClose: () => setOpen(false),
+    onWrite: (piece: string) => handoff.write(row, piece),
+    onCancel: () => {
+      handoff.cancel(row);
+      setOpen(false);
+    },
+  };
 }
 
 /**

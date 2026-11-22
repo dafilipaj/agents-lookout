@@ -69,6 +69,12 @@ const PROBES: Record<string, (user: UserEvent, press: Press) => Promise<void>> =
     await pressKey(user, press);
     expect(message()).toHaveFocus();
   },
+  async 'hand-off'(user, press) {
+    // HAND-1.4: the selected Session's "Hand off…" popover.
+    fresh('/s/a');
+    await pressKey(user, press);
+    expect(await screen.findByRole('dialog', { name: 'Hand off' })).toBeInTheDocument();
+  },
   async panels(user, press) {
     fresh('/');
     await pressKey(user, press);

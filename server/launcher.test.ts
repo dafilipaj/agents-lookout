@@ -22,7 +22,7 @@ const spawned = (tmux: string, over: Record<string, unknown> = {}) =>
 const spawnFailed = (kind: string, error: string, extra: Record<string, unknown> = {}) =>
   Object.assign(new Error('exit 1'), { code: 1, stdout: JSON.stringify({ ok: false, host: 'mac', kind, error, partial: null, ...extra }), stderr: `error: ${error}\n` });
 
-function setup(over: { spawn?: (call: Call) => Promise<string>; env?: NodeJS.ProcessEnv; settings?: Partial<Settings>; harnesses?: string } = {}) {
+function setup(over: { spawn?: (call: Call) => Promise<string>; env?: NodeJS.ProcessEnv; settings?: Partial<Settings>; harnesses?: string; sessionDirectory?: (id: string, harness: string) => Promise<string | null> } = {}) {
   const calls: Call[] = [];
   let settings: Settings = { ...defaultSettings(), ...over.settings };
   const changes: { launches: LaunchView[]; started: { launchId: string; sessionId: string }[] }[] = [];
@@ -45,6 +45,7 @@ function setup(over: { spawn?: (call: Call) => Promise<string>; env?: NodeJS.Pro
     env: over.env ?? { PATH: '/usr/bin', HOME: '/Users/me' },
     now: () => now,
     timeoutMs: 15_000,
+    ...(over.sessionDirectory ? { sessionDirectory: over.sessionDirectory } : {}),
   });
   return { launcher, calls, changes, update, runner, advance: (ms: number) => (now += ms) };
 }
@@ -604,5 +605,45 @@ describe('resuming past Sessions (HIST-3), through the same path as a start', ()
     const err = (await t.launcher.resume(resumeReq).catch((e: unknown) => e)) as LaunchError;
     expect(err.message).toMatch(/^Couldn't start the Session: /);
     expect(err.message).not.toMatch(/tmux|SECRETSECRET/);
+  });
+});
+
+describe('a start from a Handover', () => {
+  const OLD = 'a1b2c3d4-0000-4000-8000-000000000001';
+  const SHOP = '/Users/me/Projects/shop-worktrees/csv-export';
+  const continues = { sessionId: OLD, harness: 'claude', title: 'Add CSV export to reports' };
+
+  it("HAND-3.4: the old Session's own directory is accepted outside the Start directories, as Fleet or History reports it now", async () => {
+    const asked: string[] = [];
+    const t = setup({ sessionDirectory: async (id, harness) => (asked.push(`${harness}:${id}`), SHOP) });
+    await t.launcher.start(req({ directory: SHOP, continues }));
+    expect(asked).toEqual([`claude:${OLD}`]);
+    expect(spawnCall(t.calls).args).toEqual(expect.arrayContaining(['--dir', SHOP]));
+    // LAUNCH-1.2 keeps the last Start directory: the old Session's isn't one.
+    expect(t.update).toHaveBeenCalledWith(expect.objectContaining({ lastLaunch: expect.objectContaining({ directory: '~/Projects/work' }) }), 'server');
+  });
+
+  it("HAND-3.4: any other directory outside the Start directories is refused as LAUNCH-2.1 says: no `continues`, a Session whose directory differs, or one Fleet and History don't know", async () => {
+    const refused = { status: 400, field: 'directory', message: 'Pick one of the start directories from Settings.' };
+    const known = setup({ sessionDirectory: async () => SHOP });
+    await expect(known.launcher.start(req({ directory: SHOP }))).rejects.toMatchObject(refused);
+    await expect(known.launcher.start(req({ directory: '/Users/me/Projects/elsewhere', continues }))).rejects.toMatchObject(refused);
+    await expect(known.launcher.start(req({ directory: 'Projects/shop', continues }))).rejects.toMatchObject(refused);
+    await expect(known.launcher.start(req({ directory: SHOP, continues: { ...continues, harness: 'pi' } }))).rejects.toMatchObject(refused);
+    const unknown = setup({ sessionDirectory: async () => null });
+    await expect(unknown.launcher.start(req({ directory: SHOP, continues }))).rejects.toMatchObject(refused);
+    const failing = setup({ sessionDirectory: async () => { throw new Error('tb-session failed'); } });
+    await expect(failing.launcher.start(req({ directory: SHOP, continues }))).rejects.toMatchObject(refused);
+    const none = setup();
+    await expect(none.launcher.start(req({ directory: SHOP, continues }))).rejects.toMatchObject(refused);
+    for (const t of [known, unknown, failing, none]) expect(t.calls.some((c) => c.args.includes('spawn'))).toBe(false);
+  });
+
+  it('HAND-3.4: a Start directory needs no check, with or without `continues`', async () => {
+    const sessionDirectory = vi.fn(async () => SHOP);
+    const t = setup({ sessionDirectory });
+    await t.launcher.start(req({ continues }));
+    expect(sessionDirectory).not.toHaveBeenCalled();
+    expect(spawnCall(t.calls).args).toEqual(expect.arrayContaining(['--dir', join(homedir(), 'Projects/work')]));
   });
 });

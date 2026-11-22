@@ -50,6 +50,8 @@ import { shownCount } from '@/lib/ports';
 import { type PanelNav, type RightLayout, type RightTab, loadLayout, saveLayout, toggleTab } from '@/lib/right-sidebar';
 import { useAnyModalOpen } from '@/lib/modal';
 import { type HarnessState, type LaunchDraft, initialDraft } from '@/lib/launch';
+import { type FoundReply, HANDOFF_READ_MS, SENT_SKEW_MS, type HandoffWait, type ShownLink, type WritingWait, afterRead, handoffDraft, handoffRequest, replyAfter, showLink, waitStep } from '@/lib/handoff';
+import type { HandoffControls } from '@/components/SessionView';
 import { shownEffort } from '@/lib/effort-switch';
 import { type ModelTarget, shownModel } from '@/lib/model-switch';
 import { SWITCH_RUNNING, type SwitchState, type SwitchWhat, restartedWhy, switchFailure, switchKey } from '@/lib/status-switch';
@@ -976,6 +978,134 @@ export function App({ client }: { client: LookoutClient }) {
     [client],
   );
 
+  // HAND-2: each Session's wait for its Handover, next to the composer's drafts: it outlives the
+  // popover and switching Sessions, and a reload drops it (HAND-2.2). Each read is for one moment of a
+  // wait (its `sentAt` and `readAfter`), made once: an effect that runs again before the read's answer
+  // lands doesn't read again.
+  const [handoffWaits, setHandoffWaits] = useState<ReadonlyMap<string, HandoffWait>>(new Map());
+  const handoffReads = useRef(new Map<string, string>());
+  // HAND-2.3: the requests sent to each Session from this page in the last SENT_SKEW_MS (`replyAfter`'s `skip`).
+  const handoffSent = useRef(new Map<string, { request: string; sentAt: number }[]>());
+  const [handoffTick, setHandoffTick] = useState(0);
+  /** Changes a Session's wait, but only while it's still the one sent at `sentAt` (Cancel or Try again replace it). */
+  const updateWait = useCallback((id: string, sentAt: number, next: (w: WritingWait) => HandoffWait) =>
+    setHandoffWaits((m) => {
+      const w = m.get(id);
+      if (!w || (w.state !== 'sending' && w.state !== 'writing') || w.sentAt !== sentAt) return m;
+      const changed = next(w);
+      return changed === w ? m : new Map(m).set(id, changed);
+    }), []);
+  // HAND-1.3: the request goes as the composer's prompts do (VIEW-3.2), and fails as they do (VIEW-3.7).
+  const writeHandoff = useCallback(
+    async (row: SessionRow, piece: string) => {
+      // HAND-1.1: only while it's Idle, so the request never joins a running Turn (Non-goals).
+      if (row.status !== 'idle') return;
+      const request = handoffRequest(piece);
+      const sentAt = Date.now();
+      // The same request sent moments ago (Cancel, then ask again) is in the chat's window too.
+      const recent = (handoffSent.current.get(row.id) ?? []).filter((r) => sentAt - r.sentAt <= SENT_SKEW_MS);
+      const skip = recent.filter((r) => r.request === request).length;
+      const mine = { request, sentAt };
+      handoffSent.current.set(row.id, [...recent, mine]);
+      setHandoffWaits((m) => new Map(m).set(row.id, { state: 'sending', piece, request, sentAt, skip, busy: false, reads: 0, readAfter: sentAt + HANDOFF_READ_MS }));
+      try {
+        await client.sendMessage(row.id, request);
+      } catch (err) {
+        // It never reached the chat.
+        handoffSent.current.set(row.id, (handoffSent.current.get(row.id) ?? []).filter((r) => r !== mine));
+        updateWait(row.id, sentAt, (w) => ({ state: 'failed', piece: w.piece, reason: err instanceof Error ? err.message : 'Sending failed.' }));
+        return;
+      }
+      // An Idle list right after the send may predate it: the chat is read from 2 s on (`readAfter`), or at once after a Busy.
+      updateWait(row.id, sentAt, (w) => ({ ...w, state: 'writing' }));
+    },
+    [client, updateWait],
+  );
+  const cancelHandoff = useCallback((row: SessionRow) => setHandoffWaits((m) => {
+    if (!m.has(row.id)) return m;
+    const next = new Map(m);
+    next.delete(row.id);
+    return next;
+  }), []);
+  // HAND-2.3: the chat's latest entries, once the Status says the Turn may have ended: the reply in
+  // the request's Turn is the Handover. Not done yet: read again shortly (`afterRead`).
+  const readHandover = useCallback(
+    async (id: string, wait: WritingWait) => {
+      const moment = `${wait.sentAt}:${wait.readAfter}`;
+      if (handoffReads.current.get(id) === moment) return;
+      handoffReads.current.set(id, moment);
+      let found: FoundReply | null = null;
+      try {
+        found = replyAfter((await client.latestMessages(id)).entries, wait.request, wait.sentAt, wait.skip);
+      } catch {
+        // read again
+      }
+      // A Busy seen while this read ran: the Turn runs again, and its end is read anew.
+      updateWait(id, wait.sentAt, (w) => (w.busy !== wait.busy || w.reads !== wait.reads ? w : afterRead(w, found, Date.now())));
+    },
+    [client, updateWait],
+  );
+  // HAND-2.3, HAND-2.4: each wait follows its Session's row in the list: Busy, then Idle, ends the Turn.
+  const listIsKnown = listKnown(state);
+  useEffect(() => {
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    for (const [id, wait] of handoffWaits) {
+      const row = state.sessions.get(id) ?? null;
+      if (!row && !listIsKnown) continue;
+      const step = waitStep(wait, row);
+      if (wait.state !== 'writing') continue;
+      if (step.kind === 'busy') updateWait(id, wait.sentAt, (w) => ({ ...w, busy: true, reads: 0, readAfter: 0 }));
+      else if (step.kind === 'fail') updateWait(id, wait.sentAt, (w) => ({ state: 'failed', piece: w.piece, reason: step.reason }));
+      else if (step.kind === 'read') {
+        // Not yet: this runs again at `readAfter`, unless the row or the wait changes first.
+        const due = wait.readAfter - Date.now();
+        if (due <= 0) void readHandover(id, wait);
+        else timers.push(setTimeout(() => setHandoffTick((t) => t + 1), due));
+      }
+    }
+    return () => timers.forEach(clearTimeout);
+  }, [handoffWaits, state.sessions, listIsKnown, updateWait, readHandover, handoffTick]);
+  // HAND-2.3, HAND-3.1: a ready Handover opens the launcher, pre-filled; the wait goes with it. Its
+  // draft is Work's kind, gone when the launcher closes; focus goes back to "Hand off…".
+  const launchHandoff = useCallback(
+    (row: SessionRow, opener: HTMLElement | null) => {
+      const wait = handoffWaits.get(row.id);
+      if (wait?.state !== 'ready' || launcherOpen) return;
+      setWorkDraft(handoffDraft(row, wait.handover, state.settings, state.topics?.topics ?? []));
+      launchedFromWork.current = false;
+      launchedFromTopic.current = opener;
+      cancelHandoff(row);
+      openLauncher();
+    },
+    [handoffWaits, launcherOpen, state.settings, state.topics, cancelHandoff, openLauncher],
+  );
+  // …at once when its Session is selected, else when you select it again (HAND-2.3); never over a dialog.
+  const selectedRow = selectedId ? state.sessions.get(selectedId) : undefined;
+  const readyHere = selectedRow && handoffWaits.get(selectedRow.id)?.state === 'ready';
+  useEffect(() => {
+    if (!readyHere || !selectedRow || modalOpen) return;
+    launchHandoff(selectedRow, document.querySelector<HTMLElement>('[data-slot="header-actions"] [data-action="hand-off"]'));
+  }, [readyHere, selectedRow, modalOpen, launchHandoff]);
+  // HAND-4.1, HAND-4.2: a linked Session opens live, or past, read-only (HIST-3.3).
+  const openLink = useCallback(
+    (link: ShownLink) => navigate(link.live ? { name: 'session', id: link.live.id } : { name: 'past', harness: link.harness, id: link.sessionId }),
+    [navigate],
+  );
+  const handoffControls = useMemo<HandoffControls>(
+    () => ({
+      waits: handoffWaits,
+      write: (row, piece) => void writeHandoff(row, piece),
+      cancel: cancelHandoff,
+      launch: launchHandoff,
+      links: (row) => ({
+        from: row.continuedFrom ? showLink(row.continuedFrom, state.sessions) : null,
+        into: (row.continuedIn ?? []).map((l) => showLink(l, state.sessions)),
+      }),
+      open: openLink,
+    }),
+    [handoffWaits, writeHandoff, cancelHandoff, launchHandoff, state.sessions, openLink],
+  );
+
   // PORTS-4: the row the dialog opened on; the server checks it again before signalling (PORTS-4.7).
   // AWAKE-4.4: the server's answer goes into the store at once; its event went out before it, and the
   // store keeps whichever is newer by `rev` (AWAKE-1.1).
@@ -1264,7 +1394,7 @@ export function App({ client }: { client: LookoutClient }) {
                 }}
               />
             ) : route.name === 'past' ? (
-              <PastSessionView harness={route.harness} sessionId={route.id} now={now} load={loadPast} />
+              <PastSessionView harness={route.harness} sessionId={route.id} now={now} load={loadPast} sessions={state.sessions} onOpenLink={openLink} />
             ) : route.name === 'launch' ? (
               // Its Session is taking over the selection (the layout effect above): show nothing meanwhile.
               takeOver ? null : (
@@ -1329,6 +1459,7 @@ export function App({ client }: { client: LookoutClient }) {
                 stops={stops}
                 onStop={(row) => void stopSession(row, 'busy')}
                 onEsc={(row) => void stopSession(row, 'needs-you')}
+                handoff={handoffControls}
               />
             )}
           </ViewErrorBoundary>

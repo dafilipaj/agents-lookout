@@ -153,6 +153,25 @@ export class ChatFeed {
     return { ok: false, status: 502, error: `Couldn't load earlier messages: ${res.error}` };
   }
 
+  /** HAND-2.3: the chat's latest entries, as a viewed chat starts with, read once without a feed. */
+  async latest(sessionId: string): Promise<PageResult> {
+    const row = this.opts.lookup(sessionId);
+    if (!row) return { ok: false, status: 404, error: "This Session isn't running, so its chat can't be read." };
+    let target: string;
+    try {
+      target = await this.opts.target(row);
+    } catch (err) {
+      const e = err as { status?: number; message?: string };
+      if (e.status === 409) return { ok: false, status: 404, error: "This Session isn't running any more, so its chat can't be read." };
+      return { ok: false, status: e.status ?? 503, error: e.message ?? "Couldn't check that the Session is still running." };
+    }
+    let res = await this.fetch(target, { limit: INITIAL_LIMIT }, TAIL_TIMEOUT_MS);
+    if (res.ok && !sameSession(row, res)) res = { ok: false, kind: 'io', error: 'Fleet answered for another Session.' };
+    if (res.ok) return { ok: true, page: { entries: res.entries, before: res.hasMoreBefore ? res.oldest : null } };
+    if (res.kind === 'transcript_not_found') return { ok: false, status: 404, error: res.error };
+    return { ok: false, status: 502, error: `Couldn't read the chat: ${res.error}` };
+  }
+
   private reconcile(): void {
     const wanted = new Set(this.viewers.values());
     for (const f of this.feeds.values()) {

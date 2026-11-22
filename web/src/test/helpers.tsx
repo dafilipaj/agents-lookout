@@ -99,6 +99,7 @@ interface RenderOptions {
   stopSession?: LookoutClient['stopSession'];
   escSession?: LookoutClient['escSession'];
   earlierMessages?: (sessionId: string, before: string) => Promise<ChatPage>;
+  latestMessages?: (sessionId: string) => Promise<ChatPage>;
   history?: (q: HistoryQuery) => Promise<HistoryPage>;
   pastSession?: LookoutClient['pastSession'];
   pastPeek?: LookoutClient['pastPeek'];
@@ -178,6 +179,7 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
     answerTrust: vi.fn(options.answerTrust ?? (async () => null)),
     dismissLaunch: vi.fn(async () => {}),
     earlierMessages: vi.fn(options.earlierMessages ?? (async (): Promise<ChatPage> => ({ entries: [], before: null }))),
+    latestMessages: vi.fn(options.latestMessages ?? (async (): Promise<ChatPage> => ({ entries: [], before: null }))),
     watch: vi.fn(async () => {}),
     refreshJev: vi.fn(async () => {}),
     tools: vi.fn(options.tools ?? (async () => ({ rows: [], checkedAt: null, reading: false }))),

@@ -273,6 +273,12 @@ export class History {
     };
   }
 
+  /** HAND-4.3: a Session's whole first prompt, for its `Continued from:` line; null when it has none. */
+  async firstPromptText(sessionId: string, harness: Harness): Promise<string | null> {
+    const { raw } = await this.show(sessionId, harness, 1);
+    return typeof raw.first_prompt === 'string' && raw.first_prompt.trim() ? unwrapPasted(raw.first_prompt) : null;
+  }
+
   /** HIST-3.1: what a resume needs, read again from tb-session. */
   async lookup(sessionId: string, harness: Harness): Promise<HistoryItem> {
     const { row } = await this.show(sessionId, harness, 1);

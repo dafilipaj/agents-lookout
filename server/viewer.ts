@@ -206,6 +206,13 @@ export class Viewer {
     return res.page;
   }
 
+  /** HAND-2.3: the latest entries of a Session's chat, read once, whether or not a tab views it. */
+  async latest(sessionId: string): Promise<ChatPage> {
+    const res = await this.chat.latest(sessionId);
+    if (!res.ok) throw new ViewError(res.status, res.error);
+    return res.page;
+  }
+
   /**
    * VIEW-3: `fleet send` types the text into the Session (a paste when it has line breaks)
    * and submits it. Only for a Session Fleet lists right now as Controllable. VIEW-3.7: only into

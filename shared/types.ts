@@ -152,6 +152,22 @@ export interface SessionRow {
    * RFC 3339); null without one. It moves with every reply, whatever its model.
    */
   modelAt: string | null;
+  /** HAND-4.1: the Session this one continues, from a Handover; null or missing for none. */
+  continuedFrom?: HandoffLink | null;
+  /** HAND-4.2: the Sessions started from this one's Handovers, newest first; missing for none. */
+  continuedIn?: HandoffLink[];
+}
+
+/**
+ * HAND-4: the other end of a hand-off, as `~/.lookout/handoffs.json` records it: its id, Harness and
+ * title as last seen (null when Lookout never saw it live and its first prompt didn't say), and when
+ * the new Session was reported.
+ */
+export interface HandoffLink {
+  sessionId: string;
+  harness: Harness;
+  title: string | null;
+  at: number;
 }
 
 /** VIEW-6.7: a switch Fleet confirmed: `model` from the Session's next reply on, `since` the switch's Transcript time. */
@@ -207,6 +223,18 @@ export interface LaunchRequest {
   prompt: string;
   /** TOPIC-5.2, TOPIC-5.3: the Topic the Session is added to once Fleet reports it; absent for none. */
   topic?: LaunchTopic;
+  /**
+   * HAND-3.3, HAND-3.4: a start from a Handover: the Session it continues, recorded once Fleet reports
+   * the new one; its own directory may be used though it isn't a Start directory. Absent otherwise.
+   */
+  continues?: LaunchContinues;
+}
+
+/** HAND-3: the Session a start from a Handover continues, with its title as the launcher showed it. */
+export interface LaunchContinues {
+  sessionId: string;
+  harness: Harness;
+  title: string;
 }
 
 /**
@@ -582,6 +610,9 @@ export interface HistoryDetail {
   preview: 'latest' | 'first' | 'all';
   /** How many messages the Session has, when tb-session says. */
   totalMessages: number | null;
+  /** HAND-4: its hand-offs, as the record has them; missing from an older server. */
+  continuedFrom?: HandoffLink | null;
+  continuedIn?: HandoffLink[];
 }
 
 /**

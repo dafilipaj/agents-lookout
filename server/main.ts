@@ -42,6 +42,7 @@ import { TopicStore, Topics, defaultTopicsPath } from './topics.ts';
 import { UsageMonitor, resolveJevBin } from './usage.ts';
 import { Recommender } from './recommender.ts';
 import { TopicLaunches } from './topic-launches.ts';
+import { HandoffLaunches, Handoffs, defaultHandoffsPath, historyHarness, sessionDirectory } from './handoffs.ts';
 import { Suggester } from './suggester.ts';
 import { Summarizer } from './summarizer.ts';
 import { Viewer } from './viewer.ts';
@@ -68,15 +69,31 @@ const git = new GitCache({
   onChange: () => monitor.refreshDerived(),
 });
 
+// HAND-3.3, HAND-4: the hand-offs, kept in `~/.lookout/handoffs.json`; a change re-derives the rows' links.
+const handoffs = new Handoffs({
+  path: defaultHandoffsPath(env),
+  firstPrompt: (id, harness) => history.firstPromptText(id, harness),
+  // Called later, once `history` exists (declared below).
+  sessionHarness: (id, likely) => historyHarness(history)(id, likely),
+  onChange: () => monitor.refreshDerived(),
+});
+handoffs.load();
+const handoffLaunches = new HandoffLaunches(handoffs);
+
 const launcher = new Launcher({
   runner: run,
   fleetBin: () => resolveFleetBin(env),
   settings,
   onChange: (launches, started) => {
-    // TOPIC-5.2: a start for a Topic is followed by its Session's row from here on.
-    if (started.length) topicLaunches.started(started, monitor.snapshot().sessions);
+    // TOPIC-5.2, HAND-3.3: a start for a Topic or from a Handover is followed by its Session's row from here on.
+    if (started.length) {
+      topicLaunches.started(started, monitor.snapshot().sessions);
+      handoffLaunches.started(started, monitor.snapshot().sessions);
+    }
     app.broadcast({ type: 'launches', launches, started });
   },
+  // HAND-3.4: where the old Session works, as Fleet lists it at that moment, else as History has it.
+  sessionDirectory: (id, harness) => sessionDirectory({ monitor, history })(id, harness),
 });
 
 const work = new WorkMonitor({
@@ -112,6 +129,8 @@ const monitor: SessionMonitor = new SessionMonitor({
   queued: (row) => queuedFor(resQueue.snapshot(), row.id),
   // EVID-5.6: the verdict for the row's mark, read when the rows are derived.
   evidence: (row) => evidence.rowEvidence(row.id),
+  // HAND-4: the Session it continues, and those that continue it.
+  handoffs: (row) => handoffs.links(row.id),
   onEvent: (e) => {
     app.broadcast(e);
     // EVID-1.3: who stopped with Changes, was marked Done again, or had a shell or a Subagent end.
@@ -126,6 +145,9 @@ const monitor: SessionMonitor = new SessionMonitor({
     work.setLiveSessions(rows.flatMap((row) => (row.session_id ? [row.session_id] : [])));
     // TOPIC-5.2: a Session Lookout started for a Topic joins it first, so it's never a candidate.
     topicLaunches.observe(monitor.snapshot().sessions);
+    // HAND-3.3, HAND-4.3: a start from a Handover is recorded; then any other Session's first prompt is read once for its `Continued from:` line.
+    handoffLaunches.observe(monitor.snapshot().sessions);
+    handoffs.observe(monitor.snapshot().sessions);
     // TOPIC-12: member Sessions live again or ended are the Topics' activity.
     observeTopics(() => topics.observeSessions(monitor.snapshot().sessions));
     // TOPIC-9.1: a Session with a session id is a candidate once.
@@ -381,6 +403,7 @@ const app = createApp({
   productiveEmailSuggestion,
   launcher,
   topicLaunches,
+  handoffLaunches,
   viewer,
   usage,
   memory,
@@ -431,7 +454,8 @@ const app = createApp({
   library: new Library({ runner: run, bin: () => resolveTbSessionBin(env), env, toolVersion: () => tools.version('tb-session'), onRead: (items, pruned) => topics.libraryRead(items, pruned) }),
   history: {
     find: (q) => history.find(q),
-    detail: (id, harness) => history.detail(id, harness),
+    // HAND-4: a past Session's hand-offs come from the record when History opens it.
+    detail: async (id, harness) => ({ ...(await history.detail(id, harness)), ...handoffs.links(id) }),
     peek: (id, harness) => history.peek(id, harness),
     resume: (input) => resumePast({ history, launcher, isLive }, input),
   },

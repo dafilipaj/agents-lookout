@@ -12,6 +12,7 @@ import {
   Eye,
   FileText,
   FolderInput,
+  Forward,
   History,
   Layers,
   type LucideIcon,
@@ -49,6 +50,8 @@ export const ACTIONS = {
   start: { word: 'Start Session', icon: Play },
   review: { word: 'Review', icon: ScanEye, key: 'R' },
   specs: { word: 'Specs', icon: FileText, key: 'S' },
+  /** HAND-1.1: ask the Session for a Handover, for a new Session that continues its work. */
+  'hand-off': { word: 'Hand off…', icon: Forward, key: 'F' },
   'add-to-topic': { word: 'Add to Topic', icon: Layers, key: 'A' },
   'link-to-topic': { word: 'Link to Topic…', icon: ArrowLeftRight },
   'open-graph': { word: 'Open graph', icon: Network, key: 'G' },

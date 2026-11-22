@@ -199,6 +199,11 @@ export interface LauncherOptions {
   now?: () => number;
   timeoutMs?: number;
   log?: (line: string) => void;
+  /**
+   * HAND-3.4: the directory a Session works in as Fleet reports it now, else as History has it;
+   * null when neither knows it. A start from its Handover may use that directory.
+   */
+  sessionDirectory?(sessionId: string, harness: LaunchHarness): Promise<string | null>;
 }
 
 /** Starts Sessions through `fleet spawn` (LAUNCH) and follows them until Fleet reports them. */
@@ -304,6 +309,7 @@ export class Launcher {
   async start(input: unknown): Promise<LaunchView> {
     const req = await this.validate(input);
     const id = this.newId((input as Record<string, unknown> | null)?.launchId);
+    const startDirectories = this.opts.settings.get().startDirectories;
     const args = ['--local', 'spawn', '--json', '--backend', 'tmux', '--harness', req.harness, '--dir', expandHome(req.directory)];
     if (req.model) args.push('--model', req.model);
     if (req.effort) args.push('--effort', req.effort);
@@ -312,10 +318,13 @@ export class Launcher {
     if (req.prompt) args.push('--', req.prompt);
     const title = req.name || `${HARNESS_LABEL[req.harness]} in ${basename(expandHome(req.directory))}`;
     const launch = await this.spawn({ id, title, harness: req.harness, directory: req.directory, resumes: null, name: req.name, prompt: req.prompt || null }, args);
-    // LAUNCH-1.2: remember the choices. A failed write doesn't fail the start.
+    // LAUNCH-1.2: remember the choices. A failed write doesn't fail the start. A start from a
+    // Handover in the old Session's own directory (HAND-3.4) keeps the last Start directory.
+    const last = this.opts.settings.get().lastLaunch?.directory;
+    const directory = startDirectories.includes(req.directory) ? req.directory : last && startDirectories.includes(last) ? last : startDirectories[0] ?? req.directory;
     this.opts.settings
       .update({ lastLaunch: {
-        harness: req.harness, model: req.model, directory: req.directory,
+        harness: req.harness, model: req.model, directory,
         byHarness: { [req.harness]: { effort: req.effort ?? null, skipPermissions: req.skipPermissions } },
       } }, 'server')
       .catch((err: unknown) => console.error('lookout: saving the last launch failed', err));
@@ -676,7 +685,7 @@ export class Launcher {
   private async validate(input: unknown): Promise<{ directory: string; harness: LaunchHarness; model: string; name: string; prompt: string; effort: string | undefined; skipPermissions: boolean }> {
     const v = typeof input === 'object' && input !== null ? (input as Record<string, unknown>) : {};
     const directory = typeof v.directory === 'string' ? v.directory : '';
-    if (!this.opts.settings.get().startDirectories.includes(directory)) {
+    if (!this.opts.settings.get().startDirectories.includes(directory) && !(await this.continuedDirectory(v.continues, directory))) {
       throw new LaunchError(400, 'Pick one of the start directories from Settings.', 'directory');
     }
     if (v.harness !== 'claude' && v.harness !== 'codex') throw new LaunchError(400, 'Pick Claude Code or Codex.', 'harness');
@@ -705,6 +714,21 @@ export class Launcher {
       throw new LaunchError(400, 'Skip permissions must be a boolean.', 'skipPermissions');
     }
     return { directory, harness, model, name, prompt, effort: v.effort as string | undefined, skipPermissions: v.skipPermissions === true };
+  }
+
+  /**
+   * HAND-3.4: a start from a Handover may use the old Session's own directory, checked again now
+   * against Fleet's list, else History; any other directory outside the Start directories is refused.
+   */
+  private async continuedDirectory(continues: unknown, directory: string): Promise<boolean> {
+    if (!directory.startsWith('/') || typeof continues !== 'object' || continues === null || !this.opts.sessionDirectory) return false;
+    const c = continues as Record<string, unknown>;
+    if (typeof c.sessionId !== 'string' || (c.harness !== 'claude' && c.harness !== 'codex')) return false;
+    try {
+      return (await this.opts.sessionDirectory(c.sessionId, c.harness)) === directory;
+    } catch {
+      return false;
+    }
   }
 
   private changed(started: { launchId: string; sessionId: string }[] = []): void {

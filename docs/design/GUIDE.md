@@ -56,6 +56,22 @@ What opens from a reading to explain it: Memory's and Usage's, from the sidebar'
 - **Two openers, one popover:** Evidence's opens from the status line and from the Done card (`SessionView.tsx`); one is open at a time, and Esc returns focus to whichever opened it (EVID-5.8).
 - **See:** MEM-3, USAGE-2, EVID-5, DS-19, DS-3.2.
 
+### A small form from a header action
+
+A header's icon action that asks one thing before it runs, then waits on the Session: "Hand off…" (`HandOff.tsx`, HAND-1, HAND-2).
+
+- **Use** `Popover` (`ui/popover.tsx`) on the action's `IconButton` (`md`, `data-[state=open]:bg-accent` while open), `align="end"`, `w-[22.5rem] p-3`, `gap-2.5`: a `body` semibold title naming the action, one field with its `meta` label and a `meta` line saying what happens, then Cancel (Secondary) and the action (Primary, `default` size, its `Kbd`). While it waits, `Loading` with what it waits for and Cancel; a failure, an `Alert` with Cancel and "Try again".
+- A wait that outlives the popover shows on the button as a 6 px dot at its top right, ringed in `background`, in the colour its spec ties to it (HAND-2.2: Busy's blue while the Session writes, `ok` ready, `destructive` failed), its tooltip in words. Never a spinner (DS-6.8).
+- **Do:** keep the wait in App, next to the composer's drafts, so closing the popover or switching Sessions keeps it.
+- **Don't:** open a dialog for one field, or move focus anywhere but into the popover.
+
+### A link to another Session in a header
+
+What the header names besides the Session: "from <title>" and "Continued in <title>" (`HandoffLinks`, HAND-4).
+
+- **Use** a Quiet `Button`, `line` size, after the Harness's name: its icon, then its words, cut to fit (`min-w-0 shrink`, the words `truncate`); below 32rem of header the words go (`@max-[32rem]:sr-only`), as the Harness's name does, and the tooltip keeps them. Several Sessions are one link with a `ChevronDown`, opening a `DropdownMenu` of `SessionMarker`, title and `StatusTag` rows.
+- **Don't:** colour it Primary or underline it: it's a way to another Session, not the next step.
+
 ### A line in a column's footer
 
 A reading or a switch about the Mac, at the bottom of a column: the Memory line (and the Usage strip above it) in the Session sidebar, keep-awake in the right sidebar.

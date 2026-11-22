@@ -1,4 +1,5 @@
 import type { LaunchChoices, LaunchHarness, Settings } from '@shared/settings.ts';
+import { sameModel } from '@shared/model.ts';
 import type { LaunchRequest } from '@shared/types.ts';
 import { type Topic, sortTopics } from '@shared/topics.ts';
 import type { UsageSnapshot } from '@shared/usage.ts';
@@ -52,14 +53,19 @@ export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, h
     ? draft.harness
     : (list?.find((h) => h.installed)?.id ?? draft.harness);
   const models = list?.find((h) => h.id === harness)?.models ?? [{ id: '', label: 'Default', efforts: [], defaultEffort: null }];
-  const model = models.some((m) => m.id === draft.model) ? draft.model : '';
+  // HAND-3.1: a Session's own model (`claude-opus-5-5[1m]`, say) picks the listed one it is.
+  const model = models.find((m) => m.id === draft.model)?.id ?? models.find((m) => m.id !== '' && draft.model !== '' && sameModel(m.id, draft.model))?.id ?? '';
   const chosen = models.find((m) => m.id === model);
   const levels = chosen?.efforts ?? [];
   const remembered = (id: LaunchHarness) => draft.byHarness?.[id] ?? settings.lastLaunch?.byHarness?.[id];
   const level = remembered(harness)?.effort;
   const effort = level && levels.includes(level) ? level : levels.includes('high') ? 'high' : (chosen?.defaultEffort ?? null);
   const skipPermissions = remembered(harness)?.skipPermissions ?? harness === 'claude';
-  const directory = settings.startDirectories.includes(draft.directory) ? draft.directory : (settings.startDirectories[0] ?? '');
+  // HAND-3.4: a start from a Handover lists the old Session's directory first; the server checks it again.
+  const handoffDirectory = draft.continues?.directory || null;
+  const directory = settings.startDirectories.includes(draft.directory) || (handoffDirectory !== null && draft.directory === handoffDirectory)
+    ? draft.directory
+    : (settings.startDirectories[0] ?? '');
   // TOPIC-5.3: Open Topics, most recently changed first; a Topic view's own Topic stays listed if it
   // was archived since. One deleted since stays picked and is sent, so the start is refused with why.
   const topicChoices = sortTopics(topics.filter((t) => t.state === 'open' || (draft.fromTopicView && t.id === draft.topic?.id)));
@@ -93,7 +99,8 @@ export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, h
     setSubmitting(true);
     setError(null);
     try {
-      await onStart({ directory, harness, model, name: draft.name, prompt: draft.prompt, ...(levels.length && effort ? { effort } : {}), skipPermissions, ...(topic ? { topic } : {}) });
+      const continues = draft.continues && { sessionId: draft.continues.sessionId, harness: draft.continues.harness, title: draft.continues.title };
+      await onStart({ directory, harness, model, name: draft.name, prompt: draft.prompt, ...(levels.length && effort ? { effort } : {}), skipPermissions, ...(topic ? { topic } : {}), ...(continues ? { continues } : {}) });
     } catch (err) {
       // LAUNCH-4.4: stay open, show why, keep everything.
       setError({
@@ -138,7 +145,12 @@ export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, h
               onChange={(e) => set({ directory: e.target.value })}
               className="h-8 w-full rounded-md border border-input bg-transparent px-2 font-mono text-body outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 dark:bg-input/30"
             >
-              {settings.startDirectories.map((d) => (
+              {handoffDirectory !== null && (
+                <option value={handoffDirectory}>
+                  {`${handoffDirectory} · from ${draft.continues!.title}`}
+                </option>
+              )}
+              {settings.startDirectories.filter((d) => d !== handoffDirectory).map((d) => (
                 <option key={d} value={d}>
                   {d}
                 </option>

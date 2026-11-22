@@ -1,7 +1,7 @@
 import { FLEET_INSTALL_COMMAND } from '../shared/defaults.ts';
 import type { RowEvidence } from '../shared/evidence.ts';
 import type { Queued } from '../shared/res.ts';
-import type { FleetHealth, PendingEffort, PendingModel, RowChanges, SessionRow, Status } from '../shared/types.ts';
+import type { FleetHealth, HandoffLink, PendingEffort, PendingModel, RowChanges, SessionRow, Status } from '../shared/types.ts';
 import type { FleetListResult, FleetRow } from './fleet.ts';
 import type { GitCache } from './git.ts';
 import { normalizeRows } from './normalize.ts';
@@ -31,6 +31,8 @@ export interface MonitorOptions {
   queued?(row: SessionRow): Queued | null;
   /** EVID-5.6: the Session's verdict, carried with its row. */
   evidence?(row: SessionRow): RowEvidence | null;
+  /** HAND-4: the Session's hand-offs, carried with its row (only when it has one). */
+  handoffs?(row: SessionRow): { continuedFrom: HandoffLink | null; continuedIn: HandoffLink[] };
   intervalMs?: number;
   now?: () => number;
 }
@@ -176,6 +178,13 @@ export class SessionMonitor {
     if (this.opts.changes) for (const row of next) row.changes = this.opts.changes(row);
     if (this.opts.queued) for (const row of next) row.queued = this.opts.queued(row);
     if (this.opts.evidence) for (const row of next) row.evidence = this.opts.evidence(row);
+    if (this.opts.handoffs) {
+      for (const row of next) {
+        const { continuedFrom, continuedIn } = this.opts.handoffs(row);
+        if (continuedFrom) row.continuedFrom = continuedFrom;
+        if (continuedIn.length) row.continuedIn = continuedIn;
+      }
+    }
 
     const upsert: SessionRow[] = [];
     const nextRows = new Map<string, SessionRow>();

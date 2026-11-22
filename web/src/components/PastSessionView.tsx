@@ -1,5 +1,5 @@
 import { BLOCK_REASON } from '@shared/history.ts';
-import type { ChatPage, Harness, HistoryDetail } from '@shared/types.ts';
+import type { ChatPage, Harness, HistoryDetail, SessionRow } from '@shared/types.ts';
 import { CircleSlash, GitBranch } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
@@ -12,6 +12,8 @@ import { AddToTopicButton } from './TopicLinks';
 import { historyMember } from '@/lib/topics';
 import { HarnessIcon } from './HarnessIcon';
 import { DockNote, StatusBar } from './SessionView';
+import { HandoffLinks } from './HandOff';
+import { type ShownLink, showLink } from '@/lib/handoff';
 import { PaneHeader, PlainView, ShellCell, ShellView } from './Shell';
 
 interface Props {
@@ -19,6 +21,9 @@ interface Props {
   sessionId: string;
   now: number;
   load(harness: Harness, sessionId: string): Promise<HistoryDetail>;
+  /** HAND-4: the live Sessions, for a link's title and Status, and opening a linked Session. */
+  sessions?: ReadonlyMap<string, SessionRow>;
+  onOpenLink?(link: ShownLink): void;
 }
 
 const noEarlier = (): Promise<ChatPage> => Promise.reject(new Error('A past Session shows only this preview of its messages.'));
@@ -28,7 +33,7 @@ const noop = () => {};
  * HIST-3.3: a past Session that can't be resumed, read-only: its latest messages in VIEW's chat,
  * and why it can't be resumed.
  */
-export function PastSessionView({ harness, sessionId, now, load }: Props) {
+export function PastSessionView({ harness, sessionId, now, load, sessions, onOpenLink }: Props) {
   const [state, setState] = useState<{ key: string; detail: HistoryDetail | null; error: string | null } | null>(null);
   const key = `${harness}:${sessionId}`;
   useEffect(() => {
@@ -82,6 +87,14 @@ export function PastSessionView({ harness, sessionId, now, load }: Props) {
           <HarnessIcon harness={item.harness} tone="brand" className="size-4" />
           {HARNESS_NAME[item.harness]}
         </span>
+        {/* HAND-4: a past Session's hand-offs, from the record. */}
+        {sessions && onOpenLink && (
+          <HandoffLinks
+            from={detail.continuedFrom ? showLink(detail.continuedFrom, sessions) : null}
+            into={(detail.continuedIn ?? []).map((l) => showLink(l, sessions))}
+            onOpen={onOpenLink}
+          />
+        )}
         <span className="ml-auto flex shrink-0 items-center">
           <AddToTopicButton member={historyMember(item)} label={item.title} />
         </span>
