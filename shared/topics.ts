@@ -128,6 +128,7 @@ export type ActivityKind =
   | 'edge-reversed'
   | 'edge-unlinked'
   | 'summary'
+  | 'handover'
   | 'added'
   | 'removed'
   | 'gone'
@@ -161,7 +162,8 @@ export interface ActivityData {
   note?: string | null;
   /**
    * TOPIC-15.1: on an "added" entry, the Handover the Session was started with, the old Session's
-   * title, and the piece it covers (absent for all the work).
+   * title, and the piece it covers (absent for all the work). TOPIC-15.7: a "handover" entry holds the
+   * same, for a Handover kept without a start.
    */
   handover?: string;
   from?: string;
@@ -215,6 +217,9 @@ export function activityWords(e: ActivityEntry): string {
       return `Unlinked ${other}`;
     case 'summary':
       return 'Summary written';
+    case 'handover':
+      // TOPIC-15.7: kept from the launcher, without a start.
+      return `Kept a Handover from ${d.from?.trim() || 'a Session'}${d.piece ? `, a piece: ${d.piece}` : ''}`;
     case 'added':
       // TOPIC-15.2: a Handover for a piece says the piece.
       return `Added ${name}${d.reason ? `, ${d.reason}` : ''}${d.handover && d.piece ? `, a piece: ${d.piece}` : ''}`;

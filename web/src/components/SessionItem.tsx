@@ -2,6 +2,7 @@ import { type Pressure, runsAway } from '@shared/memory.ts';
 import type { SessionRow } from '@shared/types.ts';
 import { Bot, CircleCheck, FlaskConicalOff, FolderGit2, GitBranch, Hourglass, SquareTerminal, TrendingUp } from 'lucide-react';
 import { memo, useEffect, useRef } from 'react';
+import { ActionIcon } from '@/lib/actions';
 import { clockTime } from '@/lib/chat';
 import { type HiddenHit, hiddenHit, rangesOf, type RowMatch } from '@/lib/filter';
 import type { NameSuffix } from '@/lib/names';
@@ -31,12 +32,14 @@ interface Props {
   match?: RowMatch | null;
   /** SIDE-13.5: Unread: it went Idle after you last saw it. */
   unread?: boolean;
+  /** HAND-6.3: a Handover this Session wrote waits for you. */
+  handoverReady?: boolean;
 }
 
 const NOT_CONTROLLABLE = 'Not Controllable: this Session runs in another app, so Lookout can only show it.';
 
 /** One sidebar row (SIDE-2). */
-export const SessionItem = memo(function SessionItem({ row, selected, dimmed, now, onSelect, suffix = null, pressure = null, match = null, unread = false }: Props) {
+export const SessionItem = memo(function SessionItem({ row, selected, dimmed, now, onSelect, suffix = null, pressure = null, match = null, unread = false, handoverReady = false }: Props) {
   const ref = useRef<HTMLLIElement>(null);
   useEffect(() => {
     if (selected) ref.current?.scrollIntoView?.({ block: 'nearest' });
@@ -153,6 +156,13 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
             <span className="flex shrink-0 items-center" title={`Finished at ${clockTime(new Date(row.statusSince).toISOString())}, after you last looked`} data-field="unread">
               <span aria-hidden data-slot="unread-dot" className="size-1.5 rounded-full bg-sidebar-foreground" />
               <span className="sr-only">unread</span>
+            </span>
+          )}
+          {/* HAND-6.3: a ready Handover, the Hand off icon in `ok`, its words for screen readers. */}
+          {handoverReady && (
+            <span className="flex shrink-0 items-center" title="Handover ready" data-field="handover-ready">
+              <ActionIcon id="hand-off" className="size-3 text-ok" />
+              <span className="sr-only">Handover ready</span>
             </span>
           )}
           {/* DS-3.1: the Harness mark in the row's quiet colour; Status carries the colour in a list. */}

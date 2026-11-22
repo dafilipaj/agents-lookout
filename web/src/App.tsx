@@ -51,7 +51,7 @@ import { shownCount } from '@/lib/ports';
 import { type PanelNav, type RightLayout, type RightTab, loadLayout, saveLayout, toggleTab } from '@/lib/right-sidebar';
 import { useAnyModalOpen } from '@/lib/modal';
 import { type HarnessState, type LaunchDraft, initialDraft } from '@/lib/launch';
-import { type FoundReply, HANDOFF_READ_MS, SENT_SKEW_MS, type HandoffWait, type ShownLink, type WritingWait, afterRead, handoffDraft, handoffRequest, replyAfter, showLink, waitStep } from '@/lib/handoff';
+import { type FoundReply, HANDOFF_READ_MS, SENT_SKEW_MS, type HandoffWait, type ShownLink, type WritingWait, afterRead, handoffDraft, handoffRequest, keepHandovers, keptHandoverChange, readKeptHandovers, replyAfter, showLink, waitStep, withReadyDraft, withoutReady } from '@/lib/handoff';
 import type { HandoffControls } from '@/components/SessionView';
 import { shownEffort } from '@/lib/effort-switch';
 import { type ModelTarget, shownModel } from '@/lib/model-switch';
@@ -104,6 +104,13 @@ function startTitle(req: LaunchRequest): string {
 function isTextField(t: EventTarget | null): boolean {
   if (!(t instanceof HTMLElement)) return false;
   return t.isContentEditable || t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT';
+}
+
+/** HAND-6.2: a start from a ready Handover under way: the old Session, the Handover's `at`, and whether `launches` has shown it yet. */
+interface HandoffStart {
+  from: string;
+  at: number;
+  seen: boolean;
 }
 
 function reloadPage(): void {
@@ -354,6 +361,10 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
   }, []);
   const [draft, setDraft] = useState<LaunchDraft | null>(null);
   const [workDraft, setWorkDraft] = useState<LaunchDraft | null>(null);
+  /** HAND-6.2: the Session whose ready Handover the launcher holds, its fields kept with it; null for none. */
+  const [handoffOpen, setHandoffOpen] = useState<string | null>(null);
+  /** HAND-6.2: starts from a ready Handover under way, by launch id, with the old Session's id. */
+  const [handoffStarts, setHandoffStarts] = useState<ReadonlyMap<string, HandoffStart>>(new Map());
   const [harnesses, setHarnesses] = useState<HarnessState>({ state: 'loading' });
   const harnessRequest = useRef(false);
   // LAUNCH-3, VIEW-6.1, VIEW-7.1: the Harnesses, their models and levels, read each time the launcher
@@ -383,6 +394,7 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
   const openOwnLauncher = useCallback(() => {
     if (!launcherOpen) {
       setWorkDraft(null);
+      setHandoffOpen(null);
       launchedFromTopic.current = null;
     }
     openLauncher();
@@ -448,6 +460,9 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
       // Which launcher this start came from, read now: Esc may close it, and reset the ref, before the answer.
       const fromWork = launchedFromWork.current || launchedFromTopic.current !== null;
       const pending = requestLaunch(ownLaunch(id, startTitle(req), req.harness, req.directory, req.prompt.trim() === '' ? null : req.prompt, false));
+      // HAND-6.2: the Handover this start is from, read now: a newer one may be written before it completes.
+      const from = req.continues ? handoffWaitsRef.current.get(req.continues.sessionId) : undefined;
+      const startedFrom = req.continues && from?.state === 'ready' ? { from: req.continues.sessionId, at: from.at } : null;
       let launch: LaunchView;
       try {
         launch = await client.launch(req, id);
@@ -458,6 +473,8 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
         throw err;
       }
       pending.answered(launch);
+      // HAND-6.2: a start from a ready Handover uses it up once it completes (`handoffStarts`).
+      if (startedFrom) setHandoffStarts((m) => new Map(m).set(launch.id, { ...startedFrom, seen: false }));
       // A server that picked its own id: follow it while the row is still selected.
       if (launch.id !== id && pending.here()) navigate({ name: 'launch', id: launch.id }, { replace: true });
       // A start from Work leaves LAUNCH-1.3's draft alone, as it never read it.
@@ -1013,7 +1030,54 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
   // popover and switching Sessions, and a reload drops it (HAND-2.2). Each read is for one moment of a
   // wait (its `sentAt` and `readAfter`), made once: an effect that runs again before the read's answer
   // lands doesn't read again.
-  const [handoffWaits, setHandoffWaits] = useState<ReadonlyMap<string, HandoffWait>>(new Map());
+  // HAND-6.4: ready Handovers come back from this browser's storage, and each change is kept there.
+  const [keptHandovers] = useState(readKeptHandovers);
+  const [handoffWaits, setHandoffWaits] = useState<ReadonlyMap<string, HandoffWait>>(keptHandovers);
+  /** The waits as last rendered, for a start's answer to read (HAND-6.2). */
+  const handoffWaitsRef = useRef<ReadonlyMap<string, HandoffWait>>(keptHandovers);
+  const restoredHandovers = useRef<ReadonlySet<string>>(new Set(keptHandovers.keys()));
+  // Only what changed is written, so this tab never writes over another tab's Handovers.
+  const keptWaits = useRef<ReadonlyMap<string, HandoffWait>>(keptHandovers);
+  /** What came in from another tab: already stored, so never written back (an echo between tabs). */
+  const fromStorage = useRef(new WeakSet<HandoffWait>());
+  useEffect(() => {
+    keepHandovers(keptWaits.current, handoffWaits, (w) => fromStorage.current.has(w));
+    keptWaits.current = handoffWaits;
+    handoffWaitsRef.current = handoffWaits;
+  }, [handoffWaits]);
+  // Another tab's change comes in, as stored now, unless this tab's own request for that Session is under way.
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      const change = keptHandoverChange(e);
+      if (!change) return;
+      if (change.wait) fromStorage.current.add(change.wait);
+      setHandoffWaits((m) => {
+        if (change.wait === null) return withoutReady(m, change.id);
+        const w = m.get(change.id);
+        return w && (w.state === 'sending' || w.state === 'writing') ? m : new Map(m).set(change.id, change.wait);
+      });
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+  // HAND-6.2: starts from a ready Handover, by launch id. One that completes (in `started`) uses the
+  // Handover up; one that fails, or leaves `launches` without starting once seen there, leaves it ready.
+  useEffect(() => {
+    if (!handoffStarts.size) return;
+    let next: Map<string, HandoffStart> | null = null;
+    const used: HandoffStart[] = [];
+    for (const [launchId, s] of handoffStarts) {
+      const launch = state.launches.find((l) => l.id === launchId);
+      if (state.started.has(launchId)) {
+        used.push(s);
+        (next ??= new Map(handoffStarts)).delete(launchId);
+      } else if (launch && launch.state !== 'failed') {
+        if (!s.seen) (next ??= new Map(handoffStarts)).set(launchId, { ...s, seen: true });
+      } else if (launch || s.seen) (next ??= new Map(handoffStarts)).delete(launchId);
+    }
+    if (used.length) setHandoffWaits((m) => used.reduce((acc, s) => withoutReady(acc, s.from, s.at), m));
+    if (next) setHandoffStarts(next);
+  }, [handoffStarts, state.started, state.launches]);
   const handoffReads = useRef(new Map<string, string>());
   // HAND-2.3: the requests sent to each Session from this page in the last SENT_SKEW_MS (`replyAfter`'s `skip`).
   const handoffSent = useRef(new Map<string, { request: string; sentAt: number }[]>());
@@ -1078,6 +1142,13 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
   );
   // HAND-2.3, HAND-2.4: each wait follows its Session's row in the list: Busy, then Idle, ends the Turn.
   const listIsKnown = listKnown(state);
+  // HAND-6.4: a kept Handover whose Session isn't in the list once it's known goes; its text stays in the chat.
+  useEffect(() => {
+    if (!listIsKnown || !restoredHandovers.current.size) return;
+    const gone = [...restoredHandovers.current].filter((id) => !state.sessions.has(id));
+    restoredHandovers.current = new Set();
+    if (gone.length) setHandoffWaits((m) => gone.reduce((acc, id) => withoutReady(acc, id), m));
+  }, [listIsKnown, state.sessions]);
   useEffect(() => {
     const timers: ReturnType<typeof setTimeout>[] = [];
     for (const [id, wait] of handoffWaits) {
@@ -1096,32 +1167,62 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
     }
     return () => timers.forEach(clearTimeout);
   }, [handoffWaits, state.sessions, listIsKnown, updateWait, readHandover, handoffTick]);
-  // HAND-2.3, HAND-3.1: a ready Handover opens the launcher, pre-filled; the wait goes with it. Its
-  // draft is Work's kind, gone when the launcher closes; focus goes back to "Hand off…".
+  // HAND-6.1, HAND-3.1: a ready Handover opens the launcher only when you ask, pre-filled the first time,
+  // then with its fields as you left them (HAND-6.2); focus goes back to "Hand off…".
   const launchHandoff = useCallback(
     (row: SessionRow, opener: HTMLElement | null) => {
       const wait = handoffWaits.get(row.id);
       if (wait?.state !== 'ready' || launcherOpen) return;
-      setWorkDraft(handoffDraft(row, wait.handover, state.settings, state.topics?.topics ?? [], wait.piece));
+      if (!wait.draft) setHandoffWaits((m) => withReadyDraft(m, row.id, handoffDraft(row, wait.handover, state.settings, state.topics?.topics ?? [], wait.piece)));
+      setWorkDraft(null);
+      setHandoffOpen(row.id);
       launchedFromWork.current = false;
       launchedFromTopic.current = opener;
-      cancelHandoff(row);
       openLauncher();
     },
-    [handoffWaits, launcherOpen, state.settings, state.topics, cancelHandoff, openLauncher],
+    [handoffWaits, launcherOpen, state.settings, state.topics, openLauncher],
   );
-  // …at once when its Session is selected, else when you select it again (HAND-2.3); never over a dialog.
-  const selectedRow = selectedId ? state.sessions.get(selectedId) : undefined;
-  const readyHere = selectedRow && handoffWaits.get(selectedRow.id)?.state === 'ready';
+  // HAND-6.2: the launcher holding a Handover: its fields, and Discard and Keep in Topic. Its last
+  // fields stay shown while it closes, after the Handover is used or discarded.
+  const handoffWait = handoffOpen && !workDraft ? handoffWaits.get(handoffOpen) : undefined;
+  // HAND-6.2: its Handover gone meanwhile (an earlier start completing, another tab using, keeping or
+  // discarding it): the launcher closes, its fields shown only while it does.
+  const handoffGone = launcherOpen && !!handoffOpen && !workDraft && handoffWait?.state !== 'ready';
   useEffect(() => {
-    if (!readyHere || !selectedRow || modalOpen) return;
-    launchHandoff(selectedRow, document.querySelector<HTMLElement>('[data-slot="header-actions"] [data-action="hand-off"]'));
-  }, [readyHere, selectedRow, modalOpen, launchHandoff]);
+    if (handoffGone) setLauncherOpen(false);
+  }, [handoffGone]);
+  const liveHandoffDraft = handoffWait?.state === 'ready' ? (handoffWait.draft ?? null) : null;
+  const [handoffShown, setHandoffShown] = useState<LaunchDraft | null>(null);
+  if (liveHandoffDraft && liveHandoffDraft !== handoffShown) setHandoffShown(liveHandoffDraft);
+  const launcherHandoff = useMemo(() => {
+    if (!handoffOpen || workDraft) return null;
+    const id = handoffOpen;
+    return {
+      draft: liveHandoffDraft ?? handoffShown,
+      onDraftChange: (d: LaunchDraft) => setHandoffWaits((m) => withReadyDraft(m, id, d)),
+      handover: {
+        onDiscard: () => {
+          setLauncherOpen(false);
+          setHandoffWaits((m) => withoutReady(m, id));
+        },
+        // TOPIC-15.7: kept in the Topic without a start; a refusal stays in the launcher.
+        onKeepInTopic: async (topicId: string, prompt: string) => {
+          const w = handoffWaits.get(id);
+          const from = (w?.state === 'ready' ? w.draft?.continues?.title : undefined) ?? state.sessions.get(id)?.title ?? '';
+          await client.keepHandover(topicId, { prompt, from, piece: w?.state === 'ready' ? w.piece : '' });
+          setLauncherOpen(false);
+          setHandoffWaits((m) => withoutReady(m, id));
+        },
+      },
+    };
+  }, [handoffOpen, workDraft, liveHandoffDraft, handoffShown, handoffWaits, state.sessions, client]);
   // HAND-4.1, HAND-4.2: a linked Session opens live, or past, read-only (HIST-3.3).
   const openLink = useCallback(
     (link: ShownLink) => navigate(link.live ? { name: 'session', id: link.live.id } : { name: 'past', harness: link.harness, id: link.sessionId }),
     [navigate],
   );
+  // HAND-6.3: the rows that show a ready Handover.
+  const handoversReady = useMemo(() => new Set([...handoffWaits].filter(([, w]) => w.state === 'ready').map(([id]) => id)), [handoffWaits]);
   const handoffControls = useMemo<HandoffControls>(
     () => ({
       waits: handoffWaits,
@@ -1307,6 +1408,7 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
           work={state.work}
           onSearchMessages={searchMessages}
           unread={unread}
+          handoversReady={handoversReady}
           orderUnread={orderUnread}
         />
         {/* tabIndex -1: focus lands here after the selected start is dismissed (LAUNCH UX). */}
@@ -1612,8 +1714,8 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
         <Launcher
           open={launcherOpen}
           onOpenChange={setLauncherOpen}
-          draft={workDraft ?? draft ?? initialDraft(state.settings)}
-          onDraftChange={workDraft ? setWorkDraft : setDraft}
+          draft={workDraft ?? launcherHandoff?.draft ?? draft ?? initialDraft(state.settings)}
+          onDraftChange={workDraft ? setWorkDraft : (launcherHandoff?.onDraftChange ?? setDraft)}
           settings={state.settings}
           harnesses={harnesses}
           usage={state.usage}
@@ -1621,7 +1723,8 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
           onStart={start}
           onCloseAutoFocus={launcherClosed}
           topics={state.topics?.topics}
-          keepsInput={!workDraft}
+          keepsInput={!workDraft && !launcherHandoff}
+          handover={launcherHandoff?.handover}
         />
         <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} returnFocus={shortcutsOpener} />
         <TopicPicker target={pickTarget} onClose={() => setPickTarget(null)} returnFocus={pickOpener} topics={state.topics?.topics ?? []} createTopic={(title) => client.createTopic(title)} addMember={(id, m) => client.addMember(id, m)} />

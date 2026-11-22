@@ -46,10 +46,14 @@ import {
   memberName,
 } from '../shared/topics.ts';
 import type { Harness } from '../shared/types.ts';
+import { MAX_KEPT_PIECE, handoverText } from '../shared/handoff.ts';
 import { SESSION_ID } from './history.ts';
 import type { SessionRow } from '../shared/types.ts';
 import type { WorkSnapshot } from '../shared/work.ts';
 import { type Change, type Observed, type PrObserved, type SessionObserved, type TaskObserved, observePr, observeSession, observeTask, prSightings, taskSightings } from './topic-activity.ts';
+
+/** TOPIC-15.7: the old Session's title, as a kept Handover names it, at most. */
+const MAX_KEPT_FROM = 300;
 
 /**
  * TOPIC-8: Topics in one SQLite database the server owns, `~/.lookout/topics.db`, through Node's
@@ -621,13 +625,13 @@ export class TopicStore {
 
   /**
    * TOPIC-15.3: each Topic's newest kept Handover of all the work: the newest "added" entry holding a
-   * Handover and no piece (TOPIC-15.1).
+   * Handover (TOPIC-15.1), or "handover" entry (TOPIC-15.7), with no piece.
    */
   private handovers(): Map<string, TopicHandover> {
     const rows = this.db
       .prepare(
         `select topic_id, at, data from events
-         where kind = 'added' and json_extract(data, '$.handover') is not null and coalesce(json_extract(data, '$.piece'), '') = ''
+         where kind in ('added', 'handover') and json_extract(data, '$.handover') is not null and coalesce(json_extract(data, '$.piece'), '') = ''
          order by id`,
       )
       .all() as unknown as { topic_id: string; at: number; data: string }[];
@@ -905,6 +909,23 @@ export class TopicStore {
       this.db.prepare('delete from edges where from_id = ? and to_id = ?').run(e.from_id, e.to_id);
       this.touch(e.from_id, e.to_id);
       this.logEdge('edge-unlinked', e.from_id, e.to_id);
+    });
+  }
+
+  /**
+   * TOPIC-15.7: "Keep in Topic": a Handover kept on the Topic without a start, by you: the launcher's
+   * prompt without HAND-3.2's lines, its first 20,000 characters (`handoverText`), the old Session's
+   * title and the piece.
+   */
+  keepHandover(id: string, input: { prompt: string; from: string; piece: string }): void {
+    const handover = handoverText(input.prompt);
+    if (!handover) throw new TopicsError(400, 'The Handover is empty.');
+    const piece = input.piece.trim().slice(0, MAX_KEPT_PIECE).trim();
+    const from = input.from.replace(/\s+/g, ' ').trim().slice(0, MAX_KEPT_FROM) || 'a Session';
+    this.transaction(() => {
+      this.require(id);
+      this.log(id, 'handover', null, 'you', { from, handover, ...(piece ? { piece } : {}) });
+      this.touch(id);
     });
   }
 
@@ -1532,6 +1553,11 @@ export class Topics {
   /** TOPIC-6.2. */
   unlink(id: string, other: string): void {
     this.write((s) => s.unlink(id, other));
+  }
+
+  /** TOPIC-15.7: "Keep in Topic". */
+  keepHandover(id: string, input: { prompt: string; from: string; piece: string }): void {
+    this.write((s) => s.keepHandover(id, input));
   }
 
   /** TOPIC-7.2. */

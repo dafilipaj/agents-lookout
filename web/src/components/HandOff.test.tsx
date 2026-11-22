@@ -3,9 +3,9 @@ import { NO_ACTIVITY, type Topic, memberKey } from '@shared/topics.ts';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { HANDOFF_ENDED, HANDOFF_NEEDS_YOU, HANDOFF_NOT_FOUND, HANDOFF_NO_TEXT, HANDOFF_READS, HANDOFF_READ_MS, RESTATE_LINE, type WritingWait, afterRead, handoffPrompt, handoffRequest, handoverFrom, replyAfter } from '@/lib/handoff';
+import { KEPT_HANDOVER_PREFIX, HANDOFF_ENDED, HANDOFF_NEEDS_YOU, HANDOFF_NOT_FOUND, HANDOFF_NO_TEXT, HANDOFF_READS, HANDOFF_READ_MS, RESTATE_LINE, type WritingWait, afterRead, handoffPrompt, handoffRequest, handoverFrom, replyAfter } from '@/lib/handoff';
 import { SaveError } from '@/lib/client';
-import { NOW, renderApp, row, settings } from '@/test/helpers';
+import { NOW, field, launchView, renderApp, row, rowEl, settings } from '@/test/helpers';
 import { HAND_OFF_ENDED, HAND_OFF_WAITS, PIECE_PLACEHOLDER } from './HandOff';
 
 const OLD = 'a1b2c3d4-0000-4000-8000-000000000001';
@@ -44,7 +44,14 @@ function open(over: Partial<SessionRow> = {}, options: Parameters<typeof renderA
 
 const button = () => screen.getByRole('button', { name: 'Hand off…' });
 const popover = () => screen.findByRole('dialog', { name: 'Hand off' });
-const launcher = () => screen.findByRole('dialog', { name: 'New Session' });
+const launcher = () => screen.findByRole('dialog', { name: 'Hand off from Add CSV export to reports' });
+const noLauncher = () => screen.queryByRole('dialog', { name: /^(Hand off from |New Session$)/ });
+/** HAND-6.1: once the Handover is ready, the button says so, and a press opens the launcher with it. */
+async function openReady(timeout = 1000) {
+  await waitFor(() => expect(button()).toHaveAttribute('data-wait', 'ready'), { timeout });
+  await userEvent.click(button());
+  return launcher();
+}
 
 async function writeHandover(piece = '') {
   const u = userEvent.setup();
@@ -161,12 +168,12 @@ describe('HAND-1: asking for a Handover', () => {
 });
 
 describe('HAND-2: the Session writes it', () => {
-  it('HAND-2.1: while the Session writes, the popover says so, with the piece and when the launcher opens; Cancel stops waiting, not the Session', async () => {
+  it('HAND-2.1: while the Session writes, the popover says so, with the piece and that the button says when it\'s ready; Cancel stops waiting, not the Session', async () => {
     const { status, app, latestMessages } = open();
     await writeHandover("the PDF export's date format");
     const dialog = await popover();
     expect(await within(dialog).findByText('Writing the Handover…')).toBeInTheDocument();
-    expect(within(dialog).getByText(/The piece: the PDF export's date format\. The launcher opens when the Session is Idle again\./)).toBeInTheDocument();
+    expect(within(dialog).getByText(/The piece: the PDF export's date format\. This button says when it's ready\./)).toBeInTheDocument();
     status('busy');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Hand off' })).toBeNull());
@@ -174,7 +181,7 @@ describe('HAND-2: the Session writes it', () => {
     status('idle');
     await act(async () => {});
     expect(latestMessages).not.toHaveBeenCalled();
-    expect(screen.queryByRole('dialog', { name: 'New Session' })).toBeNull();
+    expect(noLauncher()).toBeNull();
     expect(button()).not.toHaveAttribute('data-wait');
   });
 
@@ -193,14 +200,16 @@ describe('HAND-2: the Session writes it', () => {
     expect(await within(await popover()).findByText('Writing the Handover…')).toBeInTheDocument();
   });
 
-  it('HAND-2.3: Busy, then Idle again: the Handover between its markers opens the launcher, and the popover closes', async () => {
+  it('HAND-2.3: Busy, then Idle again: the Handover between its markers is ready, the popover closes, and the launcher opens only when asked', async () => {
     const { status, latestMessages } = open();
     await writeHandover();
     status('busy');
     expect(latestMessages).not.toHaveBeenCalled();
     status('idle');
-    const dialog = await launcher();
+    await waitFor(() => expect(button()).toHaveAttribute('data-wait', 'ready'));
     expect(screen.queryByRole('dialog', { name: 'Hand off' })).toBeNull();
+    expect(noLauncher()).toBeNull();
+    const dialog = await openReady();
     expect(within(dialog).getByRole('textbox', { name: 'Prompt' })).toHaveValue(handoffPrompt(HANDOVER, { sessionId: OLD, title: 'Add CSV export to reports' }));
     expect(latestMessages).toHaveBeenCalledWith(OLD);
   });
@@ -213,7 +222,7 @@ describe('HAND-2: the Session writes it', () => {
     t.status('idle');
     await waitFor(() => expect(t.latestMessages).toHaveBeenCalledTimes(1));
     expect(within(await popover()).queryByRole('alert')).toBeNull();
-    const dialog = await screen.findByRole('dialog', { name: 'New Session' }, { timeout: 4000 });
+    const dialog = await openReady(4000);
     expect(within(dialog).getByRole('textbox', { name: 'Prompt' })).toHaveValue(handoffPrompt(HANDOVER, { sessionId: OLD, title: 'Add CSV export to reports' }));
     expect(t.latestMessages).toHaveBeenCalledTimes(2);
   }, 10_000);
@@ -224,9 +233,9 @@ describe('HAND-2: the Session writes it', () => {
     t.latestMessages.mockImplementation(async () => ({ entries: [user(handoffRequest('')), update('Reading the diff first.', 'g1.2'), ...(answered ? [said(reply, 'g1.3')] : [])], before: null }));
     await writeHandover();
     await waitFor(() => expect(t.latestMessages).toHaveBeenCalled(), { timeout: 3000 });
-    expect(screen.queryByRole('dialog', { name: 'New Session' })).toBeNull();
+    expect(noLauncher()).toBeNull();
     answered = true;
-    const dialog = await screen.findByRole('dialog', { name: 'New Session' }, { timeout: 4000 });
+    const dialog = await openReady(4000);
     expect(within(dialog).getByRole('textbox', { name: 'Prompt' })).toHaveValue(handoffPrompt(HANDOVER, { sessionId: OLD, title: 'Add CSV export to reports' }));
   }, 10_000);
 
@@ -244,9 +253,9 @@ describe('HAND-2: the Session writes it', () => {
     await u.click(within(await popover()).getByRole('button', { name: /Write Handover/ }));
     expect(t.sendMessage).toHaveBeenCalledTimes(2);
     await waitFor(() => expect(t.latestMessages).toHaveBeenCalled(), { timeout: 3000 });
-    expect(screen.queryByRole('dialog', { name: 'New Session' })).toBeNull();
+    expect(noLauncher()).toBeNull();
     second = true;
-    const dialog = await screen.findByRole('dialog', { name: 'New Session' }, { timeout: 4000 });
+    const dialog = await openReady(4000);
     expect(within(dialog).getByRole('textbox', { name: 'Prompt' })).toHaveValue(handoffPrompt(HANDOVER, { sessionId: OLD, title: 'Add CSV export to reports' }));
   }, 10_000);
 
@@ -257,42 +266,27 @@ describe('HAND-2: the Session writes it', () => {
     await writeHandover();
     expect(t.latestMessages).not.toHaveBeenCalled();
     await waitFor(() => expect(t.latestMessages).toHaveBeenCalled(), { timeout: 3000 });
-    expect(screen.queryByRole('dialog', { name: 'New Session' })).toBeNull();
+    expect(noLauncher()).toBeNull();
     // The Session ran its Turn between two lists: no Busy was seen, and the reply is in the chat.
     turn = true;
-    const dialog = await screen.findByRole('dialog', { name: 'New Session' }, { timeout: 4000 });
+    const dialog = await openReady(4000);
     expect(within(dialog).getByRole('textbox', { name: 'Prompt' })).toHaveValue(handoffPrompt('Fix the dates.\nStart with a test.', { sessionId: OLD, title: 'Add CSV export to reports' }));
   }, 10_000);
 
-  it('HAND-2.3: a Handover ready while another Session is selected waits on the button, and opens the launcher on a press or when that Session is selected again', async () => {
+  it('HAND-2.3: a Handover ready while another Session is selected waits on the button; selecting the Session again opens nothing, a press does', async () => {
     const { status, app } = open();
     const u = await writeHandover();
     status('busy');
     await u.keyboard('{Escape}');
     await u.click(screen.getByText('Other work', { selector: '[data-field="title"]' }));
     status('idle');
-    await act(async () => {});
     await waitFor(() => expect(app.client.latestMessages).toHaveBeenCalled());
-    expect(screen.queryByRole('dialog', { name: 'New Session' })).toBeNull();
+    expect(noLauncher()).toBeNull();
     await u.click(screen.getByText('Add CSV export to reports', { selector: '[data-field="title"]' }));
+    await waitFor(() => expect(button()).toHaveAttribute('data-wait', 'ready'));
+    expect(noLauncher()).toBeNull();
+    await u.click(button());
     expect(await launcher()).toBeInTheDocument();
-  });
-
-  it('HAND-2.3: a ready Handover opens the launcher when its button is pressed', async () => {
-    const { status, app } = open();
-    const u = await writeHandover();
-    status('busy');
-    await u.keyboard('{Escape}');
-    await u.click(screen.getByText('Other work', { selector: '[data-field="title"]' }));
-    status('idle');
-    await waitFor(() => expect(app.client.latestMessages).toHaveBeenCalled());
-    // Selecting it opens the launcher; closed without a start, the wait is gone with it.
-    await u.click(screen.getByText('Add CSV export to reports', { selector: '[data-field="title"]' }));
-    await launcher();
-    await u.keyboard('{Escape}');
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New Session' })).toBeNull());
-    expect(button()).not.toHaveAttribute('data-wait');
-    await waitFor(() => expect(button()).toHaveFocus());
   });
 
   it.each([
@@ -366,7 +360,7 @@ describe('HAND-3: the new Session', () => {
     await writeHandover();
     status('busy');
     status('idle');
-    const dialog = await launcher();
+    const dialog = await openReady();
     const directory = within(dialog).getByRole('combobox', { name: 'Directory' });
     expect(directory).toHaveValue(WORKTREE);
     expect(within(directory).getAllByRole('option').map((o) => o.textContent)).toEqual([`${WORKTREE} · from Add CSV export to reports`, '~/Projects/work']);
@@ -397,7 +391,7 @@ describe('HAND-3: the new Session', () => {
     await writeHandover();
     status('busy');
     status('idle');
-    const dialog = await launcher();
+    const dialog = await openReady();
     expect(within(dialog).getByRole('radio', { name: /Codex/ })).toBeChecked();
     await waitFor(() => expect(within(dialog).getByRole('combobox', { name: 'Model' })).toHaveValue('gpt-6-astra'));
     expect(within(dialog).getByRole('combobox', { name: 'Effort' })).toHaveValue('high');
@@ -411,7 +405,7 @@ describe('HAND-3: the new Session', () => {
     await writeHandover("the PDF export's date format");
     status('busy');
     status('idle');
-    const dialog = await launcher();
+    const dialog = await openReady();
     await userEvent.click(within(dialog).getByRole('button', { name: /Start/ }));
     await waitFor(() => expect(app.client.launch).toHaveBeenCalledWith(expect.objectContaining({ topic: { id: 't1', via: 'topic' }, continues: expect.objectContaining({ piece: "the PDF export's date format" }) }), expect.any(String)));
   });
@@ -523,7 +517,7 @@ describe('HAND-2.3 (support): reading the reply', () => {
   it('after a read: a done reply is the Handover; once the Turn has ended, a reply not done is read again, up to five reads, the last taking what there is', () => {
     const at = NOW + 5000;
     const w: WritingWait = { state: 'writing', piece: '', request: 'r', sentAt: NOW, skip: 0, busy: false, reads: 0, readAfter: NOW + HANDOFF_READ_MS };
-    expect(afterRead(w, { asked: true, reply, done: true }, at)).toEqual({ state: 'ready', piece: '', handover: HANDOVER });
+    expect(afterRead(w, { asked: true, reply, done: true }, at)).toEqual({ state: 'ready', piece: '', handover: HANDOVER, at });
     expect(afterRead(w, { asked: true, reply: '<handover>\n</handover>', done: true }, at)).toEqual({ state: 'failed', piece: '', reason: HANDOFF_NO_TEXT });
     // No Busy seen and the request not in the chat (or the read failed): the Turn hasn't begun; read again, uncounted.
     expect(afterRead(w, { asked: false, reply: null, done: false }, at)).toEqual({ ...w, readAfter: at + HANDOFF_READ_MS });
@@ -534,8 +528,271 @@ describe('HAND-2.3 (support): reading the reply', () => {
     const busy = { ...w, busy: true };
     expect(afterRead(busy, { asked: false, reply: null, done: false }, at)).toEqual({ ...busy, reads: 1, readAfter: at + HANDOFF_READ_MS });
     const last = { ...w, busy: true, reads: HANDOFF_READS - 1 };
-    expect(afterRead(last, going, at)).toEqual({ state: 'ready', piece: '', handover: 'Looking.' });
+    expect(afterRead(last, going, at)).toEqual({ state: 'ready', piece: '', handover: 'Looking.', at });
     expect(afterRead(last, { asked: true, reply: null, done: false }, at)).toEqual({ state: 'failed', piece: '', reason: HANDOFF_NO_TEXT });
     expect(afterRead(last, { asked: false, reply: null, done: false }, at)).toEqual({ state: 'failed', piece: '', reason: HANDOFF_NOT_FOUND });
+  });
+});
+
+describe('HAND-6: a ready Handover waits for you', () => {
+  const topic = (n: number): Topic => ({ id: `t${n}`, title: `Topic ${n}`, notes: '', state: 'open', createdAt: NOW - 1e6, updatedAt: NOW - n * 1000, members: [], outputs: { items: [], total: 0 }, pos: null, summary: null, summaryStale: false, ...NO_ACTIVITY });
+  const PROMPT = handoffPrompt(HANDOVER, { sessionId: OLD, title: 'Add CSV export to reports' });
+  /** The old Session's Handover, written and ready. */
+  async function ready(options: Parameters<typeof renderApp>[1] = {}) {
+    const t = open({}, options);
+    await writeHandover();
+    t.status('busy');
+    t.status('idle');
+    await waitFor(() => expect(button()).toHaveAttribute('data-wait', 'ready'));
+    return t;
+  }
+
+  it('HAND-6.1: a ready Handover never opens the launcher by itself; the button says "Handover ready (F)", and F opens it', async () => {
+    await ready();
+    await act(async () => {});
+    expect(noLauncher()).toBeNull();
+    expect(button()).toHaveAttribute('title', 'Handover ready (F)');
+    expect(button().querySelector('[data-slot="wait-dot"]')).toHaveClass('bg-ok');
+    await userEvent.keyboard('f');
+    const dialog = await launcher();
+    expect(within(dialog).getByRole('textbox', { name: 'Prompt' })).toHaveValue(PROMPT);
+  });
+
+  it('HAND-6.2: closing the launcher keeps the Handover with your edits; N opens its own draft; Discard drops it', async () => {
+    const t = await ready();
+    const u = userEvent.setup();
+    await u.click(button());
+    let dialog = await launcher();
+    expect(within(dialog).getByText(/your Handover is kept/)).toBeInTheDocument();
+    const prompt = within(dialog).getByRole('textbox', { name: 'Prompt' });
+    await u.clear(prompt);
+    await u.type(prompt, 'Edited Handover.');
+    await u.keyboard('{Escape}');
+    await waitFor(() => expect(noLauncher()).toBeNull());
+    expect(button()).toHaveAttribute('data-wait', 'ready');
+    // N: the launcher's own draft, and the Handover stays ready.
+    await u.keyboard('n');
+    const own = await screen.findByRole('dialog', { name: 'New Session' });
+    expect(within(own).getByRole('textbox', { name: 'Prompt' })).toHaveValue('');
+    await u.keyboard('{Escape}');
+    await waitFor(() => expect(noLauncher()).toBeNull());
+    // Again: the fields as you left them.
+    await u.click(button());
+    dialog = await launcher();
+    expect(within(dialog).getByRole('textbox', { name: 'Prompt' })).toHaveValue('Edited Handover.');
+    await u.click(within(dialog).getByRole('button', { name: 'Discard Handover' }));
+    await waitFor(() => expect(noLauncher()).toBeNull());
+    expect(button()).not.toHaveAttribute('data-wait');
+    expect(t.app.client.launch).not.toHaveBeenCalled();
+    expect(window.localStorage.getItem(KEPT_HANDOVER_PREFIX + OLD)).toBeNull();
+  });
+
+  it('HAND-6.2: a start uses the Handover up only once it completes; one that fails leaves it ready, with its fields', async () => {
+    const t = await ready();
+    const u = userEvent.setup();
+    const startFrom = async () => {
+      await u.click(screen.getByText('Add CSV export to reports', { selector: '[data-field="title"]' }));
+      await u.click(button());
+      const dialog = await launcher();
+      await u.click(within(dialog).getByRole('button', { name: /Start/ }));
+      await waitFor(() => expect(noLauncher()).toBeNull());
+      return vi.mocked(t.app.client.launch).mock.calls.at(-1)![1] as string;
+    };
+    const first = await startFrom();
+    // Under way, then failed: still ready, as it was.
+    t.app.emit({ type: 'launches', launches: [launchView({ id: first, state: 'starting' })], started: [] });
+    t.app.emit({ type: 'launches', launches: [launchView({ id: first, state: 'failed', error: "Fleet hasn't reported it after 15 s." })], started: [] });
+    await act(async () => {});
+    expect(field(OLD, 'handover-ready')).not.toBeNull();
+    expect(window.localStorage.getItem(KEPT_HANDOVER_PREFIX + OLD)).not.toBeNull();
+    // Again, and it completes: used up.
+    const second = await startFrom();
+    expect(vi.mocked(t.app.client.launch).mock.calls[1]![0].prompt).toBe(PROMPT);
+    t.app.emit({ type: 'launches', launches: [launchView({ id: second, state: 'starting' })], started: [] });
+    expect(field(OLD, 'handover-ready')).not.toBeNull();
+    t.app.emit({ type: 'launches', launches: [], started: [{ launchId: second, sessionId: NEW }] });
+    await waitFor(() => expect(field(OLD, 'handover-ready')).toBeNull());
+    expect(window.localStorage.getItem(KEPT_HANDOVER_PREFIX + OLD)).toBeNull();
+  });
+
+  it('HAND-6.3: the row shows a ready Handover: the Hand off icon in ok, 12 px, after the Unread dot and before the Harness mark, "Handover ready" in its name; it goes with the Handover', async () => {
+    await ready();
+    const mark = field(OLD, 'handover-ready')!;
+    expect(mark).toHaveAttribute('title', 'Handover ready');
+    expect(mark.querySelector('[data-action-icon="hand-off"]')).toHaveClass('size-3', 'text-ok');
+    expect(mark.nextElementSibling).toBe(field(OLD, 'harness'));
+    expect(mark.parentElement).toHaveClass('gap-1');
+    expect(rowEl(OLD)).toHaveAccessibleName(/Add CSV export to reports.*Handover ready.*Claude Code/);
+    expect(field('other', 'handover-ready')).toBeNull();
+    await userEvent.click(button());
+    await userEvent.click(within(await launcher()).getByRole('button', { name: 'Discard Handover' }));
+    await waitFor(() => expect(field(OLD, 'handover-ready')).toBeNull());
+  });
+
+  it('HAND-6.4: a ready Handover, with its launcher fields, outlives a reload; one whose Session is gone from the list goes from storage', async () => {
+    const t = await ready();
+    const u = userEvent.setup();
+    await u.click(button());
+    const prompt = within(await launcher()).getByRole('textbox', { name: 'Prompt' });
+    await u.type(prompt, ' Kept.');
+    await u.keyboard('{Escape}');
+    await waitFor(() => expect(noLauncher()).toBeNull());
+    expect(JSON.parse(window.localStorage.getItem(KEPT_HANDOVER_PREFIX + OLD)!)).toMatchObject({ v: 1, handover: HANDOVER, piece: '', draft: { prompt: `${PROMPT} Kept.` } });
+    // Reloaded: ready again, its fields as left.
+    t.app.unmount();
+    const again = open();
+    expect(button()).toHaveAttribute('data-wait', 'ready');
+    expect(field(OLD, 'handover-ready')).not.toBeNull();
+    await u.click(button());
+    expect(within(await launcher()).getByRole('textbox', { name: 'Prompt' })).toHaveValue(`${PROMPT} Kept.`);
+    await u.keyboard('{Escape}');
+    await waitFor(() => expect(noLauncher()).toBeNull());
+    // Reloaded with the Session gone: dropped once the list is known.
+    again.app.unmount();
+    const app = renderApp('/');
+    app.snapshot([row({ id: 'other', title: 'Other work' })]);
+    await waitFor(() => expect(window.localStorage.getItem(KEPT_HANDOVER_PREFIX + OLD)).toBeNull());
+    // Storage that can't be read keeps nothing, and breaks nothing.
+    app.unmount();
+    window.localStorage.setItem(KEPT_HANDOVER_PREFIX + OLD, '{not json');
+    open();
+    expect(button()).not.toHaveAttribute('data-wait');
+  });
+
+  it('HAND-6.4: tabs share what\'s kept: another tab\'s Handover shows here, its discard goes from here, and this tab never writes over another Session\'s', async () => {
+    const other = { v: 1, piece: '', handover: 'Ship the other work.', at: NOW };
+    const fromTab = (key: string, value: string | null) =>
+      act(() => {
+        if (value === null) window.localStorage.removeItem(key);
+        else window.localStorage.setItem(key, value);
+        window.dispatchEvent(new StorageEvent('storage', { key, newValue: value }));
+      });
+    const t = open();
+    fromTab(KEPT_HANDOVER_PREFIX + 'other', JSON.stringify(other));
+    expect(field('other', 'handover-ready')).not.toBeNull();
+    // This tab's own Handover is kept beside it, and the other is left as it was.
+    await writeHandover();
+    t.status('busy');
+    t.status('idle');
+    await waitFor(() => expect(button()).toHaveAttribute('data-wait', 'ready'));
+    expect(JSON.parse(window.localStorage.getItem(KEPT_HANDOVER_PREFIX + 'other')!)).toEqual(other);
+    expect(window.localStorage.getItem(KEPT_HANDOVER_PREFIX + OLD)).not.toBeNull();
+    // Discarded in the other tab: gone here too.
+    fromTab(KEPT_HANDOVER_PREFIX + OLD, null);
+    expect(button()).not.toHaveAttribute('data-wait');
+    expect(field(OLD, 'handover-ready')).toBeNull();
+    // A key that isn't a Handover's changes nothing.
+    fromTab('lookout.layout', '{}');
+    expect(field('other', 'handover-ready')).not.toBeNull();
+  });
+
+  it('HAND-6.4: a late storage event can\'t bring back a Handover discarded since, and a Handover from another tab isn\'t written back', async () => {
+    await ready();
+    const key = KEPT_HANDOVER_PREFIX + OLD;
+    const stale = window.localStorage.getItem(key)!;
+    // Discarded here; then another tab's earlier change arrives.
+    await userEvent.click(button());
+    await userEvent.click(within(await launcher()).getByRole('button', { name: 'Discard Handover' }));
+    await waitFor(() => expect(noLauncher()).toBeNull());
+    act(() => void window.dispatchEvent(new StorageEvent('storage', { key, newValue: stale })));
+    expect(button()).not.toHaveAttribute('data-wait');
+    expect(window.localStorage.getItem(key)).toBeNull();
+    // Another tab keeps one: it shows here, and this tab doesn't write it again.
+    window.localStorage.setItem(key, stale);
+    const writes = vi.spyOn(Storage.prototype, 'setItem');
+    act(() => void window.dispatchEvent(new StorageEvent('storage', { key, newValue: stale })));
+    await waitFor(() => expect(button()).toHaveAttribute('data-wait', 'ready'));
+    await act(async () => {});
+    expect(writes).not.toHaveBeenCalled();
+    writes.mockRestore();
+  });
+
+  it('HAND-6.2: an earlier start that completes uses up only its own Handover, and closes a launcher showing it', async () => {
+    const t = await ready();
+    const u = userEvent.setup();
+    const select = () => u.click(screen.getByText('Add CSV export to reports', { selector: '[data-field="title"]' }));
+    await u.click(button());
+    await u.click(within(await launcher()).getByRole('button', { name: /Start/ }));
+    await waitFor(() => expect(noLauncher()).toBeNull());
+    const first = vi.mocked(t.app.client.launch).mock.calls[0]![1] as string;
+    t.app.emit({ type: 'launches', launches: [launchView({ id: first, state: 'trust' })], started: [] });
+    // Still ready while it waits at its Trust prompt; opened again, the launcher closes once that start completes.
+    await select();
+    await u.click(button());
+    await launcher();
+    t.app.emit({ type: 'launches', launches: [], started: [{ launchId: first, sessionId: NEW }] });
+    await waitFor(() => expect(noLauncher()).toBeNull());
+    expect(field(OLD, 'handover-ready')).toBeNull();
+    // A second start waits; meanwhile that Handover is discarded and a newer one written.
+    const req = handoffRequest('');
+    t.latestMessages.mockImplementation(async () => ({ entries: [user(req, 'g1.1'), said(reply, 'g1.2'), user(req, 'g1.3'), said(reply, 'g1.4')], before: null }));
+    await select();
+    await writeHandover();
+    t.status('busy');
+    t.status('idle');
+    await u.click(within(await openReady()).getByRole('button', { name: /Start/ }));
+    await waitFor(() => expect(noLauncher()).toBeNull());
+    const second = vi.mocked(t.app.client.launch).mock.calls[1]![1] as string;
+    t.app.emit({ type: 'launches', launches: [launchView({ id: second, state: 'trust' })], started: [] });
+    await select();
+    await u.click(button());
+    await u.click(within(await launcher()).getByRole('button', { name: 'Discard Handover' }));
+    await waitFor(() => expect(noLauncher()).toBeNull());
+    t.latestMessages.mockImplementation(async () => ({ entries: [user(req, 'g1.1'), said(reply, 'g1.2'), user(req, 'g1.3'), said(reply, 'g1.4'), user(req, 'g1.5'), said(reply, 'g1.6')], before: null }));
+    await writeHandover();
+    t.status('busy');
+    t.status('idle');
+    await waitFor(() => expect(button()).toHaveAttribute('data-wait', 'ready'));
+    // The second start completes: the newer Handover stays.
+    t.app.emit({ type: 'launches', launches: [], started: [{ launchId: second, sessionId: THIRD }] });
+    await act(async () => {});
+    expect(button()).toHaveAttribute('data-wait', 'ready');
+    expect(field(OLD, 'handover-ready')).not.toBeNull();
+  });
+
+  it('HAND-6.2: a launcher showing a Handover that another tab discards closes', async () => {
+    await ready();
+    await userEvent.click(button());
+    await launcher();
+    act(() => {
+      window.localStorage.removeItem(KEPT_HANDOVER_PREFIX + OLD);
+      window.dispatchEvent(new StorageEvent('storage', { key: KEPT_HANDOVER_PREFIX + OLD, newValue: null }));
+    });
+    await waitFor(() => expect(noLauncher()).toBeNull());
+    expect(screen.getByRole('button', { name: 'Hand off…' })).not.toHaveAttribute('data-wait');
+  });
+
+  it('HAND-6.5: the launcher with a Handover is titled, and its form named, "Hand off from <old title>"', async () => {
+    await ready();
+    await userEvent.click(button());
+    const dialog = await launcher();
+    expect(within(dialog).getByRole('heading', { name: 'Hand off from Add CSV export to reports' })).toBeInTheDocument();
+    expect(within(dialog).getByRole('form', { name: 'Hand off from Add CSV export to reports' })).toBeInTheDocument();
+  });
+
+  it('TOPIC-15.7: "Keep in Topic" waits for a Topic, keeps the Handover in it without a start, and uses it up; a refusal stays in the launcher', async () => {
+    let refuse = true;
+    const keepHandover = vi.fn(async () => {
+      if (refuse) throw new SaveError('That Topic no longer exists.', null, 404);
+    });
+    const t = await ready({ topics: [topic(1)], keepHandover });
+    const u = userEvent.setup();
+    await u.click(button());
+    const dialog = await launcher();
+    const keep = within(dialog).getByRole('button', { name: 'Keep in Topic' });
+    expect(keep).toBeDisabled();
+    expect(keep).toHaveAttribute('title', 'Pick a Topic to keep it in');
+    await u.selectOptions(within(dialog).getByRole('combobox', { name: 'Topic' }), 't1');
+    expect(keep).toBeEnabled();
+    await u.click(keep);
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('That Topic no longer exists.');
+    // The dialog hides the page from a screen reader while it's open.
+    expect(screen.getByRole('button', { name: 'Hand off…', hidden: true })).toHaveAttribute('data-wait', 'ready');
+    refuse = false;
+    await u.click(keep);
+    await waitFor(() => expect(noLauncher()).toBeNull());
+    expect(keepHandover).toHaveBeenLastCalledWith('t1', { prompt: PROMPT, from: 'Add CSV export to reports', piece: '' });
+    expect(button()).not.toHaveAttribute('data-wait');
+    expect(t.app.client.launch).not.toHaveBeenCalled();
   });
 });

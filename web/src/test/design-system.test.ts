@@ -348,6 +348,7 @@ const FAMILIES: Record<string, Family> = {
       'web/src/lib/evidence.ts': { why: "an ok verdict's words (EVID-5.1, 5.5)", uses: ['text-ok-text'] },
       'web/src/lib/work.ts': { why: 'a PR under 3 days', uses: ['text-ok-text'] },
       'web/src/components/HandOff.tsx': { why: '"Hand off…"\'s dot when the Handover is ready (HAND-2.3)', uses: ['bg-ok'] },
+      'web/src/components/SessionItem.tsx': { why: 'a ready Handover on its row (HAND-6.3)', uses: ['text-ok'] },
     },
   },
   info: {

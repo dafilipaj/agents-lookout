@@ -365,7 +365,8 @@ type EntryProps = { sessions: ReadonlyMap<string, SessionRow>; now: number; act:
  */
 function Entry({ entry, topic, sessions, now, act, onOpenSession, pruned }: EntryProps & { entry: ActivityEntry; topic: Topic }) {
   const [shown, setShown] = useState(false);
-  const handover = entry.kind === 'added' && entry.data.handover?.trim() ? entry.data.handover : null;
+  // TOPIC-15.7: one kept without a start too.
+  const handover = (entry.kind === 'added' || entry.kind === 'handover') && entry.data.handover?.trim() ? entry.data.handover : null;
   return (
     <li className="flex min-w-0 flex-col gap-1" data-field="activity-entry" data-kind={entry.kind}>
       <div className="flex min-w-0 items-center gap-2">

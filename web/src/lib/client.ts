@@ -128,6 +128,8 @@ export interface LookoutClient {
   deleteTopic(id: string): Promise<void>;
   /** TOPIC-2.3: `added` false when it was already a member, with the Topic's title. */
   addMember(topicId: string, member: NewMember): Promise<{ added: boolean; title: string }>;
+  /** TOPIC-15.7: "Keep in Topic": the launcher's prompt with a Handover, kept in the Topic without a start. */
+  keepHandover(topicId: string, input: { prompt: string; from: string; piece: string }): Promise<void>;
   /** TOPIC-2.4. */
   removeMember(topicId: string, member: Pick<NewMember, 'kind' | 'ref'>): Promise<void>;
   /** TOPIC-9.4: Accept, Dismiss, Other Topic… or Judge again; `topicId` is where the item went, if anywhere. */
@@ -563,6 +565,9 @@ export function createHttpClient(): LookoutClient {
       await call(() => send('DELETE', `/api/topics/${encodeURIComponent(id)}`), 'Deleting the Topic');
     },
     addMember: (topicId, member) => call<{ added: boolean; title: string }>(() => send('POST', `/api/topics/${encodeURIComponent(topicId)}/members`, member), 'Adding to the Topic'),
+    keepHandover: async (topicId, input) => {
+      await call(() => send('POST', `/api/topics/${encodeURIComponent(topicId)}/handovers`, input), 'Keeping the Handover');
+    },
     recommend: (action) => call<{ topicId: string | null }>(() => send('POST', '/api/topics/recommendations', action), action.action === 'judge-again' || action.action === 'ask-again' ? 'Asking Jev' : 'Saving that'),
     removeMember: async (topicId, member) => {
       await call(() => send('DELETE', `/api/topics/${encodeURIComponent(topicId)}/members`, { kind: member.kind, ref: member.ref }), 'Removing from the Topic');

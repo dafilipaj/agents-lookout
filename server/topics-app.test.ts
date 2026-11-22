@@ -309,3 +309,22 @@ it('TOPIC-14.2, TOPIC-14.5, TOPIC-14.6: GET /api/topics/suggest counts, POST sta
   await gone.done;
   expect([gone.res.statusCode, JSON.parse(gone.text())]).toEqual([404, { error: 'That proposal is no longer pending.' }]);
 });
+
+it('TOPIC-15.7: POST /api/topics/<id>/handovers keeps a Handover, token and Origin checked; a bad body or a gone Topic is refused with why', async () => {
+  const { exchange } = setup();
+  const call = async (method: string, url: string, body?: unknown, headers: Record<string, string> = {}) => {
+    const r = exchange(method, url, body, headers);
+    await r.done;
+    return { status: r.res.statusCode, body: JSON.parse(r.text()) as Record<string, unknown> };
+  };
+  const id = ((await call('POST', '/api/topics', { title: 'A' })).body.topic as { id: string }).id;
+  const handover = { prompt: 'The rounding is settled.', from: 'Rates port', piece: '' };
+  expect((await call('POST', `/api/topics/${id}/handovers`, handover, { 'x-lookout-token': 'wrong' })).status).toBe(403);
+  expect(await call('POST', `/api/topics/${id}/handovers`, handover)).toEqual({ status: 201, body: { ok: true } });
+  const topic = ((await call('GET', '/api/topics')).body.topics as { handover: { text: string } | null }[])[0]!;
+  expect(topic.handover?.text).toBe('The rounding is settled.');
+  expect(await call('POST', `/api/topics/${id}/handovers`, { prompt: 1, from: 'x' })).toEqual({ status: 400, body: { error: 'Expected { prompt, from, piece }.' } });
+  expect(await call('POST', `/api/topics/${id}/handovers`, { prompt: '  ', from: 'x' })).toEqual({ status: 400, body: { error: 'The Handover is empty.' } });
+  await call('DELETE', `/api/topics/${id}`);
+  expect(await call('POST', `/api/topics/${id}/handovers`, handover)).toEqual({ status: 404, body: { error: 'That Topic no longer exists.' } });
+});

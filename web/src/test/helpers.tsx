@@ -82,6 +82,8 @@ export function launchView(over: Partial<LaunchView> & { id: string }): LaunchVi
 }
 
 interface RenderOptions {
+  /** TOPIC-15.7: the fake server's "Keep in Topic". */
+  keepHandover?: LookoutClient['keepHandover'];
   /** SIDE-14: this tab's build (none by default, as under `pnpm dev`), and what Reload does. */
   pageBuild?: string | null;
   reload?: () => void;
@@ -268,6 +270,7 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
       changeTopics(topicSet.map((x) => (x.id === id ? { ...x, updatedAt: ++topicClock, members: [...x.members, { ...m, key, addedAt: topicClock, reason: 'added by hand' } as TopicMember] } : x)));
       return { added: true, title: t.title };
     }),
+    keepHandover: vi.fn(options.keepHandover ?? (async (id: string) => void topic(id))),
     recommend: vi.fn(async (a: RecommendationAction) => {
       if (a.action === 'judge-again' || a.action === 'ask-again') return { topicId: null };
       const r = pendingSet.find((x) => x.key === a.key && x.topicId === a.topicId);

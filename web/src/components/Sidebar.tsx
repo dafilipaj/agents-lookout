@@ -74,6 +74,8 @@ export interface SidebarProps {
   onSearchMessages?(query: string): void;
   /** SIDE-13.2: the Unread Sessions, marked on their rows. */
   unread?: ReadonlySet<string>;
+  /** HAND-6.3: the Sessions with a ready Handover, marked on their rows. */
+  handoversReady?: ReadonlySet<string>;
   /** SIDE-13.4: the Sessions the order counts as Unread: those, and the selected one if it was when you selected it. */
   orderUnread?: ReadonlySet<string>;
 }
@@ -305,6 +307,7 @@ export function Sidebar(props: SidebarProps) {
         pressure={props.memory?.pressure ?? null}
         match={hasQuery ? (matches.get(row.id) ?? null) : null}
         unread={props.unread?.has(row.id) ?? false}
+        handoverReady={props.handoversReady?.has(row.id) ?? false}
       />
     );
     // DS-9.1: the list takes focus as History's does: the selected Session is its active option, none

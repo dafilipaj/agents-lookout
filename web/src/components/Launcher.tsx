@@ -36,14 +36,23 @@ interface Props {
   topics?: readonly Topic[];
   /** LAUNCH-1.3: false for a launcher opened from Work or a Topic view, whose draft goes when it closes. */
   keepsInput?: boolean;
+  /**
+   * HAND-6: a launcher holding a ready Handover, its fields kept with it: titled "Hand off from <old
+   * title>" (HAND-6.5), with "Discard Handover" (HAND-6.2) and "Keep in Topic" (TOPIC-15.7), which
+   * throws with a message for people when it's refused.
+   */
+  handover?: { onDiscard(): void; onKeepInTopic(topicId: string, prompt: string): Promise<void> };
 }
 
 const FALLBACK_LABEL: Record<LaunchHarness, string> = { claude: 'Claude Code', codex: 'Codex' };
 
 /** The launcher (LAUNCH-1 … LAUNCH-4). */
-export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, harnesses, usage, now, onStart, onCloseAutoFocus, topics = [], keepsInput = true }: Props) {
+export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, harnesses, usage, now, onStart, onCloseAutoFocus, topics = [], keepsInput = true, handover }: Props) {
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [keeping, setKeeping] = useState(false);
+  // HAND-6.5: a Handover's launcher says whose work it carries on.
+  const title = handover && draft.continues ? `Hand off from ${draft.continues.title}` : 'New Session';
   const [error, setError] = useState<{ message: string; field: string | null } | null>(null);
 
   const list = harnesses.state === 'ready' ? harnesses.harnesses : null;
@@ -121,6 +130,20 @@ export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, h
     }
   };
 
+  // TOPIC-15.7: kept in the picked Topic without a start; a refusal stays here, with everything.
+  const keep = async () => {
+    if (!handover || !topic || keeping) return;
+    setKeeping(true);
+    setError(null);
+    try {
+      await handover.onKeepInTopic(topic.id, draft.prompt);
+    } catch (err) {
+      setError({ message: err instanceof Error ? err.message : 'Keeping the Handover failed.', field: null });
+    } finally {
+      setKeeping(false);
+    }
+  };
+
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
@@ -138,10 +161,20 @@ export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, h
         }}
         onCloseAutoFocus={onCloseAutoFocus}
       >
-        <form onSubmit={submit} onKeyDown={onKeyDown} aria-label="New Session">
-          <div className="border-b border-border px-5 pt-4 pb-3">
-            <DialogTitle className="text-title">New Session</DialogTitle>
-            <DialogDescription className="text-meta">Runs in its own Session host, so Lookout can control it.</DialogDescription>
+        <form onSubmit={submit} onKeyDown={onKeyDown} aria-label={title}>
+          <div className="flex items-start gap-3 border-b border-border px-5 pt-4 pb-3">
+            <div className="min-w-0 flex-1">
+              <DialogTitle className="truncate text-title" title={handover ? title : undefined}>
+                {title}
+              </DialogTitle>
+              <DialogDescription className="text-meta">Runs in its own Session host, so Lookout can control it.</DialogDescription>
+            </div>
+            {/* HAND-6.2: away from Start; the text stays in the old Session's chat. */}
+            {handover && (
+              <Button type="button" variant="danger" size="line" onClick={handover.onDiscard}>
+                Discard Handover
+              </Button>
+            )}
           </div>
 
           <div className="grid grid-cols-[5.5rem_1fr] items-center gap-x-3 gap-y-3 px-5 py-4 text-body">
@@ -318,11 +351,16 @@ export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, h
           <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
             {/* DS-8.4: a sentence is never a key; only Esc is. */}
             <span className="mr-auto text-meta text-muted-foreground">
-              <Kbd>Esc</Kbd> to close · {keepsInput ? 'your input is kept' : 'your input is discarded'}
+              <Kbd>Esc</Kbd> to close · {handover ? 'your Handover is kept' : keepsInput ? 'your input is kept' : 'your input is discarded'}
             </span>
             <Button variant="secondary" size="form" type="button" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
+            {handover && (
+              <Button variant="secondary" size="form" type="button" disabled={!topic || keeping || submitting} title={topic ? undefined : 'Pick a Topic to keep it in'} onClick={() => void keep()}>
+                {keeping ? 'Keeping…' : 'Keep in Topic'}
+              </Button>
+            )}
             <Button variant="primary" size="form" type="submit" disabled={!canStart}>
               {submitting ? 'Starting…' : 'Start'}
               <Kbd className="border-current/30 opacity-70">⌘↵</Kbd>

@@ -34,7 +34,7 @@ export interface HandOffProps {
   /** HAND-2: this Session's wait, as App keeps it; undefined for none. */
   wait: HandoffWait | undefined;
   open: boolean;
-  /** A press of the button or `F` (HAND-1.4): opens the popover, or the launcher when the Handover is ready (HAND-2.3). */
+  /** A press of the button or `F` (HAND-1.4): opens the popover, or the launcher when the Handover is ready (HAND-6.1). */
   onPress(): void;
   onClose(): void;
   /** HAND-1.2: "Write Handover", and HAND-2.4's "Try again". */
@@ -57,7 +57,7 @@ export function HandOffButton({ status, ended = false, wait, open, onPress, onCl
   const tip = waits
     ? HAND_OFF_WAITS
     : wait?.state === 'ready'
-      ? 'The Handover is ready: open the launcher (F)'
+      ? 'Handover ready (F)'
       : wait?.state === 'failed'
         ? `Writing the Handover failed: ${wait.reason}`
         : wait
@@ -105,7 +105,7 @@ export function HandOffButton({ status, ended = false, wait, open, onPress, onCl
             <div className="flex flex-col gap-1">
               <Loading label="Writing the Handover…" since={wait.sentAt} size="body" />
               <p className="text-meta text-muted-foreground" data-field="hand-off-piece">
-                {wait.piece.trim() ? `The piece: ${wait.piece.trim()}. ` : ''}The launcher opens when the Session is Idle again.
+                {wait.piece.trim() ? `The piece: ${wait.piece.trim()}. ` : ''}This button says when it's ready.
               </p>
             </div>
             <div className="flex justify-end">
@@ -149,7 +149,7 @@ function PieceForm({ blocked, onWrite, onCancel }: { blocked: string | null; onW
         </label>
         <Textarea id={fieldId} rows={3} value={piece} placeholder={PIECE_PLACEHOLDER} onChange={(e) => setPiece(e.target.value)} onKeyDown={onKeyDown} className="min-h-0 resize-none text-body" />
         <p className="text-meta text-muted-foreground" data-field="hand-off-note">
-          {blocked ?? 'The Session writes a Handover; the launcher opens with it, for you to read and start.'}
+          {blocked ?? 'The Session writes a Handover; this button opens it in the launcher, for you to read and start.'}
         </p>
       </div>
       <div className="flex justify-end gap-2">

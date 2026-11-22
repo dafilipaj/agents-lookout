@@ -2,6 +2,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
+import { HANDOFF_RESTATE_LINE } from '../shared/handoff.ts';
+import { activityWords } from '../shared/topics.ts';
 import type { SessionRow } from '../shared/types.ts';
 import { TOPIC_LAUNCH_TTL_MS, TopicLaunches } from './topic-launches.ts';
 import { TopicStore, Topics, TopicsError } from './topics.ts';
@@ -200,4 +202,27 @@ it('TOPIC-15.1: a start from a Handover with nothing left of it after its own li
   expect(sessions(topics, a.id)).toEqual([expect.objectContaining({ reason: 'continued from Rates port' })]);
   expect(topics.activity(a.id, null).find((e) => e.kind === 'added')!.data.handover).toBeUndefined();
   expect(topics.view().topics.find((t) => t.id === a.id)!.handover).toBeNull();
+});
+
+it('TOPIC-15.7: "Keep in Topic" keeps a Handover on the Topic, by you, without its own lines or a member; one of all the work is the Topic\'s, one for a piece isn\'t', () => {
+  const { topics, tick } = setup();
+  const a = topics.create('Proposals rates');
+  const view = () => topics.view().topics.find((t) => t.id === a.id)!;
+  topics.keepHandover(a.id, { prompt: `The rounding is settled: half up.\n\nContinued from: ${SESSION_ID} Rates port\n${HANDOFF_RESTATE_LINE}`, from: '  Rates\nport ', piece: '' });
+  const kept = topics.activity(a.id, null).find((e) => e.kind === 'handover')!;
+  expect(kept).toMatchObject({ by: 'you', member: null, data: { from: 'Rates port', handover: 'The rounding is settled: half up.' } });
+  expect(kept.data.piece).toBeUndefined();
+  expect(activityWords(kept)).toBe('Kept a Handover from Rates port');
+  expect(view().members).toEqual([]);
+  expect(view().handover).toEqual({ at: kept.at, from: 'Rates port', text: 'The rounding is settled: half up.' });
+  // One for a piece is kept on its entry, and says the piece, but isn't the Topic's.
+  tick(60_000);
+  topics.keepHandover(a.id, { prompt: 'Fix the flaky export test.', from: 'Rates port', piece: ' the flaky export test ' });
+  const piece = topics.activity(a.id, null).find((e) => e.kind === 'handover' && e.data.piece)!;
+  expect(activityWords(piece)).toBe('Kept a Handover from Rates port, a piece: the flaky export test');
+  expect(view().handover?.text).toBe('The rounding is settled: half up.');
+  // Nothing left after its own lines, or a Topic that's gone: refused, nothing kept.
+  expect(() => topics.keepHandover(a.id, { prompt: `Continued from: ${SESSION_ID} x\n${HANDOFF_RESTATE_LINE}`, from: 'x', piece: '' })).toThrow('The Handover is empty.');
+  topics.delete(a.id);
+  expect(() => topics.keepHandover(a.id, { prompt: 'Text.', from: 'x', piece: '' })).toThrow(TopicsError);
 });

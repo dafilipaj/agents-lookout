@@ -53,7 +53,11 @@ export function canHandOff(row: SessionRow, ended: boolean): boolean {
  */
 export type HandoffWait =
   | { state: 'sending' | 'writing'; piece: string; request: string; sentAt: number; skip: number; busy: boolean; reads: number; readAfter: number }
-  | { state: 'ready'; piece: string; handover: string }
+  /**
+   * HAND-6.2: `at`, when it became ready, which tells it from a newer one the Session writes; `draft`,
+   * the launcher's fields from its first opening with this Handover on.
+   */
+  | { state: 'ready'; piece: string; handover: string; at: number; draft?: LaunchDraft }
   | { state: 'failed'; piece: string; reason: string };
 
 /** A wait whose request is on its way or written: the Session's Turn hasn't ended yet. */
@@ -147,7 +151,7 @@ export function replyAfter(entries: readonly ChatEntry[], request: string, sentA
 export function afterRead(wait: WritingWait, found: FoundReply | null, now: number): HandoffWait {
   const take = (reply: string | null): HandoffWait => {
     const handover = reply ? handoverFrom(reply) : '';
-    return handover ? { state: 'ready', piece: wait.piece, handover } : { state: 'failed', piece: wait.piece, reason: HANDOFF_NO_TEXT };
+    return handover ? { state: 'ready', piece: wait.piece, handover, at: now } : { state: 'failed', piece: wait.piece, reason: HANDOFF_NO_TEXT };
   };
   if (found?.done) return take(found.reply);
   const again = { ...wait, readAfter: now + HANDOFF_READ_MS };
@@ -192,4 +196,100 @@ export interface ShownLink {
 export function showLink(link: HandoffLink, sessions: ReadonlyMap<string, SessionRow>): ShownLink {
   const live = sessions.get(link.sessionId) ?? null;
   return { sessionId: link.sessionId, harness: link.harness, title: live?.title ?? link.title ?? `Session ${link.sessionId.slice(0, 8)}`, live };
+}
+
+/** HAND-6: a Handover the Session has written, waiting for you. */
+export type ReadyWait = Extract<HandoffWait, { state: 'ready' }>;
+
+/** HAND-6.2: `waits` with the ready Handover of `id` holding the launcher's fields `draft`; unchanged otherwise. */
+export function withReadyDraft(waits: ReadonlyMap<string, HandoffWait>, id: string, draft: LaunchDraft): ReadonlyMap<string, HandoffWait> {
+  const w = waits.get(id);
+  return w?.state === 'ready' && w.draft !== draft ? new Map(waits).set(id, { ...w, draft }) : waits;
+}
+
+/**
+ * HAND-6.2: `waits` without the ready Handover of `id`: started from, kept in a Topic, or discarded.
+ * With `at`, only the Handover that became ready then, never a newer one.
+ */
+export function withoutReady(waits: ReadonlyMap<string, HandoffWait>, id: string, at?: number): ReadonlyMap<string, HandoffWait> {
+  const w = waits.get(id);
+  if (w?.state !== 'ready' || (at !== undefined && w.at !== at)) return waits;
+  const next = new Map(waits);
+  next.delete(id);
+  return next;
+}
+
+/** HAND-6.4: where this browser keeps a Session's ready Handover: this, then its id. */
+export const KEPT_HANDOVER_PREFIX = 'lookout.handover.';
+
+/**
+ * HAND-6.4: a kept Handover as stored for Session `id`; null for anything else. A kept draft that
+ * isn't a launcher's for that Session is dropped, and opening the launcher makes it again.
+ */
+function parseKept(id: string, raw: string | null): ReadyWait | null {
+  let it: { v?: unknown; piece?: unknown; handover?: unknown; at?: unknown; draft?: unknown } | null;
+  try {
+    it = JSON.parse(raw ?? 'null') as typeof it;
+  } catch {
+    return null;
+  }
+  if (!it || it.v !== 1 || typeof it.handover !== 'string' || !it.handover.trim() || typeof it.piece !== 'string' || typeof it.at !== 'number') return null;
+  const d = it.draft as Partial<LaunchDraft> | undefined;
+  const draftOk = !!d && typeof d === 'object' && typeof d.prompt === 'string' && typeof d.directory === 'string' && typeof d.model === 'string' && typeof d.name === 'string'
+    && (d.harness === 'claude' || d.harness === 'codex') && d.continues?.sessionId === id;
+  return { state: 'ready', piece: it.piece, handover: it.handover, at: it.at, ...(draftOk ? { draft: d as LaunchDraft } : {}) };
+}
+
+/** HAND-6.4: the ready Handovers this browser kept, by Session id; none when the storage can't be read. */
+export function readKeptHandovers(): Map<string, ReadyWait> {
+  const out = new Map<string, ReadyWait>();
+  try {
+    const storage = window.localStorage;
+    for (let i = 0; i < storage.length; i++) {
+      const key = storage.key(i);
+      if (!key?.startsWith(KEPT_HANDOVER_PREFIX)) continue;
+      const id = key.slice(KEPT_HANDOVER_PREFIX.length);
+      const wait = parseKept(id, storage.getItem(key));
+      if (wait) out.set(id, wait);
+    }
+  } catch {
+    // Storage this page can't read keeps nothing.
+  }
+  return out;
+}
+
+/**
+ * HAND-6.4: keeps what changed from `prev` to `next`: a Session whose ready Handover is new or changed
+ * is written, one that's no longer ready is removed, and the rest are left alone, so a tab never writes
+ * over another tab's. `fromStorage`: a Handover brought in from storage, which isn't written back. A
+ * storage that throws leaves the page's copy alone.
+ */
+export function keepHandovers(prev: ReadonlyMap<string, HandoffWait>, next: ReadonlyMap<string, HandoffWait>, fromStorage: (w: ReadyWait) => boolean = () => false): void {
+  try {
+    const storage = window.localStorage;
+    for (const [id, w] of next) {
+      if (w.state !== 'ready' || prev.get(id) === w || fromStorage(w)) continue;
+      storage.setItem(KEPT_HANDOVER_PREFIX + id, JSON.stringify({ v: 1, piece: w.piece, handover: w.handover, at: w.at, ...(w.draft ? { draft: w.draft } : {}) }));
+    }
+    for (const [id, w] of prev) if (w.state === 'ready' && next.get(id)?.state !== 'ready') storage.removeItem(KEPT_HANDOVER_PREFIX + id);
+  } catch {
+    // Private mode or full: it lasts as long as the page.
+  }
+}
+
+/**
+ * HAND-6.4: another tab's change to a kept Handover, from a `storage` event: the Session, and its
+ * Handover as stored now, or null once it's gone. Read from the storage, not the event: an event can
+ * arrive after a later change, which then wins. Null for any other key.
+ */
+export function keptHandoverChange(e: Pick<StorageEvent, 'key'>): { id: string; wait: ReadyWait | null } | null {
+  if (!e.key?.startsWith(KEPT_HANDOVER_PREFIX)) return null;
+  const id = e.key.slice(KEPT_HANDOVER_PREFIX.length);
+  let raw: string | null;
+  try {
+    raw = window.localStorage.getItem(e.key);
+  } catch {
+    return null;
+  }
+  return { id, wait: raw === null ? null : parseKept(id, raw) };
 }

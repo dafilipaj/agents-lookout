@@ -158,6 +158,8 @@ export interface AppOptions {
   handoffLaunches?: Pick<HandoffLaunches, 'check' | 'expect' | 'forget'>;
   /** TOPIC: Lookout's own store of Topics; optional, so a server without it has no `/api/topics` (404). */
   topics?: Pick<Topics, 'view' | 'create' | 'update' | 'delete' | 'addMember' | 'removeMember' | 'link' | 'editEdge' | 'unlink' | 'place'> & {
+    /** TOPIC-15.7: "Keep in Topic": a Handover kept without a start. */
+    keepHandover?(id: string, input: { prompt: string; from: string; piece: string }): void;
     /** TOPIC-9.4: Accept, Dismiss, Other Topic… or Judge again on a recommendation. */
     recommend?(action: RecommendationAction): { topicId: string | null };
     /** TOPIC-11.1, TOPIC-11.6: start a summary of the Topic, or cancel the one being written. */
@@ -1008,7 +1010,7 @@ async function topicsCall(req: IncomingMessage, res: ServerResponse, path: strin
       throw err;
     }
   }
-  const match = /^\/api\/topics(?:\/([0-9a-f-]{36})(?:\/(members|edges|summary|summaries|activity|seen))?)?$/.exec(path);
+  const match = /^\/api\/topics(?:\/([0-9a-f-]{36})(?:\/(members|edges|summary|summaries|activity|seen|handovers))?)?$/.exec(path);
   if (!match) return json(res, 404, { error: 'not found' });
   const [, id, sub] = match;
   const route = `${req.method} ${id ? (sub ?? 'topic') : 'topics'}`;
@@ -1060,6 +1062,17 @@ async function topicsCall(req: IncomingMessage, res: ServerResponse, path: strin
         if (b === NO_BODY) return;
         topics.unlink(id!, parseUnlink(b).other);
         return json(res, 200, { ok: true });
+      }
+      // TOPIC-15.7: "Keep in Topic", from the launcher with a Handover.
+      case 'POST handovers': {
+        if (!topics.keepHandover) return json(res, 404, { error: 'not found' });
+        const b = await body();
+        if (b === NO_BODY) return;
+        const v = (typeof b === 'object' && b !== null ? b : {}) as Record<string, unknown>;
+        const piece = v.piece ?? '';
+        if (typeof v.prompt !== 'string' || typeof v.from !== 'string' || typeof piece !== 'string') return json(res, 400, { error: 'Expected { prompt, from, piece }.' });
+        topics.keepHandover(id!, { prompt: v.prompt, from: v.from, piece });
+        return json(res, 201, { ok: true });
       }
       // TOPIC-11.1: the run goes on after the answer; every tab hears how it went through `topics`.
       case 'POST summary':
