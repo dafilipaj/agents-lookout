@@ -1793,8 +1793,10 @@ describe('expanded rows', () => {
   });
 
   it('DS-21.4: Work, History, Library, Topics and Setup build their expanded rows from ui/row-details; a Session chip is drawn only in a Topic view\'s member list', () => {
+    // Setup's rows are drawn in SetupRow (both views) and SetupSession (This Session, SETUP-6).
+    const files: Record<string, string[]> = { SetupPanel: ['SetupPanel', 'SetupRow', 'SetupSession'] };
     for (const panel of ['WorkPanel', 'HistoryPanel', 'LibraryPanel', 'TopicsPanel', 'SetupPanel']) {
-      const text = SOURCES[`web/src/components/${panel}.tsx`] ?? '';
+      const text = (files[panel] ?? [panel]).map((f) => SOURCES[`web/src/components/${f}.tsx`] ?? '').join('\n');
       expect(text, panel).toMatch(/<RowDetails\b/);
       expect(text, panel).toMatch(/<RowTitle\b/);
       expect(text.match(HAND_DRAWN_DETAILS)?.[0] ?? null, panel).toBeNull();

@@ -55,6 +55,7 @@ import { type ModelTarget, shownModel } from '@/lib/model-switch';
 import { SWITCH_RUNNING, type SwitchState, type SwitchWhat, restartedWhy, switchFailure, switchKey } from '@/lib/status-switch';
 import { parseRoute, routePath, specHash, useRoute, type Route } from '@/lib/router';
 import { HARNESS_NAME } from '@/lib/sessions';
+import type { SetupSessionTarget } from '@/lib/setup';
 import { cn } from '@/lib/utils';
 import { listKnown, shownLaunches, useLookout } from '@/lib/store';
 import { pruneHeights } from '@/lib/terminal-height';
@@ -573,6 +574,17 @@ export function App({ client }: { client: LookoutClient }) {
   // and a refusal during the cooldown or a rate limit shows on Refresh itself. What's left to say, in
   // plain words: a refusal while the server doesn't know this tab has Work open (409), a server
   // error, or no server at all (WORK UX, Errors).
+  // SETUP-6.1: This Session follows the main pane's Session, live or past; SETUP-6.4: the tab's Refresh reads it again.
+  const [setupRefresh, setSetupRefresh] = useState(0);
+  const setupLive = route.name === 'session' ? state.sessions.get(route.id) : undefined;
+  const [liveId, liveHarness, liveTitle, liveStatus] = [setupLive?.id, setupLive?.harness, setupLive?.title, setupLive?.status];
+  const [pastId, pastHarness] = route.name === 'past' ? [route.id, route.harness] : [null, null];
+  const setupSession = useMemo((): SetupSessionTarget | null => {
+    if (liveId && liveHarness) return { id: liveId, harness: liveHarness, title: liveTitle ?? null, status: liveStatus ?? null };
+    if (pastId && pastHarness) return { id: pastId, harness: pastHarness, title: null, status: null };
+    return null;
+  }, [liveId, liveHarness, liveTitle, liveStatus, pastId, pastHarness]);
+  const readSetupSession = useCallback((sessionId: string) => client.setupSession(sessionId), [client]);
   const refreshWork = useCallback(
     () =>
       client.refreshWork().then(
@@ -1331,6 +1343,7 @@ export function App({ client }: { client: LookoutClient }) {
             onClose={() => toggleRight(layout.tab)}
             refresh={state.work?.refresh ?? null}
             onRefresh={refreshWork}
+            onSetupRefresh={() => setSetupRefresh((n) => n + 1)}
             now={now}
             panels={{
               library: <LibraryPanel focusKey={rightFocus.library} visible={layout.tab === 'library'} sessions={state.sessions} now={now} search={searchLibrary} status={libraryStatus} filter={layout.libraryFilter} onFilter={(libraryFilter) => updateLayout({ libraryFilter })} headless={layout.headless} onHeadless={(headless) => updateLayout({ headless })} onSession={openPast} keyboardEnabled={!modalOpen} navRef={libraryNav} sessionFilter={librarySessions} onClearSessionFilter={() => setLibrarySessions(null)} />,
@@ -1391,6 +1404,11 @@ export function App({ client }: { client: LookoutClient }) {
                   onOpen={(setupOpen) => updateLayout({ setupOpen })}
                   keyboardEnabled={!modalOpen}
                   navRef={setupNav}
+                  view={layout.setupView}
+                  onView={(setupView) => updateLayout({ setupView })}
+                  session={setupSession}
+                  readSession={readSetupSession}
+                  refreshKey={setupRefresh}
                 />
               ),
               history: <HistoryPanel ask={historyAsk} onAsked={() => setHistoryAsk(null)} headless={layout.headless} onHeadless={(headless) => updateLayout({ headless })} focusKey={rightFocus.history} sessions={state.sessions} now={now} search={searchHistory} peek={peekPast} onOpen={openPast} navRef={historyNav} />,

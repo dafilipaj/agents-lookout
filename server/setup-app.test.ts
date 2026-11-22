@@ -59,7 +59,7 @@ const SNAPSHOT: SetupSnapshot = { items: [], errors: [], readAt: 1 };
 
 it('SETUP-1.8: GET /api/setup answers a fresh read; a server without Setup has none', async () => {
   const read = vi.fn(async () => SNAPSHOT);
-  const res = await request(app({ read, setSkill: vi.fn(), setPlugin: vi.fn() }), '/api/setup');
+  const res = await request(app({ read, setSkill: vi.fn(), setPlugin: vi.fn(), readSession: vi.fn() }), '/api/setup');
   expect(res).toEqual({ status: 200, json: SNAPSHOT });
   expect(read).toHaveBeenCalledTimes(1);
   expect((await request(app(undefined), '/api/setup')).status).toBe(404);
@@ -68,7 +68,7 @@ it('SETUP-1.8: GET /api/setup answers a fresh read; a server without Setup has n
 it('SETUP-4.1, SETUP-4.2: a switch takes the token and Origin, checks its body, and answers the read after it', async () => {
   const setSkill = vi.fn(async () => SNAPSHOT);
   const setPlugin = vi.fn(async () => SNAPSHOT);
-  const server = app({ read: vi.fn(), setSkill, setPlugin });
+  const server = app({ read: vi.fn(), setSkill, setPlugin, readSession: vi.fn() });
   expect((await request(server, '/api/setup/skill', { method: 'POST', body: { name: 'notes', on: false } })).status).toBe(403);
   expect((await request(server, '/api/setup/skill', { method: 'POST', headers: MUTATION, body: { name: 'a b', on: false } })).status).toBe(400);
   expect((await request(server, '/api/setup/plugin', { method: 'POST', headers: MUTATION, body: { id: 'no-marketplace', on: false } })).status).toBe(400);
@@ -81,6 +81,17 @@ it('SETUP-4.1, SETUP-4.2: a switch takes the token and Origin, checks its body, 
 
 it('SETUP-4.2: a switch that fails answers its status and why', async () => {
   const setPlugin = vi.fn(async () => Promise.reject(new SetupFailure('claude plugin disable p-kit@market failed: Plugin not found', 502)));
-  const res = await request(app({ read: vi.fn(), setSkill: vi.fn(), setPlugin }), '/api/setup/plugin', { method: 'POST', headers: MUTATION, body: { id: 'p-kit@market', on: false } });
+  const res = await request(app({ read: vi.fn(), setSkill: vi.fn(), setPlugin, readSession: vi.fn() }), '/api/setup/plugin', { method: 'POST', headers: MUTATION, body: { id: 'p-kit@market', on: false } });
   expect(res).toEqual({ status: 502, json: { error: 'claude plugin disable p-kit@market failed: Plugin not found' } });
+});
+
+it('SETUP-6.5: GET /api/setup/session/<id> reads that Session; an id that isn’t a Claude Code session id is refused', async () => {
+  const session = { sessionId: '0b7c1a2e-4d5f-4a6b-8c9d-0e1f2a3b4c5d', errors: [] };
+  const readSession = vi.fn(async () => session as never);
+  const server = app({ read: vi.fn(), setSkill: vi.fn(), setPlugin: vi.fn(), readSession });
+  expect(await request(server, '/api/setup/session/0b7c1a2e-4d5f-4a6b-8c9d-0e1f2a3b4c5d')).toEqual({ status: 200, json: session });
+  expect(readSession).toHaveBeenCalledWith('0b7c1a2e-4d5f-4a6b-8c9d-0e1f2a3b4c5d');
+  expect((await request(server, '/api/setup/session/..%2F..%2Fetc')).status).toBe(400);
+  expect((await request(server, '/api/setup/session/claude:123')).status).toBe(400);
+  expect(readSession).toHaveBeenCalledTimes(1);
 });

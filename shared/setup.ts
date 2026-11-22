@@ -9,8 +9,8 @@ import type { Harness } from './types.ts';
 export type SetupKind = 'skill' | 'agent' | 'hook' | 'mcp';
 export const SETUP_KINDS: readonly SetupKind[] = ['skill', 'agent', 'hook', 'mcp'];
 
-/** SETUP-1.3: where an item comes from. */
-export type SetupSource = { type: 'yours' } | { type: 'claude-ai' } | { type: 'plugin'; name: string; id: string; version: string | null };
+/** SETUP-1.3: where an item comes from; `repo` is a Session's directory's own (SETUP-9.1). */
+export type SetupSource = { type: 'yours' } | { type: 'claude-ai' } | { type: 'repo' } | { type: 'plugin'; name: string; id: string; version: string | null };
 
 /**
  * SETUP-5.1: why an item is off: turned off in `skillOverrides` (`override-missing` when the entry
@@ -108,3 +108,113 @@ export function parsePluginSwitch(body: unknown): { id: string; on: boolean } | 
   if (!/^[\w.-]{1,100}@[\w.-]{1,100}$/.test(id)) return null;
   return { id, on };
 }
+
+/**
+ * SETUP-6 to SETUP-9: what one Claude Code Session loaded and what ran in it, read from its
+ * Transcript, and what its directory adds, read from disk.
+ */
+
+/** SETUP-7.1: an instruction file's group: `~/.claude/CLAUDE.md`, or the repo's `CLAUDE.md` files and `CLAUDE.local.md`. */
+export type SessionFileGroup = 'yours' | 'repo';
+
+export interface SessionInstruction {
+  /** Unique within a read. */
+  key: string;
+  /** Absolute; what Open in VS Code opens (SETUP-7.4). */
+  path: string;
+  /** From the repo, else from `~` (SETUP-7.1). */
+  shown: string;
+  group: SessionFileGroup;
+  /** SETUP-7.2: the key of the file whose `@path` imports it. */
+  importer: string | null;
+  /** SETUP-7.2: how many of the loaded files it imports. */
+  imports: number;
+  lines: number;
+  /** Its loaded text's length / 4, an estimate (SETUP-7.1). */
+  tokens: number;
+  /** When the Session loaded it, ms. */
+  loadedAt: number;
+  /** SETUP-7.1: loaded after the latest load, a subfolder's `CLAUDE.md`. */
+  later: boolean;
+  /** SETUP-7.3: its text on disk against what the Session loaded. */
+  disk: 'same' | 'changed' | 'gone';
+  /** When a changed file was last written, ms. */
+  changedAt: number | null;
+}
+
+/** SETUP-7.5: one entry line of the memory index. */
+export interface SessionMemoryEntry {
+  key: string;
+  title: string;
+  /** Absolute. */
+  file: string;
+  /** Its front matter's type (`user`, `feedback`, `project`, `reference`), or null. */
+  type: string | null;
+}
+
+export interface SessionMemory {
+  /** The index, `MEMORY.md`. */
+  path: string;
+  entries: SessionMemoryEntry[];
+  tokens: number;
+}
+
+/** SETUP-8.1: one thing that ran: a skill, a Subagent type, an MCP server or a hook command. */
+export interface SessionRan {
+  key: string;
+  kind: SetupKind;
+  /** As SETUP-1.5 shows it; a hook's script (SETUP-1.6). */
+  name: string;
+  /** Skill and Subagent calls, an MCP server's tool calls, a hook's runs. */
+  count: number;
+  /** A hook's runs that failed or were cancelled. */
+  failed: number;
+  /** A hook's events, in the order first seen, when it matches no item. */
+  events: string[];
+  /** SETUP-8.2: the item Setup lists, Everywhere or in This repo's own; null when none matches. */
+  item: SetupItem | null;
+  /** SETUP-8.2: a Subagent type built into Claude Code. */
+  builtIn: boolean;
+  /** Where an unmatched MCP server comes from (`claude.ai`), else null. */
+  origin: string | null;
+}
+
+/** SETUP-9.2: why an item of the repo's isn't in the Session's lists. */
+export type SessionNotLoadedWhy = { reason: 'added'; at: number } | { reason: 'not-approved' } | { reason: 'not-listed' };
+
+export interface SessionNotLoaded {
+  item: SetupItem;
+  why: SessionNotLoadedWhy;
+}
+
+/** SETUP-6.5: a Transcript or repo file that couldn't be read, one row naming it. */
+export interface SessionSetupError {
+  where: 'transcript' | 'repo';
+  kind: SetupKind | null;
+  file: string;
+  error: string;
+}
+
+export interface SessionSetup {
+  sessionId: string;
+  /** From the Transcript; the main pane's title wins when it has one. */
+  title: string | null;
+  /** The directory it loaded in, and the same from `~` (SETUP-6.2). */
+  directory: string | null;
+  directoryShown: string | null;
+  /** SETUP-6.2: its latest load, its start or latest compaction, ms; null when none was recorded. */
+  loadedAt: number | null;
+  instructions: SessionInstruction[];
+  memory: SessionMemory | null;
+  ran: SessionRan[];
+  /** SETUP-9.1: what its directory adds, the ones its lists named. */
+  repo: SetupItem[];
+  notLoaded: SessionNotLoaded[];
+  /** SETUP-6.3: what its lists named from outside its repo, by kind. */
+  everywhere: Record<SetupKind, number>;
+  errors: SessionSetupError[];
+  readAt: number;
+}
+
+/** SETUP-6.5: a Claude Code session id, as its Transcript's file is named. */
+export const isSessionId = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);

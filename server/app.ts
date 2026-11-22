@@ -32,7 +32,7 @@ import type { ResMonitor } from './res.ts';
 import { type KeepAwake, AwakeError } from './awake.ts';
 import type { Evidence } from './evidence.ts';
 import { type Setup, SetupFailure } from './setup.ts';
-import { parsePluginSwitch, parseSkillSwitch } from '../shared/setup.ts';
+import { isSessionId, parsePluginSwitch, parseSkillSwitch } from '../shared/setup.ts';
 import { parseAwakeRequest } from '../shared/awake.ts';
 import type { SessionMonitor } from './monitor.ts';
 import { type GuardConfig, guardRequest } from './security.ts';
@@ -71,8 +71,11 @@ export interface AppOptions {
   awake?: Pick<KeepAwake, 'snapshot' | 'watch' | 'set'>;
   /** EVID: each Session's Evidence, for a new tab; optional, so handler tests can leave it out. */
   evidence?: Pick<Evidence, 'views'>;
-  /** SETUP: what the Harnesses load, read when the tab opens, and its two switches; optional, so a server without it has no `/api/setup` (404). */
-  setup?: Pick<Setup, 'read' | 'setSkill' | 'setPlugin'>;
+  /**
+   * SETUP: what the Harnesses load, read when the tab opens, its two switches, and what one Session
+   * loaded (SETUP-6); optional, so a server without it has no `/api/setup` (404).
+   */
+  setup?: Pick<Setup, 'read' | 'setSkill' | 'setPlugin' | 'readSession'>;
   usage: {
     snapshot(): UsageSnapshot | null;
     watch(): () => void;
@@ -403,6 +406,12 @@ export function createApp(opts: AppOptions): LookoutApp {
     if (route === 'POST /api/tools/refresh' && opts.tools) return json(res, 200, await opts.tools.read({ force: true }));
     // SETUP-1.8: the tab opened, or came back: a fresh read of the files. It only reads, so it's a GET.
     if (route === 'GET /api/setup' && opts.setup) return json(res, 200, await opts.setup.read());
+    // SETUP-6.4: This Session shows, or its Session ended a turn: a fresh read of its Transcript.
+    if (req.method === 'GET' && url.pathname.startsWith('/api/setup/session/') && opts.setup) {
+      const id = url.pathname.slice('/api/setup/session/'.length);
+      if (!isSessionId(id)) return json(res, 400, { error: 'not a Claude Code session id' });
+      return json(res, 200, await opts.setup.readSession(id));
+    }
     // SETUP-4: a switch changes a Harness's configuration, so it's a mutation: the token and Origin
     // (the guard checks every non-GET). The answer is the read that follows it.
     if ((route === 'POST /api/setup/skill' || route === 'POST /api/setup/plugin') && opts.setup) {

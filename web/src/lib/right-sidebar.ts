@@ -1,5 +1,5 @@
 import { DEFAULT_LIBRARY_TYPES, LIBRARY_TYPES, type LibraryFilter } from '@shared/library.ts';
-import { SETUP_FILTERS, type SetupFilter } from './setup';
+import { SETUP_FILTERS, SETUP_VIEWS, type SetupFilter, type SetupView } from './setup';
 /**
  * The right sidebar (HIST-1, WORK-1): a container with an active tab, History or Work. Whether it's
  * open, its width, the tab and Work's filter are kept in this browser (HIST-1.3, WORK-1.2, WORK-1.5).
@@ -44,15 +44,17 @@ export interface RightLayout {
   showAllServers: boolean;
   /** SETUP-1.2: Setup's kind filter. */
   setupFilter: SetupFilter;
-  /** SETUP-1.4: Setup's open groups (and off lines), by key. */
+  /** SETUP-1.4: Setup's open groups (and off lines), by key; This Session's groups that start open, when closed (SETUP-7.1). */
   setupOpen: string[];
+  /** SETUP-6.1: Everywhere or This Session. */
+  setupView: SetupView;
 }
 
 const KEY = 'lookout.right';
 /** Where HIST kept `{ open, width }` before Work was a tab: read when the new key is absent. */
 const HISTORY_KEY = 'lookout.history';
 
-export const DEFAULT_LAYOUT: RightLayout = { open: false, width: RIGHT_DEFAULT_WIDTH, tab: 'history', workFilter: 'all', libraryFilter: { types: [...DEFAULT_LIBRARY_TYPES], project: '', hideGone: true }, headless: false, topic: null, showAllServers: false, setupFilter: 'all', setupOpen: [] };
+export const DEFAULT_LAYOUT: RightLayout = { open: false, width: RIGHT_DEFAULT_WIDTH, tab: 'history', workFilter: 'all', libraryFilter: { types: [...DEFAULT_LIBRARY_TYPES], project: '', hideGone: true }, headless: false, topic: null, showAllServers: false, setupFilter: 'all', setupOpen: [], setupView: 'everywhere' };
 
 export const clampWidth = (w: number) => Math.round(Math.min(RIGHT_MAX_WIDTH, Math.max(RIGHT_MIN_WIDTH, w)));
 
@@ -76,6 +78,7 @@ export function loadLayout(): RightLayout {
     showAllServers: r.showAllServers === true,
     setupFilter: SETUP_FILTERS.includes(r.setupFilter as SetupFilter) ? (r.setupFilter as SetupFilter) : 'all',
     setupOpen: Array.isArray(r.setupOpen) ? r.setupOpen.filter((k): k is string => typeof k === 'string' && k.length <= 200).slice(0, 200) : [],
+    setupView: SETUP_VIEWS.includes(r.setupView as SetupView) ? (r.setupView as SetupView) : 'everywhere',
     topic: typeof r.topic === 'string' && /^[0-9a-f-]{36}$/.test(r.topic) ? r.topic : null,
     open: r.open === true,
     width: typeof r.width === 'number' && Number.isFinite(r.width) ? clampWidth(r.width) : RIGHT_DEFAULT_WIDTH,

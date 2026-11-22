@@ -25,6 +25,8 @@ export interface RightSidebarProps {
   refresh: WorkSnapshot['refresh'] | null;
   /** Resolves with what to say when the server didn't run it, in plain words, or null when it did. */
   onRefresh(): Promise<string | null>;
+  /** SETUP-6.4: Setup's Refresh, shown while Setup is the tab: it reads the view that shows again. */
+  onSetupRefresh?(): void;
   now: number;
   /** Each tab's panel. A panel is mounted once first shown and kept, hidden, while another tab is. */
   panels: Record<RightTab, ReactNode>;
@@ -55,11 +57,11 @@ const PANEL_KEYS: Record<string, 1 | -1> = { j: 1, ArrowDown: 1, k: -1, ArrowUp:
 
 /**
  * HIST-1, WORK-1: the right sidebar, a container with an active tab. The tab strip sits in the
- * shell's header row (SIDE-8.1, WORK-1.8) with Refresh (Work only) and Close; each panel keeps its
+ * shell's header row (SIDE-8.1, WORK-1.8) with Refresh (Work and Setup) and Close; each panel keeps its
  * own controls below it. On the header, j/k and ↑/↓ go to the open panel, never to the Session
  * sidebar, and ←/→ move between the tabs, as a tablist does (WORK-1.7).
  */
-export function RightSidebar({ width, onResize, tab, onTab, onClose, refresh, onRefresh, now, panels, nav, counts, servers, corner }: RightSidebarProps) {
+export function RightSidebar({ width, onResize, tab, onTab, onClose, refresh, onRefresh, onSetupRefresh, now, panels, nav, counts, servers, corner }: RightSidebarProps) {
   // A hidden panel stays mounted, so History keeps its query while you look at Work.
   const [shown, setShown] = useState<ReadonlySet<RightTab>>(() => new Set([tab]));
   if (!shown.has(tab)) setShown(new Set(shown).add(tab));
@@ -185,6 +187,12 @@ export function RightSidebar({ width, onResize, tab, onTab, onClose, refresh, on
               className={cn((r.disabled || refreshing) && 'cursor-default opacity-50 hover:bg-transparent')}
             >
               <RefreshCw className={cn(refreshing && 'motion-safe:animate-spin')} />
+            </IconButton>
+          )}
+          {tab === 'setup' && onSetupRefresh && (
+            // SETUP-6.4: read again now; Setup reads its files, so there's no limit to wait out.
+            <IconButton size="md" label="Refresh" tip="Refresh" onClick={onSetupRefresh}>
+              <RefreshCw />
             </IconButton>
           )}
           <IconButton size="md" label={`Close ${TAB_LABEL[tab]}`} shortcut={TAB_KEY[tab]} onClick={onClose}>

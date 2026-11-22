@@ -1,38 +1,42 @@
-import { type SetupItem, type SetupSnapshot, type SetupSwitchResult, pluginOf, skillSwitchable } from '@shared/setup.ts';
-import { ChevronRight, CircleOff, Cloud, Package, Search, User } from 'lucide-react';
-import { type CSSProperties, type KeyboardEvent, type ReactNode, type Ref, type RefObject, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { type SessionSetup, type SetupItem, type SetupSnapshot, type SetupSwitchResult, pluginOf, skillSwitchable } from '@shared/setup.ts';
+import { ChevronRight, CircleOff, Cloud, FolderGit2, Package, Search, User } from 'lucide-react';
+import { type KeyboardEvent, type ReactNode, type Ref, type RefObject, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { SectionLabel } from '@/components/ui/details';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Hits } from '@/components/ui/hits';
 import { RowSettling, useRowSettle } from '@/components/ui/icon-button';
 import { Loading } from '@/components/ui/loading';
-import { RowActions } from '@/components/ui/row-actions';
-import { RowDetails, RowTitle } from '@/components/ui/row-details';
 import { Segmented } from '@/components/ui/segmented';
 import { ActionIcon } from '@/lib/actions';
+import { clock } from '@/lib/evidence';
 import { vscodeHref } from '@/lib/files';
 import { type PanelNav, focusTab } from '@/lib/right-sidebar';
 import {
-  HARNESS_NAME,
-  OFF_REASON,
   SECTION_LABEL,
   SETUP_FILTERS,
   SETUP_FILTER_LABEL,
+  SETUP_VIEWS,
+  SETUP_VIEW_LABEL,
+  type SessionRow,
   type SetupFilter,
   type SetupGroup,
   type SetupSection,
-  firstLine,
-  matchRanges,
+  type SetupSessionTarget,
+  type SetupView,
+  domId,
+  groupOpen,
   offKey,
   pluginContents,
+  sessionSections,
+  sessionUnavailable,
   setupSections,
-  sourceLabel,
 } from '@/lib/setup';
 import { cn } from '@/lib/utils';
 import { HarnessIcon } from './HarnessIcon';
+import { SetupRow } from './SetupRow';
+import { EVERYWHERE_LINE, SetupSession } from './SetupSession';
 
 export interface SetupPanelProps {
   /** SETUP-1.8: the tab is showing; Setup is read each time it comes into view. */
@@ -49,15 +53,20 @@ export interface SetupPanelProps {
   onOpen(open: string[]): void;
   keyboardEnabled: boolean;
   navRef?: Ref<PanelNav>;
+  /** SETUP-6.1: Everywhere or This Session, kept across reloads. */
+  view: SetupView;
+  onView(view: SetupView): void;
+  /** SETUP-6.1: the Session open in the main pane, which This Session follows; null with none. */
+  session: SetupSessionTarget | null;
+  readSession(sessionId: string): Promise<SessionSetup>;
+  /** SETUP-6.4: bumped by the tab's Refresh, which reads the view that shows again. */
+  refreshKey: number;
 }
 
-/** One selectable line of the list: a group's (or the off line's), or an item's row. */
-type Entry = { type: 'group'; key: string } | { type: 'row'; key: string; item: SetupItem };
+/** One selectable line of the list: a group's (or the off and not loaded lines), or a row. */
+type Entry = { type: 'group'; key: string } | { type: 'row'; key: string; item: SetupItem | null; open: (() => void) | null };
 
-const domId = (key: string) => `setup-${encodeURIComponent(key)}`;
-const GROUP_ICON = { yours: User, 'claude-ai': Cloud, plugin: Package } as const;
-/** DS-17.1: the hairline between rows starts where a row's name does, under its group's name. */
-const ROW_INSET = { '--row-inset': '48px' } as CSSProperties;
+const GROUP_ICON = { yours: User, 'claude-ai': Cloud, plugin: Package, repo: FolderGit2 } as const;
 
 /** SETUP-4.3: what a switch says, in words. */
 const switched = (what: string, on: boolean) =>
@@ -65,10 +74,11 @@ const switched = (what: string, on: boolean) =>
 
 /**
  * SETUP: what Claude Code and Codex load for every Session, by kind, then by source, each source a
- * group that folds (canvas B). j/k and ↑/↓ move through group lines and rows; Enter opens a group,
- * expands a row, then opens it in VS Code.
+ * group that folds (canvas B); or, in This Session, what the open Session loaded and what ran in it
+ * (slice 2, canvas A). j/k and ↑/↓ move through group lines and rows; Enter opens a group, expands
+ * a row, then opens it in VS Code.
  */
-export function SetupPanel({ visible, focusKey, read, switchSkill, switchPlugin, filter, onFilter, open, onOpen, keyboardEnabled, navRef }: SetupPanelProps) {
+export function SetupPanel({ visible, focusKey, read, switchSkill, switchPlugin, filter, onFilter, open, onOpen, keyboardEnabled, navRef, view, onView, session, readSession, refreshKey }: SetupPanelProps) {
   const [snapshot, setSnapshot] = useState<SetupSnapshot | null>(null);
   const [readError, setReadError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -82,14 +92,31 @@ export function SetupPanel({ visible, focusKey, read, switchSkill, switchPlugin,
   const { settling, settle } = useRowSettle();
   const q = query.trim();
 
+  // SETUP-6.1: This Session follows the main pane's Session; with none, or a Codex one, the tab shows Everywhere.
+  const unavailable = sessionUnavailable(session);
+  const shown: SetupView = view === 'session' && !unavailable ? 'session' : 'everywhere';
+  const sessionId = shown === 'session' ? session!.id : null;
+
+  // SETUP-6.4: a live Session's turn ended (Busy to anything else) while This Session shows: read it again.
+  const [turns, setTurns] = useState(0);
+  const lastStatus = useRef<{ id: string | null; status: string | null }>({ id: null, status: null });
+  useEffect(() => {
+    const was = lastStatus.current;
+    const status = session?.status ?? null;
+    if (sessionId && was.id === sessionId && was.status === 'busy' && status !== 'busy') setTurns((n) => n + 1);
+    lastStatus.current = { id: sessionId, status };
+  }, [sessionId, session?.status]);
+
   // SETUP-1.8: read when the tab comes into view; a late answer for an earlier view is dropped.
   const readSeq = useRef(0);
   const reader = useRef(read);
+  const sessionReader = useRef(readSession);
   useEffect(() => {
     reader.current = read;
+    sessionReader.current = readSession;
   });
   useEffect(() => {
-    if (!visible) return;
+    if (!visible || shown !== 'everywhere') return;
     const mine = ++readSeq.current;
     reader.current().then(
       (s) => {
@@ -101,25 +128,67 @@ export function SetupPanel({ visible, focusKey, read, switchSkill, switchPlugin,
         if (readSeq.current === mine) setReadError(err instanceof Error ? err.message : 'Couldn’t read the Setup.');
       },
     );
-  }, [visible]);
+  }, [visible, shown, refreshKey]);
+
+  // SETUP-6.4: This Session is read when it's chosen, when another Session opens, on Refresh and when a turn ends.
+  const [sessionData, setSessionData] = useState<SessionSetup | null>(null);
+  const [sessionError, setSessionError] = useState<string | null>(null);
+  const sessionSeq = useRef(0);
+  useEffect(() => {
+    if (!visible || !sessionId) return;
+    const mine = ++sessionSeq.current;
+    sessionReader.current(sessionId).then(
+      (s) => {
+        if (sessionSeq.current !== mine) return;
+        setSessionData(s);
+        setSessionError(null);
+      },
+      (err: unknown) => {
+        if (sessionSeq.current === mine) setSessionError(err instanceof Error ? err.message : 'Couldn’t read what the Session loaded.');
+      },
+    );
+  }, [visible, sessionId, refreshKey, turns]);
+  // Another Session's answer never shows under this one's line.
+  const data = sessionData && sessionData.sessionId === sessionId ? sessionData : null;
+
   useEffect(() => {
     if (visible && focusKey) input.current?.focus();
   }, [focusKey, visible]);
 
   const sections = snapshot ? setupSections(snapshot, filter, q) : [];
-  const isOpen = (key: string) => !!q || open.includes(key);
-  const entries: Entry[] = sections.flatMap((s) => [
-    ...s.groups.flatMap((g): Entry[] => [{ type: 'group', key: g.key }, ...(isOpen(g.key) ? g.rows.map((item): Entry => ({ type: 'row', key: item.key, item })) : [])]),
-    ...(s.off.length ? [{ type: 'group', key: offKey(s.kind) } as Entry, ...(isOpen(offKey(s.kind)) ? s.off.map((item): Entry => ({ type: 'row', key: item.key, item })) : [])] : []),
-  ]);
+  const sessionModel = data ? sessionSections(data, q) : [];
+  const isOpen = (key: string) => (key.startsWith('session:') ? groupOpen(key, open, q) : !!q || open.includes(key));
+  const openPath = (file: string, line: number | null) => window.open(vscodeHref(file, line, null), '_self');
+  const openFile = (item: SetupItem) => openPath(item.file, item.line);
+
+  const sessionEntry = (r: SessionRow): Entry => {
+    if (r.type === 'file') return { type: 'row', key: r.key, item: null, open: r.file.disk === 'gone' ? null : () => openPath(r.file.path, null) };
+    if (r.type === 'memory') return { type: 'row', key: r.key, item: null, open: () => openPath(r.entry.file, null) };
+    const item = r.type === 'ran' ? r.ran.item : r.item;
+    return { type: 'row', key: r.key, item: null, open: item ? () => openFile(item) : null };
+  };
+  const entries: Entry[] =
+    shown === 'session'
+      ? sessionModel.flatMap((s) => [
+          ...s.groups.flatMap((g): Entry[] => [{ type: 'group', key: g.key }, ...(isOpen(g.key) ? g.rows.map(sessionEntry) : [])]),
+          ...s.kinds.flatMap((k) => k.rows.map(sessionEntry)),
+          ...s.rows.map(sessionEntry),
+          ...(s.notLoaded.length ? [{ type: 'group', key: 'session:not-loaded' } as Entry, ...(isOpen('session:not-loaded') ? s.notLoaded.map(sessionEntry) : [])] : []),
+        ]).concat(data && !q && !data.errors.some((e) => e.where === 'transcript') ? [{ type: 'row', key: EVERYWHERE_LINE, item: null, open: () => onView('everywhere') }] : [])
+      : sections.flatMap((s) => [
+          ...s.groups.flatMap((g): Entry[] => [{ type: 'group', key: g.key }, ...(isOpen(g.key) ? g.rows.map((item): Entry => ({ type: 'row', key: item.key, item, open: () => openFile(item) })) : [])]),
+          ...(s.off.length ? [{ type: 'group', key: offKey(s.kind) } as Entry, ...(isOpen(offKey(s.kind)) ? s.off.map((item): Entry => ({ type: 'row', key: item.key, item, open: () => openFile(item) })) : [])] : []),
+        ]);
   const at = Math.max(0, entries.findIndex((e) => e.key === selected));
   const active = entries[at] ?? null;
 
   const toggle = (key: string, to?: boolean) => {
     if (q) return; // While filtering, every group with a match shows open (SETUP-1.4).
-    const now = open.includes(key);
+    const now = isOpen(key);
     const next = to ?? !now;
-    if (next !== now) onOpen(next ? [...open, key] : open.filter((k) => k !== key));
+    if (next === now) return;
+    // `open` holds what's toggled from how a group starts: folded in Everywhere, a file group open in This Session.
+    onOpen(open.includes(key) ? open.filter((k) => k !== key) : [...open, key]);
   };
   const select = (key: string) => {
     if (key !== selected) setExpanded(null);
@@ -136,8 +205,6 @@ export function SetupPanel({ visible, focusKey, read, switchSkill, switchPlugin,
     return true;
   };
   useImperativeHandle(navRef, () => ({ move, collapse }));
-
-  const openFile = (item: SetupItem) => window.open(vscodeHref(item.file, item.line, null), '_self');
 
   const run = async (what: string, on: boolean, call: () => Promise<SetupSwitchResult>) => {
     if (busy) return;
@@ -161,7 +228,7 @@ export function SetupPanel({ visible, focusKey, read, switchSkill, switchPlugin,
     if (on) turnPlugin(p.id, p.name, true);
     else setConfirming({ id: p.id, name: p.name });
   };
-  /** SETUP-4.5: what X runs on a row: its skill's switch, else its plugin's, else nothing. */
+  /** SETUP-4.5: what X runs on a row: its skill's switch, else its plugin's, else nothing; This Session has none (SETUP-9.3). */
   const switchKey = (item: SetupItem) => {
     if (skillSwitchable(item)) turnSkill(item, item.off === 'override' || item.off === 'override-missing');
     else if (pluginOf(item)) pluginSwitch(item, item.off === 'plugin');
@@ -188,18 +255,25 @@ export function SetupPanel({ visible, focusKey, read, switchSkill, switchPlugin,
     } else if (e.target === list.current && active?.type === 'group' && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
       e.preventDefault();
       toggle(active.key, e.key === 'ArrowRight');
-    } else if (k === 'x' && !text && active?.type === 'row' && !e.repeat) {
+    } else if (k === 'x' && !text && active?.type === 'row' && active.item && !e.repeat) {
       e.preventDefault();
       if (!busy) switchKey(active.item);
     } else if (e.key === 'Enter' && (e.target === input.current || e.target === list.current) && active && !e.repeat) {
       e.preventDefault();
       setSelected(active.key);
       if (active.type === 'group') toggle(active.key);
+      else if (active.key === EVERYWHERE_LINE) active.open?.();
       else if (expanded !== active.key) setExpanded(active.key);
-      else openFile(active.item);
+      else active.open?.();
     }
   };
 
+  const press = (key: string, e: { detail: number }) => {
+    settle(e);
+    setSelected(key);
+    setExpanded(key);
+    list.current?.focus();
+  };
   const row = (item: SetupItem) => (
     <SetupRow
       key={item.key}
@@ -208,12 +282,7 @@ export function SetupPanel({ visible, focusKey, read, switchSkill, switchPlugin,
       active={active?.key === item.key}
       expanded={expanded === item.key}
       busy={busy}
-      onPress={(e) => {
-        settle(e);
-        setSelected(item.key);
-        setExpanded(item.key);
-        list.current?.focus();
-      }}
+      onPress={(e) => press(item.key, e)}
       onOpen={() => openFile(item)}
       onSkill={(on) => turnSkill(item, on)}
       onPlugin={(on) => pluginSwitch(item, on)}
@@ -241,42 +310,85 @@ export function SetupPanel({ visible, focusKey, read, switchSkill, switchPlugin,
     </div>
   );
 
+  const loading = shown === 'session' ? !data && !sessionError : !snapshot && !readError;
+  const title = session?.title || data?.title || 'Untitled Session';
   return (
-    <section className="relative flex min-h-0 flex-1 flex-col" data-testid="setup-panel" onKeyDown={onKey}>
+    <section className="relative flex min-h-0 flex-1 flex-col" data-testid="setup-panel" data-view={shown} onKeyDown={onKey}>
       <div className="flex flex-col gap-2 border-b border-sidebar-border px-2.5 py-2">
-        <Segmented label="Kind" surface="sidebar" fill choices={SETUP_FILTERS.map((f) => ({ id: f, label: SETUP_FILTER_LABEL[f] }))} value={filter} onChange={onFilter} />
+        {/* SETUP-6.1: Everywhere or This Session; This Session disabled, saying why, with no Claude Code Session open. */}
+        <Segmented
+          label="Show"
+          surface="sidebar"
+          fill
+          choices={SETUP_VIEWS.map((v) => ({ id: v, label: SETUP_VIEW_LABEL[v], ...(v === 'session' && unavailable ? { disabled: true, tooltip: unavailable } : {}) }))}
+          value={shown}
+          onChange={onView}
+        />
+        {shown === 'session' && session ? (
+          // SETUP-6.2: the Session's line, in place of the kind filter.
+          <div className="flex min-w-0 flex-col" data-field="session-line">
+            <div className="flex min-w-0 items-center gap-1.5">
+              <HarnessIcon harness={session.harness} />
+              <span className="min-w-0 truncate text-body font-medium" title={title}>
+                {title}
+              </span>
+            </div>
+            {data && (data.directoryShown || data.loadedAt) && (
+              <p className="truncate pl-5 text-meta text-muted-foreground" data-field="loaded">
+                {[data.directoryShown, data.loadedAt ? `as it loaded at ${clock(data.loadedAt)}` : null].filter(Boolean).join(' · ')}
+              </p>
+            )}
+          </div>
+        ) : (
+          <Segmented label="Kind" surface="sidebar" fill choices={SETUP_FILTERS.map((f) => ({ id: f, label: SETUP_FILTER_LABEL[f] }))} value={filter} onChange={onFilter} />
+        )}
         <label className="relative flex items-center">
           <Search aria-hidden className="pointer-events-none absolute left-2 size-3.5 text-muted-foreground" />
           <input
             ref={input}
             type="search"
-            aria-label="Filter Setup"
-            placeholder="Filter Setup"
+            aria-label={shown === 'session' ? 'Filter this Session’s Setup' : 'Filter Setup'}
+            placeholder={shown === 'session' ? 'Filter this Session’s Setup' : 'Filter Setup'}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="h-7 w-full min-w-0 rounded-md border border-input bg-background/60 pr-2 pl-7 text-body outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/30"
           />
         </label>
       </div>
-      {notice && <Alert tone={notice.tone} layout="inline" title={notice.text} className="mx-2.5 mt-2" data-field="setup-notice" />}
-      {readError && <Alert title="Couldn’t read the Setup" detail={readError} className="mx-2.5 my-3" />}
-      {!snapshot && !readError ? (
-        <Loading label="Reading skills, agents, hooks and MCP servers…" className="items-center px-4 py-3" />
+      {shown === 'everywhere' && notice && <Alert tone={notice.tone} layout="inline" title={notice.text} className="mx-2.5 mt-2" data-field="setup-notice" />}
+      {shown === 'everywhere' && readError && <Alert title="Couldn’t read the Setup" detail={readError} className="mx-2.5 my-3" />}
+      {shown === 'session' && sessionError && <Alert title="Couldn’t read what the Session loaded" detail={sessionError} className="mx-2.5 my-3" />}
+      {loading ? (
+        <Loading label={shown === 'session' ? 'Reading what the Session loaded…' : 'Reading skills, agents, hooks and MCP servers…'} className="items-center px-4 py-3" />
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
-          {snapshot && q && sections.length === 0 && <EmptyState role="status" title={`Nothing matches “${q}”`} />}
+          {shown === 'everywhere' && snapshot && q && sections.length === 0 && <EmptyState role="status" title={`Nothing matches “${q}”`} />}
+          {shown === 'session' && data && q && sessionModel.length === 0 && <EmptyState role="status" title={`Nothing matches “${q}”`} />}
           <div
             ref={list}
             role="listbox"
-            aria-label="Setup"
+            aria-label={shown === 'session' ? 'This Session’s Setup' : 'Setup'}
             tabIndex={0}
             aria-activedescendant={active ? domId(active.key) : undefined}
             className="outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
           >
             <RowSettling value={settling}>
-              {sections.map((s) => (
-                <Section key={s.kind} section={s} groupLine={groupLine} isOpen={isOpen} row={row} />
-              ))}
+              {shown === 'session'
+                ? data && (
+                    <SetupSession
+                      data={data}
+                      sections={sessionModel}
+                      query={q}
+                      active={active?.key ?? null}
+                      expanded={expanded}
+                      isOpen={isOpen}
+                      groupLine={groupLine}
+                      onPress={press}
+                      onOpenFile={openPath}
+                      onEverywhere={() => onView('everywhere')}
+                    />
+                  )
+                : sections.map((s) => <Section key={s.kind} section={s} groupLine={groupLine} isOpen={isOpen} row={row} />)}
             </RowSettling>
           </div>
         </div>
@@ -361,152 +473,6 @@ function GroupBody({ group: g }: { group: SetupGroup }) {
       {g.version && <span className="ml-auto shrink-0 text-meta font-normal text-muted-foreground tabular-nums">{g.version}</span>}
     </>
   );
-}
-
-/** SETUP-3.1: the expanded row's facts, by kind. */
-function stateOf(item: SetupItem): string[] {
-  const off = item.off ? [OFF_REASON[item.off]] : [];
-  switch (item.kind) {
-    case 'skill': {
-      const s = item.source;
-      return [s.type === 'plugin' ? [s.name, s.version].filter(Boolean).join(' ') : sourceLabel(s), HARNESS_NAME[item.harness], ...(item.listing ? [`${item.listing} in skillOverrides`] : []), ...off];
-    }
-    case 'agent':
-      return [item.model ?? 'default model', ...(item.effort ? [`${item.effort} Effort`] : []), item.tools ? `${item.tools.length} ${item.tools.length === 1 ? 'tool' : 'tools'}` : 'all tools', ...off];
-    case 'hook': {
-      const ev = item.events ?? [];
-      return [ev.length === 1 ? [ev[0]!.event, ev[0]!.matcher].filter((x) => x && x !== '*').join(' · ') : `${ev.length} events`, ...(item.timeout ? [`${item.timeout} s`] : []), ...off];
-    }
-    case 'mcp':
-      return [item.transport ?? 'stdio', ...(item.env?.length ? [`${item.env.length} env ${item.env.length === 1 ? 'var' : 'vars'}`] : []), ...(item.headers?.length ? [`${item.headers.length} ${item.headers.length === 1 ? 'header' : 'headers'}`] : []), ...off];
-  }
-}
-
-/** SETUP-3.1: what the state line's tooltip names, then the file. */
-function tipOf(item: SetupItem): string {
-  const where = `${item.file}${item.line ? `:${item.line}` : ''}`;
-  const lines: string[] = [];
-  if (item.kind === 'agent' && item.tools?.length) lines.push(`Tools: ${item.tools.join(', ')}`);
-  if (item.kind === 'hook' && item.events?.length) lines.push(`Events: ${item.events.map((e) => (e.matcher && e.matcher !== '*' ? `${e.event} (${e.matcher})` : e.event)).join(', ')}`);
-  if (item.kind === 'mcp' && item.env?.length) lines.push(`Environment: ${item.env.join(', ')}`);
-  if (item.kind === 'mcp' && item.headers?.length) lines.push(`Headers: ${item.headers.join(', ')}`);
-  return [...lines, where].join('\n');
-}
-
-function Hit({ text, query }: { text: string; query: string }) {
-  return <Hits text={text} ranges={matchRanges(text, query)} tight />;
-}
-
-interface RowProps {
-  item: SetupItem;
-  query: string;
-  active: boolean;
-  expanded: boolean;
-  busy: boolean;
-  onPress(e: { detail: number }): void;
-  onOpen(): void;
-  onSkill(on: boolean): void;
-  onPlugin(on: boolean): void;
-}
-
-/** SETUP-1.5: one line, its Harness, its name as it's called, its description's first line; expanded, SETUP-3. */
-function SetupRow({ item, query, active, expanded, busy, onPress, onOpen, onSkill, onPlugin }: RowProps) {
-  const id = domId(item.key);
-  const plugin = pluginOf(item);
-  const description = item.off ? [sourceLabel(item.source), OFF_REASON[item.off]].join(' · ') : firstLine(item.description);
-  const offSkill = item.off === 'override' || item.off === 'override-missing';
-  return (
-    <div
-      id={id}
-      role="option"
-      aria-selected={active}
-      aria-expanded={expanded}
-      aria-label={[item.name, firstLine(item.description), HARNESS_NAME[item.harness], item.off && `off, ${OFF_REASON[item.off]}`].filter(Boolean).join(', ')}
-      aria-describedby={expanded ? `${id}-details-state ${id}-details` : undefined}
-      onClick={onPress}
-      data-slot="row"
-      data-selected={active || undefined}
-      data-field="item"
-      data-kind={item.kind}
-      style={ROW_INSET}
-      className={cn('flex min-w-0 cursor-default flex-col gap-0.5 rounded-md py-[7px] pr-2 pl-7 text-body hover:bg-sidebar-accent/60', active && 'bg-sidebar-accent')}
-    >
-      <div className={cn('flex min-w-0 gap-1.5', expanded ? 'items-start' : 'items-center')}>
-        <span className="flex h-5 shrink-0 items-center">
-          <HarnessIcon harness={item.harness} />
-        </span>
-        <RowTitle expanded={expanded} className={cn('font-medium', expanded ? 'flex-1' : 'max-w-[62%] shrink-0')}>
-          <Hit text={item.name} query={query} />
-        </RowTitle>
-        {!expanded && (
-          <span className="min-w-0 flex-1 truncate text-meta text-muted-foreground" data-field="description">
-            <Hit text={description} query={item.off ? '' : query} />
-          </span>
-        )}
-      </div>
-      {expanded && (
-        <RowDetails
-          id={`${id}-details`}
-          className="pl-5"
-          state={stateOf(item)}
-          stateTip={tipOf(item)}
-          summary={<Summary item={item} query={query} />}
-          links={[]}
-          actions={
-            // SETUP-3.2: Open in VS Code is what Enter runs; SETUP-4: the switches Claude Code has, under More.
-            <RowActions
-              name={item.name}
-              primary={{ 'data-action': 'open-vscode', action: 'open-vscode', tip: 'Open in VS Code (Enter)', enabled: true, onPress: onOpen }}
-              more={[
-                // SETUP-4.5: X runs the first of them, the skill's own switch before its plugin's.
-                skillSwitchable(item) && (offSkill ? { id: 'turn-on', action: 'turn-on', group: 'manage', shortcut: 'X', enabled: !busy, onSelect: () => onSkill(true) } : { id: 'turn-off', action: 'turn-off', group: 'manage', shortcut: 'X', enabled: !busy, onSelect: () => onSkill(false) }),
-                plugin && (item.off === 'plugin'
-                  ? { id: 'turn-on-plugin', action: 'turn-on', label: `Turn on plugin ${plugin.name}`, group: 'manage', ...(skillSwitchable(item) ? {} : { shortcut: 'X' }), enabled: !busy, onSelect: () => onPlugin(true) }
-                  : { id: 'turn-off-plugin', action: 'turn-off', label: `Turn off plugin ${plugin.name}…`, group: 'manage', ...(skillSwitchable(item) ? {} : { shortcut: 'X' }), enabled: !busy, onSelect: () => onPlugin(false) }),
-              ]}
-            />
-          }
-        />
-      )}
-    </div>
-  );
-}
-
-/** SETUP-3.1: at most three lines: a skill's call and description, a hook's command, a server's command or URL. */
-function Summary({ item, query }: { item: SetupItem; query: string }) {
-  const mono = 'font-mono break-all';
-  if (item.kind === 'skill')
-    return (
-      <>
-        {item.call && (
-          <p className={cn(mono, 'truncate text-foreground')} title={item.call} data-field="call">
-            {item.call}
-          </p>
-        )}
-        {item.description && (
-          <p className="line-clamp-2" title={item.description}>
-            <Hit text={item.description} query={query} />
-          </p>
-        )}
-      </>
-    );
-  if (item.kind === 'hook')
-    return (
-      <p className={cn(mono, 'line-clamp-3')} title={item.command} data-field="command">
-        {item.command}
-      </p>
-    );
-  if (item.kind === 'mcp')
-    return (
-      <p className={cn(mono, 'line-clamp-3')} data-field="command">
-        {item.description}
-      </p>
-    );
-  return item.description ? (
-    <p className="line-clamp-3" title={item.description}>
-      <Hit text={item.description} query={query} />
-    </p>
-  ) : null;
 }
 
 /** SETUP-4.2: turning a plugin off asks first, as Stop does (PORTS-4.6), saying what it turns off. */

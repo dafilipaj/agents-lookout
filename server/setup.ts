@@ -3,15 +3,18 @@ import { lstat, readFile, readdir, realpath, rename, stat, unlink, writeFile } f
 import { basename, join } from 'node:path';
 import { TomlError, parse as parseToml } from 'smol-toml';
 import { parse as parseYaml } from 'yaml';
-import type { SetupError, SetupHookEvent, SetupItem, SetupKind, SetupListing, SetupOff, SetupSnapshot, SetupSource } from '../shared/setup.ts';
+import { type SessionSetup, type SessionSetupError, type SetupError, type SetupHookEvent, type SetupItem, type SetupKind, type SetupListing, type SetupOff, type SetupSnapshot, type SetupSource, isSessionId } from '../shared/setup.ts';
 import type { Harness } from '../shared/types.ts';
 import type { Runner } from './exec.ts';
+import { sessionSetup } from './setup-session.ts';
+import { type TranscriptFacts, readTranscript } from './setup-transcript.ts';
 
 /**
  * SETUP-2: reads what Claude Code and Codex load for every Session, from their own files and
  * `claude plugin list --json`. Lookout is the one consumer, so the reading lives here (0010); it
  * moves to a Building block when a second one appears (0005). SETUP-4: the two switches Claude Code
- * has, a skill's `skillOverrides` entry and a plugin's `claude plugin enable|disable`.
+ * has, a skill's `skillOverrides` entry and a plugin's `claude plugin enable|disable`. SETUP-6 to 9:
+ * what one Session loaded and what ran in it, from its Transcript, and what its directory adds.
  */
 
 export interface SetupOptions {
@@ -41,6 +44,9 @@ interface Plugin {
   enabled: boolean;
   installPath: string;
   mcpServers: Record<string, unknown>;
+  /** `user` applies to every Session; `project` and `local` to one directory's (SETUP-9.1). */
+  scope: string;
+  projectPath: string | null;
 }
 
 /** Collects a read's items and the files it couldn't read (SETUP-2.3). */
@@ -344,12 +350,13 @@ export class Setup {
     return this.readNow();
   }
 
-  private async readNow(): Promise<SetupSnapshot> {
+  /** `all`: every scope's plugins, listed once by the caller (SETUP-9.1 reads the project's too). */
+  private async readNow(all?: Plugin[]): Promise<SetupSnapshot> {
     const read = new Read();
     const settings = await this.readJson(read, 'skill', this.settingsFile);
     const overrides = new Map(Object.entries(obj(settings?.json.skillOverrides) ?? {}).filter((e): e is [string, string] => typeof e[1] === 'string'));
     const used = new Set<string>();
-    const plugins = await this.plugins(read);
+    const plugins = (all ?? (await this.plugins(read))).filter((p) => p.scope === 'user');
     const skillOff = (name: string, bare: string | null): Pick<SetupItem, 'off' | 'listing'> & { key?: string } => {
       for (const k of bare ? [name, bare] : [name]) {
         const v = overrides.get(k);
@@ -387,6 +394,123 @@ export class Setup {
     return { items: read.items, errors: read.errors, readAt: this.opts.now?.() ?? Date.now() };
   }
 
+  /**
+   * SETUP-6.5: what one Claude Code Session loaded and what ran in it, from its Transcript (found by
+   * its id under `~/.claude/projects`), with what its directory adds (SETUP-9) and Everywhere's
+   * items to match what ran against (SETUP-8.2). Never throws: a failure is an error row.
+   */
+  async readSession(id: string): Promise<SessionSetup> {
+    await this.switching;
+    const errors: SessionSetupError[] = [];
+    let facts: TranscriptFacts | null = null;
+    const projects = join(this.home, '.claude', 'projects');
+    const file = isSessionId(id) ? await this.transcriptOf(projects, id) : null;
+    if (!file) errors.push({ where: 'transcript', kind: null, file: join(projects, '…', `${id}.jsonl`), error: 'no such Transcript' });
+    else
+      facts = await readTranscript(file).catch((err: unknown) => {
+        errors.push({ where: 'transcript', kind: null, file, error: message(err) });
+        return null;
+      });
+    const listed = new Read();
+    const plugins = await this.plugins(listed);
+    const dir = facts?.cwd ?? null;
+    const [everywhere, repo, approved] = await Promise.all([this.readNow(plugins), dir ? this.readRepo(dir, plugins) : new Read(), dir ? this.mcpApproval(dir) : () => null]);
+    for (const e of [...listed.errors, ...repo.errors]) errors.push({ where: 'repo', ...e });
+    return sessionSetup({ id, home: this.home, facts, errors, everywhere, repo: repo.items, mcpApproved: approved, hookName, now: this.opts.now?.() ?? Date.now() });
+  }
+
+  /** SETUP-6.5: `~/.claude/projects/<folder>/<id>.jsonl`, whichever folder holds it. */
+  private async transcriptOf(projects: string, id: string): Promise<string | null> {
+    const folders = await readdir(projects).catch(() => [] as string[]);
+    const found = await Promise.all(folders.map(async (f) => ((await stat(join(projects, f, `${id}.jsonl`)).catch(() => null))?.isFile() ? join(projects, f, `${id}.jsonl`) : null)));
+    return found.find((f) => f !== null) ?? null;
+  }
+
+  /**
+   * SETUP-9.1: what a directory adds to Claude Code: `.claude/skills`, `.claude/commands`,
+   * `.claude/agents`, hooks in `.claude/settings.json` and `settings.local.json`, `.mcp.json`, and
+   * the plugins installed for it, read as SETUP-2 reads the rest.
+   */
+  private async readRepo(dir: string, plugins: Plugin[]): Promise<Read> {
+    const read = new Read();
+    const source: SetupSource = { type: 'repo' };
+    const claude = join(dir, '.claude');
+    await Promise.all([
+      this.skills(read, join(claude, 'skills'), { harness: 'claude', source, named: (n) => n, off: () => null }),
+      this.commands(read, join(claude, 'commands')),
+      this.agents(read, join(claude, 'agents'), { source, named: (n) => n, off: null }),
+      ...['settings.json', 'settings.local.json'].map(async (n) => {
+        const file = join(claude, n);
+        const settings = await this.readJson(read, 'hook', file);
+        if (settings) addHooks(read, hookEntries(settings.json), { harness: 'claude', source, file, text: settings.text });
+      }),
+      (async () => {
+        const file = join(dir, '.mcp.json');
+        const config = await this.readJson(read, 'mcp', file);
+        if (!config) return;
+        for (const [name, raw] of Object.entries(obj(config.json.mcpServers) ?? {})) {
+          const c = obj(raw);
+          if (c) read.add({ kind: 'mcp', harness: 'claude', name, source, file, line: keyLine(config.text, ['mcpServers', name]), off: null, ...mcpFacts(c) }, `mcp:claude:repo:${name}`);
+        }
+      })(),
+      ...plugins.filter((p) => p.scope !== 'user' && p.projectPath === dir).map((p) => this.plugin(read, p, () => ({ off: null }))),
+    ]);
+    return read;
+  }
+
+  /**
+   * SETUP-9.1: a repo's own commands, `.claude/commands/<name>.md` and in its subfolders, called as
+   * skills are. A subfolder organizes them and doesn't change the name (`tools/check.md` is `/check`).
+   */
+  private async commands(read: Read, dir: string) {
+    const found: string[] = [];
+    const walk = async (at: string, depth: number) => {
+      found.push(...(await files(at, '.md')).map((n) => join(at, n)));
+      if (depth < 3) for (const sub of await subdirs(at)) await walk(join(at, sub), depth + 1);
+    };
+    try {
+      await walk(dir, 0);
+    } catch (err) {
+      read.fail('skill', dir, err);
+      return;
+    }
+    await Promise.all(
+      found.map(async (file) => {
+        try {
+          const text = await readText(file);
+          if (text === null) return;
+          const fm = frontmatter(text);
+          const name = basename(file).replace(/\.md$/, '');
+          const body = text.replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, '');
+          const description = str(fm.description) ?? body.split('\n').map((l) => l.replace(/^#+\s*/, '').trim()).find(Boolean) ?? '';
+          read.add({ kind: 'skill', harness: 'claude', name, description, source: { type: 'repo' }, file, line: null, off: null, call: [`/${name}`, str(fm['argument-hint'])].filter(Boolean).join(' ') }, `skill:claude:repo:${name}`);
+        } catch (err) {
+          read.fail('skill', file, err);
+        }
+      }),
+    );
+  }
+
+  /**
+   * SETUP-9.2: whether an `.mcp.json` server was approved for the directory: `~/.claude.json`'s
+   * project entry and the project's settings name the ones turned on and off; null when neither
+   * says.
+   */
+  private async mcpApproval(dir: string): Promise<(name: string) => boolean | null> {
+    const read = new Read();
+    const [config, ...settings] = await Promise.all([
+      this.readJson(read, 'mcp', join(this.home, '.claude.json')),
+      this.readJson(read, 'mcp', join(dir, '.claude', 'settings.json')),
+      this.readJson(read, 'mcp', join(dir, '.claude', 'settings.local.json')),
+    ]);
+    const sources = [obj(obj(config?.json.projects)?.[dir]), ...settings.map((s) => s?.json ?? null)].filter((x): x is Record<string, unknown> => x !== null);
+    const on = new Set(sources.flatMap((x) => strs(x.enabledMcpjsonServers)));
+    const off = new Set(sources.flatMap((x) => strs(x.disabledMcpjsonServers)));
+    const all = sources.some((x) => x.enableAllProjectMcpServers === true);
+    const known = sources.some((x) => 'enabledMcpjsonServers' in x || 'disabledMcpjsonServers' in x || 'enableAllProjectMcpServers' in x);
+    return (name) => (off.has(name) ? false : all || on.has(name) ? true : known ? false : null);
+  }
+
   /** A JSON file and its text; null when it isn't there; an error row when it can't be read. */
   private async readJson(read: Read, kind: SetupKind, file: string): Promise<{ json: Record<string, unknown>; text: string } | null> {
     try {
@@ -401,7 +525,7 @@ export class Setup {
     }
   }
 
-  /** SETUP-2.1: `claude plugin list --json`'s user scope: the plugins every Session loads. */
+  /** SETUP-2.1: `claude plugin list --json`, every scope; its user scope is what every Session loads. */
   private async plugins(read: Read): Promise<Plugin[]> {
     const bin = await this.opts.claudeBin().catch(() => null);
     if (!bin) return [];
@@ -415,9 +539,12 @@ export class Setup {
         const p = obj(raw);
         const id = str(p?.id);
         const installPath = str(p?.installPath);
-        if (!p || !id || !installPath || p.scope !== 'user' || seen.has(id)) continue;
-        seen.add(id);
-        plugins.push({ id, name: id.split('@')[0]!, version: str(p.version), enabled: p.enabled !== false, installPath, mcpServers: obj(p.mcpServers) ?? {} });
+        const scope = str(p?.scope) ?? 'user';
+        const projectPath = str(p?.projectPath);
+        const at = `${id}:${scope}:${projectPath ?? ''}`;
+        if (!p || !id || !installPath || seen.has(at)) continue;
+        seen.add(at);
+        plugins.push({ id, name: id.split('@')[0]!, version: str(p.version), enabled: p.enabled !== false, installPath, mcpServers: obj(p.mcpServers) ?? {}, scope, projectPath });
       }
       return plugins.sort((a, b) => a.name.localeCompare(b.name));
     } catch (err) {

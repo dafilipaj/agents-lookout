@@ -5,7 +5,7 @@ import type { StopResult, StopTarget } from '@shared/ports.ts';
 import type { PlainAnswer, PlainExamplesAnswer, PlainPrFiles, PlainSimpleAnswer, PlainSource } from '@shared/plain.ts';
 import type { Settings, SettingsView } from '@shared/settings.ts';
 import type { ToolsSnapshot } from '@shared/tools.ts';
-import type { SetupSnapshot, SetupSwitchResult } from '@shared/setup.ts';
+import type { SessionSetup, SetupSnapshot, SetupSwitchResult } from '@shared/setup.ts';
 import type { ActivityEntry, NewMember, ProposalAccept, RecommendationAction, SuggestPreview, Topic, TopicOutcome, TopicPosition, TopicState, TopicSummary } from '@shared/topics.ts';
 import type { WorkRefreshResult } from '@shared/work.ts';
 import { HELD_REASONS, type AnswerRequest, type AnswerResult, type ChatPage, type EffortSwitchRequest, type EffortSwitchResult, type EndResult, type EndTarget, type Harness, type HarnessOption, type HeldReason, type HistoryDetail, type HistoryPage, type HistoryPeek, type LaunchRequest, type LaunchView, type TrustRequest, type ModelSwitchRequest, type ModelSwitchResult, type RenameResult, type ResumeResult, type ServerEvent } from '@shared/types.ts';
@@ -64,6 +64,8 @@ export interface LookoutClient {
   refreshTools(): Promise<ToolsSnapshot>;
   /** SETUP-1.8: the Setup tab opened: what the Harnesses load, read now. */
   setup(): Promise<SetupSnapshot>;
+  /** SETUP-6: what one Claude Code Session loaded and what ran in it, read from its Transcript now. */
+  setupSession(sessionId: string): Promise<SessionSetup>;
   /** SETUP-4.1: turns a Claude Code skill off (its name) or on (its `skillOverrides` key). */
   switchSkill(name: string, on: boolean): Promise<SetupSwitchResult>;
   /** SETUP-4.2: turns a Claude Code plugin off or on. */
@@ -480,6 +482,7 @@ export function createHttpClient(): LookoutClient {
     tools: () => call<ToolsSnapshot>(() => fetch('/api/tools'), 'Checking the Tools'),
     refreshTools: () => call<ToolsSnapshot>(() => send('POST', '/api/tools/refresh'), 'Checking the Tools'),
     setup: () => call<SetupSnapshot>(() => fetch('/api/setup'), 'Reading the Setup'),
+    setupSession: (sessionId) => call<SessionSetup>(() => fetch(`/api/setup/session/${encodeURIComponent(sessionId)}`), 'Reading what the Session loaded'),
     switchSkill: (name, on) => call<SetupSwitchResult>(() => send('POST', '/api/setup/skill', { name, on }), on ? 'Turning the skill on' : 'Turning the skill off'),
     switchPlugin: (id, on) => call<SetupSwitchResult>(() => send('POST', '/api/setup/plugin', { id, on }), on ? 'Turning the plugin on' : 'Turning the plugin off'),
     library: ({ query, page, readId, headless, types, project, hideGone, sessions }) => call<LibraryPage>(() => fetch(`/api/library?${new URLSearchParams({ q: query, page: String(page), headless: headless ? '1' : '0', types: types.join(','), project, hideGone: hideGone ? '1' : '0', ...(readId ? { readId } : {}), ...(sessions ? { sessions: sessions.join(',') } : {}) })}`), 'Reading Library'),

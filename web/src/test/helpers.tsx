@@ -124,6 +124,7 @@ interface RenderOptions {
   tools?: LookoutClient['tools'];
   refreshTools?: LookoutClient['refreshTools'];
   setup?: LookoutClient['setup'];
+  setupSession?: LookoutClient['setupSession'];
   switchSkill?: LookoutClient['switchSkill'];
   switchPlugin?: LookoutClient['switchPlugin'];
   /** TOPIC: the fake server's Topics, sent with each snapshot and changed by the Topics calls, as the server does. */
@@ -182,6 +183,10 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
     tools: vi.fn(options.tools ?? (async () => ({ rows: [], checkedAt: null, reading: false }))),
     refreshTools: vi.fn(options.refreshTools ?? (async () => ({ rows: [], checkedAt: null, reading: false }))),
     setup: vi.fn(options.setup ?? (async () => ({ items: [], errors: [], readAt: 0 }))),
+    setupSession: vi.fn(
+      options.setupSession ??
+        (async (sessionId: string) => ({ sessionId, title: null, directory: null, directoryShown: null, loadedAt: null, instructions: [], memory: null, ran: [], repo: [], notLoaded: [], everywhere: { skill: 0, agent: 0, hook: 0, mcp: 0 }, errors: [], readAt: 0 })),
+    ),
     switchSkill: vi.fn(options.switchSkill ?? (async () => ({ snapshot: { items: [], errors: [], readAt: 0 } }))),
     switchPlugin: vi.fn(options.switchPlugin ?? (async () => ({ snapshot: { items: [], errors: [], readAt: 0 } }))),
     refreshUsage: vi.fn(async () => {}),
