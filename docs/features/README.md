@@ -26,3 +26,4 @@ One row per feature. Update the status here and in the spec's frontmatter togeth
 | Architecture: a repo's structural problems as ranked Findings, new and growing first, and what a Session's Changes do to them | ARCH | Draft | [SPEC](architecture/SPEC.md) |
 | Pings: threads in watched Slack channels that mention you, listed beside your Sessions, each opening, resuming or starting the Session that answers it | PING | Draft | [SPEC](pings/SPEC.md) |
 | Evidence: what backs an Idle or Done Session's work, its Test runs and how each ended, whether its Changes changed after the last one, and its test files, read from its Transcript and Checkouts, as a verdict in its status line and a mark on its row | EVID | Ready | [SPEC](done-evidence/SPEC.md) |
+| Hand off: a Session's work, or a piece of it, continued in a new Session from a Handover the Session writes, the two linked both ways | HAND | Ready | [SPEC](session-handoff/SPEC.md) |

@@ -3,7 +3,7 @@ title: Start Sessions
 code: LAUNCH
 status: In Progress
 created: 2026-10-16
-updated: 2026-11-06
+updated: 2026-11-22
 ---
 
 # Start Sessions
@@ -28,7 +28,7 @@ A start or a resume in a folder Claude Code doesn't trust yet waits at Claude Co
 
 ### LAUNCH-2 Choose where
 
-- [x] LAUNCH-2.1 The start directory is picked from the list in Settings (default: `~/Projects/work`). (test)
+- [x] LAUNCH-2.1 The start directory is picked from the list in Settings (default: `~/Projects/work`). One exception: a start from a Handover can also use the old Session's own directory (HAND-3.4). (test)
 - [x] LAUNCH-2.2 Start directories can be added and removed on the Settings page. (manual)
 
 ### LAUNCH-3 Choose what
@@ -297,3 +297,4 @@ Resolved while building (2026-10-16): `fleet spawn` (the CLI) never answered a t
 - 2026-11-06: LAUNCH-7 grilled with Dario with DS-6.5 to 6.9, seven questions, every one as recommended: the Lens in every `Loading`; words that name the source; your first prompt kept as a sent message, with "Working…", when the Session takes over; the seconds once, under your prompt; a resume shows the header and its `Loading` only; the dock and three skeleton bars as drawn; guard check 12 includes motion without `motion-safe:`.
 - 2026-11-06: LAUNCH-4.6 and LAUNCH-7.1 to 7.6 built (Plan item 49). `LaunchView` also carries `resume`, for "resuming" (Technical approach). The Starting view draws the Session view's `ComposerFrame` and `StatusBar` and the chat's `Prompt` and `SkeletonBar`; its words are announced only through LAUNCH-6.9's region (`Loading`'s `live={false}`). Decided in building: a failed start has no dock, as before, since there's nothing to type to, so its error and lines run to the bottom; while a Trust card asks, the disabled Send is `secondary`, so Trust folder stays the one primary (DS-18.4). The hand-over keeps your prompt, before the chat loads too, with "Working…" from Start, until the chat shows a problem before loading (then "Working…" follows Status) or you select something else. After a Trust prompt, the hint counts 10 s from the answer this tab saw, as LAUNCH-4.5's 15 s run again from it. Two Opus review rounds: the first's major ("Working…" stuck on a chat problem) and minors fixed, the second's one problem (the hint after a Trust prompt) fixed. LAUNCH-7.7 waits for Dario's look.
 - 2026-11-09: LAUNCH-7.7 checked by Dario in the running app and ticked.
+- 2026-11-22: LAUNCH-2.1 gains one exception, from HAND: a start from a Handover can use the old Session's own directory, outside the Start directories, which the server checks (HAND-3.4). Its tick stands for the list; HAND-3.4 is ticked when the exception is built.

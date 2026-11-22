@@ -109,13 +109,6 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
 - **How:** Fleet's `brief` has the format and the file (`~/.local/state/fleet/briefs/<session_id>.md`), but the CLI only reads and edits it: writing one is a `claude -p` call in Fleet's web server, which Lookout doesn't run. Either Lookout writes it (its own `claude -p`, keeping Fleet's format) or a fork commit adds generation to the CLI. Decide in a TOPIC slice after slice 1.
 - **Added:** 2026-10-30, by Dario, from the Fleet review.
 
-## Continue a Session's work in a new one (LAUNCH)
-
-- **What:** "New session from here": a new Session in the same folder whose first prompt hands over this one's work (what it did, its PRs and branch, what's next), for when a Session's context is full or the work branches.
-- **Why:** Dario noticed the need; today it's a copy-paste of a summary into the Launch form.
-- **How:** Fleet's `spawn --from <target>` takes its first prompt from the Session's brief (`brief --prompt`), so it needs the brief above to exist first; `handoff` does the same with a brief you write. Also "start a Session on this Task" from Work, with the Task's link and title as context, as Fleet's `task spawn` does.
-- **Added:** 2026-10-30, by Dario, from the Fleet review.
-
 ## A member Session's details outlive its Transcript (TOPIC)
 
 - **What:** when Lookout reads a member Session through `tb-session show` (TOPIC-11.3), it keeps what it read in the member's snapshot: tb-session's summary, the branch, the first prompt and the last assistant message, bounded as TOPIC-11.3 bounds them. A Summary written after the Transcript is gone sends that instead of the bare snapshot.
