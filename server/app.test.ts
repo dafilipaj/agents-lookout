@@ -30,6 +30,8 @@ let origin: string;
 const hosts = new Set<string>();
 const origins = new Set<string>();
 const TOKEN = 'test-token';
+/** SIDE-14: the build the fake server serves. */
+let served: string | null = null;
 const AWAKE_SNAPSHOT: AwakeSnapshot = { mode: 'off', holding: 'off', atWork: 0, offAt: null, lid: { available: false, reason: 'Needs the charger' }, note: null, rev: 0 };
 let launched: unknown[] = [];
 const USAGE = {
@@ -58,6 +60,7 @@ let simpleCancels: unknown[][] = [];
 
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'lookout-app-'));
+  served = null;
   launched = [];
   watches = [];
   dropped = [];
@@ -211,6 +214,7 @@ beforeEach(async () => {
       },
     },
     staticDir: null,
+    build: () => served,
   });
   await new Promise<void>((r) => app.server.listen(0, '127.0.0.1', r));
   port = (app.server.address() as AddressInfo).port;
@@ -367,6 +371,21 @@ describe('events', () => {
       { type: 'settings', settings: expect.objectContaining({ idleThresholdHours: 1.5 }) },
     ]);
     tabs.forEach((t) => t.close());
+  });
+});
+
+describe('a new version (SIDE-14)', () => {
+  it('SIDE-14.1: each connection\'s snapshot names the build served then', async () => {
+    served = '/assets/index-A1.js';
+    const first = openEvents();
+    expect(await first.next()).toMatchObject({ type: 'snapshot', build: '/assets/index-A1.js' });
+    served = '/assets/index-B2.js';
+    const again = openEvents();
+    expect(await again.next()).toMatchObject({ type: 'snapshot', build: '/assets/index-B2.js' });
+    served = null;
+    const dev = openEvents();
+    expect(await dev.next()).toMatchObject({ type: 'snapshot', build: null });
+    [first, again, dev].forEach((t) => t.close());
   });
 });
 

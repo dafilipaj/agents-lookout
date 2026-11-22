@@ -9,10 +9,12 @@ import { fileURLToPath } from 'node:url';
 import { DEFAULT_PORT } from '../shared/defaults.ts';
 import { AnswerLedger } from './answerer.ts';
 import { createApp } from './app.ts';
+import { readBuild } from './static.ts';
 import { endSession } from './closer.ts';
 import { type ModelSwitcherOptions, StatusSwitches, switchEffort, switchModel } from './model-switch.ts';
 import { renameSession } from './renamer.ts';
-import { run } from './exec.ts';
+import { run, runLog } from './exec.ts';
+import { guardRejections } from './crash-guard.ts';
 import { checkSessionPaths } from './files.ts';
 import { fetchFleetList, resolveFleetBin } from './fleet.ts';
 import { GitCache, readGitLocation, readGlobalGitEmail } from './git.ts';
@@ -52,6 +54,11 @@ const env = process.env;
 // 0 lets the OS pick a free port (a Behaviour test's World); the bound port is printed below.
 const requestedPort = parsePort(env.LOOKOUT_PORT, DEFAULT_PORT);
 const production = env.NODE_ENV === 'production';
+
+// Plan item 61: a failed promise nobody waited on is logged, not the end of the server; and each
+// failed or slow CLI call leaves a line in the log (`server/exec.ts`).
+guardRejections((line) => console.error(line));
+runLog.write = (line) => console.error(line);
 const token = env.LOOKOUT_TOKEN || randomBytes(24).toString('base64url');
 // `pnpm dev` passes Vite's origin; nothing else is ever allowed.
 const extraOrigins = (env.LOOKOUT_DEV_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -396,6 +403,8 @@ settings.onChange(() => recommender.kick());
 // Registered before the app's own listener, so tabs hear the list dropped before the new email.
 settings.onChange((s) => work.setProductiveEmail(s.productiveEmail));
 
+/** The built UI; null in `pnpm dev`, where Vite serves it. */
+const staticDir = production ? fileURLToPath(new URL('../dist/web', import.meta.url)) : null;
 const app = createApp({
   attachmentsDir: join(homedir(), '.lookout', 'attachments'),
   // WORK-3.9: `LOOKOUT_AVATARS=off` (every World sets it) fetches none, so a Behaviour test never asks GitHub.
@@ -464,7 +473,8 @@ const app = createApp({
   },
   tools,
   topics,
-  staticDir: production ? fileURLToPath(new URL('../dist/web', import.meta.url)) : null,
+  staticDir,
+  build: () => readBuild(staticDir),
 });
 
 // TOOLS-1.4: the first read, when the server starts.

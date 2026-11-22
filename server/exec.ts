@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { basename } from 'node:path';
 
 export interface RunOptions {
   timeoutMs: number;
@@ -33,6 +34,24 @@ export interface RunError extends Error {
   aborted?: boolean;
 }
 
+/**
+ * Plan item 61: where a failed or slow run is told, one line each; off until the server turns it on
+ * (`server/main.ts`), so tests stay quiet.
+ */
+export const runLog: { write: ((line: string) => void) | null } = { write: null };
+/** A run is slow past this, or past half its time limit when that is longer. */
+export const SLOW_RUN_MS = 2000;
+
+/**
+ * The line for a run: the program, its first argument when that is a plain word (`fleet list`,
+ * `tb-session events`), the outcome and the milliseconds. Never the rest of the arguments: they
+ * can hold a message, a path or a query.
+ */
+export function runLine(file: string, args: readonly string[], ms: number, outcome: string): string {
+  const sub = args[0] !== undefined && /^[a-z][a-z0-9-]{0,31}$/.test(args[0]) ? ` ${args[0]}` : '';
+  return `${new Date().toISOString()} cli ${basename(file)}${sub}: ${outcome}, ${Math.round(ms)} ms`;
+}
+
 const MAX_OUTPUT = 16 * 1024 * 1024;
 /** How long a timed-out process group gets after SIGTERM before SIGKILL. */
 export const KILL_GRACE_MS = 1000;
@@ -41,7 +60,24 @@ export const KILL_GRACE_MS = 1000;
  * Runs the program in its own process group, so a timeout kills everything it started too
  * (Fleet runs `osascript`, `lsof`, `ps`… which would otherwise be orphaned every poll).
  */
-export const run: Runner = (file, args, opts) =>
+export const run: Runner = (file, args, opts) => {
+  const started = performance.now();
+  const result = runInGroup(file, args, opts);
+  if (!runLog.write) return result;
+  const tell = (outcome: string) => runLog.write?.(runLine(file, args, performance.now() - started, outcome));
+  result.then(
+    () => {
+      if (performance.now() - started > Math.max(SLOW_RUN_MS, opts.timeoutMs / 2)) tell('slow');
+    },
+    (e: RunError) => {
+      if (e.aborted) return; // cancelled on purpose
+      tell(e.timedOut ? 'timed out' : e.code === 'ENOENT' ? 'not found' : typeof e.code === 'number' ? `failed, exit ${e.code}` : 'failed');
+    },
+  );
+  return result;
+};
+
+const runInGroup: Runner = (file, args, opts) =>
   new Promise((resolve, reject) => {
     if (opts.signal?.aborted) {
       reject(Object.assign(new Error(`${file} was cancelled`), { aborted: true, code: null }));

@@ -340,6 +340,8 @@ export type ServerEvent =
       started: { launchId: string; sessionId: string }[];
       /** This event stream's id: the tab names it when it says what it views (`PUT /api/watch`). */
       clientId: string;
+      /** SIDE-14: the build of the page the server serves now; null with none (`pnpm dev`). Optional for UI tests. */
+      build?: string | null;
       /** USAGE: the latest numbers, or null before the first read. */
       usage: UsageSnapshot | null;
       memory: MemorySnapshot | null;

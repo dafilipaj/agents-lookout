@@ -63,6 +63,7 @@ import { cn } from '@/lib/utils';
 import { listKnown, shownLaunches, useLookout } from '@/lib/store';
 import { pruneHeights } from '@/lib/terminal-height';
 import { ClockContext, useNow } from '@/lib/time';
+import { PAGE_BUILD } from '@/lib/build';
 import { reviewPrompt } from '@/lib/work';
 import { type TopicsApi, TopicsContext, sessionTopicTitles, topicsByMember } from '@/lib/topics';
 import { type NewMember, type Recommendation, type Topic, type TopicMember, taskTopic, topicPrompt } from '@shared/topics.ts';
@@ -105,8 +106,15 @@ function isTextField(t: EventTarget | null): boolean {
   return t.isContentEditable || t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT';
 }
 
-export function App({ client }: { client: LookoutClient }) {
+function reloadPage(): void {
+  window.location.reload();
+}
+
+/** `pageBuild` and `reload` are this tab's build and how it reloads (SIDE-14); tests give their own. */
+export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { client: LookoutClient; pageBuild?: string | null; reload?: () => void }) {
   const [state, dispatch] = useLookout(client);
+  // SIDE-14: the server serves a newer page than this tab runs. Said, never acted on (SIDE-14.2).
+  const outdated = state.connected && pageBuild !== null && state.build !== null && state.build !== pageBuild;
   const [route, navigate] = useRoute();
   const now = useNow(1000);
   const sessions = useMemo(() => [...state.sessions.values()], [state.sessions]);
@@ -1273,6 +1281,8 @@ export function App({ client }: { client: LookoutClient }) {
           fleet={state.fleet}
           loaded={state.loaded}
           connected={state.connected}
+          outdated={outdated}
+          onReload={reload}
           idleThresholdHours={state.settings.idleThresholdHours}
           selectedId={selectedId}
           now={now}

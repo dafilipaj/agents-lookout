@@ -82,6 +82,9 @@ export function launchView(over: Partial<LaunchView> & { id: string }): LaunchVi
 }
 
 interface RenderOptions {
+  /** SIDE-14: this tab's build (none by default, as under `pnpm dev`), and what Reload does. */
+  pageBuild?: string | null;
+  reload?: () => void;
   attach?: LookoutClient['attach'];
   library?: LookoutClient['library'];
   libraryStatus?: LookoutClient['libraryStatus'];
@@ -348,14 +351,14 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
       }));
     }),
   };
-  const utils = render(<App client={client} />);
+  const utils = render(<App client={client} pageBuild={options.pageBuild ?? null} reload={options.reload ?? (() => {})} />);
   const emit = (event: ServerEvent) =>
     act(() => {
       if (event.type === 'snapshot' || event.type === 'settings') served = event.settings;
       listener!.onEvent(event);
     });
-  const snapshot = (sessions: SessionRow[], fleet: FleetHealth = { state: 'ok' }, current: SettingsView = settings()) =>
-    emit({ type: 'snapshot', sessions, fleet, settings: current, launches: [], started: [], clientId: 'tab-1', usage: null, memory: null, topics: topicsView() });
+  const snapshot = (sessions: SessionRow[], fleet: FleetHealth = { state: 'ok' }, current: SettingsView = settings(), build: string | null = null) =>
+    emit({ type: 'snapshot', sessions, fleet, settings: current, launches: [], started: [], clientId: 'tab-1', build, usage: null, memory: null, topics: topicsView() });
   const connection = (connected: boolean) =>
     act(() => {
       listener!.onConnection(connected);

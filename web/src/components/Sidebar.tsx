@@ -5,7 +5,7 @@ import type { FleetHealth, LaunchView, SessionRow } from '@shared/types.ts';
 import { type ToolsSnapshot, toolsAttention } from '@shared/tools.ts';
 import type { UsageSnapshot } from '@shared/usage.ts';
 import type { WorkSnapshot } from '@shared/work.ts';
-import { Keyboard, Plus, Search, Settings as SettingsIcon, TriangleAlert, WifiOff } from 'lucide-react';
+import { Keyboard, Plus, RotateCw, Search, Settings as SettingsIcon, TriangleAlert, WifiOff } from 'lucide-react';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -32,6 +32,9 @@ export interface SidebarProps {
   fleet: FleetHealth;
   loaded: boolean;
   connected: boolean;
+  /** SIDE-14: the server serves a newer build of the page than this tab runs. */
+  outdated?: boolean;
+  onReload?(): void;
   idleThresholdHours: number;
   selectedId: string | null;
   now: number;
@@ -420,10 +423,25 @@ export function Sidebar(props: SidebarProps) {
       <ShellCell row="body" className="flex flex-col">
         {loaded && !connected ? (
           <Alert tone="info" icon={WifiOff} title="Lost the Lookout server. Reconnecting…" className="mx-2.5 my-2" />
-        ) : fleet.state === 'failing' && fleet.lastOkAt !== null ? (
-          // SIDE-6.2: Fleet's reason is the tooltip, as before.
-          <Alert tone="info" icon={TriangleAlert} title={`Fleet isn't answering. List is ${formatAge(now - fleet.lastOkAt)} old.`} tip={fleet.error} className="mx-2.5 my-2" />
-        ) : null}
+        ) : (
+          <>
+            {/* SIDE-14.1: a newer page on the server; it waits for you (SIDE-14.2). */}
+            {props.outdated && (
+              <Alert tone="info" icon={RotateCw} title="Lookout was updated" detail="This tab still runs the version it loaded." className="mx-2.5 my-2" data-field="new-version">
+                <div>
+                  <Button variant="secondary" size="line" onClick={props.onReload}>
+                    <RotateCw aria-hidden />
+                    Reload
+                  </Button>
+                </div>
+              </Alert>
+            )}
+            {fleet.state === 'failing' && fleet.lastOkAt !== null && (
+              // SIDE-6.2: Fleet's reason is the tooltip, as before.
+              <Alert tone="info" icon={TriangleAlert} title={`Fleet isn't answering. List is ${formatAge(now - fleet.lastOkAt)} old.`} tip={fleet.error} className="mx-2.5 my-2" />
+            )}
+          </>
+        )}
         <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto pt-1.5">
           {launches.length > 0 && (
             // A plain list, not a listbox: a failed row holds a Dismiss button, which an option can't.

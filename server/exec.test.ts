@@ -2,8 +2,8 @@ import { execFileSync } from 'node:child_process';
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { type RunError, run } from './exec.ts';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { type RunError, run, runLog } from './exec.ts';
 
 // Made in a hook, not at import: `pnpm req-check` imports this file to collect its titles.
 let dir: string;
@@ -78,5 +78,56 @@ describe('run', () => {
     const err = await rejection(run(file, [], { timeoutMs: 20_000, killGraceMs: 200 }));
     expect(err?.message).toMatch(/printed more than/);
     expect(pidsWith(marker)).toEqual([]);
+  });
+});
+
+describe('the run log (Plan item 61)', () => {
+  let lines: string[];
+  beforeAll(() => {
+    lines = [];
+    runLog.write = (line) => lines.push(line);
+  });
+  afterEach(() => {
+    lines.length = 0;
+    vi.restoreAllMocks();
+  });
+  afterAll(() => {
+    runLog.write = null;
+  });
+  const settled = (p: Promise<unknown>) => p.then(() => {}, () => {});
+
+  it('one line per failed, missing or timed-out run: the program, a plain first word, the outcome and the time, never the other arguments', async () => {
+    await settled(run('/usr/bin/env', ['false'], { timeoutMs: 5000 }));
+    await settled(run('/bin/sh', ['-c', 'echo secret-words; exit 3'], { timeoutMs: 5000 }));
+    await settled(run(join(dir, 'missing-tool'), ['list', '--json'], { timeoutMs: 5000 }));
+    await settled(run('/bin/sleep', ['5'], { timeoutMs: 50, killGraceMs: 10 }));
+    await new Promise((r) => setTimeout(r, 0)); // the log is told after the caller's own handlers
+    expect(lines).toHaveLength(4);
+    expect(lines[0]).toMatch(/^\d{4}-\d\d-\d\dT[\d:.]+Z cli env false: failed, exit 1, \d+ ms$/);
+    expect(lines[1]).toMatch(/ cli sh: failed, exit 3, \d+ ms$/);
+    expect(lines[2]).toMatch(/ cli missing-tool list: not found, \d+ ms$/);
+    expect(lines[3]).toMatch(/ cli sleep: timed out, \d+ ms$/);
+    expect(lines.join('\n')).not.toMatch(/secret|--json|lookout-exec-/);
+  });
+
+  it('a slow run gets a line too; a quick one, or one cancelled on purpose, none', async () => {
+    await run('/bin/echo', ['ok'], { timeoutMs: 5000 });
+    const ctl = new AbortController();
+    const cancelled = run('/bin/sleep', ['5'], { timeoutMs: 5000, signal: ctl.signal, killGraceMs: 10 });
+    ctl.abort();
+    await settled(cancelled);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(lines).toEqual([]);
+    // Slow: past 2 s, and past half its time limit.
+    vi.spyOn(performance, 'now').mockReturnValueOnce(0).mockReturnValue(2500);
+    await run('/bin/echo', ['ok'], { timeoutMs: 4000 });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(lines).toEqual([expect.stringMatching(/ cli echo ok: slow, 2500 ms$/)]);
+    lines.length = 0;
+    // Within half of a long limit: not slow.
+    vi.spyOn(performance, 'now').mockReturnValueOnce(0).mockReturnValue(2500);
+    await run('/bin/echo', ['ok'], { timeoutMs: 60_000 });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(lines).toEqual([]);
   });
 });

@@ -52,6 +52,8 @@ export interface LookoutState {
   orphans: readonly SessionRow[];
   /** This tab's event stream, named when it says what it views. */
   clientId: string | null;
+  /** SIDE-14: the build of the page the server served at the last connection; null with none. */
+  build: string | null;
   /** VIEW-2: the latest terminal preview per Session this tab previews. */
   previews: ReadonlyMap<string, Preview>;
   /**
@@ -157,6 +159,7 @@ export const initialState: LookoutState = {
   requested: new Map(),
   orphans: [],
   clientId: null,
+  build: null,
   previews: new Map(),
   prompts: new Map(),
   usage: null,
@@ -241,6 +244,7 @@ export function reducer(state: LookoutState, action: Action): LookoutState {
         requested: settleRequested(state.requested, e.launches, started),
         orphans,
         clientId: e.clientId,
+        build: e.build ?? null,
         held,
         previews: new Map(), // a new stream: previews come again once it says what it views
         prompts: new Map(),

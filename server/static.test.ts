@@ -5,7 +5,7 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { serveStatic } from './static.ts';
+import { readBuild, serveStatic } from './static.ts';
 
 let root: string;
 let server: Server;
@@ -73,5 +73,22 @@ describe('serving the built UI', () => {
     await expect.poll(openFilesUnderRoot, { timeout: 2000 }).toEqual([]);
     // And the server keeps serving.
     expect((await fetchText('/assets/app.js')).status).toBe(200);
+  });
+});
+
+describe('the build served (SIDE-14)', () => {
+  it('SIDE-14.1: the server names the page it serves now, read from index.html; with no built UI, none', () => {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'lookout-build-')));
+    try {
+      expect(readBuild(null)).toBeNull();
+      expect(readBuild(dir)).toBeNull();
+      writeFileSync(join(dir, 'index.html'), '<script type="module" crossorigin src="/assets/index-A1.js"></script><link rel="stylesheet" href="/assets/index-B2.css">');
+      expect(readBuild(dir)).toBe('/assets/index-A1.js /assets/index-B2.css');
+      // `pnpm build` while the server runs: the next read names the new page.
+      writeFileSync(join(dir, 'index.html'), '<script type="module" crossorigin src="/assets/index-C3.js"></script>');
+      expect(readBuild(dir)).toBe('/assets/index-C3.js');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

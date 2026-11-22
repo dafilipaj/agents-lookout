@@ -56,6 +56,22 @@ First run: open **Settings** (the sidebar's gear, or `/settings`) and check the 
 
 Checks: `pnpm test`, `pnpm typecheck`, `pnpm lint`, `pnpm req-check`. Run `pnpm e2e:setup` once per checkout first: `pnpm test` runs the chat against the pinned Fleet it installs into `.cache/`, which Worktrees don't share. If your shell exports `NODE_ENV=production`, run the tests with `NODE_ENV=test`, or every React test fails inside `act`.
 
+### Keep it running (macOS)
+
+`pnpm start` lasts as long as its terminal. To have the server start at login and come back whenever it ends, run it as a launchd agent from [`scripts/launchd/local.lookout.server.plist`](scripts/launchd/local.lookout.server.plist). It starts the server through a login shell, so it finds the CLIs and their keys as a new terminal does.
+
+```sh
+pnpm build
+mkdir -p ~/.lookout
+sed -e "s|{{REPO}}|$PWD|g" -e "s|{{HOME}}|$HOME|g" scripts/launchd/local.lookout.server.plist > ~/Library/LaunchAgents/local.lookout.server.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.lookout.server.plist
+```
+
+- Restart it, after a `pnpm build` say: `launchctl kickstart -k gui/$(id -u)/local.lookout.server`. An open tab then offers Reload (SIDE-14).
+- Stop it and don't start it at login: `launchctl bootout gui/$(id -u)/local.lookout.server`.
+- A `LOOKOUT_*` override goes in the plist's `EnvironmentVariables`; `bootout`, then `bootstrap` again, to take it.
+- Its output, a failed or slow CLI call included, goes to `~/.lookout/server.log`.
+
 ## Port, token and settings
 
 | | Default | Override |

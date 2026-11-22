@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Runs Lookout's server (`pnpm start`) as a launchd agent: started at login, and again whenever it
+  ends. {{REPO}} and {{HOME}} are filled in on install; see README's "Keep it running".
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>local.lookout.server</string>
+
+  <!-- A login shell, so PATH and the tools' keys are a fresh terminal's. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>-l</string>
+    <string>-c</string>
+    <string>exec node server/main.ts</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>{{REPO}}</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>NODE_ENV</key>
+    <string>production</string>
+    <!-- Add a LOOKOUT_* override here (README's "Prerequisites"), e.g. LOOKOUT_TB_SESSION_BIN. -->
+  </dict>
+
+  <!-- Started at login, and again after it ends, however it ended (10 s apart at most). -->
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+  <!-- What the server started (tmux, a Session's processes) outlives a restart. -->
+  <key>AbandonProcessGroup</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>{{HOME}}/.lookout/server.log</string>
+  <key>StandardErrorPath</key>
+  <string>{{HOME}}/.lookout/server.log</string>
+</dict>
+</plist>

@@ -1,7 +1,9 @@
+import { readFileSync } from 'node:fs';
 import { type FileHandle, open } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import type { ServerResponse } from 'node:http';
 import { extname, join, normalize, sep } from 'node:path';
+import { buildOfHtml } from '../shared/build.ts';
 
 const TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -66,4 +68,18 @@ async function openFile(file: string): Promise<{ handle: FileHandle; size: numbe
   }
   await handle.close().catch(() => {});
   return null;
+}
+
+/**
+ * SIDE-14: the build of the page served now, read from `index.html` each time a tab connects (a
+ * file of a few hundred bytes, read at once so the event stream's start stays synchronous); null
+ * with no built UI.
+ */
+export function readBuild(root: string | null): string | null {
+  if (!root) return null;
+  try {
+    return buildOfHtml(readFileSync(join(root, 'index.html'), 'utf8'));
+  } catch {
+    return null;
+  }
 }

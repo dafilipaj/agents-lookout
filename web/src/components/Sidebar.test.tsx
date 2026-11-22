@@ -1123,6 +1123,54 @@ describe('when Fleet fails', () => {
   });
 });
 
+describe('a new version (SIDE-14)', () => {
+  const OLD = '/assets/index-Ab12.js /assets/index-Cd34.css';
+  const NEW = '/assets/index-Ef56.js /assets/index-Cd34.css';
+  const box = () => screen.queryByText('Lookout was updated')?.closest<HTMLElement>('[data-slot="alert"]') ?? null;
+
+  it('SIDE-14.1: a tab running an older build than the server serves says so at the top, with Reload, above a stale list\'s banner', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const reload = vi.fn();
+    const app = renderApp('/', { pageBuild: OLD, reload });
+    app.snapshot([row({ id: 'a' })], { state: 'ok' }, settings(), OLD);
+    expect(box()).toBeNull();
+    // The server goes, then comes back with a new build.
+    app.connection(false);
+    expect(screen.getByText('Lost the Lookout server. Reconnecting…')).toBeInTheDocument();
+    expect(box()).toBeNull();
+    app.snapshot([row({ id: 'a' })], { state: 'ok' }, settings(), NEW);
+    app.emit({ type: 'fleet', fleet: { state: 'failing', lastOkAt: NOW - 2000, error: 'fleet list timed out after 4 s' } });
+    expect(screen.queryByText('Lost the Lookout server. Reconnecting…')).toBeNull();
+    const updated = box()!;
+    expect(updated).toHaveAttribute('role', 'status');
+    expect(updated).toHaveAttribute('data-tone', 'info');
+    expect(updated).toHaveTextContent('Lookout was updatedThis tab still runs the version it loaded.Reload');
+    const stale = screen.getByText(/^Fleet isn't answering/).closest('[data-slot="alert"]')!;
+    expect(updated.compareDocumentPosition(stale) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await user.click(within(updated).getByRole('button', { name: 'Reload' }));
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('SIDE-14.2: nothing reloads by itself, and the same build, a `pnpm dev` page or a server without a build shows nothing', () => {
+    const reload = vi.fn();
+    const outdated = renderApp('/', { pageBuild: OLD, reload });
+    outdated.snapshot([row({ id: 'a' })], { state: 'ok' }, settings(), NEW);
+    expect(box()).not.toBeNull();
+    // More news from the server: the box stays, and the page is never reloaded for you.
+    outdated.emit({ type: 'sessions', upsert: [row({ id: 'a', status: 'busy' })], remove: [] });
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(box()).not.toBeNull();
+    expect(reload).not.toHaveBeenCalled();
+    outdated.unmount();
+    for (const [page, served] of [[OLD, OLD], [null, NEW], [OLD, null]] as const) {
+      const app = renderApp('/', { pageBuild: page, reload });
+      app.snapshot([row({ id: 'a' })], { state: 'ok' }, settings(), served);
+      expect(box()).toBeNull();
+      app.unmount();
+    }
+  });
+});
+
 describe('design system colours in the sidebar', () => {
   it("DS-3.1: a row's Harness logo is monochrome, in the row's quiet colour", () => {
     const app = renderApp();

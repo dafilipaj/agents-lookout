@@ -176,6 +176,8 @@ export interface AppOptions {
   };
   /** Directory of the built UI; null in `pnpm dev`, where Vite serves it. */
   staticDir: string | null;
+  /** SIDE-14: the build of the page served now, asked each time a tab connects; none means null. */
+  build?(): string | null;
   keepAliveMs?: number;
 }
 
@@ -258,6 +260,7 @@ export function createApp(opts: AppOptions): LookoutApp {
     send(res, { type: 'snapshot', sessions, fleet, settings: view(opts.settings.get()), launches: opts.launcher.list(),
       started: opts.launcher.recentStarts(),
       clientId,
+      build: opts.build?.() ?? null,
       usage: opts.usage.snapshot(),
       memory: opts.memory.snapshot(),
       work: opts.work.snapshot(),
