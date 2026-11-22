@@ -202,7 +202,8 @@ it('VIEW-13.1: the last entry seen is read by Session, and kept only through eve
   const none = exchange('GET', '/api/chat-seen?session=b');
   await none.done;
   expect(JSON.parse(none.text())).toEqual({ seen: null });
-  const body = { session: 'a', cursor: 'c9', at: 5 };
+  // SIDE-13.1: with when the tab left.
+  const body = { session: 'a', cursor: 'c9', at: 5, left: 4 };
   for (const headers of [{ 'x-lookout-token': '' }, { origin: 'http://evil.example' }, { 'sec-fetch-site': 'cross-site' }] as Record<string, string>[]) {
     const call = exchange('POST', '/api/chat-seen', body, headers);
     await call.done;
@@ -212,7 +213,7 @@ it('VIEW-13.1: the last entry seen is read by Session, and kept only through eve
   const ok = exchange('POST', '/api/chat-seen', body);
   await ok.done;
   expect(ok.res.statusCode).toBe(200);
-  expect(chatSeen.set).toHaveBeenCalledWith('a', 'c9', 5);
+  expect(chatSeen.set).toHaveBeenCalledWith('a', 'c9', 5, 4);
   const bad = exchange('POST', '/api/chat-seen', { session: '../x', cursor: 'c9', at: null });
   await bad.done;
   expect(bad.res.statusCode).toBe(400);

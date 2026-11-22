@@ -29,12 +29,14 @@ interface Props {
   pressure?: Pressure | null;
   /** SIDE-12: where the filter's query matched this row; null without a query. */
   match?: RowMatch | null;
+  /** SIDE-13.5: Unread: it went Idle after you last saw it. */
+  unread?: boolean;
 }
 
 const NOT_CONTROLLABLE = 'Not Controllable: this Session runs in another app, so Lookout can only show it.';
 
 /** One sidebar row (SIDE-2). */
-export const SessionItem = memo(function SessionItem({ row, selected, dimmed, now, onSelect, suffix = null, pressure = null, match = null }: Props) {
+export const SessionItem = memo(function SessionItem({ row, selected, dimmed, now, onSelect, suffix = null, pressure = null, match = null, unread = false }: Props) {
   const ref = useRef<HTMLLIElement>(null);
   useEffect(() => {
     if (selected) ref.current?.scrollIntoView?.({ block: 'nearest' });
@@ -99,6 +101,7 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
       data-status={row.status}
       data-controllable={row.controllable}
       data-dimmed={dimmed}
+      data-unread={unread || undefined}
       title={row.controllable ? undefined : NOT_CONTROLLABLE}
       onClick={() => onSelect(row.id)}
       className={cn(
@@ -124,7 +127,7 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
             takes more than the rest), then the suffix. */}
         <span className="flex min-w-0 flex-1 items-baseline gap-1">
           <span
-            className={cn('min-w-0 shrink-[1000] truncate text-body leading-5', row.controllable ? 'font-medium' : tone.quiet)}
+            className={cn('min-w-0 shrink-[1000] truncate text-body leading-5', row.controllable ? 'font-medium' : tone.quiet, unread && 'font-semibold')}
             title={row.title}
             data-field="title"
           >
@@ -143,9 +146,19 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
             Done
           </Chip>
         )}
-        {/* DS-3.1: the Harness mark in the row's quiet colour; Status carries the colour in a list. */}
-        <span className={cn('flex shrink-0 items-center', tone.quiet)} data-field="harness">
-          <HarnessIcon harness={row.harness} className={cn(!row.controllable && 'opacity-70')} />
+        <span className="flex shrink-0 items-center gap-1">
+          {/* SIDE-13.5: Unread, a dot in the title's colour (a "new" mark is never Primary, DS-12.4), 4 px
+              before the Harness mark, its word for screen readers only. */}
+          {unread && row.statusSince !== null && (
+            <span className="flex shrink-0 items-center" title={`Finished at ${clockTime(new Date(row.statusSince).toISOString())}, after you last looked`} data-field="unread">
+              <span aria-hidden data-slot="unread-dot" className="size-1.5 rounded-full bg-sidebar-foreground" />
+              <span className="sr-only">unread</span>
+            </span>
+          )}
+          {/* DS-3.1: the Harness mark in the row's quiet colour; Status carries the colour in a list. */}
+          <span className={cn('flex shrink-0 items-center', tone.quiet)} data-field="harness">
+            <HarnessIcon harness={row.harness} className={cn(!row.controllable && 'opacity-70')} />
+          </span>
         </span>
       </div>
       {/* SIDE-2.7–2.14, DS-22: the exceptions lead the line, in colour and with an icon or words, never

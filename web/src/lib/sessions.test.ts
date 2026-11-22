@@ -198,6 +198,20 @@ describe('Status colours', () => {
     expect(contrast(paint(THEMES.dark, 'muted-foreground', tint), tint)).toBeLessThan(4.5);
   });
 
+  it("SIDE-13.7: the Unread dot (`sidebar-foreground`) keeps 3:1 or more on an Idle row at rest, under the pointer and selected, in both modes, and the title keeps 4.5:1", () => {
+    const measures: Measure[] = [];
+    for (const mode of MODES) {
+      for (const [state, under] of Object.entries(rowBackgrounds(THEMES, mode, ROW_TONE.plain))) {
+        measures.push({ what: `${mode} ${state}`, ratio: contrast(paint(THEMES[mode], 'sidebar-foreground', under), under) });
+      }
+    }
+    expect(measures).toHaveLength(2 * 3);
+    for (const m of measures) expect(Number.isFinite(m.ratio), m.what).toBe(true);
+    expect(measures.filter((m) => m.ratio < 3).map((m) => `${m.what}: ${m.ratio.toFixed(2)}`)).toEqual([]);
+    // The semibold title is the title's colour, which SIDE-3.11 measures at 4.5:1.
+    expect(below(rowContrasts(THEMES).filter((m) => m.what.includes('plain') && m.what.endsWith('sidebar-foreground')))).toEqual([]);
+  });
+
   it("VIEW-5.9: a tag's text, its age included, keeps 4.5:1 or more on the tag in both modes", () => {
     const measures = tagContrasts(THEMES);
     expect(measures).toHaveLength(2 * STATUSES.length);

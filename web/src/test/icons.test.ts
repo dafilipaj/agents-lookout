@@ -75,6 +75,16 @@ const SHORTCUT_ATTRIBUTES = new Set(['keys', 'title', 'aria-keyshortcuts']);
 const SHORTCUT_PROPERTIES = new Set(['keys', 'alt']);
 const SHORTCUTS_FILE = 'web/src/lib/shortcuts.ts';
 
+/** 0016: the tab title's Unread dot, the one `•` allowed: a string in this function of this file. */
+const TAB_TITLE = { path: 'web/src/lib/unread.ts', fn: 'tabTitle' };
+
+/** Whether a string sits in `TAB_TITLE`'s function. */
+function inTabTitle(node: ts.Node, path: string): boolean {
+  if (path !== TAB_TITLE.path) return false;
+  for (let n: ts.Node | undefined = node.parent; n; n = n.parent) if (ts.isFunctionDeclaration(n)) return n.name?.text === TAB_TITLE.fn;
+  return false;
+}
+
 /** Typographic signs that `\p{Extended_Pictographic}` counts but aren't icons. */
 const TYPOGRAPHIC = new Set([...'©®™']);
 
@@ -118,7 +128,7 @@ function iconSymbols(source: string, path = 'x.tsx'): string[] {
     if (whole && LONE_TIMES.test(text)) found.push(`${where(file, start)} ×`);
     for (const m of text.matchAll(PICTOGRAPH)) {
       const c = m[0];
-      if (MODIFIERS.has(c) || TYPOGRAPHIC.has(c) || (KEYS.has(c) && inShortcutHint(node, path)) || betweenWords(text, m.index, ends)) continue;
+      if (MODIFIERS.has(c) || TYPOGRAPHIC.has(c) || (KEYS.has(c) && inShortcutHint(node, path)) || (c === '•' && inTabTitle(node, path)) || betweenWords(text, m.index, ends)) continue;
       found.push(`${where(file, start + m.index)} ${c}`);
     }
   };
@@ -199,6 +209,14 @@ describe('icons', () => {
         `// ● in a comment\n/* ⛔ */ const url = 'http://x'; const r = \`\${a} → \${b}\`; const s = 'old.rb → new.rb';\n<kbd>⌘↵</kbd>; <Kbd>⌘↵</Kbd>; <Hint keys={['↑', '↓']} text="New Session (⌘N in the installed app)" />;\n<b title="Next (↓)">'Read ×3 · 2m…' © 2026 ™</b>`,
       ),
     ).toEqual([]);
+  });
+
+  it("0016: the tab title's Unread dot is the one `•` allowed, and only in `tabTitle`", () => {
+    const fn = `export function tabTitle(n: number) { return ['•', 'Lookout'].join(' '); }\nexport function other() { return '•'; }`;
+    expect(iconSymbols(fn, TAB_TITLE.path).map((s) => s.split(' ')[1])).toEqual(['•']);
+    expect(iconSymbols(fn, 'web/src/lib/x.ts').map((s) => s.split(' ')[1])).toEqual(['•', '•']);
+    // Any other symbol in it still counts.
+    expect(iconSymbols(`export function tabTitle() { return '● Lookout'; }`, TAB_TITLE.path).map((s) => s.split(' ')[1])).toEqual(['●']);
   });
 
   it('0008: the guard says where it found a symbol', () => {

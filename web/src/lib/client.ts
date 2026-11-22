@@ -588,7 +588,9 @@ export function createHttpClient(): LookoutClient {
     chatSeen: async (sessionId) =>
       (await call<{ seen: { cursor: string; at: number | null } | null }>(() => fetch(`/api/chat-seen?${new URLSearchParams({ session: sessionId })}`), 'Reading what you saw')).seen,
     setChatSeen: async (sessionId, seen, keepalive = false) => {
-      await call(() => send('POST', '/api/chat-seen', { session: sessionId, cursor: seen.cursor, at: seen.at }, true, undefined, keepalive), 'Saving what you saw');
+      // SIDE-13.1: when you left, taken now, before the token's fetch can hold the save back.
+      const left = Date.now();
+      await call(() => send('POST', '/api/chat-seen', { session: sessionId, cursor: seen.cursor, at: seen.at, left }, true, undefined, keepalive), 'Saving what you saw');
     },
     seenTopic: async (topicId, upto, keepalive = false) => {
       await call(() => send('PUT', `/api/topics/${encodeURIComponent(topicId)}/seen`, { upto }, true, undefined, keepalive), 'Saving what you saw');

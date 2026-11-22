@@ -31,6 +31,8 @@ export interface MonitorOptions {
   queued?(row: SessionRow): Queued | null;
   /** EVID-5.6: the Session's verdict, carried with its row. */
   evidence?(row: SessionRow): RowEvidence | null;
+  /** SIDE-13.1: when you last saw the Session's chat, carried with its row. */
+  viewedAt?(row: SessionRow): number | null;
   /** HAND-4: the Session's hand-offs, carried with its row (only when it has one). */
   handoffs?(row: SessionRow): { continuedFrom: HandoffLink | null; continuedIn: HandoffLink[] };
   intervalMs?: number;
@@ -178,6 +180,7 @@ export class SessionMonitor {
     if (this.opts.changes) for (const row of next) row.changes = this.opts.changes(row);
     if (this.opts.queued) for (const row of next) row.queued = this.opts.queued(row);
     if (this.opts.evidence) for (const row of next) row.evidence = this.opts.evidence(row);
+    if (this.opts.viewedAt) for (const row of next) row.viewedAt = this.opts.viewedAt(row);
     if (this.opts.handoffs) {
       for (const row of next) {
         const { continuedFrom, continuedIn } = this.opts.handoffs(row);

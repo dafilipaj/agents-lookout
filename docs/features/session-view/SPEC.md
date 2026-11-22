@@ -3,7 +3,7 @@ title: Session view
 code: VIEW
 status: In Progress
 created: 2026-10-16
-updated: 2026-11-17
+updated: 2026-11-22
 ---
 
 # Session view
@@ -233,7 +233,7 @@ A turn's progress (tool calls and short updates) folds into one row, so its answ
 
 The chat marks where the messages you haven't seen begin.
 
-- [x] VIEW-13.1 When you leave a Session's view (select another Session or page, or the tab is hidden, closed or reloaded), Lookout's server keeps the last entry the chat had then as seen: its cursor and time, in `~/.lookout/chat-seen.json` (mode `0600`, written whole to a new file then moved over the old one), by Session id. A record not used for 30 days goes. (test)
+- [x] VIEW-13.1 When you leave a Session's view (select another Session or page, or the tab is hidden, closed or reloaded), Lookout's server keeps the last entry the chat had then as seen: its cursor and time, and when you saw it (SIDE-13.1), in `~/.lookout/chat-seen.json` (mode `0600`, written whole to a new file then moved over the old one), by Session id. A tab closed or reloaded while hidden keeps what it had when it hid: what came in since wasn't seen. Opening a view with no record starts one with no entry, only when you saw it (SIDE-13.1), and it places no divider. A record not used for 30 days goes. (test)
 - [x] VIEW-13.2 When you open the Session again and the agent has written since (a reply, a tool call, a question or a Subagent result after the seen entry, found by its cursor, or else by its time), a divider, "New since you looked" with the time of the first new entry, sits above that entry. It stays where it is while the view is open, as messages keep arriving, and moves only when you come back after leaving again (to none, when nothing came meanwhile; tool calls you saw stay above it). The chat as Lookout had it from your last visit doesn't count: the divider waits for the server's entries, and while nothing new is in, up to 3 seconds for its next read. With nothing new, or no record yet, there's none; your own prompts alone don't make one. The divider is a separator to screen readers. (test)
 - [x] VIEW-13.3 The chat opens with the divider just below its top edge when what's new is taller than the chat, and stays there, as a jump does (VIEW-1.5: "Jump to latest" shows); otherwise it opens at the bottom, as before. (test)
 - [x] VIEW-13.4 A failed read or save of the record never blocks the chat: it opens at the bottom with no divider. (test)
@@ -741,3 +741,6 @@ The region's name is in `foreground`, medium; the rest stays `muted-foreground`.
 - 2026-11-21: The status line folds instead of cutting (Backlog "drop whole parts by priority", direction A of https://claude.ai/artifact/C7W29bUtqacTX27dbLHvyG, Dario's pick). VIEW-5.5 amended: two ends, the work on the left and the agent on the right, the context usage and Compact at the right edge; the 36rem rule goes. Added VIEW-5.19 (parts leave whole by rank, into "N more", whose rows keep each part's click; only the Worktree or branch is cut; "from the next reply" goes with the part it marks) and VIEW-5.20 (the look, manual). VIEW-5.11, VIEW-5.16, VIEW-8.1 and VIEW-8.3 say where their part sits and that it folds; VIEW-6.1 and VIEW-7.1 that a folded menu opens from its row. VIEW-6.1: the model shows by its label in Fleet's list, its id in the tooltip and the menu. UX, Key decisions and Technical approach ("The fold", "The model's label") updated.
 - 2026-11-21: Fixed from a Codex review of the fold and the label (Sol, xhigh; one finding and one note it put out of scope, both medium, both accepted by Dario). A disabled model button's tooltip was only the reason, so with the label on the line the model's id was out of reach: the tooltip now says the reason under the label and id (VIEW-6.3), and the Effort's the same way (VIEW-7.3). A folded Changes or Subagents row was dropped as soon as its part went, closing its open list with focus lost: it now stays until the list closes, as the part does on the line (VIEW-5.19, DIFF-3.3, VIEW-8.10).
 - 2026-11-21: VIEW-5.20 ticked: Dario checked the status line on 4747, light and dark, at 800 and 480 px. No requirement changed.
+- 2026-11-22: VIEW-13.1's record also keeps when you saw the chat, the time its view opened or you left it, for SIDE-13 (Unread); the divider doesn't use it.
+- 2026-11-22: VIEW-13.1: opening a view with no record starts one with no entry, for SIDE-13.1's time; it places no divider, as no record didn't.
+- 2026-11-22: VIEW-13.1: a tab closed or reloaded while hidden keeps what it had when it hid. It saved the chat's last entry again as it closed, entries that came in while hidden included, so they had no divider.

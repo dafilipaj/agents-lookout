@@ -159,6 +159,46 @@ describe('new since you looked', () => {
     expect(setChatSeen).toHaveBeenCalledWith('a', { cursor: last.cursor, at: Date.parse(last.ts!) }, true);
   });
 
+  it('SIDE-13.1: a hidden tab showing the chat again reads the record again, so the server counts it seen from then', async () => {
+    const chatSeen = vi.fn(async () => null);
+    const { reset } = open({}, { chatSeen });
+    reset([you('Go'), answer('Done.')]);
+    await waitFor(() => expect(messages().getByText('Done.')).toBeInTheDocument());
+    expect(chatSeen).toHaveBeenCalledTimes(1);
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    spies.push(visibility);
+    act(() => void document.dispatchEvent(new Event('visibilitychange')));
+    expect(chatSeen).toHaveBeenCalledTimes(1);
+    visibility.mockReturnValue('visible');
+    act(() => void document.dispatchEvent(new Event('visibilitychange')));
+    expect(chatSeen).toHaveBeenCalledTimes(2);
+    expect(chatSeen).toHaveBeenLastCalledWith('a');
+  });
+
+  it('SIDE-13.1: a tab closed while hidden saves nothing more: you left it when it hid, and what came since is unseen', async () => {
+    const setChatSeen = vi.fn(async () => {});
+    const { reset, append } = open({}, { setChatSeen });
+    const last = answer('Done.');
+    reset([you('Go'), last]);
+    await waitFor(() => expect(messages().getByText('Done.')).toBeInTheDocument());
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    spies.push(visibility);
+    act(() => void document.dispatchEvent(new Event('visibilitychange')));
+    expect(setChatSeen).toHaveBeenCalledTimes(1);
+    expect(setChatSeen).toHaveBeenLastCalledWith('a', { cursor: last.cursor, at: Date.parse(last.ts!) }, true);
+    // The Session finishes while hidden; then the tab closes.
+    const late = answer('Finished while hidden.', 50);
+    await append([late]);
+    act(() => void window.dispatchEvent(new Event('pagehide')));
+    expect(setChatSeen).toHaveBeenCalledTimes(1);
+    // Shown again, then closed: that saves what it shows.
+    visibility.mockReturnValue('visible');
+    act(() => void document.dispatchEvent(new Event('visibilitychange')));
+    act(() => void window.dispatchEvent(new Event('pagehide')));
+    expect(setChatSeen).toHaveBeenCalledTimes(2);
+    expect(setChatSeen).toHaveBeenLastCalledWith('a', { cursor: late.cursor, at: Date.parse(late.ts!) }, true);
+  });
+
   it('VIEW-13.2: a divider sits above the first entry of the agent\'s after what you saw; your own prompts alone make none', async () => {
     const seen = answer('Earlier answer.', 10);
     const fresh = update('Picking it up again.', 30);

@@ -69,6 +69,10 @@ export interface SidebarProps {
   work?: WorkSnapshot | null;
   /** SIDE-12.7: the filter's query handed to History's search (HIST-2.13). */
   onSearchMessages?(query: string): void;
+  /** SIDE-13.2: the Unread Sessions, marked on their rows. */
+  unread?: ReadonlySet<string>;
+  /** SIDE-13.4: the Sessions the order counts as Unread: those, and the selected one if it was when you selected it. */
+  orderUnread?: ReadonlySet<string>;
 }
 
 export function Sidebar(props: SidebarProps) {
@@ -87,7 +91,9 @@ export function Sidebar(props: SidebarProps) {
   const [frozenOrder, setFrozenOrder] = useState<string[] | null>(null);
   // SIDE-1.5 / SIDE-3.1: Controllable Sessions first, then the "View only" section; each in
   // Status order.
-  const sortedIds = useMemo(() => sidebarOrder(sessions).map((s) => s.id), [sessions]);
+  // SIDE-13.4: Unread rows between Needs you and Busy.
+  const orderUnread = props.orderUnread ?? props.unread;
+  const sortedIds = useMemo(() => sidebarOrder(sessions, orderUnread).map((s) => s.id), [sessions, orderUnread]);
   const orderedIds = useMemo(() => (frozenOrder ? keepOrder(frozenOrder, sortedIds) : sortedIds), [frozenOrder, sortedIds]);
   // Rows that arrived (or left) during the hover join the frozen order, so they don't move among
   // themselves either. Adjusting state while rendering, as React documents for derived state.
@@ -289,12 +295,13 @@ export function Sidebar(props: SidebarProps) {
         key={row.id}
         row={row}
         selected={row.id === selectedId}
-        dimmed={isLongIdle(row, now, idleThresholdHours)}
+        dimmed={!props.unread?.has(row.id) && isLongIdle(row, now, idleThresholdHours)}
         now={now}
         onSelect={selectId}
         suffix={suffixes.get(row.id) ?? null}
         pressure={props.memory?.pressure ?? null}
         match={hasQuery ? (matches.get(row.id) ?? null) : null}
+        unread={props.unread?.has(row.id) ?? false}
       />
     );
     // DS-9.1: the list takes focus as History's does: the selected Session is its active option, none

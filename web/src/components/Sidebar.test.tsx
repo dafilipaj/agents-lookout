@@ -2,6 +2,7 @@ import { FLEET_INSTALL_COMMAND } from '@shared/defaults.ts';
 import { act, fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { clockTime } from '@/lib/chat';
 import { ROW_TONE } from '@/lib/sessions';
 import { NOW, field, renderApp, row, rowEl, settings, visibleTitles } from '@/test/helpers';
 
@@ -643,6 +644,104 @@ describe('status at a glance', () => {
     expect(document.title).toBe('(1) Lookout');
     app.emit({ type: 'sessions', upsert: [], remove: ['b'] });
     expect(document.title).toBe('Lookout');
+  });
+
+  describe('Unread (SIDE-13)', () => {
+    const HIDDEN = { repo: false, where: false };
+    it('SIDE-13.5: an Unread row shows a dot in the title\'s colour before the Harness mark and a semibold title, says "unread" after its title and Done, and isn\'t dimmed for a long Idle', () => {
+      const app = renderApp();
+      const fiveHours = NOW - 5 * 3_600_000;
+      app.snapshot(
+        [
+          row({ id: 'new', statusSince: fiveHours, viewedAt: fiveHours - 60_000, done: { at: fiveHours, note: null }, locationShown: HIDDEN }),
+          row({ id: 'read', statusSince: NOW - 60_000, viewedAt: NOW, locationShown: HIDDEN }),
+          row({ id: 'never', statusSince: NOW - 60_000, viewedAt: null, locationShown: HIDDEN }),
+          row({ id: 'view-only', statusSince: NOW - 60_000, viewedAt: NOW - 120_000, backend: 'unknown', controllable: false, locationShown: HIDDEN }),
+        ],
+        { state: 'ok' },
+        settings({ idleThresholdHours: 4 }),
+      );
+      const mark = field('new', 'unread')!;
+      const dot = mark.querySelector('[data-slot="unread-dot"]')!;
+      expect(dot).toHaveClass('size-1.5', 'rounded-full', 'bg-sidebar-foreground');
+      expect(dot).toHaveAttribute('aria-hidden');
+      // After the Done chip, 4 px before the Harness mark.
+      expect(field('new', 'done')!.nextElementSibling).toBe(mark.parentElement);
+      expect(mark.nextElementSibling).toBe(field('new', 'harness'));
+      expect(mark.parentElement).toHaveClass('gap-1');
+      expect(mark).toHaveAttribute('title', `Finished at ${clockTime(new Date(fiveHours).toISOString())}, after you last looked`);
+      expect(field('new', 'title')).toHaveClass('font-semibold');
+      expect(rowEl('new')).toHaveAccessibleName('IdlenewDoneunreadClaude Code 5h');
+      expect(rowEl('new')).toHaveAttribute('data-dimmed', 'false');
+      // Read, or never opened in Lookout: as before.
+      for (const id of ['read', 'never']) {
+        expect(field(id, 'unread')).toBeNull();
+        expect(field(id, 'title')).not.toHaveClass('font-semibold');
+        expect(rowEl(id)).toHaveAccessibleName(`Idle${id}Claude Code 1m`);
+      }
+      // A View only row shows it the same way.
+      expect(field('view-only', 'unread')).not.toBeNull();
+      expect(field('view-only', 'title')).toHaveClass('font-semibold');
+    });
+
+    it('SIDE-13.4: Unread rows sit between Needs you and Busy; the one you open keeps its place while selected, and moves among the Idle rows once you move on', async () => {
+      pinDate();
+      const app = renderApp('/s/busy');
+      const seenBefore = NOW - 10_000;
+      app.snapshot([
+        row({ id: 'needs', status: 'needs-you', statusSince: NOW - 1000 }),
+        row({ id: 'u1', statusSince: NOW - 2000, viewedAt: seenBefore }),
+        row({ id: 'u2', statusSince: NOW - 3000, viewedAt: seenBefore }),
+        row({ id: 'busy', status: 'busy', statusSince: NOW - 4000 }),
+        row({ id: 'read', statusSince: NOW - 9000, viewedAt: NOW - 5000 }),
+      ]);
+      expect(visibleTitles()).toEqual(['needs', 'u1', 'u2', 'busy', 'read']);
+      fireEvent.click(rowEl('u1'));
+      // Opening it read it: no dot. Its place holds, also once the server's new time comes.
+      expect(field('u1', 'unread')).toBeNull();
+      app.emit({ type: 'sessions', upsert: [row({ id: 'u1', statusSince: NOW - 2000, viewedAt: NOW })], remove: [] });
+      expect(visibleTitles()).toEqual(['needs', 'u1', 'u2', 'busy', 'read']);
+      // j goes to the next row on screen; the one you left moves down among the Idle rows.
+      const user = userEvent.setup();
+      await user.keyboard('j');
+      expect(window.location.pathname).toBe('/s/u2');
+      expect(visibleTitles()).toEqual(['needs', 'u2', 'busy', 'u1', 'read']);
+      await user.keyboard('j');
+      expect(window.location.pathname).toBe('/s/busy');
+      expect(visibleTitles()).toEqual(['needs', 'busy', 'u1', 'u2', 'read']);
+    });
+
+    it("SIDE-13.3: leaving a Session never makes it Unread for a moment, before the server's push; one that finishes in a hidden tab is Unread, the tab title's dot with it (SIDE-13.6), until the tab shows it (SIDE-13.2)", () => {
+      const app = renderApp('/s/a');
+      app.snapshot([row({ id: 'a', status: 'busy', statusSince: NOW - 5000, viewedAt: NOW - 5000 }), row({ id: 'b', statusSince: NOW - 60_000, viewedAt: NOW - 1000 })]);
+      act(() => vi.advanceTimersByTime(1000));
+      app.emit({ type: 'sessions', upsert: [row({ id: 'a', statusSince: Date.now(), viewedAt: NOW - 5000 })], remove: [] });
+      expect(field('a', 'unread')).toBeNull();
+      expect(document.title).toBe('Lookout');
+      // You move on; the server's new time hasn't come, and still it isn't Unread.
+      act(() => vi.advanceTimersByTime(1000));
+      fireEvent.click(rowEl('b'));
+      expect(window.location.pathname).toBe('/s/b');
+      expect(field('a', 'unread')).toBeNull();
+      expect(document.title).toBe('Lookout');
+      // The tab hides with b shown, and b works and finishes meanwhile.
+      const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+      try {
+        act(() => document.dispatchEvent(new Event('visibilitychange')));
+        act(() => vi.advanceTimersByTime(1000));
+        app.emit({ type: 'sessions', upsert: [row({ id: 'b', status: 'busy', statusSince: Date.now(), viewedAt: NOW - 1000 })], remove: [] });
+        act(() => vi.advanceTimersByTime(1000));
+        app.emit({ type: 'sessions', upsert: [row({ id: 'b', statusSince: Date.now(), viewedAt: NOW - 1000 }), row({ id: 'c', status: 'needs-you' })], remove: [] });
+        expect(field('b', 'unread')).not.toBeNull();
+        expect(document.title).toBe('(1) • Lookout');
+        visibility.mockReturnValue('visible');
+        act(() => document.dispatchEvent(new Event('visibilitychange')));
+        expect(field('b', 'unread')).toBeNull();
+        expect(document.title).toBe('(1) Lookout');
+      } finally {
+        visibility.mockRestore();
+      }
+    });
   });
 
   it('SIDE-3.5: a Session Idle longer than the threshold is dimmed, and returns to normal when its Status changes', () => {

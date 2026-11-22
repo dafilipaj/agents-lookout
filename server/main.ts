@@ -116,6 +116,8 @@ const work = new WorkMonitor({
 // VIEW-6.7, VIEW-7.7: model and Effort switches waiting for the Session's next reply, carried with its row.
 const modelSwitches = new StatusSwitches();
 
+// VIEW-13.1, SIDE-13.1: what you saw of each Session's chat, and when.
+const chatSeen = new ChatSeen();
 const monitor: SessionMonitor = new SessionMonitor({
   fetchList: () => fetchFleetList(run, resolveFleetBin(env)),
   git,
@@ -131,6 +133,8 @@ const monitor: SessionMonitor = new SessionMonitor({
   evidence: (row) => evidence.rowEvidence(row.id),
   // HAND-4: the Session it continues, and those that continue it.
   handoffs: (row) => handoffs.links(row.id),
+  // SIDE-13.1: when you last saw it, for Unread.
+  viewedAt: (row) => chatSeen.viewedAt(row.id),
   onEvent: (e) => {
     app.broadcast(e);
     // EVID-1.3: who stopped with Changes, was marked Done again, or had a shell or a Subagent end.
@@ -392,7 +396,6 @@ settings.onChange(() => recommender.kick());
 // Registered before the app's own listener, so tabs hear the list dropped before the new email.
 settings.onChange((s) => work.setProductiveEmail(s.productiveEmail));
 
-const chatSeen = new ChatSeen();
 const app = createApp({
   attachmentsDir: join(homedir(), '.lookout', 'attachments'),
   // WORK-3.9: `LOOKOUT_AVATARS=off` (every World sets it) fetches none, so a Behaviour test never asks GitHub.

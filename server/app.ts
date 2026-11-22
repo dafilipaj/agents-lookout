@@ -572,7 +572,7 @@ export function createApp(opts: AppOptions): LookoutApp {
       if (body === NO_BODY) return;
       const b = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
       try {
-        await opts.chatSeen.set(b.session, b.cursor, b.at);
+        await opts.chatSeen.set(b.session, b.cursor, b.at, b.left);
         return json(res, 200, { ok: true });
       } catch (err) {
         if (err instanceof ChatSeenError) return json(res, err.status, { error: err.message });

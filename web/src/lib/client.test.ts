@@ -119,6 +119,21 @@ describe('telling the server what the tab views', () => {
   });
 });
 
+it('SIDE-13.1: saving what you saw sends when you left, taken before the token arrives', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(1_793_880_000_000);
+  const client = createHttpClient();
+  const saved = client.setChatSeen('a', { cursor: 'c1', at: null }, true);
+  vi.setSystemTime(1_793_880_005_000);
+  await settle();
+  expect(pending).toHaveLength(1);
+  expect(pending[0]!.url).toBe('/api/chat-seen');
+  expect(body(pending[0]!)).toEqual({ session: 'a', cursor: 'c1', at: null, left: 1_793_880_000_000 });
+  expect(pending[0]!.init?.keepalive).toBe(true);
+  pending[0]!.resolve(Response.json({ ok: true }));
+  await saved;
+});
+
 describe('Work (WORK-8)', () => {
   const workPuts = () => pending.filter((p) => p.url === '/api/work/watch');
 

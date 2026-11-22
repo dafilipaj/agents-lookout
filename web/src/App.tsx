@@ -25,6 +25,7 @@ import { TopicGraph } from '@/components/TopicGraph';
 import { TopicView } from '@/components/TopicView';
 import { type ExamplesApi, type SimpleApi, SpecView } from '@/components/SpecView';
 import type { PrSpecsApi } from '@/lib/pr-specs';
+import { tabTitle, unreadIds, usePageVisible, wentIdleUnseen } from '@/lib/unread';
 import type { PlainSource } from '@shared/plain.ts';
 import { ViewErrorBoundary } from '@/components/ViewErrorBoundary';
 import { TopicsPanel } from '@/components/TopicsPanel';
@@ -112,11 +113,33 @@ export function App({ client }: { client: LookoutClient }) {
   const selectedId = route.name === 'session' ? route.id : null;
   const selectedLaunchId = route.name === 'launch' ? route.id : null;
 
-  // SIDE-3.3: the tab title counts the Sessions that need you.
+  // SIDE-13: Unread. Only this tab knows what it shows; the server keeps when you last saw each
+  // Session (`viewedAt`). SIDE-13.3: leaving a Session's view (another selection, a page, nothing, or
+  // the tab hidden) counts it seen here at once. Adjusted while rendering, so no frame shows it Unread.
+  const visible = usePageVisible();
+  const shown = selectedId && visible ? selectedId : null;
+  const [leftAt, setLeftAt] = useState<ReadonlyMap<string, number>>(() => new Map());
+  const [onScreen, setOnScreen] = useState(shown);
+  if (onScreen !== shown) {
+    if (onScreen) setLeftAt(new Map(leftAt).set(onScreen, Date.now()));
+    setOnScreen(shown);
+  }
+  // SIDE-13.4: the Session you select keeps its place while it stays selected: Unread for the order
+  // if it was when you selected it.
+  const [held, setHeld] = useState<{ id: string | null; unread: boolean }>({ id: null, unread: false });
+  if (held.id !== selectedId) {
+    const row = selectedId ? state.sessions.get(selectedId) : undefined;
+    setHeld({ id: selectedId, unread: !!row && wentIdleUnseen(row, leftAt) });
+  }
+  const unread = useMemo(() => unreadIds(sessions, shown, leftAt), [sessions, shown, leftAt]);
+  const orderUnread = useMemo(() => (held.unread && held.id && !unread.has(held.id) ? new Set(unread).add(held.id) : unread), [unread, held]);
+
+  // SIDE-3.3, SIDE-13.6: the tab title counts the Sessions that need you, and adds a dot for Unread.
   const needsYou = sessions.filter((s) => s.status === 'needs-you').length;
+  const anyUnread = unread.size > 0 ? 1 : 0;
   useEffect(() => {
-    document.title = needsYou > 0 ? `(${needsYou}) Lookout` : 'Lookout';
-  }, [needsYou]);
+    document.title = tabTitle(needsYou, anyUnread);
+  }, [needsYou, anyUnread]);
 
   // VIEW: per-Session view state, kept here so it outlives switching and follows a Codex
   // Session whose id changes. Drafts and in-flight sends are plain mutable records.
@@ -1273,6 +1296,8 @@ export function App({ client }: { client: LookoutClient }) {
           topicTitles={topicTitles}
           work={state.work}
           onSearchMessages={searchMessages}
+          unread={unread}
+          orderUnread={orderUnread}
         />
         {/* tabIndex -1: focus lands here after the selected start is dismissed (LAUNCH UX). */}
         <main className={cn(SHELL_COLUMN, 'relative outline-none')} data-shell-column="main" tabIndex={-1}>

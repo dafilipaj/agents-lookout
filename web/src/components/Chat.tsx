@@ -211,28 +211,40 @@ export function Chat({ sessionId, harness, chat, ended, onEarlier, onPage, onFol
     setSettled(false);
     setPlaced(false);
   });
+  // SIDE-13.1: a hidden tab showing the chat again is its view opening again: reading the record
+  // tells the server, so the other tabs count the Session seen from now.
+  const shownAgain = useEffectEvent(() => void loadSeen?.(sessionId).catch(() => {}));
   useEffect(() => {
     if (!saveSeen) return;
     let away: ChatSeen | null = null;
+    // SIDE-13.1: a hidden tab was left when it hid; what came in since wasn't seen, so closing it,
+    // reloading it or leaving the view while it's hidden saves nothing more.
+    let hidden = document.visibilityState === 'hidden';
     const save = (keepalive: boolean): ChatSeen | null => {
       const now = latest.current;
       if (now) void saveSeen(sessionId, now, keepalive).catch(() => {});
       return now;
     };
     const onVisibility = () => {
-      if (document.visibilityState === 'hidden') away = save(true);
-      else if (away) {
-        cameBack(away);
-        away = null;
+      if (document.visibilityState === 'hidden') {
+        if (!hidden) away = save(true);
+        hidden = true;
+      } else {
+        hidden = false;
+        shownAgain();
+        if (away) {
+          cameBack(away);
+          away = null;
+        }
       }
     };
-    const onPageHide = () => void save(true);
+    const onPageHide = () => void (hidden || save(true));
     document.addEventListener('visibilitychange', onVisibility);
     window.addEventListener('pagehide', onPageHide);
     return () => {
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('pagehide', onPageHide);
-      save(false);
+      if (!hidden) save(false);
     };
   }, [saveSeen, sessionId]);
 

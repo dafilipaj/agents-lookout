@@ -31,6 +31,29 @@ function setup(initial: FleetListResult) {
 const ok = (rows: FleetRow[]): FleetListResult => ({ kind: 'ok', rows });
 
 describe('SessionMonitor', () => {
+  it('SIDE-13.1: each row carries when you last saw it, and a new time pushes the row on the next poll', async () => {
+    const base = recorded.find((r) => r.harness === 'claude')!;
+    let viewed: number | null = null;
+    const events: MonitorEvent[] = [];
+    const monitor = new SessionMonitor({
+      fetchList: async () => ({ kind: 'ok', rows: [base] }),
+      git: { get: () => null, prune: () => {} },
+      onEvent: (e) => events.push(e),
+      viewedAt: () => viewed,
+      now: () => 1_792_146_000_000,
+    });
+    await monitor.tick();
+    const before = monitor.snapshot().sessions[0]!;
+    expect(before.viewedAt).toBeNull();
+    events.length = 0;
+    viewed = 1_792_145_990_000;
+    await monitor.tick();
+    expect(events).toEqual([{ type: 'sessions', upsert: [{ ...before, viewedAt: viewed }], remove: [] }]);
+    events.length = 0;
+    await monitor.tick();
+    expect(events).toEqual([]);
+  });
+
   it('SIDE-9.2: a count-only change pushes the row on the next poll without changing its Status or age', async () => {
     const base = recorded.find((r) => r.harness === 'codex')!;
     const t = setup(ok([{ ...base, subagents: { running: 1, finished: 0 } }]));

@@ -136,6 +136,8 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Turn**: What a Session does for one prompt of yours: from that prompt, sent from Lookout or typed in its terminal, until your next one. Work the Session picks up on its own in between, such as a reply to a Subagent's result, belongs to the same Turn, and Idle doesn't end it. A tool's result, a task notification, another Session's message and a slash command the Harness handles itself (`/effort`) aren't prompts. Fleet finds where the current one starts (SIDE-9). Not Codex's own "turn" (`task_started` to `task_complete`), which ends whenever the agent stops.
 
+**Unread**: An Idle Session that went Idle after you last saw it in Lookout, until you open it again. Only a Session you've opened in Lookout can be Unread. Its row shows a dot and a semibold title and sits above the Busy rows, and the tab title adds a dot. Not a Status. See SIDE-13.
+
 **Watched channel**: A Slack channel listed in Settings whose mentions of you Lookout reads as Pings.
 
 **Work**: The right-sidebar tab, next to History, that lists your Tasks and PRs with their Links. See the WORK spec.

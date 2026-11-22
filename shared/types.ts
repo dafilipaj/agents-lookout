@@ -119,6 +119,11 @@ export interface SessionRow {
   /** SIDE-2.11: what a Busy Session is doing now, one line, at most 120 characters; null otherwise. */
   activity: string | null;
   /**
+   * SIDE-13.1: when you last saw the Session's chat in Lookout (its view opened, or you left it), ms
+   * since epoch; null with no record; missing from an older server.
+   */
+  viewedAt?: number | null;
+  /**
    * SIDE-2.6, VIEW-5.16: Idle with a background shell command still running (Fleet's `shell`
    * status, from Claude Code 2.1.308). Always false for any other Status.
    */
