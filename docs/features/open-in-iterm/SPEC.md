@@ -1,9 +1,9 @@
 ---
 title: Open in iTerm2
 code: ITERM
-status: Ready
+status: Parked
 created: 2026-10-16
-updated: 2026-10-30
+updated: 2026-11-22
 ---
 
 # Open in iTerm2
@@ -215,3 +215,4 @@ None. The seven draft questions were answered on 2026-10-30 (Key decisions).
 - 2026-10-30: Blocking question answered by Dario: `-CC`, accepting that Kill is one click away in the close dialog. Lookout never closing iTerm2 windows itself follows from it (Key decisions). Requirements are still to be written.
 - 2026-10-30: Requirements written: the button and `O` (ITERM-1), opening a Session host (ITERM-2), a Session already showing in an iTerm2 tab or window, or in another app (ITERM-3), failures (ITERM-4), the Automation permission (ITERM-5), afterwards (ITERM-6), and closing the window with Hide, Detach or Kill, with Lookout never closing one (ITERM-7). Technical approach: what the code knows of `tmux` and `iterm` Sessions, the default tmux server Lookout's Session hosts are on, and a fork commit for Fleet's `open`, since Fleet's CLI can neither open nor focus a Session in iTerm2. Non-goals, Key decisions and Known gaps follow. The Problem names the "Show terminal can't be typed into" report this answers. Not grilled; seven open questions, each with a recommendation the criteria follow; 2 and 7 block. Still Draft.
 - 2026-10-30: Ready. Dario answered the seven open questions as recommended. Open question 2 verified the same day on iTerm2 3.7.6: Fleet finds the window a `-CC` attach shows by the iTerm2 session's `pid`, which is the pane's process (ITERM-3.2, the Fleet command's step 2). The AppleScript addresses iTerm2 by bundle id, since the name fails while it isn't running. New decision 0011: no plain-attach fallback. Known gap: iTerm2's startup window.
+- 2026-11-22: Parked by Dario before any build: he isn't sure he needs it. His shell history has no `tmux attach` since Lookout began starting Sessions in tmux, so the real terminal hasn't been missed. The spec stays as it is; resume from here when a prompt with no button, or long output to scroll back, sends him looking for the terminal.

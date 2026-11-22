@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/compone
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { SaveError } from '@/lib/client';
-import type { HarnessState, LaunchDraft } from '@/lib/launch';
+import { type HarnessState, type LaunchDraft, topicFill } from '@/lib/launch';
 import { cn } from '@/lib/utils';
 import { criticalHint } from '@/lib/usage';
 import { HarnessIcon } from './HarnessIcon';
@@ -82,6 +82,15 @@ export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, h
     setError(null);
   };
 
+  // TOPIC-5.3: a Topic picked here is "started from this Topic" (TOPIC-5.2), whichever launcher it is.
+  // TOPIC-15.4: in the launcher opened with N, ⌘N or "+", it brings the Topic's prompt too; one
+  // opened from a Topic view, a Task, a Review or a Handover keeps its prompt.
+  const pickTopic = (id: string) => {
+    const next = id ? { id, via: id === draft.topic?.id ? draft.topic.via : ('topic' as const) } : undefined;
+    const fill = keepsInput ? topicFill(draft.prompt, draft.topicText, id ? (topics.find((t) => t.id === id) ?? null) : null) : null;
+    set({ topic: next, ...(fill ?? {}) });
+  };
+
   const setChoices = (patch: Partial<LaunchChoices>) => set({
     byHarness: { ...draft.byHarness, [harness]: { effort, skipPermissions, ...patch } },
   });
@@ -99,7 +108,7 @@ export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, h
     setSubmitting(true);
     setError(null);
     try {
-      const continues = draft.continues && { sessionId: draft.continues.sessionId, harness: draft.continues.harness, title: draft.continues.title };
+      const continues = draft.continues && { sessionId: draft.continues.sessionId, harness: draft.continues.harness, title: draft.continues.title, piece: draft.continues.piece ?? '' };
       await onStart({ directory, harness, model, name: draft.name, prompt: draft.prompt, ...(levels.length && effort ? { effort } : {}), skipPermissions, ...(topic ? { topic } : {}), ...(continues ? { continues } : {}) });
     } catch (err) {
       // LAUNCH-4.4: stay open, show why, keep everything.
@@ -272,10 +281,9 @@ export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, h
                 <select
                   id="launch-topic"
                   value={topic?.id ?? ''}
-                  // A Topic picked here is "started from this Topic" (TOPIC-5.2), whichever launcher it is.
-                  onChange={(e) => set({ topic: e.target.value ? { id: e.target.value, via: e.target.value === draft.topic?.id ? draft.topic.via : 'topic' } : undefined })}
+                  onChange={(e) => pickTopic(e.target.value)}
                   aria-invalid={error?.field === 'topic' || undefined}
-                  title="The Session is added to this Topic once it starts."
+                  title={keepsInput ? "The Session is added to this Topic once it starts; the Topic's context goes at the top of the prompt." : 'The Session is added to this Topic once it starts.'}
                   className="h-8 w-full min-w-0 rounded-md border border-input bg-transparent px-2 text-body outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 dark:bg-input/30"
                 >
                   <option value="">None</option>

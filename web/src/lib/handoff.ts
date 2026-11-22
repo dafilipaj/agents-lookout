@@ -1,3 +1,4 @@
+import { HANDOFF_RESTATE_LINE } from '@shared/handoff.ts';
 import type { LaunchChoices, Settings } from '@shared/settings.ts';
 import type { ChatEntry, HandoffLink, SessionRow, Status } from '@shared/types.ts';
 import { type Topic, memberKey, rowMember } from '@shared/topics.ts';
@@ -30,7 +31,7 @@ export function handoverFrom(reply: string): string {
 }
 
 /** HAND-3.2: the line after the Handover, asking the new Session to restate the work before it changes anything. */
-export const RESTATE_LINE = "In your first reply, before you change anything, say what the work is, where it stands and what you'll do first; then carry on.";
+export const RESTATE_LINE = HANDOFF_RESTATE_LINE;
 
 /** HAND-3.2: the new Session's prompt: the Handover, the `Continued from:` line (HAND-4.3 reads it back), the restate line. */
 export function handoffPrompt(handover: string, from: { sessionId: string; title: string }): string {
@@ -158,9 +159,10 @@ export function afterRead(wait: WritingWait, found: FoundReply | null, now: numb
 /**
  * HAND-3.1: the launcher's draft from a Handover: the old Session's directory (HAND-3.4), Harness,
  * model and Effort, its Topic when it's in exactly one Open Topic, no name, Skip permissions as the
- * launcher last had it for that Harness, and the prompt (HAND-3.2).
+ * launcher last had it for that Harness, and the prompt (HAND-3.2). `piece`: what was handed off,
+ * '' for all the work, which the Topic keeping the Handover is told (TOPIC-15.1).
  */
-export function handoffDraft(row: SessionRow, handover: string, settings: Settings, topics: readonly Topic[]): LaunchDraft {
+export function handoffDraft(row: SessionRow, handover: string, settings: Settings, topics: readonly Topic[], piece = ''): LaunchDraft {
   const harness = row.harness;
   const last: LaunchChoices | undefined = settings.lastLaunch?.byHarness?.[harness];
   const effort = row.pendingEffort?.effort ?? row.effort ?? last?.effort ?? null;
@@ -175,7 +177,7 @@ export function handoffDraft(row: SessionRow, handover: string, settings: Settin
     prompt: handoffPrompt(handover, { sessionId: row.id, title: row.title }),
     byHarness: { [harness]: { effort, skipPermissions: last?.skipPermissions ?? harness === 'claude' } },
     ...(open.length === 1 ? { topic: { id: open[0]!.id, via: 'topic' as const } } : {}),
-    continues: { sessionId: row.id, harness, title: row.title, directory },
+    continues: { sessionId: row.id, harness, title: row.title, piece: piece.trim(), directory },
   };
 }
 

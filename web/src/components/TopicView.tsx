@@ -359,15 +359,35 @@ function useActivity(topic: Topic, props: Pick<TopicViewProps, 'topicActivity' |
 
 type EntryProps = { sessions: ReadonlyMap<string, SessionRow>; now: number; act: Act; onOpenSession: TopicViewProps['onOpenSession']; pruned: readonly string[] };
 
-/** TOPIC-12.3: one entry: its time, its words, and its member's name, which acts as its chip does. */
+/**
+ * TOPIC-12.3: one entry: its time, its words, and its member's name, which acts as its chip does.
+ * TOPIC-15.2: an entry holding a Handover has "Show Handover" under its line, showing it in place.
+ */
 function Entry({ entry, topic, sessions, now, act, onOpenSession, pruned }: EntryProps & { entry: ActivityEntry; topic: Topic }) {
+  const [shown, setShown] = useState(false);
+  const handover = entry.kind === 'added' && entry.data.handover?.trim() ? entry.data.handover : null;
   return (
-    <li className="flex min-w-0 items-center gap-2" data-field="activity-entry" data-kind={entry.kind}>
-      <time className="w-14 shrink-0 text-meta text-muted-foreground tabular-nums" dateTime={new Date(entry.at).toISOString()} title={new Date(entry.at).toLocaleString()}>
-        {formatAge(now - entry.at)}
-      </time>
-      <span className="min-w-0 truncate">{activityWords(entry)}</span>
-      {entry.member && <Cite cite={{ key: entry.member, name: entry.data.name ?? '' }} topic={topic} sessions={sessions} pruned={pruned} act={act} onOpenSession={onOpenSession} />}
+    <li className="flex min-w-0 flex-col gap-1" data-field="activity-entry" data-kind={entry.kind}>
+      <div className="flex min-w-0 items-center gap-2">
+        <time className="w-14 shrink-0 text-meta text-muted-foreground tabular-nums" dateTime={new Date(entry.at).toISOString()} title={new Date(entry.at).toLocaleString()}>
+          {formatAge(now - entry.at)}
+        </time>
+        <span className="min-w-0 truncate">{activityWords(entry)}</span>
+        {entry.member && <Cite cite={{ key: entry.member, name: entry.data.name ?? '' }} topic={topic} sessions={sessions} pruned={pruned} act={act} onOpenSession={onOpenSession} />}
+      </div>
+      {handover && (
+        // Under the words, past the time column (w-14 and the gap).
+        <div className="ml-16 flex min-w-0 flex-col gap-1">
+          <Button type="button" variant="quiet" size="line" className="self-start" aria-expanded={shown} data-field="show-handover" onClick={() => setShown(!shown)}>
+            {shown ? 'Hide Handover' : 'Show Handover'}
+          </Button>
+          {shown && (
+            <div className="min-w-0 border-l-2 border-border pl-3 text-body" data-field="handover">
+              <Markdown text={handover} />
+            </div>
+          )}
+        </div>
+      )}
     </li>
   );
 }

@@ -3,12 +3,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { NewMember, Topic, TopicMember, TopicsView } from '../shared/topics.ts';
-import { memberKey, NO_ACTIVITY } from '../shared/topics.ts';
+import { localTime, memberKey, NO_ACTIVITY } from '../shared/topics.ts';
 import type { SessionRow } from '../shared/types.ts';
 import type { WorkSnapshot } from '../shared/work.ts';
 import type { RunOptions } from './exec.ts';
 import type { SessionBrief } from './history.ts';
-import { MAX_INPUT, NOT_INSTALLED, SUMMARY_SCHEMA, SUMMARY_SYSTEM_PROMPT, SUMMARY_TIMEOUT_MS, Summarizer, readAnswer, summaryInput } from './summarizer.ts';
+import { MAX_INPUT, MAX_SUMMARY_HANDOVER, NOT_INSTALLED, SUMMARY_SCHEMA, SUMMARY_SYSTEM_PROMPT, SUMMARY_TIMEOUT_MS, Summarizer, readAnswer, summaryInput } from './summarizer.ts';
 import { TopicStore, Topics, TopicsError } from './topics.ts';
 
 // Times in the input are local (TOPIC-11.4's `at`); the tests read them in UTC.
@@ -152,6 +152,18 @@ describe('TOPIC-11 a summary of the Topic', () => {
     // A member Work doesn't list.
     const gone = summaryInput({ topic, topics: [topic], edges: [], sessions: new Map(), work: { ...WORK, prs: { ...WORK.prs, mine: [] } } as WorkSnapshot, briefs, now: NOW }).text;
     expect(gone).toContain('- State: not in Work (merged, closed, or not on the board)');
+  });
+
+  it("TOPIC-15.5: the input has the Topic's Handover under \"Latest Handover\" after the notes, with when it was kept and where it came from, its first 8,000 characters", () => {
+    const at = NOW - 3_600_000;
+    const input = (text: string) => summaryInput({ topic: topicOf([], { handover: { at, from: 'Rates port', text } }), topics: [], edges: [], sessions: new Map(), work: WORK, briefs: new Map(), now: NOW }).text;
+    const text = input('Rounding is settled: half up.');
+    expect(text).toContain(`## Notes\n\nPort the Rates table.\nRounding: half up.\n\n## Latest Handover\n\nKept ${localTime(at)}, from the Session "Rates port":\n\nRounding is settled: half up.\n`);
+    const long = input(`${'a'.repeat(MAX_SUMMARY_HANDOVER)}TAIL`);
+    expect(long).toContain('a'.repeat(MAX_SUMMARY_HANDOVER));
+    expect(long).not.toContain('TAIL');
+    // None: no section.
+    expect(summaryInput({ topic: topicOf([]), topics: [], edges: [], sessions: new Map(), work: WORK, briefs: new Map(), now: NOW }).text).not.toContain('Latest Handover');
   });
 
   it('TOPIC-11.3: past 60,000 characters, the least recently active Sessions lose their last messages first, then their first prompts', () => {

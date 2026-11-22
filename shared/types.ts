@@ -235,6 +235,8 @@ export interface LaunchContinues {
   sessionId: string;
   harness: Harness;
   title: string;
+  /** TOPIC-15.1: what was handed off ("What to hand off"); '' or absent for all the work. */
+  piece?: string;
 }
 
 /**

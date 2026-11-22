@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { ChatSeen, ChatSeenError } from './chat-seen.ts';
 import { type IncomingMessage, type Server, type ServerResponse, createServer } from 'node:http';
 import { MAX_ATTACHMENT_BYTES } from '../shared/attachments.ts';
+import { handoverText } from '../shared/handoff.ts';
 import { type Settings, SettingsError, type SettingsView } from '../shared/settings.ts';
 import type { AnswerRequest, AnswerResult, ChatPage, EffortSwitchRequest, EffortSwitchResult, EndResult, EndTarget, EscStatus, Harness, HarnessOption, HistoryDetail, HistoryPage, HistoryPeek, LaunchView, ModelSwitchRequest, ModelSwitchResult, RenameResult, ResumeResult, ServerEvent } from '../shared/types.ts';
 import type { PathAnswer } from '../shared/files.ts';
@@ -380,7 +381,9 @@ export function createApp(opts: AppOptions): LookoutApp {
           }
           if (topic) {
             if (typeof v.launchId !== 'string') return json(res, 400, { error: 'A start for a Topic needs its launch id.', field: 'topic' });
-            if (!opts.topicLaunches.expect(v.launchId, topic)) return json(res, 409, { error: 'That launch id is taken.' });
+            // TOPIC-15.1: a start from a Handover: the Topic keeps the Handover as it was started.
+            const kept = continues && typeof v.prompt === 'string' ? { handover: handoverText(v.prompt), from: continues.title, piece: continues.piece ?? '' } : null;
+            if (!opts.topicLaunches.expect(v.launchId, topic, kept)) return json(res, 409, { error: 'That launch id is taken.' });
             launchId = v.launchId;
           }
         }

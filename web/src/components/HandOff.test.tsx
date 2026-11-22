@@ -388,7 +388,7 @@ describe('HAND-3: the new Session', () => {
       effort: 'xhigh',
       skipPermissions: false,
       topic: { id: 't1', via: 'topic' },
-      continues: { sessionId: OLD, harness: 'claude', title: 'Add CSV export to reports' },
+      continues: { sessionId: OLD, harness: 'claude', title: 'Add CSV export to reports', piece: '' },
     });
   });
 
@@ -403,7 +403,17 @@ describe('HAND-3: the new Session', () => {
     expect(within(dialog).getByRole('combobox', { name: 'Effort' })).toHaveValue('high');
     expect(within(dialog).getByRole('combobox', { name: 'Topic' })).toHaveValue('');
     await userEvent.click(within(dialog).getByRole('button', { name: /Start/ }));
-    await waitFor(() => expect(app.client.launch).toHaveBeenCalledWith(expect.objectContaining({ harness: 'codex', continues: { sessionId: OLD, harness: 'codex', title: 'Add CSV export to reports' } }), expect.any(String)));
+    await waitFor(() => expect(app.client.launch).toHaveBeenCalledWith(expect.objectContaining({ harness: 'codex', continues: { sessionId: OLD, harness: 'codex', title: 'Add CSV export to reports', piece: '' } }), expect.any(String)));
+  });
+
+  it('TOPIC-15.1 (support): a Handover of a piece starts with that piece in `continues`, so the Topic that keeps it knows', async () => {
+    const { status, app } = open({}, { topics: [topic(1, [member()])] });
+    await writeHandover("the PDF export's date format");
+    status('busy');
+    status('idle');
+    const dialog = await launcher();
+    await userEvent.click(within(dialog).getByRole('button', { name: /Start/ }));
+    await waitFor(() => expect(app.client.launch).toHaveBeenCalledWith(expect.objectContaining({ topic: { id: 't1', via: 'topic' }, continues: expect.objectContaining({ piece: "the PDF export's date format" }) }), expect.any(String)));
   });
 
   it('HAND-3.2: the prompt is the Handover, then `Continued from: <session id> <title>` on its own line, then the restate line', () => {

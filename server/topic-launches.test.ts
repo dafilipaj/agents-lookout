@@ -155,3 +155,49 @@ it('TOPIC-5.2 (support): a launch id already expected is refused, and the start 
   expect(sessions(topics, a.id)).toHaveLength(1);
   expect(sessions(topics, b.id)).toEqual([]);
 });
+
+it('TOPIC-15.1: a start from a Handover with a Topic picked joins it as "continued from <old title>", and its "added" entry keeps the Handover and the piece; the newest Handover of all the work is the Topic\'s', () => {
+  const { topics, launches, tick } = setup();
+  const a = topics.create('Proposals rates');
+  const piece = '00000000-0000-4000-8000-0000000000bb';
+  const later = '00000000-0000-4000-8000-0000000000cc';
+  launches.expect(LAUNCH, { id: a.id, via: 'topic' }, { handover: 'The rounding is settled: half up.', from: 'Rates port', piece: '' });
+  const first = row({ id: SESSION_ID, pid: 41, title: 'rates-port-2' });
+  launches.started([{ launchId: LAUNCH, sessionId: SESSION_ID }], [first]);
+  launches.observe([first]);
+  expect(sessions(topics, a.id)).toEqual([expect.objectContaining({ ref: { harness: 'claude', sessionId: SESSION_ID }, reason: 'continued from Rates port' })]);
+  const added = topics.activity(a.id, null).find((e) => e.kind === 'added')!;
+  expect(added).toMatchObject({ by: 'lookout', data: { name: 'rates-port-2', reason: 'continued from Rates port', handover: 'The rounding is settled: half up.', from: 'Rates port' } });
+  expect(added.data.piece).toBeUndefined();
+  const view = () => topics.view().topics.find((t) => t.id === a.id)!;
+  expect(view().handover).toEqual({ at: added.at, from: 'Rates port', text: 'The rounding is settled: half up.' });
+
+  // A Handover of a piece is kept on its entry, but isn't the Topic's.
+  tick(60_000);
+  launches.expect(piece, { id: a.id, via: 'topic' }, { handover: 'Fix the flaky export test.', from: 'rates-port-2', piece: 'the flaky export test' });
+  const second = row({ id: 'b1b2c3d4-0000-4000-8000-000000000002', pid: 42, title: 'export test' });
+  launches.started([{ launchId: piece, sessionId: second.id }], [second]);
+  launches.observe([second]);
+  expect(topics.activity(a.id, null).find((e) => e.member?.includes(second.id))!.data).toMatchObject({ handover: 'Fix the flaky export test.', piece: 'the flaky export test' });
+  expect(view().handover?.text).toBe('The rounding is settled: half up.');
+
+  // A newer one of all the work takes its place.
+  tick(60_000);
+  launches.expect(later, { id: a.id, via: 'topic' }, { handover: 'Rates ship behind the flag.', from: 'rates-port-2', piece: '' });
+  const third = row({ id: 'c1b2c3d4-0000-4000-8000-000000000003', pid: 43, title: 'rates-port-3' });
+  launches.started([{ launchId: later, sessionId: third.id }], [third]);
+  launches.observe([third]);
+  expect(view().handover).toMatchObject({ from: 'rates-port-2', text: 'Rates ship behind the flag.' });
+});
+
+it('TOPIC-15.1: a start from a Handover with nothing left of it after its own lines joins with its reason and keeps no Handover; a start without one joins as TOPIC-5.2 says', () => {
+  const { topics, launches } = setup();
+  const a = topics.create('Proposals rates');
+  launches.expect(LAUNCH, { id: a.id, via: 'topic' }, { handover: '', from: 'Rates port', piece: '' });
+  const r = row({ id: SESSION_ID, pid: 41 });
+  launches.started([{ launchId: LAUNCH, sessionId: SESSION_ID }], [r]);
+  launches.observe([r]);
+  expect(sessions(topics, a.id)).toEqual([expect.objectContaining({ reason: 'continued from Rates port' })]);
+  expect(topics.activity(a.id, null).find((e) => e.kind === 'added')!.data.handover).toBeUndefined();
+  expect(topics.view().topics.find((t) => t.id === a.id)!.handover).toBeNull();
+});

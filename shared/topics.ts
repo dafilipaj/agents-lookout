@@ -97,6 +97,15 @@ export interface Topic {
   /** TOPIC-11.10: activity since the summary's input, other than summaries; and how many earlier summaries are kept. */
   changesSinceSummary: number;
   earlierSummaries: number;
+  /** TOPIC-15.3: its newest kept Handover of all the work; null or absent for none. */
+  handover?: TopicHandover | null;
+}
+
+/** TOPIC-15.3: a Handover a Topic keeps (TOPIC-15.1): when it was kept, the old Session's title, its text. */
+export interface TopicHandover {
+  at: number;
+  from: string;
+  text: string;
 }
 
 /** TOPIC-1.6: how a Topic ended. */
@@ -150,6 +159,13 @@ export interface ActivityData {
   to?: string | null;
   /** TOPIC-12.1: a Done Session's note. */
   note?: string | null;
+  /**
+   * TOPIC-15.1: on an "added" entry, the Handover the Session was started with, the old Session's
+   * title, and the piece it covers (absent for all the work).
+   */
+  handover?: string;
+  from?: string;
+  piece?: string;
 }
 
 /** TOPIC-12.1: a Done note is kept to this many characters. */
@@ -200,7 +216,8 @@ export function activityWords(e: ActivityEntry): string {
     case 'summary':
       return 'Summary written';
     case 'added':
-      return d.reason ? `Added ${name}, ${d.reason}` : `Added ${name}`;
+      // TOPIC-15.2: a Handover for a piece says the piece.
+      return `Added ${name}${d.reason ? `, ${d.reason}` : ''}${d.handover && d.piece ? `, a piece: ${d.piece}` : ''}`;
     case 'removed':
       return `Removed ${name}`;
     case 'gone':
@@ -437,12 +454,23 @@ export const acceptedReason = (source: RecommendationSource): string => (source 
 /** TOPIC-5.2: the reason recorded on a Session Lookout added because it started it. */
 export const STARTED_REASON: Record<LaunchTopic['via'], string> = { topic: 'started from this Topic', task: 'started on its Task' };
 
+/** TOPIC-15.1: the reason recorded on a Session started from a Handover, in the Topic that keeps it. */
+export const continuedReason = (from: string): string => `continued from ${from.replace(/\s+/g, ' ').trim()}`;
+
+/** Local time, `YYYY-MM-DD HH:MM`: the summary's `at` (TOPIC-11.4), and when a Handover was kept (TOPIC-15.3). */
+export function localTime(ms: number): string {
+  const d = new Date(ms);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 /**
  * TOPIC-5.1: the launcher's prompt for a Session started from a Topic, a handover: when it has a
  * summary that isn't out of date, its `what`, `state` with `why`, the three newest `recent` points
  * with their dates, `open`, `next` with each one's trigger, and `watch`; else the notes' first
- * paragraph. Then each Task member's URL, `Topic: <id> <title>`, and the line asking the agent to
- * restate before it changes anything.
+ * paragraph. Then the Topic's Handover when it's newer than that summary, or there's none (TOPIC-15.3).
+ * Then each Task member's URL, `Topic: <id> <title>`, and the line asking the agent to restate before
+ * it changes anything.
  */
 export function topicPrompt(topic: Topic): string {
   const parts: string[] = [];
@@ -462,6 +490,10 @@ export function topicPrompt(topic: Topic): string {
   } else {
     const first = topic.notes.trim().split(/\n\s*\n/)[0]?.trim();
     if (first) parts.push(first);
+  }
+  const handover = topic.handover;
+  if (handover?.text.trim() && (!summary || handover.at > topic.summary!.writtenAt)) {
+    parts.push(`Latest Handover (${localTime(handover.at)}, from ${handover.from.replace(/\s+/g, ' ').trim()}):\n${handover.text.trim()}`);
   }
   const tasks = topic.members.flatMap((m) => (m.kind === 'task' ? [m.snapshot.url] : []));
   if (tasks.length) parts.push(tasks.join('\n'));

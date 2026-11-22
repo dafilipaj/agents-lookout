@@ -44,7 +44,7 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Finding**: A structural problem Lookout reports in a repo, of one kind: a *Cycle* (files that import each other in a circle), a *Hub* (a file that many files import and that imports many itself), a *God file* (a large file imported from many Areas) or a *Hotspot* (a large file that changes often). Against the repo a week earlier it's new, growing, steady, shrinking or gone. One you mark as *Known* stays quiet until it grows. See ARCH-2 and ARCH-3.9.
 
-**Handover**: What a Session writes, when you hand off its work (HAND), for a new Session to carry on with: all of its work, or a piece you name. It's written to the new Session, not as a summary: the goal, where things stand, the files and links it needs, what's settled and what was ruled out, the scope and the first move. It becomes the new Session's first prompt, and the two Sessions are linked: the new one is *Continued from* the old, the old *Continued in* the new.
+**Handover**: What a Session writes, when you hand off its work (HAND), for a new Session to carry on with: all of its work, or a piece you name. It's written to the new Session, not as a summary: the goal, where things stand, the files and links it needs, what's settled and what was ruled out, the scope and the first move. It becomes the new Session's first prompt, and the two Sessions are linked: the new one is *Continued from* the old, the old *Continued in* the new. Started in a Topic, it's kept in that Topic, and the newest one of all the work goes to the next Session started from it (TOPIC-15).
 
 **Harness**: The agent CLI a Session runs: Claude Code or Codex. (Fleet also knows pi; not a goal for Lookout.)
 

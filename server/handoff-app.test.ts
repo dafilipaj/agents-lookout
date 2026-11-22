@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Socket } from 'node:net';
 import { afterEach, expect, it, vi } from 'vitest';
+import { HANDOFF_RESTATE_LINE as RESTATE_LINE } from '../shared/handoff.ts';
 import { defaultSettings } from '../shared/settings.ts';
 import type { ChatPage, LaunchView } from '../shared/types.ts';
 import { createApp } from './app.ts';
@@ -24,7 +25,7 @@ const LAUNCH = '00000000-0000-4000-8000-0000000000aa';
 const CONTINUES = { sessionId: OLD, harness: 'claude', title: 'Add CSV export to reports' };
 
 /** Real HTTP handlers over in-memory sockets, with real hand-offs in a temporary directory. */
-function setup(opts: { start?: (body: unknown) => Promise<LaunchView>; latest?: (id: string) => Promise<ChatPage> } = {}) {
+function setup(opts: { start?: (body: unknown) => Promise<LaunchView>; latest?: (id: string) => Promise<ChatPage>; topicLaunches?: NonNullable<Parameters<typeof createApp>[0]['topicLaunches']> } = {}) {
   const unused = async (): Promise<never> => {
     throw new Error('unused');
   };
@@ -48,6 +49,7 @@ function setup(opts: { start?: (body: unknown) => Promise<LaunchView>; latest?: 
     viewer: { watch: () => {}, drop: () => {}, send: unused, earlier: unused, ...(opts.latest ? { latest: opts.latest } : {}) },
     sessions: { end: unused, answer: unused, stop: unused, rename: unused, switchModel: unused, switchEffort: unused },
     handoffLaunches,
+    ...(opts.topicLaunches ? { topicLaunches: opts.topicLaunches } : {}),
     files: { check: unused },
     history: { find: unused, detail: unused, peek: unused, resume: unused },
     staticDir: null,
@@ -81,7 +83,7 @@ it('HAND-3.3: a start from a Handover is expected under its launch id before the
   const ok = setup();
   const started = await ok.exchange('POST', '/api/launch', { directory: '/x', harness: 'claude', model: '', name: '', prompt: 'Handover', launchId: LAUNCH, continues: CONTINUES });
   expect(started.status).toBe(200);
-  expect(ok.expect).toHaveBeenCalledWith(LAUNCH, CONTINUES);
+  expect(ok.expect).toHaveBeenCalledWith(LAUNCH, { ...CONTINUES, piece: '' });
   expect(ok.expect.mock.invocationCallOrder[0]).toBeLessThan(ok.start.mock.invocationCallOrder[0]!);
   expect(ok.forget).not.toHaveBeenCalled();
 
@@ -112,4 +114,16 @@ it('HAND-2.3: GET /api/sessions/<id>/latest reads the latest entries of a chat n
   expect(await t.exchange('GET', '/api/sessions/gone/latest')).toEqual({ status: 404, body: { error: "This Session isn't running, so its chat can't be read.", field: null } });
   // A read, but the guard still checks where it comes from.
   expect((await t.exchange('GET', `/api/sessions/${OLD}/latest`, undefined, { origin: 'https://evil.example' })).status).toBe(403);
+});
+
+it("TOPIC-15.1: a start from a Handover with a Topic picked hands the Topic's start the Handover as it was started, without its own lines, with the old title and the piece", async () => {
+  const topicLaunches = { check: vi.fn((t: unknown) => t as { id: string; via: 'topic' }), expect: vi.fn(() => true), forget: vi.fn() };
+  const t = setup({ topicLaunches });
+  const prompt = `Rounding is settled: half up.\nShip behind the flag.\n\nContinued from: ${OLD} Add CSV export to reports\n${RESTATE_LINE}`;
+  const started = await t.exchange('POST', '/api/launch', { directory: '/x', harness: 'claude', model: '', name: '', prompt, launchId: LAUNCH, topic: { id: 'topic-1', via: 'topic' }, continues: { ...CONTINUES, piece: ' the export ' } });
+  expect(started.status).toBe(200);
+  expect(topicLaunches.expect).toHaveBeenCalledWith(LAUNCH, { id: 'topic-1', via: 'topic' }, { handover: 'Rounding is settled: half up.\nShip behind the flag.', from: 'Add CSV export to reports', piece: 'the export' });
+  // A start for a Topic without a Handover keeps nothing.
+  await t.exchange('POST', '/api/launch', { directory: '/x', harness: 'claude', model: '', name: '', prompt: 'Go', launchId: '00000000-0000-4000-8000-0000000000bb', topic: { id: 'topic-1', via: 'topic' } });
+  expect(topicLaunches.expect).toHaveBeenLastCalledWith('00000000-0000-4000-8000-0000000000bb', { id: 'topic-1', via: 'topic' }, null);
 });

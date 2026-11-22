@@ -2,6 +2,7 @@ import { chmodSync, mkdirSync } from 'node:fs';
 import {
   type ActivityEntry,
   activityWords,
+  localTime,
   MAX_OPEN_POINTS,
   MAX_SUMMARY_RUNS,
   MAX_WATCH_POINTS,
@@ -132,16 +133,12 @@ export interface InputContext {
   now: number;
 }
 
+/** TOPIC-15.5: the Topic's Handover is sent with its first this many characters. */
+export const MAX_SUMMARY_HANDOVER = 8_000;
 /** TOPIC-11.3: the activity sent, at most; past the limit it goes down to `MIN_ACTIVITY` first. */
 export const MAX_ACTIVITY = 80;
 const MIN_ACTIVITY = 20;
 
-/** Local time, `YYYY-MM-DD HH:MM`, the form the summary's `at` answers in (TOPIC-11.4). */
-export function localTime(ms: number): string {
-  const d = new Date(ms);
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
-}
 const at = (ms: number | null) => (ms === null ? 'unknown' : localTime(ms));
 const quote = (text: string) => text.split(/\r?\n/).map((l) => `> ${l}`).join('\n');
 
@@ -175,6 +172,9 @@ export function summaryInput(ctx: InputContext): { text: string; keys: Map<strin
   const head = (): string[] => {
     const out = [`# Topic: ${topic.title}`, '', `Now: ${at(ctx.now)}, local time. ${topic.state === 'archived' ? 'The Topic is archived.' : 'The Topic is open.'}`, ''];
     out.push('## Notes', '', topic.notes.trim() ? topic.notes.trim() : '(none)', '');
+    // TOPIC-15.5: the Topic's newest Handover of all the work, so a summary written after it carries it on.
+    const handover = topic.handover;
+    if (handover?.text.trim()) out.push('## Latest Handover', '', `Kept ${localTime(handover.at)}, from the Session "${handover.from}":`, '', handover.text.trim().slice(0, MAX_SUMMARY_HANDOVER).trim(), '');
     // An Edge's label reads from its first Topic to its second (TOPIC-6.1).
     const edges = ctx.edges.flatMap((e) => (e.from === topic.id ? [`- This Topic ${e.label ?? 'is linked to'} "${title(e.to)}"`] : e.to === topic.id ? [`- "${title(e.from)}" ${e.label ?? 'is linked to'} this Topic`] : []));
     if (edges.length) out.push('## Related Topics', '', ...edges, '');

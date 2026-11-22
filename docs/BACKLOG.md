@@ -116,6 +116,13 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
 - **How:** no new reads: the Summary's reads already fetch it, so the store updates `members.snapshot` (or a new column) after each successful read. Open: whether a Session that's never been in a Summary should be read once on its own before it ages out, and how long a snapshot may grow.
 - **Added:** 2026-11-02, by Dario, after asking what happens to a Topic's members when their Sessions are deleted from disk.
 
+## Zoom and pan in the Topic graph (TOPIC)
+
+- **What:** zoom with pinch or Ctrl/⌘ and the wheel, around the pointer, and with + and − buttons and keys, about 25% to 200%; pan by dragging the empty canvas or scrolling with two fingers, while dragging a node still moves it (TOPIC-7.2) and a handle still draws an Edge (TOPIC-7.4); "Fit" (and `0`) shows every node; focus on a Topic by zooming to it and the Topics it has Edges with. Built on the SVG's own `viewBox`, no library. To decide when specced: whether the zoom and centre are kept across reloads, and whether a minimap earns its place.
+- **Why:** today the graph (TOPIC-7, `TopicGraph.tsx`) is an SVG at a fixed 1:1 scale inside a scrolling box, reached by scrollbars only (Dario 2026-11-04: "I lack ability to zoom in or out and to pan around and focus on part of graph").
+- **Not now:** Dario 2026-11-22: "graph alone is not of great value, at least not yet". What Topics give him is a fast way to pass a long-running piece of work's context to a new Session, so that comes first. Was Plan item 33.
+- **Added:** 2026-11-04, by Dario; moved here from the Plan 2026-11-22.
+
 ## Active and Quiet Topics as a filter (TOPIC)
 
 - **What:** a filter in the Topics tab and the graph: Active (a live member Session, or activity in the last 7 days) or Quiet (the rest). The graph can dim Quiet nodes while it shows all.

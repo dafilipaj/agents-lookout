@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { MAX_KEPT_PIECE } from '../shared/handoff.ts';
 import type { Harness, HandoffLink, LaunchContinues, SessionRow } from '../shared/types.ts';
 import type { History } from './history.ts';
 import type { SessionMonitor } from './monitor.ts';
@@ -294,7 +295,9 @@ export class HandoffLaunches {
     const c = continues as Record<string, unknown>;
     const h = harness(c?.harness);
     if (typeof c !== 'object' || typeof c.sessionId !== 'string' || !SESSION_ID.test(c.sessionId) || !h) throw new Error('Invalid Session to continue.');
-    return { sessionId: c.sessionId, harness: h, title: title(c.title) ?? c.sessionId };
+    // TOPIC-15.1: the piece handed off, kept with the Handover by the Topic the start joins.
+    const piece = typeof c.piece === 'string' ? c.piece.trim().slice(0, MAX_KEPT_PIECE).trim() : '';
+    return { sessionId: c.sessionId, harness: h, title: title(c.title) ?? c.sessionId, piece };
   }
 
   /** Before the start is sent, so a Fleet report that beats the answer still finds it. False for a launch id already expected. */

@@ -7,6 +7,7 @@ import type { OutputItem } from '../shared/library.ts';
 import {
   ACTIVITY_PAGE,
   type ActivityData,
+  type TopicHandover,
   type ActivityEntry,
   type ActivityKind,
   MAX_CLOSING,
@@ -581,6 +582,7 @@ export class TopicStore {
   /** Every Topic with its members and place, most recently changed first (TOPIC-3.2). Outputs are joined by `Topics`. */
   list(): StoredTopic[] {
     const topics = this.db.prepare(`select ${TOPIC_COLUMNS} from topics`).all() as unknown as TopicRow[];
+    const handovers = this.handovers();
     const members = this.db.prepare('select topic_id, kind, ref, snapshot, added_at, reason from members order by added_at, kind, ref').all() as unknown as MemberRow[];
     const byTopic = new Map<string, TopicMember[]>();
     for (const m of members) {
@@ -612,8 +614,30 @@ export class TopicStore {
         newCount: 0,
         changesSinceSummary: 0,
         earlierSummaries: 0,
+        handover: handovers.get(t.id) ?? null,
       })),
     ).map(({ outputs: _o, summary: _s, summaryStale: _st, ...t }) => t);
+  }
+
+  /**
+   * TOPIC-15.3: each Topic's newest kept Handover of all the work: the newest "added" entry holding a
+   * Handover and no piece (TOPIC-15.1).
+   */
+  private handovers(): Map<string, TopicHandover> {
+    const rows = this.db
+      .prepare(
+        `select topic_id, at, data from events
+         where kind = 'added' and json_extract(data, '$.handover') is not null and coalesce(json_extract(data, '$.piece'), '') = ''
+         order by id`,
+      )
+      .all() as unknown as { topic_id: string; at: number; data: string }[];
+    const out = new Map<string, TopicHandover>();
+    for (const r of rows) {
+      const d = jsonOr<ActivityData>(r.data, {});
+      if (typeof d.handover !== 'string' || !d.handover.trim()) continue;
+      out.set(r.topic_id, { at: r.at, from: d.from?.trim() || 'a Session', text: d.handover });
+    }
+    return out;
   }
 
   /**
@@ -783,7 +807,7 @@ export class TopicStore {
    * TOPIC-2.3: adds the member with its snapshot; false when it's already a member, which changes
    * nothing. A membership change is a change (TOPIC-3.2).
    */
-  addMember(id: string, member: NewMember, reason = 'added by hand', by: 'you' | 'lookout' = 'you'): boolean {
+  addMember(id: string, member: NewMember, reason = 'added by hand', by: 'you' | 'lookout' = 'you', kept: KeptHandover | null = null): boolean {
     return this.transaction(() => {
       this.require(id);
       const at = this.now();
@@ -791,7 +815,9 @@ export class TopicStore {
         .prepare('insert or ignore into members (topic_id, kind, ref, snapshot, added_at, reason) values (?, ?, ?, ?, ?, ?)')
         .run(id, member.kind, refText(member.kind, member.ref), JSON.stringify(member.snapshot), at, reason);
       if (Number(r.changes) === 0) return false;
-      this.log(id, 'added', `${member.kind}:${refText(member.kind, member.ref)}`, by, { name: memberName(member), reason });
+      // TOPIC-15.1: a Session started from a Handover keeps it on its "added" entry.
+      const handover = kept?.handover ? { handover: kept.handover, from: kept.from, ...(kept.piece ? { piece: kept.piece } : {}) } : {};
+      this.log(id, 'added', `${member.kind}:${refText(member.kind, member.ref)}`, by, { name: memberName(member), reason, ...handover });
       this.db.prepare('update topics set updated_at = ? where id = ?').run(at, id);
       // TOPIC-9.4: added by hand to the Topic it was recommended for, the recommendation was right.
       this.db.prepare("update recommendations set status = 'accepted' where kind = ? and ref = ? and topic_id = ? and status = 'pending'").run(member.kind, refText(member.kind, member.ref), id);
@@ -1205,6 +1231,13 @@ function jsonOr<T>(text: string, fallback: T): T {
   }
 }
 
+/** TOPIC-15.1: what a Topic keeps of a start from a Handover: the Handover as started, the old Session's title, and the piece ('' for all the work). */
+export interface KeptHandover {
+  handover: string;
+  from: string;
+  piece: string;
+}
+
 function toEntry(r: EventRow): ActivityEntry {
   const data = jsonOr<ActivityData>(r.data, {});
   return { id: r.id, at: r.at, kind: r.kind, member: r.member, by: r.by, data };
@@ -1472,11 +1505,14 @@ export class Topics {
     return this.last.topics.some((t) => t.id === id);
   }
 
-  /** TOPIC-5.2: a Session Lookout started for this Topic, with the reason it was added; false when it already was a member. */
-  addStarted(id: string, member: NewMember, reason: string): boolean {
+  /**
+   * TOPIC-5.2: a Session Lookout started for this Topic, with the reason it was added; false when it
+   * already was a member. TOPIC-15.1: `kept`, the Handover it was started from, which the Topic keeps.
+   */
+  addStarted(id: string, member: NewMember, reason: string, kept: KeptHandover | null = null): boolean {
     return this.write((s) =>
       s.transaction(() => {
-        const added = s.addMember(id, member, reason, 'lookout');
+        const added = s.addMember(id, member, reason, 'lookout', kept);
         s.forgetCandidate(member.kind, refText(member.kind, member.ref));
         return added;
       }),

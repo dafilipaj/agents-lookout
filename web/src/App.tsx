@@ -1071,7 +1071,7 @@ export function App({ client }: { client: LookoutClient }) {
     (row: SessionRow, opener: HTMLElement | null) => {
       const wait = handoffWaits.get(row.id);
       if (wait?.state !== 'ready' || launcherOpen) return;
-      setWorkDraft(handoffDraft(row, wait.handover, state.settings, state.topics?.topics ?? []));
+      setWorkDraft(handoffDraft(row, wait.handover, state.settings, state.topics?.topics ?? [], wait.piece));
       launchedFromWork.current = false;
       launchedFromTopic.current = opener;
       cancelHandoff(row);

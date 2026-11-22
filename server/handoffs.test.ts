@@ -96,8 +96,12 @@ it("HAND-3.3: the request's `continues` is checked: a session id and a Harness, 
   const t = setup();
   expect(t.launches.check(undefined)).toBeNull();
   expect(t.launches.check(null)).toBeNull();
-  expect(t.launches.check({ sessionId: OLD, harness: 'codex', title: ' Fix\nit ' })).toEqual({ sessionId: OLD, harness: 'codex', title: 'Fix it' });
-  expect(t.launches.check({ sessionId: OLD, harness: 'claude' })).toEqual({ sessionId: OLD, harness: 'claude', title: OLD });
+  expect(t.launches.check({ sessionId: OLD, harness: 'codex', title: ' Fix\nit ' })).toEqual({ sessionId: OLD, harness: 'codex', title: 'Fix it', piece: '' });
+  expect(t.launches.check({ sessionId: OLD, harness: 'claude' })).toEqual({ sessionId: OLD, harness: 'claude', title: OLD, piece: '' });
+  // TOPIC-15.1: the piece handed off, trimmed and capped; anything but a string is all the work.
+  expect(t.launches.check({ sessionId: OLD, harness: 'claude', piece: '  the export test ' })).toMatchObject({ piece: 'the export test' });
+  expect(t.launches.check({ sessionId: OLD, harness: 'claude', piece: 'x'.repeat(5_000) })!.piece).toHaveLength(2_000);
+  expect(t.launches.check({ sessionId: OLD, harness: 'claude', piece: 7 })).toMatchObject({ piece: '' });
   for (const bad of [{}, 'x', { sessionId: '../x', harness: 'claude' }, { sessionId: OLD, harness: 'pi' }, { sessionId: OLD }]) {
     expect(() => t.launches.check(bad)).toThrow('Invalid Session to continue.');
   }

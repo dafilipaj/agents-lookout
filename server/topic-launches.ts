@@ -1,6 +1,6 @@
-import { STARTED_REASON, rowMember } from '../shared/topics.ts';
+import { STARTED_REASON, continuedReason, rowMember } from '../shared/topics.ts';
 import type { LaunchTopic, SessionRow } from '../shared/types.ts';
-import { TopicsError } from './topics.ts';
+import { type KeptHandover, TopicsError } from './topics.ts';
 
 /** A start Fleet never reports (failed, dismissed) is forgotten after this long. */
 export const TOPIC_LAUNCH_TTL_MS = 60 * 60_000;
@@ -9,8 +9,8 @@ export interface TopicLaunchesOptions {
   topics: {
     /** Whether the Topic exists, in either state. */
     has(id: string): boolean;
-    /** TOPIC-5.2: adds the Session with its reason; false when it already was a member. */
-    addStarted(id: string, member: NonNullable<ReturnType<typeof rowMember>>, reason: string): boolean;
+    /** TOPIC-5.2: adds the Session with its reason; false when it already was a member. TOPIC-15.1: with the Handover it was started from. */
+    addStarted(id: string, member: NonNullable<ReturnType<typeof rowMember>>, reason: string, kept?: KeptHandover | null): boolean;
   };
   now?: () => number;
   warn?: (message: string) => void;
@@ -18,6 +18,8 @@ export interface TopicLaunchesOptions {
 
 interface Expected {
   topic: LaunchTopic;
+  /** TOPIC-15.1: a start from a Handover: what the Topic keeps of it. */
+  kept: KeptHandover | null;
   at: number;
   /** Set once the launcher reports the start: the Session's row, by Harness and process. */
   row: { harness: string; pid: number } | null;
@@ -51,9 +53,9 @@ export class TopicLaunches {
    * Before the start is sent, so a Fleet report that beats the answer still finds it. False for a
    * launch id already expected: that start is refused, and the one it would replace is kept.
    */
-  expect(launchId: string, topic: LaunchTopic): boolean {
+  expect(launchId: string, topic: LaunchTopic, kept: KeptHandover | null = null): boolean {
     if (this.expected.has(launchId)) return false;
-    this.expected.set(launchId, { topic, at: this.now(), row: null });
+    this.expected.set(launchId, { topic, kept, at: this.now(), row: null });
     return true;
   }
 
@@ -96,7 +98,9 @@ export class TopicLaunches {
       if (!member) continue;
       this.expected.delete(launchId);
       try {
-        if (this.opts.topics.has(e.topic.id)) this.opts.topics.addStarted(e.topic.id, member, STARTED_REASON[e.topic.via]);
+        // TOPIC-15.1: a start from a Handover joins as "continued from <old title>", and its Topic keeps the Handover.
+        const reason = e.kept ? continuedReason(e.kept.from) : STARTED_REASON[e.topic.via];
+        if (this.opts.topics.has(e.topic.id)) this.opts.topics.addStarted(e.topic.id, member, reason, e.kept);
       } catch (err) {
         // TOPIC-8.4: a store that fails here leaves the rest of Lookout running.
         (this.opts.warn ?? console.error)(`lookout: adding a started Session to its Topic failed: ${err instanceof Error ? err.message : String(err)}`);

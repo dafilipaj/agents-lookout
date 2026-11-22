@@ -1,5 +1,5 @@
 import type { OutputItem } from '@shared/library.ts';
-import { type ActivityEntry, type NewMember, RESTATE_LINE, type Recommendation, type Topic, type TopicMember, type TopicSummary, memberKey, NO_ACTIVITY } from '@shared/topics.ts';
+import { type ActivityEntry, type NewMember, RESTATE_LINE, type Recommendation, type Topic, type TopicMember, type TopicSummary, localTime, memberKey, NO_ACTIVITY } from '@shared/topics.ts';
 import type { UsageSnapshot } from '@shared/usage.ts';
 import type { HistoryItem } from '@shared/types.ts';
 import type { PrSection, TaskSection, WorkPr, WorkSnapshot, WorkTask } from '@shared/work.ts';
@@ -1717,5 +1717,114 @@ describe('the Topic view in tabs (TOPIC-10.7, TOPIC-10.8)', () => {
     const again = await openTopics();
     await openView(again, 'Proposals');
     await waitFor(() => expect(tabs().map((t) => t.getAttribute('aria-label'))).toEqual(['Overview', 'Members 1', 'Activity 1 new']));
+  });
+});
+
+describe('Handovers in a Topic (TOPIC-15)', () => {
+  const SUMMARY_AT = NOW - 3_600_000;
+  const SUMMARY: TopicSummary = {
+    answer: { what: 'Sharpen the anvil, part by part.', state: 'in progress', why: 'The anvil PR is a draft.', open: [], recent: [], next: [], openMore: 0, watch: [] },
+    writtenAt: SUMMARY_AT,
+    model: 'claude-sonnet-5-5',
+    costUsd: 0.04,
+  };
+  const HANDOVER = { at: NOW - 60_000, from: 'rates-port', text: 'Rounding is settled: half up.\n\nNext: ship behind the flag.' };
+  const latest = (h: { at: number; from: string; text: string }) => `Latest Handover (${localTime(h.at)}, from ${h.from}):\n${h.text}`;
+  const dialog = () => screen.getByRole('dialog', { name: 'New Session' });
+  const prompt = () => within(dialog()).getByLabelText('Prompt');
+  const startButton = () => within(topicView()).getByRole('button', { name: 'Start Session' });
+
+  it('TOPIC-15.2: an entry holding a Handover says where it came from, and the piece for one; "Show Handover" shows it in place as Markdown and "Hide Handover" folds it, in Activity and in Since you last looked', async () => {
+    const added = (n: number, data: ActivityEntry['data']): ActivityEntry => ({ id: n, at: Date.now() - (10 - n) * 60_000, kind: 'added', member: memberKey('session', SESSION.ref), by: 'lookout', data });
+    const whole = added(2, { name: 'rates-port-2', reason: 'continued from rates-port', from: 'rates-port', handover: '**Rounding** is settled.' });
+    const piece = added(3, { name: 'export test', reason: 'continued from rates-port-2', from: 'rates-port-2', handover: 'Fix the flaky export test.', piece: 'the flaky export test' });
+    const plain = added(1, { name: 'rates-port', reason: 'added by hand' });
+    // Ids of their own: what a view sent as seen is kept for the page's life.
+    openApp([topic(91, { title: 'Rates', members: [member(SESSION)], seenUpto: 1, newCount: 2, lastEntryId: 3 })], work(), { activity: { [id(91)]: [piece, whole, plain] } });
+    const user = await openTopics();
+    const view = await openView(user, 'Rates');
+    const since = await within(view).findByRole('region', { name: 'Since you last looked' });
+    const sinceEntries = () => [...since.querySelectorAll<HTMLElement>('[data-field="activity-entry"]')];
+    await waitFor(() => expect(sinceEntries()).toHaveLength(2));
+    expect(sinceEntries()[0]).toHaveTextContent('Added export test, continued from rates-port-2, a piece: the flaky export test');
+    expect(sinceEntries()[1]).toHaveTextContent('Added rates-port-2, continued from rates-port');
+    const show = within(sinceEntries()[1]!).getByRole('button', { name: 'Show Handover' });
+    expect(show).toHaveAttribute('aria-expanded', 'false');
+    expect(sinceEntries()[1]!.querySelector('[data-field="handover"]')).toBeNull();
+    await user.click(show);
+    const shown = sinceEntries()[1]!.querySelector<HTMLElement>('[data-field="handover"]')!;
+    expect(within(shown).getByText('Rounding').tagName).toBe('STRONG');
+    await user.click(within(sinceEntries()[1]!).getByRole('button', { name: 'Hide Handover' }));
+    expect(sinceEntries()[1]!.querySelector('[data-field="handover"]')).toBeNull();
+
+    await showTab(user, 'Activity');
+    const activity = within(view).getByRole('tabpanel', { name: /^Activity/ });
+    await waitFor(() => expect(activity.querySelectorAll('[data-field="activity-entry"]')).toHaveLength(3));
+    const rows = [...activity.querySelectorAll<HTMLElement>('[data-field="activity-entry"]')];
+    expect(within(rows[0]!).getByRole('button', { name: 'Show Handover' })).toBeInTheDocument();
+    // An entry with no Handover has no button.
+    expect(within(rows[2]!).queryByRole('button', { name: /Handover/ })).toBeNull();
+    await user.click(within(rows[0]!).getByRole('button', { name: 'Show Handover' }));
+    expect(rows[0]!.querySelector('[data-field="handover"]')).toHaveTextContent('Fix the flaky export test.');
+  });
+
+  it("TOPIC-15.3: Start Session sends the Topic's Handover after the notes when the summary is out of date or missing, after the summary when it's newer, and not when the summary is newer", async () => {
+    openApp([
+      topic(1, { title: 'Stale', notes: 'Sharpen the corners.\n\nMore.', summary: SUMMARY, summaryStale: true, handover: HANDOVER }),
+      topic(2, { title: 'Newer', summary: SUMMARY, handover: HANDOVER }),
+      topic(3, { title: 'Older', summary: SUMMARY, handover: { ...HANDOVER, at: SUMMARY_AT - 60_000 } }),
+    ]);
+    const user = await openTopics();
+    const started = async (title: string) => {
+      await openView(user, title);
+      await user.click(startButton());
+      const value = (prompt() as HTMLTextAreaElement).value;
+      await user.keyboard('{Escape}');
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      return value;
+    };
+    expect(await started('Stale')).toBe(['Sharpen the corners.', latest(HANDOVER), `Topic: ${id(1)} Stale`, RESTATE_LINE].join('\n\n'));
+    expect(await started('Newer')).toBe(['Sharpen the anvil, part by part.', 'State: in progress. The anvil PR is a draft.', latest(HANDOVER), `Topic: ${id(2)} Newer`, RESTATE_LINE].join('\n\n'));
+    expect(await started('Older')).toBe(['Sharpen the anvil, part by part.', 'State: in progress. The anvil PR is a draft.', `Topic: ${id(3)} Older`, RESTATE_LINE].join('\n\n'));
+  });
+
+  it("TOPIC-15.4: in N's launcher, picking a Topic puts its prompt at the top with what you typed under it; another swaps it, None takes it out; once you change it the field leaves the prompt alone until it's empty; a Topic view's launcher keeps its prompt", async () => {
+    const anvil = topic(1, { title: 'Anvil', notes: 'Sharpen the corners.', handover: HANDOVER });
+    const lanterns = topic(2, { title: 'Lanterns', notes: 'Light them all.' });
+    openApp([anvil, lanterns]);
+    const user = await openTopics();
+    const anvilText = ['Sharpen the corners.', latest(HANDOVER), `Topic: ${id(1)} Anvil`, RESTATE_LINE].join('\n\n');
+    const lanternsText = ['Light them all.', `Topic: ${id(2)} Lanterns`, RESTATE_LINE].join('\n\n');
+    await user.keyboard('n');
+    await user.type(await screen.findByLabelText('Prompt'), 'Start with the corners.');
+    const field = () => within(dialog()).getByLabelText('Topic');
+    await user.selectOptions(field(), id(1));
+    expect(prompt()).toHaveValue(`${anvilText}\n\nStart with the corners.`);
+    await user.selectOptions(field(), id(2));
+    expect(prompt()).toHaveValue(`${lanternsText}\n\nStart with the corners.`);
+    await user.selectOptions(field(), '');
+    expect(prompt()).toHaveValue('Start with the corners.');
+
+    // Changed what the field put there: the field leaves the prompt alone.
+    await user.selectOptions(field(), id(1));
+    await user.type(prompt(), '{Home}{Control>}{Home}{/Control}Read this first. ');
+    const edited = (prompt() as HTMLTextAreaElement).value;
+    expect(edited.startsWith('Read this first. ')).toBe(true);
+    await user.selectOptions(field(), id(2));
+    expect(prompt()).toHaveValue(edited);
+    expect(field()).toHaveValue(id(2));
+    // Until the prompt is empty again.
+    await user.clear(prompt());
+    await user.selectOptions(field(), id(1));
+    expect(prompt()).toHaveValue(anvilText);
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+
+    // A Topic view's launcher: the field only changes the Topic.
+    await openView(user, 'Lanterns');
+    await user.click(startButton());
+    expect(prompt()).toHaveValue(lanternsText);
+    await user.selectOptions(field(), id(1));
+    expect(prompt()).toHaveValue(lanternsText);
   });
 });
