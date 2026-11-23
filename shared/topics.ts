@@ -1,6 +1,6 @@
 import type { OutputItem } from './library.ts';
-import type { Harness, HistoryItem, LaunchTopic, SessionRow } from './types.ts';
-import type { WorkPr, WorkTask } from './work.ts';
+import type { Harness, HistoryItem, LaunchTopic, SessionRow, Status } from './types.ts';
+import { CI_LABEL, type WorkPr, type WorkSnapshot, type WorkTask } from './work.ts';
 
 /**
  * TOPIC: a Topic, its members and its notes, as Lookout's store keeps them and the server sends
@@ -99,6 +99,15 @@ export interface Topic {
   earlierSummaries: number;
   /** TOPIC-15.3: its newest kept Handover of all the work; null or absent for none. */
   handover?: TopicHandover | null;
+  /** TOPIC-17.3: its newest "marked Done" entries with a note, newest first, at most `MAX_PROMPT_DONE`; absent from an older server. */
+  doneNotes?: TopicDoneNote[];
+}
+
+/** TOPIC-17.3: a "marked Done" entry with a note: when, the Session's name in the entry, the note. */
+export interface TopicDoneNote {
+  at: number;
+  name: string;
+  note: string;
 }
 
 /** TOPIC-15.3: a Handover a Topic keeps (TOPIC-15.1): when it was kept, the old Session's title, its text. */
@@ -470,14 +479,34 @@ export function localTime(ms: number): string {
 }
 
 /**
- * TOPIC-5.1: the launcher's prompt for a Session started from a Topic, a handover: when it has a
- * summary that isn't out of date, its `what`, `state` with `why`, the three newest `recent` points
- * with their dates, `open`, `next` with each one's trigger, and `watch`; else the notes' first
- * paragraph. Then the Topic's Handover when it's newer than that summary, or there's none (TOPIC-15.3).
- * Then each Task member's URL, `Topic: <id> <title>`, and the line asking the agent to restate before
- * it changes anything.
+ * TOPIC-17: what the tab already holds that a Topic's prompt joins, as the Topic view draws its
+ * members: Work's last read, Fleet's list by Session id, and the Sessions tb-session no longer has.
  */
-export function topicPrompt(topic: Topic): string {
+export interface TopicPromptContext {
+  work: WorkSnapshot | null;
+  sessions: ReadonlyMap<string, SessionRow>;
+  /** TOPIC-4.2: `<harness>:<sessionId>`. */
+  pruned: readonly string[];
+}
+const NOTHING_KNOWN: TopicPromptContext = { work: null, sessions: new Map(), pruned: [] };
+
+/** TOPIC-17.1: notes past this many characters are cut. */
+export const MAX_PROMPT_NOTES = 4_000;
+/** TOPIC-17.2, 17.3, 17.5: how many PRs, Done notes and Sessions the prompt lists. */
+export const MAX_PROMPT_PRS = 10;
+export const MAX_PROMPT_DONE = 3;
+export const MAX_PROMPT_SESSIONS = 8;
+
+const oneLine = (text: string) => text.replace(/\s+/g, ' ').trim();
+const list = (head: string, lines: readonly string[], total: number) =>
+  lines.length ? [`${head}\n${lines.map((l) => `- ${l}`).join('\n')}${total > lines.length ? `\n+${total - lines.length} more in the Topic` : ''}`] : [];
+
+/**
+ * TOPIC-5.1, TOPIC-17: the launcher's prompt for a Topic: the summary when it's current, the notes
+ * whole, the Handover (TOPIC-15.3), the PRs, the Task URLs, the Done notes, where a live member works,
+ * the earlier Sessions, the Topic line and the restate line; a part with nothing in it is left out.
+ */
+export function topicPrompt(topic: Topic, known: TopicPromptContext = NOTHING_KNOWN): string {
   const parts: string[] = [];
   const summary = topic.summary && !topic.summaryStale ? topic.summary.answer : null;
   if (summary) {
@@ -492,20 +521,87 @@ export function topicPrompt(topic: Topic): string {
       ...points('Next', summary.next, (p) => (p.when ? `When ${p.when.replace(/^when\s+/i, '')}: ${p.text}` : p.text)),
       ...points('Watch out', summary.watch, (p) => p.text),
     );
-  } else {
-    const first = topic.notes.trim().split(/\n\s*\n/)[0]?.trim();
-    if (first) parts.push(first);
+  }
+  // TOPIC-17.1: the notes whole, cut at a cap; under `Notes:` after a summary.
+  const notes = topic.notes.trim();
+  if (notes) {
+    const text = notes.length > MAX_PROMPT_NOTES ? `${notes.slice(0, MAX_PROMPT_NOTES).trimEnd()}… (the rest is in the Topic's notes)` : notes;
+    parts.push(summary ? `Notes:\n${text}` : text);
   }
   const handover = topic.handover;
   if (handover && promptSendsHandover(topic)) {
-    parts.push(`Latest Handover (${localTime(handover.at)}, from ${handover.from.replace(/\s+/g, ' ').trim()}):\n${handover.text.trim()}`);
+    parts.push(`Latest Handover (${localTime(handover.at)}, from ${oneLine(handover.from)}):\n${handover.text.trim()}`);
   }
+  // TOPIC-17.2: the PRs Work lists by URL, with chip and CI; the rest named, so the new Session isn't started on them (WORK-4.3).
+  const prs = orderWorkMembers(topic.members.filter((m): m is Extract<TopicMember, { kind: 'pr' }> => m.kind === 'pr'), known.work);
+  parts.push(...list('PRs:', prs.slice(0, MAX_PROMPT_PRS).map((m) => {
+    const read = prState(m.ref.url, known.work);
+    if (read.state !== 'listed') return `${m.snapshot.repo} #${m.snapshot.number} ${oneLine(m.snapshot.title)} (not in Work: merged, closed or not read yet)`;
+    return `${read.pr.url} (${read.pr.chip ?? 'your review requested'}, ${CI_LABEL[read.pr.ci]})`;
+  }), prs.length));
   const tasks = topic.members.flatMap((m) => (m.kind === 'task' ? [m.snapshot.url] : []));
   if (tasks.length) parts.push(tasks.join('\n'));
+  // TOPIC-17.3: the newest Done notes.
+  const done = (topic.doneNotes ?? []).slice(0, MAX_PROMPT_DONE);
+  parts.push(...list('Done notes:', done.map((d) => `${localTime(d.at)}, ${oneLine(d.name)}: ${oneLine(d.note)}`), done.length));
+  // TOPIC-17.4: where the live member whose Status changed last works.
+  const sessions = topic.members.filter((m): m is Extract<TopicMember, { kind: 'session' }> => m.kind === 'session');
+  const live = sessions.flatMap((m) => {
+    const row = liveRow(m, known.sessions);
+    return row ? [row] : [];
+  });
+  const latest = live.reduce<SessionRow | null>((a, r) => (!a || (r.statusSince ?? 0) > (a.statusSince ?? 0) ? r : a), null);
+  if (latest?.cwd) {
+    const branch = latest.git?.branch ? ` (branch ${latest.git.branch})` : '';
+    parts.push(`Working directory: ${latest.cwd}${branch}, where ${oneLine(latest.title)} is live.`);
+  }
+  // TOPIC-17.5: the earlier Sessions, to read with tb-session; one it no longer has is left out.
+  const readable = orderSessions(sessions, known.sessions).filter((m) => !known.pruned.includes(`${m.ref.harness}:${m.ref.sessionId}`));
+  parts.push(...list('Earlier Sessions (read one with `tb-session show <id>`):', readable.slice(0, MAX_PROMPT_SESSIONS).map((m) => {
+    const row = liveRow(m, known.sessions);
+    return `${m.ref.sessionId} ${m.ref.harness} ${oneLine(row ? row.title : m.snapshot.title)}${row ? ' (live)' : ''}`;
+  }), readable.length));
   parts.push(`Topic: ${topic.id} ${topic.title}`);
   parts.push(RESTATE_LINE);
   return parts.join('\n\n');
 }
+
+/** DS-5.3: which live Status needs action most, first (WORK-2.4's order). */
+export const URGENCY: readonly Status[] = ['needs-you', 'busy', 'idle', 'unknown'];
+
+/** A Session member is live when the Session list has its id under its Harness (TOPIC-4.1, HIST-3.2). */
+export function liveRow(m: Extract<TopicMember, { kind: 'session' }>, sessions: ReadonlyMap<string, SessionRow>): SessionRow | null {
+  const row = sessions.get(m.ref.sessionId);
+  return row && row.harness === m.ref.harness ? row : null;
+}
+
+/** TOPIC-4.1, TOPIC-4.2: a PR member as Work's last read has it, `loading` before any read, or `gone` from it. */
+export function prState(url: string, work: WorkSnapshot | null): { state: 'loading' } | { state: 'gone' } | { state: 'listed'; pr: WorkPr } {
+  if (!work || work.prs.state === 'loading') return { state: 'loading' };
+  const pr = [...work.prs.mine, ...work.prs.reviewRequests].find((p) => p.url === url);
+  return pr ? { state: 'listed', pr } : { state: 'gone' };
+}
+export function taskState(id: string, work: WorkSnapshot | null): { state: 'loading' } | { state: 'gone' } | { state: 'listed'; task: WorkTask } {
+  if (!work || work.tasks.state === 'loading') return { state: 'loading' };
+  const task = work.tasks.tasks.find((t) => t.id === id);
+  return task ? { state: 'listed', task } : { state: 'gone' };
+}
+
+/** TOPIC-10.4: live Sessions first, most urgent Status first (DS-5.3), then the rest; newest added first within each. */
+export function orderSessions<M extends Extract<TopicMember, { kind: 'session' }>>(members: readonly M[], sessions: ReadonlyMap<string, SessionRow>): M[] {
+  const rank = (m: M) => {
+    const row = liveRow(m, sessions);
+    return row ? URGENCY.indexOf(row.status) : URGENCY.length;
+  };
+  return [...members].sort((a, b) => rank(a) - rank(b) || b.addedAt - a.addedAt);
+}
+
+/** TOPIC-10.4: PRs and Tasks in Work's last read first, then the rest; newest added first within each. */
+export function orderWorkMembers<M extends TopicMember>(members: readonly M[], work: WorkSnapshot | null): M[] {
+  const rank = (m: M) => ((m.kind === 'pr' ? prState(m.ref.url, work) : m.kind === 'task' ? taskState(m.ref.id, work) : null)?.state === 'listed' ? 0 : 1);
+  return [...members].sort((a, b) => rank(a) - rank(b) || b.addedAt - a.addedAt);
+}
+
 
 /**
  * TOPIC-15.3: whether TOPIC-5.1's prompt carries the Topic's Handover: it has one, and it's newer than

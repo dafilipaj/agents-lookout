@@ -66,7 +66,7 @@ import { ClockContext, useNow } from '@/lib/time';
 import { PAGE_BUILD } from '@/lib/build';
 import { reviewPrompt } from '@/lib/work';
 import { type TopicsApi, TopicsContext, sessionTopicTitles, topicsByMember } from '@/lib/topics';
-import { type NewMember, type Recommendation, type Topic, type TopicMember, taskTopic, topicPrompt } from '@shared/topics.ts';
+import { type NewMember, type Recommendation, type Topic, type TopicMember, type TopicPromptContext, taskTopic, topicPrompt } from '@shared/topics.ts';
 import { DEFAULT_LIBRARY_TYPES, LIBRARY_TYPES } from '@shared/library.ts';
 
 /**
@@ -389,6 +389,12 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
     loadHarnesses();
   }, [loadHarnesses]);
 
+  // TOPIC-17: a Topic's prompt joins what the tab holds when it's built: Work's last read, Fleet's
+  // list, the pruned Sessions. Read through a ref, so a Fleet poll doesn't make new handlers.
+  const promptKnown = useRef<TopicPromptContext>({ work: null, sessions: new Map(), pruned: [] });
+  promptKnown.current = { work: state.work, sessions: state.sessions, pruned: state.topics?.pruned ?? [] };
+  const promptFor = useCallback((topic: Topic) => topicPrompt(topic, promptKnown.current), []);
+
   // LAUNCH-1.1: N, ⌘N and "+" open the launcher on its own draft; Work's draft goes. Opening it over
   // an open launcher changes nothing.
   const openOwnLauncher = useCallback(() => {
@@ -401,7 +407,7 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
       if (shown)
         setDraft((d) => {
           const base = d ?? initialDraft(state.settings);
-          const next = withViewedTopic(base, shown, state.topics?.topics ?? []);
+          const next = withViewedTopic(base, shown, state.topics?.topics ?? [], promptKnown.current);
           return next === base ? d : next;
         });
     }
@@ -712,12 +718,12 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
   // is from a Task; nothing starts until Start.
   const startInTopic = useCallback(
     (topic: Topic, opener: HTMLElement | null) => {
-      setWorkDraft({ ...initialDraft(state.settings), prompt: topicPrompt(topic), topic: { id: topic.id, via: 'topic' }, fromTopicView: true });
+      setWorkDraft({ ...initialDraft(state.settings), prompt: promptFor(topic), topic: { id: topic.id, via: 'topic' }, fromTopicView: true });
       launchedFromWork.current = false;
       launchedFromTopic.current = opener;
       openLauncher();
     },
-    [state.settings, openLauncher],
+    [state.settings, openLauncher, promptFor],
   );
   const searchLibrary = useCallback((q: Parameters<LookoutClient['library']>[0]) => client.library(q), [client]);
   const libraryStatus = useCallback(() => client.libraryStatus(), [client]);
@@ -1734,6 +1740,7 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
           onStart={start}
           onCloseAutoFocus={launcherClosed}
           topics={state.topics?.topics}
+          promptFor={promptFor}
           keepsInput={!workDraft && !launcherHandoff}
           handover={launcherHandoff?.handover}
         />

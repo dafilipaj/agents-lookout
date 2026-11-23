@@ -179,6 +179,27 @@ describe('TOPIC-12.1 recording', () => {
     expect([last.kind, activityWords(last)]).toEqual(['done', 'fix the lanterns done: Fixed the wicks']);
   });
 
+  it("TOPIC-17.3: each Topic carries its 3 newest Done entries with a note, newest first, each with when, the Session's name and the note; a Done with no note isn't one", () => {
+    const { topics } = setup();
+    const a = topics.create('A').id;
+    const b = topics.create('B').id;
+    for (const n of [1, 2, 3, 4, 5]) topics.addMember(a, SESSION(n));
+    topics.addMember(b, SESSION(9));
+    const rows = (dones: Record<number, { at: number; note: string | null }>) =>
+      [1, 2, 3, 4, 5, 9].map((n) => ({ ...row(n, `session ${n}`), done: dones[n] ?? null }) as SessionRow);
+    topics.observeSessions(rows({}));
+    topics.observeSessions(rows({ 1: { at: 10, note: 'First' } }));
+    topics.observeSessions(rows({ 1: { at: 10, note: 'First' }, 2: { at: 20, note: null } }));
+    topics.observeSessions(rows({ 1: { at: 10, note: 'First' }, 2: { at: 20, note: null }, 3: { at: 30, note: '  Third  ' } }));
+    topics.observeSessions(rows({ 1: { at: 10, note: 'First' }, 2: { at: 20, note: null }, 3: { at: 30, note: 'Third' }, 4: { at: 40, note: 'Fourth' } }));
+    topics.observeSessions(rows({ 1: { at: 10, note: 'First' }, 2: { at: 20, note: null }, 3: { at: 30, note: 'Third' }, 4: { at: 40, note: 'Fourth' }, 5: { at: 50, note: 'Fifth' } }));
+    const view = topics.view().topics;
+    const notes = view.find((t) => t.id === a)!.doneNotes!;
+    expect(notes.map((d) => [d.name, d.note])).toEqual([['session 5', 'Fifth'], ['session 4', 'Fourth'], ['session 3', 'Third']]);
+    expect(notes.every((d) => typeof d.at === 'number')).toBe(true);
+    expect(view.find((t) => t.id === b)!.doneNotes).toEqual([]);
+  });
+
   it('TOPIC-12.2: nothing is recorded, or made on disk, before the store exists', () => {
     const { topics, path } = setup();
     topics.observeSessions([row(1)]);

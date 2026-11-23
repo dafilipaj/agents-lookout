@@ -1282,8 +1282,8 @@ describe('starting a Session in a Topic (TOPIC-5)', () => {
   const dialog = () => screen.getByRole('dialog', { name: 'New Session' });
   const startButton = () => within(topicView()).getByRole('button', { name: 'Start Session' });
 
-  it('TOPIC-5.1: "Start Session" in the view opens the launcher with a handover: the current summary’s what, state, dated recent, open, next with its trigger and watch out, each Task’s URL, the Topic line and the restate line; nothing starts until Start, which sends what was edited with the Topic', async () => {
-    const app = openApp([topic(1, { title: 'Anvil', notes: 'Not used while the summary is current.', members: [member(PR_MEMBER), member(TASK_MEMBER), member(SESSION)], summary: SUMMARY })]);
+  it('TOPIC-5.1: "Start Session" in the view opens the launcher with a handover: the current summary’s what, state, dated recent, open, next with its trigger and watch out, the notes, the PRs, each Task’s URL, where a live member works, the Sessions, the Topic line and the restate line; nothing starts until Start, which sends what was edited with the Topic', async () => {
+    const app = openApp([topic(1, { title: 'Anvil', notes: 'Rounding: half up.', members: [member(PR_MEMBER), member(TASK_MEMBER), member(SESSION)], summary: SUMMARY })]);
     const user = await openTopics();
     await openView(user, 'Anvil');
     await user.click(startButton());
@@ -1294,7 +1294,11 @@ describe('starting a Session in a Topic (TOPIC-5)', () => {
       'Open:\n- The corners are still blunt. (anvil #2101, rates-port)',
       'Next:\n- When the corners are sharp: Light the lanterns.',
       'Watch out:\n- The grinder sparks.',
+      'Notes:\nRounding: half up.',
+      `PRs:\n- ${ANVIL.url} (draft, CI passing)`,
       LIGHT.url,
+      'Working directory: /Users/me/Projects/work (branch main), where rates-port is live.',
+      `Earlier Sessions (read one with \`tb-session show <id>\`):\n- ${SESSION_ID} claude rates-port (live)`,
       `Topic: ${id(1)} Anvil`,
       RESTATE_LINE,
     ].join('\n\n');
@@ -1307,7 +1311,7 @@ describe('starting a Session in a Topic (TOPIC-5)', () => {
     expect(app.client.launch).toHaveBeenCalledWith(expect.objectContaining({ prompt: `${prompt}\nStart with the corners.`, topic: { id: id(1), via: 'topic' } }), expect.any(String));
   });
 
-  it('TOPIC-5.1: with no summary, or one out of date, the prompt is the notes’ first paragraph, then the Topic line and the restate line; Esc gives focus back to Start Session and leaves N’s draft alone', async () => {
+  it('TOPIC-5.1: with no summary, or one out of date, the prompt is the notes whole, then the PRs, the Topic line and the restate line; Esc gives focus back to Start Session and leaves N’s draft alone', async () => {
     openApp([
       topic(1, { title: 'Anvil', notes: 'Sharpen the corners\nbefore the lanterns.\n\nRounding: half up.', members: [member(PR_MEMBER)], summary: SUMMARY, summaryStale: true }),
       topic(2, { title: 'Bare' }),
@@ -1320,13 +1324,14 @@ describe('starting a Session in a Topic (TOPIC-5)', () => {
 
     await openView(user, 'Anvil');
     await user.click(startButton());
-    expect(within(dialog()).getByLabelText('Prompt')).toHaveValue(`Sharpen the corners\nbefore the lanterns.\n\nTopic: ${id(1)} Anvil\n\n${RESTATE_LINE}`);
+    const anvil = `Sharpen the corners\nbefore the lanterns.\n\nRounding: half up.\n\nPRs:\n- ${ANVIL.url} (draft, CI passing)\n\nTopic: ${id(1)} Anvil\n\n${RESTATE_LINE}`;
+    expect(within(dialog()).getByLabelText('Prompt')).toHaveValue(anvil);
     await user.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     await waitFor(() => expect(startButton()).toHaveFocus());
     // N's draft is what you typed, not the Topic view's prompt; in the view N picks its Topic above it (TOPIC-16.3).
     await user.keyboard('n');
-    expect(await screen.findByLabelText('Prompt')).toHaveValue(`Sharpen the corners\nbefore the lanterns.\n\nTopic: ${id(1)} Anvil\n\n${RESTATE_LINE}\n\nmy own draft`);
+    expect(await screen.findByLabelText('Prompt')).toHaveValue(`${anvil}\n\nmy own draft`);
     expect(screen.getByLabelText('Topic')).toHaveValue(id(1));
     await user.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
@@ -1775,7 +1780,7 @@ describe('Handovers in a Topic (TOPIC-15)', () => {
       await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
       return value;
     };
-    expect(await started('Stale')).toBe(['Sharpen the corners.', latest(HANDOVER), `Topic: ${id(1)} Stale`, RESTATE_LINE].join('\n\n'));
+    expect(await started('Stale')).toBe(['Sharpen the corners.', 'More.', latest(HANDOVER), `Topic: ${id(1)} Stale`, RESTATE_LINE].join('\n\n'));
     expect(await started('Newer')).toBe(['Sharpen the anvil, part by part.', 'State: in progress. The anvil PR is a draft.', latest(HANDOVER), `Topic: ${id(2)} Newer`, RESTATE_LINE].join('\n\n'));
     expect(await started('Older')).toBe(['Sharpen the anvil, part by part.', 'State: in progress. The anvil PR is a draft.', `Topic: ${id(3)} Older`, RESTATE_LINE].join('\n\n'));
   });
@@ -1830,6 +1835,8 @@ describe('Start from a Topic (TOPIC-16)', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   };
   const anvilText = ['Sharpen the corners.', `Topic: ${id(1)} Anvil`, RESTATE_LINE].join('\n\n');
+  // TOPIC-17.4, 17.5: with its live Session, where it works and the Session to read.
+  const anvilWithSession = ['Sharpen the corners.', 'Working directory: /Users/me/Projects/work (branch main), where rates-port is live.', `Earlier Sessions (read one with \`tb-session show <id>\`):\n- ${SESSION_ID} claude rates-port (live)`, `Topic: ${id(1)} Anvil`, RESTATE_LINE].join('\n\n');
 
   it("TOPIC-16.1: an expanded Topic's More lists Start Session first, which opens the Topic view's launcher and gives focus back to More; S does the same for the selected Topic, collapsed too, with focus back where it was, and no longer opens its first Session; Open stays the labelled action", async () => {
     const app = openApp([topic(1, { title: 'Anvil', notes: 'Sharpen the corners.', members: [member(SESSION)] }), topic(2, { title: 'Bare' })]);
@@ -1845,7 +1852,7 @@ describe('Start from a Topic (TOPIC-16)', () => {
     expect(start).toHaveTextContent('S');
     expect(within(menu).getAllByRole('menuitem')[0]).toBe(start);
     await user.click(start);
-    expect(prompt()).toHaveValue(anvilText);
+    expect(prompt()).toHaveValue(anvilWithSession);
     expect(topicField()).toHaveValue(id(1));
     await closeLauncher(user);
     await waitFor(() => expect(details.querySelector('[data-action="more"]')).toHaveFocus());
@@ -1864,7 +1871,7 @@ describe('Start from a Topic (TOPIC-16)', () => {
     // S opens no Session: on Anvil, selected, whose first Session is live, it opens the launcher.
     await user.click(header('Anvil'));
     await user.keyboard('s');
-    expect(prompt()).toHaveValue(anvilText);
+    expect(prompt()).toHaveValue(anvilWithSession);
     expect(window.location.pathname).toBe('/s/alpha');
     expect(app.client.launch).not.toHaveBeenCalled();
     await closeLauncher(user);
@@ -1995,5 +2002,37 @@ describe('Start from a Topic (TOPIC-16)', () => {
 
     expect(await line('Older')).toHaveTextContent('the newer summary is sent instead');
     expect(await line('None')).toBeNull();
+  });
+});
+
+describe('What a Topic’s prompt carries (TOPIC-17)', () => {
+  const dialog = () => screen.getByRole('dialog', { name: 'New Session' });
+  const prompt = () => within(dialog()).getByLabelText('Prompt');
+
+  it("TOPIC-17.6: Start Session, N in the Topic view and the launcher's Topic field put the same prompt, with Work's PR and Fleet's live Session as the tab holds them", async () => {
+    openApp([topic(1, { title: 'Anvil', notes: 'Sharpen the corners.', members: [member(PR_MEMBER), member(SESSION)] })]);
+    const user = await openTopics();
+    const expected = [
+      'Sharpen the corners.',
+      `PRs:\n- ${ANVIL.url} (draft, CI passing)`,
+      'Working directory: /Users/me/Projects/work (branch main), where rates-port is live.',
+      `Earlier Sessions (read one with \`tb-session show <id>\`):\n- ${SESSION_ID} claude rates-port (live)`,
+      `Topic: ${id(1)} Anvil`,
+      RESTATE_LINE,
+    ].join('\n\n');
+    await openView(user, 'Anvil');
+    await user.click(within(topicView()).getByRole('button', { name: 'Start Session' }));
+    expect(prompt()).toHaveValue(expected);
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    // N in the view picks the Topic (TOPIC-16.3).
+    await user.keyboard('n');
+    expect(await screen.findByLabelText('Prompt')).toHaveValue(expected);
+    // None takes it out, and picking it again in the field puts it back (TOPIC-15.4).
+    const field = () => within(dialog()).getByLabelText('Topic');
+    await user.selectOptions(field(), '');
+    expect(prompt()).toHaveValue('');
+    await user.selectOptions(field(), id(1));
+    expect(prompt()).toHaveValue(expected);
   });
 });

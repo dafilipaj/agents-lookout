@@ -1,6 +1,6 @@
 import { LAUNCH_TIMEOUT_MS } from '@shared/defaults.ts';
 import type { SessionRow, Status } from '@shared/types.ts';
-import { type ColumnMark, type LinkedPr, type LinkedTask, type PrSection, type TaskSection, type WorkPr, type WorkSessionLink, type WorkSnapshot, type WorkTask, taskUrl } from '@shared/work.ts';
+import { CI_LABEL, type ColumnMark, type LinkedPr, type LinkedTask, type PrSection, type TaskSection, type WorkPr, type WorkSessionLink, type WorkSnapshot, type WorkTask, taskUrl } from '@shared/work.ts';
 import { CircleCheck, CircleDashed, CircleQuestionMark, CircleX, GitPullRequest, GitPullRequestDraft, LoaderCircle, Milestone, SquareCheckBig, TriangleAlert } from 'lucide-react';
 import { type FocusEvent, type KeyboardEvent, type MouseEvent, type ReactNode, type Ref, type RefObject, createContext, useCallback, useContext, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
@@ -1217,13 +1217,6 @@ export function PrIcon({ chip }: { chip: WorkPr['chip'] }) {
   return <Icon aria-hidden data-slot="pr-icon" data-chip={chip ?? 'none'} className={cn('size-3.5', chip ? PR_ICON_CLASS[chip] : 'text-muted-foreground')} />;
 }
 
-const CI_LABEL: Record<WorkPr['ci'], string> = {
-  passing: 'CI passing',
-  failing: 'CI failing',
-  running: 'CI running',
-  unknown: 'CI unknown',
-  none: 'no CI',
-};
 /** The hover: the label, or what the two grey states mean. */
 const CI_TITLE: Record<WorkPr['ci'], string> = { ...CI_LABEL, unknown: 'tb-pr couldn’t read this PR’s CI', none: 'No CI state from tb-pr' };
 

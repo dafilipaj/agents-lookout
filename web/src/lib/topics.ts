@@ -1,8 +1,10 @@
 import type { OutputSession } from '@shared/library.ts';
 import { type MemberKind, type NewMember, type Recommendation, type SummaryState, type Topic, type TopicEdge, type TopicMember, type TopicOutcome, type TopicsView, historyMember, memberKey, sortTopics } from '@shared/topics.ts';
 export { historyMember, prMember, rowMember, sessionMember, taskMember } from '@shared/topics.ts';
+export { liveRow, orderSessions, orderWorkMembers, prState, taskState } from '@shared/topics.ts';
+import { URGENCY, liveRow, prState, taskState } from '@shared/topics.ts';
 import type { SessionRow, Status } from '@shared/types.ts';
-import type { WorkPr, WorkSnapshot, WorkTask } from '@shared/work.ts';
+import type { WorkSnapshot } from '@shared/work.ts';
 import { Layers } from 'lucide-react';
 import { createContext, createElement, useContext } from 'react';
 import type { RowMenuItem } from '@/components/ui/row-actions';
@@ -58,15 +60,6 @@ export function memberCounts(members: readonly TopicMember[]): string {
   return parts.join(' · ') || 'No members';
 }
 
-/** DS-5.3: which live Status needs action most, first (WORK-2.4's order). */
-const URGENCY: readonly Status[] = ['needs-you', 'busy', 'idle', 'unknown'];
-
-/** A Session member is live when the Session list has its id under its Harness (TOPIC-4.1, HIST-3.2). */
-export function liveRow(m: Extract<TopicMember, { kind: 'session' }>, sessions: ReadonlyMap<string, SessionRow>): SessionRow | null {
-  const row = sessions.get(m.ref.sessionId);
-  return row && row.harness === m.ref.harness ? row : null;
-}
-
 /**
  * TOPIC-3.2: the Topic's Session marker, as WORK-2.4 draws it: the most urgent live member Session's
  * Status (and when the latest Busy one became Busy, DS-10.1), else the past marker, else nothing.
@@ -79,33 +72,6 @@ export function topicMarker(topic: Topic, sessions: ReadonlyMap<string, SessionR
   if (!status) return { state: 'past' };
   const since = live.reduce<number | null>((at, r) => (r.status === 'busy' && r.statusSince !== null && (at === null || r.statusSince > at) ? r.statusSince : at), null);
   return { state: 'live', status, since };
-}
-
-/** TOPIC-4.1, TOPIC-4.2: a PR member as Work's last read has it, `loading` before any read, or `gone` from it. */
-export function prState(url: string, work: WorkSnapshot | null): { state: 'loading' } | { state: 'gone' } | { state: 'listed'; pr: WorkPr } {
-  if (!work || work.prs.state === 'loading') return { state: 'loading' };
-  const pr = [...work.prs.mine, ...work.prs.reviewRequests].find((p) => p.url === url);
-  return pr ? { state: 'listed', pr } : { state: 'gone' };
-}
-export function taskState(id: string, work: WorkSnapshot | null): { state: 'loading' } | { state: 'gone' } | { state: 'listed'; task: WorkTask } {
-  if (!work || work.tasks.state === 'loading') return { state: 'loading' };
-  const task = work.tasks.tasks.find((t) => t.id === id);
-  return task ? { state: 'listed', task } : { state: 'gone' };
-}
-
-/** TOPIC-10.4: live Sessions first, most urgent Status first (DS-5.3), then the rest; newest added first within each. */
-export function orderSessions<M extends Extract<TopicMember, { kind: 'session' }>>(members: readonly M[], sessions: ReadonlyMap<string, SessionRow>): M[] {
-  const rank = (m: M) => {
-    const row = liveRow(m, sessions);
-    return row ? URGENCY.indexOf(row.status) : URGENCY.length;
-  };
-  return [...members].sort((a, b) => rank(a) - rank(b) || b.addedAt - a.addedAt);
-}
-
-/** TOPIC-10.4: PRs and Tasks in Work's last read first, then the rest; newest added first within each. */
-export function orderWorkMembers<M extends TopicMember>(members: readonly M[], work: WorkSnapshot | null): M[] {
-  const rank = (m: M) => ((m.kind === 'pr' ? prState(m.ref.url, work) : m.kind === 'task' ? taskState(m.ref.id, work) : null)?.state === 'listed' ? 0 : 1);
-  return [...members].sort((a, b) => rank(a) - rank(b) || b.addedAt - a.addedAt);
 }
 
 /**

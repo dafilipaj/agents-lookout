@@ -23,8 +23,8 @@ const topicsPanel = (page: Page) => page.getByRole('tabpanel', { name: 'Topics' 
 const sessionSidebar = (page: Page) => page.getByRole('complementary', { name: 'Session sidebar' });
 
 scenario(
-  'TOPIC-5.1: Start Session in a Topic view opens the launcher with the summary as a handover, the Task’s URL, the Topic line and the restate line; it can be edited, and nothing starts',
-  world().topics([{ title: 'Harbor lanterns', notes: 'Not used while the summary is current.', members: [task], summary: SUMMARY }]),
+  'TOPIC-5.1: Start Session in a Topic view opens the launcher with the summary as a handover, the notes, the Task’s URL, the Topic line and the restate line; it can be edited, and nothing starts',
+  world().topics([{ title: 'Harbor lanterns', notes: 'Wicks come from the chandler.', members: [task], summary: SUMMARY }]),
   async ({ page, world }) => {
     await page.keyboard.press('t');
     await world.step('the Topic to show', () => expect(topicsPanel(page).getByRole('button', { name: /^Harbor lanterns,/ })).toBeVisible());
@@ -42,6 +42,7 @@ scenario(
       'Recent:\n- The north pier was lit.',
       'Open:\n- The south pier has no wicks. (Light the harbor lanterns)',
       'Next:\n- Order wicks.',
+      'Notes:\nWicks come from the chandler.',
       TASK_URL,
       expect.stringMatching(/^Topic: [0-9a-f-]{36} Harbor lanterns$/),
       RESTATE_LINE,

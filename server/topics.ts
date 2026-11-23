@@ -7,11 +7,13 @@ import type { OutputItem } from '../shared/library.ts';
 import {
   ACTIVITY_PAGE,
   type ActivityData,
+  type TopicDoneNote,
   type TopicHandover,
   type ActivityEntry,
   type ActivityKind,
   MAX_CLOSING,
   MAX_EDGE_LABEL,
+  MAX_PROMPT_DONE,
   MAX_TOPIC_NOTES,
   MAX_TOPIC_OUTPUTS,
   MAX_SUGGEST_NOTE,
@@ -587,6 +589,7 @@ export class TopicStore {
   list(): StoredTopic[] {
     const topics = this.db.prepare(`select ${TOPIC_COLUMNS} from topics`).all() as unknown as TopicRow[];
     const handovers = this.handovers();
+    const doneNotes = this.doneNotes();
     const members = this.db.prepare('select topic_id, kind, ref, snapshot, added_at, reason from members order by added_at, kind, ref').all() as unknown as MemberRow[];
     const byTopic = new Map<string, TopicMember[]>();
     for (const m of members) {
@@ -619,6 +622,7 @@ export class TopicStore {
         changesSinceSummary: 0,
         earlierSummaries: 0,
         handover: handovers.get(t.id) ?? null,
+        doneNotes: doneNotes.get(t.id) ?? [],
       })),
     ).map(({ outputs: _o, summary: _s, summaryStale: _st, ...t }) => t);
   }
@@ -640,6 +644,27 @@ export class TopicStore {
       const d = jsonOr<ActivityData>(r.data, {});
       if (typeof d.handover !== 'string' || !d.handover.trim()) continue;
       out.set(r.topic_id, { at: r.at, from: d.from?.trim() || 'a Session', text: d.handover });
+    }
+    return out;
+  }
+
+  /** TOPIC-17.3: each Topic's newest "marked Done" entries with a note, newest first, at most `MAX_PROMPT_DONE`. */
+  private doneNotes(): Map<string, TopicDoneNote[]> {
+    const rows = this.db
+      .prepare(
+        `select topic_id, at, data from (
+           select topic_id, at, data, row_number() over (partition by topic_id order by id desc) as n from events
+           where kind = 'done' and trim(coalesce(json_extract(data, '$.note'), '')) <> ''
+         ) where n <= ? order by topic_id, n`,
+      )
+      .all(MAX_PROMPT_DONE) as unknown as { topic_id: string; at: number; data: string }[];
+    const out = new Map<string, TopicDoneNote[]>();
+    for (const r of rows) {
+      const d = jsonOr<ActivityData>(r.data, {});
+      if (typeof d.note !== 'string' || !d.note.trim()) continue;
+      const list = out.get(r.topic_id) ?? [];
+      list.push({ at: r.at, name: d.name?.trim() || 'a Session', note: d.note.trim() });
+      out.set(r.topic_id, list);
     }
     return out;
   }

@@ -1,7 +1,7 @@
 import type { LaunchChoices, LaunchHarness, Settings } from '@shared/settings.ts';
 import { sameModel } from '@shared/model.ts';
 import type { LaunchRequest } from '@shared/types.ts';
-import { type Topic, sortTopics } from '@shared/topics.ts';
+import { type Topic, sortTopics, topicPrompt } from '@shared/topics.ts';
 import type { UsageSnapshot } from '@shared/usage.ts';
 import { type FormEvent, type KeyboardEvent, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
@@ -34,6 +34,8 @@ interface Props {
   onCloseAutoFocus?(e: Event): void;
   /** TOPIC-5.3: the Topics a Session can be started in; the field shows only while there's one to pick. */
   topics?: readonly Topic[];
+  /** TOPIC-15.4, TOPIC-17.6: a Topic's prompt, from what the tab holds when it's picked. */
+  promptFor?(topic: Topic): string;
   /** LAUNCH-1.3: false for a launcher opened from Work or a Topic view, whose draft goes when it closes. */
   keepsInput?: boolean;
   /**
@@ -47,7 +49,7 @@ interface Props {
 const FALLBACK_LABEL: Record<LaunchHarness, string> = { claude: 'Claude Code', codex: 'Codex' };
 
 /** The launcher (LAUNCH-1 … LAUNCH-4). */
-export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, harnesses, usage, now, onStart, onCloseAutoFocus, topics = [], keepsInput = true, handover }: Props) {
+export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, harnesses, usage, now, onStart, onCloseAutoFocus, topics = [], promptFor = topicPrompt, keepsInput = true, handover }: Props) {
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const [submitting, setSubmitting] = useState(false);
   const [keeping, setKeeping] = useState(false);
@@ -96,7 +98,8 @@ export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, h
   // opened from a Topic view, a Task, a Review or a Handover keeps its prompt.
   const pickTopic = (id: string) => {
     const next = id ? { id, via: id === draft.topic?.id ? draft.topic.via : ('topic' as const) } : undefined;
-    const fill = keepsInput ? topicFill(draft.prompt, draft.topicText, id ? (topics.find((t) => t.id === id) ?? null) : null) : null;
+    const picked = id ? (topics.find((t) => t.id === id) ?? null) : null;
+    const fill = keepsInput ? topicFill(draft.prompt, draft.topicText, picked ? promptFor(picked) : null) : null;
     set({ topic: next, ...(fill ?? {}) });
   };
 

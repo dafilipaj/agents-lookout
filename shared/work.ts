@@ -24,6 +24,14 @@ export const CHIP_OF: Record<Exclude<PrColumn, 'waiting_on_me'>, PrChip> = {
  * couldn't read the check-runs (0.4.0); `none` ("no CI") when tb-pr gives none. Neither is ever shown as passing.
  */
 export type CiState = 'passing' | 'failing' | 'running' | 'unknown' | 'none';
+/** WORK-3: a PR's CI in words, as its row says it and a Topic's prompt does (TOPIC-17.2). */
+export const CI_LABEL: Record<CiState, string> = {
+  passing: 'CI passing',
+  failing: 'CI failing',
+  running: 'CI running',
+  unknown: 'CI unknown',
+  none: 'no CI',
+};
 
 /** tb-pr's rotting buckets, least urgent first. */
 export const ROT_BUCKETS = ['fresh', 'warming', 'stale', 'rotting', 'critical'] as const;
