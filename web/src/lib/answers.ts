@@ -123,6 +123,9 @@ export const FORM_WAIT_MS = 5_000;
  */
 export const READ_WAIT_MS = 5_000;
 
+/** VIEW-4.10: a question form on screen that the chat doesn't have. */
+export const QUESTION_UNREAD = 'Its question hasn’t reached the Transcript yet, so Lookout can’t show its options. Answer it in the terminal, or press Esc to cancel it and reply here.';
+
 /** Buttons only for a running, Controllable Session that Needs you (VIEW-4.1, 4.2; VIEW-5.2, 5.3). */
 function answerable(row: SessionRow, ended: boolean): boolean {
   return !ended && row.controllable && row.status === 'needs-you';
@@ -159,6 +162,33 @@ export function permissionPanel(row: SessionRow, ended: boolean, screen: ScreenS
   if (screen.uncertain === promptKey(p.id)) return { kind: 'message', prompt: p, message: UNCERTAIN };
   if (!p.untouched) return { kind: 'message', prompt: p, message: TOUCHED };
   return { kind: 'buttons', prompt: p, sending: a?.phase === 'sending' };
+}
+
+/**
+ * VIEW-4.10: why to look at the terminal when it shows a question form but the chat has no question
+ * waiting: Claude Code writes a turn's question to the Transcript only once it's answered when the
+ * same turn runs another tool beside it. Null otherwise. Only from a read made in this Needs you
+ * spell, once `FORM_WAIT_MS` of it have passed (the chat's copy of a question can be a read behind
+ * the form); Esc (VIEW-4.5) shows beside it, as no answer buttons do. Not while the chat has a
+ * question asked in this spell, answered or not (one just answered can be on screen for a read), nor
+ * while this tab's answer is on its way or landed after the latest read.
+ */
+export function unreadQuestion(
+  row: SessionRow,
+  ended: boolean,
+  entries: readonly ChatEntry[],
+  screen: ScreenState | undefined,
+  attempt: AnswerAttempt | undefined,
+  now: number,
+): string | null {
+  if (!answerable(row, ended) || row.harness !== 'claude') return null;
+  if (screen?.prompt?.kind !== 'question' || screen.since == null || screen.since !== row.statusSince) return null;
+  if (now - screen.since < FORM_WAIT_MS) return null;
+  if (attempt?.phase === 'sending' || (attempt?.phase === 'sent' && attempt.epoch !== null && screen.epoch < attempt.epoch)) return null;
+  const spell = screen.since;
+  const askedNow = (e: ChatEntry) => e.kind === 'question' && (e.status === 'pending' || (Date.parse(e.ts ?? '') || -Infinity) >= spell - FORM_WAIT_MS);
+  if (entries.some(askedNow)) return null;
+  return QUESTION_UNREAD;
 }
 
 export interface QuestionPanel {

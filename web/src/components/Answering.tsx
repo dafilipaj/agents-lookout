@@ -1,5 +1,5 @@
 import type { ChatQuestion, QuestionAnswer } from '@shared/types.ts';
-import { Circle, CircleDot, ShieldQuestion, Square, SquareCheck } from 'lucide-react';
+import { Circle, CircleDot, MessageCircleQuestionMark, ShieldQuestion, Square, SquareCheck } from 'lucide-react';
 import { type ComponentPropsWithoutRef, type HTMLAttributes, type KeyboardEvent, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -342,13 +342,27 @@ export function QuestionForm({
  * asks, and its choices as buttons with the terminal's wording. When Lookout won't answer it, why,
  * in place of the buttons (VIEW-4.3).
  */
-export function PromptCard({ panel, label, onChoose, terminal }: { panel: PermissionPanel; label: string; onChoose(n: number): void; terminal: TerminalLink }) {
+export function PromptCard({
+  panel,
+  label,
+  onChoose,
+  terminal,
+  what = 'permission',
+}: {
+  panel: PermissionPanel;
+  label: string;
+  onChoose(n: number): void;
+  terminal: TerminalLink;
+  /** VIEW-4.10: `question`, a question form the chat doesn't have: the same card, named for a question. */
+  what?: 'permission' | 'question';
+}) {
   const p = panel.prompt;
+  const Icon = what === 'question' ? MessageCircleQuestionMark : ShieldQuestion;
   return (
     <div className="mx-auto w-full max-w-3xl px-6 pb-3">
-      <section aria-label="Permission prompt" data-kind="permission" className="rounded-lg border border-needs-you/60 bg-needs-you-soft px-4 py-3">
+      <section aria-label={what === 'question' ? 'Question' : 'Permission prompt'} data-kind={what === 'question' ? 'unread-question' : 'permission'} className="rounded-lg border border-needs-you/60 bg-needs-you-soft px-4 py-3">
         <p className="mb-2 flex items-center gap-1.5 text-meta text-muted-foreground">
-          <ShieldQuestion className="size-3.5" />
+          <Icon className="size-3.5" />
           <span className="font-medium text-foreground/80">{label} asks</span>
           <span className="ml-auto font-medium text-needs-you-text">Waiting for your answer</span>
         </p>
@@ -362,7 +376,7 @@ export function PromptCard({ panel, label, onChoose, terminal }: { panel: Permis
             )}
           </>
         ) : (
-          <p className="text-prose font-medium">A permission prompt is waiting in the terminal</p>
+          <p className="text-prose font-medium">{what === 'question' ? 'A question is waiting in the terminal' : 'A permission prompt is waiting in the terminal'}</p>
         )}
         {panel.kind === 'buttons' ? (
           <div className="mt-2.5 flex flex-col items-start gap-1.5" role="group" aria-label="Choices">

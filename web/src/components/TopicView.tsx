@@ -1,5 +1,5 @@
 import type { OutputItem } from '@shared/library.ts';
-import { ACTIVITY_PAGE, type ActivityEntry, MAX_NEW_SHOWN, MAX_TOPIC_NOTES, MAX_TOPIC_TITLE, OUTPUTS_FRESH_MS, type Recommendation, type RecommendationAction, type SummaryCite, type SummaryPoint, type Topic, type TopicMember, type TopicSummary, type TopicsView, activityWords, formatCost, modelName } from '@shared/topics.ts';
+import { ACTIVITY_PAGE, type ActivityEntry, MAX_NEW_SHOWN, MAX_TOPIC_NOTES, MAX_TOPIC_TITLE, OUTPUTS_FRESH_MS, type Recommendation, type RecommendationAction, type SummaryCite, type SummaryPoint, type Topic, type TopicMember, type TopicSummary, type TopicsView, activityWords, formatCost, localTime, modelName, promptSendsHandover } from '@shared/topics.ts';
 import type { SessionRow } from '@shared/types.ts';
 import type { WorkSnapshot } from '@shared/work.ts';
 import { ArrowLeft, ArrowRight, ExternalLink, Link2, Repeat2, Sparkles, Unlink, X } from 'lucide-react';
@@ -212,6 +212,7 @@ function OneTopic({ topic, problem, setProblem, ...props }: TopicViewProps & { t
             overview: (
               <>
                 {activity.fresh.length > 0 && <SinceLooked topic={topic} entries={activity.fresh} total={newTotal} onMore={showActivity} {...entryProps} />}
+                <LatestHandover topic={topic} now={props.now} />
                 <Summary topic={topic} {...props} act={act} onShowActivity={showActivity} />
                 <Notes topic={topic} save={(notes) => props.updateTopic(topic.id, { notes })} onProblem={setProblem} />
                 <Edges topic={topic} view={view} act={act} linkTopics={props.linkTopics} editEdge={props.editEdge} unlinkTopics={props.unlinkTopics} />
@@ -390,6 +391,39 @@ function Entry({ entry, topic, sessions, now, act, onOpenSession, pruned }: Entr
         </div>
       )}
     </li>
+  );
+}
+
+/**
+ * TOPIC-16.5: the Topic's Handover (TOPIC-15.3) on Overview, folded: when it was kept, the old Session's
+ * title and whether Start Session sends it; "Show Handover" shows it in place, as an Activity entry's does.
+ */
+function LatestHandover({ topic, now }: { topic: Topic; now: number }) {
+  const [shown, setShown] = useState(false);
+  const handover = topic.handover;
+  if (!handover?.text.trim()) return null;
+  return (
+    <section className="flex min-w-0 flex-col gap-1" data-field="latest-handover" aria-label="Latest Handover">
+      <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-meta text-muted-foreground">
+        <h2 className="font-medium">Latest Handover</h2>
+        <span aria-hidden>·</span>
+        <time dateTime={new Date(handover.at).toISOString()} title={localTime(handover.at)}>
+          kept {formatAge(now - handover.at)} ago
+        </time>
+        <span aria-hidden>·</span>
+        <span className="min-w-0 truncate">from {handover.from}</span>
+        <span aria-hidden>·</span>
+        <span data-field="handover-sent">{promptSendsHandover(topic) ? 'sent with Start Session' : 'the newer summary is sent instead'}</span>
+      </div>
+      <Button type="button" variant="quiet" size="line" className="self-start" aria-expanded={shown} data-field="show-handover" onClick={() => setShown(!shown)}>
+        {shown ? 'Hide Handover' : 'Show Handover'}
+      </Button>
+      {shown && (
+        <div className="min-w-0 border-l-2 border-border pl-3 text-body" data-field="handover">
+          <Markdown text={handover.text} />
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -749,7 +783,7 @@ export function TopicActions({
   /** `header`: the view's header buttons; `row`: the tab's expanded row, Open and "More" (DS-16). */
   look: 'header' | 'row';
   onOpen?(): void;
-  /** TOPIC-10.2: "Start Session" goes first (TOPIC-5.1). */
+  /** TOPIC-10.2: "Start Session" goes first (TOPIC-5.1); TOPIC-16.1: first under the row's "More". */
   onStartSession?(opener: HTMLElement | null): void;
   onOpenGraph(): void;
   onLinkTo(topic: Topic): void;
@@ -779,7 +813,7 @@ export function TopicActions({
     }
   };
   /** DS-18.1, 18.6: a header action in its role, with its icon and word from the action table. */
-  const button = (action: string, id: ActionId, variant: 'secondary' | 'quiet' | 'danger', onClick: (e: MouseEvent<HTMLButtonElement>) => void, word: string = actionWord(id)) => (
+  const button = (action: string, id: ActionId, variant: 'primary' | 'secondary' | 'quiet' | 'danger', onClick: (e: MouseEvent<HTMLButtonElement>) => void, word: string = actionWord(id)) => (
     <Button key={action} variant={variant} size="default" data-action={action} onClick={onClick}>
       <ActionIcon id={id} />
       {word}
@@ -835,6 +869,8 @@ export function TopicActions({
           name={topic.title}
           primary={onOpen ? { 'data-action': 'open', action: 'open', tip: 'Open', onPress: onOpen } : null}
           more={[
+            // TOPIC-16.1: first, in what the row runs; focus is on More (or the list) when it runs, and goes back there.
+            onStartSession && { id: 'start', action: 'start', group: 'run', shortcut: 'S', onSelect: () => onStartSession(document.activeElement instanceof HTMLElement ? document.activeElement : null) },
             { id: 'open-graph', action: 'open-graph', group: 'open', shortcut: 'G', onSelect: onOpenGraph },
             { id: 'link', action: 'link-to-topic', group: 'topic', onSelect: () => onLinkTo(topic) },
             { id: 'archive', action: topic.state === 'open' ? 'archive' : 'unarchive', group: 'manage', onSelect: archive },
@@ -846,7 +882,8 @@ export function TopicActions({
     );
   return (
     <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2" data-field="actions">
-      {onStartSession && button('start', 'start', 'secondary', (e) => onStartSession(e.currentTarget))}
+      {/* TOPIC-16.2: the view's one Primary (DS-18.4). */}
+      {onStartSession && button('start', 'start', 'primary', (e) => onStartSession(e.currentTarget))}
       {onOpen && button('open', 'open', 'secondary', onOpen)}
       {button('open-graph', 'open-graph', 'quiet', onOpenGraph)}
       {button('link', 'link-to-topic', 'quiet', () => onLinkTo(topic))}

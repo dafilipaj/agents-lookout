@@ -14,6 +14,7 @@ import {
   QUESTION_OTHER,
   QUESTION_TOUCHED,
   QUESTION_UNCHECKED,
+  QUESTION_UNREAD,
   type QuestionDrafts,
   READ_WAIT_MS,
   STOP_SETTLE_MS,
@@ -36,6 +37,7 @@ import {
   tidyQuestionDrafts,
   typeText,
   typeable,
+  unreadQuestion,
 } from './answers';
 
 const PERMISSION: Extract<ScreenPrompt, { kind: 'permission' }> = {
@@ -417,6 +419,47 @@ describe('Stop (VIEW-4.4)', () => {
 
   it('VIEW-4.4: a Session’s Stop and answers follow its process, not its id', () => {
     expect(processKey({ harness: 'codex', pid: 77 })).toBe('codex:77');
+  });
+});
+
+describe('a question form the chat doesn’t have (VIEW-4.10)', () => {
+  const unread = (prompt: ScreenPrompt | null = { kind: 'question', id: null, untouched: false }): ScreenState => ({ ...form(), prompt, answerable: false, detail: 'different_prompt' });
+  const later = SINCE + FORM_WAIT_MS;
+
+  it('VIEW-4.10: a question form on screen and no question waiting in the chat: why, once 5 s of the Needs you spell have passed', () => {
+    expect(unreadQuestion(waiting(), false, [], unread(), undefined, later)).toBe(QUESTION_UNREAD);
+    expect(unreadQuestion(waiting(), false, [], unread(), undefined, later - 1)).toBeNull();
+    // An answered question in the chat is no question waiting.
+    expect(unreadQuestion(waiting(), false, [pendingQ('toolu_0', 'answered')], unread(), undefined, later)).toBe(QUESTION_UNREAD);
+  });
+
+  it('VIEW-4.10: nothing when the chat has the question, the screen shows none or another kind, or the read is of another spell', () => {
+    expect(unreadQuestion(waiting(), false, [pendingQ()], unread(), undefined, later)).toBeNull();
+    expect(unreadQuestion(waiting(), false, [], unread(null), undefined, later)).toBeNull();
+    expect(unreadQuestion(waiting(), false, [], unread(PERMISSION), undefined, later)).toBeNull();
+    expect(unreadQuestion(waiting(), false, [], unread({ kind: 'incomplete' }), undefined, later)).toBeNull();
+    expect(unreadQuestion(waiting(), false, [], { ...unread(), since: SINCE - 60_000 }, undefined, later)).toBeNull();
+    expect(unreadQuestion(waiting(), false, [], { ...unread(), since: null }, undefined, later)).toBeNull();
+    expect(unreadQuestion(waiting(), false, [], undefined, undefined, later)).toBeNull();
+  });
+
+  it('VIEW-4.10: nothing while the chat has a question asked in this spell, answered too (a read can still show its form), nor while this tab\'s answer is on its way or landed after the latest read', () => {
+    const answered = (ts: number | null): ChatEntry => ({ ...pendingQ('toolu_2', 'answered'), ts: ts === null ? null : new Date(ts).toISOString() });
+    expect(unreadQuestion(waiting(), false, [answered(SINCE - 1_000)], unread(), undefined, later)).toBeNull();
+    expect(unreadQuestion(waiting(), false, [answered(SINCE - FORM_WAIT_MS)], unread(), undefined, later)).toBeNull();
+    // One asked before this spell: the form on screen isn't it.
+    expect(unreadQuestion(waiting(), false, [answered(SINCE - FORM_WAIT_MS - 1)], unread(), undefined, later)).toBe(QUESTION_UNREAD);
+    expect(unreadQuestion(waiting(), false, [], unread(), attempt({ key: 'q:toolu_1', phase: 'sending' }), later)).toBeNull();
+    expect(unreadQuestion(waiting(), false, [], unread(), attempt({ key: 'q:toolu_1', phase: 'sent', epoch: 2 }), later)).toBeNull();
+    // A read made after the answer landed says what's there now.
+    expect(unreadQuestion(waiting(), false, [], { ...unread(), epoch: 3 }, attempt({ key: 'q:toolu_1', phase: 'sent', epoch: 2 }), later)).toBe(QUESTION_UNREAD);
+  });
+
+  it('VIEW-4.10: only for a running, Controllable Claude Code Session that Needs you', () => {
+    expect(unreadQuestion(waiting({ harness: 'codex' }), false, [], unread(), undefined, later)).toBeNull();
+    expect(unreadQuestion(waiting({ controllable: false }), false, [], unread(), undefined, later)).toBeNull();
+    expect(unreadQuestion(waiting(), true, [], unread(), undefined, later)).toBeNull();
+    expect(unreadQuestion(waiting({ status: 'busy' }), false, [], unread(), undefined, later)).toBeNull();
   });
 });
 

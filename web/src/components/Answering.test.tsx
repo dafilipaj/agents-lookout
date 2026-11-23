@@ -12,6 +12,7 @@ import {
   QUESTION_NOT_SHOWN,
   QUESTION_TOUCHED,
   QUESTION_UNCHECKED,
+  QUESTION_UNREAD,
   READ_WAIT_MS,
   STOP_SETTLE_MS,
   TOUCHED,
@@ -880,6 +881,53 @@ describe('Stop (VIEW-4.4)', () => {
     expect(header().querySelector('[data-slot="stop-error"]')).toHaveTextContent(LOST_STOP);
     expect(stopButton()).toHaveAccessibleDescription(LOST_STOP);
     expect(drawerToggle()).toHaveAttribute('aria-expanded', 'true');
+  });
+});
+
+describe('a question form the chat doesn’t have (VIEW-4.10)', () => {
+  const unreadCard = () => screen.queryByRole('region', { name: 'Question' });
+
+  it('VIEW-4.10: a question form on screen with no question in the chat shows a card where its options would be, saying why, with Show terminal and Esc beside it; not in the spell’s first 5 s, and gone once the question reaches the chat or the form goes', () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    try {
+      vi.setSystemTime(NOW);
+      const since = NOW - 2_000;
+      const app = open({ statusSince: since });
+      // What Fleet reads off a form whose question isn't in the Transcript: no id, nothing to match.
+      const read = (p: ScreenPrompt | null) => app.emit({ ...confirmed(), prompt: p, answerable: false, detail: 'different_prompt', since });
+      read({ kind: 'question', id: null, untouched: false });
+      // The spell's first 5 s: the chat's copy of a question can be a read behind its form.
+      expect(unreadCard()).toBeNull();
+      act(() => vi.advanceTimersByTime(FORM_WAIT_MS - 2_000));
+      const card = unreadCard()!;
+      expect(card).toHaveTextContent('Claude Code asks');
+      expect(card).toHaveTextContent('A question is waiting in the terminal');
+      expect(within(card).getByRole('alert')).toHaveTextContent(QUESTION_UNREAD);
+      // "Show terminal" while the Terminal preview is closed (it opens on its own on Needs you).
+      if (drawerToggle().getAttribute('aria-expanded') === 'true') {
+        expect(within(card).queryByRole('button', { name: /Show terminal/ })).toBeNull();
+        act(() => drawerToggle().click());
+      }
+      expect(within(card).getByRole('button', { name: /Show terminal/ })).toBeInTheDocument();
+      expect(within(card).queryAllByRole('button').filter((b) => b.closest('[aria-label="Choices"]'))).toHaveLength(0);
+      expect(within(header()).getByRole('button', { name: 'Esc' })).toBeInTheDocument();
+      // The question reaches the chat: its own card, with its options, and this one goes.
+      app.emit({ type: 'chat', sessionId: 'a', op: 'reset', entries: [question([q()])], before: null, queue: [] });
+      expect(unreadCard()).toBeNull();
+      expect(screen.getByTestId('chat').querySelector('[data-kind="question"]')).not.toBeNull();
+      // With none in the chat again, the card is back until the screen stops showing a question.
+      app.emit({ type: 'chat', sessionId: 'a', op: 'reset', entries: [], before: null, queue: [] });
+      expect(unreadCard()).not.toBeNull();
+      read(null);
+      expect(unreadCard()).toBeNull();
+      // Not once the Session leaves Needs you.
+      read({ kind: 'question', id: null, untouched: false });
+      expect(unreadCard()).not.toBeNull();
+      app.emit({ type: 'sessions', upsert: [row({ id: 'a', status: 'busy', statusSince: NOW })], remove: [] });
+      expect(unreadCard()).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

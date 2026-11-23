@@ -50,7 +50,7 @@ import { FileLinks } from '@/lib/files';
 import { shownCount } from '@/lib/ports';
 import { type PanelNav, type RightLayout, type RightTab, loadLayout, saveLayout, toggleTab } from '@/lib/right-sidebar';
 import { useAnyModalOpen } from '@/lib/modal';
-import { type HarnessState, type LaunchDraft, initialDraft } from '@/lib/launch';
+import { type HarnessState, type LaunchDraft, initialDraft, withViewedTopic } from '@/lib/launch';
 import { type FoundReply, HANDOFF_READ_MS, SENT_SKEW_MS, type HandoffWait, type ShownLink, type WritingWait, afterRead, handoffDraft, handoffRequest, keepHandovers, keptHandoverChange, readKeptHandovers, replyAfter, showLink, waitStep, withReadyDraft, withoutReady } from '@/lib/handoff';
 import type { HandoffControls } from '@/components/SessionView';
 import { shownEffort } from '@/lib/effort-switch';
@@ -396,9 +396,17 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
       setWorkDraft(null);
       setHandoffOpen(null);
       launchedFromTopic.current = null;
+      // TOPIC-16.3: in an Open Topic's view, that Topic is picked, unless the draft has one already.
+      const shown = route.name === 'topic' ? state.topics?.topics.find((t) => t.id === route.id) : undefined;
+      if (shown)
+        setDraft((d) => {
+          const base = d ?? initialDraft(state.settings);
+          const next = withViewedTopic(base, shown, state.topics?.topics ?? []);
+          return next === base ? d : next;
+        });
     }
     openLauncher();
-  }, [launcherOpen, openLauncher]);
+  }, [launcherOpen, openLauncher, route, state.topics, state.settings]);
 
   // LAUNCH-1.1: N opens the launcher when focus isn't in a text field. ⌘N does too, but a normal
   // Chrome tab keeps ⌘N for itself; it reaches the page only in an installed-app window.
@@ -833,8 +841,9 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
         updateLayout({ open: true, tab: 'topics', topic: id });
         setReveal({ id, at: Date.now() });
       },
+      view: openTopic,
     }),
-    [byMember, updateLayout, jevCanAsk, client],
+    [byMember, updateLayout, jevCanAsk, client, openTopic],
   );
   // TOPIC-3.5: the Session sidebar's filter also matches the titles of a live Session's Topics.
   const topicTitles = useCallback((row: SessionRow) => sessionTopicTitles(byMember, row), [byMember]);
@@ -1597,6 +1606,7 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
                 onStop={(row) => void stopSession(row, 'busy')}
                 onEsc={(row) => void stopSession(row, 'needs-you')}
                 handoff={handoffControls}
+                sessions={state.sessions}
               />
             )}
           </ViewErrorBoundary>
@@ -1639,6 +1649,7 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
                   onOpenGraph={openGraph}
                   onSuggest={openSuggest}
                   onOpenTopic={openTopic}
+                  onStartSession={startInTopic}
                   onLinkTo={linkTo}
                   keyboardEnabled={!modalOpen}
                   navRef={topicsNav}

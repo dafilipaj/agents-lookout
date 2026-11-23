@@ -30,6 +30,20 @@ export function topicFill(prompt: string, put: string | undefined, topic: Topic 
   return { prompt: rest ? `${text}\n\n${rest}` : text, topicText: text };
 }
 
+/**
+ * TOPIC-16.3: N, ⌘N or "+" while an Open Topic's view shows: that Topic picked in the draft's Topic
+ * field, as a pick there does (TOPIC-15.4), unless the draft already has one as the field shows it
+ * (`topics`, all of them): a pick of a Topic archived since shows as None, so it counts as none; one
+ * deleted shows as "A deleted Topic", so it stays. The same draft when nothing changes.
+ */
+export function withViewedTopic(draft: LaunchDraft, topic: Topic | null | undefined, topics: readonly Topic[]): LaunchDraft {
+  if (!topic || topic.state !== 'open') return draft;
+  const held = draft.topic ? topics.find((t) => t.id === draft.topic!.id) : undefined;
+  if (draft.topic && (!held || held.state === 'open')) return draft;
+  const fill = topicFill(draft.prompt, draft.topicText, topic);
+  return { ...draft, topic: { id: topic.id, via: 'topic' }, ...(fill ?? {}) };
+}
+
 export type HarnessState =
   | { state: 'loading' }
   | { state: 'ready'; harnesses: HarnessOption[] }

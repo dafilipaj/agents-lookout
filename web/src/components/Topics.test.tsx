@@ -6,7 +6,7 @@ import type { PrSection, TaskSection, WorkPr, WorkSnapshot, WorkTask } from '@sh
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { NOW, pickMore, pressRowAction, renderApp, row, rowActionWords, settings, primaryButtons } from '@/test/helpers';
+import { NOW, pickMore, pressRowAction, renderApp, row, rowActionWords, rowEl, settings, primaryButtons } from '@/test/helpers';
 
 /** Synthetic Topics, Tasks and PRs only: invented titles, repos and ids. */
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -157,7 +157,7 @@ describe('the Topics tab (TOPIC-3)', () => {
     expect(app.client.resume).not.toHaveBeenCalled();
   });
 
-  it('TOPIC-3.4: an expanded Topic is built as DS-21 says: its members and update its state, its notes’ first three lines its summary, its Sessions a count, live first, then Open, Open graph, Link to Topic…, Archive and Delete; Enter on it opens its view', async () => {
+  it('TOPIC-3.4: an expanded Topic is built as DS-21 says: its members and update its state, its notes’ first three lines its summary, its Sessions a count, live first, then Open, Start Session, Open graph, Link to Topic…, Archive and Delete; Enter on it opens its view', async () => {
     const notes = ['**Port** the rates table', 'two', 'three', 'fourth line'].join('\n');
     const app = openApp([topic(1, { title: 'Proposals rates', notes, members: [member(TASK_MEMBER), member(PR_MEMBER), member(SESSION), member({ ...SESSION, ref: { harness: 'claude', sessionId: 'past-one' }, snapshot: { harness: 'claude', title: 'spec', directory: null } })] })]);
     const user = await openTopics();
@@ -176,7 +176,7 @@ describe('the Topics tab (TOPIC-3)', () => {
     expect(item('Proposals rates').querySelector('[data-field="title"]')).not.toHaveClass('truncate');
     expect(details.querySelector('[data-field="prs"], [data-field="tasks"], [data-field="outputs"], [data-field="edges"]')).toBeNull();
     expect(within(details).queryByRole('textbox')).toBeNull();
-    expect(await rowActionWords(details, user)).toEqual(['Open', 'Open graph', 'Link to Topic…', 'Archive', 'Delete']);
+    expect(await rowActionWords(details, user)).toEqual(['Open', 'Start Session', 'Open graph', 'Link to Topic…', 'Archive', 'Delete']);
     // Its rows aren't listbox options, so Open and More are in the Tab order (DS-16.3).
     expect([...details.querySelectorAll('[data-field="actions"] [role="button"]')].map((b) => b.getAttribute('tabindex'))).toEqual(['0', '0']);
     // Enter on the expanded Topic runs its first button, Open; a click on it only keeps it selected.
@@ -1045,15 +1045,6 @@ describe('the Topic view (TOPIC-10)', () => {
     await waitFor(() => expect(app.client.library).toHaveBeenCalledTimes(1));
   });
 
-  it('TOPIC-3.4 (support): S opens the summary’s first chip, a live Session, even when a past member was added first', async () => {
-    const app = openApp([topic(1, { title: 'Rates', members: [member({ ...SESSION, ref: { harness: 'claude', sessionId: 'past-one' }, snapshot: { harness: 'claude', title: 'spec', directory: null } }, NOW - 9_000), member(SESSION, NOW - 1_000)] })]);
-    const user = await openTopics();
-    await user.click(header('Rates'));
-    await user.keyboard('s');
-    expect(window.location.pathname).toBe(`/s/${SESSION_ID}`);
-    expect(app.client.resume).not.toHaveBeenCalled();
-  });
-
   it('TOPIC-10.2: the header has the Topic’s marker, title, chips and counts, then Open graph, Link to Topic…, Archive and Delete; Delete asks, then shows the graph', async () => {
     const app = openApp([topic(1, { title: 'Shipped', members: [member(SESSION), member(PR_MEMBER)] }), topic(2, { title: 'Other' })], work({ mine: [] }));
     const user = await openTopics();
@@ -1333,9 +1324,10 @@ describe('starting a Session in a Topic (TOPIC-5)', () => {
     await user.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     await waitFor(() => expect(startButton()).toHaveFocus());
+    // N's draft is what you typed, not the Topic view's prompt; in the view N picks its Topic above it (TOPIC-16.3).
     await user.keyboard('n');
-    expect(await screen.findByLabelText('Prompt')).toHaveValue('my own draft');
-    expect(screen.getByLabelText('Topic')).toHaveValue('');
+    expect(await screen.findByLabelText('Prompt')).toHaveValue(`Sharpen the corners\nbefore the lanterns.\n\nTopic: ${id(1)} Anvil\n\n${RESTATE_LINE}\n\nmy own draft`);
+    expect(screen.getByLabelText('Topic')).toHaveValue(id(1));
     await user.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
 
@@ -1826,5 +1818,182 @@ describe('Handovers in a Topic (TOPIC-15)', () => {
     expect(prompt()).toHaveValue(lanternsText);
     await user.selectOptions(field(), id(1));
     expect(prompt()).toHaveValue(lanternsText);
+  });
+});
+
+describe('Start from a Topic (TOPIC-16)', () => {
+  const dialog = () => screen.getByRole('dialog', { name: 'New Session' });
+  const prompt = () => within(dialog()).getByLabelText('Prompt');
+  const topicField = () => within(dialog()).getByLabelText('Topic');
+  const closeLauncher = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  };
+  const anvilText = ['Sharpen the corners.', `Topic: ${id(1)} Anvil`, RESTATE_LINE].join('\n\n');
+
+  it("TOPIC-16.1: an expanded Topic's More lists Start Session first, which opens the Topic view's launcher and gives focus back to More; S does the same for the selected Topic, collapsed too, with focus back where it was, and no longer opens its first Session; Open stays the labelled action", async () => {
+    const app = openApp([topic(1, { title: 'Anvil', notes: 'Sharpen the corners.', members: [member(SESSION)] }), topic(2, { title: 'Bare' })]);
+    const user = await openTopics();
+    await user.click(header('Anvil'));
+    const details = item('Anvil').querySelector<HTMLElement>('[data-field="details"]')!;
+    expect(await rowActionWords(details, user)).toEqual(['Open', 'Start Session', 'Open graph', 'Link to Topic…', 'Archive', 'Delete']);
+    const menu = await (async () => {
+      await user.click(details.querySelector<HTMLElement>('[data-action="more"]')!);
+      return screen.getByRole('menu');
+    })();
+    const start = within(menu).getByRole('menuitem', { name: /Start Session/ });
+    expect(start).toHaveTextContent('S');
+    expect(within(menu).getAllByRole('menuitem')[0]).toBe(start);
+    await user.click(start);
+    expect(prompt()).toHaveValue(anvilText);
+    expect(topicField()).toHaveValue(id(1));
+    await closeLauncher(user);
+    await waitFor(() => expect(details.querySelector('[data-action="more"]')).toHaveFocus());
+
+    // S, on a selected Topic that isn't expanded: the same launcher, and focus back where it was.
+    await user.click(header('Bare'));
+    header('Bare').focus();
+    await user.keyboard('{Escape}');
+    expect(header('Bare')).toHaveAttribute('aria-expanded', 'false');
+    await user.keyboard('s');
+    expect(prompt()).toHaveValue(`Topic: ${id(2)} Bare\n\n${RESTATE_LINE}`);
+    expect(topicField()).toHaveValue(id(2));
+    await closeLauncher(user);
+    await waitFor(() => expect(header('Bare')).toHaveFocus());
+
+    // S opens no Session: on Anvil, selected, whose first Session is live, it opens the launcher.
+    await user.click(header('Anvil'));
+    await user.keyboard('s');
+    expect(prompt()).toHaveValue(anvilText);
+    expect(window.location.pathname).toBe('/s/alpha');
+    expect(app.client.launch).not.toHaveBeenCalled();
+    await closeLauncher(user);
+    // Enter on the expanded Topic still opens its view.
+    expect(header('Anvil')).toHaveAttribute('aria-expanded', 'true');
+    header('Anvil').focus();
+    await user.keyboard('{Enter}');
+    expect(window.location.pathname).toBe(`/topics/${id(1)}`);
+  });
+
+  it("TOPIC-16.2: the Topic view's Start Session is its one Primary button", async () => {
+    openApp([topic(1, { title: 'Anvil' })]);
+    const user = await openTopics();
+    const view = await openView(user, 'Anvil');
+    expect(primaryButtons(view)).toEqual([within(view).getByRole('button', { name: 'Start Session' })]);
+  });
+
+  it("TOPIC-16.3: N in an Open Topic's view picks that Topic, its prompt above what you typed; a draft with a Topic keeps it; N in a Session view or an Archived Topic's view leaves the field as the draft has it", async () => {
+    openApp([topic(1, { title: 'Anvil', notes: 'Sharpen the corners.' }), topic(2, { title: 'Lanterns', notes: 'Light them all.' }), topic(3, { title: 'Old', state: 'archived' })]);
+    const user = await openTopics();
+    // A Session view: None, as before.
+    await user.keyboard('n');
+    expect(topicField()).toHaveValue('');
+    await user.type(prompt(), 'Start with the corners.');
+    await closeLauncher(user);
+
+    await openView(user, 'Anvil');
+    act(() => (document.activeElement as HTMLElement).blur());
+    await user.keyboard('n');
+    expect(topicField()).toHaveValue(id(1));
+    expect(prompt()).toHaveValue(`${anvilText}\n\nStart with the corners.`);
+    await closeLauncher(user);
+
+    // The pick is the draft's now: another Topic's view keeps it.
+    await openView(user, 'Lanterns');
+    act(() => (document.activeElement as HTMLElement).blur());
+    await user.keyboard('n');
+    expect(topicField()).toHaveValue(id(1));
+    expect(prompt()).toHaveValue(`${anvilText}\n\nStart with the corners.`);
+    // None takes it out; then an Archived Topic's view picks nothing.
+    await user.selectOptions(topicField(), '');
+    expect(prompt()).toHaveValue('Start with the corners.');
+    await closeLauncher(user);
+    await user.click(screen.getByRole('checkbox', { name: 'Archived' }));
+    await openView(user, 'Old');
+    act(() => (document.activeElement as HTMLElement).blur());
+    await user.keyboard('n');
+    expect(topicField()).toHaveValue('');
+    expect(prompt()).toHaveValue('Start with the corners.');
+  });
+
+  it('TOPIC-16.4: the Session header links the Topic it is in after its Hand off links, opening its view on Overview; in several, "N Topics" opens a menu, Open first with markers and Archived marked; none, no link; a past Session\'s view too', async () => {
+    const PAST: HistoryItem = { sessionId: 'past-one', harness: 'claude', headless: false, title: 'old spec', projectPath: null, projectDisplay: null, repo: null, branch: null, lastActiveAt: NOW - 3_600_000, snippet: null, firstPrompt: null, blocked: null };
+    const pastMember: NewMember = { kind: 'session', ref: { harness: 'claude', sessionId: 'past-one' }, snapshot: { harness: 'claude', title: 'old spec', directory: null } };
+    const app = openApp([topic(1, { title: 'Anvil', members: [member(SESSION)] }), topic(2, { title: 'Spec', members: [member(pastMember)] })], work(), {
+      pastSession: async () => ({ item: PAST, source: 'transcript', preview: 'latest', totalMessages: 0, entries: [] }),
+    });
+    const user = userEvent.setup();
+    const sessionHeader = () => screen.getByRole('banner', { name: 'Session' });
+    // alpha is in no Topic.
+    expect(sessionHeader().querySelector('[data-field="topic-link"]')).toBeNull();
+    await user.click(rowEl(SESSION_ID));
+    await waitFor(() => expect(window.location.pathname).toBe(`/s/${SESSION_ID}`));
+    const link = within(sessionHeader()).getByRole('button', { name: 'Topic: Anvil' });
+    expect(link).toHaveTextContent('Anvil');
+    expect(link).toHaveAttribute('title', 'Anvil');
+    expect(link.querySelector('svg.lucide-layers')).not.toBeNull();
+    // After the Hand off links, in the header's line.
+    expect(link.closest('[data-slot="header-info"]')).not.toBeNull();
+    await user.click(link);
+    expect(window.location.pathname).toBe(`/topics/${id(1)}`);
+    expect(within(topicView()).getByRole('tab', { name: /^Overview/ })).toHaveAttribute('aria-selected', 'true');
+
+    // In two more, one Archived: "3 Topics", Open ones first, the Archived one marked.
+    app.emit({ type: 'topics', topics: { state: 'ok', reason: null, path: '/p', topics: [topic(1, { title: 'Anvil', members: [member(SESSION)] }), topic(2, { title: 'Spec', members: [member(pastMember)] }), topic(4, { title: 'Lanterns', members: [member(SESSION)] }), topic(5, { title: 'Old', state: 'archived', updatedAt: NOW, members: [member(SESSION)] })], edges: [], pruned: [], libraryReadAt: null, recommendations: [], jevAsksToday: 0, jevSetAside: { count: 0, reason: null }, summarizing: [], summaryErrors: {} } });
+    await user.click(rowEl(SESSION_ID));
+    await waitFor(() => expect(window.location.pathname).toBe(`/s/${SESSION_ID}`));
+    const several = within(sessionHeader()).getByRole('button', { name: /3 Topics/ });
+    await user.click(several);
+    const menu = await screen.findByRole('menu', { name: 'Topics' });
+    const rows = within(menu).getAllByRole('menuitem');
+    expect(rows.map((r) => r.textContent)).toEqual(['Anvil', 'Lanterns', 'Oldarchived']);
+    expect(rows[0]!.querySelector('[data-session-marker]')).toHaveAttribute('data-status', 'needs-you');
+    await user.click(rows[1]!);
+    expect(window.location.pathname).toBe(`/topics/${id(4)}`);
+
+    // A past Session's view shows it too.
+    window.history.pushState(null, '', '/h/claude/past-one');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    const past = await screen.findByTestId('past-session');
+    expect(await within(past).findByRole('button', { name: 'Topic: Spec' })).toHaveTextContent('Spec');
+    // Its header is a container, so below 32rem the link is its icon alone, as in the live header.
+    expect(within(past).getByRole('banner', { name: 'Past Session' })).toHaveClass('@container');
+  });
+
+  it('TOPIC-16.5: Overview shows the Topic\'s Handover folded, between Since you last looked and the Summary: when it was kept, from whom, and whether Start Session sends it; Show Handover shows it in place; none, nothing', async () => {
+    const SUMMARY_AT = NOW - 3_600_000;
+    const SUMMARY: TopicSummary = {
+      answer: { what: 'Sharpen the anvil.', state: 'in progress', why: 'A draft.', open: [], recent: [], next: [], openMore: 0, watch: [] },
+      writtenAt: SUMMARY_AT,
+      model: 'claude-sonnet-5-5',
+      costUsd: 0.04,
+    };
+    const HANDOVER = { at: NOW - 60_000, from: 'rates-port', text: '**Rounding** is settled: half up.' };
+    openApp([
+      topic(1, { title: 'Newer', summary: SUMMARY, handover: HANDOVER }),
+      topic(2, { title: 'Older', summary: SUMMARY, handover: { ...HANDOVER, at: SUMMARY_AT - 60_000 } }),
+      topic(3, { title: 'None', summary: SUMMARY }),
+    ]);
+    const user = await openTopics();
+    const line = async (title: string) => {
+      const view = await openView(user, title);
+      return within(view).queryByRole('region', { name: 'Latest Handover' });
+    };
+    const newer = (await line('Newer'))!;
+    expect(newer).toHaveTextContent(/^Latest Handover·kept \S+ ago·from rates-port·sent with Start Session/);
+    expect(newer.querySelector('time')).toHaveAttribute('title', localTime(HANDOVER.at));
+    // Between Since you last looked and the Summary.
+    const summary = within(topicView()).getByRole('region', { name: 'Summary' });
+    expect(newer.compareDocumentPosition(summary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const show = within(newer).getByRole('button', { name: 'Show Handover' });
+    expect(show).toHaveAttribute('aria-expanded', 'false');
+    expect(newer.querySelector('[data-field="handover"]')).toBeNull();
+    await user.click(show);
+    expect(within(newer.querySelector<HTMLElement>('[data-field="handover"]')!).getByText('Rounding').tagName).toBe('STRONG');
+    await user.click(within(newer).getByRole('button', { name: 'Hide Handover' }));
+    expect(newer.querySelector('[data-field="handover"]')).toBeNull();
+
+    expect(await line('Older')).toHaveTextContent('the newer summary is sent instead');
+    expect(await line('None')).toBeNull();
   });
 });

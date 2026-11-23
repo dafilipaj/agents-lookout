@@ -67,9 +67,9 @@ A header's icon action that asks one thing before it runs, then waits on the Ses
 
 ### A link to another Session in a header
 
-What the header names besides the Session: "from <title>" and "Continued in <title>" (`HandoffLinks`, HAND-4).
+What the header names besides the Session: "from <title>" and "Continued in <title>" (`HandoffLinks`, HAND-4), and the Topics it's in (`TopicHeaderLinks`, TOPIC-16.4), after them.
 
-- **Use** a Quiet `Button`, `line` size, after the Harness's name: its icon, then its words, cut to fit (`min-w-0 shrink`, the words `truncate`); below 32rem of header the words go (`@max-[32rem]:sr-only`), as the Harness's name does, and the tooltip keeps them. Several Sessions are one link with a `ChevronDown`, opening a `DropdownMenu` of `SessionMarker`, title and `StatusTag` rows.
+- **Use** a Quiet `Button`, `line` size, after the Harness's name: its icon, then its words, cut to fit (`min-w-0 shrink`, the words `truncate`); below 32rem of header the words go (`@max-[32rem]:sr-only`), as the Harness's name does, and the tooltip keeps them. Several Sessions are one link with a `ChevronDown`, opening a `DropdownMenu` of `SessionMarker`, title and `StatusTag` rows; several Topics are one "N Topics" link the same way, its rows a Topic's `SessionMarker`, title and, for an Archived one, "archived".
 - **Don't:** colour it Primary or underline it: it's a way to another Session, not the next step.
 
 ### A line in a column's footer

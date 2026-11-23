@@ -31,6 +31,7 @@ import {
   questionPanel,
   sendErrorText,
   stopButton,
+  unreadQuestion,
 } from '@/lib/answers';
 import type { HarnessState } from '@/lib/launch';
 import { canSwitchEffort, checkedEffort, effortFootnote, effortOptions, effortUnverified, shownEffort } from '@/lib/effort-switch';
@@ -59,7 +60,7 @@ import { PortsChip } from './PortsChip';
 import { StatusMore } from './StatusMore';
 import { SubagentsButton, type SubagentsButtonProps } from './SubagentsButton';
 import { changesTip, hasLines } from '@/lib/changes';
-import { AddToTopicButton } from './TopicLinks';
+import { AddToTopicButton, TopicHeaderLinks } from './TopicLinks';
 import { rowMember } from '@/lib/topics';
 import { ActionIcon } from '@/lib/actions';
 import { type HandoffWait, type ShownLink, canHandOff } from '@/lib/handoff';
@@ -167,6 +168,8 @@ export interface SessionViewProps {
   onEsc(row: SessionRow): void;
   /** HAND: "Hand off…" and the links; absent, neither shows. */
   handoff?: HandoffControls;
+  /** TOPIC-16.4: the Session sidebar's list, for the header's Topics' markers; absent, no Topic link. */
+  sessions?: ReadonlyMap<string, SessionRow>;
 }
 
 /** VIEW: the selected Session. Mounted per Session (`key`), so its local state is its own. */
@@ -216,6 +219,7 @@ export function SessionView({
   onEsc,
   attachments,
   handoff,
+  sessions,
 }: SessionViewProps) {
   const controls = row.controllable && !ended;
   const [dragging, setDragging] = useState(false);
@@ -235,6 +239,8 @@ export function SessionView({
   // VIEW-4: the permission prompt's buttons under the chat, and the question that can be answered in it.
   const permission = permissionPanel(row, ended, screen, attempt);
   const question = questionPanel(row, ended, chat?.entries ?? [], screen, attempt, now);
+  // VIEW-4.10: a question form the chat doesn't have yet: say so where its options would be.
+  const unread = unreadQuestion(row, ended, chat?.entries ?? [], screen, attempt, now);
   const questionId = question?.id ?? null;
   const questionPhase = question?.phase ?? null;
   const questionMessage = question?.message ?? null;
@@ -459,6 +465,7 @@ export function SessionView({
         esc={esc}
         onEsc={() => onEsc(row)}
         handoff={handoff}
+        sessions={sessions}
       />
       <ShellCell row="body" className="flex flex-col overflow-hidden">
         <AnswerContext.Provider value={answering}>
@@ -486,6 +493,7 @@ export function SessionView({
                     terminal={answering.terminal}
                   />
                 )}
+                {unread && <PromptCard what="question" panel={{ kind: 'message', prompt: null, message: unread }} label={HARNESS_NAME[row.harness]} onChoose={() => {}} terminal={answering.terminal} />}
                 {row.done && !ended && (
                   <DoneCard
                     row={row}
@@ -628,6 +636,7 @@ function Header({
   esc,
   onEsc,
   handoff,
+  sessions,
 }: {
   row: SessionRow;
   ended: boolean;
@@ -639,6 +648,7 @@ function Header({
   esc: ReturnType<typeof escButton>;
   onEsc(): void;
   handoff?: HandoffControls;
+  sessions?: ReadonlyMap<string, SessionRow>;
 }) {
   const age = row.statusSince !== null ? formatAge(now - row.statusSince) : null;
   const title = useRef<HTMLHeadingElement>(null);
@@ -672,6 +682,8 @@ function Header({
           </span>
           {/* HAND-4.1, HAND-4.2: what this Session continues, and what continues it. */}
           {handoff && <HandoffLinks {...handoff.links(row)} onOpen={handoff.open} />}
+          {/* TOPIC-16.4: the Topics it's in, after them. */}
+          {sessions && <TopicHeaderLinks member={rowMember(row)} sessions={sessions} />}
           {renamed.note && <HeaderNote slot="rename-note" id={renamed.note.id} message={renamed.note.message} tone={renamed.note.tone} />}
           {key?.error && <HeaderNote slot="stop-error" id={stopErrorId} message={key.error} />}
         </div>

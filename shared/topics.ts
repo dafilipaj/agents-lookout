@@ -497,7 +497,7 @@ export function topicPrompt(topic: Topic): string {
     if (first) parts.push(first);
   }
   const handover = topic.handover;
-  if (handover?.text.trim() && (!summary || handover.at > topic.summary!.writtenAt)) {
+  if (handover && promptSendsHandover(topic)) {
     parts.push(`Latest Handover (${localTime(handover.at)}, from ${handover.from.replace(/\s+/g, ' ').trim()}):\n${handover.text.trim()}`);
   }
   const tasks = topic.members.flatMap((m) => (m.kind === 'task' ? [m.snapshot.url] : []));
@@ -505,6 +505,18 @@ export function topicPrompt(topic: Topic): string {
   parts.push(`Topic: ${topic.id} ${topic.title}`);
   parts.push(RESTATE_LINE);
   return parts.join('\n\n');
+}
+
+/**
+ * TOPIC-15.3: whether TOPIC-5.1's prompt carries the Topic's Handover: it has one, and it's newer than
+ * the summary the prompt uses, or the prompt uses none (no summary, or one out of date). TOPIC-16.5
+ * says the same on Overview.
+ */
+export function promptSendsHandover(topic: Topic): boolean {
+  const handover = topic.handover;
+  if (!handover?.text.trim()) return false;
+  const summary = topic.summary && !topic.summaryStale ? topic.summary : null;
+  return !summary || handover.at > summary.writtenAt;
 }
 
 /** TOPIC-5.1: the handover's last line: the receiver restates, then carries on. */

@@ -60,6 +60,8 @@ export interface TopicsPanelProps {
   onSuggest?(): void;
   /** TOPIC-10.1: "Open", or Enter on an expanded Topic: its view. */
   onOpenTopic(id: string): void;
+  /** TOPIC-16.1: "Start Session" under an expanded Topic's "More", or `S`: the launcher, as the view's opens it; `opener` gets focus back. */
+  onStartSession?(topic: Topic, opener: HTMLElement | null): void;
   /** TOPIC-6.1: "Link to Topic…" opens the Topic picker for this Topic. */
   onLinkTo(topic: Topic): void;
   /** TOPIC-13.3: the Topic whose view is open in this tab: its row shows no "N new". */
@@ -194,13 +196,10 @@ export function TopicsPanel(props: TopicsPanelProps) {
       // TOPIC-7.1: G, with focus in Topics, the graph.
       e.preventDefault();
       props.onOpenGraph();
-    } else if (!text && !e.repeat && topic && letter === 's') {
-      // …and S its first Session chip, as the chip does: the summary's first live one (TOPIC-3.4), else the newest past one.
-      const pruned = view?.pruned ?? [];
-      const first = orderSessions(topic.members.filter((m): m is SessionMember => m.kind === 'session' && !pruned.includes(`${m.ref.harness}:${m.ref.sessionId}`)), sessions)[0];
-      if (!first) return;
+    } else if (!text && !e.repeat && topic && letter === 's' && props.onStartSession) {
+      // TOPIC-16.1: S starts a Session from the selected Topic, as S does from a Task in Work.
       e.preventDefault();
-      void props.onOpenSession(first, liveRow(first, sessions) !== null).catch((err: unknown) => setProblem(err instanceof Error ? err.message : "Couldn't open its Session."));
+      props.onStartSession(topic, document.activeElement instanceof HTMLElement ? document.activeElement : null);
     }
   };
 
@@ -591,7 +590,7 @@ function TopicSummary({ topic, sessions, recommendations, panel, onProblem, done
         )
       }
       links={links}
-      actions={<TopicActions topic={topic} topics={panel.view?.topics ?? []} looksDone={done} look="row" onOpen={() => panel.onOpenTopic(topic.id)} onOpenGraph={panel.onOpenGraph} onLinkTo={panel.onLinkTo} updateTopic={panel.updateTopic} deleteTopic={panel.deleteTopic} onProblem={onProblem} />}
+      actions={<TopicActions topic={topic} topics={panel.view?.topics ?? []} looksDone={done} look="row" onOpen={() => panel.onOpenTopic(topic.id)} onStartSession={panel.onStartSession && ((opener) => panel.onStartSession!(topic, opener))} onOpenGraph={panel.onOpenGraph} onLinkTo={panel.onLinkTo} updateTopic={panel.updateTopic} deleteTopic={panel.deleteTopic} onProblem={onProblem} />}
     />
   );
 }

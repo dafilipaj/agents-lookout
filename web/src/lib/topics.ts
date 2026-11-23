@@ -37,6 +37,13 @@ export function topicsOf(byMember: ReadonlyMap<string, Topic[]>, members: readon
   return sortTopics([...seen.values()]);
 }
 
+/** TOPIC-16.4: a Session's Topics for its header: Open ones first, then Archived, each most recently changed first. */
+export function headerTopics(byMember: ReadonlyMap<string, Topic[]>, member: NewMember | null): Topic[] {
+  if (!member) return [];
+  const list = topicsOf(byMember, [member]);
+  return [...list.filter((t) => t.state === 'open'), ...list.filter((t) => t.state !== 'open')];
+}
+
 const KIND_WORD: Record<MemberKind, [string, string]> = { session: ['Session', 'Sessions'], pr: ['PR', 'PRs'], task: ['Task', 'Tasks'], run: ['Run', 'Runs'] };
 
 /** TOPIC-11.4, TOPIC-11.8: a summary's state as a word. */
@@ -190,6 +197,8 @@ export interface TopicsApi {
   addTo(members: readonly NewMember[], label: string): void;
   /** TOPIC-2.5: the Topics tab, on that Topic. */
   open(topicId: string): void;
+  /** TOPIC-16.4: that Topic's view, on Overview. */
+  view(topicId: string): void;
 }
 
 export const TopicsContext = createContext<TopicsApi | null>(null);

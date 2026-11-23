@@ -8,7 +8,7 @@ import type { Chat as ChatState } from '@/lib/store';
 import { HARNESS_NAME } from '@/lib/sessions';
 import { formatAge } from '@/lib/time';
 import { Chat } from './Chat';
-import { AddToTopicButton } from './TopicLinks';
+import { AddToTopicButton, TopicHeaderLinks } from './TopicLinks';
 import { historyMember } from '@/lib/topics';
 import { HarnessIcon } from './HarnessIcon';
 import { DockNote, StatusBar } from './SessionView';
@@ -79,7 +79,8 @@ export function PastSessionView({ harness, sessionId, now, load, sessions, onOpe
   const note = previewNote(detail);
   return (
     <ShellView data-testid="past-session">
-      <PaneHeader aria-label="Past Session">
+      {/* A container, so its links show their icon alone below 32rem (HAND-4, TOPIC-16.4), as the live header's do. */}
+      <PaneHeader aria-label="Past Session" className="@container">
         <h1 className="min-w-0 truncate text-title font-semibold tracking-tight text-muted-foreground" title={item.title}>
           {item.title}
         </h1>
@@ -95,6 +96,8 @@ export function PastSessionView({ harness, sessionId, now, load, sessions, onOpe
             onOpen={onOpenLink}
           />
         )}
+        {/* TOPIC-16.4: the Topics it's in, after them. */}
+        {sessions && <TopicHeaderLinks member={historyMember(item)} sessions={sessions} />}
         <span className="ml-auto flex shrink-0 items-center">
           <AddToTopicButton member={historyMember(item)} label={item.title} />
         </span>
