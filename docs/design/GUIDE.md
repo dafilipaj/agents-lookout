@@ -53,6 +53,7 @@ What opens from a reading to explain it: Memory's and Usage's, from the sidebar'
 - **Do:** start from Memory's popover and drop the parts you don't need.
 - **Don't:** invent a new header, a bar height or a way of saying "critical".
 - **Guard:** DS-19.2 (a bar or track drawn outside `Meter` and the usage strip's bar fails, and so does `uppercase` outside `SectionLabel` and the chat's message tag).
+- **A row the reading leaves out:** list it after the rows that count, its name and numbers in `muted-foreground` (a `ChangesCount` `quiet`), and say why in its tooltip and accessible name ("a document, not counted"); the section's note counts both ("1 file · 2 documents"). Evidence's documents (EVID-7.4).
 - **Two openers, one popover:** Evidence's opens from the status line and from the Done card (`SessionView.tsx`); one is open at a time, and Esc returns focus to whichever opened it (EVID-5.8).
 - **See:** MEM-3, USAGE-2, EVID-5, DS-19, DS-3.2.
 

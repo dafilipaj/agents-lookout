@@ -8,6 +8,7 @@ import { SESSION_ID } from './history.ts';
 import { cleanEnv } from './launcher.ts';
 import { type AgentRow, reviewRounds, reviewRuns, type ReviewerSession } from './reviews.ts';
 import { sanitizeLine } from './sanitize.ts';
+import { documentType } from './documents.ts';
 import { type CommandRow, isTestFile, testRun, type TestRun } from './test-runs.ts';
 import { refusedAsTooOld } from './too-old.ts';
 
@@ -323,7 +324,8 @@ export class Evidence {
   private async compute(id: string, e: Entry): Promise<void> {
     if (!e.runs || e.readAt === null || this.tooOld) return;
     const checkouts = this.opts.checkouts(id);
-    if (!checkouts || !checkouts.some((c) => c.files.length || c.moreFiles)) return this.publish(id, e, null);
+    // EVID-1.1, EVID-7.3: only documents changed is nothing to back; a Checkout listed in part may hold anything.
+    if (!checkouts || !checkouts.some((c) => c.moreFiles > 0 || c.files.some((f) => !isDocument(f)))) return this.publish(id, e, null);
     const files = await this.times(checkouts);
     if (this.entries.get(id) !== e || !e.scope || !e.runs) return;
     const view = evidenceView(id, e.runs, files, checkouts, e.readAt, e.error, e.review, this.now());
@@ -464,15 +466,26 @@ export function reviewerSession(value: unknown): ReviewerSession | null {
   };
 }
 
-/** EVID-3, EVID-4, EVID-5.2 to 5.4, 5.10, 5.11, EVID-6: a Session's Evidence from its Test runs, its Review rounds and its changed files' times. */
+/** EVID-7.1: a changed file is a document by its (new) path's extension, unless it's a test file (EVID-4.1). */
+export function isDocument(file: Pick<ChangedCheckout['files'][number], 'path' | 'oldPath'>): boolean {
+  return documentType(file.path) !== null && !isTestFile(file.path) && !(file.oldPath !== null && isTestFile(file.oldPath));
+}
+
+/** EVID-3, EVID-4, EVID-5.2 to 5.4, 5.10, 5.11, EVID-6, EVID-7: a Session's Evidence from its Test runs, its Review rounds and its changed files' times. */
 export function evidenceView(sessionId: string, runs: readonly TestRun[], files: readonly TimedFile[], checkouts: readonly ChangedCheckout[], readAt: number, error: string | null, review: ReviewInput | null = null, now = readAt): EvidenceView {
-  const times = files.flatMap((f) => (f.mtime === null ? [] : [f.mtime]));
+  // EVID-7.2: documents don't move the last change or count as changed since.
+  const counted = files.filter((f) => !isDocument(f.file));
+  const times = counted.flatMap((f) => (f.mtime === null ? [] : [f.mtime]));
   const lastChange = times.length ? Math.max(...times) : null;
   const lastPass = runs.find((r) => r.outcome === 'passed') ?? null;
   // EVID-5.3: changed since the last pass; without one, every file that has a time.
-  const since = files
-    .filter((f): f is TimedFile & { mtime: number } => f.mtime !== null && (!lastPass || f.mtime > lastPass.end))
-    .sort((a, b) => b.mtime - a.mtime || a.file.path.localeCompare(b.file.path));
+  const latest = (list: readonly TimedFile[]) =>
+    list
+      .filter((f): f is TimedFile & { mtime: number } => f.mtime !== null && (!lastPass || f.mtime > lastPass.end))
+      .sort((a, b) => b.mtime - a.mtime || a.file.path.localeCompare(b.file.path));
+  const since = latest(counted);
+  // EVID-7.4: the documents changed since the last pass, after the files that count.
+  const documentsSince = lastPass ? latest(files.filter((f) => isDocument(f.file))) : [];
   const changedFiles = checkouts.reduce((n, c) => n + c.files.length + c.moreFiles, 0);
   // EVID-6.3, EVID-6.8: the rounds never change the verdict.
   const rounds = review ? reviewRounds(reviewRuns(review.commands, review.agents, review.sessions, now), now) : [];
@@ -487,8 +500,11 @@ export function evidenceView(sessionId: string, runs: readonly TestRun[], files:
     lastPass: lastPass ? { end: lastPass.end, passed: lastPass.passed } : null,
     runCount: runs.length,
     changedSince: since.length,
+    documentsSince: documentsSince.length,
     changedSinceFiles: lastPass
-      ? since.slice(0, CHANGED_SINCE_SHOWN).map((f): EvidenceFile => ({ root: f.root, checkout: f.checkout, path: f.file.path, mtime: f.mtime, additions: f.file.additions, deletions: f.file.deletions, binary: f.file.binary }))
+      ? [...since.map((f) => ({ f, document: false })), ...documentsSince.map((f) => ({ f, document: true }))]
+          .slice(0, CHANGED_SINCE_SHOWN)
+          .map(({ f, document }): EvidenceFile => ({ root: f.root, checkout: f.checkout, path: f.file.path, mtime: f.mtime, additions: f.file.additions, deletions: f.file.deletions, binary: f.file.binary, document }))
       : [],
     testFiles: testFiles(files),
     changedFiles,
@@ -496,7 +512,7 @@ export function evidenceView(sessionId: string, runs: readonly TestRun[], files:
     runs: runs.map((r) => ({ key: r.key, end: r.end, outcome: r.outcome, passed: r.passed, failed: r.failed, command: r.command, subagent: r.subagent })),
     rounds,
     // EVID-6.4: changed files with a modification time later than the latest finished round's end.
-    changedSinceReview: lastReview === null ? 0 : files.filter((f) => f.mtime !== null && f.mtime > lastReview).length,
+    changedSinceReview: lastReview === null ? 0 : counted.filter((f) => f.mtime !== null && f.mtime > lastReview).length,
   };
 }
 

@@ -12,6 +12,11 @@ export const number = (n: number) => n.toLocaleString('en-US');
 /** "1 file", "3 files" */
 export const plural = (n: number, one: string, many = `${one}s`) => `${number(n)} ${n === 1 ? one : many}`;
 
+/** EVID-7.4: "Changed since the last pass"'s note: "1 file · 2 documents", each part left out at 0. */
+export function changedSinceNote(view: Pick<EvidenceView, 'changedSince' | 'documentsSince'>): string {
+  return [view.changedSince ? plural(view.changedSince, 'file') : null, view.documentsSince ? plural(view.documentsSince, 'document') : null].filter(Boolean).join(' · ');
+}
+
 /** EVID-5.5, EVID-6.7: the first two tiles in words, then the rounds, for the Done card's line. */
 export function doneFacts(view: EvidenceView): string {
   const tiles = view.lastPass

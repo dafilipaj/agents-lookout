@@ -6,7 +6,7 @@ import { SectionLabel, Tile, Tiles, Verdict } from '@/components/ui/details';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { PART_ROW, PartRowContent, type PartLook } from '@/components/ui/status-part';
 import { splitPath } from '@/lib/changes';
-import { clock, doneFacts, number, plural, reviewerWords, reviewState, ROUND_VALUE, TONE_TEXT } from '@/lib/evidence';
+import { changedSinceNote, clock, doneFacts, number, plural, reviewerWords, reviewState, ROUND_VALUE, TONE_TEXT } from '@/lib/evidence';
 import { HARNESS_NAME } from '@/lib/sessions';
 import { formatAge, useNow } from '@/lib/time';
 import { cn } from '@/lib/utils';
@@ -131,12 +131,12 @@ export function EvidenceDetails({ view, onOpenFile, onOpenChanges, onShowReviewe
   );
 }
 
-/** EVID-5.10: the files changed since the last pass, latest first; a press opens one as DIFF-4 does. */
+/** EVID-5.10, EVID-7.4: the files changed since the last pass, latest first, then the documents, muted; a press opens one as DIFF-4 does. */
 function ChangedSince({ view, onOpenFile, onOpenChanges }: { view: EvidenceView } & EvidenceActions) {
   const [errors, setErrors] = useState<ReadonlyMap<string, string>>(new Map());
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
-  const more = view.changedSince - view.changedSinceFiles.length;
+  const more = view.changedSince + view.documentsSince - view.changedSinceFiles.length;
   const open = (f: EvidenceFile) => {
     const key = `${f.root}\u0000${f.path}`;
     void onOpenFile(f).catch((err: unknown) => {
@@ -147,25 +147,27 @@ function ChangedSince({ view, onOpenFile, onOpenChanges }: { view: EvidenceView 
   };
   return (
     <section className="px-3.5 py-3" aria-label="Changed since the last pass" data-section="changed-since">
-      <SectionLabel className="mb-1">Changed since the last pass</SectionLabel>
+      <SectionLabel className="mb-1" note={changedSinceNote(view)}>Changed since the last pass</SectionLabel>
       <ul className="flex flex-col">
         {view.changedSinceFiles.map((f) => {
           const key = `${f.root}\u0000${f.path}`;
           const { name, folder } = splitPath(f.path);
           const error = errors.get(key);
+          // EVID-7.4: a document is listed, muted, and says it isn't counted.
+          const uncounted = f.document ? ', a document, not counted' : '';
           return (
-            <li key={key}>
+            <li key={key} data-document={f.document || undefined}>
               <button
                 type="button"
                 data-file={key}
                 className="flex w-full min-w-0 items-center gap-2 rounded-sm px-1.5 py-1 -mx-1.5 text-left text-meta outline-none hover:bg-accent focus-visible:bg-accent focus-visible:ring-2 focus-visible:ring-ring/50"
-                title={f.path}
-                aria-label={`${f.path}, changed at ${clock(f.mtime)}, ${f.binary ? 'binary' : `${f.additions} added, ${f.deletions} removed`}, open in VS Code`}
+                title={`${f.path}${uncounted}`}
+                aria-label={`${f.path}${uncounted}, changed at ${clock(f.mtime)}, ${f.binary ? 'binary' : `${f.additions} added, ${f.deletions} removed`}, open in VS Code`}
                 onClick={() => open(f)}
               >
                 {/* DIFF-3.5: the folder gives way first. */}
                 <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
-                  <span className="min-w-0 max-w-full shrink-0 truncate font-medium">{name}</span>
+                  <span className={cn('min-w-0 max-w-full shrink-0 truncate', f.document ? 'text-muted-foreground' : 'font-medium')}>{name}</span>
                   {folder && <span className="min-w-0 truncate text-muted-foreground">{folder}</span>}
                 </span>
                 {error ? (
@@ -173,7 +175,7 @@ function ChangedSince({ view, onOpenFile, onOpenChanges }: { view: EvidenceView 
                 ) : (
                   <>
                     <span className="shrink-0 text-muted-foreground tabular-nums">{clock(f.mtime)}</span>
-                    {f.binary ? <span className="shrink-0 text-muted-foreground">binary</span> : <ChangesCount additions={f.additions} deletions={f.deletions} />}
+                    {f.binary ? <span className="shrink-0 text-muted-foreground">binary</span> : <ChangesCount additions={f.additions} deletions={f.deletions} quiet={f.document} className={f.document ? 'text-muted-foreground' : undefined} />}
                   </>
                 )}
               </button>

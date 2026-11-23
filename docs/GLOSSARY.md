@@ -24,7 +24,7 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Changes**: What differs in a Checkout's working tree (tracked edits and untracked files, not ignored ones) from its Branch point: committed-but-unpushed and uncommitted work alike. A Session's Changes are those of its Checkouts, whoever made them. See the DIFF spec.
 
-**Checkout**: A git working tree: a repo's main one or a Worktree. A Claude Code Session's Checkouts are those it edited files in, and its working directory's when it edited there or it isn't on its default branch (DIFF-2.1); a Codex Session's is its working directory's (DIFF-2.2).
+**Checkout**: A git working tree: a repo's main one or a Worktree. A Claude Code Session's Checkouts are those it edited files in, and its working directory's when it edited there or it isn't on its default branch (DIFF-2.1); a Codex Session's is its working directory's (DIFF-2.2); never one at or under a Harness home (DIFF-2.9).
 
 **Concept**: A name a PlainLang Module defines in its definitions, written `:Name:` (`:Deal:`). A Module also sees the Concepts of the Modules it imports, and the exported ones of those it requires. See the PLAIN spec.
 
@@ -40,13 +40,15 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Fake Harness**: A stand-in for Claude Code or Codex in a World. It runs in the World's tmux, registers and writes Transcripts the way the real Harness does, and answers from a script, so the real Fleet and tb-session see it as a Session. It never calls a model.
 
-**Evidence**: What backs the work of an Idle or Done Session with Changes, as Lookout reads it from the Session's Transcript and its Checkouts, never from what the Session says: its Test runs and how each ended, whether its Changes changed after its last Test run, and the test files among its Changes, summed up in a verdict, and its Review rounds beside the verdict. Shown in its status line and a popover, in its Done card, and as a mark on its row when the verdict is a warning. See the EVID spec.
+**Evidence**: What backs the work of an Idle or Done Session with Changes, as Lookout reads it from the Session's Transcript and its Checkouts, never from what the Session says: its Test runs and how each ended, whether its Changes changed after its last Test run (documents aside, EVID-7), and the test files among its Changes, summed up in a verdict, and its Review rounds beside the verdict. Shown in its status line and a popover, in its Done card, and as a mark on its row when the verdict is a warning. See the EVID spec.
 
 **Finding**: A structural problem Lookout reports in a repo, of one kind: a *Cycle* (files that import each other in a circle), a *Hub* (a file that many files import and that imports many itself), a *God file* (a large file imported from many Areas) or a *Hotspot* (a large file that changes often). Against the repo a week earlier it's new, growing, steady, shrinking or gone. One you mark as *Known* stays quiet until it grows. See ARCH-2 and ARCH-3.9.
 
 **Handover**: What a Session writes, when you hand off its work (HAND), for a new Session to carry on with: all of its work, or a piece you name. It's written to the new Session, not as a summary: the goal, where things stand, the files and links it needs, what's settled and what was ruled out, the scope and the first move. It becomes the new Session's first prompt, and the two Sessions are linked: the new one is *Continued from* the old, the old *Continued in* the new. Once ready, it waits on the Hand off button until a Session starts from it, you keep it in a Topic, or you discard it (HAND-6). Started in a Topic, or kept in one without a start, it's kept in that Topic, and the newest one of all the work goes to the next Session started from it (TOPIC-15).
 
 **Harness**: The agent CLI a Session runs: Claude Code or Codex. (Fleet also knows pi; not a goal for Lookout.)
+
+**Harness home**: A Harness's own folder in your home, `~/.claude`, `~/.codex` or `~/.pi`, where it keeps its settings, Transcripts and memory. What a Session writes there is the Harness's, not the Session's work: it's never an Output (LIB-2.10) or a Checkout (DIFF-2.9).
 
 **Headless Session**: A Session started without a terminal to type into, such as `claude -p` or an Agent SDK run. History hides them by default.
 

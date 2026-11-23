@@ -5,6 +5,7 @@ import { homedir } from 'node:os';
 import { basename, delimiter, join, sep } from 'node:path';
 import type { ChangedCheckout, ChangedFile, ChangeKind, ChangesView, RowChanges, ServerEvent, SessionRow, Status } from '../shared/types.ts';
 import type { RunError, Runner } from './exec.ts';
+import { inHarnessHome } from './documents.ts';
 import { fleetObject } from './fleet.ts';
 import { repoName } from './git.ts';
 
@@ -301,7 +302,7 @@ export class Changes {
     const before = JSON.stringify(e.checkouts);
     const fingerprint = e.fingerprint;
     e.fingerprint = typeof obj.fingerprint === 'string' ? obj.fingerprint : null;
-    e.checkouts = parseCandidates(obj.candidates, e.row.harness);
+    e.checkouts = parseCandidates(obj.candidates, e.row.harness, (this.opts.env ?? process.env).HOME || homedir());
     if (JSON.stringify(e.checkouts) !== before) this.changed(e.row.id);
     // EVID-1.5: a file edited again with the same counts changes only the fingerprint; Evidence re-reads its times.
     else if (e.fingerprint !== fingerprint) this.opts.onChanged?.(e.row.id);
@@ -451,12 +452,12 @@ function executable(p: string): boolean {
   }
 }
 
-/** The candidates that count (DIFF-2.1, 2.2), with Changes (DIFF-2.4), in Fleet's order: the cwd's first. */
-export function parseCandidates(raw: unknown, harness: string): Counted[] {
+/** The candidates that count (DIFF-2.1, 2.2, 2.9), with Changes (DIFF-2.4), in Fleet's order: the cwd's first. */
+export function parseCandidates(raw: unknown, harness: string, home: string = process.env.HOME || homedir()): Counted[] {
   if (!Array.isArray(raw)) return [];
   const out: Counted[] = [];
   for (const v of raw) {
-    if (!isCandidate(v) || !counts(harness, v) || v.stats.files === 0) continue;
+    if (!isCandidate(v) || !counts(harness, v) || v.stats.files === 0 || inHarnessHome(v.root, home)) continue;
     const files = v.files.flatMap((f) => (isFile(f) ? [toFile(f)] : []));
     out.push({
       id: checkoutId(v.root),

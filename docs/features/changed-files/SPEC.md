@@ -3,7 +3,7 @@ title: "Changed files"
 code: "DIFF"
 status: "In Progress"
 created: "2026-10-31"
-updated: "2026-11-06"
+updated: "2026-11-23"
 ---
 
 # Changed files
@@ -45,6 +45,7 @@ Fleet reports a Session's candidate Checkouts and each one's Changes (the contra
 - [x] DIFF-2.6 Lookout asks Fleet (`fleet --local diff`) for a Session's Changes when its Status changes, every 10 s while it's Busy and every 60 s otherwise; every 3 s while any open tab has its list open (DIFF-3.6). One ask runs at a time across all Sessions, in the order they fell due; an ask is never started for a Session whose last ask is still running. It passes the last answer's fingerprint, and an `unchanged` answer keeps the last one. (test)
 - [x] DIFF-2.7 A Checkout with more than 500 changed files lists the first 500 by path and says how many more there are; its count still covers all of them. (test)
 - [x] DIFF-2.8 A Session with no session ID yet (a Codex Session before its first prompt) is asked about by its `pid:` target. A Session that leaves Fleet's list drops its answer and its schedule. (test)
+- [x] DIFF-2.9 A candidate whose root is a Harness home or inside one (`~/.claude`, `~/.codex`, `~/.pi`, as LIB-2.10 names them) never counts, for either Harness, whatever Fleet's `why`. It matches the home's path from HOME and the one the filesystem resolves, as Fleet gives roots resolved (C3): a `~/.claude` that's a symlink, or a HOME under `/tmp` that's `/private/tmp`, is still one. What a Harness keeps there is its own, not the Session's work: Claude Code's memory notes, in a git repo of their own, made a Session look changed after its tests (EVID-7). (test)
 
 ### DIFF-3 The list of changed files
 
@@ -82,6 +83,7 @@ Fleet reports a Session's candidate Checkouts and each one's Changes (the contra
 - Ended and past Sessions: Fleet lists only live ones.
 - Other editors (Cursor, Zed, JetBrains), and listing VS Code in the TOOLS spec.
 - For Codex, any Checkout but the working directory's, until its rollouts are researched.
+- A Harness home's files inside a Checkout rooted outside it (a home folder kept in git): that Checkout counts whole, as git sees it (DIFF-2.9 is about a Checkout rooted at or under a Harness home).
 - Diffing inside a submodule, and Checkouts in the middle of a merge or with a sparse index (skipped as `unsupported`).
 - Other Hosts.
 
@@ -148,6 +150,7 @@ Codex 0.16x's rollouts don't name the files a patch changed: in 30 days of this 
 - **`code --diff` with a base copy, not a `vscode://` link**: links can't open a diff; VS Code's Git view would compare with HEAD, not the Branch point.
 - **Numbers, no hunks**: the count and the list need `--numstat` only; VS Code renders the diff.
 - **Polling by Status, one ask at a time**: a snapshot hashes every dirty file; with 10 to 20 live Sessions, asking every 2 s would keep git busy for nothing. An unchanged fingerprint saves the diff, not the snapshot.
+- **A Harness home's Checkout isn't the Session's** (Dario, 2026-11-23, DIFF-2.9): Claude Code's memory folder can be a git repo of its own, and its notes moved the count and Evidence's last change. The Library already leaves out a Harness home's files (LIB-2.10); the list of homes lives in one place both read.
 - **The row's count after the Subagent count** (Dario chose a row count, 2026-10-31): SIDE-9.1 stays as built and ticked.
 
 ### Known gaps
@@ -175,3 +178,6 @@ None.
 - 2026-11-06: DIFF-1.1 amended for DS-22 (Plan item 50, the clarity pass's idea 3): on the row the count is grey, in the first of three fixed columns; its green and red stay in the status line and the list, where it reads as a diff.
 - 2026-11-19: EVID reads DIFF's answer for a Session's changed files, their kinds and `+ −` (`Changes.checkouts`), and is told when it changes (EVID-1.5). Its Test files tile and "N more" open DIFF-3's list as the count does, and a file changed since the last pass opens as DIFF-4 does. No DIFF criterion changes.
 - 2026-11-21: The status line folds instead of cutting (VIEW-5.19): DIFF-1.3's number of files leaves the line second, silently (the count's tooltip has it), and the count folds into "N more" later, its row opening the list (DIFF-3).
+- 2026-11-23: DIFF-2.9 added (Dario, next-moves item 8, with EVID-7): a candidate rooted at or under a Harness home never counts. Non-goal: a Harness home's files inside a Checkout rooted outside one.
+- 2026-11-23: DIFF-2.9 built and ticked: `parseCandidates` leaves out a candidate whose root is a Harness home or inside one, by the HOME the server runs with (`server/documents.ts`, shared with the Library).
+- 2026-11-23: DIFF-2.9 amended after Codex's review (Sol, high): a Harness home matches by its resolved path too, since Fleet gives a Checkout's root resolved, so a symlinked `~/.claude` or a HOME under `/tmp` no longer slips through; the resolved list is read again after a minute.

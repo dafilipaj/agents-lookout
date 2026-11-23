@@ -33,6 +33,7 @@ const EVIDENCE: EvidenceView = {
   lastPass: { end: NOW - 60_000, passed: 12 },
   runCount: 1,
   changedSince: 0,
+  documentsSince: 0,
   changedSinceFiles: [],
   testFiles: { count: 1, added: 0, deleted: 0, additions: 4, deletions: 1 },
   changedFiles: 23,

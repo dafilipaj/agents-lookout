@@ -31,10 +31,11 @@ const evidence = (over: Partial<EvidenceView> = {}): EvidenceView => ({
   lastPass: { end: T('14:26'), passed: 2180 },
   runCount: runs.length,
   changedSince: 3,
+  documentsSince: 0,
   changedSinceFiles: [
-    { root: '/r/shop', checkout: 'c1', path: 'src/invoice/format.ts', mtime: T('14:31'), additions: 3, deletions: 3, binary: false },
-    { root: '/r/shop', checkout: 'c1', path: 'src/invoice/round.ts', mtime: T('14:30'), additions: 6, deletions: 2, binary: false },
-    { root: '/r/shop', checkout: 'c1', path: 'src/invoice/totals.ts', mtime: T('14:29'), additions: 18, deletions: 9, binary: false },
+    { root: '/r/shop', checkout: 'c1', path: 'src/invoice/format.ts', mtime: T('14:31'), additions: 3, deletions: 3, binary: false, document: false },
+    { root: '/r/shop', checkout: 'c1', path: 'src/invoice/round.ts', mtime: T('14:30'), additions: 6, deletions: 2, binary: false, document: false },
+    { root: '/r/shop', checkout: 'c1', path: 'src/invoice/totals.ts', mtime: T('14:29'), additions: 18, deletions: 9, binary: false, document: false },
   ],
   testFiles: { count: 4, added: 1, deleted: 1, additions: 64, deletions: 8 },
   changedFiles: 11,
@@ -177,6 +178,11 @@ describe('EVID-5: where Evidence shows', () => {
     expect(doneFacts(evidence({ lastPass: null, runCount: 0 }))).toBe('no review');
   });
 
+  it('EVID-7.2: the Done card’s words leave documents out', () => {
+    expect(doneFacts(evidence({ changedSince: 0, documentsSince: 2 }))).toMatch(/^last pass \d\d:\d\d(?: [AP]M)? · no review$/);
+    expect(doneFacts(evidence({ changedSince: 1, documentsSince: 2 }))).toMatch(/^last pass \d\d:\d\d(?: [AP]M)?, 1 file changed since · no review$/);
+  });
+
   it('EVID-5.6: a warning verdict marks the row last among its marks, with its words; ok and quiet don’t', () => {
     const app = renderApp('/');
     app.snapshot([
@@ -286,9 +292,42 @@ describe('EVID-5: where Evidence shows', () => {
     expect(openChange).toHaveBeenCalledWith('a', '/r/shop', 'src/invoice/round.ts');
   });
 
+  it('EVID-7.4: documents changed since the pass come after the files, muted, saying they aren’t counted; the note counts both, and “N more” too', async () => {
+    const openChange = vi.fn(async () => {});
+    const doc = { root: '/r/shop', checkout: 'c1', path: 'docs/invoice.md', mtime: T('14:32'), additions: 4, deletions: 1, binary: false, document: true };
+    const base = evidence();
+    show(evidence({ documentsSince: 3, changedSinceFiles: [...base.changedSinceFiles, doc] }), session(), { openChange });
+    const { user, pop } = await openPopover();
+    const section = within(pop).getByRole('region', { name: 'Changed since the last pass' });
+    expect(within(section).getByRole('heading')).toHaveTextContent(/3 files · 3 documents$/);
+    const rows = within(section).getAllByRole('button', { name: /open in VS Code/ });
+    expect(rows).toHaveLength(4);
+    const last = rows[3]!;
+    expect(last).toHaveAttribute('title', 'docs/invoice.md, a document, not counted');
+    expect(last).toHaveAccessibleName(/^docs\/invoice\.md, a document, not counted, changed at /);
+    expect(last.closest('li')).toHaveAttribute('data-document', 'true');
+    expect(last.querySelector('.font-medium')).toBeNull();
+    expect(last.querySelector('[data-slot="changes-count"]')).toHaveClass('text-muted-foreground');
+    expect(last.querySelector('.text-diff-added-text')).toBeNull();
+    expect(rows[0]!.closest('li')).not.toHaveAttribute('data-document');
+    expect(within(section).getByRole('button', { name: '2 more' })).toBeInTheDocument();
+    await user.click(last);
+    expect(openChange).toHaveBeenCalledWith('a', '/r/shop', 'docs/invoice.md');
+  });
+
+  it('EVID-7.4: with only documents changed since the pass, the section lists them and the Changed since tile says None', async () => {
+    const doc = { root: '/r/shop', checkout: 'c1', path: 'MEMORY.md', mtime: T('14:32'), additions: 23, deletions: 5, binary: false, document: true };
+    show(evidence({ verdict: verdict('passed'), changedSince: 0, documentsSince: 1, changedSinceFiles: [doc] }), session());
+    const { pop } = await openPopover();
+    expect(pop.querySelector('[data-field="tile-changed-since"]')).toHaveTextContent(/None/);
+    const section = within(pop).getByRole('region', { name: 'Changed since the last pass' });
+    expect(within(section).getByRole('heading')).toHaveTextContent(/1 document$/);
+    expect(within(section).getAllByRole('button')).toHaveLength(1);
+  });
+
   it('EVID-5.10: a changed .plain Module opens in the Spec view, as the changed-files list opens it (PLAIN-3.1)', async () => {
     const openChange = vi.fn(async () => {});
-    const files = [{ root: '/r/shop', checkout: 'c1', path: 'plain/rates.plain', mtime: T('14:31'), additions: 4, deletions: 0, binary: false }];
+    const files = [{ root: '/r/shop', checkout: 'c1', path: 'plain/rates.plain', mtime: T('14:31'), additions: 4, deletions: 0, binary: false, document: false }];
     show(evidence({ changedSince: 1, changedSinceFiles: files }), session(), { openChange });
     const { user, pop } = await openPopover();
     await user.click(within(within(pop).getByRole('region', { name: 'Changed since the last pass' })).getByRole('button'));

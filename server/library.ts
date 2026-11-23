@@ -1,11 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { open, realpath, stat as fsStat } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { basename, dirname, extname, isAbsolute, join, normalize } from 'node:path';
+import { basename, dirname, isAbsolute, join, normalize } from 'node:path';
 import { TB_SESSION_INSTALL_COMMAND } from '../shared/defaults.ts';
 import { libraryIncludes } from '../shared/library-search.ts';
 import { DEFAULT_LIBRARY_TYPES, LIBRARY_TYPES, type LibraryPage, type LibraryQuery, type OutputItem, type OutputSession, type OutputType } from '../shared/library.ts';
 import type { RunError, Runner } from './exec.ts';
+import { DOCUMENT_TYPES, documentType, inHarnessHome } from './documents.ts';
 import { checkPaths, isPlainPath } from './files.ts';
 import { SESSION_ID } from './history.ts';
 import { cleanEnv } from './launcher.ts';
@@ -18,13 +19,11 @@ import { unwrapPasted } from './pasted.ts';
 const PAGE_SIZE = 50;
 // list pages hold whole first prompts: 2,406 Sessions printed 22 MB in one page, over the runner's 16 MB cap.
 const LIST_PAGE = '200';
-const EXTENSIONS: Record<string, OutputType> = { md: 'markdown', html: 'html', htm: 'html', pdf: 'pdf', png: 'image', jpg: 'image', jpeg: 'image', gif: 'image', svg: 'image', webp: 'image' };
 const object = (v: unknown): Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v) ? v as Record<string, unknown> : {};
 const string = (v: unknown, max = 1024): string | null => typeof v === 'string' && v.length <= max && v.length > 0 && !/[\p{Cc}\p{Cf}]/u.test(v) ? v : null;
 const time = (v: unknown) => typeof v === 'string' ? Date.parse(v) : NaN;
 const label = (v: unknown): string | null => typeof v === 'string' ? v.replace(/[\p{Cc}\p{Cf}]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 300) || null : null;
 const path = (v: unknown) => typeof v === 'string' && isAbsolute(v) && isPlainPath(v) ? normalize(v) : null;
-const fileType = (p: string) => EXTENSIONS[extname(p).slice(1).toLowerCase()] ?? null;
 const url = (v: unknown) => { const s = string(v, 4096); if (!s) return null; try { const u = new URL(s); return ['https:', 'http:'].includes(u.protocol) && !u.username && !u.password ? s : null; } catch { return null; } };
 
 export class LibraryError extends Error {
@@ -146,7 +145,7 @@ export class Library {
     try {
       const prefix = ['events', '--all-projects', '--json', '--headless', headless ? 'include' : 'exclude', '--limit', '100000'];
       const [files, remote, sessions] = await Promise.all([
-        all([...prefix, '--kind', 'write,edit', '--ext', Object.keys(EXTENSIONS).join(',')]),
+        all([...prefix, '--kind', 'write,edit', '--ext', Object.keys(DOCUMENT_TYPES).join(',')]),
         all([...prefix, '--kind', 'artifact,share']), all(['list', '--all-projects', '--json', '--limit', LIST_PAGE]),
       ]);
       if (typeof files === 'string') return files;
@@ -203,8 +202,8 @@ export class Library {
   private action(value: unknown, metadata: Map<string, Record<string, unknown>>): Action | null {
     const r = object(value), file = r.kind === 'write' || r.kind === 'edit';
     if (!file && r.kind !== 'artifact' && r.kind !== 'share') return null;
-    const p = file ? path(r.path) : null, type = p ? fileType(p) : null;
-    if (file && (!p || !type || ['.claude', '.codex', '.pi'].some((d) => p === `${this.home}/${d}` || p.startsWith(`${this.home}/${d}/`)))) return null;
+    const p = file ? path(r.path) : null, type = p ? documentType(p) : null;
+    if (file && (!p || !type || inHarnessHome(p, this.home))) return null;
     const key = string(r.key, 4096), u = file ? null : url(r.url), at = time(r.timestamp);
     const id = string(r.session_id), harness = r.harness;
     if (!key || !Number.isFinite(at) || !id || !SESSION_ID.test(id) || harness !== 'claude' && harness !== 'codex' || !file && !u) return null;

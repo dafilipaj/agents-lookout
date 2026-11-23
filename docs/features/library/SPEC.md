@@ -3,7 +3,7 @@ title: Library
 code: LIB
 status: Done
 created: 2026-10-23
-updated: 2026-11-13
+updated: 2026-11-23
 ---
 
 # Library
@@ -283,3 +283,4 @@ None.
 - 2026-11-09: LIB-2.7 fix: a hover also ends at the first mouseover outside its row. Since DS-21 (Plan item 50) expanding or collapsing a row swaps its lines, so the element under the pointer could leave the page, the row never heard its mouseleave and new reads stayed held (the Behaviour test failed 2 runs in 10; 20 in 20 pass now).
 - 2026-11-09: LIB-3.6 checked by Dario in the running app and ticked. Every requirement is now ticked, so the status is Done.
 - 2026-11-13: LIB-2.2 amended, from Dario's pick of proposal A (Key decision "One icon per Type chip"): a row's icon is its chip's, 16 px in the text colour (`AppWindow` for Pages, `File`, `Hash`, `Image`, `Share2`), and each Type chip starts with it at 14 px, through DS-8.3's new `icon`; the filter row, the icon note in User experience and the Key decision "One row of Type chips" follow. The chips now take two lines at the default 360 px. The Topic view's Output lines use the same icons (`OUTPUT_ICON`) at their 14 px. From an Opus review: the chip icon is LIB-2.2's, a `(test)` criterion, not LIB-2.3's `(e2e)`.
+- 2026-11-23: LIB-2.10 fix, with DIFF-2.9 and EVID-7: the extension table and the Harness homes moved to `server/documents.ts`, which DIFF and Evidence read too. A Harness home now also matches by the path the filesystem resolves (a `~/.claude` that is a symlink), and an extension named like an object's own property (`x.constructor`) is no Type.

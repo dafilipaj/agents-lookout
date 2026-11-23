@@ -65,6 +65,8 @@ export interface EvidenceFile {
   additions: number;
   deletions: number;
   binary: boolean;
+  /** EVID-7.4: a document, listed muted after the files that count, and not counted. */
+  document: boolean;
 }
 
 /** EVID-4.2: the Session's test files among its Changes. */
@@ -123,15 +125,17 @@ export interface EvidenceView {
   readAt: number;
   /** EVID-1.8: why the latest read failed; null when it worked. The verdict is then from `readAt`'s read. */
   error: string | null;
-  /** EVID-3.1: the latest modification time of the changed files; null when none has one. */
+  /** EVID-3.1, EVID-7.2: the latest modification time of the changed files, documents aside; null when none has one. */
   lastChange: number | null;
   /** EVID-5.3: the latest Test run that passed; null without one. */
   lastPass: { end: number; passed: number | null } | null;
   /** EVID-5.3: how many Test runs there are in all. */
   runCount: number;
-  /** EVID-5.3: changed files with a modification time later than the last pass (every one with a time, without a pass). */
+  /** EVID-5.3, EVID-7.2: changed files, documents aside, with a modification time later than the last pass (every one with a time, without a pass). */
   changedSince: number;
-  /** EVID-5.10: the first 10 of them, the latest change first; empty without a pass. */
+  /** EVID-7.4: documents with a modification time later than the last pass; 0 without one. */
+  documentsSince: number;
+  /** EVID-5.10, EVID-7.4: the first 10 of both, the files that count first, each latest change first; empty without a pass. */
   changedSinceFiles: EvidenceFile[];
   /** EVID-5.4 */
   testFiles: TestFiles;
@@ -143,7 +147,7 @@ export interface EvidenceView {
   runs: EvidenceRun[];
   /** EVID-6.3, EVID-6.5: every Review round, the latest start first. */
   rounds: EvidenceRound[];
-  /** EVID-6.4: changed files with a modification time later than the latest finished round's end; 0 without one. */
+  /** EVID-6.4, EVID-7.2: changed files, documents aside, with a modification time later than the latest finished round's end; 0 without one. */
   changedSinceReview: number;
 }
 

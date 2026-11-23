@@ -98,6 +98,53 @@ describe('which candidates count', () => {
   });
 });
 
+describe('DIFF-2.9: a Harness home is never a Checkout', () => {
+  it("DIFF-2.9: a candidate rooted at or inside ~/.claude, ~/.codex or ~/.pi never counts, for either Harness; a lookalike folder does", () => {
+    const home = '/Users/me';
+    const roots = (raw: FleetCandidate[], harness: string) => parseCandidates(raw, harness, home).map((c) => c.root);
+    expect(
+      roots(
+        [
+          cand('/Users/me/.claude/projects/-Users-me-Projects-shop/memory'),
+          cand('/Users/me/.claude'),
+          cand('/Users/me/.pi/agent'),
+          cand('/Users/me/.claudette/notes'),
+          cand('/Users/me/Projects/shop'),
+        ],
+        'claude',
+      ),
+    ).toEqual(['/Users/me/.claudette/notes', '/Users/me/Projects/shop']);
+    expect(roots([cand('/Users/me/.codex/memories', { why: ['cwd'] })], 'codex')).toEqual([]);
+  });
+
+  it('DIFF-2.9: a Harness home matches by its resolved path too: a ~/.claude that is a symlink, and a HOME whose real path differs', () => {
+    const base = mkdtempSync(join(tmpdir(), 'lookout-harness-home-'));
+    try {
+      const home = join(base, 'me');
+      const real = join(base, 'elsewhere', 'claude');
+      mkdirSync(home, { recursive: true });
+      mkdirSync(join(real, 'projects', 'shop', 'memory'), { recursive: true });
+      symlinkSync(real, join(home, '.claude'));
+      // Fleet gives roots resolved, as git does (contract fleet-diff C3).
+      const memory = join(realpathSync(real), 'projects', 'shop', 'memory');
+      const codex = join(realpathSync(home), '.codex', 'memories');
+      const shop = join(realpathSync(home), 'Projects', 'shop');
+      expect(parseCandidates([cand(memory), cand(codex), cand(shop)], 'claude', home).map((c) => c.root)).toEqual([shop]);
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  it("DIFF-2.9: the Session's answer leaves the memory repo out of its Checkouts and its count", async () => {
+    vi.useFakeTimers();
+    const memory = cand('/Users/me/.claude/projects/-Users-me-Projects-shop/memory', { files: [{ path: 'MEMORY.md', kind: 'modified', old_path: null, additions: 23, deletions: 5, binary: false, uncommitted: true }], stats: { files: 1, additions: 23, deletions: 5 } });
+    const { changes } = setup([answer([cand('/Users/me/Projects/shop'), memory])], { env: { HOME: '/Users/me' } });
+    changes.observe([row()]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(changes.checkouts('s1')!.map((c) => c.root)).toEqual(['/Users/me/Projects/shop']);
+  });
+});
+
 describe('what Lookout keeps of an answer', () => {
   it('DIFF-2.4: a candidate without Changes, or one Fleet skipped, is left out and the rest still count', () => {
     const raw = JSON.parse(answer([cand('/r/a'), cand('/r/clean', { stats: { files: 0, additions: 0, deletions: 0 }, files: [] })]));

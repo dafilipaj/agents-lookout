@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { EvidenceView } from '../shared/evidence.ts';
 import type { ChangedCheckout, ChangedFile, ServerEvent } from '../shared/types.ts';
 import type { RunOptions, Runner } from './exec.ts';
-import { decide, Evidence, type EvidenceOptions, FIRST_PAGE_TIMEOUT_MS, PAGE_TIMEOUT_MS } from './evidence.ts';
+import { decide, Evidence, type EvidenceOptions, FIRST_PAGE_TIMEOUT_MS, isDocument, PAGE_TIMEOUT_MS } from './evidence.ts';
 import type { TestRun } from './test-runs.ts';
 
 // Invented Session, commands and files.
@@ -297,6 +297,74 @@ const listed = (session: string, harness: string, created: number, extra: Record
 const CODEX = '01a1ff23-0000-7000-8000-000000000001';
 const CLAUDE = '6c2d0000-0000-4000-8000-000000000002';
 const review = (key: string, start: number, end: number, extra: Record<string, unknown> = {}) => cmd(key, end, { command: 'codex-run.sh /tmp/p-codex-dual-review-1 /shop', title: 'codex-run.sh', started_at: iso(start), output_tail: '', ...extra });
+
+describe('EVID-7: documents don’t need a test run', () => {
+  it('EVID-7.1: a document by its extension, case-insensitively, a renamed file by its new path; a test file never is', () => {
+    const doc = (path: string, oldPath: string | null = null) => isDocument({ path, oldPath });
+    for (const p of ['docs/SPEC.md', 'README.MD', 'index.html', 'page.htm', 'brief.pdf', 'logo.PNG', 'a.jpg', 'a.jpeg', 'a.gif', 'icon.svg', 'a.webp']) expect(doc(p), p).toBe(true);
+    for (const p of ['src/rates.ts', 'plain/rates.plain', 'notes.txt', 'Makefile', 'x.constructor', 'x.toString']) expect(doc(p), p).toBe(false);
+    expect(doc('src/rates.ts', 'notes.md')).toBe(false);
+    expect(doc('notes.md', 'src/rates.ts')).toBe(true);
+    for (const p of ['tests/fixtures/invoice.md', 'e2e/shots/home.png', 'src/__tests__/page.html', 'mocks/answer.svg']) expect(doc(p), p).toBe(false);
+    expect(doc('docs/old.md', 'tests/old.md')).toBe(false);
+  });
+
+  it('EVID-7.2: documents don’t move the last change or count as changed since; they stay among the changed files', async () => {
+    const files = [file('src/totals.ts'), file('docs/SPEC.md'), file('src/round.test.ts', { kind: 'added' })];
+    const times = { '/shop/src/totals.ts': T('14:20'), '/shop/docs/SPEC.md': T('14:30'), '/shop/src/round.test.ts': T('14:22') };
+    const { ev, last } = setup({ files, times });
+    ev.observe([row()]);
+    await vi.waitFor(() => expect(last()).toBeTruthy());
+    expect(last()).toMatchObject({ lastChange: T('14:22'), changedSince: 0, documentsSince: 1, verdict: { verdict: 'passed' }, changedFiles: 3, listedFiles: 3 });
+  });
+
+  it('EVID-7.2: without a pass, Changed since counts every changed file with a time but the documents', async () => {
+    const files = [file('src/totals.ts'), file('MEMORY.md')];
+    const { ev, last } = setup({ files, times: { '/shop/src/totals.ts': T('14:20'), '/shop/MEMORY.md': T('14:30') }, rows: [cmd('t1', T('14:26'), { output_tail: FAIL })] });
+    ev.observe([row()]);
+    await vi.waitFor(() => expect(last()).toBeTruthy());
+    expect(last()).toMatchObject({ lastPass: null, changedSince: 1, documentsSince: 0, changedSinceFiles: [] });
+  });
+
+  it('EVID-7.2: the Review tile’s files since leave documents out', async () => {
+    const files = [file('src/totals.ts'), file('src/round.ts'), file('docs/notes.md')];
+    const times = { '/shop/src/totals.ts': T('14:20'), '/shop/src/round.ts': T('14:21'), '/shop/docs/notes.md': T('14:23') };
+    const rows = [cmd('t1', T('14:26')), review('r1', T('14:10'), T('14:20') + 30_000)];
+    const { ev, last } = setup({ files, times, rows, listed: [listed(CODEX, 'codex', T('14:10'))] });
+    ev.observe([row()]);
+    // round.ts at 14:21 changed after 14:20:30; notes.md at 14:23 too, but it's a document.
+    await vi.waitFor(() => expect(last()?.changedSinceReview).toBe(1));
+  });
+
+  it('EVID-7.3: a Session whose changed files are all documents has no Evidence; one listed in part may hold anything', async () => {
+    const docs = [file('MEMORY.md'), file('docs/plan.md')];
+    const { ev, runner, last, setFiles } = setup({ files: docs, times: { '/shop/MEMORY.md': T('14:30'), '/shop/docs/plan.md': T('14:31') } });
+    ev.observe([row()]);
+    await vi.waitFor(() => expect(reads(runner)).toBe(1));
+    await settle();
+    expect(last() ?? null).toBeNull();
+    setFiles([...docs, file('src/totals.ts')]);
+    ev.changesChanged(ID);
+    await vi.waitFor(() => expect(last()).toBeTruthy());
+
+    const capped = setup({ files: docs, times: { '/shop/MEMORY.md': T('14:30'), '/shop/docs/plan.md': T('14:31') }, checkouts: () => [checkout(docs, 600)] });
+    capped.ev.observe([row()]);
+    await vi.waitFor(() => expect(capped.last()).toBeTruthy());
+  });
+
+  it('EVID-7.4: the documents changed since the last pass come after the files that count, latest first, sharing the 10 rows', async () => {
+    const code = Array.from({ length: 9 }, (_, i) => file(`src/f${i}.ts`));
+    const docs = [file('docs/a.md'), file('docs/b.md')];
+    const times: Record<string, number> = { '/shop/docs/a.md': T('14:40'), '/shop/docs/b.md': T('14:39') };
+    code.forEach((f, i) => (times[`/shop/${f.path}`] = T(`14:3${i}`)));
+    const { ev, last } = setup({ files: [...code, ...docs], times, rows: [cmd('t1', T('14:26'))] });
+    ev.observe([row()]);
+    await vi.waitFor(() => expect(last()).toBeTruthy());
+    expect(last()).toMatchObject({ changedSince: 9, documentsSince: 2 });
+    const listed = last()!.changedSinceFiles;
+    expect(listed.map((f) => [f.path, f.document])).toEqual([...code.map((f) => [f.path, false]).reverse(), ['docs/a.md', true]]);
+  });
+});
 
 describe('EVID-6: Review rounds', () => {
   it('EVID-6.2: with a tb-session that gives Subagent calls the read asks for command,agent; with an older one, or one TOOLS can’t read, for commands alone', async () => {
