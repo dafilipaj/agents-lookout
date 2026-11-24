@@ -79,7 +79,7 @@ The first rule that applies:
 3. **Any other result** is completed.
 4. **No result yet:** running.
 
-- Notifications and `TaskStop` results are matched across every Transcript of the Session, its parent's and all its Subagents', wherever they're recorded. A nested Subagent's notification can land in the Transcript of the one that started it, or higher. A command's still come only from its own Transcript (K5); matching them across the Session too is a later change.
+- Notifications and `TaskStop` results are matched across every Transcript of the Session, its parent's and all its Subagents', wherever they're recorded. A nested Subagent's notification can land in the Transcript of the one that started it, or higher. A command's are matched the same way, across the Session (K5, amended 2026-11-24).
 - How a row ends after it's written is one rule for commands and calls (A9); only where their notifications are looked for differs.
 - As K5's amendments have it for commands: a known end is never replaced by running, and an end never moves earlier.
 - `timestamp` is the record that ended it: the error or other result, the notification, or the `TaskStop`'s result.
