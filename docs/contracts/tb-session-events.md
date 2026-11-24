@@ -97,7 +97,7 @@ All filters, `total_results`, `--limit` and `--page` run in SQL.
 
 ## E9. Add-only
 
-A later tb-session may add fields, flags and kinds; it never renames or drops one. Lookout leaves a row of a kind it doesn't know out (LIB-2.1). So does tb-session (0.6.0 and later): an older build reading an index a newer one wrote neither counts nor returns a kind it doesn't know, and skips a row it can't read.
+A later tb-session may add fields, flags and kinds; it never renames or drops one. Lookout leaves a row of a kind it doesn't know out (LIB-2.1). So does tb-session (0.6.0 and later): an older build reading an index a newer one wrote neither counts nor returns a kind it doesn't know, or a row it can't read, so `total_results` stays the number of rows the pages return (amended 2026-11-24: an uncounted skip made Lookout's pager ask for one more page and fail).
 
 ## E10. A tb-session without the command
 

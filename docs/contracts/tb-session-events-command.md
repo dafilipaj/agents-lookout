@@ -2,7 +2,7 @@
 
 What Lookout's Evidence ([EVID](../features/done-evidence/SPEC.md)) needs from tb-session: a new kind of row in `events`, one per shell command a Session ran, with how it ended and the end of its output. It doesn't exist yet. It's built in cli-toolbox as one PR and verified there, in tb-session's own tests; Lookout's fake tb-session follows this file, and `pnpm req-check` never looks here (the criteria are EVID-1 to EVID-5). Points are numbered K1 to K11 so the PR's tests can cite them. It extends [`tb-session-events.md`](tb-session-events.md) (E1 to E11), whose rules hold for this kind unless a point here says otherwise. Every field and flag is add-only.
 
-Written 2026-11-18 from a probe of Dario's Transcripts of the 14 days before (243 Claude Code Sessions with their Subagents, 265 Codex Sessions). The record shapes below are what those Transcripts hold, not a Harness's documentation. Reviewed the same day by Codex (gpt-6.1-sol, xhigh), whose fixes are in K1, K2, K4, K5, K10 and K11. Amended 2026-11-21 from building it (tb-session 0.5.0) against all 3,129 of Dario's Transcripts: K4 row 6's refusal texts, row 8's `returnCodeInterpretation`, and K5's notifications, which newer Claude Code records as a queued attachment. Amended 2026-11-24 from cli-toolbox#130's review: `<tool_use_error>Blocked` moves from K4 row 5 to row 6, row 8 gives null for a code Claude Code explained away, and K5 ends a background command on a `TaskStop` and on a notification recorded in another Transcript of its Session.
+Written 2026-11-18 from a probe of Dario's Transcripts of the 14 days before (243 Claude Code Sessions with their Subagents, 265 Codex Sessions). The record shapes below are what those Transcripts hold, not a Harness's documentation. Reviewed the same day by Codex (gpt-6.1-sol, xhigh), whose fixes are in K1, K2, K4, K5, K10 and K11. Amended 2026-11-21 from building it (tb-session 0.5.0) against all 3,129 of Dario's Transcripts: K4 row 6's refusal texts, row 8's `returnCodeInterpretation`, and K5's notifications, which newer Claude Code records as a queued attachment. Amended 2026-11-24 from cli-toolbox#130's review: `<tool_use_error>Blocked` moves from K4 row 5 to row 6, row 8 gives null for a code Claude Code explained away, and K5 ends a background command on a `TaskStop` and on a notification recorded in another Transcript of its Session. Amended again the same day from the PR's second review (Claude Opus 5.5, xhigh): a result recorded without a `toolUseResult` (K4 rows 1 and 8), a task's final `task_status` (K5), and which notifications count (K5).
 
 ## Why `events`, not Fleet
 
@@ -71,20 +71,21 @@ The first row that matches the recorded result decides:
 
 | # | The recorded result | `ended` | `exit_code` |
 |---|---|---|---|
-| 1 | `toolUseResult.backgroundTaskId` present | `running`, until K5 | null |
+| 1 | `toolUseResult.backgroundTaskId` present; without a `toolUseResult`, a text starting `Command running in background with ID: X` or a last line `Command … moved to the background (ID: X)` | `running`, until K5 | null |
 | 2 | `toolUseResult.timedOutAfterMs` present | `timed_out` | the N of a text starting `Exit code N`, else null |
 | 3 | `toolUseResult.interrupted` true | `interrupted` | the same |
 | 4 | `is_error` true, text starting `Exit code N` | `exited` | N |
 | 5 | `is_error` true, text starting `PreToolUse:` and containing `hook error` | `refused`, `refused_by: "hook"` | null |
 | 6 | `is_error` true, text starting `<tool_use_error>Blocked` (Claude Code's own check of the command, e.g. a `sleep`), `Permission for this` or `Permission to use`, saying the command `requires approval` or `was blocked. For security`, starting `The user doesn't want to proceed`, or naming the auto-mode classifier's refusal | `refused`, `refused_by: "permission"` | null |
 | 7 | any other `is_error` true | `errored` | null |
-| 8 | `is_error` false | `exited` | 0, or null with `returnCodeInterpretation` |
+| 8 | `is_error` false | `exited` | 0; null with `returnCodeInterpretation` or without a `toolUseResult` |
 
 - `refused` means the command never ran: only rows 5 and 6, whose texts the probe saw. Seen: 393 hook refusals, most of them `res-guard` sending a test run through `res`.
 - `errored` is an error tb-session can't place. The command may or may not have run. Lookout counts it as a run whose result is unknown.
 - `exit_code` is the shell's: for a piped command, the last command of the pipe's. tb-session doesn't read the command to say whether it's piped (K8).
 - `refused_by: "permission"` is any refusal of Claude Code's own, its check of a command included; `"hook"` only a hook's.
 - Row 8's `exit_code` is null when Claude Code didn't count a result as an error although the shell returned non-zero, which it explains in `returnCodeInterpretation` (`grep` with no match, `diff` with differences, `find` with an unreadable directory): the code isn't recorded, and 0 would be false. Seen on 1,254 of 92,789 commands; no test runner's result has been seen with it.
+- Some Subagent Transcripts (Claude Code 2.1.289 to 2.1.331) record a Bash result without its `toolUseResult`: 1,011 of about 40,500 Subagent results on Dario's Mac on 2026-11-24. Row 1 then reads the task id from the text (Claude Code's own line, not one quoted in the output), and row 8's code is null: nothing records it. Rows 2 and 3 can't be told apart without it.
 - Rows 2 and 3 weren't seen in the Transcripts: every timeout also carried `backgroundTaskId` (row 1), and no result had `interrupted: true`. They stay for Harness versions that record them.
 
 ## K5. Background commands
@@ -93,7 +94,9 @@ The first row that matches the recorded result decides:
 - On that notification the row becomes `exited` with N, or with null when the summary carries no code; `interrupted` for a `killed` or `stopped` status ("didn't finish before the previous session ended"). Its `timestamp` becomes the notification's. Its `output_tail` stays the first result's text: the output went to the Harness's file, which tb-session doesn't read (E11).
 - A successful `TaskStop` whose `task_id` is the command's `backgroundTaskId` ends it `interrupted`, with `exit_code` null and the `TaskStop` result's `timestamp`. Claude Code records no notification after most stops (375 of 384 in one reviewer's Transcripts, all 249 in Dario's), so without this the command would stay `running`. A failed `TaskStop` ends nothing.
 - A notification or `TaskStop` recorded in another Transcript of the Session ends the command the same way: a Subagent's background command is notified in its parent's Transcript. Only a command still `running` changes, with the latest such end.
-- A background command with no notification and no `TaskStop` stays `running`, its `timestamp` its first result's.
+- Claude Code also records a task's status as an `attachment` of type `task_status` (`taskId`, `status`). A final one (`completed`, `failed`, `killed` or `stopped`) ends the command, by its task id, only when nothing else does: in 9 of the 10 seen it came after the notification, and in the tenth it was the only end. It ends it as a notification without a code would, at its own `timestamp`.
+- A notification counts only where Claude Code writes one: a text that opens with `<task-notification>`, or with Claude Code's `[SYSTEM NOTIFICATION - NOT USER INPUT]` wrapper. One quoted inside a prompt or a reply, or in a compaction summary (`isCompactSummary`), ends nothing. Seen quoted: 5 prompts and 2 summaries, none naming a real task yet.
+- A background command with no notification, no `TaskStop` and no final `task_status` stays `running`, its `timestamp` its first result's.
 
 ## K6. The output's tail
 
@@ -110,7 +113,7 @@ tb-session gives facts. It doesn't decide which commands run tests, read a runne
 
 ## K9. Tests in cli-toolbox
 
-Fixtures with the record shapes above, invented: each row of K4, a timeout whose text also starts `Exit code`, a background command with a notification, with one that carries no code, with a `killed` one and with none, one ended by a `TaskStop` (and one a failed `TaskStop` leaves running), a Subagent's background command ended by its parent's notification and `TaskStop`, a Subagent's command, a fork copy, an output longer than 4,000 characters, and an index written before this kind (K11).
+Fixtures with the record shapes above, invented: each row of K4, a timeout whose text also starts `Exit code`, a background command with a notification, with one that carries no code, with a `killed` one and with none, one ended by a `TaskStop` (and one a failed `TaskStop` leaves running), a Subagent's background command ended by its parent's notification and `TaskStop`, results without a `toolUseResult` (sent to the background, moved there, a plain one, one quoting Claude Code's line), a command ended only by its final `task_status` and one whose notification a later `task_status` doesn't replace, a notification quoted in a prompt and in a compaction summary, a Subagent's command, a fork copy, an output longer than 4,000 characters, and an index written before this kind (K11).
 
 ## K10. Codex (a later version)
 

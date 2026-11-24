@@ -2,7 +2,7 @@
 
 What Lookout's Evidence ([EVID](../features/done-evidence/SPEC.md), slice 2) needs from tb-session: a new kind of row in `events`, one per Subagent a Session started, with what it was asked, its model and how it ended. Evidence counts the review Subagents among them (EVID-6.1). It doesn't exist yet. It's built in cli-toolbox in 0.6.0, one PR stacked on #130 (the command kind), with a Session's model and effort ([`tb-session-list-model.md`](tb-session-list-model.md)) and the changes in A9. Lookout's fake tb-session follows this file, and `pnpm req-check` never looks here (the criteria are EVID-6). Points are numbered A1 to A10 so the PR's tests can cite them. It extends [`tb-session-events.md`](tb-session-events.md) (E1 to E11) and follows [`tb-session-events-command.md`](tb-session-events-command.md) where a point says so. Every field and flag is add-only.
 
-Written 2026-11-21 from probes of Dario's Claude Code Transcripts (the 250 to 300 most recent Sessions of the 7 days before), and from an assessment, the same day, of whether `events` belongs in tb-session (A9). The record shapes below are what those Transcripts hold, not Claude Code's documentation. Reviewed the same day by Codex (gpt-6.1-sol, xhigh), whose fixes are in A2 (a running foreground call's `timestamp`), A3 (the sidecar), A4 (an error first, ends matched across Transcripts) and A10 (the upgrade). Amended after 0.6.0 was built and reviewed, from what the build found in the Transcripts: `background` and a fork's launch (A3, A4), an interrupt's words (A4), commands' notifications (A4), the model's placeholder records (A3), a late sidecar (A3) and which refreshes must leave which rows alone (A10).
+Written 2026-11-21 from probes of Dario's Claude Code Transcripts (the 250 to 300 most recent Sessions of the 7 days before), and from an assessment, the same day, of whether `events` belongs in tb-session (A9). The record shapes below are what those Transcripts hold, not Claude Code's documentation. Reviewed the same day by Codex (gpt-6.1-sol, xhigh), whose fixes are in A2 (a running foreground call's `timestamp`), A3 (the sidecar), A4 (an error first, ends matched across Transcripts) and A10 (the upgrade). Amended after 0.6.0 was built and reviewed, from what the build found in the Transcripts: `background` and a fork's launch (A3, A4), an interrupt's words (A4), commands' notifications (A4), the model's placeholder records (A3), a late sidecar (A3) and which refreshes must leave which rows alone (A10). Amended 2026-11-24 from cli-toolbox#130's second review (Claude Opus 5.5, xhigh): a task's final `task_status` and which notifications count (A4, as K5), and what `--q` searches (A1).
 
 ## Why `events`, not Fleet
 
@@ -18,7 +18,7 @@ tb-session events --all-projects --session <id> --kind command,agent --limit 100
 tb-session events --all-projects --session <id> --kind command,agent --limit 1000 --page 2 --json   # and on, until total_results
 ```
 
-- `--ext` drops every agent row, as it drops command rows (K1). `--q` searches the description.
+- `--ext` drops every agent row, as it drops command rows (K1). `--q` searches the description and `subagent_type`, so a call without a description is found by the title it shows.
 - tb-session 0.5.0 refuses `agent` as an unknown `--kind` value (clap's exit 2); Lookout asks for it only when TOOLS says the version has it (EVID-6.2).
 
 ## A2. Fields
@@ -75,14 +75,14 @@ Claude Code records a Subagent as an `Agent` tool call (older Transcripts: `Task
 The first rule that applies:
 
 1. **An error result** (`is_error` true) is failed, unless its text says the user interrupted it ("interrupted by user"), which is stopped. This holds whatever the input asked, so a background launch that failed never waits for a notification.
-2. **A launched background one** (its result's `toolUseResult.status` is `async_launched`; or, without a `toolUseResult`, its input's `run_in_background` is true or its result's text begins "Async agent launched" or "Fork started — processing in background", as a fork's does: 22 of 25 forks seen had neither the flag nor a `toolUseResult`) ends with its latest task notification. A notification belongs to it by its `<tool-use-id>`; one with only a `<task-id>` belongs to the row whose `agent_id` is that id (in the probe, a Subagent's task id was its agent id in all 64 notifications that had both, and the 8 with only a task id each matched one). Its `<status>`: `completed` is completed, `failed` is failed, `killed` and `stopped` are stopped. A successful `TaskStop` of its task id is stopped. Without either yet, it's running. Notifications come in K5's three forms (a user record, a queue-operation enqueue, a `queued_command` attachment). A notification without a status ("resumed by the user") changes nothing.
+2. **A launched background one** (its result's `toolUseResult.status` is `async_launched`; or, without a `toolUseResult`, its input's `run_in_background` is true or its result's text begins "Async agent launched" or "Fork started — processing in background", as a fork's does: 22 of 25 forks seen had neither the flag nor a `toolUseResult`) ends with its latest task notification. A notification belongs to it by its `<tool-use-id>`; one with only a `<task-id>` belongs to the row whose `agent_id` is that id (in the probe, a Subagent's task id was its agent id in all 64 notifications that had both, and the 8 with only a task id each matched one). Its `<status>`: `completed` is completed, `failed` is failed, `killed` and `stopped` are stopped. A successful `TaskStop` of its task id is stopped. Without either yet, it's running. Notifications come in K5's three forms (a user record, a queue-operation enqueue, a `queued_command` attachment). A notification without a status ("resumed by the user") changes nothing. A final `task_status` of its task id ends it only when nothing else does, and a notification counts only where Claude Code writes one (both as K5): one background Subagent of 1,052 had only its `task_status`.
 3. **Any other result** is completed.
 4. **No result yet:** running.
 
 - Notifications and `TaskStop` results are matched across every Transcript of the Session, its parent's and all its Subagents', wherever they're recorded. A nested Subagent's notification can land in the Transcript of the one that started it, or higher. A command's are matched the same way, across the Session (K5, amended 2026-11-24).
 - How a row ends after it's written is one rule for commands and calls (A9); only where their notifications are looked for differs.
 - As K5's amendments have it for commands: a known end is never replaced by running, and an end never moves earlier.
-- `timestamp` is the record that ended it: the error or other result, the notification, or the `TaskStop`'s result.
+- `timestamp` is the record that ended it: the error or other result, the notification, the `TaskStop`'s result, or the final `task_status`.
 
 ## A5. Which calls
 
@@ -123,6 +123,7 @@ Invented Transcripts:
 - a foreground Subagent that completed, one whose result is an error, one the user interrupted, and one with no result yet (running, its `timestamp` its `started_at`);
 - a background one ended by each notification status (completed, failed, killed, stopped), one stopped by `TaskStop`, one still running, one whose notification carries only a task id, and one whose launch failed with an error result (failed, never running);
 - each of K5's three notification forms;
+- one ended only by its final `task_status`, one whose notification a later `task_status` doesn't replace, and a notification quoted in a prompt and in a compaction summary (no end);
 - a Subagent started by a Subagent, whose notification is recorded in its starter's Transcript, and one whose notification is recorded in the parent's;
 - two Subagents started at once whose results have no `toolUseResult`, each linked to its call by its sidecar's `toolUseId`, its model from its own Transcript;
 - a forked Session's copied call;
