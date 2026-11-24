@@ -1,6 +1,6 @@
 # Contract: a Session's model and effort in `tb-session list` and `show`
 
-What Lookout needs from tb-session so that a Review round names its reviewers' model and effort (EVID-6.5). History shows no model today because tb-session gives none (HIST, Key decisions), so it can use the same fields later. It ships in tb-session 0.6.0 with the agent kind, one PR stacked on #130 ([`tb-session-events-agent.md`](tb-session-events-agent.md), A9). Until it ships, Lookout shows the Harness alone.
+What Lookout needs from tb-session so that a Review round names its reviewers' model and effort (EVID-6.5). History shows no model today because tb-session gives none (HIST, Key decisions), so it can use the same fields later. It shipped in tb-session 0.6.0 with the agent kind (cli-toolbox `18924a3` on `main`; [`tb-session-events-agent.md`](tb-session-events-agent.md), A9). From an older tb-session, Lookout shows the Harness alone.
 
 ## M1. Fields
 

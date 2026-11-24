@@ -36,7 +36,7 @@ Optional, one per panel. A panel whose CLI is missing says so and shows the inst
 
 | CLI | Unlocks | Install |
 |---|---|---|
-| `tb-session` 0.4.0+ | History, Library, Session links in Tasks and PRs | `gh api -H "Accept: application/vnd.github.raw" repos/productiveio/cli-toolbox/contents/scripts/install.sh \| bash -s -- tb-session` |
+| `tb-session` 0.6.0+ | History, Library, Evidence, Session links in Tasks and PRs | `gh api -H "Accept: application/vnd.github.raw" repos/productiveio/cli-toolbox/contents/scripts/install.sh \| bash -s -- tb-session` |
 | `tb-pr` | PRs and Review requests | same script with `tb-pr`; needs `gh` signed in |
 | `tb-prod` 1.2.0+ | Tasks | built from cli-toolbox `main` (the panel shows the `cargo install` line); then `tb-prod config init` |
 | `tb-jev` 0.2+ | Jev status in the usage strip | same script with `tb-jev` |

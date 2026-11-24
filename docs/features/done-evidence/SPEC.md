@@ -3,7 +3,7 @@ title: "Evidence: what backs a Session's work when it stops, read from its Trans
 code: "EVID"
 status: "In Progress"
 created: "2026-11-18"
-updated: "2026-11-23"
+updated: "2026-11-24"
 ---
 
 # Evidence
@@ -22,7 +22,7 @@ When a Session stops with Changes, Idle or Done, see what backs its work without
 
 ## Requirements
 
-Slice 1 is EVID-1 to EVID-5: live Claude Code Sessions, three facts, no model. It shows nothing until tb-session answers command rows (Gap 1, tb-session 0.5.0). Slice 2 is EVID-6: the Session's Review rounds, by any model, shown as facts, never as a warning. Slice 2 is Ready; it needs tb-session 0.6.0 for Subagent reviews and a reviewer's model (Gaps 3 and 4). EVID-7 corrects slice 1: documents don't move the last change, and DIFF-2.9 leaves a Harness home's Checkout out of a Session's Changes.
+Slice 1 is EVID-1 to EVID-5: live Claude Code Sessions, three facts, no model. It shows nothing until tb-session answers command rows (Gap 1: tb-session 0.5.0 on its branch, released in 0.6.0). Slice 2 is EVID-6: the Session's Review rounds, by any model, shown as facts, never as a warning. Slice 2 is Ready; it needs tb-session 0.6.0 for Subagent reviews and a reviewer's model (Gaps 3 and 4). EVID-7 corrects slice 1: documents don't move the last change, and DIFF-2.9 leaves a Harness home's Checkout out of a Session's Changes.
 
 ### EVID-1 Which Sessions, and when Lookout reads
 
@@ -311,10 +311,10 @@ Test runners, by their summary lines:
 
 ### Gaps (cli-toolbox)
 
-1. **`events --kind command`:** one row per shell command, with how it ended and its output's tail. Its contract: [`tb-session-events-command.md`](../../contracts/tb-session-events-command.md). One cli-toolbox PR, after this spec is Ready.
+1. **`events --kind command`:** one row per shell command, with how it ended and its output's tail. Its contract: [`tb-session-events-command.md`](../../contracts/tb-session-events-command.md). One cli-toolbox PR, after this spec is Ready: #130, merged on 2026-11-24 and released in tb-session 0.6.0.
 2. **The version:** TOOLS learns the tb-session that has it (EVID-1.7).
 3. **A Session's model and effort (slice 2):** `list` and `show` give them, from the Transcript. Its contract: [`tb-session-list-model.md`](../../contracts/tb-session-list-model.md).
-4. **`events --kind agent` (slice 2):** one row per Subagent a Session started, with its description, type, model, effort, start, end and how it ended. Its contract: [`tb-session-events-agent.md`](../../contracts/tb-session-events-agent.md). It ships with Gap 3 in tb-session 0.6.0, one PR stacked on #130, which also keeps `events` apart inside tb-session (A9). Slice 2 doesn't wait on it: until it ships, Subagent review runs are missing and a reviewer shows as its Harness (EVID-6.9).
+4. **`events --kind agent` (slice 2):** one row per Subagent a Session started, with its description, type, model, effort, start, end and how it ended. Its contract: [`tb-session-events-agent.md`](../../contracts/tb-session-events-agent.md). It shipped with Gap 3 in tb-session 0.6.0 (cli-toolbox #131, stacked on #130 and merged with it on 2026-11-24), which also keeps `events` apart inside tb-session (A9). Slice 2 doesn't wait on it: from an older tb-session, Subagent review runs are missing and a reviewer shows as its Harness (EVID-6.9).
 
 ### Outside Lookout
 
@@ -395,7 +395,7 @@ Grilled with Dario on 2026-11-21:
 - **"no review" only where code changed:** only a Session with Changes has the line (EVID-1.1). Dario passed over saying it on every Done card and never saying it.
 - **Two rows of two tiles:** four in one row at 22rem would cut the words the tiles exist for. Dario passed over one row at 26rem and no fourth tile.
 - **Subagent calls from tb-session, not Fleet:** Fleet's `subagents.items` keeps the latest 20, and only while it tracks the Session; a build Session goes past 20.
-- **One tb-session release for slice 2, stacked on #130:** cli-toolbox PR #130 (the command kind) merges as it is, so slice 1 stops depending on an unmerged branch. Subagent calls and the model and effort come in the next release, with their own Codex review and index upgrade. Dario passed over growing #130 and shipping the model later.
+- **One tb-session release for slice 2, stacked on #130:** cli-toolbox PR #130 (the command kind) merges as it is, so slice 1 stops depending on an unmerged branch. Subagent calls and the model and effort come in the next release, with their own Codex review and index upgrade. Dario passed over growing #130 and shipping the model later. As it went (2026-11-24): #131 was merged into #130's branch before #130 merged, so both came in one release, 0.6.0, and 0.5.0 was never released.
 - **`events` stays in tb-session, kept apart inside it:** an assessment (Fable, xhigh) found that `events` added a new responsibility in 0.4.0, "what did Sessions do?", with Lookout its only caller. It also found that a second CLI would need either a second parser of a format that keeps shifting, or two coordinated releases of one index. So 0.6.0 gives events their own parse version and keeps them out of `search`, `list` and `show` (contract A9), and a split waits for a second consumer. Dario passed over a new CLI before #130 merges.
 
 ## Open questions
@@ -419,3 +419,4 @@ None for slice 2: its grill answered the three it had and three more (Key decisi
 - 2026-11-21: The status line folds instead of cutting (VIEW-5.19): EVID-5.1's part no longer truncates, it folds at its rank into "N more", whose row opens the same popover. It sits in the line's left end, after the Changes, as before.
 - 2026-11-23: EVID-7 added (Dario, next-moves item 8): documents (LIB-2.10's Types, test files aside) don't move the last change, the Changed since and Review tiles or the Done card's words; a Session whose changed files are all documents has no Evidence; documents changed since the last pass show muted after the rest. EVID-1.1, 3.1, 5.3, 5.10 and 6.4 amended and unticked until their tests pass; DIFF-2.9 leaves a Harness home's Checkout out of Changes. Warnings keep their amber (Key decisions). Non-goals: a rule of your own for which files need tests, and a tone of its own for warnings.
 - 2026-11-23: EVID-7 built and EVID-7.1 to 7.4 ticked, with EVID-1.1, 3.1, 5.3, 5.10 and 6.4 again: `server/documents.ts` holds LIB-2.10's document Types and the Harness homes, which the Library, DIFF and Evidence read; `isDocument` and `evidenceView` in `server/evidence.ts`; the popover's muted rows and note in `Evidence.tsx`. Decided in building: a deleted file whose old path is a test file isn't a document either (EVID-4.1 counts it); an extension named like an object's own property (`x.constructor`) is no Type, in the Library too.
+- 2026-11-24: tb-session 0.6.0 released (cli-toolbox #130, with #131 merged into its branch; `18924a3`): the command kind, the agent kind and a Session's model and effort came in one release, and 0.5.0 was never released. TOOLS-2.1 keeps 0.5.0 for Evidence, which every released tb-session that has the command kind satisfies. The summary of slices, Gaps 1 and 4 and the Key decision on the release say so; no requirement changes.
