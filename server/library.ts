@@ -308,13 +308,15 @@ export class Library {
     if (type !== 'markdown' && type !== 'html' || stat.mtimeMs === undefined || stat.size === undefined) return fallback;
     const cached = this.titles.get(p);
     if (cached?.mtime === stat.mtimeMs && cached.size === stat.size) { cached.seen = Date.now(); return cached.title; }
-    let title = fallback;
+    let title = fallback, read = true;
     const handle = await open(p, 'r').catch(() => null);
     if (handle) {
       try { const buffer = Buffer.alloc(8192); const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0); const text = buffer.subarray(0, bytesRead).toString('utf8'); title = label(type === 'markdown' ? markdownTitle(text) : htmlTitle(text)) ?? fallback; }
-      finally { await handle.close(); }
+      // It opened and won't read (macOS answers EDEADLK for a file iCloud keeps only in the cloud): its basename, uncached, so the next read tries again.
+      catch { read = false; }
+      finally { await handle.close().catch(() => undefined); }
     }
-    this.titles.set(p, { mtime: stat.mtimeMs, size: stat.size, title, seen: Date.now() });
+    if (read) this.titles.set(p, { mtime: stat.mtimeMs, size: stat.size, title, seen: Date.now() });
     return title;
   }
 }
