@@ -111,6 +111,20 @@ A row of the right sidebar's lists (Work, History, Library, Topics, Setup); the 
 - **Don't:** draw a border, margin or card between rows; give an expanded row a second labelled button, or a waiting item's line a Soft one.
 - **Guard:** DS-5.1 (markers), DS-16.4 (row actions), DS-17.1 (row marks and padding); coming: DS-21.4, DS-22.4.
 
+### A list that completes what you type
+
+What a field offers while you type in it: the `/` list of the composer and of the launcher's prompt (VIEW-15, LAUNCH-8).
+
+- **Use** `CommandList` (`ui/command-list.tsx`) inside `CommandsPopover` (`Commands.tsx`), with `useCommandList` (`lib/command-list.ts`) for when it's open, its highlight and its keys.
+- The field keeps focus throughout. The list is a listbox the field owns (`aria-controls`, `aria-activedescendant`), in a `Popover` anchored to the field's box and as wide as it: upward from the composer, downward from a field in a dialog. It takes no room in the layout, and a press anywhere in it doesn't take focus: `CommandsPopover` prevents the popover's `mousedown`, since Radix makes a popover's content focusable.
+- **The field closes it, never the popover:** its own `Esc`, and focus leaving it. Radix's closing on `Esc` and on a press outside is prevented, since Radix hears the key before the field does and the field would take the same `Esc` twice. Closed, it leaves at once, with no fade.
+- **For a screen reader:** a row's id is its item's, not its place, so a new first row is said as you type; the listbox holds only rows, and what it says in their place sits above it, "nothing matches" in a status region that is there from the start.
+- **A row:** 28 px, a listbox option as a picker's is, the highlighted one on `accent`. What picking types, in mono `body`; a hint in mono `meta`; the description in `meta`, the part that gives way; a mark as a 14 px icon with its words ("opens in terminal"); where it's from at the right. All but the first in `muted-foreground`. A match is a `Hit`.
+- **Keys:** `↑` `↓` move, `Tab` or `Enter` pick, `Esc` closes the list before it does anything else. While it's open the hint line names them (VIEW-15.9), and each is an entry of the shortcuts list.
+- **Do:** move the highlight to a row under the pointer only when the pointer itself moved; open it only for what was typed, never for text that came back by itself; say what it reads while it waits and that nothing matches when nothing does; type the pick into the field as one edit, so the field's own undo takes it back.
+- **Don't:** give the list a filter of its own (that's a picker, `ui/picker.tsx`); highlight in Primary; send on a pick.
+- **Guard:** none of its own beyond the colour and icon guards; `Commands.test.tsx` sends `Esc` as a browser does. Its look is VIEW-15.13.
+
 ### A number with a level
 
 Context usage, a usage limit, memory and CPU load, a PR's age.

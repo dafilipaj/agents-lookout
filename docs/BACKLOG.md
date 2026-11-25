@@ -130,13 +130,27 @@ Ideas worth building later that aren't specced yet. When one is picked up, it be
 - **Decided:** a filter, not a split of the list (Dario, 2026-11-03). Not decided yet: whether a Topic Quiet for 3 weeks offers Archive with the outcome dialog (TOPIC-1.6).
 - **Added:** 2026-11-03, by Dario, from the Topics review (`output/lookout-2026-11-03/topics-improvements.md`).
 
-## Decide: `/` and `@` autocomplete in the composer (VIEW)
+## `@` file mentions in the composer (VIEW)
 
-- **What:** typing `/` in the composer offers the Session's slash commands and skills, and `@` offers files from its folder, as the Harnesses' own prompts do.
-- **Why it's here:** Fleet upstream has it (from its November guide). It wasn't taken in the 2026-11-03 sync because the Session view spec lists it as a Non-goal ("Slash-command autocomplete, `@` file mentions and voice in the composer").
-- **Decide:** lift the Non-goal or keep it. Lifting it is a VIEW spec change. A slash-command draft already sits in another worktree (VIEW Open question 1) and has to be renumbered off VIEW-3.7–3.14, which are taken.
-- **Planned:** `/` as SETUP's slice 3 (2026-11-17): the composer offers the skills Setup lists. `@` is still open.
-- **Added:** 2026-11-03, by Dario, from the Fleet upstream sync.
+- **What:** typing `@` in the composer offers files from the Session's folder, as the Harnesses' own prompts do.
+- **Why it's here:** Fleet upstream has it (from its November guide), and it wasn't taken in the 2026-11-03 sync. Its other half, `/` for commands and skills, was specced on 2026-11-25 as VIEW-15 and LAUNCH-8; `@` stays a VIEW Non-goal until someone misses it. VIEW-15's list and its hook are the place to add it.
+- **Added:** 2026-11-03, by Dario, from the Fleet upstream sync; narrowed to `@` on 2026-11-25.
+
+## Personal and plugin commands in Setup and the `/` list (SETUP, VIEW)
+
+Claude Code's own `/` menu also offers the commands in `~/.claude/commands/*.md` and in a plugin's `commands` folder. Setup reads commands only from a directory's `.claude/commands` (SETUP-9.1), so neither shows in Setup or in the `/` list (VIEW-15's Non-goals). Found in VIEW-15's code review on 2026-11-25. Before building: check on a Mac that has some how Claude Code calls a plugin's (`/plugin:name` is what its docs say) and whether a subfolder changes the name.
+
+## Setup reads a repo's JSON files whole, through any link (SETUP)
+
+`readJson` in `server/setup.ts` reads `<repo>/.claude/settings.json`, `settings.local.json` and `.mcp.json` whole and follows links, for Setup's This Session (SETUP-6, SETUP-9). A repo whose `.mcp.json` links to a device or to a file of gigabytes would be read until memory runs out. The `/` list doesn't read these (VIEW-15.12 caps what it does read). Wanted: a regular-file check and a size cap for a repo's files, larger than the 64 KB of a skill's file; `~/.claude.json` is megabytes and is yours, not a repo's. Found in VIEW-15's code review on 2026-11-25.
+
+## Choose inside a dialog from the Terminal preview (VIEW)
+
+- **What:** keys sent to the Session from the Terminal preview while it shows a dialog: up, down, Enter and Tab beside today's Esc (VIEW-4.5), so a picker a command opened (`/model`, `/resume`, `/config`) can be used from Lookout.
+- **Why:** VIEW-15's list offers every Built-in command and marks the ones that open a dialog "opens in terminal". From Lookout such a dialog can be seen and closed, not used.
+- **How:** Fleet's `keys` already presses them. It needs a place for the keys in the preview, focus that says where they go, and the fork's `keys --unless-prompt` (Plan, Later), since a key can land on a different prompt than the one the preview showed.
+- **Not now:** Dario 2026-11-25, in VIEW-15's grill: see it and Esc, as today.
+- **Added:** 2026-11-25, from VIEW-15's grill.
 
 ## Decide: review comments sent to the Session as a prompt (DIFF)
 

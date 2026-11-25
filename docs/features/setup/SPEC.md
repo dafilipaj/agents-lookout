@@ -3,7 +3,7 @@ title: "Setup: the skills, agents, hooks and MCP servers your Harnesses load"
 code: "SETUP"
 status: "In Progress"
 created: "2026-11-17"
-updated: "2026-11-22"
+updated: "2026-11-25"
 ---
 
 # Setup
@@ -116,7 +116,7 @@ What the selected Session loaded and what it used, read from its Transcript, as 
 
 Slices 3 and 4 have no order yet.
 
-3. **Starting:** `/` in the composer offers the skills Setup lists. This lifts VIEW's Non-goal on slash-command autocomplete (Backlog: "Decide: `/` and `@` autocomplete").
+3. **Starting:** `/` in the composer offers the skills Setup lists. Specced on 2026-11-25 as [VIEW-15](../session-view/SPEC.md) and [LAUNCH-8](../launch-session/SPEC.md), where its criteria live: the list also holds the Harness's Built-in commands, and the launcher's prompt takes it too.
 4. **Usage and clean-up:** each skill's, agent's and MCP server's calls in 30 days and its last use, from facts tb-session gives, with what's gone unused marked; claude.ai connectors as Transcripts show them. From the Backlog's "A catalogue of agents".
 
 ## Non-goals
@@ -245,3 +245,5 @@ None for slice 2: its grill answered its four and two more (Key decisions).
 - 2026-11-21: SETUP-6.1 to 9.3 ticked: their tests pass. SETUP-10.1, the look, waits for Dario.
 - 2026-11-21: Codex reviewed slice 2 (Sol, xhigh): three findings, all fixed. SETUP-9.2: a skill or agent list recorded empty names nothing, so the repo's items aren't loaded, while a Transcript with none recorded says nothing. SETUP-9.1: commands in `.claude/commands`' subfolders are read, named by their file. SETUP-6.3, 9.2: a server whose deferred tools were all removed leaves the MCP lists.
 - 2026-11-22: SETUP-10.1 ticked: Dario checked This Session on 4747. Every slice 2 criterion is ticked. No requirement changed.
+- 2026-11-25: Planned slice 3 specced as VIEW-15 and LAUNCH-8 (Plan item 66): `/` in the composer and in the launcher's prompt lists the skills Setup reads, with the Harness's Built-in commands. Its criteria live in those specs. The reader gains one fact for it, a skill's `user-invocable: false`, and a read of a directory's own items without a Transcript; no SETUP requirement changed.
+- 2026-11-25: From VIEW-15's code review: the reader takes a skill's, a command's and an agent's file through `readHead`, a regular file's first 64 KB, where it read the whole file through any link; an item's frontmatter and first line are all it uses. `readSkills` reads only one Harness's skills for a `/` list. No requirement changes.

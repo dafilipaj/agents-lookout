@@ -685,9 +685,7 @@ export class Launcher {
   private async validate(input: unknown): Promise<{ directory: string; harness: LaunchHarness; model: string; name: string; prompt: string; effort: string | undefined; skipPermissions: boolean }> {
     const v = typeof input === 'object' && input !== null ? (input as Record<string, unknown>) : {};
     const directory = typeof v.directory === 'string' ? v.directory : '';
-    if (!this.opts.settings.get().startDirectories.includes(directory) && !(await this.continuedDirectory(v.continues, directory))) {
-      throw new LaunchError(400, 'Pick one of the start directories from Settings.', 'directory');
-    }
+    if (!(await this.startable(directory, v.continues))) throw new LaunchError(400, 'Pick one of the start directories from Settings.', 'directory');
     if (v.harness !== 'claude' && v.harness !== 'codex') throw new LaunchError(400, 'Pick Claude Code or Codex.', 'harness');
     const harness = v.harness;
     const model = typeof v.model === 'string' ? v.model.trim() : '';
@@ -714,6 +712,14 @@ export class Launcher {
       throw new LaunchError(400, 'Skip permissions must be a boolean.', 'skipPermissions');
     }
     return { directory, harness, model, name, prompt, effort: v.effort as string | undefined, skipPermissions: v.skipPermissions === true };
+  }
+
+  /**
+   * LAUNCH-8.4: whether the launcher can start in `directory`: a Start directory (LAUNCH-2.1) or,
+   * for a start from a Handover, the old Session's own (HAND-3.4). A start makes this same check.
+   */
+  async startable(directory: string, continues: unknown): Promise<boolean> {
+    return this.opts.settings.get().startDirectories.includes(directory) || (await this.continuedDirectory(continues, directory));
   }
 
   /**

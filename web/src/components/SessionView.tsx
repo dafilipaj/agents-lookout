@@ -12,6 +12,9 @@ import { Loading } from '@/components/ui/loading';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '@/components/ui/dialog';
 import { turnRunning } from '@/lib/activity';
 import { type ComposerAttachments, attachmentDrag, carriesFileUri, fromDrop, fromPaste, insertion } from '@/lib/attachments';
+import { type CommandListControl, useCommandList } from '@/lib/command-list';
+import type { ComposerCommands } from '@/lib/commands';
+import { insertText } from '@/lib/insert-text';
 import { useCopy } from '@/lib/copy';
 import { type Echo, NO_ECHOES, settleEchoes, shown } from '@/lib/echoes';
 import {
@@ -49,6 +52,7 @@ import { PromptCard } from './Answering';
 import { Chat, type ChatSeen, type HeldMessage } from './Chat';
 import { ChatActivity } from './ChatActivity';
 import { HarnessIcon } from './HarnessIcon';
+import { CommandsPopover } from './Commands';
 import { KeysHint } from './KeysHint';
 import { useSessionTitle } from './SessionTitle';
 import { PaneHeader, ShellCell, ShellView } from './Shell';
@@ -83,6 +87,8 @@ export interface HandoffControls {
 
 export interface SessionViewProps {
   attachments: ComposerAttachments;
+  /** VIEW-15: the `/` lists the tab has read, for the composer. */
+  commands?: ComposerCommands;
   /** VIEW-13: what you saw of a Session's chat when you last left it, and keeping it as you leave. */
   loadChatSeen?(sessionId: string): Promise<ChatSeen | null>;
   saveChatSeen?(sessionId: string, seen: ChatSeen, keepalive: boolean): Promise<void>;
@@ -218,6 +224,7 @@ export function SessionView({
   onStop,
   onEsc,
   attachments,
+  commands,
   handoff,
   sessions,
 }: SessionViewProps) {
@@ -540,6 +547,7 @@ export function SessionView({
             undoRef={undoHeld}
             attachments={attachments}
             dragging={dragging}
+            commands={commands}
           />
         )}
         <StatusLine
@@ -1700,13 +1708,15 @@ interface ComposerProps {
   onHold(held: Omit<HeldMessage, 'onUndo'> | null): void;
   /** VIEW-3.10: set to what takes the waiting message back, for the chat's Undo. */
   undoRef: RefObject<() => void>;
+  /** VIEW-15: the `/` lists the tab has read; without it the box has no list. */
+  commands?: ComposerCommands;
 }
 
 /** VIEW-3.9: how long a sent message waits in the composer, with Undo, before it goes. */
 export const UNDO_SEND_MS = 3000;
 
 /** VIEW-3: Enter sends, Shift+Enter adds a line; a failed send keeps the text. */
-function Composer({ sessionId, title, drafts, sending, error, onEdit, onSend, inputRef, attachments, dragging, undoSend, onHold, undoRef }: ComposerProps) {
+function Composer({ sessionId, title, drafts, sending, error, onEdit, onSend, inputRef, attachments, dragging, undoSend, onHold, undoRef, commands }: ComposerProps) {
   const attachmentState = useSyncExternalStore(attachments.subscribe, () => attachments.state(sessionId));
   const attaching = attachmentState.loading !== null;
   const issue = [error, attachmentState.error].filter(Boolean).join(' ') || null;
@@ -1793,8 +1803,13 @@ function Composer({ sessionId, title, drafts, sending, error, onEdit, onSend, in
     if (await onSend(sessionId, sent)) setText((current) => (current === sent ? '' : current));
   };
 
+  // VIEW-15: the `/` list of this box, read for this Session.
+  const list = useCommandList({ store: commands, source: { session: sessionId }, text, field: inputRef, enterSendsWhole: true });
+
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.nativeEvent.isComposing) return;
+    // VIEW-15.7: while its list is open, the list has the arrows, Tab, Enter and Esc.
+    if (list.keyDown(e)) return;
     if (e.key === 'Backspace' && pending.current && text === '') {
       // VIEW-3.10: Backspace in an empty box takes the waiting message back.
       e.preventDefault();
@@ -1817,12 +1832,18 @@ function Composer({ sessionId, title, drafts, sending, error, onEdit, onSend, in
       error={issue}
       loading={attachmentState.loading}
       dragging={dragging}
+      commands={list}
       field={{
         ref: inputRef,
         'aria-label': 'Message',
         placeholder: `Message ${title}…`,
         value: text,
-        onChange: (e) => update(e.target.value),
+        onChange: (e) => {
+          update(e.target.value);
+          list.typed(e.target.value);
+        },
+        onBlur: list.blurred,
+        ...list.field,
         onKeyDown,
         onPaste: e => {
           attachments.clear(sessionId);
@@ -1841,7 +1862,7 @@ function Composer({ sessionId, title, drafts, sending, error, onEdit, onSend, in
           </>
         ),
       }}
-      hint={<KeysHint />}
+      hint={<KeysHint commands={list.open} />}
     />
   );
 }
@@ -1857,6 +1878,8 @@ interface ComposerFrameProps extends Omit<ComponentPropsWithoutRef<'form'>, 'chi
   send?: ComponentPropsWithoutRef<typeof Button>;
   /** The one-line hint under the box (VIEW-3.12), its full text in its own tooltip. */
   hint?: ReactNode;
+  /** VIEW-15: the box's `/` list, which opens upward from it. */
+  commands?: CommandListControl;
 }
 
 /**
@@ -1865,38 +1888,32 @@ interface ComposerFrameProps extends Omit<ComponentPropsWithoutRef<'form'>, 'chi
  * An empty field is one line high whatever its placeholder: it sizes to its content only once it
  * holds text, and the placeholder stays on one line, cut short with an ellipsis.
  */
-export function ComposerFrame({ error, field, send, hint, className, loading, dragging, ...form }: ComposerFrameProps) {
+export function ComposerFrame({ error, field, send, hint, className, loading, dragging, commands, ...form }: ComposerFrameProps) {
+  const box = (
+    <div className={cn('relative flex items-end gap-2 rounded-lg border px-3 py-2 focus-within:ring-2 focus-within:ring-ring/25', dragging ? 'border-dashed border-primary bg-primary-soft' : 'border-input bg-background focus-within:border-ring dark:bg-input/20')}>
+      {dragging && <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center gap-1.5 rounded-lg bg-primary-soft text-meta text-primary"><Paperclip className="size-3.5" />Drop to attach</div>}
+      <textarea
+        rows={1}
+        data-composer=""
+        {...field}
+        className={cn(
+          'max-h-[min(12rem,20dvh)] min-h-6 flex-1 resize-none bg-transparent text-prose leading-6 outline-none placeholder:text-muted-foreground',
+          field?.value ? 'field-sizing-content' : 'field-sizing-fixed truncate placeholder:truncate',
+        )}
+      />
+      <Button variant="primary" size="default" className="shrink-0" type="submit" {...send} />
+    </div>
+  );
   return (
     <form className={cn('flex-1 px-4 py-3', className)} {...form}>
       {error && <Alert layout="inline" title={error} className="mb-2" />}
       {loading && <Loading label={loading} className="mb-2" />}
-      <div className={cn('relative flex items-end gap-2 rounded-lg border px-3 py-2 focus-within:ring-2 focus-within:ring-ring/25', dragging ? 'border-dashed border-primary bg-primary-soft' : 'border-input bg-background focus-within:border-ring dark:bg-input/20')}>
-        {dragging && <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center gap-1.5 rounded-lg bg-primary-soft text-meta text-primary"><Paperclip className="size-3.5" />Drop to attach</div>}
-        <textarea
-          rows={1}
-          data-composer=""
-          {...field}
-          className={cn(
-            'max-h-[min(12rem,20dvh)] min-h-6 flex-1 resize-none bg-transparent text-prose leading-6 outline-none placeholder:text-muted-foreground',
-            field?.value ? 'field-sizing-content' : 'field-sizing-fixed truncate placeholder:truncate',
-          )}
-        />
-        <Button variant="primary" size="default" className="shrink-0" type="submit" {...send} />
-      </div>
+      {commands ? <CommandsPopover control={commands} side="top">{box}</CommandsPopover> : box}
       <p className="mt-1.5 h-4 truncate text-caption leading-4 text-muted-foreground">
         {hint}
       </p>
     </form>
   );
-}
-
-/** One native edit preserves the textarea's undo history. jsdom has no execCommand. */
-function insertText(box: HTMLTextAreaElement | null, text: string): void {
-  if (!box || !text) return;
-  box.focus();
-  if (typeof document.execCommand === 'function' && document.execCommand('insertText', false, text)) return;
-  box.setRangeText(text, box.selectionStart, box.selectionEnd, 'end');
-  box.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
 /**

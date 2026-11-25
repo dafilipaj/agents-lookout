@@ -5,6 +5,7 @@ import type { StopResult, StopTarget } from '@shared/ports.ts';
 import type { PlainAnswer, PlainExamplesAnswer, PlainPrFiles, PlainSimpleAnswer, PlainSource } from '@shared/plain.ts';
 import type { Settings, SettingsView } from '@shared/settings.ts';
 import type { ToolsSnapshot } from '@shared/tools.ts';
+import type { CommandList } from '@shared/commands.ts';
 import type { SessionSetup, SetupSnapshot, SetupSwitchResult } from '@shared/setup.ts';
 import type { ActivityEntry, NewMember, ProposalAccept, RecommendationAction, SuggestPreview, Topic, TopicOutcome, TopicPosition, TopicState, TopicSummary } from '@shared/topics.ts';
 import type { WorkRefreshResult } from '@shared/work.ts';
@@ -68,6 +69,10 @@ export interface LookoutClient {
   setup(): Promise<SetupSnapshot>;
   /** SETUP-6: what one Claude Code Session loaded and what ran in it, read from its Transcript now. */
   setupSession(sessionId: string): Promise<SessionSetup>;
+  /** VIEW-15.10: what `/` lists in a Session's composer: its Harness's Built-in commands and skills, read now. */
+  commands(sessionId: string): Promise<CommandList>;
+  /** LAUNCH-8.1: the same for the launcher's prompt: the Harness and start directory chosen, and the Session a Handover continues. */
+  launchCommands(harness: 'claude' | 'codex', directory: string, continues?: { sessionId: string; harness: 'claude' | 'codex' } | null): Promise<CommandList>;
   /** SETUP-4.1: turns a Claude Code skill off (its name) or on (its `skillOverrides` key). */
   switchSkill(name: string, on: boolean): Promise<SetupSwitchResult>;
   /** SETUP-4.2: turns a Claude Code plugin off or on. */
@@ -489,6 +494,11 @@ export function createHttpClient(): LookoutClient {
     refreshTools: () => call<ToolsSnapshot>(() => send('POST', '/api/tools/refresh'), 'Checking the Tools'),
     setup: () => call<SetupSnapshot>(() => fetch('/api/setup'), 'Reading the Setup'),
     setupSession: (sessionId) => call<SessionSetup>(() => fetch(`/api/setup/session/${encodeURIComponent(sessionId)}`), 'Reading what the Session loaded'),
+    commands: (sessionId) => call<CommandList>(() => fetch(`/api/sessions/${encodeURIComponent(sessionId)}/commands`), 'Reading the commands and skills'),
+    launchCommands: (harness, directory, continues) => {
+      const query = new URLSearchParams({ harness, directory, ...(continues ? { session: continues.sessionId, sessionHarness: continues.harness } : {}) });
+      return call<CommandList>(() => fetch(`/api/launch/commands?${query}`), 'Reading the commands and skills');
+    },
     switchSkill: (name, on) => call<SetupSwitchResult>(() => send('POST', '/api/setup/skill', { name, on }), on ? 'Turning the skill on' : 'Turning the skill off'),
     switchPlugin: (id, on) => call<SetupSwitchResult>(() => send('POST', '/api/setup/plugin', { id, on }), on ? 'Turning the plugin on' : 'Turning the plugin off'),
     library: ({ query, page, readId, headless, types, project, hideGone, sessions }) => call<LibraryPage>(() => fetch(`/api/library?${new URLSearchParams({ q: query, page: String(page), headless: headless ? '1' : '0', types: types.join(','), project, hideGone: hideGone ? '1' : '0', ...(readId ? { readId } : {}), ...(sessions ? { sessions: sessions.join(',') } : {}) })}`), 'Reading Library'),

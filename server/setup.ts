@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { lstat, readFile, readdir, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { lstat, open, readFile, readdir, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { TomlError, parse as parseToml } from 'smol-toml';
 import { parse as parseYaml } from 'yaml';
@@ -49,6 +50,8 @@ interface Plugin {
   projectPath: string | null;
 }
 
+const pluginSource = (p: Plugin): SetupSource => ({ type: 'plugin', name: p.name, id: p.id, version: p.version });
+
 /** Collects a read's items and the files it couldn't read (SETUP-2.3). */
 class Read {
   items: SetupItem[] = [];
@@ -82,6 +85,9 @@ const obj = (v: unknown): Record<string, unknown> | null => (typeof v === 'objec
 const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null);
 const strs = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
 
+/** VIEW-15.2: a skill's `user-invocable: false`, as YAML reads it or as the line-by-line fallback does. */
+const modelOnly = (fm: Record<string, unknown>) => fm['user-invocable'] === false || fm['user-invocable'] === 'false';
+
 /** The text of a file, or null when it isn't there; any other failure throws. */
 async function readText(file: string): Promise<string | null> {
   try {
@@ -90,6 +96,61 @@ async function readText(file: string): Promise<string | null> {
     if (isMissing(err)) return null;
     throw err;
   }
+}
+
+/** As much of a skill's, a command's or an agent's file as its frontmatter and first line need. */
+export const HEAD_BYTES = 64 * 1024;
+
+/**
+ * The start of a Markdown file, or null when it isn't there; any other failure throws. Only a
+ * regular file is opened, and only its first 64 KB read: a repo's `.claude` can link anywhere (a
+ * device, a pipe, a file of gigabytes), and typing `/` in a Session there reads it (VIEW-15.2).
+ */
+async function readHead(file: string): Promise<string | null> {
+  const regular = (s: { isFile(): boolean }) => {
+    if (!s.isFile()) throw new Error('not a regular file');
+  };
+  let handle: Awaited<ReturnType<typeof open>>;
+  try {
+    regular(await stat(file));
+    // Never waits on a pipe that took the file's place meanwhile.
+    handle = await open(file, constants.O_RDONLY | constants.O_NONBLOCK);
+  } catch (err) {
+    if (isMissing(err)) return null;
+    throw err;
+  }
+  try {
+    regular(await handle.stat());
+    const head = Buffer.alloc(HEAD_BYTES);
+    let size = 0;
+    while (size < HEAD_BYTES) {
+      const { bytesRead } = await handle.read(head, size, HEAD_BYTES - size, size);
+      if (!bytesRead) break;
+      size += bytesRead;
+    }
+    return head.toString('utf8', 0, size);
+  } finally {
+    await handle.close();
+  }
+}
+
+/** SETUP-5.1: what `skillOverrides` says of a skill, and which of its entries matched one on disk. */
+type SkillOff = (name: string, bare: string | null) => Pick<SetupItem, 'off' | 'listing'> & { key?: string };
+function skillOverrides(settings: Record<string, unknown> | undefined): { overrides: Map<string, string>; used: Set<string>; off: SkillOff } {
+  const overrides = new Map(Object.entries(obj(settings?.skillOverrides) ?? {}).filter((e): e is [string, string] => typeof e[1] === 'string'));
+  const used = new Set<string>();
+  const off: SkillOff = (name, bare) => {
+    for (const k of bare ? [name, bare] : [name]) {
+      const v = overrides.get(k);
+      if (v === undefined) continue;
+      used.add(k);
+      if (v === 'off') return { off: 'override', key: k };
+      if (v === 'name-only' || v === 'user-invocable-only') return { off: null, listing: v as SetupListing };
+      return { off: null };
+    }
+    return { off: null };
+  };
+  return { overrides, used, off };
 }
 
 /** A directory's entries that are directories (following links), sorted; none when it isn't there. */
@@ -354,29 +415,11 @@ export class Setup {
   private async readNow(all?: Plugin[]): Promise<SetupSnapshot> {
     const read = new Read();
     const settings = await this.readJson(read, 'skill', this.settingsFile);
-    const overrides = new Map(Object.entries(obj(settings?.json.skillOverrides) ?? {}).filter((e): e is [string, string] => typeof e[1] === 'string'));
-    const used = new Set<string>();
+    const { overrides, used, off: skillOff } = skillOverrides(settings?.json);
     const plugins = (all ?? (await this.plugins(read))).filter((p) => p.scope === 'user');
-    const skillOff = (name: string, bare: string | null): Pick<SetupItem, 'off' | 'listing'> & { key?: string } => {
-      for (const k of bare ? [name, bare] : [name]) {
-        const v = overrides.get(k);
-        if (v === undefined) continue;
-        used.add(k);
-        if (v === 'off') return { off: 'override', key: k };
-        if (v === 'name-only' || v === 'user-invocable-only') return { off: null, listing: v as SetupListing };
-        return { off: null };
-      }
-      return { off: null };
-    };
 
     await Promise.all([
-      // Your Claude Code skills, and claude.ai's under synced/ (SETUP-2.1).
-      this.skills(read, join(this.home, '.claude', 'skills'), { harness: 'claude', source: { type: 'yours' }, skip: 'synced', named: (n) => n, off: (n) => skillOff(n, null) }),
-      (async () => {
-        const synced = join(this.home, '.claude', 'skills', 'synced');
-        for (const space of await subdirs(synced).catch((err) => (read.fail('skill', synced, err), [] as string[])))
-          await this.skills(read, join(synced, space), { harness: 'claude', source: { type: 'claude-ai' }, named: (n) => `anthropic-skills:${n}`, off: (n) => skillOff(`anthropic-skills:${n}`, n) });
-      })(),
+      this.yourSkills(read, skillOff),
       this.agents(read, join(this.home, '.claude', 'agents'), { source: { type: 'yours' }, named: (n) => n, off: null }),
       this.claudeHooks(read, settings),
       this.claudeMcp(read),
@@ -392,6 +435,33 @@ export class Setup {
           `skill:override:${k}`,
         );
     return { items: read.items, errors: read.errors, readAt: this.opts.now?.() ?? Date.now() };
+  }
+
+  /**
+   * VIEW-15.2, VIEW-15.3: one Harness's skills, as a `/` list needs them: Everywhere's (SETUP-2)
+   * and, for Claude Code, what a directory adds (SETUP-9.1), read without a Transcript. Only the
+   * skills are read: no agents, hooks or MCP servers, and nothing of the other Harness. Never
+   * throws: what couldn't be read is in `errors`. Codex's are read without `claude plugin list`.
+   */
+  async readSkills(harness: Harness, dir: string | null): Promise<{ items: SetupItem[]; errors: SetupError[] }> {
+    await this.switching;
+    // What a directory adds comes before what every Session loads.
+    const repo = new Read();
+    const everywhere = new Read();
+    if (harness === 'codex') {
+      await this.codexSkills(everywhere);
+    } else {
+      const [settings, plugins] = await Promise.all([this.readJson(everywhere, 'skill', this.settingsFile), this.plugins(everywhere)]);
+      const { off } = skillOverrides(settings?.json);
+      const claude = dir ? join(dir, '.claude') : null;
+      await Promise.all([
+        ...(claude ? [this.skills(repo, join(claude, 'skills'), { harness: 'claude', source: { type: 'repo' }, named: (n) => n, off: () => null }), this.commands(repo, join(claude, 'commands'))] : []),
+        ...plugins.filter((p) => dir !== null && p.scope !== 'user' && p.projectPath === dir).map((p) => this.pluginSkills(repo, p, () => ({ off: null }))),
+        this.yourSkills(everywhere, off),
+        ...plugins.filter((p) => p.scope === 'user').map((p) => this.pluginSkills(everywhere, p, off)),
+      ]);
+    }
+    return { items: [...repo.items, ...everywhere.items], errors: [...repo.errors, ...everywhere.errors] };
   }
 
   /**
@@ -477,13 +547,13 @@ export class Setup {
     await Promise.all(
       found.map(async (file) => {
         try {
-          const text = await readText(file);
+          const text = await readHead(file);
           if (text === null) return;
           const fm = frontmatter(text);
           const name = basename(file).replace(/\.md$/, '');
           const body = text.replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, '');
           const description = str(fm.description) ?? body.split('\n').map((l) => l.replace(/^#+\s*/, '').trim()).find(Boolean) ?? '';
-          read.add({ kind: 'skill', harness: 'claude', name, description, source: { type: 'repo' }, file, line: null, off: null, call: [`/${name}`, str(fm['argument-hint'])].filter(Boolean).join(' ') }, `skill:claude:repo:${name}`);
+          read.add({ kind: 'skill', harness: 'claude', name, description, source: { type: 'repo' }, file, line: null, off: null, call: [`/${name}`, str(fm['argument-hint'])].filter(Boolean).join(' '), ...(modelOnly(fm) ? { userInvocable: false as const } : {}) }, `skill:claude:repo:${name}`);
         } catch (err) {
           read.fail('skill', file, err);
         }
@@ -571,7 +641,7 @@ export class Setup {
         .map(async (n) => {
           const file = join(dir, n, 'SKILL.md');
           try {
-            const text = await readText(file);
+            const text = await readHead(file);
             if (text === null) return;
             const fm = frontmatter(text);
             const own = str(fm.name) ?? n;
@@ -592,6 +662,7 @@ export class Setup {
                 off: off?.off ?? null,
                 ...(off?.listing ? { listing: off.listing } : {}),
                 ...(off?.key ? { overrideKey: off.key } : {}),
+                ...(modelOnly(fm) ? { userInvocable: false as const } : {}),
                 call: at.call ? at.call(name, hint) : [`/${name}`, hint].filter(Boolean).join(' '),
               },
               `skill:${at.harness}:${sourceKey(at.source)}:${name}`,
@@ -615,7 +686,7 @@ export class Setup {
       names.map(async (n) => {
         const file = join(dir, n);
         try {
-          const text = await readText(file);
+          const text = await readHead(file);
           if (text === null) return;
           const fm = frontmatter(text);
           const tools = typeof fm.tools === 'string' ? fm.tools.split(',').map((t) => t.trim()).filter(Boolean) : Array.isArray(fm.tools) ? strs(fm.tools) : null;
@@ -648,17 +719,44 @@ export class Setup {
     }
   }
 
+  /** SETUP-2.1: your Claude Code skills, and claude.ai's under synced/. */
+  private async yourSkills(read: Read, skillOff: SkillOff) {
+    await Promise.all([
+      this.skills(read, join(this.home, '.claude', 'skills'), { harness: 'claude', source: { type: 'yours' }, skip: 'synced', named: (n) => n, off: (n) => skillOff(n, null) }),
+      (async () => {
+        const synced = join(this.home, '.claude', 'skills', 'synced');
+        for (const space of await subdirs(synced).catch((err) => (read.fail('skill', synced, err), [] as string[])))
+          await this.skills(read, join(synced, space), { harness: 'claude', source: { type: 'claude-ai' }, named: (n) => `anthropic-skills:${n}`, off: (n) => skillOff(`anthropic-skills:${n}`, n) });
+      })(),
+    ]);
+  }
+
+  /** SETUP-2.1: a plugin's skills, off while it is (SETUP-5.1). */
+  private pluginSkills(read: Read, p: Plugin, skillOff: SkillOff) {
+    return this.skills(read, join(p.installPath, 'skills'), {
+      harness: 'claude',
+      source: pluginSource(p),
+      named: (n) => `${p.name}:${n}`,
+      off: (n) => {
+        // Its skillOverrides entry counts as found even while the plugin is what turns it off (SETUP-5.1).
+        const own = skillOff(`${p.name}:${n}`, n);
+        return p.enabled ? own : { off: 'plugin' };
+      },
+    });
+  }
+
+  /** SETUP-2.2: Codex's skills, each called `$name`. */
+  private async codexSkills(read: Read) {
+    const at = { harness: 'codex' as const, source: { type: 'yours' } as SetupSource, named: (n: string) => n, off: () => null, call: (name: string) => `$${name}` };
+    await Promise.all([this.skills(read, join(this.home, '.codex', 'skills'), at), this.skills(read, join(this.home, '.agents', 'skills'), at)]);
+  }
+
   /** SETUP-2.1: a plugin's skills, agents, hooks and MCP servers, all off while it is (SETUP-5.1). */
-  private async plugin(read: Read, p: Plugin, skillOff: (name: string, bare: string | null) => Pick<SetupItem, 'off' | 'listing'> & { key?: string }) {
-    const source: SetupSource = { type: 'plugin', name: p.name, id: p.id, version: p.version };
+  private async plugin(read: Read, p: Plugin, skillOff: SkillOff) {
+    const source = pluginSource(p);
     const pluginOff: SetupOff | null = p.enabled ? null : 'plugin';
     await Promise.all([
-      this.skills(read, join(p.installPath, 'skills'), { harness: 'claude', source, named: (n) => `${p.name}:${n}`, off: (n) => {
-          // Its skillOverrides entry counts as found even while the plugin is what turns it off (SETUP-5.1).
-          const own = skillOff(`${p.name}:${n}`, n);
-          return pluginOff ? { off: pluginOff } : own;
-        },
-      }),
+      this.pluginSkills(read, p, skillOff),
       this.agents(read, join(p.installPath, 'agents'), { source, named: (n) => `${p.name}:${n}`, off: pluginOff }),
       (async () => {
         const file = join(p.installPath, 'hooks', 'hooks.json');
@@ -707,11 +805,9 @@ export class Setup {
       trustKnown = false;
       read.fail('mcp', configFile, err);
     }
-    const codexSkills = { harness: 'codex' as const, source: { type: 'yours' } as SetupSource, named: (n: string) => n, off: () => null, call: (name: string) => `$${name}` };
     const hooksFile = join(codex, 'hooks.json');
     await Promise.all([
-      this.skills(read, join(codex, 'skills'), codexSkills),
-      this.skills(read, join(this.home, '.agents', 'skills'), codexSkills),
+      this.codexSkills(read),
       (async () => {
         const hooks = await this.readJson(read, 'hook', hooksFile);
         if (!hooks) return;

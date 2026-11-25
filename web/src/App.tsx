@@ -33,6 +33,7 @@ import { ServersPanel } from '@/components/ServersPanel';
 import { SetupPanel } from '@/components/SetupPanel';
 import { type LookoutClient, SaveError } from '@/lib/client';
 import { ComposerAttachments, preventDropNavigation } from '@/lib/attachments';
+import { ComposerCommands } from '@/lib/commands';
 import { tidySentAt } from '@/lib/activity';
 import {
   type AnswerAttempt,
@@ -183,6 +184,8 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
   // The rows as last listed, for what a switch does once its answer comes (the Status may have moved on).
   const liveSessions = useRef(state.sessions);
   const [attachments] = useState(() => new ComposerAttachments((file, name) => client.attach(file, name), drafts));
+  // VIEW-15, LAUNCH-8: the `/` lists read so far, for the composer and the launcher's prompt.
+  const [commands] = useState(() => new ComposerCommands((key) => ('session' in key ? client.commands(key.session) : client.launchCommands(key.harness, key.directory, key.continues))));
   useLayoutEffect(() => { attachments.setLive(id => liveSessions.current.get(id)?.controllable === true); }, [attachments]);
   // VIEW-9.9: uploads follow a Codex Session's id change, by the aliases its draft moves by, before
   // its composer mounts under the new id (the draft's move below is a passive effect).
@@ -1575,6 +1578,7 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
                 drafts={drafts}
                 undoSend={state.settings?.undoSend ?? true}
                 attachments={attachments}
+                commands={commands}
                 questionDrafts={questionDrafts}
                 sending={sending}
                 sendErrors={sendErrors}
@@ -1743,6 +1747,7 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
           promptFor={promptFor}
           keepsInput={!workDraft && !launcherHandoff}
           handover={launcherHandoff?.handover}
+          commands={commands}
         />
         <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} returnFocus={shortcutsOpener} />
         <TopicPicker target={pickTarget} onClose={() => setPickTarget(null)} returnFocus={pickOpener} topics={state.topics?.topics ?? []} createTopic={(title) => client.createTopic(title)} addMember={(id, m) => client.addMember(id, m)} />

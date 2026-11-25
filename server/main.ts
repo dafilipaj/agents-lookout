@@ -27,6 +27,7 @@ import { PortsMonitor } from './ports.ts';
 import { ResMonitor } from './res.ts';
 import { KeepAwake } from './awake.ts';
 import { Setup } from './setup.ts';
+import { Commands } from './commands.ts';
 import { sessionId } from './normalize.ts';
 import { queuedFor } from '../shared/res.ts';
 import { localAllowLists } from './security.ts';
@@ -299,6 +300,9 @@ const setup = new Setup({
   claudeBin: async () => (await launcher.harnessFacts()).find((f) => f.id === 'claude' && f.installed)?.path ?? null,
 });
 
+// VIEW-15, LAUNCH-8: what a `/` lists: Setup's skills and the Built-in commands Lookout keeps.
+const commands = new Commands({ setup });
+
 // AWAKE: keep-awake, held by the server so it outlives the tab; restored from its file on start.
 const awake = new KeepAwake({
   runner: run,
@@ -423,6 +427,7 @@ const app = createApp({
   resQueue,
   awake,
   setup,
+  commands,
   work,
   changes,
   evidence,

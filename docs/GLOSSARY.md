@@ -22,6 +22,8 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Building block**: A CLI with a stable `--json` contract that Lookout consumes and other people's UIs could consume too: Fleet, `tb-session`, the ports CLI. Building blocks live outside this repo.
 
+**Built-in command**: A Slash command that ships with a Harness, such as `/compact` or `/model`. Lookout keeps a list of them per Harness, checked against a Harness version (VIEW-15.4).
+
 **Changes**: What differs in a Checkout's working tree (tracked edits and untracked files, not ignored ones) from its Branch point: committed-but-unpushed and uncommitted work alike. A Session's Changes are those of its Checkouts, whoever made them. See the DIFF spec.
 
 **Checkout**: A git working tree: a repo's main one or a Worktree. A Claude Code Session's Checkouts are those it edited files in, and its working directory's when it edited there or it isn't on its default branch (DIFF-2.1); a Codex Session's is its working directory's (DIFF-2.2); never one at or under a Harness home (DIFF-2.9).
@@ -107,6 +109,8 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 **Setup**: What Claude Code and Codex load for every Session on this Mac: skills, agents, hooks and MCP servers, your own and from plugins. Also the right-sidebar tab that lists them, where a Claude Code skill or plugin can be turned off and on. A repo's own items and instruction files are what one Session loads, not the Setup. The tab has two views: Everywhere, the Setup, and This Session, what the selected Session loaded and used (slice 2). See the SETUP spec.
 
 **Simplified version**: A changed functional spec rewritten in simple words by Claude, on a press, and shown beside the spec in the Spec view. Every paragraph cites the clauses it says, and is checked against them before it shows. It comes with In short: three lines on what the Module's change does, who gets it and what's unlike before. See the PLAIN spec.
+
+**Slash command**: A `/name` a Harness runs when a message starts with it: a Built-in command, or in Claude Code a skill (Setup). Codex calls a skill `$name` instead. The composer's and the launcher's `/` list offers both (VIEW-15, LAUNCH-8).
 
 **Spec view**: A Module shown whole in the main pane, with its change since its base marked in place, and other Modules' Concepts, the specs a `§` names and the Ability keys it names explained on hover. See the PLAIN spec.
 

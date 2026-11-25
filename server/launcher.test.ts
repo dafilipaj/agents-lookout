@@ -639,6 +639,15 @@ describe('a start from a Handover', () => {
     for (const t of [known, unknown, failing, none]) expect(t.calls.some((c) => c.args.includes('spawn'))).toBe(false);
   });
 
+  it('LAUNCH-8.4: the launcher can start in a Start directory or in the old Session\'s own, and nowhere else: the check a start makes', async () => {
+    const t = setup({ sessionDirectory: async () => SHOP });
+    expect(await t.launcher.startable('~/Projects/work', null)).toBe(true);
+    expect(await t.launcher.startable(SHOP, continues)).toBe(true);
+    expect(await t.launcher.startable(SHOP, null)).toBe(false);
+    expect(await t.launcher.startable('/Users/me/Projects/elsewhere', continues)).toBe(false);
+    expect(await t.launcher.startable('', null)).toBe(false);
+  });
+
   it('HAND-3.4: a Start directory needs no check, with or without `continues`', async () => {
     const sessionDirectory = vi.fn(async () => SHOP);
     const t = setup({ sessionDirectory });

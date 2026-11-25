@@ -131,6 +131,8 @@ interface RenderOptions {
   refreshTools?: LookoutClient['refreshTools'];
   setup?: LookoutClient['setup'];
   setupSession?: LookoutClient['setupSession'];
+  commands?: LookoutClient['commands'];
+  launchCommands?: LookoutClient['launchCommands'];
   switchSkill?: LookoutClient['switchSkill'];
   switchPlugin?: LookoutClient['switchPlugin'];
   /** TOPIC: the fake server's Topics, sent with each snapshot and changed by the Topics calls, as the server does. */
@@ -194,6 +196,8 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
       options.setupSession ??
         (async (sessionId: string) => ({ sessionId, title: null, directory: null, directoryShown: null, loadedAt: null, instructions: [], memory: null, ran: [], repo: [], notLoaded: [], everywhere: { skill: 0, agent: 0, hook: 0, mcp: 0 }, errors: [], readAt: 0 })),
     ),
+    commands: vi.fn(options.commands ?? (async () => ({ harness: 'claude' as const, items: [], error: null, readAt: 0 }))),
+    launchCommands: vi.fn(options.launchCommands ?? (async (harness: 'claude' | 'codex') => ({ harness, items: [], error: null, readAt: 0 }))),
     switchSkill: vi.fn(options.switchSkill ?? (async () => ({ snapshot: { items: [], errors: [], readAt: 0 } }))),
     switchPlugin: vi.fn(options.switchPlugin ?? (async () => ({ snapshot: { items: [], errors: [], readAt: 0 } }))),
     refreshUsage: vi.fn(async () => {}),

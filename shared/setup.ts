@@ -46,6 +46,8 @@ export interface SetupItem {
   call?: string;
   /** A skill: a `skillOverrides` value other than `off` (SETUP-4.1). */
   listing?: SetupListing;
+  /** A skill whose frontmatter says `user-invocable: false`: the model's alone, so no `/` list offers it (VIEW-15.2). */
+  userInvocable?: false;
   /** A skill turned off in `skillOverrides`: the entry's key, which Turn on removes (SETUP-4.1). */
   overrideKey?: string;
   /** An agent (SETUP-3.1). */

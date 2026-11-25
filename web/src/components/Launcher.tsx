@@ -12,8 +12,11 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/compone
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { SaveError } from '@/lib/client';
+import { useCommandList } from '@/lib/command-list';
+import type { ComposerCommands } from '@/lib/commands';
 import { type HarnessState, type LaunchDraft, topicFill } from '@/lib/launch';
 import { cn } from '@/lib/utils';
+import { CommandsPopover } from './Commands';
 import { criticalHint } from '@/lib/usage';
 import { HarnessIcon } from './HarnessIcon';
 import { UsageLevelIcon } from './UsageLevelIcon';
@@ -44,12 +47,14 @@ interface Props {
    * throws with a message for people when it's refused.
    */
   handover?: { onDiscard(): void; onKeepInTopic(topicId: string, prompt: string): Promise<void> };
+  /** LAUNCH-8: the `/` lists the tab has read; without it the prompt field has no list. */
+  commands?: ComposerCommands;
 }
 
 const FALLBACK_LABEL: Record<LaunchHarness, string> = { claude: 'Claude Code', codex: 'Codex' };
 
 /** The launcher (LAUNCH-1 … LAUNCH-4). */
-export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, harnesses, usage, now, onStart, onCloseAutoFocus, topics = [], promptFor = topicPrompt, keepsInput = true, handover }: Props) {
+export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, harnesses, usage, now, onStart, onCloseAutoFocus, topics = [], promptFor = topicPrompt, keepsInput = true, handover, commands }: Props) {
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const [submitting, setSubmitting] = useState(false);
   const [keeping, setKeeping] = useState(false);
@@ -83,6 +88,16 @@ export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, h
   const topicGone = draft.topic !== undefined && !topics.some((t) => t.id === draft.topic!.id);
   const topic = draft.topic && (topicGone || topicChoices.some((t) => t.id === draft.topic!.id)) ? draft.topic : undefined;
   const canStart = !submitting && harnesses.state === 'ready' && installed(harness) && directory !== '';
+
+  // LAUNCH-8.1: the prompt's `/` list, for the Harness and start directory chosen; a Handover's
+  // start names the Session it continues, whose directory the server checks (LAUNCH-8.4).
+  const slash = useCommandList({
+    store: commands,
+    source: open && directory !== '' ? { harness, directory, continues: draft.continues ? { sessionId: draft.continues.sessionId, harness: draft.continues.harness } : null } : null,
+    text: draft.prompt,
+    field: promptRef,
+    enterSendsWhole: false,
+  });
 
   const set = (patch: Partial<LaunchDraft>) => {
     onDraftChange({
@@ -336,16 +351,25 @@ export function Launcher({ open, onOpenChange, draft, onDraftChange, settings, h
             <label htmlFor="launch-prompt" className="self-start pt-1.5 text-muted-foreground">
               Prompt
             </label>
-            <Textarea
-              id="launch-prompt"
-              ref={promptRef}
-              placeholder="optional · Enter for a new line"
-              value={draft.prompt}
-              aria-invalid={error?.field === 'prompt' || undefined}
-              onChange={(e) => set({ prompt: e.target.value })}
-              className="max-h-[min(24rem,35dvh)] min-h-28 resize-y overflow-y-auto text-body leading-5"
-              rows={5}
-            />
+            <CommandsPopover control={slash} side="bottom">
+              <Textarea
+                id="launch-prompt"
+                ref={promptRef}
+                placeholder="optional · Enter for a new line"
+                value={draft.prompt}
+                aria-invalid={error?.field === 'prompt' || undefined}
+                onChange={(e) => {
+                  set({ prompt: e.target.value });
+                  slash.typed(e.target.value);
+                }}
+                onBlur={slash.blurred}
+                // LAUNCH-8.3: the list's Enter and Tab pick and its Esc closes it; any other key is the field's.
+                onKeyDown={(e) => void slash.keyDown(e)}
+                {...slash.field}
+                className="max-h-[min(24rem,35dvh)] min-h-28 resize-y overflow-y-auto text-body leading-5"
+                rows={5}
+              />
+            </CommandsPopover>
           </div>
 
           {harnesses.state === 'error' && <Alert title={harnesses.error} className="mx-5 mb-3" />}

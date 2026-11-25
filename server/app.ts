@@ -34,11 +34,12 @@ import type { ResMonitor } from './res.ts';
 import { type KeepAwake, AwakeError } from './awake.ts';
 import type { Evidence } from './evidence.ts';
 import { type Setup, SetupFailure } from './setup.ts';
+import type { Commands } from './commands.ts';
 import { isSessionId, parsePluginSwitch, parseSkillSwitch } from '../shared/setup.ts';
 import { parseAwakeRequest } from '../shared/awake.ts';
 import type { SessionMonitor } from './monitor.ts';
 import { type GuardConfig, guardRequest } from './security.ts';
-import type { SettingsStore } from './settings.ts';
+import { type SettingsStore, expandHome } from './settings.ts';
 import { serveStatic } from './static.ts';
 import { type Topics, TopicsError, parseEdgeEdit, parseLink, parseMember, parseMemberRef, parsePatch, parsePositions, parseProposalAction, parseRecommendationAction, parseTitle, parseUnlink } from './topics.ts';
 import type { ActivityEntry, ProposalAccept, RecommendationAction, SuggestPreview, TopicSummary } from '../shared/topics.ts';
@@ -63,6 +64,8 @@ export interface AppOptions {
     dismiss(id: string): boolean;
     answerTrust(id: string, body: unknown): Promise<LaunchView | null>;
     trustDisconnected(id: string, prompt: string): void;
+    /** LAUNCH-8.4: whether the launcher can start in a directory; optional, so handler tests can leave it out. */
+    startable?(directory: string, continues: unknown): Promise<boolean>;
   };
   memory: Pick<MemoryMonitor, 'snapshot' | 'watch' | 'setOpen' | 'drop'>;
   /** PORTS-1.2: the Local servers, read while any tab is connected; optional, so handler tests can leave it out. */
@@ -78,6 +81,8 @@ export interface AppOptions {
    * loaded (SETUP-6); optional, so a server without it has no `/api/setup` (404).
    */
   setup?: Pick<Setup, 'read' | 'setSkill' | 'setPlugin' | 'readSession'>;
+  /** VIEW-15, LAUNCH-8: what a `/` lists; optional, so a server without it has no such route (404). */
+  commands?: Pick<Commands, 'list'>;
   usage: {
     snapshot(): UsageSnapshot | null;
     watch(): () => void;
@@ -442,6 +447,31 @@ export function createApp(opts: AppOptions): LookoutApp {
       const id = url.pathname.slice('/api/setup/session/'.length);
       if (!isSessionId(id)) return json(res, 400, { error: 'not a Claude Code session id' });
       return json(res, 200, await opts.setup.readSession(id));
+    }
+    // LAUNCH-8: the `/` list for the launcher's prompt: the Harness chosen, in a directory the
+    // launcher can start in (LAUNCH-8.4), without the commands that open a dialog (LAUNCH-8.2). A read.
+    if (route === 'GET /api/launch/commands' && opts.commands) {
+      const harness = url.searchParams.get('harness');
+      const directory = url.searchParams.get('directory') ?? '';
+      if (harness !== 'claude' && harness !== 'codex') return json(res, 400, { error: 'Pick Claude Code or Codex.', field: 'harness' });
+      const session = url.searchParams.get('session');
+      const continues = session ? { sessionId: session, harness: url.searchParams.get('sessionHarness') } : null;
+      if (!(await opts.launcher.startable?.(directory, continues))) return json(res, 400, { error: 'Pick one of the start directories from Settings.', field: 'directory' });
+      return json(res, 200, await opts.commands.list(harness, expandHome(directory), { dialogs: false }));
+    }
+    // VIEW-15: the `/` list for a Session's composer. The Harness and directory are the server's own,
+    // from its last list of Sessions, never the tab's (VIEW-15.12). A read: nothing is typed.
+    const commandsMatch = /^\/api\/sessions\/([^/]{1,200})\/commands$/.exec(url.pathname);
+    if (commandsMatch && req.method === 'GET' && opts.commands) {
+      let sessionId: string;
+      try {
+        sessionId = decodeURIComponent(commandsMatch[1]!);
+      } catch {
+        return json(res, 400, { error: 'invalid session id' });
+      }
+      const row = opts.monitor.snapshot().sessions.find((s) => s.id === sessionId);
+      if (!row) return json(res, 404, { error: "This Session isn't running." });
+      return json(res, 200, await opts.commands.list(row.harness, row.cwd));
     }
     // SETUP-4: a switch changes a Harness's configuration, so it's a mutation: the token and Origin
     // (the guard checks every non-GET). The answer is the read that follows it.

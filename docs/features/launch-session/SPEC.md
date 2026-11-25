@@ -3,7 +3,7 @@ title: Start Sessions
 code: LAUNCH
 status: In Progress
 created: 2026-10-16
-updated: 2026-11-22
+updated: 2026-11-25
 ---
 
 # Start Sessions
@@ -87,6 +87,16 @@ For the few seconds a start takes, the main pane showed a 14 px spinner in the h
 - [x] LAUNCH-7.5 A Trust prompt's card (LAUNCH-6.3) and a failure's error and terminal lines (LAUNCH-4.5) take the `Loading`'s place under your prompt, and the header's Lens becomes Needs you's marker or the red `CircleX`, as today. A failure says "Started in <directory, in full> 18s ago" above its error. (test)
 - [x] LAUNCH-7.6 A Starting row in the sidebar shows the orbiting Lens where a Session's marker sits, for `LoaderCircle`; a failed or Trust row keeps its marker. (test)
 - [x] LAUNCH-7.7 Seen in both modes at 1440 px and with the right sidebar at 280 px, starting a Session with a two-line first prompt from the launcher and resuming one from History: the Starting view reads as the Session arriving, the Lens as Lookout looking and not as a Status, the swap to the Session doesn't jump, and nothing moves with reduced motion. (manual)
+
+### LAUNCH-8 Commands and skills on `/` in the prompt
+
+The prompt field takes the composer's `/` list (VIEW-15), so a Session can start on a skill you picked.
+
+- [x] LAUNCH-8.1 In the launcher's prompt field, the list of VIEW-15 opens as you type, while the field holds one word that starts with `/` and nothing else, for the Harness and the start directory chosen; choosing another of either reads it again. It holds what VIEW-15.2 and 15.3 say and behaves as VIEW-15.5 to 15.8 and 15.10 to 15.12 say, except Enter (LAUNCH-8.3). (test)
+- [x] LAUNCH-8.2 It leaves out the Built-in commands marked "opens in terminal" (VIEW-15.4): a Session can't start on a dialog. (test)
+- [x] LAUNCH-8.3 With the list open, Enter or Tab picks the highlighted row and never starts the Session, which stays ⌘Enter's and Start's (LAUNCH-4.1). With no row to pick, Enter adds a line, as ever. Esc closes the list and not the launcher; the next Esc closes the launcher (LAUNCH-1.3). (test)
+- [x] LAUNCH-8.4 The server reads the list only for a directory the launcher can start in: a Start directory (LAUNCH-2.1) or, for a start from a Handover, a live Session's own (HAND-3.4). Any other is refused, and so is a Harness it doesn't know. (test)
+- [ ] LAUNCH-8.5 Seen in both modes: the list opens from the prompt field inside the dialog without covering what you type, and reads as the composer's does (VIEW-15.13). (manual)
 
 ## Non-goals
 
@@ -299,3 +309,7 @@ Resolved while building (2026-10-16): `fleet spawn` (the CLI) never answered a t
 - 2026-11-09: LAUNCH-7.7 checked by Dario in the running app and ticked.
 - 2026-11-22: LAUNCH-2.1 gains one exception, from HAND: a start from a Handover can use the old Session's own directory, outside the Start directories, which the server checks (HAND-3.4). Its tick stands for the list; HAND-3.4 is ticked when the exception is built.
 - 2026-11-22: LAUNCH-1.3: a launcher opened with a Handover keeps its fields with the Handover (HAND-6.2), neither discarding them nor touching the N-opened draft.
+- 2026-11-25: Added LAUNCH-8, the composer's `/` list (VIEW-15) in the launcher's prompt field, from VIEW-15's grill (Dario: yes, in the same slice, built after the composer's): for the Harness and start directory chosen, without the Built-in commands that open a dialog; Enter picks and never starts; the server reads it only for a directory the launcher can start in.
+- 2026-11-25: LAUNCH-8 built with VIEW-15: the prompt field takes the composer's list through the same hook, opening downward from the field; `GET /api/launch/commands` reads it for the Harness and directory chosen, after the check a start makes (`Launcher.startable`). LAUNCH-8.1 to 8.4 ticked on their tests; LAUNCH-8.5, the look, waits for Dario. Seen in a dev server: `/rev` in a launcher on `~/Projects/work` listed 36 skills and commands, none that opens a dialog, and Enter put the first in the field with its space, the launcher still open.
+- 2026-11-25: LAUNCH-8 after VIEW-15's code review, round 1: choosing another Harness or directory with the list open no longer keeps it shut for what you type next (LAUNCH-8.1; focus leaving isn't an Esc); a start now makes its directory check through `Launcher.startable`, the one the list's route uses, with a test of its own (LAUNCH-8.4); the list leaves at once when closed, so a quick second Esc reaches the launcher (LAUNCH-8.3).
+- 2026-11-25: LAUNCH-8 after VIEW-15's code review, round 2: a press in the list beside its rows no longer takes focus out of the prompt and out of the dialog (LAUNCH-8.1, with a test; the same fix as VIEW-15.7's). A Behaviour test in real Chromium covers LAUNCH-8.3's two Escs.

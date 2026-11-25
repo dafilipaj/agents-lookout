@@ -277,6 +277,31 @@ export const SHORTCUTS: readonly Shortcut[] = [
     global: true,
   },
   {
+    id: 'commands-move',
+    group: 'composer',
+    keys: ['↑', '↓'],
+    label: 'Move through the commands and skills',
+    note: "While the composer's or the launcher's / list is open.",
+    press: [{ key: 'ArrowDown' }, { key: 'ArrowUp' }],
+  },
+  {
+    id: 'commands-pick',
+    group: 'composer',
+    keys: ['Tab'],
+    alt: ['Enter'],
+    label: 'Pick the highlighted command or skill',
+    note: 'It goes into the box with a space after it; nothing is sent.',
+    press: [{ key: 'Tab' }, { key: 'Enter' }],
+  },
+  {
+    id: 'commands-close',
+    group: 'composer',
+    keys: ['Esc'],
+    label: 'Close the / list',
+    note: 'The text stays; Esc again leaves the composer.',
+    press: [{ key: 'Escape' }],
+  },
+  {
     id: 'start',
     action: 'start',
     group: 'app',
@@ -322,7 +347,7 @@ export const emptyViewShortcuts = (view: 'select' | 'none'): Shortcut[] => SHORT
  * (or nothing focused), the composer, the rest of the Session (its chat rail and the preview's
  * handle apart), a panel's search box, list or other field, and the closed right sidebar's rail.
  */
-export type HintAt = 'sessions' | 'composer' | 'session' | 'rail' | 'preview' | 'search' | 'list' | 'field' | 'panels';
+export type HintAt = 'sessions' | 'composer' | 'commands' | 'session' | 'rail' | 'preview' | 'search' | 'list' | 'field' | 'panels';
 
 /** One key of the hint line: an entry of the list (`id`), all its keys or the ones named, and its word or two. Without an entry, words saying what typing does. */
 export interface HintKey {
@@ -355,6 +380,9 @@ export function hint(at: HintAt, panel?: RightTab): { name: string; keys: HintKe
       return { name: 'Sessions', keys: [{ id: 'move', label: 'move' }, { id: 'needs-you', label: 'next that needs you' }, { id: 'filter', label: 'filter' }, WRITE] };
     case 'composer':
       return { name: 'Composer', keys: [{ id: 'send', label: 'send' }, { id: 'new-line', label: 'new line' }, { id: 'composer-leave', label: 'leave' }] };
+    case 'commands':
+      // VIEW-15.9: the composer, its `/` list open.
+      return { name: 'Commands', keys: [{ id: 'commands-move', label: 'move' }, { id: 'commands-pick', label: 'pick' }, { id: 'commands-close', label: 'close' }] };
     case 'session':
       return { name: 'This Session', keys: [WRITE] };
     case 'rail':

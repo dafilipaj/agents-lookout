@@ -176,6 +176,9 @@ const ELSEWHERE: Record<string, { file: string; criteria: string[] }[]> = {
   'panel-stop': [{ file: 'Servers.test.tsx', criteria: ['PORTS-4.6'] }],
   'panel-switch': [{ file: 'SetupPanel.test.tsx', criteria: ['SETUP-4.5'] }],
   start: [{ file: 'Launcher.test.tsx', criteria: ['LAUNCH-3.3'] }],
+  'commands-move': [{ file: 'Commands.test.tsx', criteria: ['VIEW-15.7'] }],
+  'commands-pick': [{ file: 'Commands.test.tsx', criteria: ['VIEW-15.7', 'VIEW-15.8', 'LAUNCH-8.3'] }],
+  'commands-close': [{ file: 'Commands.test.tsx', criteria: ['VIEW-15.7', 'LAUNCH-8.3'] }],
 };
 
 /** The test files, as text, by file name. */
@@ -252,6 +255,7 @@ describe('the hint line (VIEW-3.12)', () => {
   const places: [HintAt, (typeof RIGHT_TABS)[number] | undefined][] = [
     ['sessions', undefined],
     ['composer', undefined],
+    ['commands', undefined],
     ['session', undefined],
     ['rail', undefined],
     ['preview', undefined],
@@ -285,6 +289,8 @@ describe('the hint line (VIEW-3.12)', () => {
     };
     expect(line('sessions')).toBe('Sessions · ↑ ↓ move · ⌘ J next that needs you · / filter · i write');
     expect(line('composer')).toBe('Composer · Enter send · ⇧ Enter new line · Esc leave');
+    // VIEW-15.9: the composer, its `/` list open.
+    expect(line('commands')).toBe('Commands · ↑ ↓ move · Tab pick · Esc close');
     expect(line('session')).toBe('This Session · i write');
     expect(line('rail')).toBe('This Session · i write · ↑ ↓ move between Marks');
     expect(line('preview')).toBe('This Session · i write · ↑ ↓ resize');
