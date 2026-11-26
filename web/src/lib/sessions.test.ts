@@ -2,6 +2,7 @@ import type { Status } from '@shared/types.ts';
 import { describe, expect, it } from 'vitest';
 import css from '@/index.css?raw';
 import { type Mode, colourOf, contrast, paint, parseOklch, solid, themeTokens } from '@/test/contrast';
+import { chipVariants } from '@/components/ui/chip';
 import { CONTEXT_LEVEL_CLASS, ROW_TONE, STATUS_STRIP_CLASS, STATUS_TAG_CLASS } from './sessions';
 
 const STATUSES: Status[] = ['needs-you', 'busy', 'idle', 'unknown'];
@@ -156,8 +157,8 @@ describe('Status colours', () => {
     for (const mode of MODES) {
       const t = themes[mode];
       for (const [kind, tone] of Object.entries(ROW_TONE)) {
-        // The title (the sidebar's foreground), the quieter text, the Subagent count (SIDE-9.7), and on a Needs you row what it waits for.
-        const texts = [{ token: 'sidebar-foreground', alpha: 1 }, colourOf(tone.quiet, 'text')!, { token: 'busy-text', alpha: 1 }, ...(kind === 'needsYou' ? [{ token: 'needs-you-text', alpha: 1 }] : [])];
+        // The title (the sidebar's foreground), the quieter text, the Subagent count (SIDE-9.7), the warning chip (SIDE-15.6), and on a Needs you row what it waits for.
+        const texts = [{ token: 'sidebar-foreground', alpha: 1 }, colourOf(tone.quiet, 'text')!, { token: 'busy-text', alpha: 1 }, { token: 'warning-text', alpha: 1 }, ...(kind === 'needsYou' ? [{ token: 'needs-you-text', alpha: 1 }] : [])];
         for (const [state, under] of Object.entries(rowBackgrounds(themes, mode, tone))) {
           for (const text of texts) out.push({ what: `${mode} ${kind} ${state} ${text.token}`, ratio: contrast(paint(t, text.token, under, text.alpha), under) });
         }
@@ -187,11 +188,15 @@ describe('Status colours', () => {
     return measures.filter((m) => m.ratio < 4.5).map((m) => `${m.what}: ${m.ratio.toFixed(2)}`);
   }
 
-  it('SIDE-3.11 / SIDE-9.6 / SIDE-9.7: every text on a row, including the blue Subagent count, keeps 4.5:1 or more at rest, under the pointer and selected, in both modes', () => {
+  it('SIDE-3.11 / SIDE-9.6 / SIDE-9.7 / SIDE-15.6: every text on a row, including the blue Subagent count and the warning chip, keeps 4.5:1 or more at rest, under the pointer and selected, in both modes', () => {
     // Only `hover:` is measured: any other variant (`dark:`, `focus:`) would paint a colour the check never sees.
     for (const tone of Object.values(ROW_TONE)) for (const c of Object.values(tone).join(' ').split(/\s+/).filter(Boolean)) expect(c).toMatch(/^(?:hover:)?[^:]+$/);
     const measures = rowContrasts(THEMES);
-    expect(measures).toHaveLength(2 * 3 * (4 + 3)); // light and dark × three states × the Needs you row's four texts and a plain row's three
+    expect(measures).toHaveLength(2 * 3 * (5 + 4)); // light and dark × three states × the Needs you row's five texts and a plain row's four
+    // The warning chip's text is the one measured, on the row itself: the chip has no fill of its own.
+    const chip = chipVariants({ tone: 'warning' }).split(/\s+/);
+    expect(chip).toContain('text-warning-text');
+    expect(chip.filter((c) => /^(?:[\w-]+:)*bg-/.test(c))).toEqual([]);
     expect(below(measures)).toEqual([]);
     // The check can fail: the muted grey of plain rows is 3.6:1 on the selected tint in dark mode.
     const tint = rowBackgrounds(THEMES, 'dark', ROW_TONE.needsYou).selected;

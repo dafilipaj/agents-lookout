@@ -247,26 +247,31 @@ it('MEM-3.9: Worth a look keeps one note per growing row when Sessions share a t
   expect(screen.getByRole('region', { name: 'Worth a look' })).toHaveTextContent('Other grew +300 MB in 10 min');
 });
 
-it('MEM-4.1: memory running away (1 GB in 10 min, or 30 MB under warn or critical pressure) leads the second line before the Subagents, names the amount and meets contrast on every row state', () => {
+it('MEM-4.1: memory running away (1 GB in 10 min, or 30 MB under warn or critical pressure) is a Warning on the row: its warning chip says "Memory" with TrendingUp, the amount is in the tooltip and the row\'s name, and the chip\'s colour meets contrast on every row state', () => {
   const app = renderApp();
   app.snapshot([row({ id: 'a', title: 'First', memoryGrowthBytes: 2.8 * GB, subagents: { running: 2, finished: 0 } }), row({ id: 'b', memoryGrowthBytes: 180 * MB }), row({ id: 'c', memoryGrowthBytes: 40 * MB })]);
   const option = screen.getByRole('option', { name: /First/ });
-  expect(option).toHaveAccessibleName(expect.stringMatching(/memory growing, \+2\.8 GB in 10 min.*2 Subagents/));
-  const mark = option.querySelector<HTMLElement>('[data-field="memory-growth"]')!;
-  expect(mark.title).toBe('Memory +2.8 GB in 10 min');
-  expect(mark).toHaveTextContent('+2.8 GB');
-  expect(mark).toHaveClass('text-warning-text');
-  expect(mark.parentElement).toHaveClass('shrink-0');
-  expect(mark.parentElement).toHaveAttribute('data-field', 'marks');
-  expect(mark.querySelector('svg')).toHaveClass('size-2.5');
-  expect(mark.previousElementSibling).toBeNull();
-  expect(mark.nextElementSibling).toHaveAttribute('data-field', 'subagents');
+  expect(option).toHaveAccessibleName(expect.stringMatching(/FirstMemory \+2\.8 GB in 10 min.*2 Subagents running/));
+  const chip = option.querySelector<HTMLElement>('[data-field="warnings"]')!;
+  expect(chip).toHaveAttribute('data-slot', 'chip');
+  expect(chip).toHaveAttribute('data-tone', 'warning');
+  expect(chip).toHaveClass('text-warning-text');
+  expect(chip.title).toBe('Memory +2.8 GB in 10 min');
+  expect(chip).toHaveTextContent(/^Memory$/);
+  expect(chip.querySelector('svg')).toHaveClass('lucide-trending-up', 'size-3');
+  // The amount stays in Memory's own list (MEM-3.5): not on the row, and no mark on its second line.
+  expect(option).not.toHaveTextContent('GB');
+  expect(option.querySelector('[data-field="marks"]')!.children).toHaveLength(1);
+  expect(option.querySelector('[data-field="marks"] [data-field="subagents"]')).not.toBeNull();
+  const chipOf = (id: string) => document.querySelector<HTMLElement>(`[data-session-id="${id}"] [data-field="warnings"]`);
   // Growing, but under the bar while pressure is normal (or unknown): nothing on the row.
-  expect(document.querySelector('[data-session-id="b"]')!.querySelector('[data-field="memory-growth"]')).toBeNull();
+  expect(chipOf('b')).toBeNull();
+  expect(chipOf('c')).toBeNull();
   // Under pressure, 30 MB is enough.
   app.emit({ type: 'memory', memory: sample({ pressure: 'warn' }) });
-  expect(document.querySelector('[data-session-id="b"]')!.querySelector('[data-field="memory-growth"]')).toHaveTextContent('+180 MB');
-  expect(document.querySelector('[data-session-id="c"]')!.querySelector('[data-field="memory-growth"]')).toHaveTextContent('+40 MB');
+  expect(chipOf('b')).toHaveTextContent(/^Memory$/);
+  expect(chipOf('b')!.title).toBe('Memory +180 MB in 10 min');
+  expect(chipOf('c')!.title).toBe('Memory +40 MB in 10 min');
   // Same row surfaces SIDE-3.11 tests: rest, hover and selection, plain and Needs you.
   for (const mode of ['light', 'dark'] as Mode[]) {
     const tokens = themeTokens(css)[mode];
@@ -278,7 +283,7 @@ it('MEM-4.1: memory running away (1 GB in 10 min, or 30 MB under warn or critica
   }
 });
 
-it('MEM-4.2: server row updates carrying memory growth change only the mark and leave order, status, age and strip intact', () => {
+it('MEM-4.2: server row updates carrying memory growth change only the Warning and leave order, status, age and strip intact', () => {
   const app = renderApp();
   const original = row({ id: 'a', status: 'busy' });
   app.snapshot([original, row({ id: 'b' })]);
@@ -287,12 +292,12 @@ it('MEM-4.2: server row updates carrying memory growth change only the mark and 
   const age = before.querySelector('[data-field="age"]')!.textContent;
   app.emit({ type: 'sessions', upsert: [{ ...original, memoryGrowthBytes: GB }], remove: [] });
   app.emit({ type: 'memory', memory: sample({ sessions: [mr('a', 2 * GB, GB)] }) });
-  expect(before.querySelector('[data-field="memory-growth"]')).toBeInTheDocument();
+  expect(before.querySelector('[data-field="warnings"]')).toBeInTheDocument();
   expect(before).toHaveAttribute('data-status', 'busy');
   expect(before.querySelector('[data-field="strip"]')!.className).toBe(strip);
   expect(before.querySelector('[data-field="age"]')!.textContent).toBe(age);
   app.emit({ type: 'sessions', upsert: [original], remove: [] });
-  expect(before.querySelector('[data-field="memory-growth"]')).toBeNull();
+  expect(before.querySelector('[data-field="warnings"]')).toBeNull();
   app.emit({ type: 'sessions', upsert: [], remove: ['a'] });
   expect(before).not.toBeInTheDocument();
 });

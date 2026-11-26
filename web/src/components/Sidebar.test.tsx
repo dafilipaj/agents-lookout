@@ -1,4 +1,6 @@
 import { FLEET_INSTALL_COMMAND } from '@shared/defaults.ts';
+import { verdict } from '@shared/evidence.ts';
+import { GB } from '@shared/memory.ts';
 import { act, fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -389,7 +391,7 @@ describe('sidebar rows', () => {
       for (const id of ['a', 'b', 'c']) {
         const columns = [...rowEl(id).querySelectorAll<HTMLElement>('[data-column]')];
         expect(columns.map((c) => c.dataset.column)).toEqual(['changes', 'age', 'context']);
-        for (const c of columns) expect(c).toHaveClass('shrink-0');
+        for (const c of columns) expect(c).toHaveClass('min-w-fit'); // never cut (DS-22.1)
         expect(columns[0]!.previousElementSibling).toBe(slot(id));
         expect(columns[2]).toBe(slot(id).parentElement!.lastElementChild);
       }
@@ -443,7 +445,7 @@ describe('sidebar rows', () => {
       expect(visibleTitles()).toEqual(['in-wt']);
     });
 
-    it('SIDE-2.14 (support): the numbers never shrink; the where part shrinks before the repo part, which keeps its 45% cap; the line keeps its height empty', () => {
+    it('SIDE-2.14 (support): the numbers are never cut; the where part shrinks before the repo part, which keeps its 45% cap; the line keeps its height empty', () => {
       const app = renderApp();
       app.snapshot([row({ id: 'long', git: repoGit('a-repo-with-a-rather-long-name', null, 'fix/a-branch-name-that-is-long'), locationShown: { repo: true, where: true }, contextPct: 12 }),
         row({ id: 'empty', locationShown: HIDDEN }),
@@ -451,11 +453,11 @@ describe('sidebar rows', () => {
       expect(field('long', 'repo')).toHaveClass('max-w-[45%]', 'shrink-0', 'truncate');
       expect(field('long', 'location')!.parentElement).toHaveClass('min-w-0');
       expect(field('long', 'location')).toHaveClass('truncate');
-      expect(field('long', 'age')!.parentElement).toHaveClass('shrink-0');
+      expect(field('long', 'age')!.parentElement).toHaveClass('min-w-fit');
       for (const id of ['long', 'empty', 'busy']) expect(slot(id).parentElement).toHaveClass('min-h-4', 'leading-4');
-      // The Session's words truncate in the slot, beside numbers that never shrink.
+      // The Session's words truncate in the slot, beside numbers that are never cut.
       expect(field('busy', 'activity')).toHaveClass('min-w-0', 'truncate');
-      expect(field('busy', 'age')!.parentElement).toHaveClass('shrink-0');
+      expect(field('busy', 'age')!.parentElement).toHaveClass('min-w-fit');
     });
 
     it('SIDE-2.15: the accessible name says what the row shows: repo, Worktree or branch, what it waits for, then the numbers', () => {
@@ -466,7 +468,10 @@ describe('sidebar rows', () => {
         row({ id: 'wt', git: repoGit('work', 'lantern', 'x'), locationShown: { repo: false, where: true }, subagents: { running: 2, finished: 0 } }),
         row({ id: 'words', status: 'needs-you', waitingFor: 'input needed', locationShown: HIDDEN, contextPct: 41 }),
         row({ id: 'third', status: 'needs-you', waitingFor: 'input needed', git: repoGit('work', 'lantern', 'x'), locationShown: { repo: false, where: true } }),
+        row({ id: 'wrong', memoryGrowthBytes: 2.8 * GB, evidence: verdict('changed'), subagents: { running: 1, finished: 0 }, locationShown: HIDDEN }),
       ]);
+      // Its Warnings in words where the warning chip is, after the title (SIDE-15.3): not the chip's word and "+1".
+      expect(rowEl('wrong')).toHaveAccessibleName('IdlewrongMemory +2.8 GB in 10 min, Changed after its last test runClaude Code 1 Subagent running1m');
       expect(rowEl('hidden')).toHaveAccessibleName('IdlehiddenClaude Code 1m5%');
       expect(rowEl('other')).toHaveAccessibleName('IdleotherClaude Code harborBranchfix/x1m');
       expect(rowEl('wt')).toHaveAccessibleName('IdlewtClaude Code 2 Subagents runningWorktreelantern1m'); // DS-22.3: the marks lead
@@ -491,7 +496,7 @@ describe('sidebar rows', () => {
     });
   });
 
-  it('SIDE-2.17: a Done row shows Done after its title, its note as the words; Needs you and Busy keep theirs', () => {
+  it('SIDE-2.17: a Done row shows Done after its title, its note as the words; beside a warning chip Done is its tick alone, first of the end icons; Needs you and Busy keep theirs', () => {
     const app = renderApp();
     const at = NOW - 5 * 60_000;
     app.snapshot([
@@ -499,7 +504,11 @@ describe('sidebar rows', () => {
       row({ id: 'bare', locationShown: { repo: false, where: false }, done: { at, note: null } }),
       row({ id: 'asks', status: 'needs-you', waitingFor: 'input needed', locationShown: { repo: false, where: false }, done: { at, note: 'old note' } }),
       row({ id: 'plain', locationShown: { repo: false, where: false } }),
+      row({ id: 'wrong', locationShown: { repo: false, where: false }, done: { at, note: 'Opened PR #42, CI green' }, evidence: verdict('no-run') }),
     ]);
+    expect(field('done', 'done')).toHaveAttribute('data-slot', 'chip');
+    expect(field('done', 'done')).toHaveAttribute('data-tone', 'ok');
+    expect(field('done', 'done')!.querySelector('svg')).toHaveClass('lucide-circle-check', 'size-3');
     expect(field('done', 'done')).toHaveTextContent('Done');
     expect(field('done', 'done')!.getAttribute('title')).toMatch(/^Done at \d{1,2}:\d{2}( [AP]M)?\nOpened PR #42, CI green$/);
     expect(field('done', 'done')!.querySelector('svg')).toHaveAttribute('aria-hidden');
@@ -511,6 +520,18 @@ describe('sidebar rows', () => {
     expect(field('asks', 'done-note')).toBeNull();
     expect(field('asks', 'waiting-for')).toHaveTextContent('input needed');
     expect(field('plain', 'done')).toBeNull();
+    // Beside a warning chip: the tick alone, in `ok`, the first of the line's end icons, its tooltip and its word in the name as before.
+    const tick = field('wrong', 'done')!;
+    expect(rowEl('wrong').querySelectorAll('[data-field="done"]')).toHaveLength(1);
+    expect(tick).not.toHaveAttribute('data-slot', 'chip');
+    expect(tick.querySelector('svg')).toHaveClass('lucide-circle-check', 'size-3', 'text-ok');
+    expect(tick.querySelector('svg')).toHaveAttribute('aria-hidden');
+    expect(tick.getAttribute('title')).toBe(field('done', 'done')!.getAttribute('title'));
+    expect(tick.parentElement).toBe(field('wrong', 'end-icons'));
+    expect(tick.previousElementSibling).toBeNull();
+    expect(field('wrong', 'warnings')!.nextElementSibling).toBe(tick.parentElement);
+    expect(field('wrong', 'done-note')).toHaveTextContent('Opened PR #42, CI green');
+    expect(rowEl('wrong')).toHaveAccessibleName('IdlewrongNo test runDoneClaude Code Opened PR #42, CI green1m');
   });
 
   it('SIDE-2.4: context usage shows as a percentage when reported, and not at all otherwise', () => {
@@ -665,10 +686,10 @@ describe('status at a glance', () => {
       const dot = mark.querySelector('[data-slot="unread-dot"]')!;
       expect(dot).toHaveClass('size-1.5', 'rounded-full', 'bg-sidebar-foreground');
       expect(dot).toHaveAttribute('aria-hidden');
-      // After the Done chip, 4 px before the Harness mark.
+      // After the Done chip, before the Harness mark, as far from it as the line's other end icons are (SIDE-15.4).
       expect(field('new', 'done')!.nextElementSibling).toBe(mark.parentElement);
       expect(mark.nextElementSibling).toBe(field('new', 'harness'));
-      expect(mark.parentElement).toHaveClass('gap-1');
+      expect(mark.parentElement).toHaveClass('gap-1.5');
       expect(mark).toHaveAttribute('title', `Finished at ${clockTime(new Date(fiveHours).toISOString())}, after you last looked`);
       expect(field('new', 'title')).toHaveClass('font-semibold');
       expect(rowEl('new')).toHaveAccessibleName('IdlenewDoneunreadClaude Code 5h');

@@ -304,10 +304,9 @@ const FAMILIES: Record<string, Family> = {
     tokens: ['warning', 'warning-text'],
     files: {
       'web/src/lib/memory.ts': { why: 'memory and load warning levels (MEM-1.3, MEM-5.2)', uses: ['bg-warning', 'text-warning-text'] },
-      'web/src/components/SessionItem.tsx': { why: "a growing Process tree (MEM-4.1), and work its Evidence doesn't back (EVID-5.6)", uses: ['text-warning-text'] },
       'web/src/components/Evidence.tsx': { why: 'a verdict that warns, its icon (EVID-5.7), and a Test run that failed or timed out (EVID-5.11)', uses: ['text-warning-text'] },
       'web/src/lib/evidence.ts': { why: "a verdict that warns, its words (EVID-5.1, 5.5)", uses: ['text-warning-text'] },
-      'web/src/components/ui/chip.tsx': { why: 'the growth warning chip (MEM-3.5)', uses: ['border-warning/40', 'text-warning-text'] },
+      'web/src/components/ui/chip.tsx': { why: "the growth warning chip (MEM-3.5), and a Session row's Warnings (SIDE-15.1): memory running away (MEM-4.1) and work its Evidence doesn't back (EVID-5.6)", uses: ['border-warning/40', 'text-warning-text'] },
       'web/src/lib/sessions.ts': { why: 'context above 40% (CONTEXT_LEVEL_CLASS), in the status line, the sidebar and a PR aged 3 to 10 days', uses: ['text-warning-text'] },
       'web/src/lib/usage.ts': { why: "the usage warning level's triangle, and its bar's edge (and the details' solid bar)", uses: ['bg-warning', 'text-warning-text'] },
     },
@@ -348,7 +347,7 @@ const FAMILIES: Record<string, Family> = {
       'web/src/lib/evidence.ts': { why: "an ok verdict's words (EVID-5.1, 5.5)", uses: ['text-ok-text'] },
       'web/src/lib/work.ts': { why: 'a PR under 3 days', uses: ['text-ok-text'] },
       'web/src/components/HandOff.tsx': { why: '"Hand off…"\'s dot when the Handover is ready (HAND-2.3)', uses: ['bg-ok'] },
-      'web/src/components/SessionItem.tsx': { why: 'a ready Handover on its row (HAND-6.3)', uses: ['text-ok'] },
+      'web/src/components/SessionItem.tsx': { why: 'a ready Handover on its row (HAND-6.3), and Done as its tick beside a warning chip (SIDE-2.17)', uses: ['text-ok'] },
     },
   },
   info: {

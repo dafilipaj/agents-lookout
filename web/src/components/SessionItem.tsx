@@ -1,6 +1,6 @@
-import { type Pressure, runsAway } from '@shared/memory.ts';
+import type { Pressure } from '@shared/memory.ts';
 import type { SessionRow } from '@shared/types.ts';
-import { Bot, CircleCheck, FlaskConicalOff, FolderGit2, GitBranch, Hourglass, SquareTerminal, TrendingUp } from 'lucide-react';
+import { Bot, CircleCheck, FolderGit2, GitBranch, Hourglass, SquareTerminal } from 'lucide-react';
 import { memo, useEffect, useRef } from 'react';
 import { ActionIcon } from '@/lib/actions';
 import { clockTime } from '@/lib/chat';
@@ -10,9 +10,9 @@ import { BACKGROUND_SHELL_TIP, CONTEXT_LEVEL_CLASS, queuedTip, ROW_TONE, STATUS_
 import { Chip } from '@/components/ui/chip';
 import { Hits } from '@/components/ui/hits';
 import { SessionMarker } from '@/components/ui/session-marker';
-import { formatBytes } from '@/lib/memory';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
+import { warningsOf } from '@/lib/warnings';
 import { HarnessIcon } from './HarnessIcon';
 import { ChangesCount } from './ChangesCount';
 import { changesTip, hasLines, linesLabel } from '@/lib/changes';
@@ -26,7 +26,7 @@ interface Props {
   onSelect(id: string): void;
   /** SIDE-10.3: another live row has this name; what tells this one apart. Null when the name is its alone. */
   suffix?: NameSuffix | null;
-  /** MEM-4.1: the Mac's memory pressure, which lowers the bar for memory running away; null before a sample. */
+  /** MEM-4.1: the Mac's memory pressure, which lowers the bar for memory running away (a Warning, SIDE-15); null before a sample. */
   pressure?: Pressure | null;
   /** SIDE-12: where the filter's query matched this row; null without a query. */
   match?: RowMatch | null;
@@ -37,6 +37,8 @@ interface Props {
 }
 
 const NOT_CONTROLLABLE = 'Not Controllable: this Session runs in another app, so Lookout can only show it.';
+/** DS-22.1: what the second line's slot holds goes whole once the slot is under 46 px: 40 px of room and its own 6 px before the numbers. */
+const SLOT_GONE = '@max-[46px]:hidden';
 
 /** One sidebar row (SIDE-2). */
 export const SessionItem = memo(function SessionItem({ row, selected, dimmed, now, onSelect, suffix = null, pressure = null, match = null, unread = false, handoverReady = false }: Props) {
@@ -88,11 +90,13 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
     </span>
   );
   const subagentLabel = `${running} Subagent${running === 1 ? '' : 's'} running`;
-  // DS-22.3: the exceptions that lead the second line.
-  const runaway = runsAway(row.memoryGrowthBytes, pressure);
-  // EVID-5.6: work that isn't backed; an ok or quiet verdict leaves the row quiet.
-  const unbacked = row.evidence?.tone === 'warning' ? row.evidence : null;
-  const hasMarks = runaway || !!row.queued || running > 0 || row.backgroundShell || !!unbacked;
+  // DS-22.3: what is running leads the second line; what is wrong is the first line's one chip (SIDE-15).
+  const hasMarks = !!row.queued || running > 0 || row.backgroundShell;
+  // RES-3.1: with all three the queued mark is its Hourglass alone, so the line holds its numbers (DS-22.1).
+  const crowded = !!row.queued && running > 0 && row.backgroundShell;
+  const warnings = warningsOf(row, pressure);
+  const urgent = warnings[0];
+  const doneTip = row.done ? [`Done at ${doneAt}`, row.done.note].filter(Boolean).join('\n') : undefined;
 
   return (
     <li
@@ -142,15 +146,33 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
             </span>
           )}
         </span>
+        {/* SIDE-15: everything that is wrong with the Session, in one chip: the most urgent Warning's
+            icon and word, "+N" for the others; every one in words in its tooltip and, as the chip's
+            name, in the row's (SIDE-15.3). */}
+        {urgent && (
+          <Chip tone="warning" role="img" aria-label={warnings.map((w) => w.text).join(', ')} title={warnings.map((w) => w.text).join('\n')} data-field="warnings" data-kind={urgent.kind}>
+            <urgent.icon aria-hidden className="size-3" />
+            {urgent.word}
+            {warnings.length > 1 && <span data-field="warnings-more">+{warnings.length - 1}</span>}
+          </Chip>
+        )}
         {/* SIDE-2.17: it reported its work finished and wasn't prompted since. */}
-        {row.done && (
-          <Chip tone="ok" title={[`Done at ${doneAt}`, row.done.note].filter(Boolean).join('\n')} data-field="done">
+        {row.done && !urgent && (
+          <Chip tone="ok" title={doneTip} data-field="done">
             <CircleCheck aria-hidden className="size-3" />
             Done
           </Chip>
         )}
-        <span className="flex shrink-0 items-center gap-1">
-          {/* SIDE-13.5: Unread, a dot in the title's colour (a "new" mark is never Primary, DS-12.4), 4 px
+        {/* SIDE-15.4: the line's end icons, 6 px apart. */}
+        <span className="flex shrink-0 items-center gap-1.5" data-field="end-icons">
+          {/* SIDE-2.17: beside a warning chip Done is its tick alone, so the title keeps its room. */}
+          {row.done && urgent && (
+            <span className="flex shrink-0 items-center" title={doneTip} data-field="done">
+              <CircleCheck aria-hidden className="size-3 text-ok" />
+              <span className="sr-only">Done</span>
+            </span>
+          )}
+          {/* SIDE-13.5: Unread, a dot in the title's colour (a "new" mark is never Primary, DS-12.4),
               before the Harness mark, its word for screen readers only. */}
           {unread && row.statusSince !== null && (
             <span className="flex shrink-0 items-center" title={`Finished at ${clockTime(new Date(row.statusSince).toISOString())}, after you last looked`} data-field="unread">
@@ -171,25 +193,19 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
           </span>
         </span>
       </div>
-      {/* SIDE-2.7–2.14, DS-22: the exceptions lead the line, in colour and with an icon or words, never
-          cut (DS-22.3); then the slot, what varies (where the Session works, and the Session's words
-          when nothing else is there), which truncates first; then the numbers in three fixed columns,
-          grey (DS-22.1, 22.2). Empty at the default location, the slot is aria-hidden so its tooltip
-          (the full location) isn't read. */}
+      {/* SIDE-2.7–2.14, DS-22: what is running leads the line, with an icon and its count, 8 px apart,
+          never cut (DS-22.3, SIDE-15.4); then the slot, what varies (where the Session works, and the
+          Session's words when nothing else is there), which truncates first; then the numbers in three
+          fixed columns, grey (DS-22.1, 22.2). Empty at the default location, the slot is aria-hidden
+          so its tooltip (the full location) isn't read. */}
       <div className={cn('flex min-h-4 items-center gap-1.5 pl-6.5 text-meta leading-4', tone.quiet)}>
         {hasMarks && (
-          <span className="flex shrink-0 items-center gap-1 tabular-nums" data-field="marks">
-            {/* MEM-4.1: memory running away. */}
-            {runaway && (
-              <span data-field="memory-growth" role="img" aria-label={`memory growing, +${formatBytes(row.memoryGrowthBytes!)} in 10 min`} title={`Memory +${formatBytes(row.memoryGrowthBytes!)} in 10 min`} className="flex items-center gap-0.5 text-warning-text">
-                <TrendingUp aria-hidden className="size-2.5" />+{formatBytes(row.memoryGrowthBytes!)}
-              </span>
-            )}
+          <span className="flex shrink-0 items-center gap-2 tabular-nums" data-field="marks">
             {/* RES-3.1: a job of this Session waits in res; its Status unchanged. */}
             {row.queued && (
               <span data-field="queued" role="img" aria-label={queuedTip(row.queued, now)} title={queuedTip(row.queued, now)} className="flex items-center gap-0.5">
                 <Hourglass aria-hidden className="size-3" />
-                {formatAge(Math.max(0, now - row.queued.since))}
+                {!crowded && formatAge(Math.max(0, now - row.queued.since))}
               </span>
             )}
             {running > 0 && (
@@ -205,28 +221,26 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
                 <SquareTerminal role="img" aria-label="background shell running" className="size-3" />
               </span>
             )}
-            {/* EVID-5.6: its Evidence warns; last of DS-22.3's marks. */}
-            {unbacked && (
-              <span title={unbacked.text} className="flex items-center text-warning-text" data-field="evidence">
-                <FlaskConicalOff role="img" aria-label={unbacked.text} className="size-3" />
-              </span>
-            )}
           </span>
         )}
+        {/* DS-22.1: the slot clips what it holds and carries the 6 px before the first column itself
+            (its last 2 px, after its 4 px gap, over the line's own gap), so that gap goes when the slot does.
+            With under 40 px of room (46 px with that gap) what it holds goes whole (`SLOT_GONE`), not as
+            half an icon against the numbers. */}
         <span
-          className="flex min-w-0 flex-1 items-center gap-1"
+          className="@container -mr-1.5 flex min-w-0 flex-1 items-center gap-1 overflow-hidden after:w-0.5 after:shrink-0 after:content-['']"
           title={tip ?? undefined}
           aria-hidden={slotEmpty || undefined}
           data-field="slot"
         >
           {showRepo && (
-            <span className="max-w-[45%] shrink-0 truncate" data-field={row.git ? 'repo' : 'cwd'}>
+            <span className={cn('max-w-[45%] shrink-0 truncate', SLOT_GONE)} data-field={row.git ? 'repo' : 'cwd'}>
               {row.git ? marked('repo', row.git.repo) : basename(row.cwd!)}
             </span>
           )}
-          {showRepo && loc && <span aria-hidden>·</span>}
+          {showRepo && loc && <span aria-hidden className={SLOT_GONE}>·</span>}
           {loc && (
-            <span className="flex min-w-0 items-center gap-0.5">
+            <span className={cn('flex min-w-0 items-center gap-0.5', SLOT_GONE)}>
               {loc.kind === 'worktree' ? (
                 <FolderGit2 aria-label="Worktree" data-icon="worktree" className="size-3 shrink-0" />
               ) : (
@@ -237,11 +251,13 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
               </span>
             </span>
           )}
-          {wordsInSlot && wordsLine('min-w-0 truncate', tip ? `${words.text}\n${tip}` : words.text)}
+          {wordsInSlot && wordsLine(cn('min-w-0 truncate', SLOT_GONE), tip ? `${words.text}\n${tip}` : words.text)}
         </span>
         {/* DS-22.1: changes, time in its Status, context; each right-aligned in its own width, so a
-            value's place says what it is; empty without one, never cut (a wider one grows its own). */}
-        <span className="w-16 min-w-fit shrink-0 text-right tabular-nums" data-column="changes">
+            value's place says what it is; empty without one, never cut (a wider one grows its own).
+            When what leads the line leaves them less, each gives back the room its value doesn't
+            fill (`shrink` down to `min-w-fit`), after the slot is gone, so the numbers stay on the row. */}
+        <span className="w-16 min-w-fit shrink text-right tabular-nums" data-column="changes">
           {/* DIFF-1.1: the Session's changed lines, grey on the row (DS-22.2). */}
           {hasLines(row.changes) && (
             <span data-field="changes" role="img" aria-label={linesLabel(row.changes)} title={changesTip(row.changes)} className="flex justify-end">
@@ -249,14 +265,14 @@ export const SessionItem = memo(function SessionItem({ row, selected, dimmed, no
             </span>
           )}
         </span>
-        <span className="w-6.5 min-w-fit shrink-0 text-right tabular-nums" data-column="age">
+        <span className="w-6.5 min-w-fit shrink text-right tabular-nums" data-column="age">
           {age && (
             <span title={`${STATUS_LABEL[row.status]} for ${age}`} data-field="age">
               {age}
             </span>
           )}
         </span>
-        <span className="flex w-11 min-w-fit shrink-0 justify-end tabular-nums" data-column="context">
+        <span className="flex w-11 min-w-fit shrink justify-end tabular-nums" data-column="context">
           {row.contextPct !== null && (
             // DS-3.5, DS-22.2: grey up to 40%, the status line's levels past it (VIEW-5.5), from the same contextLevel.
             <span

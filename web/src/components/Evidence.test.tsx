@@ -2,6 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { verdict, type EvidenceRound, type EvidenceRun, type EvidenceView, type VerdictKey } from '@shared/evidence.ts';
+import { GB } from '@shared/memory.ts';
 import type { ChangesView, SessionRow } from '@shared/types.ts';
 import { renderApp, row } from '@/test/helpers';
 import { Tile, Tiles } from '@/components/ui/details';
@@ -183,22 +184,30 @@ describe('EVID-5: where Evidence shows', () => {
     expect(doneFacts(evidence({ changedSince: 1, documentsSince: 2 }))).toMatch(/^last pass \d\d:\d\d(?: [AP]M)?, 1 file changed since · no review$/);
   });
 
-  it('EVID-5.6: a warning verdict marks the row last among its marks, with its words; ok and quiet don’t', () => {
+  it('EVID-5.6: a warning verdict is a Warning on the row: the warning chip says "Tests" with FlaskConicalOff, or counts it in "+1" behind memory running away; the verdict is in its tooltip and the row’s name; ok and quiet add none', () => {
     const app = renderApp('/');
     app.snapshot([
       row({ id: 'a', title: 'Warns', changes: changed, backgroundShell: true, evidence: verdict('failed') }),
       row({ id: 'b', title: 'Backed', changes: changed, evidence: verdict('passed') }),
       row({ id: 'c', title: 'Running', changes: changed, evidence: verdict('running') }),
       row({ id: 'd', title: 'None', changes: changed }),
+      row({ id: 'e', title: 'Both', changes: changed, memoryGrowthBytes: 2.8 * GB, evidence: verdict('changed') }),
     ]);
-    const mark = document.querySelector('[data-session-id="a"] [data-field="evidence"]')!;
-    expect(mark).toHaveClass('text-warning-text');
-    expect(mark).toHaveAttribute('title', 'Its last test run failed');
-    expect(mark.querySelector('svg.lucide-flask-conical-off')).toBeTruthy();
-    expect(mark.parentElement!.lastElementChild).toBe(mark);
-    expect(mark.previousElementSibling).toHaveAttribute('data-field', 'background-shell');
-    expect(screen.getByRole('option', { name: /Warns/ })).toHaveAccessibleName(expect.stringContaining('Its last test run failed'));
-    for (const id of ['b', 'c', 'd']) expect(document.querySelector(`[data-session-id="${id}"] [data-field="evidence"]`)).toBeNull();
+    const chip = (id: string) => document.querySelector<HTMLElement>(`[data-session-id="${id}"] [data-field="warnings"]`);
+    expect(chip('a')).toHaveAttribute('data-tone', 'warning');
+    expect(chip('a')).toHaveTextContent(/^Tests$/);
+    expect(chip('a')).toHaveAttribute('title', 'Its last test run failed');
+    expect(chip('a')!.querySelector('svg.lucide-flask-conical-off')).toBeTruthy();
+    expect(screen.getByRole('option', { name: /Warns/ })).toHaveAccessibleName(expect.stringMatching(/WarnsIts last test run failedClaude Code/));
+    // Not a mark on the second line, where the background shell still leads.
+    expect(document.querySelector('[data-session-id="a"] [data-field="marks"]')!.children).toHaveLength(1);
+    expect(document.querySelector('[data-session-id="a"] [data-field="marks"] svg.lucide-flask-conical-off')).toBeNull();
+    // Behind a more urgent Warning it counts in the "+1", its verdict the tooltip's second line.
+    expect(chip('e')).toHaveTextContent(/^Memory\+1$/);
+    expect(chip('e')!.querySelector('svg.lucide-trending-up')).toBeTruthy();
+    expect(chip('e')).toHaveAttribute('title', 'Memory +2.8 GB in 10 min\nChanged after its last test run');
+    expect(screen.getByRole('option', { name: /Both/ })).toHaveAccessibleName(expect.stringContaining('Changed after its last test run'));
+    for (const id of ['b', 'c', 'd']) expect(chip(id)).toBeNull();
   });
 
   it('EVID-5.7: the icon is CircleCheck in ok, TriangleAlert in warning-text and Info in the muted colour, beside words', () => {
@@ -521,17 +530,17 @@ describe('EVID-6: Review rounds', () => {
     expect(reviewWords([round({ outcome: 'unread' })])).toBe('the review is unread');
   });
 
-  it('EVID-6.8: rounds never change the status line’s part or the row’s mark', async () => {
-    // No review, the verdict ok: no warning, no mark.
+  it('EVID-6.8: rounds never change the status line’s part or the row’s warning chip', async () => {
+    // No review, the verdict ok: no Warning, no chip.
     const before = show(evidence({ verdict: verdict('passed'), rounds: [] }), session({ evidence: verdict('passed') }));
     expect(part()).toHaveTextContent('Tests passed');
-    expect(document.querySelector('[data-session-id="a"] [data-field="evidence"]')).toBeNull();
+    expect(document.querySelector('[data-session-id="a"] [data-field="warnings"]')).toBeNull();
     before.unmount();
     // A review that failed, the verdict ok: the part and the row are the same.
     show(evidence({ verdict: verdict('passed'), rounds: [round({ outcome: 'failed' })] }), session({ evidence: verdict('passed') }));
     expect(part()).toHaveTextContent('Tests passed');
     expect(part()).toHaveAttribute('title', 'Tests passed after its last change');
-    expect(document.querySelector('[data-session-id="a"] [data-field="evidence"]')).toBeNull();
+    expect(document.querySelector('[data-session-id="a"] [data-field="warnings"]')).toBeNull();
   });
 
   it('EVID-6.9: a reviewer without a model shows as its Harness alone', async () => {

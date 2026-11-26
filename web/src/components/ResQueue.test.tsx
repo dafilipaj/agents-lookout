@@ -4,7 +4,7 @@ import type { ResJob, ResSnapshot } from '@shared/res.ts';
 import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { NOW, field, renderApp, row } from '@/test/helpers';
+import { NOW, field, renderApp, row, rowEl } from '@/test/helpers';
 
 const job = (over: Partial<ResJob> & { id: string }): ResJob => ({
   pid: 300, kind: 'run', state: 'waiting', prio: 'check', cls: 'vitest@agents-lookout', cores: 3, mb: 2600,
@@ -80,11 +80,21 @@ it('RES-2.3: without res, no count and no Queue section', async () => {
   expect(screen.queryByRole('region', { name: 'res queue' })).toBeNull();
 });
 
-it('RES-3.1: a Queued Session\'s row shows the Hourglass and its wait before the Subagent count, its Status unchanged', () => {
+it('RES-3.1: a Queued Session\'s row shows the Hourglass and its wait before the Subagent count, its Status unchanged; with Subagents and a background shell too, the Hourglass alone', () => {
   show(null, [
     row({ id: 'a', status: 'busy', queued: { tool: 'vitest', since: NOW - 180_000, position: 2 }, subagents: { running: 1, finished: 0 } }),
     row({ id: 'b', status: 'busy' }),
+    row({ id: 'c', queued: { tool: 'vitest', since: NOW - 180_000, position: 2 }, subagents: { running: 1, finished: 0 }, backgroundShell: true }),
+    row({ id: 'd', queued: { tool: 'vitest', since: NOW - 180_000, position: 2 }, backgroundShell: true }),
   ]);
+  // All three running marks: the Hourglass alone, its wait in the tooltip and the row's name.
+  expect(field('c', 'queued')).toHaveTextContent(/^$/);
+  expect(field('c', 'queued')!.querySelector('svg')).toHaveClass('lucide-hourglass');
+  expect(field('c', 'queued')!.title).toBe('Queued in res: vitest, waiting 3m, #2 in the queue');
+  expect(rowEl('c')).toHaveAccessibleName(/Queued in res: vitest, waiting 3m, #2 in the queue/);
+  expect([...field('c', 'marks')!.children].map((e) => e.getAttribute('data-field'))).toEqual(['queued', 'subagents', 'background-shell']);
+  // Two of them: the wait stays.
+  expect(field('d', 'queued')).toHaveTextContent('3m');
   const mark = field('a', 'queued')!;
   expect(mark).toHaveTextContent('3m');
   expect(mark.title).toBe('Queued in res: vitest, waiting 3m, #2 in the queue');

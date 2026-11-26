@@ -3,14 +3,14 @@ title: "Memory overview"
 code: "MEM"
 status: "In Progress"
 created: "2026-10-24"
-updated: "2026-11-06"
+updated: "2026-11-25"
 ---
 
 # Memory overview
 
 ## Summary
 
-See what the Sessions cost this Mac without opening Activity Monitor: one line at the bottom of the Session sidebar, under the usage strip, with the memory of everything Lookout watches and the Mac's load (`▌ 2.4 GB · load 3.3`, with the Pressure word instead when it isn't normal), and a click opens a breakdown: Lookout itself, one row per Session (its Process tree: the Harness, MCP servers, test runners), and the rest of the Mac, each with its biggest executables, a 30-minute trend and a badge on what is growing. A Session whose tree grew 30 MB or more in 10 minutes gets a small mark on its row in the list, so the one that is eating the Mac shows up where you already look. Lookout's server samples `ps` and `sysctl` and does the sums; the tab only renders.
+See what the Sessions cost this Mac without opening Activity Monitor: one line at the bottom of the Session sidebar, under the usage strip, with the memory of everything Lookout watches and the Mac's load (`▌ 2.4 GB · load 3.3`, with the Pressure word instead when it isn't normal), and a click opens a breakdown: Lookout itself, one row per Session (its Process tree: the Harness, MCP servers, test runners), and the rest of the Mac, each with its biggest executables, a 30-minute trend and a badge on what is growing. A Session whose memory runs away (MEM-4.1) gets a Warning on its row in the list, so the one that is eating the Mac shows up where you already look. Lookout's server samples `ps` and `sysctl` and does the sums; the tab only renders.
 
 ## Problem
 
@@ -60,9 +60,9 @@ A click on the memory line opens a popover, as the usage strip's does (USAGE-2.1
 
 ### MEM-4 Growth on the Session row
 
-- [x] MEM-4.1 When a Session's tree grows 1 GB or more in 10 minutes, or 30 MB or more while the Mac's memory pressure is warn or critical (MEM-2.5's growth, MEM-1's pressure), its row shows lucide's `TrendingUp` and the amount ("+2.8 GB") in `warning-text` at the start of its second line (DS-22.3), the icon the size of the context ring; its tooltip reads "Memory +2.8 GB in 10 min", the row's accessible name adds "memory growing, +2.8 GB in 10 min" before the Subagent count (SIDE-3.10's order), and its colour keeps 4.5:1 on every row state (SIDE-3.11's test). Growth below that shows nothing on the row: never a "0", never a mark for shrinking. (test)
-- [x] MEM-4.2 The mark follows the samples through the `memory` event: it shows within one sample of the growth (MEM-2.3), goes within one of the 10-minute window no longer holding it, goes with its row when Fleet stops listing the Session, and changes nothing else on the row: not the Status, the marker, the strip, the age or the order (SIDE-3.1, SIDE-3.4). (test)
-- [x] MEM-4.3 At 280 px the mark is never cut: it leads the second line, where the location and the Session's words truncate first (SIDE-2.14), and sits clear of the Subagent count, the row's lines still aligned (SIDE-3.8). (manual)
+- [x] MEM-4.1 When a Session's tree grows 1 GB or more in 10 minutes, or 30 MB or more while the Mac's memory pressure is warn or critical (MEM-2.5's growth, MEM-1's pressure), its memory is running away: a Warning on its row, the most urgent one. The row's warning chip (SIDE-15.1) shows lucide's `TrendingUp` and "Memory"; its line in the chip's tooltip and in the row's accessible name reads "Memory +2.8 GB in 10 min" (SIDE-15.3), and the chip's colour keeps 4.5:1 on every row state (SIDE-15.6). The amount itself stays in Memory's own list (MEM-3.5). Growth below that shows nothing on the row: never a "0", never a mark for shrinking. (test)
+- [x] MEM-4.2 The Warning follows the samples through the `memory` event: it shows within one sample of the growth (MEM-2.3), goes within one of the 10-minute window no longer holding it, goes with its row when Fleet stops listing the Session, and changes nothing else on the row: not the Status, the marker, the strip, the age or the order (SIDE-3.1, SIDE-3.4). (test)
+- [ ] MEM-4.3 At 280 px the row's warning chip with the memory Warning on it is never cut: the title gives way to it (SIDE-15.7), the second line is as it is without the Warning, and the row's lines stay aligned (SIDE-3.8). (manual)
 
 ### MEM-5 CPU and load
 
@@ -89,9 +89,9 @@ The incident that motivates this feature was load, not memory (decided 2026-10-2
 
 ```
 ┌──────────────────────────────┬───────────────────────────────────┐
-│ ◆ fix-deal-rates        [cl] │                                   │
-│   [wt] crm-rates     ↗ [sa]2 │  ← MEM-4: the growth mark, before │
-│ ● kg-hook-review        [ox] │    the Subagent count              │
+│ ◆ fix-deal… ([trend] Memory) │  ← MEM-4: memory running away, in │
+│   [sa]2 [wt] crm-rates       │    the row's warning chip         │
+│ ● kg-hook-review        [ox] │    (SIDE-15)                      │
 │ …                            │                                   │
 ├──────────────────────────────┼───────────────────────────────────┤
 │ ✳ ███░░░░░░░░░░░░░░░  6% 4h52│ composer                          │
@@ -137,7 +137,7 @@ The incident that motivates this feature was load, not memory (decided 2026-10-2
 
   - `⧖` stands for lucide's `Hourglass`. Section headers in `caption` medium `muted-foreground`; rows in `body`; a row's executables are its tooltip; the bars are `h-1` on the track `foreground/10`, `foreground/55` for a Session, `/30` for Lookout and `/15` for other apps; sizes `tabular-nums`, right-aligned.
   - A Session row is a `button` the width of the row (`hover:bg-accent/50`), `aria-label` as MEM-3.6; Lookout's and Other apps' rows are plain. Keyboard: Tab reaches the first button, ↑/↓ move between the popover's buttons (the queue's Sessions too), Enter opens, Esc closes and returns focus to the memory line.
-  - Colour by meaning (DS-2): amber is a growth mark, the Pressure at `warn`, the load at one per core and the verdict's dot at the warning level; red is `critical`, two per core, or a watched total past two thirds of RAM; Worth a look is a neutral box whose icons carry the tone (no amber Alert, DS-4); the bars are neutral. Staleness is the info tone (DS-3.3).
+  - Colour by meaning (DS-2): amber is memory running away (the row's warning chip, SIDE-15, and the growth in Memory's list), the Pressure at `warn`, the load at one per core and the verdict's dot at the warning level; red is `critical`, two per core, or a watched total past two thirds of RAM; Worth a look is a neutral box whose icons carry the tone (no amber Alert, DS-4); the bars are neutral. Staleness is the info tone (DS-3.3).
 - **States:** "Reading memory…" (DS-6.3) in the line and the popover before the first sample; "collecting…" in the Memory tile until 2 points; "stale · 1m" at the verdict's end after a skipped sample; "No live Sessions" in the list when Fleet lists none; a Session row at 0 B says "gone" (its pid exited between Fleet's read and `ps`).
 - **Shortcuts:** none new. The line is in the Tab order after the usage strip's trigger; Enter and Space open it.
 
@@ -261,3 +261,5 @@ None.
 - 2026-11-09: MEM-3.5 and MEM-4.1 ticked with DS-22 (Plan item 50): growth under the threshold is grey with no icon; the warning is 1 GB in 10 minutes, or 30 MB under warn or critical pressure (`runsAway`, `shared/memory.ts`), in the sidebar and in Memory's list alike.
 - 2026-11-09: MEM-1.4's "N Sessions growing" counts the rows with MEM-4.1's mark (`runsAway`), not every 30 MB of growth.
 - 2026-11-09: MEM-4.3 checked by Dario in the running app and ticked; MEM-3.8 still waits for his look.
+- 2026-11-25: MEM-4.1 and 4.3 amended and unticked until built (SIDE-15; Dario chose one chip for what's wrong on a canvas): memory running away is a Warning in the row's warning chip, "Memory" with `TrendingUp`, not a mark with its amount at the start of the second line. The amount is in the chip's tooltip, the row's accessible name and Memory's own list. The threshold doesn't change. MEM-4.2 calls it the Warning and stays ticked.
+- 2026-11-25: MEM-4.1 built with SIDE-15 and ticked (`MemoryLine.test.tsx`): the Warning is the row's chip, "Memory", the amount in its tooltip and the row's name. MEM-4.3 waits for Dario's look (SIDE-15.7).

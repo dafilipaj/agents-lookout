@@ -3,14 +3,14 @@ title: "Evidence: what backs a Session's work when it stops, read from its Trans
 code: "EVID"
 status: "In Progress"
 created: "2026-11-18"
-updated: "2026-11-24"
+updated: "2026-11-25"
 ---
 
 # Evidence
 
 ## Summary
 
-When a Session stops with Changes, Idle or Done, see what backs its work without asking it: the Test runs it ran and how each ended, whether its Changes changed after its last Test run, and how many test files are among them. Lookout reads them from the Session's Transcript and its Checkouts, and sums them up in a verdict in the status line. A Session whose work rests on a test that failed, a result nobody can read, or no test at all shows a mark on its sidebar row. Slice 2 adds whether the work was reviewed, by any model: each Review round, the Subagents and headless Codex or Claude Code runs the Session started to review it, with each headless reviewer's Session one press away.
+When a Session stops with Changes, Idle or Done, see what backs its work without asking it: the Test runs it ran and how each ended, whether its Changes changed after its last Test run, and how many test files are among them. Lookout reads them from the Session's Transcript and its Checkouts, and sums them up in a verdict in the status line. A Session whose work rests on a test that failed, a result nobody can read, or no test at all shows a Warning on its sidebar row. Slice 2 adds whether the work was reviewed, by any model: each Review round, the Subagents and headless Codex or Claude Code runs the Session started to review it, with each headless reviewer's Session one press away.
 
 ## Problem
 
@@ -80,10 +80,10 @@ Which commands run tests, and how each ended, are Lookout's rules ([0010](../../
 - [x] EVID-5.3 The **Last pass** tile shows the end of the latest Test run that passed as a clock time ("14:26") and under it that run's count ("2,180 tests passed"), or "by its exit code" when its summary gave none; with no Test run that passed, "None" at the warning level and under it "12 test runs", or "No test run". The **Changed since** tile shows how many changed files, documents aside (EVID-7.2), have a modification time later than that run's end ("3 files"), at the warning level when there's one or more and "None" otherwise, and under it the last change as a clock time ("last at 14:31"); with no Test run that passed, it counts every changed file, documents aside, that has a modification time. (test)
 - [x] EVID-5.4 The **Test files** tile shows "4 of 11" and under it "1 added · 1 deleted · +64 −8", leaving out a part that's 0; with no test file, "None" and under it "of 11 changed files"; "at least 4" when DIFF left files out. It's a button, a `Tile` that DS-19.1 gains in the same change, with a chevron at its value's end: a press closes the Evidence popover and opens the list of changed files (DIFF-3), which keeps its own focus rules (DIFF-3.4). (test)
 - [x] EVID-5.5 A Done Session's Done card (VIEW-5.17) shows one line under the note: the verdict's icon and its words in its tone, then, in the muted colour, the first two tiles in words ("last pass 14:26, 3 files changed since", "last pass 14:30", "no run passed", or nothing more with no Test run), cut to one line with the whole in its tooltip, and an "Evidence" button at its end that opens the Evidence popover. The card never grows past that line. The Done chip and its tooltip (SIDE-2.17) don't change. (test)
-- [ ] EVID-5.6 A Session whose verdict's tone is warning shows a mark on its sidebar row: lucide `FlaskConicalOff` in `warning-text`, leading the second line after DS-22.3's other marks, its tooltip the verdict. The row's accessible name (SIDE-2.15) says the verdict where the mark is. An ok or quiet verdict, and a Session without Evidence, have no mark. (e2e)
+- [ ] EVID-5.6 A Session whose verdict's tone is warning has a Warning on its sidebar row: the row's warning chip (SIDE-15.1) shows lucide `FlaskConicalOff` and "Tests", or counts it in its "+1" behind a more urgent Warning. Its line in the chip's tooltip is the verdict, and the row's accessible name (SIDE-2.15) says the verdict where the chip is (SIDE-15.3). An ok or quiet verdict, and a Session without Evidence, add no Warning. (e2e)
 - [x] EVID-5.7 In the status line's part and the Done card, a verdict's icon is lucide `CircleCheck` in `ok` for ok, `TriangleAlert` in `warning-text` for warning, and `Info` in the muted colour for quiet. Never a colour alone (design guide, principle 4). The popover's verdict has `Verdict`'s dot instead (EVID-5.2). (test)
 - [x] EVID-5.8 The part and the Done card's Evidence button are buttons that Tab reaches and Enter opens. In the popover, Tab moves between its buttons: the Test files tile, each changed file and each "N more"; the other tiles and the runs are text and don't take focus. Esc closes the popover and returns focus to whichever opened it. When the Session's Evidence goes while the popover is open (it went Busy, or lost its Changes), the popover closes and focus goes to the composer, or to the chat without one, as DIFF-3.3 does. (test)
-- [ ] EVID-5.9 The part, the popover, the Done card's line and the row's mark look right in light and dark mode, at 280 px for the row and at any width of the Session view, without sideways scrolling, and match canvas D (UX). (manual)
+- [ ] EVID-5.9 The part, the popover, the Done card's line and the row's warning chip look right in light and dark mode, at 280 px for the row and at any width of the Session view, without sideways scrolling, and match canvas D (UX). (manual)
 - [x] EVID-5.10 The "Changed since the last pass" section lists the files the Changed since tile counts, latest change first, then the documents changed since (EVID-7.4), 10 at most and then "N more", which opens DIFF-3's list as the Test files tile does. Each row shows its path, cut at the folder first with the whole in its tooltip (as DIFF-3.5), its modification time as a clock time and its `+ −`; a press opens it as DIFF-4 does, a `.plain` Module in the Spec view (PLAIN-3.1). With no Test run that passed, or no file or document changed since, the section is left out. (test)
 - [x] EVID-5.11 The "Test runs" section's label has a note at its right: the number of Test runs, then how many failed, timed out, were stopped, ran no tests or are unread, each left out at 0 ("12 · 2 failed · 1 unread"). Under it, the runs, newest first, 20 at most and then "8 more", which shows the rest in place, one line each: its end as a clock time, its outcome in a word (passed, failed, timed out, stopped, no tests, running, unread), its count when its summary gave one ("2,180 tests", "2 of 2,180" for a failure), and its command, cut, the whole in its tooltip (up to 20,000 characters), after "Subagent ·" when a Subagent ran it. (test)
 
@@ -102,7 +102,7 @@ Whether the Session's work went through a review, and when: the runs the Session
 - [x] EVID-6.5 With a round, a "Reviews" section sits between "Changed since the last pass" and "Test runs". Its label's note is the number of rounds, then how many are running, failed, timed out, were stopped or are unread, each left out at 0 ("2 · 1 running"). Under it, every round, the latest start first: its end as a clock time (its start while it runs), its outcome in a word (finished, failed, timed out, stopped, running, unread), never in the warning colour, how long it took ("7m", "45s"), and its reviewers joined by "+". A headless reviewer shows as its Harness, "Codex" or "Claude Code", then its model and effort when tb-session gives them ("Codex · gpt-6.1-sol · xhigh", EVID-6.9). A Subagent shows as "Subagent" and its model ("Subagent · claude-opus-5-5"); Subagents with the same words show once, with a count after more than one ("× 4"). Reviewers that don't fit on the round's line go on to more lines, under the first reviewer. The time's tooltip lists the round's commands and Subagent descriptions, one a line, each whole up to 20,000 characters. Without a round, the section is left out. (test)
 - [x] EVID-6.6 Each headless reviewer in a round is a button that closes the popover and opens that reviewer's Session read-only in the main pane, as HIST-3.3's Show does (its latest messages, where the review's findings are), whether or not it could be resumed. It never resumes the reviewer or starts a process. Its accessible name says what it does: "Show the Codex review of 14:21", "Show the Claude Code review of 14:21". A reviewer whose Transcript is gone (`transcript_missing`) is text, not a button, and so is a Subagent, until tb-session can show one (Planned slices). Tab reaches each button, and Esc and focus follow EVID-5.8. (test)
 - [x] EVID-6.7 The Done card's line (EVID-5.5) adds the rounds in words after its tiles' words, in the muted colour: "reviewed once", "reviewed twice", "reviewed 3 times", counting finished rounds; "a review is running" while one runs; with rounds none of which finished, the latest's outcome ("the review failed", "timed out", "was stopped", "is unread"); and "no review" without a round. Only a Session with Changes has the line (EVID-1.1), so a Session that changed nothing never says "no review". The line stays one line, cut, with the whole in its tooltip. (test)
-- [x] EVID-6.8 Rounds never change the verdict (EVID-3.3), the status line's part (EVID-5.1) or the row's mark (EVID-5.6): a review never warns, and a Session without one is never marked for it. (test)
+- [x] EVID-6.8 Rounds never change the verdict (EVID-3.3), the status line's part (EVID-5.1) or the row's Warning (EVID-5.6): a review never warns, and a Session without one never gets a Warning for it. (test)
 - [x] EVID-6.9 Until tb-session gives Subagent calls and a Session's `model` and `effort` (Gaps 3 and 4, one release), Subagent review runs are missing and a headless reviewer shows as its Harness alone ("Codex", "Claude Code"). Nothing else waits on it. Settings › Tools names that version as what "Review rounds by Subagents, and a reviewer's model" need (TOOLS-2), so it says why to update, and refuses nothing. (test)
 - [ ] EVID-6.10 The tiles in two rows of two, the Reviews section with a round of two reviewers and one whose reviewers take more than a line, and the Done card's longer line look right in light and dark mode, at any width of the Session view, without sideways scrolling, and match the slice 2 sketch (UX). (manual)
 
@@ -112,7 +112,7 @@ A note or a spec edited after the tests passed hasn't changed what they cover. S
 
 - [x] EVID-7.1 A changed file is a **document** when its path's extension, case-insensitively, is one of LIB-2.10's document Types: `md`, `html`, `htm`, `pdf`, `png`, `jpg`, `jpeg`, `gif`, `svg` or `webp`. A renamed file goes by its new path. A test file (EVID-4.1) is never a document: a fixture or a snapshot is a test's input. The extensions live in one place, which the Library reads too. (test)
 - [x] EVID-7.2 Documents don't count for the last change (EVID-3.1), the Changed since tile (EVID-5.3), the Review tile's files since (EVID-6.4) or the Done card's words (EVID-5.5). They still count among the changed files: in the Test files tile's "of 11" (EVID-4.2), in "Read from 500 of 1,240" (EVID-5.2) and in the list of changed files (DIFF-3). (test)
-- [x] EVID-7.3 A Session whose changed files are all documents has no Evidence, as one without Changes has none (EVID-1.1): no part, no popover, no Done card line, no mark. A Checkout DIFF lists only in part (DIFF-2.7) counts as holding a file that isn't a document. (test)
+- [x] EVID-7.3 A Session whose changed files are all documents has no Evidence, as one without Changes has none (EVID-1.1): no part, no popover, no Done card line, no Warning on its row. A Checkout DIFF lists only in part (DIFF-2.7) counts as holding a file that isn't a document. (test)
 - [x] EVID-7.4 "Changed since the last pass" (EVID-5.10) lists the documents changed since the last pass after the files it counts, latest change first, in the muted colour, their `+ −` too. Each says "a document, not counted" after its path, in its tooltip and its accessible name. A document opens on a press as the others do, and shares the section's 10 rows and its "N more". The section's label has a note at its right, "1 file · 2 documents", leaving out a part that's 0. With only documents changed since, the section shows them, and the Changed since tile says "None". (test)
 
 ## Planned slices
@@ -183,9 +183,9 @@ The Done card, at the end of the chat
 │      pass 14:26, 3 files changed since   [Evidence ^]  │  one line, cut, in the app
 └────────────────────────────────────────────────────────┘
 
-The sidebar row
-● Fix rounding in totals                     Done
-  [flask-off] [br] fix/rates   +120 −30  5m  23%
+The sidebar row (SIDE-15: the chip, and Done as its tick beside it)
+● Fix rounding in to…  ([flask-off] Tests) [ok]
+  [br] fix/rates             +120 −30  5m  23%
 ```
 
 - `[ok]`, `[warn]` and `[flask-off]` stand for lucide `CircleCheck`, `TriangleAlert` and `FlaskConicalOff` ([0008](../../decisions/0008-lucide-icons-only.md)); `[dot]` is the `Verdict`'s dot, amber here; `[>]` and `[^]` are `ChevronRight` and `ChevronUp`.
@@ -225,7 +225,7 @@ The Done card's line
 
 - No icon is added: the Review tile and the section are text, and a reviewer's button is a text button like a changed file's.
 - Four tiles take two rows of two, and the popover keeps its 22rem: in one row, "Changed since" and "2 rounds · 4 files since" would be cut.
-- The status line's part and the row's mark stay slice 1's (EVID-6.8).
+- The status line's part and the row's Warning stay slice 1's (EVID-6.8).
 
 ## Technical approach
 
@@ -323,7 +323,7 @@ When slice 1 is built, a line in Dario's `~/.claude/CLAUDE.md` and `~/.codex/AGE
 ### Lookout's side
 
 - `server/evidence.ts`: the reads (EVID-1), a background shell or a Subagent ending when Fleet's count of them drops (`background.shells`, carried as the row's `backgroundShells`; Subagents running, which an earlier Turn's Subagent leaves too), the rules (EVID-2 to EVID-4) and an `evidence` event per Session to the tabs over the event stream, sent when it changes; the Session list's snapshot carries each Session's verdict for the row's mark.
-- `web`: the status line's part and the Evidence popover, the verdict in `DoneCard`, and the mark in `SessionItem.tsx`.
+- `web`: the status line's part and the Evidence popover, the verdict in `DoneCard`, and the row's Warning, an entry in `lib/warnings.ts` (SIDE-15; until that is built, the mark in `SessionItem.tsx`).
 - Slice 2: `server/reviews.ts` (the rules, EVID-6.1 and 6.3) and, in `server/evidence.ts`, `agent` beside `command` in the read when TOOLS says tb-session has it, and the `list` read after a read that finds a candidate (EVID-6.2). `EvidenceView` carries each round's outcome, start, end, commands and Subagent descriptions, and its reviewers: kind, Harness, Session id, `transcript_missing`, model and effort. `web` adds the Review tile, the Reviews section and the Done card's words, and a headless reviewer's button opens it through the route HIST-3.3's Show uses.
 
 ### Other specs, when built
@@ -331,8 +331,8 @@ When slice 1 is built, a line in Dario's `~/.claude/CLAUDE.md` and `~/.codex/AGE
 - VIEW-5.5: the status line gains the Evidence part after the Changes count, before RES-3.2's Queued part.
 - VIEW-5.17: the Done card gains the Evidence line and its button (EVID-5.5).
 - DS-19.1: `Tile` gains a button form, with a chevron and a hover, for the Test files tile (EVID-5.4).
-- DS-22.3: a new exception, the Evidence mark, last in its order; DS-22.4's component test covers it.
-- SIDE-2.15: the row's accessible name reads the verdict where the mark is.
+- DS-22.3: a new exception, work its Evidence doesn't back, a Warning in the row's chip after memory running away (SIDE-15; before 2026-11-25 a mark, last in the second line's order); DS-22.4's component test covers it.
+- SIDE-2.15: the row's accessible name reads the verdict where the warning chip is.
 - DIFF: Evidence reads its answer and its fingerprint; the Test files tile and the changed files' "N more" open DIFF-3's list, and a changed file opens as DIFF-4 does.
 - ARCH-1.3: EVID-4.1 puts its patterns in Lookout as a path rule; ARCH's grill decides whether its scanner uses it. ARCH-4.7's mark stays a separate part; ARCH's grill decides whether it joins the Evidence popover.
 - TOOLS: the tb-session version with the command kind.
@@ -352,8 +352,8 @@ Grilled with Dario on 2026-11-18.
 - **Idle and Done Sessions with Changes, not only Done:** a Session that stops without `fleet done` has worked too, and without Changes there's nothing to back.
 - **In the status line, with a popover:** every selected Session has a status line, Idle ones included, and a details popover is how Lookout explains a reading. The Done card repeats the verdict where a Done Session is read.
 - **Tiles on top, a one-line Done card (canvas D, 2026-11-19):** the three tiles say at a glance when tests last passed, what changed since and how many test files changed, and the files changed since the last pass are what wasn't tested. The Done card keeps one line however many runs there are, and its Evidence button opens the same popover as the status line. Dario chose D over the first popover (A), a timeline of edits and runs (B), which added a piece for little more, and an Evidence card in the chat (C), which grew the card every time.
-- **A row mark only when it isn't backed:** an exception leads a quiet row (DS-22.3); a backed row stays quiet.
-- **The Done chip doesn't change:** Done is the Session's word, and the mark carries the verdict.
+- **A Warning on the row only when it isn't backed:** an exception stands out on a quiet row (DS-22.3, SIDE-15); a backed row stays quiet.
+- **Done stays the Session's word:** the verdict never changes or removes it. Beside the row's warning chip Done is its tick alone, for the title's room (SIDE-2.17, Dario's choice of 2026-11-25); the warning chip carries the verdict.
 - **The output decides a Test run's outcome, not the exit code:** Sessions pipe test output, and every one of the 370 failed runs measured exited 0.
 - **A Test run is found by its output first, its command second:** about 700 commands ran a runner that no command pattern found, and their output named it.
 - **An unreadable result warns when it's all there is:** with only unreadable runs after the last change, the verdict warns, since evidence you can't read isn't evidence. An unreadable run after a readable one adds nothing, and the verdict says "last readable". A line in your `CLAUDE.md` makes them rarer.
@@ -420,3 +420,5 @@ None for slice 2: its grill answered the three it had and three more (Key decisi
 - 2026-11-23: EVID-7 added (Dario, next-moves item 8): documents (LIB-2.10's Types, test files aside) don't move the last change, the Changed since and Review tiles or the Done card's words; a Session whose changed files are all documents has no Evidence; documents changed since the last pass show muted after the rest. EVID-1.1, 3.1, 5.3, 5.10 and 6.4 amended and unticked until their tests pass; DIFF-2.9 leaves a Harness home's Checkout out of Changes. Warnings keep their amber (Key decisions). Non-goals: a rule of your own for which files need tests, and a tone of its own for warnings.
 - 2026-11-23: EVID-7 built and EVID-7.1 to 7.4 ticked, with EVID-1.1, 3.1, 5.3, 5.10 and 6.4 again: `server/documents.ts` holds LIB-2.10's document Types and the Harness homes, which the Library, DIFF and Evidence read; `isDocument` and `evidenceView` in `server/evidence.ts`; the popover's muted rows and note in `Evidence.tsx`. Decided in building: a deleted file whose old path is a test file isn't a document either (EVID-4.1 counts it); an extension named like an object's own property (`x.constructor`) is no Type, in the Library too.
 - 2026-11-24: tb-session 0.6.0 released (cli-toolbox #130, with #131 merged into its branch; `18924a3`): the command kind, the agent kind and a Session's model and effort came in one release, and 0.5.0 was never released. TOOLS-2.1 keeps 0.5.0 for Evidence, which every released tb-session that has the command kind satisfies. The summary of slices, Gaps 1 and 4 and the Key decision on the release say so; no requirement changes.
+- 2026-11-25: EVID-5.6 amended (SIDE-15; Dario chose one chip for what's wrong on a canvas): unbacked work is a Warning in the row's warning chip, "Tests" with `FlaskConicalOff`, after memory running away, not a mark at the start of the second line; the verdict is the chip's tooltip line and the row's name. It was unticked and stays so. EVID-5.9, 6.8 and 7.3 reworded for it; 6.8 and 7.3 stay ticked. The Key decision on the Done chip now says Done is its tick beside a warning chip.
+- 2026-11-25: EVID-5.6's chip built with SIDE-15, on a component test (`Evidence.test.tsx`): "Tests" with `FlaskConicalOff`, or in the "+1" behind memory. It stays open until its Behaviour test exists (TEST: a World whose fake Harness writes `Bash` calls).

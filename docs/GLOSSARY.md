@@ -42,7 +42,7 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Fake Harness**: A stand-in for Claude Code or Codex in a World. It runs in the World's tmux, registers and writes Transcripts the way the real Harness does, and answers from a script, so the real Fleet and tb-session see it as a Session. It never calls a model.
 
-**Evidence**: What backs the work of an Idle or Done Session with Changes, as Lookout reads it from the Session's Transcript and its Checkouts, never from what the Session says: its Test runs and how each ended, whether its Changes changed after its last Test run (documents aside, EVID-7), and the test files among its Changes, summed up in a verdict, and its Review rounds beside the verdict. Shown in its status line and a popover, in its Done card, and as a mark on its row when the verdict is a warning. See the EVID spec.
+**Evidence**: What backs the work of an Idle or Done Session with Changes, as Lookout reads it from the Session's Transcript and its Checkouts, never from what the Session says: its Test runs and how each ended, whether its Changes changed after its last Test run (documents aside, EVID-7), and the test files among its Changes, summed up in a verdict, and its Review rounds beside the verdict. Shown in its status line and a popover, in its Done card, and as a Warning on its row when the verdict is a warning. See the EVID spec.
 
 **Finding**: A structural problem Lookout reports in a repo, of one kind: a *Cycle* (files that import each other in a circle), a *Hub* (a file that many files import and that imports many itself), a *God file* (a large file imported from many Areas) or a *Hotspot* (a large file that changes often). Against the repo a week earlier it's new, growing, steady, shrinking or gone. One you mark as *Known* stays quiet until it grows. See ARCH-2 and ARCH-3.9.
 
@@ -143,6 +143,8 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 **Turn**: What a Session does for one prompt of yours: from that prompt, sent from Lookout or typed in its terminal, until your next one. Work the Session picks up on its own in between, such as a reply to a Subagent's result, belongs to the same Turn, and Idle doesn't end it. A tool's result, a task notification, another Session's message and a slash command the Harness handles itself (`/effort`) aren't prompts. Fleet finds where the current one starts (SIDE-9). Not Codex's own "turn" (`task_started` to `task_complete`), which ends whenever the agent stops.
 
 **Unread**: An Idle Session that went Idle after you last saw it in Lookout, until you open it again. Only a Session you've opened in Lookout can be Unread. Its row shows a dot and a semibold title and sits above the Busy rows, and the tab title adds a dot. Not a Status. See SIDE-13.
+
+**Warning**: Something Lookout finds wrong with a live Session by a rule of its own, never by a model and never from what the Session says: its memory running away (MEM-4.1), or work its Evidence doesn't back (EVID-5.6). A Session's Warnings show as one chip on its row, the most urgent first (SIDE-15). A Warning isn't a Status and changes none: the Status stays the Harness's word.
 
 **Watched channel**: A Slack channel listed in Settings whose mentions of you Lookout reads as Pings.
 

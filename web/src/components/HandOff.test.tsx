@@ -621,7 +621,7 @@ describe('HAND-6: a ready Handover waits for you', () => {
     expect(mark).toHaveAttribute('title', 'Handover ready');
     expect(mark.querySelector('[data-action-icon="hand-off"]')).toHaveClass('size-3', 'text-ok');
     expect(mark.nextElementSibling).toBe(field(OLD, 'harness'));
-    expect(mark.parentElement).toHaveClass('gap-1');
+    expect(mark.parentElement).toHaveClass('gap-1.5'); // SIDE-15.4: the line's end icons, 6 px apart
     expect(rowEl(OLD)).toHaveAccessibleName(/Add CSV export to reports.*Handover ready.*Claude Code/);
     expect(field('other', 'handover-ready')).toBeNull();
     await userEvent.click(button());
