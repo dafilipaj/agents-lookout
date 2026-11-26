@@ -218,12 +218,13 @@ export function answerFor(q: ChatQuestion, answer: ChatAnswer | null, i: number)
   const exact = text === null ? -1 : q.options.findIndex((o) => o.label === text);
   const picked = new Set(answer.picked ? (answer.picked[i] ?? []) : exact >= 0 ? [exact] : []);
   if (text === null) return { picked, other: null };
-  // The answer as Claude Code records it: the picked labels, joined with ", ".
-  const asPicked = [...picked]
-    .sort((a, b) => a - b)
-    .map((n) => q.options[n]?.label)
-    .join(', ');
-  return { picked, other: text === asPicked ? null : text };
+  // The answer as Claude Code records it: the picked labels, joined with ", ". Since 2.1.332 a
+  // multi-select pick with a comma or a double quote in it is recorded as a JSON string
+  // (`"Fix A, then B", C`); older Transcripts have it as it is.
+  const labels = [...picked].sort((a, b) => a - b).map((n) => q.options[n]?.label ?? '');
+  const quoted = labels.map((l) => (/[,"]/.test(l) ? JSON.stringify(l) : l));
+  const asPicked = text === labels.join(', ') || (q.multiSelect && text === quoted.join(', '));
+  return { picked, other: asPicked ? null : text };
 }
 
 /** "10:03" in local time, or null. */

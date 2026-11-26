@@ -788,6 +788,28 @@ describe('questions', () => {
     expect(answerFor(q, { declined: true }, 0)).toEqual({ picked: new Set(), other: null });
   });
 
+  it('VIEW-1.9: a multi-select pick Claude Code recorded as a JSON string (a comma or a double quote in its label) is a pick, not something you typed', () => {
+    const q = {
+      question: 'Which toppings?',
+      header: '',
+      multiSelect: true,
+      options: [{ label: 'Ham, cooked (Recommended)', description: '' }, { label: 'Mushrooms', description: '' }, { label: 'Olives "black" ones', description: '' }],
+    };
+    // As Claude Code 2.1.332 records them, with Fleet's `picked`.
+    expect(answerFor(q, { answers: ['"Ham, cooked (Recommended)", Mushrooms'], picked: [[0, 1]] }, 0)).toEqual({ picked: new Set([0, 1]), other: null });
+    expect(answerFor(q, { answers: ['"Ham, cooked (Recommended)"'], picked: [[0]] }, 0)).toEqual({ picked: new Set([0]), other: null });
+    expect(answerFor(q, { answers: ['Mushrooms, "Olives \\"black\\" ones"'], picked: [[1, 2]] }, 0)).toEqual({ picked: new Set([1, 2]), other: null });
+    // An older Transcript has the same picks unquoted.
+    expect(answerFor(q, { answers: ['Ham, cooked (Recommended), Mushrooms'], picked: [[0, 1]] }, 0)).toEqual({ picked: new Set([0, 1]), other: null });
+    // With something typed, the answer shows as recorded, beside the picks.
+    const typed = '"Ham, cooked (Recommended)", "basil, fresh"';
+    expect(answerFor(q, { answers: [typed], picked: [[0]] }, 0)).toEqual({ picked: new Set([0]), other: typed });
+    // A single-select answer is never quoted, so a quoted one is what you typed.
+    const single = { ...q, multiSelect: false };
+    expect(answerFor(single, { answers: ['Ham, cooked (Recommended)'], picked: [[0]] }, 0)).toEqual({ picked: new Set([0]), other: null });
+    expect(answerFor(single, { answers: ['"Ham, cooked (Recommended)"'], picked: [[]] }, 0)).toEqual({ picked: new Set(), other: '"Ham, cooked (Recommended)"' });
+  });
+
   it('VIEW-1.9: a question answered later flips from waiting to answered in place, live', () => {
     const { reset, append } = open();
     const asked = question();
