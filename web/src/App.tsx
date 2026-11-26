@@ -2,6 +2,8 @@ import type { AwakeMode } from '@shared/awake.ts';
 import { LibraryPanel } from '@/components/LibraryPanel';
 import type { LocalServer } from '@shared/ports.ts';
 import type { LaunchHarness } from '@shared/settings.ts';
+import { type BotRun, type ReportMark, inFlight as runInFlight, unreadReports } from '@shared/bots.ts';
+import { toolsAttention } from '@shared/tools.ts';
 import type { AnswerRequest, ChatPage, EndTarget, EscStatus, HistoryItem, LaunchRequest, LaunchView, LaunchTrust, ResumeResult, SessionRow, Status } from '@shared/types.ts';
 import type { WorkPr, WorkSessionLink, WorkTask } from '@shared/work.ts';
 import { hasReset } from '@shared/usage.ts';
@@ -17,6 +19,10 @@ import { SettingsPage } from '@/components/SettingsPage';
 import { KeysProvider } from '@/components/KeysProvider';
 import { KeysEdge, SHELL_COLUMN, SHELL_GRID } from '@/components/Shell';
 import { Sidebar } from '@/components/Sidebar';
+import { PlaceRail } from '@/components/PlaceRail';
+import { InboxList, type InboxChoice } from '@/components/InboxList';
+import { ReportView } from '@/components/ReportView';
+import { BotsPanel } from '@/components/BotsPanel';
 import { StartingView } from '@/components/StartingView';
 import { WorkPanel } from '@/components/WorkPanel';
 import { type PickTarget, TopicPicker } from '@/components/TopicPicker';
@@ -58,6 +64,7 @@ import { shownEffort } from '@/lib/effort-switch';
 import { type ModelTarget, shownModel } from '@/lib/model-switch';
 import { SWITCH_RUNNING, type SwitchState, type SwitchWhat, restartedWhy, switchFailure, switchKey } from '@/lib/status-switch';
 import { parseRoute, routePath, specHash, useRoute, type Route } from '@/lib/router';
+import { type Place, loadPlace, ownsRoute, placeOfRoute, savePlace } from '@/lib/places';
 import { HARNESS_NAME } from '@/lib/sessions';
 import type { SetupSessionTarget } from '@/lib/setup';
 import { cn } from '@/lib/utils';
@@ -298,6 +305,43 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
   }), [listedLaunches, trustAttempts, trustResults, uncertainTrust]);
   const latestLaunches = useRef(listedLaunches);
   useLayoutEffect(() => { latestLaunches.current = listedLaunches; }, [listedLaunches]);
+  // NAV-2: the place that shows, from the path; Settings and the Topic views keep the one before
+  // them, which is also kept in the browser (NAV-2.3).
+  const [lastPlace, setLastPlace] = useState<Place>(loadPlace);
+  const place = placeOfRoute(route, lastPlace);
+  if (place !== lastPlace) setLastPlace(place);
+  useEffect(() => savePlace(place), [place]);
+  // NAV-2.4: where each place was left in this page load.
+  const placeLeftAt = useRef<Record<Place, Route | null>>({ inbox: null, sessions: null });
+  useEffect(() => {
+    if (ownsRoute(route)) placeLeftAt.current[place] = route;
+  }, [route, place]);
+  const runs = state.bots?.runs;
+  const showPlace = useCallback(
+    (to: Place) => {
+      const at = placeLeftAt.current[to];
+      // NAV-2.4: a Session that got its session id while you were away (Codex, after its first prompt) is the same Session.
+      const successor = at?.name === 'session' && !state.sessions.has(at.id) ? state.aliases.get(at.id) : undefined;
+      const left = at?.name === 'session' && successor ? { ...at, id: successor } : at;
+      // What was open there, when it still exists; else the place's own start.
+      const still =
+        left &&
+        (left.name === 'inbox'
+          ? !left.id || !!runs?.some((r) => r.id === left.id && r.arrivedAt !== null)
+          : left.name === 'session'
+            ? state.sessions.has(left.id)
+            : left.name === 'launch'
+              ? latestLaunches.current.some((l) => l.id === left.id)
+              : true);
+      navigate(left && still ? left : to === 'inbox' ? { name: 'inbox' } : { name: 'home' });
+    },
+    [navigate, runs, state.sessions, state.aliases],
+  );
+  // NAV-3.1, INBOX-3.3: what the Inbox's button counts.
+  const unreadCount = useMemo(() => unreadReports(runs ?? []), [runs]);
+  // INBOX-1.4: Inbox or Archived, for this page load.
+  const [inboxChoice, setInboxChoice] = useState<InboxChoice>('inbox');
+
   useLayoutEffect(() => {
     if (!cancelFocus) return;
     const button = cancelFocus.id && document.querySelector<HTMLElement>(`[data-launch-id="${CSS.escape(cancelFocus.id)}"] button`);
@@ -507,7 +551,7 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
   // this browser (HIST-1.3, WORK-1.2, WORK-1.5).
   const [layout, setLayout] = useState<RightLayout>(loadLayout);
   /** Bumped to move focus into the panel just opened or switched to (HIST-1.1), only by your key or click; at 0, never asked, a panel takes none (SIDE-11.1). */
-  const [rightFocus, setRightFocus] = useState<Record<RightTab, number>>({ history: 0, work: 0, library: 0, topics: 0, servers: 0, setup: 0 });
+  const [rightFocus, setRightFocus] = useState<Record<RightTab, number>>({ history: 0, work: 0, library: 0, topics: 0, bots: 0, servers: 0, setup: 0 });
   const updateLayout = useCallback((patch: Partial<RightLayout>) => {
     setLayout((l) => {
       const next = { ...l, ...patch };
@@ -547,15 +591,18 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
     const onKey = (e: KeyboardEvent) => {
       if (e.isComposing || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
       const key = e.key.toLowerCase();
-      const tab = ({ h: 'history', w: 'work', l: 'library', t: 'topics', p: 'servers', u: 'setup' } as const)[key as 'h' | 'w' | 'l' | 't' | 'p' | 'u'];
-      if (!tab) return;
-      if (modalOpen || isTextField(e.target)) return;
+      const tab = ({ h: 'history', w: 'work', l: 'library', t: 'topics', b: 'bots', p: 'servers', u: 'setup' } as const)[key as 'h' | 'w' | 'l' | 't' | 'b' | 'p' | 'u'];
+      // NAV-4.1: `1` and `2` show a place, as its button does.
+      const to = ({ '1': 'inbox', '2': 'sessions' } as const)[key as '1' | '2'];
+      if (!tab && !to) return;
+      if (modalOpen || isTextField(e.target) || e.shiftKey) return;
       e.preventDefault();
-      toggleRight(tab);
+      if (tab) toggleRight(tab);
+      else if (to) showPlace(to);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [toggleRight, modalOpen]);
+  }, [toggleRight, modalOpen, showPlace]);
   // WORK-8.1: the server reads Work only while some tab has it open: this one says whether it does.
   // A new event stream (reconnect) has a new client id, so this re-runs.
   const [memoryOpen, setMemoryOpen] = useState(false);
@@ -663,6 +710,7 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
   // WORK-1.7: the tab strip's ↑/↓ and j/k, handed to the open panel.
   const libraryNav = useRef<PanelNav>(null);
   const setupNav = useRef<PanelNav>(null);
+  const botsNav = useRef<PanelNav>(null);
   const historyNav = useRef<PanelNav>(null);
   const workNav = useRef<PanelNav>(null);
   const topicsNav = useRef<PanelNav>(null);
@@ -780,6 +828,60 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
       return openPast(item, session.live);
     },
     [openPast],
+  );
+  // INBOX-2: one Report and its Markdown, read from the server.
+  const loadReport = useCallback((runId: string) => client.report(runId), [client]);
+  const loadReportText = useCallback((path: string) => client.reportText(path), [client]);
+  const markReport = useCallback((runId: string, mark: ReportMark) => client.markReport(runId, mark), [client]);
+  // INBOX-4.1: the Inbox's rows as they show, filter and all (InboxList keeps it).
+  const inboxShown = useRef<readonly string[]>([]);
+  const setInboxShown = useCallback((ids: readonly string[]) => void (inboxShown.current = ids), []);
+  // INBOX-4.1: archive the open Report, or move it back; once the server kept it, select the next row
+  // down, else the one above, else nothing: of the rows on screen. A refusal moves nothing, and the Report says it.
+  const archiveReport = useCallback(
+    async (run: BotRun, archived: boolean) => {
+      const rows = inboxShown.current;
+      const i = rows.indexOf(run.id);
+      const next = i === -1 ? null : (rows[i + 1] ?? rows[i - 1] ?? null);
+      await client.markReport(run.id, { archived, arrivedAt: run.arrivedAt });
+      // Unless you went elsewhere while it was saved.
+      const here = parseRoute(window.location.pathname);
+      if (here.name === 'inbox' && here.id === run.id) navigate(next ? { name: 'inbox', id: next } : { name: 'inbox' }, { replace: true });
+    },
+    [client, navigate],
+  );
+  // BOT-4.3: the start of a run that has no Session yet, where its Trust prompt is answered.
+  const openStart = useCallback((launchId: string) => navigate({ name: 'launch', id: launchId }), [navigate]);
+  // INBOX-2.7: the Session that wrote it: Open when it's live, else Resume, or Show when it can't be (HIST-3.3).
+  const openRunSession = useCallback(
+    (run: BotRun, session: HistoryItem | null) => {
+      if (!run.sessionId) return;
+      const item: HistoryItem = session ?? { sessionId: run.sessionId, harness: run.harness, headless: null, title: run.name, projectPath: null, projectDisplay: null, repo: null, branch: null, lastActiveAt: run.endedAt, snippet: null, firstPrompt: null, blocked: null };
+      void openPast(item, state.sessions.has(run.sessionId)).catch(() => {});
+    },
+    [openPast, state.sessions],
+  );
+  // INBOX-2.2: a Report's Bot, shown in the Bots tab.
+  const [botReveal, setBotReveal] = useState<string | null>(null);
+  const showBot = useCallback(
+    (botId: string) => {
+      setBotReveal(botId);
+      showTab('bots', true);
+    },
+    [showTab],
+  );
+  // BOT-1.5: a run's line: its Session while it's going, else its Report.
+  const openRun = useCallback(
+    (run: BotRun) => {
+      if (runInFlight(run) && run.sessionId && state.sessions.has(run.sessionId)) return navigate({ name: 'session', id: run.sessionId });
+      // Starting, or waiting at its Trust prompt: its start, while this tab lists it.
+      if (run.launchId && latestLaunches.current.some((l) => l.id === run.launchId)) return navigate({ name: 'launch', id: run.launchId });
+      if (run.arrivedAt !== null) {
+        if (run.archived) setInboxChoice('archived');
+        navigate({ name: 'inbox', id: run.id });
+      }
+    },
+    [navigate, state.sessions],
   );
 
   // TOPIC-2.1: the Topic picker, for the members of the row it was opened on.
@@ -1395,7 +1497,33 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
       <KeysProvider>
       {/* SIDE-8.1: one grid, rows header / content / dock, shared by every column (see Shell). */}
       <div className={SHELL_GRID} data-shell="">
+        {/* NAV-1: the rail of places, the window's first column. */}
+        <PlaceRail
+          place={place}
+          onPlace={showPlace}
+          unread={unreadCount}
+          needsYou={needsYou}
+          settingsOpen={route.name === 'settings'}
+          onOpenSettings={() => (route.name === 'settings' ? showPlace(place) : navigate({ name: 'settings' }))}
+          onShowShortcuts={showShortcuts}
+          attention={toolsAttention(state.tools ?? null)}
+        />
         <Sidebar
+          place={place}
+          inbox={
+            <InboxList
+              bots={state.bots}
+              loaded={state.loaded}
+              selectedId={route.name === 'inbox' ? (route.id ?? null) : null}
+              now={now}
+              onSelect={(id, how) => navigate({ name: 'inbox', id }, { replace: how === 'replace' })}
+              view={inboxChoice}
+              onView={setInboxChoice}
+              onOpenBots={() => showTab('bots', true)}
+              keyboardEnabled={!modalOpen && place === 'inbox'}
+              onShown={setInboxShown}
+            />
+          }
           sessions={sessions}
           fleet={state.fleet}
           loaded={state.loaded}
@@ -1407,9 +1535,8 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
           now={now}
           onSelect={onSelect}
           settingsOpen={route.name === 'settings'}
-          onOpenSettings={() => navigate(route.name === 'settings' ? { name: 'home' } : { name: 'settings' })}
+          onOpenSettings={() => (route.name === 'settings' ? showPlace(place) : navigate({ name: 'settings' }))}
           onNewSession={openOwnLauncher}
-          onShowShortcuts={showShortcuts}
           launches={launches}
           selectedLaunchId={selectedLaunchId}
           onSelectLaunch={onSelectLaunch}
@@ -1417,7 +1544,6 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
           onDismissLaunch={(id) => void client.dismissLaunch(id).catch(() => {})}
           keyboardEnabled={!modalOpen}
           usage={state.usage}
-          tools={state.tools}
           memory={state.memory}
           res={state.res}
           onMemoryOpenChange={setMemoryOpen}
@@ -1437,7 +1563,7 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
               <SettingsPage
                 settings={state.settings}
                 save={save}
-                onBack={() => navigate({ name: 'home' })}
+                onBack={() => showPlace(place)}
                 section={route.section ?? 'general'}
                 onSection={(section) => navigate({ name: 'settings', section }, { replace: true })}
                 tools={state.tools}
@@ -1448,6 +1574,27 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
                 jevAsksToday={state.topics?.jevAsksToday ?? 0}
                 jevSetAside={state.topics?.jevSetAside}
                 recommend={(action) => client.recommend(action)}
+              />
+            ) : route.name === 'inbox' ? (
+              <ReportView
+                // One Report's read and scroll never carry over to another's.
+                key={route.id ?? ''}
+                id={route.id ?? null}
+                doc={route.doc ?? 1}
+                bots={state.bots}
+                loaded={state.loaded}
+                sessions={state.sessions}
+                now={now}
+                view={inboxChoice}
+                load={loadReport}
+                loadText={loadReportText}
+                onDoc={(doc) => route.id && navigate({ name: 'inbox', id: route.id, doc }, { replace: true })}
+                onMark={markReport}
+                onArchive={archiveReport}
+                onOpenSession={openRunSession}
+                onOpenStart={openStart}
+                onShowBot={showBot}
+                keyboardEnabled={!modalOpen}
               />
             ) : route.name === 'topics' ? (
               <TopicGraph
@@ -1665,6 +1812,26 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
                   navRef={topicsNav}
                 />
               ),
+              bots: (
+                <BotsPanel
+                  bots={state.bots}
+                  sessions={state.sessions}
+                  now={now}
+                  focusKey={rightFocus.bots}
+                  reveal={botReveal}
+                  onRevealed={() => setBotReveal(null)}
+                  settings={state.settings}
+                  harnesses={harnesses}
+                  onLoadHarnesses={loadHarnesses}
+                  create={(input) => client.createBot(input)}
+                  update={(id, patch) => client.updateBot(id, patch)}
+                  remove={(id) => client.deleteBot(id)}
+                  run={(id) => client.runBot(id)}
+                  onOpenRun={openRun}
+                  keyboardEnabled={!modalOpen}
+                  navRef={botsNav}
+                />
+              ),
               servers: (
                 <ServersPanel
                   ports={state.ports}
@@ -1719,7 +1886,7 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
                 />
               ),
             }}
-            nav={{ history: historyNav, work: workNav, library: libraryNav, topics: topicsNav, servers: serversNav, setup: setupNav }}
+            nav={{ history: historyNav, work: workNav, library: libraryNav, topics: topicsNav, bots: botsNav, servers: serversNav, setup: setupNav }}
             counts={{ topics: state.topics?.recommendations.length ?? 0 }}
             servers={state.ports ? shownCount(state.ports) : undefined}
             corner={<KeepAwakeFooter awake={state.awake} now={now} onSet={setAwake} />}

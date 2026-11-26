@@ -1,4 +1,5 @@
 import type { LaunchHarness, SettingsView } from './settings.ts';
+import type { BotsSnapshot } from './bots.ts';
 import type { MemorySnapshot } from './memory.ts';
 import type { PortsSnapshot } from './ports.ts';
 import type { AwakeSnapshot } from './awake.ts';
@@ -361,8 +362,11 @@ export type ServerEvent =
       /** AWAKE-1.1: keep-awake's mode and what it shows; optional so that UI tests and a server without it can leave it out. */
       awake?: AwakeSnapshot;
       /** EVID: every Session's Evidence; optional so that UI tests and a server without it can leave it out. */
-      evidence?: EvidenceView[];
+      evidence?: EvidenceView[];      /** BOT-2.3: the Bots and their runs; optional so that UI tests and a server without it can leave it out. */
+      bots?: BotsSnapshot;
     }
+  /** BOT-2.3, INBOX-3.1: the whole set of Bots and runs, to every tab, when it changed. */
+  | { type: 'bots'; bots: BotsSnapshot }
   /** TOPIC-8.3: the whole set of Topics, to every tab, when it changed. */
   | { type: 'topics'; topics: TopicsView }
   /** TOOLS-2.4: a read of the Tools began or ended (sent to every tab, only when something changed). */

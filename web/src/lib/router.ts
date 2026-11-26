@@ -22,7 +22,9 @@ export type Route =
   /** PLAIN-1.1: a Module of a live Session's Checkout, by the Checkout's id (never its path). */
   | { name: 'plain'; session: string; checkout: string; path: string }
   /** PLAIN-5: a Module of a PR, by its repo (in `productiveio`) and number. */
-  | { name: 'plain-pr'; repo: string; number: number; path: string };
+  | { name: 'plain-pr'; repo: string; number: number; path: string }
+  /** NAV-2.2, INBOX-2.1: the Inbox, with the open Report's run and, past its first, the open document (INBOX-2.3). */
+  | { name: 'inbox'; id?: string; doc?: number };
 
 /** PLAIN-1.1, PLAIN-5: the Spec view's route for a Module of this source. */
 export function plainRoute(source: PlainSource, path: string): Route {
@@ -38,6 +40,13 @@ export const TOPIC_TABS = ['overview', 'members', 'activity'] as const;
 export type TopicTab = (typeof TOPIC_TABS)[number];
 
 export function parseRoute(pathname: string): Route {
+  // NAV-2.2: the Inbox; INBOX-2.3: a document past the first is `/<n>`, from 2 up; anything else is the first.
+  const inbox = /^\/inbox(?:\/([A-Za-z0-9][A-Za-z0-9_-]{0,63})(?:\/([^/]*))?)?\/?$/.exec(pathname);
+  if (inbox) {
+    if (!inbox[1]) return { name: 'inbox' };
+    const doc = /^[1-9][0-9]{0,2}$/.test(inbox[2] ?? '') ? Number(inbox[2]) : 1;
+    return doc > 1 ? { name: 'inbox', id: inbox[1], doc } : { name: 'inbox', id: inbox[1] };
+  }
   // SIDE-7.6: any other sub-page is General.
   const settings = /^\/settings(?:\/([^/]*))?\/?$/.exec(pathname);
   if (settings) return settings[1] === 'general' || settings[1] === 'tools' ? { name: 'settings', section: settings[1] } : { name: 'settings' };
@@ -100,6 +109,8 @@ export function routePath(route: Route): string {
   switch (route.name) {
     case 'home':
       return '/';
+    case 'inbox':
+      return route.id ? `/inbox/${route.id}${route.doc && route.doc > 1 ? `/${route.doc}` : ''}` : '/inbox';
     case 'settings':
       return route.section ? `/settings/${route.section}` : '/settings';
     case 'topics':

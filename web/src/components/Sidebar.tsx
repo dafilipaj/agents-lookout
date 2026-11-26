@@ -2,10 +2,9 @@ import type { MemorySnapshot } from '@shared/memory.ts';
 import type { ResSnapshot } from '@shared/res.ts';
 import { sidebarOrder } from '@shared/order.ts';
 import type { FleetHealth, LaunchView, SessionRow } from '@shared/types.ts';
-import { type ToolsSnapshot, toolsAttention } from '@shared/tools.ts';
 import type { UsageSnapshot } from '@shared/usage.ts';
 import type { WorkSnapshot } from '@shared/work.ts';
-import { Keyboard, Plus, RotateCw, Search, Settings as SettingsIcon, TriangleAlert, WifiOff } from 'lucide-react';
+import { Plus, RotateCw, Search, TriangleAlert, WifiOff } from 'lucide-react';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -14,9 +13,9 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Loading } from '@/components/ui/loading';
 import { IconButton } from '@/components/ui/icon-button';
 import { Kbd } from '@/components/ui/kbd';
-import { LookoutMark } from '@/components/ui/lookout-mark';
 import { linkedPrs, nameSuffixes } from '@/lib/names';
 import { filterRow, queryWords, type RowMatch, sessionWork } from '@/lib/filter';
+import type { Place } from '@/lib/places';
 import { isLongIdle, sessionOptionId } from '@/lib/sessions';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
@@ -40,10 +39,17 @@ export interface SidebarProps {
   now: number;
   /** `replace`: a keyboard step, which shouldn't flood the history. */
   onSelect(id: string, how: 'push' | 'replace'): void;
+  /** SIDE-7.6: Esc leaves Settings as Back does. Its button is the rail's (NAV-1.3). */
   onOpenSettings(): void;
-  /** SIDE-7.3: the Keyboard shortcuts button; it is the opener the dialog returns focus to. */
-  onShowShortcuts(opener: HTMLElement): void;
   settingsOpen: boolean;
+  /**
+   * NAV-2: the place that shows. In the Inbox this column holds `inbox`, the Inbox's list, in its
+   * header and body cells, and the Sessions' own are hidden, not unmounted, so the filter, the
+   * hover-freeze and the scroll are there when you come back (NAV-2.6). Sessions when absent.
+   */
+  place?: Place;
+  /** NAV-2.2: the Inbox's header and body cells. */
+  inbox?: ReactNode;
   /** LAUNCH-1.1: the "+" button. */
   onNewSession(): void;
   /** LAUNCH-4: starts in flight, shown above the Sessions. */
@@ -58,8 +64,6 @@ export interface SidebarProps {
   keyboardEnabled: boolean;
   /** USAGE-1: the strip at the bottom. */
   usage: UsageSnapshot | null;
-  /** TOOLS-2.4: a Tool missing or behind marks the Settings button. */
-  tools?: ToolsSnapshot | null;
   memory?: MemorySnapshot | null;
   /** RES-2: `res`'s queue, shown in the Memory line; null without `res`. */
   res?: ResSnapshot | null;
@@ -83,7 +87,8 @@ export interface SidebarProps {
 export function Sidebar(props: SidebarProps) {
   const { sessions, fleet, loaded, connected, idleThresholdHours, selectedId, now, onSelect, launches, selectedLaunchId, onSelectLaunch, topicTitles } = props;
   const [filter, setFilter] = useState('');
-  const attention = toolsAttention(props.tools ?? null);
+  // NAV-4.2: the list's keys are this column's only while Sessions is the place.
+  const inSessions = (props.place ?? 'sessions') === 'sessions';
   const [dockPopover, setDockPopover] = useState<'usage' | 'memory' | null>(null);
   const onMemoryOpenChange = props.onMemoryOpenChange;
   useEffect(() => onMemoryOpenChange?.(dockPopover === 'memory'), [dockPopover, onMemoryOpenChange]);
@@ -139,14 +144,20 @@ export function Sidebar(props: SidebarProps) {
     () => [...launches.map((l) => ({ kind: 'launch' as const, id: l.id, failed: l.state === 'failed', needsYou: l.state === 'trust' })), ...visible.map((r) => ({ kind: 'session' as const, id: r.id, needsYou: r.status === 'needs-you' }))],
     [launches, visible],
   );
-  const latest = useRef({ rows, selectedId, selectedLaunchId, onSelect, onSelectLaunch, enabled: props.keyboardEnabled, settingsOpen: props.settingsOpen, onOpenSettings: props.onOpenSettings, onSearchMessages: props.onSearchMessages });
+  // NAV-3.3: every row, whatever the filter holds: in the Inbox the filter isn't on screen, and the rail counts them all.
+  const everyRow = useMemo<NavRow[]>(() => {
+    const all = orderedIds.map((id) => byId.get(id)).filter((r): r is SessionRow => !!r);
+    const sessions = [...all.filter((r) => r.controllable), ...all.filter((r) => !r.controllable)];
+    return [...launches.map((l) => ({ kind: 'launch' as const, id: l.id, failed: l.state === 'failed', needsYou: l.state === 'trust' })), ...sessions.map((r) => ({ kind: 'session' as const, id: r.id, needsYou: r.status === 'needs-you' }))];
+  }, [launches, orderedIds, byId]);
+  const latest = useRef({ rows, everyRow, selectedId, selectedLaunchId, onSelect, onSelectLaunch, active: inSessions, enabled: props.keyboardEnabled, settingsOpen: props.settingsOpen, onOpenSettings: props.onOpenSettings, onSearchMessages: props.onSearchMessages });
   useEffect(() => {
-    latest.current = { rows, selectedId, selectedLaunchId, onSelect, onSelectLaunch, enabled: props.keyboardEnabled, settingsOpen: props.settingsOpen, onOpenSettings: props.onOpenSettings, onSearchMessages: props.onSearchMessages };
+    latest.current = { rows, everyRow, selectedId, selectedLaunchId, onSelect, onSelectLaunch, active: inSessions, enabled: props.keyboardEnabled, settingsOpen: props.settingsOpen, onOpenSettings: props.onOpenSettings, onSearchMessages: props.onSearchMessages };
   });
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.isComposing || e.defaultPrevented || !latest.current.enabled) return;
-      const { rows, selectedId, selectedLaunchId, onSelect, onSelectLaunch, settingsOpen, onOpenSettings } = latest.current;
+      const { rows, everyRow, selectedId, selectedLaunchId, onSelect, onSelectLaunch, settingsOpen, onOpenSettings, active } = latest.current;
       const inFilter = e.target === filterRef.current;
       const editing = !inFilter && isEditable(e.target);
       // SIDE-7.6: Esc leaves Settings as Back does, the way it closes a dialog; not from a field or the filter.
@@ -168,6 +179,8 @@ export function Sidebar(props: SidebarProps) {
       };
 
       if (e.metaKey && !e.altKey && !e.ctrlKey && !e.shiftKey) {
+        // NAV-4.2: in the Inbox ⌘1–9 are its rows'; NAV-3.3: ⌘J is the Sessions' in every place.
+        if (!active && e.key.toLowerCase() !== 'j') return;
         if (/^[1-9]$/.test(e.key)) {
           e.preventDefault();
           // A failed start stays until it's dismissed, so it doesn't take a number (LAUNCH-4.7).
@@ -176,13 +189,21 @@ export function Sidebar(props: SidebarProps) {
           // LAUNCH-6.14: Trust prompts Need you, ahead of Sessions; plain starts are skipped.
           e.preventDefault();
           const needsYou = (r: NavRow) => r.needsYou;
+          if (!active) {
+            // NAV-3.3: from the Inbox, the first of them all. A filter that would hide it in Sessions is cleared.
+            const first = everyRow.find(needsYou);
+            if (!first) return;
+            if (!rows.some((r) => r.kind === first.kind && r.id === first.id)) setFilter('');
+            return select(first, 'push');
+          }
           const waiting = rows.filter(needsYou);
           if (!waiting.length) return;
           select(rows.slice(index + 1).find(needsYou) ?? waiting[0], 'push');
         }
         return;
       }
-      if (e.metaKey || e.ctrlKey || e.altKey || editing) return;
+      // NAV-4.2: the rest are the list's keys, the Inbox's while it shows.
+      if (e.metaKey || e.ctrlKey || e.altKey || editing || !active) return;
       // Arrow keys from inside the chat scroll it (VIEW-1.11 moves focus there after a jump).
       const inChat = e.target instanceof Element && !!e.target.closest('[data-scroll-keys]');
 
@@ -370,9 +391,10 @@ export function Sidebar(props: SidebarProps) {
 
   return (
     <aside
-      aria-label="Session sidebar"
+      aria-label={inSessions ? 'Session sidebar' : 'Inbox'}
       className={cn(SHELL_COLUMN, 'relative w-[280px] border-r border-sidebar-border bg-sidebar text-sidebar-foreground')}
       data-shell-column="left"
+      data-place={props.place ?? 'sessions'}
       onPointerEnter={() => {
         setFrozenOrder(orderedIds);
         setHeldHeader(needsYouCount > 0);
@@ -383,9 +405,7 @@ export function Sidebar(props: SidebarProps) {
       }}
     >
       {/* SIDE-8.1: the Filter bar is this column's header cell. */}
-      <ShellCell row="header" className="gap-1.5 border-sidebar-border px-2.5 py-2">
-        {/* SIDE-8.2: Lookout's mark (DS-14), 6 px (the cell's gap) left of the Filter box. */}
-        <LookoutMark className="size-4" />
+      <ShellCell row="header" className={cn('gap-1.5 border-sidebar-border px-2.5 py-2', !inSessions && 'hidden')}>
         <label className="relative flex min-w-0 flex-1 items-center">
           <Search aria-hidden className="pointer-events-none absolute left-2 size-3.5 text-muted-foreground" />
           <input
@@ -406,24 +426,9 @@ export function Sidebar(props: SidebarProps) {
           <IconButton size="md" label="New Session" shortcut="N, or ⌘N in the installed app" onClick={props.onNewSession}>
             <Plus />
           </IconButton>
-          <IconButton
-            size="md"
-            label="Settings"
-            tip={attention.length ? `Settings: ${attention.join(', ')}` : undefined}
-            aria-pressed={props.settingsOpen}
-            onClick={props.onOpenSettings}
-            className={cn('relative', props.settingsOpen && 'bg-sidebar-accent text-foreground')}
-          >
-            <SettingsIcon />
-            {/* TOOLS-2.4: a Tool missing or behind; its name is in the tooltip. */}
-            {attention.length > 0 && <span aria-hidden data-field="tools-dot" className="absolute top-1 right-1 size-1.5 rounded-full bg-destructive" />}
-          </IconButton>
-          <IconButton size="md" label="Keyboard shortcuts" onClick={(e) => props.onShowShortcuts(e.currentTarget)}>
-            <Keyboard />
-          </IconButton>
         </div>
       </ShellCell>
-      <ShellCell row="body" className="flex flex-col">
+      <ShellCell row="body" className={cn('flex flex-col', !inSessions && 'hidden')}>
         {loaded && !connected ? (
           <Alert tone="info" icon={WifiOff} title="Lost the Lookout server. Reconnecting…" className="mx-2.5 my-2" />
         ) : (
@@ -464,6 +469,8 @@ export function Sidebar(props: SidebarProps) {
           {body}
         </div>
       </ShellCell>
+      {/* NAV-2.2: the Inbox's list, in this column's header and body cells. */}
+      {!inSessions && props.inbox}
       {/* SIDE-8.1: the usage panel sits in the dock row, so its top line is the composer's. DockRest,
           stacked under it, keeps the row at the resting composer's height in every view. */}
       <ShellCell row="dock" className="grid items-start border-sidebar-border *:col-start-1 *:row-start-1">

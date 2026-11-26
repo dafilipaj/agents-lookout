@@ -2,6 +2,7 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { isAtWork } from '../shared/awake.ts';
 import { defaultSettings } from '../shared/settings.ts';
 import type { EndTarget, SessionRow } from '../shared/types.ts';
 import { EndError, closeTarget, endSession, parseEndTarget } from './closer.ts';
@@ -209,6 +210,32 @@ describe('the confirmed process only (VIEW-5.6)', () => {
     const half = await run(FAKE_FLEET, ['--local', 'close', `id:${OWN}`, '--json', '--expect-pid', '61001'], { timeoutMs: 5000, env }).catch((e: { stdout: string }) => e.stdout);
     expect(JSON.parse(half)).toMatchObject({ ok: false, kind: 'usage' });
     expect((await rows()).map((r) => r.id)).toContain(OWN);
+  });
+});
+
+describe('an end nobody confirmed (BOT-4.6)', () => {
+  it('BOT-4.6: an end nobody confirmed asks once more of the Session as a fresh list shows it: one that Needs you or is At work by then is refused before Fleet is asked', async () => {
+    const IN_USE = { status: 409, message: 'This Session is in use again; nothing was closed.' };
+    const seen: string[] = [];
+    const atRest = (row: SessionRow) => (seen.push(row.status), row.status !== 'needs-you' && !isAtWork(row));
+    const now = (patch: Partial<FleetRow>) => editList((r) => r.map((x) => (x.session_id === OWN ? { ...x, ...patch } : x)));
+    const t = await setup();
+    const unconfirmed = () => endSession(t.opts, OWN, t.confirmed(OWN), { only: atRest });
+    // As the fixture lists it: it asks a question, with a Subagent running.
+    expect(await refusal(unconfirmed())).toEqual(IN_USE);
+    // Prompted again since the last poll.
+    now({ status: 'busy', waiting_for: null, subagents: undefined });
+    expect(await refusal(unconfirmed())).toEqual(IN_USE);
+    // Idle, with a Subagent still running.
+    now({ status: 'idle', subagents: { running: 1, finished: 0, items: [] } });
+    expect(await refusal(unconfirmed())).toEqual(IN_USE);
+    expect(closes()).toEqual([]);
+    // At rest: ended as End Session does, by the same process.
+    now({ status: 'idle', subagents: undefined });
+    expect(await unconfirmed()).toEqual({ how: 'exit' });
+    expect(closes()).toEqual([['--local', 'close', `id:${OWN}`, '--json', ...expectFlags(61001, OWN_START)]]);
+    // Each time it was the fresh list's row that was asked about, not the last poll's.
+    expect(seen).toEqual(['needs-you', 'busy', 'idle', 'idle']);
   });
 });
 

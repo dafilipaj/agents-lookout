@@ -8,8 +8,8 @@ import { expect, scenario, world } from '../../world/index.ts';
  * fake caffeinate are on its PATH.
  */
 
-const sidebar = (page: Page) => page.getByRole('complementary', { name: 'Session sidebar' });
-const settingsButton = (page: Page) => sidebar(page).getByRole('button', { name: 'Settings', exact: true });
+// NAV-1.3: Settings is the rail's last button, in every place.
+const settingsButton = (page: Page) => page.getByRole('button', { name: 'Settings', exact: true });
 // SIDE-7.6: Settings opens on General; Tools is its own sub-page, through the side nav.
 const toolsLink = (page: Page) => page.getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: 'Tools' });
 const toolRow = (page: Page, id: string) => page.getByRole('region', { name: 'Tools' }).locator(`[data-tool="${id}"]`);

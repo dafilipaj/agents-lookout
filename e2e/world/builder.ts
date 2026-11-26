@@ -282,6 +282,29 @@ export interface WorldSpec {
   settings: Partial<Pick<Settings, 'idleThresholdHours' | 'startDirectories' | 'lastLaunch' | 'productiveEmail'>>;
   /** TOPIC: Topics in `~/.lookout/topics.db` before Lookout starts, in this order, each with its members. */
   topics: TopicDecl[];
+  /** INBOX: Reports in `~/.lookout/bots.json` before Lookout starts: Bot runs that already ended. */
+  reports: ReportDecl[];
+}
+
+/**
+ * INBOX-2: one Report the World's store holds: a Bot run that ended, and the Session that wrote it,
+ * whose Outputs `.outputs([...])` declares under the same `sessionId`. Invented names only.
+ */
+export interface ReportDecl {
+  id: string;
+  botName: string;
+  title: string;
+  sessionId: string;
+  /** Its Session's last reply, kept with the run (INBOX-2.5). */
+  reply?: string;
+  /** How many documents its row says it holds; 0 for a reply alone. */
+  documents?: number;
+  state?: 'finished' | 'failed';
+  failure?: string;
+  read?: boolean;
+  archived?: boolean;
+  /** When it arrived (ISO); now when absent. */
+  arrivedAt?: string;
 }
 
 /** TOPIC-8: one Topic the World's store holds; invented titles and refs only. */
@@ -427,6 +450,11 @@ export class WorldBuilder {
     return this.next({ topics: [...this.spec.topics, ...structuredClone(topics)] });
   }
 
+  /** INBOX: Reports the store already holds when Lookout starts. */
+  reports(reports: ReportDecl[]): WorldBuilder {
+    return this.next({ reports: [...this.spec.reports, ...structuredClone(reports)] });
+  }
+
   /** The World's declaration, as it goes into a failure report (TEST-2.4). */
   declaration(): WorldSpec {
     return structuredClone(this.spec) as WorldSpec;
@@ -453,6 +481,7 @@ export function world(): WorldBuilder {
     usage: null,
     settings: {},
     topics: [],
+    reports: [],
   });
 }
 

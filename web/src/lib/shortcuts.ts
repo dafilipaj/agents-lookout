@@ -8,10 +8,12 @@
 import type { ActionId } from '@/lib/actions';
 import { type RightTab, TAB_LABEL } from '@/lib/right-sidebar';
 
-export type ShortcutGroupId = 'sessions' | 'session' | 'panels' | 'composer' | 'app';
+export type ShortcutGroupId = 'places' | 'sessions' | 'inbox' | 'session' | 'panels' | 'composer' | 'app';
 
 export const SHORTCUT_GROUPS: readonly { id: ShortcutGroupId; title: string }[] = [
+  { id: 'places', title: 'Places' },
   { id: 'sessions', title: 'Sessions list' },
+  { id: 'inbox', title: 'Inbox' },
   { id: 'session', title: 'The selected Session' },
   { id: 'panels', title: 'Panels' },
   { id: 'composer', title: 'Composer' },
@@ -46,6 +48,24 @@ export interface Shortcut {
 }
 
 export const SHORTCUTS: readonly Shortcut[] = [
+  {
+    id: 'place-inbox',
+    group: 'places',
+    keys: ['1'],
+    label: 'Show the Inbox',
+    note: 'Not in a text field. It opens where you left it.',
+    press: [{ key: '1' }],
+    global: true,
+  },
+  {
+    id: 'place-sessions',
+    group: 'places',
+    keys: ['2'],
+    label: 'Show Sessions',
+    note: 'Not in a text field. It opens where you left it.',
+    press: [{ key: '2' }],
+    global: true,
+  },
   {
     id: 'move',
     group: 'sessions',
@@ -96,6 +116,53 @@ export const SHORTCUTS: readonly Shortcut[] = [
     empty: { label: 'New Session (⌘N in the installed app)', views: ['select', 'none'] },
   },
   {
+    id: 'inbox-move',
+    group: 'inbox',
+    keys: ['↑', '↓'],
+    alt: ['j', 'k'],
+    label: 'Move through Reports',
+    note: 'In the Inbox, not in a text field. Inside a Report, the arrow keys scroll it.',
+    press: [{ key: 'ArrowDown' }, { key: 'ArrowUp' }, { key: 'j' }, { key: 'k' }],
+  },
+  {
+    id: 'inbox-jump',
+    group: 'inbox',
+    keys: ['⌘', '1–9'],
+    label: 'Jump to a Report',
+    press: [{ key: '1', meta: true }],
+  },
+  {
+    id: 'inbox-filter',
+    group: 'inbox',
+    keys: ['/'],
+    label: 'Filter Reports',
+    note: 'Esc clears the filter.',
+    press: [{ key: '/' }],
+  },
+  {
+    id: 'inbox-archive',
+    action: 'archive',
+    group: 'inbox',
+    keys: ['E'],
+    label: 'Archive the open Report, or move it back',
+    press: [{ key: 'e' }],
+  },
+  {
+    id: 'inbox-open',
+    action: 'open-external',
+    group: 'inbox',
+    keys: ['O'],
+    label: 'Open the Report’s document',
+    press: [{ key: 'o' }],
+  },
+  {
+    id: 'inbox-session',
+    group: 'inbox',
+    keys: ['S'],
+    label: 'Open, resume or show the Session that wrote it',
+    press: [{ key: 's' }],
+  },
+  {
     id: 'composer-focus',
     group: 'session',
     keys: ['i'],
@@ -142,12 +209,12 @@ export const SHORTCUTS: readonly Shortcut[] = [
   {
     id: 'panels',
     group: 'panels',
-    keys: ['H', 'W', 'L', 'T', 'P', 'U'],
-    label: 'Open or close History, Work, Library, Topics, Servers, Setup',
+    keys: ['H', 'W', 'L', 'T', 'B', 'P', 'U'],
+    label: 'Open or close History, Work, Library, Topics, Bots, Servers, Setup',
     note: 'Not in a text field.',
-    press: [{ key: 'h' }, { key: 'w' }, { key: 'l' }, { key: 't' }, { key: 'p' }, { key: 'u' }],
+    press: [{ key: 'h' }, { key: 'w' }, { key: 'l' }, { key: 't' }, { key: 'b' }, { key: 'p' }, { key: 'u' }],
     global: true,
-    empty: { label: 'History, Work, Library, Topics, Servers, Setup', views: ['select', 'none'] },
+    empty: { label: 'History, Work, Library, Topics, Bots, Servers, Setup', views: ['select', 'none'] },
   },
   {
     id: 'tabs',
@@ -248,8 +315,8 @@ export const SHORTCUTS: readonly Shortcut[] = [
     action: 'turn-off',
     group: 'panels',
     keys: ['X'],
-    label: 'Turn the selected skill or plugin off or on',
-    note: 'Setup; turning a plugin off asks first.',
+    label: 'Turn the selected skill, plugin or Bot off or on',
+    note: 'Setup and Bots; turning a plugin off asks first.',
     press: [{ key: 'x' }],
   },
   {
@@ -347,7 +414,7 @@ export const emptyViewShortcuts = (view: 'select' | 'none'): Shortcut[] => SHORT
  * (or nothing focused), the composer, the rest of the Session (its chat rail and the preview's
  * handle apart), a panel's search box, list or other field, and the closed right sidebar's rail.
  */
-export type HintAt = 'sessions' | 'composer' | 'commands' | 'session' | 'rail' | 'preview' | 'search' | 'list' | 'field' | 'panels';
+export type HintAt = 'sessions' | 'inbox' | 'composer' | 'commands' | 'session' | 'rail' | 'preview' | 'search' | 'list' | 'field' | 'panels';
 
 /** One key of the hint line: an entry of the list (`id`), all its keys or the ones named, and its word or two. Without an entry, words saying what typing does. */
 export interface HintKey {
@@ -368,6 +435,7 @@ const PANEL_KEYS: Record<RightTab, HintKey[]> = {
   work: [MOVE, EXPAND, OPEN, ADD],
   library: [MOVE, EXPAND, OPEN, ADD],
   topics: [MOVE, EXPAND, OPEN, { id: 'panel-graph', label: 'graph' }],
+  bots: [MOVE, EXPAND, { id: 'panel-switch', label: 'off or on' }],
   servers: [MOVE, { id: 'panel-enter', label: 'open' }, { id: 'panel-stop', label: 'stop' }],
   setup: [MOVE, EXPAND, { id: 'panel-switch', label: 'off or on' }],
 };
@@ -378,6 +446,8 @@ export function hint(at: HintAt, panel?: RightTab): { name: string; keys: HintKe
   switch (at) {
     case 'sessions':
       return { name: 'Sessions', keys: [{ id: 'move', label: 'move' }, { id: 'needs-you', label: 'next that needs you' }, { id: 'filter', label: 'filter' }, WRITE] };
+    case 'inbox':
+      return { name: 'Inbox', keys: [{ id: 'inbox-move', label: 'move' }, { id: 'inbox-archive', label: 'archive' }, { id: 'inbox-filter', label: 'filter' }] };
     case 'composer':
       return { name: 'Composer', keys: [{ id: 'send', label: 'send' }, { id: 'new-line', label: 'new line' }, { id: 'composer-leave', label: 'leave' }] };
     case 'commands':

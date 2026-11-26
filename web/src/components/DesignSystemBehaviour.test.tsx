@@ -61,7 +61,7 @@ describe('the Session list takes keyboard focus (DS-9)', () => {
     expect(listbox()).not.toHaveAttribute('aria-activedescendant');
   });
 
-  it('DS-9.2: Tab reaches the list after the Filter bar’s buttons and a Starting row’s Dismiss; there ↑/↓, j/k, ⌘1–9 and ⌘J work as before', async () => {
+  it('DS-9.2: Tab reaches the list after the Filter bar’s button and a Starting row’s Dismiss; there ↑/↓, j/k, ⌘1–9 and ⌘J work as before', async () => {
     const user = userEvent.setup();
     const app = renderApp('/s/a');
     app.emit({
@@ -77,10 +77,7 @@ describe('the Session list takes keyboard focus (DS-9)', () => {
     screen.getByRole('searchbox', { name: 'Filter Sessions' }).focus();
     await user.tab();
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'New Session' }));
-    await user.tab();
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Settings' }));
-    await user.tab();
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Keyboard shortcuts' }));
+    // NAV-1.3: Settings and Keyboard shortcuts are the rail's now, so the header ends with New Session.
     await user.tab();
     expect(document.activeElement).toHaveAccessibleName(/Dismiss/);
     await user.tab();

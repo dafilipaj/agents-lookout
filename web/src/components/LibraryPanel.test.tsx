@@ -18,7 +18,7 @@ afterEach(() => vi.useRealTimers());
 
 it('LIB-1.1: Library follows Work, L switches and closes it, the rail opens it and focuses its text filter, and text fields and modals keep their keys', async () => {
   const app = renderApp(); await open(app);
-  expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['History', 'Work', 'Library', 'Topics', 'Servers', 'Setup']);
+  expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['History', 'Work', 'Library', 'Topics', 'Bots', 'Servers', 'Setup']);
   const filter = screen.getByRole('searchbox', { name: 'Filter Outputs' }); expect(filter).toHaveFocus();
   fireEvent.keyDown(filter, { key: 'l' }); expect(panel()).toBeVisible();
   // Esc in the empty filter leaves it for the tab, so the letters work again.

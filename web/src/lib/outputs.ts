@@ -16,6 +16,13 @@ export function openFile(path: string, type: OutputType) {
   if (type === 'markdown') window.open(vscodeHref(path, null, null), '_self');
   else window.open(`/api/library/file?${new URLSearchParams({ path })}`, '_blank', 'noopener,noreferrer');
 }
+/**
+ * INBOX-2.4, 2.9: the same file route for a Report shown in place, in an `iframe` or an `img`: with
+ * `frame=1` its answer lets Lookout's own page frame it, under the sandbox the tab has (LIB-3.3).
+ */
+export const framedFileUrl = (path: string): string => `/api/library/file?${new URLSearchParams({ path, frame: '1' })}`;
+/** INBOX-2.8: whether Open has something to open: a file that's there, or an Artifact's or Share's URL (LIB-3.3: a gone file has no Open). */
+export const canOpenOutput = (item: OutputItem): boolean => (item.kind === 'file' ? item.exists && !!item.path && !!item.type : !!item.url);
 /** LIB-3.3: a file that's there, or an Artifact's or share's URL. */
 export function openOutput(item: OutputItem) {
   if (item.kind === 'file') { if (item.exists && item.path && item.type) openFile(item.path, item.type); }

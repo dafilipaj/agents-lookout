@@ -245,9 +245,11 @@ scenario('TEST-1.5: an empty World has no Sessions, no Harness, no History, no J
   const sidebar = page.getByRole('complementary', { name: 'Session sidebar' });
   await world.step('the sidebar to say no Session is live', () => expect(sidebar.getByText('No live Sessions')).toBeVisible());
   await expect(sidebar.getByRole('option')).toHaveCount(0);
-  // Nothing but what every World has: the default Start directory, Lookout's settings and the
-  // login profile that keeps PATH the World's (TEST-1.2).
-  expect(readdirSync(world.home).sort()).toEqual(['.config', '.profile', 'Projects']);
+  // Nothing but what every World has: the default Start directory, Lookout's settings, the login
+  // profile that keeps PATH the World's (TEST-1.2), and Lookout's own folder with the lock of the
+  // Bots' store, which the one server that runs them takes as it starts (BOT-2.6).
+  expect(readdirSync(world.home).sort()).toEqual(['.config', '.lookout', '.profile', 'Projects']);
+  expect(readdirSync(join(world.home, '.lookout'))).toEqual(['bots.lock']);
   expect(readdirSync(join(world.home, 'Projects'))).toEqual(['work']);
   expect(world.calls().some((c) => c.includes(' fleet --local list --json'))).toBe(true);
   // No `~/.gitconfig`, so git has no global identity to suggest (WORK-2.5).

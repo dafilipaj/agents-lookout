@@ -97,6 +97,13 @@ interface RenderOptions {
   endSession?: LookoutClient['endSession'];
   stopServer?: LookoutClient['stopServer'];
   setAwake?: LookoutClient['setAwake'];
+  createBot?: LookoutClient['createBot'];
+  updateBot?: LookoutClient['updateBot'];
+  deleteBot?: LookoutClient['deleteBot'];
+  runBot?: LookoutClient['runBot'];
+  report?: LookoutClient['report'];
+  markReport?: LookoutClient['markReport'];
+  reportText?: LookoutClient['reportText'];
   renameSession?: LookoutClient['renameSession'];
   switchModel?: LookoutClient['switchModel'];
   switchEffort?: LookoutClient['switchEffort'];
@@ -223,6 +230,14 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
     endSession: vi.fn(options.endSession ?? (async () => ({ how: 'exit' as const }))),
     stopServer: vi.fn(options.stopServer ?? (async () => ({ how: 'stopped' as const, count: 1 }))),
     setAwake: vi.fn(options.setAwake ?? (async (mode: AwakeMode) => ({ ...AWAKE_OFF, mode, holding: mode }))),
+    // BOT, INBOX: a test that needs one passes its own; the defaults refuse, so an unexpected call shows.
+    createBot: vi.fn(options.createBot ?? (async () => { throw new SaveError('No Bots here.', null, 404); })),
+    updateBot: vi.fn(options.updateBot ?? (async () => { throw new SaveError('No Bots here.', null, 404); })),
+    deleteBot: vi.fn(options.deleteBot ?? (async () => {})),
+    runBot: vi.fn(options.runBot ?? (async () => { throw new SaveError('No Bots here.', null, 404); })),
+    report: vi.fn(options.report ?? (async () => { throw new SaveError('That Report is gone.', null, 404); })),
+    markReport: vi.fn(options.markReport ?? (async () => { throw new SaveError('That Report is gone.', null, 404); })),
+    reportText: vi.fn(options.reportText ?? (async () => ({ text: '', truncated: false }))),
     renameSession: vi.fn(options.renameSession ?? (async () => ({ result: 'renamed' as const }))),
     switchModel: vi.fn(options.switchModel ?? (async (_id: string, req: { model: string }) => ({ model: req.model, confirmed: false }))),
     switchEffort: vi.fn(options.switchEffort ?? (async (_id: string, req: { effort: string }) => ({ effort: req.effort, confirmed: false, saved: req.effort !== 'max' }))),

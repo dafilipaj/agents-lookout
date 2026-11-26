@@ -53,16 +53,16 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe('the tab (SETUP-1)', () => {
-  it('SETUP-1.1: a sixth tab after Servers, its icon Puzzle, on the rail too; U opens and closes it', async () => {
+  it('SETUP-1.1: the last tab, after Servers, its icon Puzzle, on the rail too; U opens and closes it', async () => {
     const user = userEvent.setup();
     open();
     expect(screen.getByRole('button', { name: 'Setup' }).querySelector('svg.lucide-puzzle')).not.toBeNull();
     await user.keyboard('u');
     const tabs = screen.getAllByRole('tab');
-    expect(tabs.map((t) => t.textContent)).toEqual(['History', 'Work', 'Library', 'Topics', 'Servers', 'Setup']);
-    expect(tabs[5]).toHaveAttribute('aria-selected', 'true');
-    expect(tabs[5]).toHaveAttribute('title', 'Setup (U)');
-    expect(tabs[5]!.querySelector('svg.lucide-puzzle')).not.toBeNull();
+    expect(tabs.map((t) => t.textContent)).toEqual(['History', 'Work', 'Library', 'Topics', 'Bots', 'Servers', 'Setup']);
+    expect(tabs[6]).toHaveAttribute('aria-selected', 'true');
+    expect(tabs[6]).toHaveAttribute('title', 'Setup (U)');
+    expect(tabs[6]!.querySelector('svg.lucide-puzzle')).not.toBeNull();
     act(() => (document.activeElement as HTMLElement).blur());
     await user.keyboard('u');
     expect(screen.queryByRole('tab', { name: 'Setup' })).toBeNull();

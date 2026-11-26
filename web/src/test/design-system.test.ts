@@ -250,7 +250,11 @@ const FAMILIES: Record<string, Family> = {
       'web/src/components/StatusMarker.tsx': { why: 'the Needs you marker', uses: ['text-needs-you'] },
       'web/src/lib/sessions.ts': { why: "the Status's strip, row tint and header tag", uses: ['bg-needs-you', 'bg-needs-you/16', 'bg-needs-you/22', 'bg-needs-you/28', 'ring-needs-you/70', 'text-needs-you-foreground'] },
       'web/src/components/Sidebar.tsx': { why: 'the Needs you section header and count (DS-12.6)', uses: ['text-needs-you-text'] },
+      'web/src/components/ui/place-rail.tsx': { why: "the rail's count of the Sessions that Need you (NAV-3.2, DS-24.2)", uses: ['bg-needs-you', 'text-needs-you-foreground'] },
       'web/src/components/SessionItem.tsx': { why: 'a Needs you row\'s "waiting for" line', uses: ['text-needs-you-text'] },
+      'web/src/components/BotsPanel.tsx': { why: 'a Bot\'s row whose run is waiting on you: its "waiting on you" (BOT-1.2)', uses: ['text-needs-you-text'] },
+      'web/src/components/InboxList.tsx': { why: 'a Report\'s row whose run is waiting on you: its "waiting on you" (INBOX-1.2)', uses: ['text-needs-you-text'] },
+      'web/src/components/ReportView.tsx': { why: "a Report whose run is waiting on you: its card, as a pending question's in the chat (INBOX-2.6)", uses: ['bg-needs-you-soft', 'border-needs-you/60', 'text-needs-you-text'] },
       'web/src/components/ChatActivity.tsx': { why: 'the Needs you row in the chat', uses: ['bg-needs-you', 'text-needs-you-text'] },
       'web/src/components/ChatRail.tsx': { why: "a question's Mark on the chat rail, only while it waits for your answer (DS-3.8)", uses: ['bg-needs-you'] },
       'web/src/components/Chat.tsx': { why: 'a pending question card', uses: ['bg-needs-you-soft', 'border-needs-you/60', 'text-needs-you-text'] },
@@ -324,15 +328,17 @@ const FAMILIES: Record<string, Family> = {
       'web/src/lib/usage.ts': { why: "the usage critical level's octagon, and its bar's edge (and the details' solid bar)", uses: ['bg-destructive', 'text-destructive'] },
       'web/src/lib/work.ts': { why: 'a PR over 10 days', uses: ['text-destructive-text'] },
       'web/src/components/ui/alert.tsx': { why: "the error Alert (DS-4): its box, title and icon; every error's look", uses: ['bg-destructive-soft', 'border-destructive/30', 'text-destructive', 'text-destructive-text'] },
-      'web/src/components/Launcher.tsx': { why: 'a Harness at a critical limit', uses: ['text-destructive'] },
+      'web/src/components/LaunchFields.tsx': { why: "a Harness at a critical limit, in the launcher's Harness field (USAGE-3.1)", uses: ['text-destructive'] },
+      'web/src/components/BotsPanel.tsx': { why: 'a Bot\'s run that failed: the triangle and "failed" on its row, and the triangle in its list of runs (BOT-1.2, BOT-1.5)', uses: ['text-destructive-text'] },
       'web/src/components/LaunchItem.tsx': { why: 'a failed Starting row', uses: ['bg-destructive/8', 'ring-destructive/40', 'text-destructive'] },
+      'web/src/components/InboxList.tsx': { why: 'a Report\'s row whose run failed: the triangle beside "failed" (INBOX-1.2)', uses: ['text-destructive'] },
       'web/src/components/StartingView.tsx': { why: "a failed start's icon and status pill", uses: ['bg-destructive/10', 'ring-destructive/30', 'text-destructive'] },
       'web/src/components/WorkPanel.tsx': { why: 'CI failing', uses: ['text-destructive'] },
       'web/src/components/SessionView.tsx': { why: 'a Stop that failed, beside the Status tag, and a failed copy', uses: ['text-destructive'] },
       'web/src/components/Markdown.tsx': { why: 'a failed copy', uses: ['text-destructive'] },
       'web/src/components/ui/row-actions.tsx': { why: "Delete in an expanded row's More (DS-16.2)", uses: ['text-destructive-text'] },
       'web/src/components/ui/icon-button.tsx': { why: "the danger role's icon button: the Session header's End Session (DS-18.5)", uses: ['text-destructive-text'] },
-      'web/src/components/Sidebar.tsx': { why: "the Settings button's dot: a Tool missing or behind (TOOLS-2.4)", uses: ['bg-destructive'] },
+      'web/src/components/PlaceRail.tsx': { why: "the Settings button's dot: a Tool missing or behind (TOOLS-2.4, NAV-1.3)", uses: ['bg-destructive'] },
       'web/src/components/SettingsPage.tsx': { why: "the Tools link's dot, the Settings button's (TOOLS-2.4, SIDE-7.6)", uses: ['bg-destructive'] },
       'web/src/components/HandOff.tsx': { why: '"Hand off…"\'s dot when writing the Handover failed (HAND-2.4)', uses: ['bg-destructive'] },
     },
@@ -380,6 +386,7 @@ const FAMILIES: Record<string, Family> = {
       'web/src/components/Shell.tsx': { why: 'the edge of the column that has the keys (SIDE-11.3, DS-12.8)', uses: ['bg-ring'] },
       'web/src/components/HistoryPanel.tsx': { why: 'keyboard focus and a focused filter', uses: ['border-ring', 'ring-ring/30'] },
       'web/src/components/Launcher.tsx': { why: 'keyboard focus and focused fields', uses: ['border-ring', 'ring-ring/30'] },
+      'web/src/components/LaunchFields.tsx': { why: "keyboard focus and focused fields of the launcher's Directory, Harness, Model and Effort, which the Bot dialog draws too, and on a Bot's day (BOT-2.1)", uses: ['border-ring', 'ring-ring/30'] },
       'web/src/components/LibraryPanel.tsx': { why: 'keyboard focus on the filter and list', uses: ['ring-ring/30'] },
       'web/src/components/MemoryLine.tsx': { why: 'keyboard focus on a Session', uses: ['ring-ring/50'] },
       'web/src/components/Evidence.tsx': { why: "keyboard focus on the status line's Evidence part, on a file changed since the last pass and on a reviewer (EVID-5.8, EVID-6.6)", uses: ['ring-ring', 'ring-ring/50'] },
@@ -388,6 +395,8 @@ const FAMILIES: Record<string, Family> = {
       'web/src/components/SessionTitle.tsx': { why: 'keyboard focus on the title and its edit', uses: ['ring-ring'] },
       'web/src/components/SessionView.tsx': { why: 'keyboard focus, the focused composer, the resize handle while dragged and the attachment drop target (VIEW-9.2)', uses: ['bg-primary-soft', 'bg-ring', 'border-primary', 'border-ring', 'ring-ring', 'ring-ring/25', 'text-primary'] },
       'web/src/components/Sidebar.tsx': { why: 'keyboard focus and the focused filter', uses: ['border-ring', 'ring-ring/30', 'ring-ring/50'] },
+      'web/src/components/InboxList.tsx': { why: "keyboard focus on the Inbox's list and its focused filter, as the Session sidebar's (INBOX-1.3)", uses: ['border-ring', 'ring-ring/30', 'ring-ring/50'] },
+      'web/src/components/ReportView.tsx': { why: "keyboard focus on a Report's text, which takes it so the arrow keys scroll it (INBOX-5.1)", uses: ['ring-ring/50'] },
       'web/src/components/StatusMenu.tsx': { why: 'keyboard focus on the menu', uses: ['ring-ring'] },
       'web/src/components/ChangesButton.tsx': { why: "keyboard focus on the status line's count of changed files (DIFF-1.3)", uses: ['ring-ring'] },
       'web/src/components/ui/checkbox.tsx': { why: 'keyboard focus on the checkbox', uses: ['outline-ring'] },
@@ -397,6 +406,7 @@ const FAMILIES: Record<string, Family> = {
       'web/src/components/ui/tabs.tsx': { why: 'keyboard focus on a tab (DS-13.2)', uses: ['ring-ring/50'] },
       'web/src/components/ui/status-tag.tsx': { why: "keyboard focus on the Status tag's Stop or Esc (DS-18.9)", uses: ['ring-ring'] },
       'web/src/components/ui/side-nav.tsx': { why: 'keyboard focus on a sub-page link (DS-13.1)', uses: ['ring-ring/50'] },
+      'web/src/components/ui/place-rail.tsx': { why: "keyboard focus on a place's button (DS-24.1)", uses: ['ring-ring/50'] },
       'web/src/components/ui/segmented.tsx': { why: 'keyboard focus on a choice (DS-20.1)', uses: ['ring-ring/50'] },
       'web/src/components/ui/row-details.tsx': { why: "keyboard focus on an expanded Topic's counts and links (DS-21.2, TOPIC-3.4)", uses: ['ring-ring/50'] },
       'web/src/components/ui/picker.tsx': { why: "a focused picker's filter", uses: ['border-ring', 'ring-ring/30'] },
@@ -408,6 +418,7 @@ const FAMILIES: Record<string, Family> = {
       'web/src/components/StatusMore.tsx': { why: "keyboard focus on the status line's \"N more\" (VIEW-5.19)", uses: ['ring-ring'] },
       'web/src/components/ServersPanel.tsx': { why: 'keyboard focus on the list of Local servers (PORTS-3.2)', uses: ['ring-ring/30'] },
       'web/src/components/SetupPanel.tsx': { why: 'keyboard focus on the filter and the list (SETUP-1.2)', uses: ['ring-ring/30'] },
+      'web/src/components/BotsPanel.tsx': { why: 'keyboard focus on the list of Bots (BOT-1.2)', uses: ['ring-ring/30'] },
       'web/src/components/TopicGraph.tsx': { why: 'keyboard focus, and drawing an Edge: its line, the dashed target and the handle (DS-12.4, TOPIC-6.1)', uses: ['border-primary', 'ring-ring/50', 'stroke-primary', 'text-primary'] },
     },
   },
@@ -798,7 +809,7 @@ const BRAND_FILES: Record<string, string> = {
   'web/src/components/SessionView.tsx': "a live Session's header",
   'web/src/components/StartingView.tsx': "a starting Session's header",
   'web/src/components/PastSessionView.tsx': "a past Session's header",
-  'web/src/components/Launcher.tsx': 'the new Session modal, where the logo is the choice being made',
+  'web/src/components/LaunchFields.tsx': "the launcher's Harness field, in the new Session modal and the Bot dialog (BOT-2.1), where the logo is the choice being made",
 };
 
 /** `<HarnessIcon>`s with a `tone` that is, or may be, `brand`, as `line:col tone=…`. */
@@ -834,7 +845,7 @@ describe('Harness logos', () => {
     expect(tones(`<HarnessIcon harness="claude" />; <HarnessIcon harness={h} tone="mono" className="size-4" />; <Other tone="brand" />`)).toEqual([]);
   });
 
-  it('DS-3.1: Harness logos are monochrome everywhere but the main pane\'s header and the launcher', () => {
+  it('DS-3.1: Harness logos are monochrome everywhere but the main pane\'s header and the launcher\'s Harness field, which the Bot dialog draws too', () => {
     const found = Object.entries(SOURCES)
       .filter(([path]) => !path.endsWith('.css') && !(path in BRAND_FILES))
       .flatMap(([path, text]) => brandLogos(text, path).map((s) => `${path}:${s}`));
@@ -1403,6 +1414,7 @@ const DESTRUCTIVE_CONFIRMS: Exception[] = [
   { path: 'web/src/components/ServersPanel.tsx', fn: 'StopDialog', count: 1, reason: "a Local server's Stop confirms (PORTS-4.6)" },
   { path: 'web/src/components/SessionView.tsx', fn: 'EndSession', count: 1, reason: "End Session's dialog confirms (VIEW-5.6)" },
   { path: 'web/src/components/TopicView.tsx', fn: 'TopicActions', count: 1, reason: "a Topic's Delete confirms (TOPIC-1.6)" },
+  { path: 'web/src/components/BotDialog.tsx', fn: 'DeleteBotDialog', count: 1, reason: "a Bot's Delete confirms (BOT-2.4)" },
 ];
 
 /** Hand-made `<button>`s outside components/ui, each pinned to its function and count, with why it isn't a Button. */
@@ -1476,7 +1488,7 @@ describe('buttons by role', () => {
     expect(counts).toEqual(BUTTON_SIZE_EXCEPTIONS.map(({ path, fn, count }) => ({ path, fn, count })));
   });
 
-  it("DS-18.1: the red fill is only a dialog's confirming button, in End Session's, a Topic's Delete and a Local server's Stop", () => {
+  it("DS-18.1: the red fill is only a dialog's confirming button, in End Session's, a Topic's Delete, a Local server's Stop and a Bot's Delete", () => {
     const found = Object.entries(SOURCES)
       .filter(([path]) => /\.tsx$/.test(path) && !path.startsWith('web/src/components/ui/'))
       .flatMap(([path, text]) => buttonRoles(text, path).destructive.map((s) => `${path}:${s}`));
@@ -1633,8 +1645,8 @@ describe('sub-pages and tabs', () => {
     expect(tabsAndNavs(`<div role="tab" />; <div role="tabpanel" />; <li aria-current="true" />; <li aria-current={selected || undefined} />`)).toEqual([]);
   });
 
-  it('DS-13.3: tab strips are drawn only by Tabs and the right sidebar, and current pages only by SideNav', () => {
-    const own: Record<string, string> = { 'web/src/components/ui/tabs.tsx': 'tablist', 'web/src/components/RightSidebar.tsx': 'tablist', 'web/src/components/ui/side-nav.tsx': 'aria-current=page' };
+  it('DS-13.3: tab strips are drawn only by Tabs and the right sidebar, and current pages only by SideNav and the rail of places (DS-24.1)', () => {
+    const own: Record<string, string> = { 'web/src/components/ui/tabs.tsx': 'tablist', 'web/src/components/RightSidebar.tsx': 'tablist', 'web/src/components/ui/side-nav.tsx': 'aria-current=page', 'web/src/components/ui/place-rail.tsx': 'aria-current=page' };
     const found = Object.entries(SOURCES)
       .filter(([path]) => /\.tsx$/.test(path))
       .flatMap(([path, text]) => tabsAndNavs(text, path).filter((s) => s.split(' ')[1] !== own[path]).map((s) => `${path}:${s}`));
@@ -1772,7 +1784,8 @@ describe('one of a few', () => {
   });
 
   it("DS-20.3: a radio group is drawn only by Segmented and the launcher's Harness choice; Work's Show filter and the Spec view's switch are Segmenteds", () => {
-    const own: Record<string, number> = { 'web/src/components/ui/segmented.tsx': 1, 'web/src/components/Launcher.tsx': 1 };
+    // The launcher's Harness choice is drawn in LaunchFields.tsx, for the launcher and the Bot dialog (BOT-2.1).
+    const own: Record<string, number> = { 'web/src/components/ui/segmented.tsx': 1, 'web/src/components/LaunchFields.tsx': 1 };
     const found = Object.entries(SOURCES)
       .filter(([path]) => /\.tsx$/.test(path) && !(path in own))
       .flatMap(([path, text]) => radioGroups(text, path).map((s) => `${path}:${s}`));

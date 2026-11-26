@@ -20,6 +20,12 @@ export class EndError extends Error {
   }
 }
 
+/** How an end is asked for: by a person who confirmed it (nothing), or by Lookout for a finished Bot run. */
+export interface EndHow {
+  /** BOT-4.6: asked of the Session's row as the fresh list shows it, right before the close; false leaves it alone. */
+  only?: (row: SessionRow) => boolean;
+}
+
 export interface CloserOptions {
   runner: Runner;
   fleetBin: () => string;
@@ -41,8 +47,11 @@ export interface CloserOptions {
  * `expect` is the process the user confirmed (its pid and start time, from the row the dialog
  * opened on). A replacement, a resume under a new process or a reused pid, is refused here and,
  * atomically, by Fleet (`--expect-pid`/`--expect-start`, `target_changed`).
+ *
+ * BOT-4.6: an end nobody confirmed (a finished Bot run's) passes `only`, which is asked of the
+ * fresh row: the Session was prompted again, or opened, since the last poll, and is left alone.
  */
-export async function endSession(opts: CloserOptions, sessionId: string, expect: EndTarget): Promise<EndResult> {
+export async function endSession(opts: CloserOptions, sessionId: string, expect: EndTarget, how: EndHow = {}): Promise<EndResult> {
   // A Codex Session asked for by pid may have got its session id since the dialog opened; it's
   // still the same process, found below by pid and Harness (the start-time check guards it).
   const known = opts.lookup(sessionId) ?? pidOnlyId(sessionId);
@@ -59,6 +68,7 @@ export async function endSession(opts: CloserOptions, sessionId: string, expect:
   if (row.pid !== expect.pid || row.procStart !== expect.procStart) throw new EndError(409, CHANGED);
   if (!row.controllable) throw new EndError(409, "This Session runs in another app, so Lookout can't end it.");
   if (!row.ownHost) throw new EndError(409, SHARED);
+  if (how.only && !how.only(row)) throw new EndError(409, IN_USE);
 
   const target = closeTarget(row);
   let stdout: string;
@@ -116,6 +126,7 @@ function pidOnlyId(id: string): Pick<SessionRow, 'id' | 'harness' | 'pid'> | nul
 
 const UNCONFIRMED = 'Lookout can’t confirm it’s the same Session, so it won’t end it. Close it in the terminal.';
 const CHANGED = 'This Session was restarted since you asked; nothing was closed.';
+const IN_USE = 'This Session is in use again; nothing was closed.';
 const SHARED = 'This Session shares its Session host with other windows, so Lookout won’t end it. Close it in the terminal.';
 /** Fleet's `busy` (`locked`): another Fleet command holds the Session's typing lock. */
 export const FLEET_TYPING = 'Fleet is typing into it; try again.';

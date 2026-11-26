@@ -17,7 +17,7 @@ Tokens live in `web/src/index.css`, components in `web/src/components/ui/`, deci
 5. **Where your keys go is always visible.** Nothing takes focus by itself, and the column that has the keys shows it. (DS-9, SIDE-11)
 6. **Copy the nearest sibling, or extend the system first.** A new surface takes its anatomy from the closest one that exists: Memory's popover for a details popover, a Work row for a row. A piece the system lacks goes into `components/ui/` and this guide in the same change. (0009, 0015)
 7. **One action, one icon.** An action shows the same icon on its button, in a menu and in the shortcuts list. Opening something inside Lookout and leaving Lookout have different icons. (0008, DS-18.6)
-8. **Labels next to icons**, unless the icon is universal (close, search, more). A tooltip doesn't replace a label. The right sidebar's icon tabs are the one exception today.
+8. **Labels next to icons**, unless the icon is universal (close, search, more). A tooltip doesn't replace a label. The right sidebar's icon tabs are the one exception today; the rail's places carry their names under their icons (DS-24.1).
 9. **Sizes come from steps.** Type from the scale (DS-1); icon buttons 24 or 28 px (DS-7); icons 14 or 16 px, 20 px only in a labelled row button (DS-7.4); buttons 24, 28 or 32 px (DS-18.3). Nothing in between.
 
 ## By task
@@ -96,7 +96,7 @@ What describes a Session, on the line under its composer (VIEW-5.5): where it wo
 
 ### A list row
 
-A row of the right sidebar's lists (Work, History, Library, Topics, Setup); the Session sidebar's rows follow SIDE-3.
+A row of the right sidebar's lists (Work, History, Library, Topics, Bots, Setup); the Session sidebar's rows follow SIDE-3.
 
 - **Use** `data-slot="row"` on the row and `data-selected` while it's selected: the hairline between rows comes from one rule in `index.css`. Rows have 7 px of padding above and below and no gap. A Session's marker is a `SessionMarker`. An expanded row's actions are `RowActions`.
 - A selected row is neutral (`sidebar-accent` and its ring, SIDE-3.9), never Primary.
@@ -107,11 +107,43 @@ A row of the right sidebar's lists (Work, History, Library, Topics, Setup); the 
 - **A Session row's second line must hold its numbers (DS-22.1):** the location gives way first, then each column gives back the room its value doesn't fill. Before adding anything to that line, add up its widths at 280 px: the line is 225 px and the columns take 134 px of it.
 - **Coming (DS-21, DS-22):** an expanded row is built from `ui/row-details.tsx`, in one order: title, state, summary, links, actions last; its title is whole; its links are counts that list in place, three at most, each link drawn as one line; facts you rarely need go into More or a tooltip. A Session row's numbers sit in three fixed columns and are grey; what is running leads the second line with an icon and its count, and what is wrong is the first line's chip (SIDE-15).
 - **A row's items waiting on you** (a Topic's recommendations, DS-21.2, TOPIC-9.4): on the row, a neutral `Chip` with an icon and the count ("3 recommended"); expanded, a count among its links, `eager`, so it's open whatever it holds; each a `RowLink` with `decide`, its reason under its name, its one action a Secondary `line` button and the rest under its own More. A line above the list says how many and where, with "Next". Never a list of their own above the rows: it grows with the pile and reads like the rows under it.
+- **A Bot's row (BOT-1.2):** no leading icon; its name, with "running", "waiting on you" in `needs-you-text` or an "Off" chip at the right; under it its schedule in words and one fact, the schedule giving way first. A Bot that is off is dimmed while its row is folded.
 - **A group that folds** (Setup's sources, SETUP-1.3): its line is a listbox option of its own, 32 px, a 14 px `ChevronRight` turned when open, the group's 14 px icon in `muted-foreground`, its name in `body` medium, its count in `muted-foreground` and a version in `meta` at the right. Its rows are inset under its name and set `--row-inset` to where their names start, so the hairline begins there. Enter, → and ← open and close it; a filter with text shows every group with a match open. Groups start folded where there are many (Everywhere), open where there are few and they are the content (This Session's files and memory, SETUP-7.1).
 - **A list's closing line that switches the view** (This Session's "It also loaded… from Everywhere", SETUP-6.3): `meta` in `muted-foreground` with a trailing `ArrowRight`, a row's hover, and one of the listbox's options, so j/k reach it and Enter runs it; never a hand-made `<button>` in the list.
 - **Do:** let the row's parts come from the shared pieces, so the row reads like its siblings.
 - **Don't:** draw a border, margin or card between rows; give an expanded row a second labelled button, or a waiting item's line a Soft one.
 - **Guard:** DS-5.1 (markers), DS-16.4 (row actions), DS-17.1 (row marks and padding); coming: DS-21.4, DS-22.4.
+
+### A list in the left column that drives the main pane
+
+The list of a place (NAV): the Session sidebar's, and the Inbox's (`InboxList.tsx`, INBOX-1). Selecting a row shows it in the main pane; the right sidebar's lists expand in place instead, because the main pane isn't theirs.
+
+- **Use** the column's header cell for the filter (its `/` hint as the Session filter's) and its body for the list: a `Segmented` (`surface="sidebar"`, `fill`) when the list shows a few ways, then one `listbox` grouped by day (`byDay`, `dayLabel`), its rows the right sidebar's (`data-slot="row"`).
+- The keys are the window's, as the Session sidebar's: ↑/↓ and j/k select and show, ⌘1–9 jump, `/` filters. They stand down while a dialog is open, in a text field, with focus in the right sidebar, and while another place shows (NAV-4.2).
+- **A Report's row (INBOX-1.2):** the Library's row with SIDE-13's unread mark. Its 16 px icon says what it holds; a failed run's is the triangle in `destructive`, drawn once, with "failed" as its word; "waiting on you" is in `needs-you-text`. Everything else is quiet.
+- **Don't:** expand a row in place here; give the list a second selected state; colour an unread mark.
+- **Guard:** the colour guard's rows for `InboxList.tsx`. Its look is INBOX-1.6.
+
+### A document shown in place
+
+What a Report holds, in the main pane (`ReportView.tsx`, INBOX-2.4).
+
+- **Use** `Markdown` (`reading`) in the chat's column for text, inside a focusable `role="region"` with `data-scroll-keys`, so the arrow keys scroll it. A page is an `iframe` that fills the pane on white, since a page brings its own colours, with the file route's `frame=1` URL (`framedFileUrl`, `lib/outputs.ts`), the same `sandbox` the route sends, and the document's title as its `title` (INBOX-2.9).
+- What only a browser tab can show (a PDF, a Share, an Artifact without its source file) is a bordered card: its title, its Type, where it is, and one Primary "Open".
+- Several documents are `Tabs` under the header, and only the open one is drawn.
+- **Don't:** frame a page without the sandbox; frame another origin; read a file the Library didn't list.
+- **Guard:** INBOX-2.9's tests, in the server and the view. Its look is INBOX-2.11.
+
+### A form that sets up a start
+
+The launcher, and a Bot's dialog (`BotDialog.tsx`, BOT-2.1).
+
+- **Use** the launcher's own fields from `LaunchFields.tsx` (Directory, Harness, Model with Effort, Skip permissions) on `FIELD_GRID`, with their rules in `lib/launch-fields.ts`. Never a second Harness choice.
+- **A refusal beside its field (BOT-2.2):** an inline `Alert` in the grid's second column under the field, with `aria-invalid` and `aria-describedby` on the field, until that field changes. A refusal with no field is a box `Alert` above the buttons.
+- **Several of a few** (a Bot's days): labels in a `role="group"` around visually hidden checkboxes, with `CHOSEN_LOOK`, the Harness choice's neutral chosen look. Not a `Segmented`, which is one of a few, and not pressed Buttons.
+- **A dialog that edits:** "Esc to close · nothing is saved" at its foot, Save as its one Primary with the `⌘↵` `Kbd`, and focus back to what opened it.
+- **A surface that can't save** (BOT-2.3, BOT-2.6): an `Alert` under its header saying why, and each disabled button's reason in its tooltip. A disabled `Button` takes no pointer, so the tooltip sits on a wrapping `span`; in a menu the reason is a `role="note"` line.
+- **Guard:** DS-20.3 (the Harness choice only in `LaunchFields.tsx`), DS-18.7 (the red fill only in a confirm).
 
 ### A list that completes what you type
 
@@ -153,6 +185,18 @@ Context usage, a usage limit, memory and CPU load, a PR's age.
 - **Do:** show a wait in the layout of what will arrive, as the Starting view shows the Session with your first prompt (LAUNCH-7).
 - **Don't:** a bare "Loading…", a spinner, or motion that ignores reduced motion. A button's own word while its action runs ("Sending…") isn't a wait.
 - **Guard:** DS-6.8.
+
+### A place on the rail
+
+One of Lookout's top-level places, on the rail at the window's left edge: the Inbox, Sessions, later People (NAV, [0017](../decisions/0017-one-app-for-both-roles.md)).
+
+- **Use** `PlaceButton`, `RailCount` and `RailMark` (`ui/place-rail.tsx`, DS-24), put together in `PlaceRail.tsx`. A new place is an entry of `PLACES` in `lib/places.ts` with its name and its key, its icon in `PlaceRail.tsx`, and its routes in `placeOfRoute`.
+- A place owns the left column and the main pane, nothing else: its list goes into the left column's header and body cells (the Inbox's through `Sidebar`'s `inbox`), and the right sidebar, the launcher and the dock are the same everywhere.
+- The current place is where you are: `aria-current="page"` on the neutral wash, as a selected row. What waits in a place is a `RailCount` on its icon: neutral for what is new (unread Reports), Needs you's amber only for the Sessions that Need you (NAV-3.2).
+- The rail's top holds places and nothing else; what isn't a place (Settings, Keyboard shortcuts) is an `IconButton` at its bottom.
+- **Do:** add a place only when it has a page; give it the next digit as its key.
+- **Don't:** colour the current place Primary; count something new in amber; give a place a right sidebar of its own.
+- **Guard:** DS-13.3 (`aria-current="page"` only in `side-nav.tsx` and `place-rail.tsx`), DS-2.3 (Needs you's amber on the rail only in `place-rail.tsx`), DS-7.4 (the 20 px mark stays in `components/ui/`). Its look is NAV-1.4.
 
 ### A section heading
 

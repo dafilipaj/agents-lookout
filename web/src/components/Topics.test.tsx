@@ -91,7 +91,8 @@ describe('the Topics tab (TOPIC-3)', () => {
     const rail = screen.getByRole('button', { name: 'Library' }).parentElement!;
     // The rail's tab buttons; it ends in keep-awake's line (AWAKE-4.1).
     const buttons = within(rail).getAllByRole('button').map((b) => b.getAttribute('aria-label')).filter((l) => !l?.startsWith('Keep the Mac awake'));
-    expect(buttons.slice(-4, -2)).toEqual(['Library', 'Topics']);
+    // BOT-1.1: Bots' button sits under Topics'.
+    expect(buttons.slice(-5, -2)).toEqual(['Library', 'Topics', 'Bots']);
     await user.click(screen.getByRole('button', { name: 'Topics' }));
     expect(screen.getByTestId('topics-panel')).toBeVisible();
     // A text field keeps its T.

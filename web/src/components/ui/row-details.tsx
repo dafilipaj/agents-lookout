@@ -57,7 +57,7 @@ export interface RowLink {
 
 /** DS-21.2: the links of one kind, as a count: "3 Sessions". */
 export interface RowLinkGroup {
-  kind: 'sessions' | 'prs' | 'tasks' | 'topics' | 'recommended';
+  kind: 'sessions' | 'prs' | 'tasks' | 'topics' | 'recommended' | 'runs';
   /** The noun, one and many: ["Session", "Sessions"]. */
   noun: readonly [string, string];
   items: readonly RowLink[];

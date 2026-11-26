@@ -11,11 +11,12 @@ import type { UsageSnapshot } from '../shared/usage.ts';
 import type { WorkSnapshot } from '../shared/work.ts';
 import { AnswerError, parseAnswerRequest, parseEscStatus } from './answerer.ts';
 import { AttachmentError, Attachments, DAY_MS } from './attachments.ts';
+import { BOT_ID, type Bots, BotsError } from './bots.ts';
 import { ChangesError } from './changes.ts';
 import { EndError, parseEndTarget } from './closer.ts';
 import { type Library } from './library.ts';
 import { LibraryError, parseLibraryQuery } from './library.ts';
-import { OUTPUT_HEADERS } from './output-files.ts';
+import { FRAMED_OUTPUT_CSP, OUTPUT_HEADERS } from './output-files.ts';
 import { Avatars } from './avatars.ts';
 import { PathsError } from './files.ts';
 import { PlainError, type Plain } from './plain.ts';
@@ -141,6 +142,8 @@ export interface AppOptions {
   };
   /** LIB: read-only Outputs and the paths learned from CLI answers. */
   library: Pick<Library, 'find' | 'indexing' | 'files'>;
+  /** BOT, INBOX: the Bots, their runs and the Reports they arrive as; optional, so a server without it has no `/api/bots` or `/api/inbox` (404). */
+  bots?: Pick<Bots, 'snapshot' | 'create' | 'update' | 'remove' | 'runNow' | 'detail' | 'mark' | 'text'>;
   /** WORK: Tasks through tb-prod and PRs through tb-pr, read only while a tab has Work open. */
   work: {
     snapshot(): WorkSnapshot;
@@ -222,13 +225,18 @@ const MAX_OPEN_CHANGE_BODY = 64 * 1024;
 const MAX_PATHS_BODY = 64 * 1024;
 /** TOPIC-1.2: notes of up to 20,000 characters, JSON-escaped (`\uXXXX` is six bytes). */
 const MAX_TOPIC_BODY = 160 * 1024;
+/** BOT-2.1: a prompt of up to 20,000 characters, JSON-escaped, and the rest of a Bot. */
+const MAX_BOT_BODY = 192 * 1024;
+/** INBOX-3.1, 4.1: `{ read, archived }`. */
+const MAX_MARK_BODY = 1024;
 
 const SECURITY_HEADERS = {
   'x-content-type-options': 'nosniff',
   'x-frame-options': 'DENY',
   'referrer-policy': 'no-referrer',
+  // INBOX-2.9: Lookout's page may frame its own file route (`frame-src 'self'`) and nothing else; nothing frames the page.
   'content-security-policy':
-    "default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'",
+    "default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; frame-src 'self'; frame-ancestors 'none'",
 };
 
 export function createApp(opts: AppOptions): LookoutApp {
@@ -277,6 +285,7 @@ export function createApp(opts: AppOptions): LookoutApp {
       ...(opts.resQueue ? { res: opts.resQueue.snapshot() } : {}),
       ...(opts.awake ? { awake: opts.awake.snapshot() } : {}),
       ...(opts.evidence ? { evidence: opts.evidence.views() } : {}),
+      ...(opts.bots ? { bots: opts.bots.snapshot() } : {}),
     });
     clients.set(clientId, res);
     const unwatch = opts.monitor.watch();
@@ -305,14 +314,16 @@ export function createApp(opts: AppOptions): LookoutApp {
 
   const handle = async (req: IncomingMessage, res: ServerResponse) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
-    const outputFile = url.pathname === '/api/library/file';
+    // INBOX-2.9: `frame=1` is the same route for a Report's frame; without it nothing differs from LIB-3.3's tab.
+    const outputFile = url.pathname !== '/api/library/file' ? false : url.searchParams.get('frame') === '1' ? 'frame' : 'tab';
     if (outputFile) for (const [k, v] of Object.entries(OUTPUT_HEADERS)) res.setHeader(k, v);
+    if (outputFile === 'frame') res.setHeader('content-security-policy', FRAMED_OUTPUT_CSP);
     const verdict = guardRequest(req, opts.guard);
     if (!verdict.ok) return json(res, verdict.status, { error: verdict.reason }, outputFile);
     if (outputFile) {
-      if (req.method !== 'GET') return json(res, 405, { error: 'method not allowed' }, true);
-      try { return await opts.library.files.serve(url.searchParams.get('path') ?? '', res); }
-      catch { if (!res.headersSent) json(res, 500, { error: 'This file could not be read.' }, true); else res.destroy(); return; }
+      if (req.method !== 'GET') return json(res, 405, { error: 'method not allowed' }, outputFile);
+      try { return await opts.library.files.serve(url.searchParams.get('path') ?? '', res, outputFile === 'frame'); }
+      catch { if (!res.headersSent) json(res, 500, { error: 'This file could not be read.' }, outputFile); else res.destroy(); return; }
     }
 
     const avatarMatch = /^\/api\/avatars\/([^/]{1,64})$/.exec(url.pathname);
@@ -911,6 +922,12 @@ export function createApp(opts: AppOptions): LookoutApp {
         throw err;
       }
     }
+    // BOT, INBOX: reading a Report is a read; a Bot made, changed, deleted or run, and a Report
+    // marked, are mutations, so the token and Origin (0003; the guard checks every non-GET).
+    if (url.pathname === '/api/bots' || url.pathname.startsWith('/api/bots/') || url.pathname.startsWith('/api/inbox/')) {
+      if (!opts.bots) return json(res, 404, { error: 'not found' });
+      return botsCall(req, res, url, opts.bots);
+    }
     // TOPIC-8.3: the view is a read; every change is a mutation, so the token and Origin (0003).
     if (url.pathname === '/api/topics' || url.pathname.startsWith('/api/topics/')) {
       if (!opts.topics) return json(res, 404, { error: 'not found' });
@@ -965,6 +982,66 @@ export function createApp(opts: AppOptions): LookoutApp {
   });
   server.once('close', () => clearInterval(pruneTimer));
   return { server, broadcast, sendTo };
+}
+
+/**
+ * BOT: `POST /api/bots` (New Bot); `PUT` and `DELETE /api/bots/<id>` (Edit, Turn off and on, Delete);
+ * `POST /api/bots/<id>/run` (Run now). INBOX: `GET /api/inbox/<run id>` (a Report, read), `PUT
+ * /api/inbox/<run id>` (read, archived), `GET /api/inbox/text?path=` (a Markdown Report's text).
+ * A refusal answers with its plain reason and, for a field of the dialog, the field (BOT-2.2).
+ */
+async function botsCall(req: IncomingMessage, res: ServerResponse, url: URL, bots: NonNullable<AppOptions['bots']>): Promise<void> {
+  const path = url.pathname;
+  try {
+    // INBOX-2.4: at most its first megabyte, as text, and whether it was cut; never another extension.
+    if (path === '/api/inbox/text') {
+      if (req.method !== 'GET') return json(res, 405, { error: 'method not allowed' });
+      const file = await bots.text(url.searchParams.get('path') ?? '');
+      if (!file) return json(res, 404, { error: 'This file is not available.' });
+      res.writeHead(200, {
+        ...SECURITY_HEADERS, 'content-type': 'text/plain; charset=utf-8', 'content-length': file.body.length, 'cache-control': 'no-store',
+        ...(file.truncated ? { 'x-lookout-truncated': '1' } : {}),
+      });
+      return void res.end(file.body);
+    }
+    const report = /^\/api\/inbox\/([^/]{1,64})$/.exec(path);
+    if (report) {
+      const id = report[1]!;
+      if (!BOT_ID.test(id)) return json(res, 404, { error: 'This Report is gone.' });
+      if (req.method === 'GET') return json(res, 200, await bots.detail(id));
+      if (req.method !== 'PUT') return json(res, 405, { error: 'method not allowed' });
+      const b = await readJson(req, res, MAX_MARK_BODY, null);
+      if (b === NO_BODY) return;
+      return json(res, 200, { run: bots.mark(id, b) });
+    }
+    const match = /^\/api\/bots(?:\/([^/]{1,64})(\/run)?)?$/.exec(path);
+    if (!match) return json(res, 404, { error: 'not found' });
+    const [, id, run] = match;
+    if (id !== undefined && !BOT_ID.test(id)) return json(res, 404, { error: 'This Bot is gone.' });
+    const body = () => readJson(req, res, MAX_BOT_BODY, { error: 'The prompt is too long.', field: 'prompt' });
+    switch (`${req.method} ${id === undefined ? 'bots' : run ? 'run' : 'bot'}`) {
+      case 'POST bots': {
+        const b = await body();
+        if (b === NO_BODY) return;
+        return json(res, 200, { bot: await bots.create(b) });
+      }
+      case 'PUT bot': {
+        const b = await body();
+        if (b === NO_BODY) return;
+        return json(res, 200, { bot: await bots.update(id!, b) });
+      }
+      case 'DELETE bot':
+        bots.remove(id!);
+        return json(res, 200, { ok: true });
+      // BOT-4.2: Run now sends no body; it answers once the start has, with the run as it is then.
+      case 'POST run':
+        return json(res, 200, { run: await bots.runNow(id!) });
+    }
+  } catch (err) {
+    if (err instanceof BotsError) return json(res, err.status, err.field ? { error: err.message, field: err.field } : { error: err.message });
+    throw err;
+  }
+  return json(res, 405, { error: 'method not allowed' });
 }
 
 /** TOPIC-14: Suggest Topics' routes. A run goes on after the answer; every tab hears it through `topics`. */
@@ -1152,8 +1229,17 @@ async function historyCall(res: ServerResponse, call: () => Promise<unknown>): P
   }
 }
 
-function json(res: ServerResponse, status: number, body: unknown, outputFile = false): void {
-  res.writeHead(status, { ...SECURITY_HEADERS, ...(outputFile ? OUTPUT_HEADERS : {}), 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+/**
+ * `outputFile`: the file route's own answers carry its sandbox (LIB-3.3); for a Report's frame
+ * (INBOX-2.9) they also say only Lookout's page may frame them, without `X-Frame-Options`.
+ */
+function json(res: ServerResponse, status: number, body: unknown, outputFile: false | 'tab' | 'frame' = false): void {
+  const headers: Record<string, string> = { ...SECURITY_HEADERS, ...(outputFile ? OUTPUT_HEADERS : {}), 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' };
+  if (outputFile === 'frame') {
+    delete headers['x-frame-options'];
+    headers['content-security-policy'] = FRAMED_OUTPUT_CSP;
+  }
+  res.writeHead(status, headers);
   res.end(JSON.stringify(body));
 }
 

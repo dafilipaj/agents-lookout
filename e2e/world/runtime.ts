@@ -671,6 +671,21 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
       }
     }
 
+    // INBOX: the declared Reports, as the server's store keeps Bot runs that ended (`server/bots.ts`).
+    if (spec.reports.length) {
+      const runs = spec.reports.map((r) => {
+        const arrivedAt = r.arrivedAt ? Date.parse(r.arrivedAt) : Date.now();
+        return {
+          id: r.id, botId: `bot-${r.id}`, botName: r.botName, name: `${r.botName} run`, dueAt: null, startedAt: arrivedAt - 4 * 60_000, lateMs: 0,
+          state: r.state ?? 'finished', sessionId: r.sessionId, harness: 'claude', waitingFor: null, endedAt: arrivedAt, failure: r.failure ?? null, session: 'ended',
+          arrivedAt, title: r.title, holds: { documents: r.documents ?? 0, reply: !!r.reply, first: null }, read: r.read ?? false, archived: r.archived ?? false,
+          reply: r.reply ?? null,
+        };
+      });
+      await mkdir(join(home, '.lookout'), { recursive: true });
+      await writeFile(join(home, '.lookout', 'bots.json'), JSON.stringify({ version: 1, bots: [], runs }, null, 2) + '\n', { mode: 0o600 });
+    }
+
     // Built from nothing, so none of the runner's variables leak in (Fleet's UNSET list included).
     Object.assign(env, {
       HOME: home,

@@ -18,6 +18,10 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Behaviour test**: An end-to-end test of one Acceptance criterion: Playwright drives the built Lookout inside a World. Its title starts with the criterion's ID. See the TEST spec.
 
+**Bot**: A saved start with a schedule: a name, a Harness, a model, a Start directory and a prompt, which Lookout starts as a Session at its times, or when you press Run now. For either half of the job: a Monday team report, a nightly look at flaky tests. Lookout ships none; you make them in the Bots tab of the right sidebar. See the BOT spec.
+
+**Bot run**: One start of a Bot and the Session it became: *starting*, *running*, *waiting on you* (its Session Needs you), then *finished* or *failed*. Lookout ends a finished run's Session unless you opened it, and the run arrives in the Inbox as a Report. Not a Test run. See BOT-4.
+
 **Branch point**: Where a Checkout's branch left its repo's default branch: the merge-base of HEAD with `origin/HEAD`'s branch, else a local `main` or `master`. On the default branch itself, or in a repo without one, it's HEAD. Changes are counted from it. See the DIFF spec.
 
 **Building block**: A CLI with a stable `--json` contract that Lookout consumes and other people's UIs could consume too: Fleet, `tb-session`, the ports CLI. Building blocks live outside this repo.
@@ -34,7 +38,7 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Design system**: Lookout's shared look: the type scale and colour tokens in `web/src/index.css`, the components in `web/src/components/ui/`, and the rules for using them, written down in the DS spec and guarded by tests ([0009](decisions/0009-one-design-system-guarded-by-tests.md)).
 
-**Done**: A Session that reported its work finished, with nothing waiting on you, by running `fleet done` (optionally with a one-line note), and hasn't been prompted since, nor gone on working (a tool call of its main thread after it). Only the Session itself can: Fleet refuses a Subagent's `fleet done`, and a `claude -p`'s from its shell. Fleet keeps the mark; a new prompt clears it. Nothing closes a Done Session: you read it and end it, or send it more work.
+**Done**: A Session that reported its work finished, with nothing waiting on you, by running `fleet done` (optionally with a one-line note), and hasn't been prompted since, nor gone on working (a tool call of its main thread after it). Only the Session itself can: Fleet refuses a Subagent's `fleet done`, and a `claude -p`'s from its shell. Fleet keeps the mark; a new prompt clears it. Nothing closes a Done Session: you read it and end it, or send it more work. One exception: Lookout ends the Session of a finished Bot run (BOT-4).
 
 **Edge**: A connection you draw from one Topic to another, with a direction and an optional label that reads from the first to the second. Shown on both Topics in the Topics tab and as a line in the graph. See TOPIC-6.
 
@@ -60,6 +64,8 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Import graph**: Which of a tree's TypeScript and JavaScript files import which, as the scanner reads them from a commit or from a Checkout's working tree. An import of a package isn't in it. See ARCH-1.
 
+**Inbox**: The place that lists what arrived for you to read: Reports, newest first, unread until you open one. See the INBOX spec.
+
 **Keep awake**: Lookout holding the Mac out of sleep while Sessions are At work: *Awake* stops idle sleep, *Lid closed* also keeps it running with the lid shut, on the charger, through the Amphetamine app. It turns itself off after 5 minutes with no Session At work, and the display still sleeps. See the AWAKE spec.
 
 **Kind**: What an Output is: a file, an Artifact or a Share. tb-session's `events` records the actions behind them as `write` and `edit` (a file), `artifact` and `share`; Lookout groups them into Outputs by kind and key. Its `--kind` flag filters the actions.
@@ -84,6 +90,8 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Ping**: A thread in a Watched channel with a message that mentions you, written by someone else. *Open* until you write in the thread after its latest mention (*answered*) or dismiss it (*dismissed*); a later mention opens it again. *Waiting* when it asks for your answer and says it will go on without one. Lookout reads Pings through `tb-slack` and never writes to Slack. See the PING spec.
 
+**Place**: One of the top-level parts of Lookout, switched on the rail at the window's left edge: the Inbox and Sessions, later People. A place owns the left column and the main pane; the right sidebar is the same in every place ([0017](decisions/0017-one-app-for-both-roles.md)). See the NAV spec.
+
 **PR**: An open GitHub pull request in a `productiveio/*` repo that you opened, or that is a Review request to you, as `tb-pr` lists it.
 
 **Pressure**: macOS's memory pressure level, `kern.memorystatus_vm_pressure_level`: normal (1), warn (2) or critical (4). Read by the Memory overview; critical forces its red.
@@ -93,6 +101,8 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 **Queued**: A Session with a job waiting in `res`, the machine-wide queue for heavy jobs (tests, type checks, builds), for cores and memory to come free. Its Status stays what the Harness says (usually Busy); its row and status line show the wait. See the RES spec.
 
 **Recommendation**: A proposed Topic membership: an item new to Lookout (a Session, PR or Task in no Topic) and the Open Topic it probably belongs to, or a new Topic, with its reason: a Link, or Jev's judgment. Nothing happens until you accept it. See TOPIC-9.
+
+**Report**: What one Bot run left for you, as one item in the Inbox: the Outputs its Session produced, or its last reply when it produced none, or why it failed. Unread until you open it. See INBOX-2.
 
 **Requirement**: One capability a feature provides, ID'd `<CODE>-n`.
 

@@ -17,9 +17,12 @@ import {
   Layers,
   type LucideIcon,
   type LucideProps,
+  Mail,
   Network,
   OctagonX,
+  Pencil,
   Play,
+  Plus,
   Power,
   RefreshCw,
   RotateCw,
@@ -58,12 +61,18 @@ export const ACTIONS = {
   copy: { word: 'Copy', icon: Copy },
   archive: { word: 'Archive', icon: Archive },
   unarchive: { word: 'Unarchive', icon: ArchiveRestore },
+  /** INBOX-3.2: a Report made unread again, as a closed envelope is. */
+  'mark-unread': { word: 'Mark unread', icon: Mail },
   delete: { word: 'Delete', icon: Trash2 },
   stop: { word: 'Stop', icon: CircleStop },
   esc: { word: 'Esc', icon: OctagonX },
   'end-session': { word: 'End Session', icon: Power },
   'show-terminal': { word: 'Show terminal', icon: SquareTerminal },
-  /** SETUP-4: a Claude Code skill or plugin, for Sessions started from now on. */
+  /** BOT-1.3, BOT-1.5: a Bot made, changed in its dialog, and started by hand (BOT-4.2). */
+  'new-bot': { word: 'New Bot', icon: Plus },
+  edit: { word: 'Edit', icon: Pencil },
+  'run-now': { word: 'Run now', icon: Play },
+  /** SETUP-4: a Claude Code skill or plugin, for Sessions started from now on. BOT-2.5: a Bot's schedule. */
   'turn-off': { word: 'Turn off', icon: ToggleLeft },
   'turn-on': { word: 'Turn on', icon: ToggleRight },
   refresh: { word: 'Refresh', icon: RefreshCw },

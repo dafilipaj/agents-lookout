@@ -12,6 +12,17 @@ export const OUTPUT_HEADERS = {
   'referrer-policy': 'no-referrer',
   'cache-control': 'no-store',
 };
+/**
+ * INBOX-2.9: the same sandbox for a Report shown in place (`frame=1`), and only Lookout's own page
+ * may frame it. It carries no `X-Frame-Options`.
+ */
+export const FRAMED_OUTPUT_CSP = `${OUTPUT_HEADERS['content-security-policy']}; frame-ancestors 'self'`;
+/**
+ * INBOX-2.9: sent after a framed page's own bytes. A link or a form that names no target opens as
+ * an ordinary tab; without it a plain link would replace the Report inside its frame. Browsers take
+ * the first `base` with a target wherever it stands, so a page that sets its own keeps it.
+ */
+export const FRAMED_HTML_TAIL = Buffer.from('\n<base target="_blank">\n');
 const MEDIA: Record<string, string> = {
   '.html': 'text/html; charset=utf-8', '.htm': 'text/html; charset=utf-8', '.pdf': 'application/pdf',
   '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.svg': 'image/svg+xml', '.webp': 'image/webp',
@@ -24,8 +35,10 @@ export class OutputFiles {
     this.paths.add(normalize(path));
     if (this.paths.size > 10_000) this.paths.delete(this.paths.values().next().value!);
   }
-  async serve(path: string, res: ServerResponse): Promise<void> {
+  /** `framed`: the answer is for a Report's frame in Lookout's own page (INBOX-2.9). */
+  async serve(path: string, res: ServerResponse, framed = false): Promise<void> {
     for (const [k, v] of Object.entries(OUTPUT_HEADERS)) res.setHeader(k, v);
+    if (framed) res.setHeader('content-security-policy', FRAMED_OUTPUT_CSP);
     const fail = (status: number, message: string) => { res.writeHead(status, { 'content-type': 'text/plain; charset=utf-8' }); res.end(message); };
     const normalized = normalize(path), type = MEDIA[extname(normalized).toLowerCase()];
     if (!isPlainPath(path) || !isAbsolute(path) || !this.paths.has(normalized) || !type) return fail(404, 'This file is not available.');
@@ -38,7 +51,10 @@ export class OutputFiles {
     if (!handle) return fail(404, 'This file could not be opened.');
     const opened = await handle.stat().catch(() => null);
     if (!opened?.isFile()) { await handle.close(); return fail(404, 'This file is not a regular file.'); }
-    res.writeHead(200, { 'content-type': type, 'content-length': opened.size });
-    await pipeline(handle.createReadStream(), res).catch(() => res.destroy());
+    // INBOX-2.9: a page shown in a Report's frame gets its links a tab of their own.
+    const tail = framed && type.startsWith('text/html') ? FRAMED_HTML_TAIL : null;
+    res.writeHead(200, { 'content-type': type, 'content-length': opened.size + (tail?.length ?? 0) });
+    if (!tail) return void (await pipeline(handle.createReadStream(), res).catch(() => res.destroy()));
+    await pipeline(handle.createReadStream(), res, { end: false }).then(() => res.end(tail), () => res.destroy());
   }
 }

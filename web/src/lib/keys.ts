@@ -17,6 +17,8 @@ export interface KeysPlace {
 }
 
 export const SESSIONS: KeysPlace = { column: 'left', at: 'sessions' };
+/** NAV-4.3: the Inbox's list, while the Inbox is the place. */
+export const INBOX: KeysPlace = { column: 'left', at: 'inbox' };
 
 const isTab = (s: string | undefined): s is RightTab => (RIGHT_TABS as readonly string[]).includes(s ?? '');
 
@@ -47,11 +49,14 @@ function panelPlace(el: Element): 'search' | 'list' | 'field' {
  * the column it opened from.
  */
 export function placeOf(el: Element | null): KeysPlace | null {
-  if (!el || el === el.ownerDocument.body || el === el.ownerDocument.documentElement) return SESSIONS;
+  // The page itself is the list's of the place that shows (SIDE-11.2, NAV-4.3).
+  if (!el || el === el.ownerDocument.body || el === el.ownerDocument.documentElement) return el?.ownerDocument.querySelector('[data-shell-column="left"][data-place="inbox"]') ? INBOX : SESSIONS;
   const column = el.closest<HTMLElement>('[data-shell-column]');
   switch (column?.dataset.shellColumn) {
+    // NAV-4.3: focus on the rail counts as the place's list's, in either place.
+    case 'rail':
     case 'left':
-      return SESSIONS;
+      return column?.dataset.place === 'inbox' ? INBOX : SESSIONS;
     case 'main':
       if (el.matches('[data-composer]')) return { column: 'main', at: 'composer' };
       if (el.closest('[data-testid="chat-rail"]')) return { column: 'main', at: 'rail' };

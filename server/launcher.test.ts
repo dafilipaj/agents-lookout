@@ -313,6 +313,43 @@ describe('starting Sessions', () => {
     expect(t.update).toHaveBeenCalledWith({ lastLaunch: { harness: 'claude', model: 'claude-opus-5-5', directory: '~/Projects/work', byHarness: { claude: { effort: null, skipPermissions: false } } } }, 'server');
   });
 
+  it('BOT-4.1: a start asked not to remember (a Bot\'s run) changes nothing the launcher remembers, and is a start like any other', async () => {
+    const previous = { harness: 'codex' as const, model: '', directory: '~/Projects/work', byHarness: { codex: { effort: 'max', skipPermissions: true } } };
+    const t = setup({ settings: { lastLaunch: previous } });
+    const launch = await t.launcher.start(req({ model: 'claude-opus-5-5', name: 'Tide tables · Nov 23', prompt: '/tide-tables' }), { remember: false });
+    expect(t.update).not.toHaveBeenCalled();
+    expect(spawnCall(t.calls).args.slice(-6)).toEqual(['--model', 'claude-opus-5-5', '--name', 'Tide tables · Nov 23', '--', '/tide-tables']);
+    // LAUNCH-4.2: its "Starting…" row and its Session show like any other start's.
+    expect(t.launcher.list()).toEqual([expect.objectContaining({ id: launch.id, state: 'starting', title: 'Tide tables · Nov 23' })]);
+    t.launcher.observe([row({})]);
+    expect(t.changes.at(-1)!.started).toEqual([{ launchId: launch.id, sessionId: 'sess-1' }]);
+    // Remembering stays the default.
+    await t.launcher.start(req());
+    expect(t.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('BOT-2.2: `check` runs a start\'s own checks and starts nothing: the request as a start would send it, or the refusal with its field', async () => {
+    const harnesses = JSON.stringify([
+      { id: 'claude', installed: true, models: [{ id: '', label: 'Default', efforts: ['medium', 'high'], default_effort: 'medium' }] },
+      { id: 'codex', installed: false, models: [{ id: '', label: 'Default' }] },
+    ]);
+    const t = setup({ harnesses });
+    expect(await t.launcher.check(req({ model: ' ', effort: 'high', skipPermissions: true, name: ' Tide tables ', prompt: 'One\r\nTwo' }))).toEqual({
+      directory: '~/Projects/work', harness: 'claude', model: '', name: 'Tide tables', prompt: 'One\nTwo', effort: 'high', skipPermissions: true,
+    });
+    await expect(t.launcher.check(req({ directory: '/etc' }))).rejects.toMatchObject({ status: 400, field: 'directory' });
+    await expect(t.launcher.check(req({ harness: 'codex' }))).rejects.toMatchObject({ status: 400, field: 'harness', message: "Codex isn't installed." });
+    await expect(t.launcher.check(req({ harness: 'pi' }))).rejects.toMatchObject({ status: 400, field: 'harness' });
+    await expect(t.launcher.check(req({ model: 'gpt-9' }))).rejects.toMatchObject({ status: 400, field: 'model' });
+    await expect(t.launcher.check(req({ effort: 'max' }))).rejects.toMatchObject({ status: 400, field: 'effort' });
+    await expect(t.launcher.check(req({ skipPermissions: 'yes' }))).rejects.toMatchObject({ status: 400, field: 'skipPermissions' });
+    // Nothing started, nothing shown, nothing remembered.
+    expect(spawnCall(t.calls)).toBeUndefined();
+    expect(t.launcher.list()).toEqual([]);
+    expect(t.changes).toEqual([]);
+    expect(t.update).not.toHaveBeenCalled();
+  });
+
   it('LAUNCH-4.4: when `fleet spawn` fails, the start fails with the reason, and its row goes away', async () => {
     const t = setup({
       spawn: async () => {

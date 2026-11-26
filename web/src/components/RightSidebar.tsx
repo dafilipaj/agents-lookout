@@ -1,5 +1,5 @@
 import type { WorkSnapshot } from '@shared/work.ts';
-import { BookOpen, BriefcaseBusiness, History as HistoryIcon, Layers, Puzzle, RefreshCw, Server, X } from 'lucide-react';
+import { BookOpen, Bot, BriefcaseBusiness, History as HistoryIcon, Layers, Puzzle, RefreshCw, Server, X } from 'lucide-react';
 import { type ComponentType, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject, useEffect, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { IconButton } from '@/components/ui/icon-button';
@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils';
 import { refreshState } from '@/lib/work';
 import { KeysEdge, SHELL_COLUMN, ShellCell } from './Shell';
 
-const TAB_ICON: Record<RightTab, ComponentType<{ className?: string }>> = { history: HistoryIcon, work: BriefcaseBusiness, library: BookOpen, topics: Layers, servers: Server, setup: Puzzle };
+const TAB_ICON: Record<RightTab, ComponentType<{ className?: string }>> = { history: HistoryIcon, work: BriefcaseBusiness, library: BookOpen, topics: Layers, bots: Bot, servers: Server, setup: Puzzle };
 
 /** PORTS-3.1: a tab's title, with the shown Local servers counted on Servers'. */
 const tabTitle = (t: RightTab, servers: number | undefined) => (t === 'servers' && servers !== undefined ? `${TAB_LABEL[t]}, ${servers} running` : TAB_LABEL[t]);
@@ -129,7 +129,7 @@ export function RightSidebar({ width, onResize, tab, onTab, onClose, refresh, on
   return (
     <aside
       aria-label="Right sidebar"
-      className={cn(SHELL_COLUMN, 'relative border-l border-sidebar-border bg-sidebar text-sidebar-foreground')}
+      className={cn(SHELL_COLUMN, '@container relative border-l border-sidebar-border bg-sidebar text-sidebar-foreground')}
       style={{ width }}
       data-shell-column="right"
       data-testid="right-sidebar"
@@ -161,13 +161,15 @@ export function RightSidebar({ width, onResize, tab, onTab, onClose, refresh, on
                 title={`${tabTitle(t, servers)} (${TAB_KEY[t]})`}
                 onClick={() => onTab(t, true)}
                 className={cn(
-                  'relative flex h-7 min-w-0 items-center gap-1.5 rounded-md px-2 text-body transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
-                  active ? 'bg-sidebar-accent font-medium text-foreground' : 'text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground',
+                  'relative flex h-7 min-w-0 items-center gap-1.5 rounded-md text-body transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
+                  // BOT-1.6: seven tabs fit the strip because a tab that shows only its icon is a 28 px square.
+                  active ? 'bg-sidebar-accent px-2 font-medium text-foreground' : 'w-7 shrink-0 justify-center text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground',
                 )}
               >
                 <Icon className="size-4 shrink-0" />
                 {/* PORTS-3.1: five names don't fit; the others show their icon, their name in the tooltip. */}
-                <span className={cn('truncate', !active && 'sr-only')} data-slot="tab-name">{TAB_LABEL[t]}</span>
+                {/* BOT-1.6: under 22rem seven tabs leave the open one's name no room: it shows its icon alone, as the others do. */}
+                <span className={cn('truncate', active ? '@max-[22rem]:sr-only' : 'sr-only')} data-slot="tab-name">{TAB_LABEL[t]}</span>
                 {/* An icon-only tab wears its count on the icon's corner, as the rail's buttons do, so it reads as that tab's. */}
                 {!!counts?.[t] && <Count n={counts[t]!} className={cn(!active && 'absolute -top-1 -right-0.5 px-1')} />}
               </button>
@@ -244,6 +246,7 @@ export function RightRail({ onOpen, counts, servers, corner }: { onOpen(tab: Rig
         {button('work')}
         {button('library')}
         {button('topics')}
+        {button('bots')}
         {button('servers')}
         {button('setup')}
         {/* AWAKE-4.1: the rail ends in the corner's line, level with the Memory line. */}

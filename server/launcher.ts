@@ -20,7 +20,7 @@ export const RECENT_START_MS = 60_000;
 const TRUST_POLL_INTERVAL_MS = 2000;
 
 const SPAWN_TIMEOUT_MS = 20_000;
-const MAX_NAME = 80;
+export const MAX_NAME = 80;
 const MAX_PROMPT = 100_000;
 const HARNESS_LABEL: Record<LaunchHarness, string> = { claude: 'Claude Code', codex: 'Codex' };
 const TERMINAL_LINES = 8;
@@ -304,9 +304,10 @@ export class Launcher {
 
   /**
    * LAUNCH-4.1: `fleet spawn --local --backend tmux …` with an argv array. Resolves once Fleet
-   * has created the Session host; throws LaunchError otherwise (LAUNCH-4.4).
+   * has created the Session host; throws LaunchError otherwise (LAUNCH-4.4). BOT-4.1: with
+   * `remember: false` (a Bot's run) the start changes nothing the launcher remembers (LAUNCH-1.2).
    */
-  async start(input: unknown): Promise<LaunchView> {
+  async start(input: unknown, opts: { remember?: boolean } = {}): Promise<LaunchView> {
     const req = await this.validate(input);
     const id = this.newId((input as Record<string, unknown> | null)?.launchId);
     const startDirectories = this.opts.settings.get().startDirectories;
@@ -318,6 +319,7 @@ export class Launcher {
     if (req.prompt) args.push('--', req.prompt);
     const title = req.name || `${HARNESS_LABEL[req.harness]} in ${basename(expandHome(req.directory))}`;
     const launch = await this.spawn({ id, title, harness: req.harness, directory: req.directory, resumes: null, name: req.name, prompt: req.prompt || null }, args);
+    if (opts.remember === false) return launch;
     // LAUNCH-1.2: remember the choices. A failed write doesn't fail the start. A start from a
     // Handover in the old Session's own directory (HAND-3.4) keeps the last Start directory.
     const last = this.opts.settings.get().lastLaunch?.directory;
@@ -680,6 +682,14 @@ export class Launcher {
     if (this.launches.get(id) !== launch || (prompt && launch.trust?.id !== prompt)) return; // reported, dismissed or another prompt meanwhile
     launch.terminal = lastLines(out, TERMINAL_LINES);
     this.changed();
+  }
+
+  /**
+   * BOT-2.2: a start's own checks (LAUNCH-2.1, LAUNCH-3.1 to 3.5) with nothing started: what a saved
+   * Bot is checked by. Answers the request as a start would send it; throws LaunchError as `start` does.
+   */
+  check(input: unknown): Promise<{ directory: string; harness: LaunchHarness; model: string; name: string; prompt: string; effort: string | undefined; skipPermissions: boolean }> {
+    return this.validate(input);
   }
 
   private async validate(input: unknown): Promise<{ directory: string; harness: LaunchHarness; model: string; name: string; prompt: string; effort: string | undefined; skipPermissions: boolean }> {

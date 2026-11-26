@@ -38,6 +38,20 @@ const message = () => screen.getByRole('textbox', { name: 'Message' });
  * own `press`es, so changing an entry's keys without changing what the code handles fails here.
  */
 const PROBES: Record<string, (user: UserEvent, press: Press) => Promise<void>> = {
+  // NAV-4.1: `1` shows the Inbox from a Session.
+  async 'place-inbox'(user, press) {
+    fresh('/s/a');
+    await pressKey(user, press);
+    expect(window.location.pathname).toBe('/inbox');
+  },
+  // NAV-4.1: `2` shows Sessions from the Inbox, where it was left (NAV-2.4).
+  async 'place-sessions'(user, press) {
+    fresh('/s/a');
+    await user.keyboard('1');
+    expect(window.location.pathname).toBe('/inbox');
+    await pressKey(user, press);
+    expect(window.location.pathname).toBe('/s/a');
+  },
   async move(user, press) {
     // With nothing selected, down goes to the first row and up to the last.
     fresh('/');
@@ -78,7 +92,7 @@ const PROBES: Record<string, (user: UserEvent, press: Press) => Promise<void>> =
   async panels(user, press) {
     fresh('/');
     await pressKey(user, press);
-    const name = { h: 'History', w: 'Work', l: 'Library', t: 'Topics', p: 'Servers', u: 'Setup' }[press.key]!;
+    const name = { h: 'History', w: 'Work', l: 'Library', t: 'Topics', b: 'Bots', p: 'Servers', u: 'Setup' }[press.key]!;
     expect(tab(name)).toHaveAttribute('aria-selected', 'true');
   },
   async tabs(user, press) {
@@ -174,7 +188,16 @@ const ELSEWHERE: Record<string, { file: string; criteria: string[] }[]> = {
   ],
   'panel-copy': [{ file: 'LibraryPanel.test.tsx', criteria: ['LIB-3.7'] }],
   'panel-stop': [{ file: 'Servers.test.tsx', criteria: ['PORTS-4.6'] }],
-  'panel-switch': [{ file: 'SetupPanel.test.tsx', criteria: ['SETUP-4.5'] }],
+  'panel-switch': [
+    { file: 'SetupPanel.test.tsx', criteria: ['SETUP-4.5'] },
+    { file: 'BotsPanel.test.tsx', criteria: ['BOT-1.4'] },
+  ],
+  'inbox-move': [{ file: 'Inbox.test.tsx', criteria: ['INBOX-5.1'] }],
+  'inbox-jump': [{ file: 'Inbox.test.tsx', criteria: ['INBOX-5.1'] }],
+  'inbox-filter': [{ file: 'Inbox.test.tsx', criteria: ['INBOX-1.3'] }],
+  'inbox-archive': [{ file: 'Inbox.test.tsx', criteria: ['INBOX-4.1'] }],
+  'inbox-open': [{ file: 'Inbox.test.tsx', criteria: ['INBOX-2.8'] }],
+  'inbox-session': [{ file: 'Inbox.test.tsx', criteria: ['INBOX-2.7'] }],
   start: [{ file: 'Launcher.test.tsx', criteria: ['LAUNCH-3.3'] }],
   'commands-move': [{ file: 'Commands.test.tsx', criteria: ['VIEW-15.7'] }],
   'commands-pick': [{ file: 'Commands.test.tsx', criteria: ['VIEW-15.7', 'VIEW-15.8', 'LAUNCH-8.3'] }],
@@ -299,14 +322,14 @@ describe('the hint line (VIEW-3.12)', () => {
     // A panel's line leaves out the keys its rows don't take: History's rows open nothing with O, Servers' take neither A nor O.
     expect(line('list', 'history')).toBe('History · ↑ ↓ move · Enter expand · A add to Topic');
     expect(line('list', 'servers')).toBe('Servers · ↑ ↓ move · Enter open · X stop');
-    expect(line('panels')).toBe('Panels · H W L T P U open');
+    expect(line('panels')).toBe('Panels · H W L T B P U open');
   });
 });
 
 describe('the Keyboard shortcuts dialog', () => {
   const open = () => screen.getByRole('button', { name: 'Keyboard shortcuts' });
 
-  it('SIDE-7.3: a "Keyboard shortcuts" icon button sits beside Settings, sized and spaced as New Session and Settings are', () => {
+  it('SIDE-7.3, NAV-1.3: a "Keyboard shortcuts" icon button sits above Settings at the rail\'s bottom, sized as Settings and 4 px from it', () => {
     fresh('/s/a');
     const button = open();
     const settings = screen.getByRole('button', { name: 'Settings' });
@@ -315,8 +338,9 @@ describe('the Keyboard shortcuts dialog', () => {
     expect(button).toHaveAttribute('title', 'Keyboard shortcuts');
     expect(button.querySelector('svg')).not.toBeNull();
     expect(button.parentElement).toBe(settings.parentElement);
-    expect(button.previousElementSibling).toBe(settings);
+    expect(settings.previousElementSibling).toBe(button);
     expect(settings.parentElement).toHaveClass('gap-1');
+    expect(button.closest('[data-shell-column]')).toHaveAttribute('data-shell-column', 'rail');
     expect(screen.queryByRole('dialog')).toBeNull();
     // It has no key of its own: no entry in the list names it.
     expect(JSON.stringify(SHORTCUTS)).not.toMatch(/Keyboard shortcuts/);

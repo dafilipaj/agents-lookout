@@ -6,14 +6,16 @@ import { cn } from '@/lib/utils';
  * SIDE-8.1: the app shell is one CSS grid, rows header / content / dock, shared by every column.
  * Each column is a subgrid spanning all three rows, so the header's bottom line and the dock's
  * top line are the grid's own row edges: they line up across the columns by construction, and a
- * taller cell on either side (a growing composer, more usage rows) grows the whole row. Columns: the Session sidebar, the main pane, and the right sidebar (History, Work).
+ * taller cell on either side (a growing composer, more usage rows) grows the whole row. Columns: the
+ * rail of places (NAV-1.1), the left column with the place's list (the Session sidebar, or the Inbox's),
+ * the main pane, and the right sidebar (History, Work).
  *
  * The dock row grows only up to 40% of the window (`fit-content(40dvh)`) and its cells scroll past
  * that, so text that wraps in a narrow main pane can't squeeze the content row (the Session list).
  * At rest it is one height in every view: the Session sidebar's dock cell holds DockRest (an
  * invisible empty composer with its status line), so switching views never moves the dock line.
  */
-export const SHELL_GRID = 'grid h-dvh overflow-hidden grid-cols-[auto_minmax(0,1fr)_auto] grid-rows-[minmax(3rem,auto)_minmax(0,1fr)_fit-content(40dvh)]';
+export const SHELL_GRID = 'grid h-dvh overflow-hidden grid-cols-[auto_auto_minmax(0,1fr)_auto] grid-rows-[minmax(3rem,auto)_minmax(0,1fr)_fit-content(40dvh)]';
 
 /** A column of the shell: a subgrid over all three rows. */
 export const SHELL_COLUMN = 'row-span-full grid grid-rows-subgrid min-h-0 min-w-0';

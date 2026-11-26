@@ -67,7 +67,7 @@ async function expand(row: Locator) {
 
 /** Saves a Productive email on the Settings page, opened from the Session sidebar; Work stays as it is. */
 async function saveProductiveEmail(page: Page, email: string) {
-  await sessionSidebar(page).getByRole('button', { name: 'Settings' }).click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await emailField(page).fill(email);
   await saveEmail(page).click();
   await expect(page.locator('form', { has: emailField(page) }).getByRole('status')).toHaveText('Saved');
@@ -601,7 +601,7 @@ scenario(
   async ({ page, world }) => {
     await openWork(page);
     await world.step('the PRs to show', () => expect(prRows(page)).toHaveCount(3));
-    await sessionSidebar(page).getByRole('button', { name: 'Settings' }).click();
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
     await expect(emailField(page)).toHaveValue(ME);
     await expect(page.getByText('From your git config. Not saved yet: press Save to use it.')).toBeVisible();
     // Shown, not saved: the server keeps no email, and Tasks isn't read.

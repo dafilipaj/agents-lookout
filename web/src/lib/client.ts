@@ -1,4 +1,5 @@
 import type { AwakeMode, AwakeSnapshot } from '@shared/awake.ts';
+import type { BotInput, BotRun, BotView, ReportDetail, ReportMark } from '@shared/bots.ts';
 import type { LibraryPage, LibraryQuery } from '@shared/library.ts';
 import type { PathAnswer } from '@shared/files.ts';
 import type { StopResult, StopTarget } from '@shared/ports.ts';
@@ -43,6 +44,20 @@ export interface LookoutClient {
   stopServer(target: StopTarget): Promise<StopResult>;
   /** AWAKE-1.1: keep-awake's mode; a refusal is a SaveError with its reason and, for AWAKE-3.2, `kind: amphetamine-busy`. */
   setAwake(mode: AwakeMode, replace?: boolean): Promise<AwakeSnapshot>;
+  /** BOT-2.1, 2.2: makes a Bot; a refusal is a SaveError with its field. */
+  createBot(input: BotInput): Promise<BotView>;
+  /** BOT-2.1, 2.5: changes a Bot, or turns it off or on. */
+  updateBot(id: string, patch: Partial<BotInput>): Promise<BotView>;
+  /** BOT-2.4: deletes a Bot; refused while one of its runs is going. */
+  deleteBot(id: string): Promise<void>;
+  /** BOT-4.2: Run now. */
+  runBot(id: string): Promise<BotRun>;
+  /** INBOX-2: one Report, with what its Session produced read again. */
+  report(runId: string): Promise<ReportDetail>;
+  /** INBOX-3.1, 4.1: marks a Report read or unread, archived or not. */
+  markReport(runId: string, mark: ReportMark): Promise<BotRun>;
+  /** INBOX-2.4: a Markdown Report's text, at most its first megabyte, and whether it was cut. */
+  reportText(path: string): Promise<{ text: string; truncated: boolean }>;
   /** VIEW-5.12: renames the Session through Fleet: the Harness's own `/rename`, only while it's Idle. */
   renameSession(sessionId: string, title: string): Promise<RenameResult>;
   /**
@@ -518,6 +533,27 @@ export function createHttpClient(): LookoutClient {
     endSession: (sessionId, target) =>
       call<EndResult>(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/end`, target), 'Ending the Session'),
     stopServer: (target) => call<StopResult>(() => send('POST', '/api/ports/stop', target), 'Stopping the server'),
+    createBot: async (input) => (await call<{ bot: BotView }>(() => send('POST', '/api/bots', input), 'Saving the Bot')).bot,
+    updateBot: async (id, patch) => (await call<{ bot: BotView }>(() => send('PUT', `/api/bots/${encodeURIComponent(id)}`, patch), 'Saving the Bot')).bot,
+    deleteBot: async (id) => {
+      await call(() => send('DELETE', `/api/bots/${encodeURIComponent(id)}`), 'Deleting the Bot');
+    },
+    runBot: async (id) => (await call<{ run: BotRun }>(() => send('POST', `/api/bots/${encodeURIComponent(id)}/run`), 'Starting the run')).run,
+    report: (runId) => call<ReportDetail>(() => fetch(`/api/inbox/${encodeURIComponent(runId)}`), 'Reading the Report'),
+    markReport: async (runId, mark) => (await call<{ run: BotRun }>(() => send('PUT', `/api/inbox/${encodeURIComponent(runId)}`, mark), 'Saving')).run,
+    reportText: async (path) => {
+      let res: Response;
+      try {
+        res = await fetch(`/api/inbox/text?${new URLSearchParams({ path })}`);
+      } catch {
+        throw new SaveError("Couldn't reach the Lookout server.", null, null, { lost: true });
+      }
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new SaveError(body.error ?? `Reading the file failed (${res.status}).`, null, res.status);
+      }
+      return { text: await res.text(), truncated: res.headers.get('x-lookout-truncated') === '1' };
+    },
     setAwake: (mode, replace = false) => call<AwakeSnapshot>(() => send('POST', '/api/awake', replace ? { mode, replace } : { mode }), 'Changing keep-awake'),
     renameSession: (sessionId, title) =>
       call<RenameResult>(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/rename`, { title }), 'Renaming'),

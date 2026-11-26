@@ -117,18 +117,18 @@ it('PORTS-2.3: a chip that is the status line\'s only part hands focus on when t
 });
 
 describe('the Servers tab (PORTS-3)', () => {
-  it('PORTS-3.1: a fifth tab after Topics, P opens and closes it, and its tooltip counts the shown servers', async () => {
+  it('PORTS-3.1: a tab after Topics and Bots, P opens and closes it, and its tooltip counts the shown servers', async () => {
     const user = userEvent.setup();
     const app = open('/s/a');
     app.emit({ type: 'ports', ports: ports([API, VITE, MYSQL]) });
     expect(screen.getByRole('button', { name: 'Servers, 2 running' })).toBeInTheDocument();
     await user.keyboard('p');
     const tabs = screen.getAllByRole('tab');
-    expect(tabs.map((t) => t.textContent)).toEqual(['History', 'Work', 'Library', 'Topics', 'Servers', 'Setup']);
-    expect(tabs[4]).toHaveAttribute('aria-selected', 'true');
-    expect(tabs[4]).toHaveAttribute('title', 'Servers, 2 running (P)');
+    expect(tabs.map((t) => t.textContent)).toEqual(['History', 'Work', 'Library', 'Topics', 'Bots', 'Servers', 'Setup']);
+    expect(tabs[5]).toHaveAttribute('aria-selected', 'true');
+    expect(tabs[5]).toHaveAttribute('title', 'Servers, 2 running (P)');
     // Only the open tab's name shows; the others keep theirs for screen readers and in the tooltip.
-    expect(tabs.map((t) => t.querySelector('[data-slot="tab-name"]')!.classList.contains('sr-only'))).toEqual([true, true, true, true, false, true]);
+    expect(tabs.map((t) => t.querySelector('[data-slot="tab-name"]')!.classList.contains('sr-only'))).toEqual([true, true, true, true, true, false, true]);
     act(() => (document.activeElement as HTMLElement).blur());
     await user.keyboard('p');
     expect(screen.queryByRole('tab', { name: 'Servers' })).toBeNull();

@@ -8,9 +8,10 @@ import type { AddressInfo } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_PORT } from '../shared/defaults.ts';
 import { AnswerLedger } from './answerer.ts';
+import { Bots, defaultBotsPath, mayRunBots } from './bots.ts';
 import { createApp } from './app.ts';
 import { readBuild } from './static.ts';
-import { endSession } from './closer.ts';
+import { type CloserOptions, endSession } from './closer.ts';
 import { type ModelSwitcherOptions, StatusSwitches, switchEffort, switchModel } from './model-switch.ts';
 import { renameSession } from './renamer.ts';
 import { run, runLog } from './exec.ts';
@@ -98,6 +99,8 @@ const launcher = new Launcher({
       topicLaunches.started(started, monitor.snapshot().sessions);
       handoffLaunches.started(started, monitor.snapshot().sessions);
     }
+    // BOT-4.3, BOT-4.5: a Bot's run follows its start: a Session, a Trust prompt, or a failure.
+    bots.launches(launches, started);
     app.broadcast({ type: 'launches', launches, started });
   },
   // HAND-3.4: where the old Session works, as Fleet lists it at that moment, else as History has it.
@@ -164,6 +167,8 @@ const monitor: SessionMonitor = new SessionMonitor({
     observeTopics(() => topics.observeSessions(monitor.snapshot().sessions));
     // TOPIC-9.1: a Session with a session id is a candidate once.
     recommender.observeSessions(monitor.snapshot().sessions);
+    // BOT-4.3 to 4.5: each run going is followed by its Session's row; after the launcher's `observe`, which may have just reported it.
+    bots.observe(monitor.snapshot().sessions);
   },
 });
 
@@ -236,6 +241,34 @@ const viewer = new Viewer({
 });
 
 const history = new History({ runner: run, bin: () => resolveTbSessionBin(env), toolVersion: () => tools.version('tb-session') });
+// VIEW-5.6: how a Session is ended, for End Session and for a Bot's finished run (BOT-4.6).
+const closer: CloserOptions = {
+  runner: run,
+  fleetBin: () => resolveFleetBin(env),
+  lookup: (sid) => monitor.get(sid),
+  freshList: () => fetchFleetList(run, resolveFleetBin(env)),
+  refresh: () => monitor.pollNow(),
+};
+// LIB: the Library, read by its panel, by Topics and by a Bot's run for what its Session produced (INBOX).
+const library = new Library({ runner: run, bin: () => resolveTbSessionBin(env), env, toolVersion: () => tools.version('tb-session'), onRead: (items, pruned) => topics.libraryRead(items, pruned) });
+// BOT, INBOX: the Bots, their schedule and their runs, in `~/.lookout/bots.json` (or the file `LOOKOUT_BOTS` names).
+// The server holding the store's lock looks for due Bots, with no tab open; a second one only shows them (BOT-2.6).
+const bots = new Bots({
+  path: defaultBotsPath(env),
+  // BOT-2.6: a development server never runs the default store's Bots; `LOOKOUT_BOTS` gives it a store of its own.
+  mayOwn: mayRunBots(env),
+  launcher,
+  monitor,
+  library,
+  history,
+  // INBOX: a run's last reply, through the chat feed's reader, before its Session is ended.
+  latest: (sessionId) => viewer.latest(sessionId),
+  // BOT-4.6: asked once more of a fresh list: never one that went back to work, asks something, or was opened since the last poll.
+  end: (sessionId, target, only) => endSession(closer, sessionId, target, { only }),
+  // BOT-4.6: a Session you opened since its row was last derived is yours too.
+  viewedAt: (sessionId) => chatSeen.viewedAt(sessionId),
+  onChange: (b) => app.broadcast({ type: 'bots', bots: b }),
+});
 /** HIST-3.2: live means in Fleet's current list; a fresh read, or the last one when that fails. */
 const isLive = async (id: string, harness: string) => {
   const fresh = await fetchFleetList(run, resolveFleetBin(env));
@@ -453,22 +486,12 @@ const app = createApp({
       ),
     switchModel: (id, req) => switchModel(switcher, id, req),
     switchEffort: (id, req) => switchEffort(switcher, id, req),
-    end: (id, target) =>
-      endSession(
-        {
-          runner: run,
-          fleetBin: () => resolveFleetBin(env),
-          lookup: (sid) => monitor.get(sid),
-          freshList: () => fetchFleetList(run, resolveFleetBin(env)),
-          refresh: () => monitor.pollNow(),
-        },
-        id,
-        target,
-      ),
+    end: (id, target) => endSession(closer, id, target),
   },
   // VIEW-1.18: a Session's file links, resolved against the cwd of its last listed row.
   files: { check: (id, body) => checkSessionPaths({ lookup: (sid) => monitor.get(sid) }, id, body) },
-  library: new Library({ runner: run, bin: () => resolveTbSessionBin(env), env, toolVersion: () => tools.version('tb-session'), onRead: (items, pruned) => topics.libraryRead(items, pruned) }),
+  library,
+  bots,
   history: {
     find: (q) => history.find(q),
     // HAND-4: a past Session's hand-offs come from the record when History opens it.
@@ -484,6 +507,9 @@ const app = createApp({
 
 // TOOLS-1.4: the first read, when the server starts.
 void tools.start();
+// BOT-2.6, BOT-3.2, BOT-4.7: the store's lock is taken, the store read, the runs a server before this one left
+// going picked up, and the 30 s look begins.
+bots.start();
 // AWAKE-1.3: the saved mode comes back; an Amphetamine call may wait on macOS, so not before listening.
 void awake.start();
 
@@ -504,6 +530,8 @@ const shutdown = async () => {
   shuttingDown = true;
   monitor.stop();
   launcher.stop();
+  // BOT-2.6: the store's lock is given up, so the next server to start runs the Bots.
+  bots.stop();
   viewer.stop();
   app.server.close();
   app.server.closeAllConnections();

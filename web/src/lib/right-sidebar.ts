@@ -5,11 +5,11 @@ import { SETUP_FILTERS, SETUP_VIEWS, type SetupFilter, type SetupView } from './
  * open, its width, the tab and Work's filter are kept in this browser (HIST-1.3, WORK-1.2, WORK-1.5).
  */
 
-export type RightTab = 'history' | 'work' | 'library' | 'topics' | 'servers' | 'setup';
-export const RIGHT_TABS: readonly RightTab[] = ['history', 'work', 'library', 'topics', 'servers', 'setup'];
-export const TAB_LABEL: Record<RightTab, string> = { history: 'History', work: 'Work', library: 'Library', topics: 'Topics', servers: 'Servers', setup: 'Setup' };
-/** The key that opens each tab, or closes the sidebar when that tab is already showing (WORK-1.1, TOPIC-3.1, PORTS-3.1, SETUP-1.1). */
-export const TAB_KEY: Record<RightTab, string> = { history: 'H', work: 'W', library: 'L', topics: 'T', servers: 'P', setup: 'U' };
+export type RightTab = 'history' | 'work' | 'library' | 'topics' | 'bots' | 'servers' | 'setup';
+export const RIGHT_TABS: readonly RightTab[] = ['history', 'work', 'library', 'topics', 'bots', 'servers', 'setup'];
+export const TAB_LABEL: Record<RightTab, string> = { history: 'History', work: 'Work', library: 'Library', topics: 'Topics', bots: 'Bots', servers: 'Servers', setup: 'Setup' };
+/** The key that opens each tab, or closes the sidebar when that tab is already showing (WORK-1.1, TOPIC-3.1, BOT-1.1, PORTS-3.1, SETUP-1.1). */
+export const TAB_KEY: Record<RightTab, string> = { history: 'H', work: 'W', library: 'L', topics: 'T', bots: 'B', servers: 'P', setup: 'U' };
 
 /**
  * What the tab strip asks of the open panel (HIST-2.7, WORK-1.7): with focus on a tab, Refresh or
