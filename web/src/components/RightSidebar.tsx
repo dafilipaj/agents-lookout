@@ -10,6 +10,12 @@ import { KeysEdge, SHELL_COLUMN, ShellCell } from './Shell';
 
 const TAB_ICON: Record<RightTab, ComponentType<{ className?: string }>> = { history: HistoryIcon, work: BriefcaseBusiness, library: BookOpen, topics: Layers, bots: Bot, servers: Server, setup: Puzzle };
 
+/**
+ * BOT-1.6: the narrowest right sidebar whose open tab still shows its name. The strip is given the
+ * sidebar's width, so it needs no container query (SIDE-8.3).
+ */
+export const TAB_NAME_MIN_WIDTH = 352;
+
 /** PORTS-3.1: a tab's title, with the shown Local servers counted on Servers'. */
 const tabTitle = (t: RightTab, servers: number | undefined) => (t === 'servers' && servers !== undefined ? `${TAB_LABEL[t]}, ${servers} running` : TAB_LABEL[t]);
 
@@ -129,7 +135,8 @@ export function RightSidebar({ width, onResize, tab, onTab, onClose, refresh, on
   return (
     <aside
       aria-label="Right sidebar"
-      className={cn(SHELL_COLUMN, '@container relative border-l border-sidebar-border bg-sidebar text-sidebar-foreground')}
+      // SIDE-8.3: never `@container` here: containment turns the column's subgrid off, and the header cell grows off the header line.
+      className={cn(SHELL_COLUMN, 'relative border-l border-sidebar-border bg-sidebar text-sidebar-foreground')}
       style={{ width }}
       data-shell-column="right"
       data-testid="right-sidebar"
@@ -149,6 +156,9 @@ export function RightSidebar({ width, onResize, tab, onTab, onClose, refresh, on
           {RIGHT_TABS.map((t) => {
             const Icon = TAB_ICON[t];
             const active = t === tab;
+            // PORTS-3.1: the tabs' names don't all fit, so only the open one shows its name. BOT-1.6: under
+            // 352 px seven tabs leave that name no room either, and it shows its icon alone, as the others do.
+            const iconOnly = !active || width < TAB_NAME_MIN_WIDTH;
             return (
               <button
                 key={t}
@@ -162,16 +172,16 @@ export function RightSidebar({ width, onResize, tab, onTab, onClose, refresh, on
                 onClick={() => onTab(t, true)}
                 className={cn(
                   'relative flex h-7 min-w-0 items-center gap-1.5 rounded-md text-body transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
+                  active ? 'bg-sidebar-accent font-medium text-foreground' : 'text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground',
                   // BOT-1.6: seven tabs fit the strip because a tab that shows only its icon is a 28 px square.
-                  active ? 'bg-sidebar-accent px-2 font-medium text-foreground' : 'w-7 shrink-0 justify-center text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground',
+                  iconOnly ? 'w-7 shrink-0 justify-center' : 'px-2',
                 )}
               >
                 <Icon className="size-4 shrink-0" />
-                {/* PORTS-3.1: five names don't fit; the others show their icon, their name in the tooltip. */}
-                {/* BOT-1.6: under 22rem seven tabs leave the open one's name no room: it shows its icon alone, as the others do. */}
-                <span className={cn('truncate', active ? '@max-[22rem]:sr-only' : 'sr-only')} data-slot="tab-name">{TAB_LABEL[t]}</span>
+                {/* A tab that shows its icon alone keeps its name for screen readers, and in its tooltip. */}
+                <span className={cn('truncate', iconOnly && 'sr-only')} data-slot="tab-name">{TAB_LABEL[t]}</span>
                 {/* An icon-only tab wears its count on the icon's corner, as the rail's buttons do, so it reads as that tab's. */}
-                {!!counts?.[t] && <Count n={counts[t]!} className={cn(!active && 'absolute -top-1 -right-0.5 px-1')} />}
+                {!!counts?.[t] && <Count n={counts[t]!} className={cn(iconOnly && 'absolute -top-1 -right-0.5 px-1')} />}
               </button>
             );
           })}

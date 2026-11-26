@@ -198,6 +198,14 @@ One of Lookout's top-level places, on the rail at the window's left edge: the In
 - **Don't:** colour the current place Primary; count something new in amber; give a place a right sidebar of its own.
 - **Guard:** DS-13.3 (`aria-current="page"` only in `side-nav.tsx` and `place-rail.tsx`), DS-2.3 (Needs you's amber on the rail only in `place-rail.tsx`), DS-7.4 (the 20 px mark stays in `components/ui/`). Its look is NAV-1.4.
 
+### A piece that changes with its column's width
+
+A tab that drops its name, a header that folds its facts: something inside a column of the shell that shows less when the column is narrow.
+
+- **Use** the width the piece is given when its column has one: the right sidebar's tab strip takes its `width` (`TAB_NAME_MIN_WIDTH`, BOT-1.6). Where there is none, a container query on a cell inside the column: `@container` on a `ShellCell`, a `PaneHeader` or a panel's own root, as the Session header's is.
+- **Don't:** put `@container`, or any other containment, on a column of the shell (`SHELL_COLUMN`, a `ShellView`). Containment turns its subgrid off: the column lays its rows out by itself, and its header cell grows off the header line. The right sidebar's was 330 px tall for that, in the build of 2026-11-26.
+- **Guard:** SIDE-8.3 (`Shell.test.tsx`: no subgrid is contained, in the page or where a column's classes are put together) and SIDE-8.4, a Behaviour test that measures the header line in a browser. jsdom lays nothing out, so only the second sees a height.
+
 ### A section heading
 
 | Level | Looks | Where |

@@ -1,5 +1,5 @@
 import type { HistoryDetail, HistoryItem } from '@shared/types.ts';
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NOW, fakeResizeObserver, launchView, renderApp, row } from '@/test/helpers';
@@ -85,6 +85,63 @@ function stubDockNote() {
   });
   return clip;
 }
+
+describe('the header line (SIDE-8.3)', () => {
+  it('SIDE-8.3: no column of the shell is a size container, with the right sidebar open or closed, in either place, nor where a column’s classes are put together', async () => {
+    /** The subgrids that are contained in some way, which would turn their subgrid off. */
+    const contained = () =>
+      [...document.querySelectorAll<HTMLElement>('.grid-rows-subgrid')]
+        .filter((el) => [...el.classList].some((c) => /^@container|^contain-|\[contain|\[container/.test(c)))
+        .map((el) => el.getAttribute('data-shell-column') ?? el.tagName);
+    const app = renderApp('/s/a');
+    app.snapshot([row({ id: 'a' })]);
+    // The rail of places, the left column, the main pane and its view, and the right sidebar's rail.
+    expect(document.querySelectorAll('.grid-rows-subgrid').length).toBeGreaterThanOrEqual(5);
+    expect(contained()).toEqual([]);
+    await openHistory();
+    expect(uses(column('right')!, SHELL_COLUMN)).toBe(true);
+    expect(contained()).toEqual([]);
+    act(() => {
+      window.history.pushState(null, '', '/inbox');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+    expect(document.querySelector('[data-shell-column="left"]')).toHaveAttribute('data-place', 'inbox');
+    expect(contained()).toEqual([]);
+
+    // And in the source, wherever a column's classes are put together with others.
+    const sources = import.meta.glob<string>(['./**/*.tsx', '../App.tsx', '!./**/*.test.tsx'], { query: '?raw', import: 'default', eager: true });
+    const columns = Object.entries(sources).flatMap(([file, text]) => [...text.matchAll(/cn\(\s*SHELL_COLUMN\s*,([^\n]*)/g)].map((m) => [file, m[1]!] as const));
+    expect(columns.length).toBeGreaterThanOrEqual(4);
+    for (const [file, classes] of columns) expect(classes, file).not.toMatch(/@container|\bcontain-|\[contain|\[container/);
+  });
+
+  it('BOT-1.6: the open tab shows its name from 352 px up; under that its icon alone, the 28 px square the other tabs are, its name kept for screen readers and its tooltip', () => {
+    const open = (width: number) => {
+      window.localStorage.setItem('lookout.right', JSON.stringify({ open: true, width, tab: 'topics' }));
+      const app = renderApp('/s/a');
+      app.snapshot([row({ id: 'a' })]);
+      return app;
+    };
+    const topics = () => screen.getByRole('tab', { name: /^Topics/ });
+    const name = () => topics().querySelector('[data-slot="tab-name"]')!;
+
+    const wide = open(352);
+    expect(screen.getByTestId('right-sidebar')).toHaveStyle({ width: '352px' });
+    expect(name()).not.toHaveClass('sr-only');
+    expect(topics()).toHaveClass('px-2');
+    expect(topics()).not.toHaveClass('w-7');
+    wide.unmount();
+
+    open(351);
+    expect(name()).toHaveClass('sr-only');
+    expect(topics()).toHaveClass('w-7', 'shrink-0', 'justify-center');
+    expect(topics()).not.toHaveClass('px-2');
+    expect(topics()).toHaveAttribute('aria-selected', 'true');
+    expect(topics()).toHaveAttribute('title', 'Topics (T)');
+    // Every tab is the same square then.
+    expect(screen.getAllByRole('tab').every((t) => t.classList.contains('w-7') && t.classList.contains('h-7'))).toBe(true);
+  });
+});
 
 describe('one grid (SIDE-8.1)', () => {
   it('SIDE-8.1 (support): the shell is one grid with rows header / content / dock, and every column is a subgrid over all three', async () => {
