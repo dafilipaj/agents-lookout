@@ -71,6 +71,7 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.lookout.server.pli
 - Stop it and don't start it at login: `launchctl bootout gui/$(id -u)/local.lookout.server`.
 - A `LOOKOUT_*` override goes in the plist's `EnvironmentVariables`; `bootout`, then `bootstrap` again, to take it.
 - Its output, a failed or slow CLI call included, goes to `~/.lookout/server.log`.
+- The plist sets `MaterializeDatalessFiles`, so a file kept in iCloud that isn't on this Mac is fetched when you open it in Lookout. macOS refuses such a read to a launchd job without it: an agent installed from an older copy of the plist needs the key added (`plutil -insert MaterializeDatalessFiles -bool true ~/Library/LaunchAgents/local.lookout.server.plist`), then `bootout` and `bootstrap`. What the server starts inherits the key: a Session it starts reads such a file as one started in a terminal does, once the tmux server it runs in was started with the key.
 
 ## Port, token and settings
 

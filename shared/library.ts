@@ -84,3 +84,12 @@ export interface DocumentAnswer {
 }
 /** DOC-3.1: what the server answers for a path it won't read. */
 export const DOCUMENT_UNAVAILABLE = "Lookout can't show this file.";
+/** DOC-3.4: a file kept in the cloud that macOS wouldn't fetch for Lookout's server. */
+export const FILE_NOT_DOWNLOADED = "This file is kept in iCloud and isn't on this Mac, and macOS wouldn't fetch it for Lookout's server. Open it once in your notes app, or download it in Finder, and it shows here.";
+/** DOC-3.4: a file whose text hasn't arrived in time. */
+export const FILE_SLOW = "This file hasn't arrived yet. One kept in iCloud is fetched over the network; open it again in a moment.";
+/** DOC-3.4: a file that is one Lookout shows and whose read failed, with what the disk said; `cloud`: it isn't on this Mac, so the fetch failed. */
+export const fileUnreadable = (code: string, cloud: boolean): string => {
+  const said = code ? ` (${code})` : '';
+  return cloud ? `This file is kept in iCloud and couldn't be fetched${said}. It needs the network; open it again when it's there.` : `This file couldn't be read${said}.`;
+};

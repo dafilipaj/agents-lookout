@@ -6,13 +6,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { PathAnswer } from '../shared/files.ts';
-import { DOCUMENT_UNAVAILABLE } from '../shared/library.ts';
+import { DOCUMENT_UNAVAILABLE, FILE_NOT_DOWNLOADED, FILE_SLOW } from '../shared/library.ts';
 import { defaultSettings } from '../shared/settings.ts';
 import { createApp, type AppOptions } from './app.ts';
 import { RELIST_EVERY_MS, describeDocument } from './document.ts';
 import { checkSessionPaths } from './files.ts';
 import { Library } from './library.ts';
-import { OutputFiles } from './output-files.ts';
+import { OutputFiles, type TextRead } from './output-files.ts';
 import { People } from './people.ts';
 import { PrivateFolders } from './private-folders.ts';
 
@@ -161,6 +161,36 @@ it('PEOPLE-4.4: the Document view’s routes read a note a Person’s page named
   expect((await doc(b, hidden)).status).toBe(404);
   // A server without the People reader has no such route.
   expect((await request(await listening(app(emptyLibrary(), dir)), '/api/people')).status).toBe(404);
+});
+
+it('DOC-3.4: a file macOS won’t fetch from the cloud, one whose read failed and one that hasn’t arrived in time answer why, for a document’s text and for a Report’s', async () => {
+  let read: TextRead = null;
+  const files = { text: async () => read } as unknown as Library['files'];
+  const bots = { text: async () => read } as unknown as NonNullable<AppOptions['bots']>;
+  const a = await listening(app({ files } as unknown as Library, dir, { bots }));
+  const note = join(dir, 'vault/Team/Ines/1on1s/Ines 1on1 2026-11-24.md');
+  const asks = [() => text(a, note), () => request(a, `/api/inbox/text?${new URLSearchParams({ path: note })}`)];
+  const answers: [TextRead, number, string][] = [
+    [{ trouble: 'not-downloaded' }, 503, FILE_NOT_DOWNLOADED],
+    [{ trouble: 'slow' }, 504, FILE_SLOW],
+    [{ trouble: 'failed', code: 'ETIMEDOUT', cloud: true }, 500, "This file is kept in iCloud and couldn't be fetched (ETIMEDOUT). It needs the network; open it again when it's there."],
+    [{ trouble: 'failed', code: 'EACCES', cloud: false }, 500, "This file couldn't be read (EACCES)."],
+    [{ trouble: 'failed', code: '', cloud: false }, 500, "This file couldn't be read."],
+  ];
+  for (const ask of asks) {
+    for (const [trouble, status, error] of answers) {
+      read = trouble;
+      const answer = await ask();
+      expect(answer.status, error).toBe(status);
+      expect(JSON.parse(answer.body)).toEqual({ error });
+    }
+    // None of them is the answer of a file Lookout doesn't show, which says nothing of the file.
+    read = null;
+    expect((await ask()).status).toBe(404);
+    read = { body: Buffer.from('# Ines 1on1\n'), truncated: false };
+    expect(await ask()).toMatchObject({ status: 200, body: '# Ines 1on1\n' });
+  }
+  expect(FILE_NOT_DOWNLOADED).toMatch(/kept in iCloud and isn't on this Mac/);
 });
 
 it('PEOPLE-4.5: a document’s answer says whether the file is under the Vault folder, and a question that fails says it isn’t', async () => {

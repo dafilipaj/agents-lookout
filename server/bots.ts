@@ -12,7 +12,7 @@ import { LIBRARY_TYPES, type LibraryPage, type LibraryQuery, type OutputItem, ty
 import type { LaunchHarness } from '../shared/settings.ts';
 import type { ChatPage, EndResult, EndTarget, HistoryItem, LaunchView, SessionRow, Status } from '../shared/types.ts';
 import { isPlainPath } from './files.ts';
-import { readTextFile } from './output-files.ts';
+import { type TextRead, readTextFile } from './output-files.ts';
 import { SESSION_ID } from './history.ts';
 import { LaunchError, MAX_NAME } from './launcher.ts';
 import { LibraryError } from './library.ts';
@@ -622,15 +622,17 @@ export class Bots {
   /**
    * INBOX-2.4: a Markdown file, for a Report shown in place: only a path a Report's read of the
    * Library listed (the file route's exact-string rule), only a `.md`, a regular file by `lstat`,
-   * and at most REPORT_TEXT_MAX bytes of it. Null for anything else.
+   * and at most REPORT_TEXT_MAX bytes of it. Null for anything else; DOC-3.4: or why it can't be had right now.
    */
-  async text(path: string): Promise<{ body: Buffer; truncated: boolean } | null> {
+  async text(path: string): Promise<TextRead> {
     if (!isAbsolute(path) || !isPlainPath(path)) return null;
     const file = normalize(path);
     if (extname(file).toLowerCase() !== '.md' || !this.texts.has(file)) return null;
     // PEOPLE-2.5: a file listed for a Report before its folder became private is refused as unlisted.
     if (await this.opts.library.isPrivate?.(file)) return null;
-    return readTextFile(file, REPORT_TEXT_MAX);
+    const read = await readTextFile(file, REPORT_TEXT_MAX);
+    // And again once it is read: a read that waited for a fetch can end after the folder became private.
+    return read !== null && (await this.opts.library.isPrivate?.(file)) ? null : read;
   }
 
   /**

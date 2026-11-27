@@ -11,6 +11,13 @@ import { EndError } from './closer.ts';
 import type { FleetRow } from './fleet.ts';
 import { Launcher } from './launcher.ts';
 import { LibraryError } from './library.ts';
+import type { TextRead } from './output-files.ts';
+
+/** A read that gave a file's text; anything else fails the test. */
+const textOf = (read: TextRead) => {
+  if (read === null || 'trouble' in read) throw new Error(`no text: ${JSON.stringify(read)}`);
+  return read;
+};
 
 /** A local time in November 2026, so the tests hold in any time zone. The 23rd is a Monday. */
 const at = (day: number, hh: number, mm = 0, ss = 0) => new Date(2026, 10, day, hh, mm, ss).getTime();
@@ -1659,13 +1666,13 @@ describe('Reports', () => {
     await w.bots.detail(w.runId);
     const read = await w.bots.text(notes);
     expect(read).toMatchObject({ truncated: false });
-    expect(read!.body.toString('utf8')).toBe('# Tide tables, week 47\n\nHigh water at 06:12.\n');
+    expect(textOf(read).body.toString('utf8')).toBe('# Tide tables, week 47\n\nHigh water at 06:12.\n');
     // An Artifact's source file, by the same rules.
-    expect((await w.bots.text(source))!.body.toString('utf8')).toBe('# The page, as written\n');
-    const cut = await w.bots.text(big);
-    expect(cut!.truncated).toBe(true);
-    expect(cut!.body.length).toBe(REPORT_TEXT_MAX - 1);
-    expect(cut!.body.toString('utf8')).toBe('a'.repeat(REPORT_TEXT_MAX - 1));
+    expect(textOf(await w.bots.text(source)).body.toString('utf8')).toBe('# The page, as written\n');
+    const cut = textOf(await w.bots.text(big));
+    expect(cut.truncated).toBe(true);
+    expect(cut.body.length).toBe(REPORT_TEXT_MAX - 1);
+    expect(cut.body.toString('utf8')).toBe('a'.repeat(REPORT_TEXT_MAX - 1));
     // Not listed, another extension, a symlink, a file that's gone, a path that isn't plain or exact.
     for (const path of [unlisted, page47, mislabelled, link, join(folder, 'gone.md'), `${notes}/`, 'reports/tides-47.md', '', `~${notes}`, folder]) {
       expect(await w.bots.text(path), path).toBeNull();
@@ -1680,7 +1687,7 @@ describe('Reports', () => {
     writeFileSync(notes, '# Q3\n');
     w.outputs = [output({ key: notes, type: 'markdown', title: 'Q3', path: notes })];
     await w.bots.detail(w.runId);
-    expect((await w.bots.text(notes))!.body.toString('utf8')).toBe('# Q3\n');
+    expect(textOf(await w.bots.text(notes)).body.toString('utf8')).toBe('# Q3\n');
     w.privatePrefix = folder;
     expect(await w.bots.text(notes)).toBeNull();
     w.privatePrefix = null;

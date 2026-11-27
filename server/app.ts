@@ -7,7 +7,7 @@ import { type Settings, SettingsError, type SettingsView } from '../shared/setti
 import type { AnswerRequest, AnswerResult, ChatPage, EffortSwitchRequest, EffortSwitchResult, EndResult, EndTarget, EscStatus, Harness, HarnessOption, HistoryDetail, HistoryPage, HistoryPeek, LaunchView, ModelSwitchRequest, ModelSwitchResult, RenameResult, ResumeResult, ServerEvent } from '../shared/types.ts';
 import type { PathAnswer } from '../shared/files.ts';
 import { REPORT_TEXT_MAX } from '../shared/bots.ts';
-import { DOCUMENT_UNAVAILABLE } from '../shared/library.ts';
+import { DOCUMENT_UNAVAILABLE, FILE_NOT_DOWNLOADED, FILE_SLOW, fileUnreadable } from '../shared/library.ts';
 import type { ToolsSnapshot } from '../shared/tools.ts';
 import type { UsageSnapshot } from '../shared/usage.ts';
 import type { WorkSnapshot } from '../shared/work.ts';
@@ -18,7 +18,7 @@ import { ChangesError } from './changes.ts';
 import { EndError, parseEndTarget } from './closer.ts';
 import { type Library } from './library.ts';
 import { LibraryError, parseLibraryQuery } from './library.ts';
-import { FRAMED_OUTPUT_CSP, OUTPUT_HEADERS } from './output-files.ts';
+import { FRAMED_OUTPUT_CSP, OUTPUT_HEADERS, type TextRead } from './output-files.ts';
 import { describeDocument } from './document.ts';
 import type { People } from './people.ts';
 import { documentType } from './documents.ts';
@@ -444,13 +444,7 @@ export function createApp(opts: AppOptions): LookoutApp {
     }
     // DOC-3.2: a listed Markdown file's text, at most its first megabyte, and whether it was cut.
     if (route === 'GET /api/library/text') {
-      const file = await opts.library.files.text(url.searchParams.get('path') ?? '', REPORT_TEXT_MAX);
-      if (!file) return json(res, 404, { error: DOCUMENT_UNAVAILABLE });
-      res.writeHead(200, {
-        ...SECURITY_HEADERS, 'content-type': 'text/plain; charset=utf-8', 'content-length': file.body.length, 'cache-control': 'no-store',
-        ...(file.truncated ? { 'x-lookout-truncated': '1' } : {}),
-      });
-      return void res.end(file.body);
+      return sendText(res, await opts.library.files.text(url.searchParams.get('path') ?? '', REPORT_TEXT_MAX), DOCUMENT_UNAVAILABLE);
     }
     // PEOPLE-3.2: the Persons of the Vault, or why there are none; read from folder and file names at each ask (PEOPLE-3.4).
     if (route === 'GET /api/people' && opts.people) return json(res, 200, await opts.people.list());
@@ -1036,13 +1030,7 @@ async function botsCall(req: IncomingMessage, res: ServerResponse, url: URL, bot
     // INBOX-2.4: at most its first megabyte, as text, and whether it was cut; never another extension.
     if (path === '/api/inbox/text') {
       if (req.method !== 'GET') return json(res, 405, { error: 'method not allowed' });
-      const file = await bots.text(url.searchParams.get('path') ?? '');
-      if (!file) return json(res, 404, { error: 'This file is not available.' });
-      res.writeHead(200, {
-        ...SECURITY_HEADERS, 'content-type': 'text/plain; charset=utf-8', 'content-length': file.body.length, 'cache-control': 'no-store',
-        ...(file.truncated ? { 'x-lookout-truncated': '1' } : {}),
-      });
-      return void res.end(file.body);
+      return sendText(res, await bots.text(url.searchParams.get('path') ?? ''), 'This file is not available.');
     }
     const report = /^\/api\/inbox\/([^/]{1,64})$/.exec(path);
     if (report) {
@@ -1281,6 +1269,26 @@ function json(res: ServerResponse, status: number, body: unknown, outputFile: fa
   }
   res.writeHead(status, headers);
   res.end(JSON.stringify(body));
+}
+
+/**
+ * INBOX-2.4, DOC-3.2: a Markdown file's text, and whether it was cut. `unavailable`: what a file
+ * Lookout doesn't show answers (404). DOC-3.4: a file that is one, and can't be had right now, says
+ * why: macOS wouldn't fetch it from the cloud (503), it hasn't arrived in time (504), or its read
+ * failed (500).
+ */
+function sendText(res: ServerResponse, file: TextRead, unavailable: string): void {
+  if (file === null) return json(res, 404, { error: unavailable });
+  if ('trouble' in file) {
+    if (file.trouble === 'not-downloaded') return json(res, 503, { error: FILE_NOT_DOWNLOADED });
+    if (file.trouble === 'slow') return json(res, 504, { error: FILE_SLOW });
+    return json(res, 500, { error: fileUnreadable(file.code, file.cloud) });
+  }
+  res.writeHead(200, {
+    ...SECURITY_HEADERS, 'content-type': 'text/plain; charset=utf-8', 'content-length': file.body.length, 'cache-control': 'no-store',
+    ...(file.truncated ? { 'x-lookout-truncated': '1' } : {}),
+  });
+  res.end(file.body);
 }
 
 const NO_BODY = Symbol('no body');

@@ -14,7 +14,7 @@ import { cleanEnv } from './launcher.ts';
 import { sanitizeLine } from './sanitize.ts';
 import { refusedAsTooOld } from './too-old.ts';
 import { tooOld } from '../shared/tools.ts';
-import { OutputFiles } from './output-files.ts';
+import { OutputFiles, isCloudOnly } from './output-files.ts';
 import { unwrapPasted } from './pasted.ts';
 
 const PAGE_SIZE = 50;
@@ -44,7 +44,7 @@ export function parseLibraryQuery(params: URLSearchParams): LibraryQuery {
     headless: params.get('headless') === '1', hideGone: params.get('hideGone') !== '0',
   };
 }
-interface FileStat { isFile(): boolean; mtimeMs?: number; size?: number }
+interface FileStat { isFile(): boolean; mtimeMs?: number; size?: number; blocks?: number }
 interface LibraryOptions {
   runner: Runner;
   bin(): string;
@@ -340,6 +340,8 @@ export class Library {
     if (type !== 'markdown' && type !== 'html' || stat.mtimeMs === undefined || stat.size === undefined) return fallback;
     const cached = this.titles.get(p);
     if (cached?.mtime === stat.mtimeMs && cached.size === stat.size) { cached.seen = Date.now(); return cached.title; }
+    // LIB-2.12, 0018: a file kept in the cloud and not on this Mac would be fetched by the read. A list downloads nothing: its basename, uncached.
+    if (isCloudOnly(stat)) return fallback;
     let title = fallback, read = true;
     // PEOPLE-2.3: never through a link: a file swapped for one into a Private folder keeps its name, not the note's heading.
     const handle = await open(p, constants.O_RDONLY | constants.O_NOFOLLOW).catch(() => null);

@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, open, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, open, readFile, realpath, rm, stat as fsStat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -321,6 +321,27 @@ it('LIB-2.12: reads only the first 8KB for Markdown/HTML titles, skipping front 
   expect(await lib.find(query('types=markdown,pages'))).toMatchObject({ total: 3, items: expect.arrayContaining([expect.objectContaining({ title: 'Right heading' }), expect.objectContaining({ title: 'Actual & title' }), expect.objectContaining({ title: 'late.md' })]) });
   await writeFile(md, '# Changed heading\n'); vi.setSystemTime(Date.now() + 2100);
   expect(await lib.find(query('types=markdown&q=changed'))).toMatchObject({ total: 1, items: [{ title: 'Changed heading' }] });
+});
+
+it('LIB-2.12: a file kept in the cloud and not on this Mac is never opened for its title: it has its basename, and its heading once it is here', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'lookout-library-cloud-')); roots.push(home);
+  const cloud = join(home, 'cloud-only.md'), local = join(home, 'local.md');
+  await writeFile(cloud, '# Cloud title'); await writeFile(local, '# Local title');
+  vi.useFakeTimers({ toFake: ['Date'] });
+  // What a stat says of a file iCloud keeps only in the cloud: its size, and no block of the disk.
+  let fetched = false;
+  const stat = async (p: string) => { const s = await fsStat(p); return p === cloud && !fetched ? { isFile: () => true, mtimeMs: s.mtimeMs, size: s.size, blocks: 0 } : s; };
+  const real = vi.mocked(open).getMockImplementation()!;
+  const opened: string[] = [];
+  vi.mocked(open).mockImplementation(async (...args) => { opened.push(String(args[0])); return real(...args); });
+  try {
+    const lib = new Library({ runner: fake([event(cloud), event(local)]), bin: () => '/fake-tb-session', stat });
+    expect(await lib.find(query('types=markdown'))).toMatchObject({ state: 'ok', total: 2, items: expect.arrayContaining([expect.objectContaining({ title: 'cloud-only.md', exists: true }), expect.objectContaining({ title: 'Local title' })]) });
+    // A read would have fetched it: the list opened the local file alone.
+    expect(opened).toEqual([local]);
+    fetched = true; vi.setSystemTime(Date.now() + 2100);
+    expect(await lib.find(query('types=markdown'))).toMatchObject({ total: 2, items: expect.arrayContaining([expect.objectContaining({ title: 'Cloud title' })]) });
+  } finally { vi.mocked(open).mockImplementation(real); }
 });
 
 it("LIB-2.12: a file that opens and can't be read has its basename, is read again next time, and the rest of the Library lists as usual", async () => {

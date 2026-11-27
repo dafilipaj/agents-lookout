@@ -36,6 +36,13 @@
   <!-- What the server started (tmux, a Session's processes) outlives a restart. -->
   <key>AbandonProcessGroup</key>
   <true/>
+  <!--
+    A file kept in iCloud that isn't on this Mac (a note of a Vault in iCloud Drive) is fetched when
+    the server reads it. Without this, macOS refuses such a read to a launchd job and the note can't
+    be opened (DOC-3.4). What the server starts inherits it, a Session included.
+  -->
+  <key>MaterializeDatalessFiles</key>
+  <true/>
 
   <key>StandardOutPath</key>
   <string>{{HOME}}/.lookout/server.log</string>

@@ -2,6 +2,7 @@ import type { DocumentAnswer } from '@shared/library.ts';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DocumentView } from '@/components/DocumentView';
+import { FILE_NOT_DOWNLOADED } from '@shared/library.ts';
 import { SaveError } from '@/lib/client';
 import { COPY_FEEDBACK_MS } from '@/lib/copy';
 import { documentOf, isDocumentPath, showsInLookout } from '@/lib/outputs';
@@ -149,6 +150,17 @@ describe('the Document view (DOC-2)', () => {
     expect(main().querySelector('[data-field="unavailable"]')).toHaveTextContent("Lookout can't show this file.");
     expect(main().querySelector('[data-field="unavailable"]')).toHaveTextContent('open it from the Library or from a path in a Session');
     expect(main().querySelector('[data-action="open"]')).toBeNull();
+  });
+
+  it('DOC-3.4: a file the server couldn’t fetch from the cloud says so in the server’s words, under the file’s own header, with Open still there', async () => {
+    view({ loadText: vi.fn(async () => { throw new SaveError(FILE_NOT_DOWNLOADED, null, 503); }) });
+    const alert = await within(main()).findByRole('alert');
+    expect(alert).toHaveTextContent("Couldn't read this file");
+    expect(alert).toHaveTextContent("kept in iCloud and isn't on this Mac");
+    expect(alert).toHaveTextContent('Open it once in your notes app, or download it in Finder');
+    // The file is one Lookout shows: its name, and the way to open it elsewhere, stay.
+    expect(within(main()).getByRole('heading', { name: 'tide notes.md' })).toBeVisible();
+    expect(main().querySelector('[data-action="open"]')).not.toBeNull();
   });
 
   it('DOC-2.4: Back and Esc leave the view; Esc stands down with a modifier, in a text field, from the right sidebar and while a dialog is open', async () => {

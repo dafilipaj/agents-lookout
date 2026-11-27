@@ -1,6 +1,7 @@
 import { constants } from 'node:fs';
 import { lstat, open } from 'node:fs/promises';
 import type { ServerResponse } from 'node:http';
+import { constants as osConstants } from 'node:os';
 import { extname, isAbsolute, normalize } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import type { OutputType } from '../shared/library.ts';
@@ -59,10 +60,13 @@ export class OutputFiles {
     const info = await lstat(file).catch(() => null);
     return { path: file, type, exists: !!info?.isFile() };
   }
-  /** DOC-3.2: a listed Markdown file's text, at most `max` bytes of it; null for anything else. */
-  async text(path: string, max: number): Promise<{ body: Buffer; truncated: boolean } | null> {
+  /** DOC-3.2: a listed Markdown file's text, at most `max` bytes of it; null for anything else. DOC-3.4: or why it can't be had right now. */
+  async text(path: string, max: number): Promise<TextRead> {
     const file = this.listed(path);
-    return file === null || extname(file).toLowerCase() !== '.md' || (await this.isPrivate(file)) ? null : readTextFile(file, max);
+    if (file === null || extname(file).toLowerCase() !== '.md' || (await this.isPrivate(file))) return null;
+    const read = await readTextFile(file, max);
+    // PEOPLE-2.5: a read that waited for a fetch can end after the folder became private: asked again before any of it is sent.
+    return read !== null && (await this.isPrivate(file)) ? null : read;
   }
   /** `framed`: the answer is for a Report's frame in Lookout's own page (INBOX-2.9). */
   async serve(path: string, res: ServerResponse, framed = false): Promise<void> {
@@ -89,26 +93,89 @@ export class OutputFiles {
 }
 
 /**
+ * DOC-3.4: why a file's text can't be had right now, though it is a file Lookout shows. `not-downloaded`:
+ * kept in the cloud, and macOS wouldn't fetch it for this process; `slow`: no answer in time; `failed`:
+ * the read failed, with the disk's code, and whether the file is one that isn't on this Mac.
+ */
+export type TextTrouble = { trouble: 'not-downloaded' } | { trouble: 'slow' } | { trouble: 'failed'; code: string; cloud: boolean };
+/** A file's text and whether it was cut; why it can't be had right now; or null: not a file Lookout shows. */
+export type TextRead = { body: Buffer; truncated: boolean } | TextTrouble | null;
+/** DOC-3.4: how long a file's text may take; a file kept in the cloud is fetched by its read, which waits for it. */
+export const TEXT_TIMEOUT_MS = 20_000;
+/**
+ * DOC-3.4: how many reads may be under way at once. A read that waits for a fetch holds one of the
+ * server's four file threads until macOS ends it, so one thread is always left for everything else.
+ */
+export const MAX_PENDING_READS = 3;
+/** The reads under way, by file and length: a second ask for the same file joins the first, so asking again never takes another thread. */
+const pendingReads = new Map<string, Promise<TextRead>>();
+
+/**
+ * Whether a file is kept in the cloud and isn't on this Mac (iCloud Drive's "dataless" file): it has
+ * a size and not one block of the disk. Reading such a file fetches it, so a list never reads one
+ * for a title (0018: drawing a list downloads nothing). Node doesn't give the flag macOS keeps for
+ * this, so it is told by its blocks: a sparse file is taken for one too, and keeps its basename.
+ */
+export const isCloudOnly = (stat: { size?: number; blocks?: number }): boolean => (stat.size ?? 0) > 0 && stat.blocks === 0;
+
+/**
+ * macOS's answer to reading a file kept in the cloud that it won't fetch for this process: a launchd
+ * job is refused unless its plist sets `MaterializeDatalessFiles` (README, "Keep it running"). Node
+ * has no name for the code, so it is told by its number.
+ */
+const isNotFetched = (err: unknown): boolean => {
+  const { errno, code } = (err ?? {}) as NodeJS.ErrnoException;
+  return errno === -osConstants.errno.EDEADLK || code === 'EDEADLK';
+};
+
+/**
  * INBOX-2.4, DOC-3.2: a file's first `max` bytes, and whether it was cut. As the file route: lstat
  * leaves out a leaf symlink, NOFOLLOW closes the race with open, and NONBLOCK keeps a swapped-in
  * FIFO from hanging the server before the handle is checked. Null for anything that isn't a file.
+ * DOC-3.4: a file kept in the cloud is fetched by this read. One macOS won't fetch, one that hasn't
+ * arrived in time and one whose read failed each say which.
  */
-export async function readTextFile(file: string, max: number): Promise<{ body: Buffer; truncated: boolean } | null> {
+export async function readTextFile(file: string, max: number, opts: { open?: typeof open; timeoutMs?: number } = {}): Promise<TextRead> {
+  const key = `${max}\n${file}`;
+  let reading = pendingReads.get(key);
+  if (!reading) {
+    if (pendingReads.size >= MAX_PENDING_READS) return { trouble: 'slow' };
+    const started: Promise<TextRead> = readNow(file, max, opts.open ?? open).finally(() => {
+      if (pendingReads.get(key) === started) pendingReads.delete(key);
+    });
+    pendingReads.set(key, started);
+    reading = started;
+  }
+  // The answer is given up after a while; the read itself ends when the disk lets it, and closes its handle then.
+  let timer: NodeJS.Timeout | undefined;
+  const slow = new Promise<TextTrouble>((resolve) => {
+    timer = setTimeout(() => resolve({ trouble: 'slow' }), opts.timeoutMs ?? TEXT_TIMEOUT_MS);
+  });
+  return Promise.race([reading, slow]).finally(() => clearTimeout(timer));
+}
+
+/** One read of a file's text, from its lstat to its handle's close; it never rejects. */
+async function readNow(file: string, max: number, openFile: typeof open): Promise<TextRead> {
   const info = await lstat(file).catch(() => null);
   if (!info?.isFile()) return null;
-  const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK).catch(() => null);
-  if (!handle) return null;
+  let handle: Awaited<ReturnType<typeof open>> | undefined;
   try {
+    handle = await openFile(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
     const opened = await handle.stat();
     if (!opened.isFile()) return null;
     const buffer = Buffer.alloc(Math.min(opened.size, max));
     const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
     const truncated = opened.size > max;
     return { body: truncated ? wholeCharacters(buffer.subarray(0, bytesRead)) : buffer.subarray(0, bytesRead), truncated };
-  } catch {
-    return null;
+  } catch (err) {
+    if (isNotFetched(err)) return { trouble: 'not-downloaded' };
+    const code = (err as NodeJS.ErrnoException | null)?.code;
+    // Gone, or swapped for a link, since the lstat: not a file Lookout shows.
+    if (code === 'ENOENT' || code === 'ENOTDIR' || code === 'ELOOP') return null;
+    // Any other failure of a listed file says so: with the network away, the fetch of a file kept in the cloud ends here.
+    return { trouble: 'failed', code: typeof code === 'string' && /^E[A-Z0-9]+$/.test(code) ? code : '', cloud: isCloudOnly(info) };
   } finally {
-    await handle.close().catch(() => undefined);
+    await handle?.close().catch(() => undefined);
   }
 }
 
