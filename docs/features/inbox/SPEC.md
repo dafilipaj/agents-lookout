@@ -3,7 +3,7 @@ title: "Inbox: what your Bots left for you, read in place"
 code: "INBOX"
 status: "In Progress"
 created: "2026-11-26"
-updated: "2026-11-26"
+updated: "2026-11-27"
 ---
 
 # Inbox
@@ -39,7 +39,7 @@ What a scheduled agent writes has nowhere to arrive. The Library lists every Out
 - [x] INBOX-2.8 **Open** leaves Lookout with the shown document, which the Report already shows in place: a Markdown file in VS Code, a page, PDF or image in a new browser tab from Lookout's file route (LIB-3.3), an Artifact or Share at its URL with no referrer. `O` runs it; a Report with no document has no Open. (test)
 - [x] INBOX-2.9 An HTML Report's frame can't reach Lookout: the page runs in an opaque origin, where its scripts run, its storage doesn't, its requests to Lookout are refused and it can't navigate the window; its links and forms open as ordinary tabs, never inside the frame, unless the page names another target itself. The route sends that sandbox on every answer and lets only Lookout's own page frame it (LIB-3.3's rules, plus the frame). (test)
 - [x] INBOX-2.10 A Report with a real page reads end to end: the Inbox lists a finished run from the server's store, selecting it shows the page the run wrote inside the pane, and Open opens that page in a new tab. (e2e)
-- [ ] INBOX-2.11 Seen at 1440 px, light and dark: a Markdown Report reads as prose at the chat's width, a page fills the pane to its edges under the header, and the header's actions sit on one line with the right sidebar open at 360 px. (manual)
+- [x] INBOX-2.11 Seen at 1440 px, light and dark: a Markdown Report reads as prose at the chat's width, a page fills the pane to its edges under the header, and the header's actions sit on one line with the right sidebar open at 360 px. (manual)
 
 ### INBOX-3 Unread
 
@@ -123,3 +123,4 @@ None blocking.
 - 2026-11-26: From the review (Codex), before the first commit. INBOX-4.1: the neighbour selected after an archive came from every Report, so a filter could leave the selection on a hidden row, and it moved before the server answered; now it's a row that shows, after the server kept it, and a refusal is said. INBOX-3.1: a mark carries the arrival it was made for, so a late one can't mark a Report that arrived again. INBOX-2.9: a plain link no longer replaces the Report inside its frame. INBOX-2.6: a Report waiting at a Trust prompt had no way to its start. INBOX-2.3: a Report read only the Library's first 50 Outputs while counting them all. INBOX-2.1: a Report id with an underscore, which the store takes, had no path. INBOX-5.1 says what the code does with ⌘1–9 in a text field, which is what Sessions does. Not taken: looking for the last reply further back than the chat's latest 300 entries.
 - 2026-11-26: Built: the list and the Report's view (`InboxList.tsx`, `ReportView.tsx`, `lib/inbox.ts`), the server's Reports in `server/bots.ts`, the text route and the file route's `frame=1`. In Progress.
 - 2026-11-27: INBOX-2.8 reworded, nothing changed: the Library's Open now shows a file in the Document view (DOC), so a Report's Open says for itself where it goes. The Markdown, page and image branches of INBOX-2.4 are one piece with the Document view's (`DocumentFile.tsx`).
+- 2026-11-27: INBOX-2.11 ticked: Dario looked at a real Report on 4747, the first one a Bot wrote on its schedule. INBOX-1.6, the list's look, is still his to confirm.

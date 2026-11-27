@@ -1,9 +1,9 @@
 ---
 title: "Places: the rail that switches between the Inbox and Sessions"
 code: "NAV"
-status: "In Progress"
+status: "Done"
 created: "2026-11-26"
-updated: "2026-11-26"
+updated: "2026-11-27"
 ---
 
 # Places
@@ -23,7 +23,7 @@ Lookout covers the contributor half of Dario's job. The managing half, reports o
 - [x] NAV-1.1 The window's first column is the rail, 56 px wide, a column of the shell's grid (SIDE-8.1): its header cell continues the header line and holds Lookout's mark (DS-14) at 20 px, centred, in the sidebar's text colour and hidden from screen readers; under it are the places' buttons, Inbox then Sessions, in a navigation landmark named "Places". (test)
 - [x] NAV-1.2 A place's button (DS-24) shows its icon over its name and says where you are: the current place's has `aria-current="page"` and the selected row's neutral wash, never Primary (DS-12.4). Its tooltip names its key ("Inbox (1)"). (test)
 - [x] NAV-1.3 Settings and Keyboard shortcuts are the rail's last two buttons, at its bottom, Keyboard shortcuts above Settings: the same `IconButton`s the Session sidebar's header had (`md`), Settings pressed while Settings is open and with its Tools dot (TOOLS-2.4), Keyboard shortcuts returning focus to itself when its dialog closes (SIDE-7.5). The Session sidebar's header keeps its filter and New Session. (test)
-- [ ] NAV-1.4 Seen in light and dark mode at 1440 px: the header line runs unbroken across the rail and the three columns, the rail's buttons are centred, and the Session sidebar's filter is wider by the room the mark and the two buttons gave up. (manual)
+- [x] NAV-1.4 Seen in light and dark mode at 1440 px: the header line runs unbroken across the rail and the three columns, the rail's buttons are centred, and the Session sidebar's filter is wider by the room the mark and the two buttons gave up. (manual)
 
 ### NAV-2 A place owns the left column and the main pane
 
@@ -106,3 +106,4 @@ None blocking.
 - 2026-11-26: Built: `PlaceRail.tsx`, `ui/place-rail.tsx` (DS-24), `lib/places.ts`, the `inbox` route, the left column hosting either list, and `1` and `2`. In Progress.
 - 2026-11-26: From the review (Codex), before the first commit. NAV-2.3: the last place was kept for the whole browser, so a new tab opened on Settings could show over the Inbox because another tab was there; it's the tab's own now. NAV-3.3: ⌘J from the Inbox searched the rows the Session filter left, so a filter nobody could see there made it do nothing while the rail counted a Session that Needs you. NAV-2.4: a Codex Session that got its session id while you were in the Inbox was taken for gone.
 - 2026-11-27: NAV-2.1 and 2.3 amended for the Document view (DOC): a document at a Session's path is Sessions', and one at `/doc/…` belongs to no place.
+- 2026-11-27: NAV-1.4 ticked: Dario looked at the rail on 4747 ("New Nav looks good"). Every requirement is ticked, so the status is Done.

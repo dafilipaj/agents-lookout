@@ -1,9 +1,9 @@
 ---
 title: "Bots: Sessions that start on a schedule and report to the Inbox"
 code: "BOT"
-status: "In Progress"
+status: "Done"
 created: "2026-11-26"
-updated: "2026-11-26"
+updated: "2026-11-27"
 ---
 
 # Bots
@@ -25,7 +25,7 @@ A report on what the team did last week, or on which tests went flaky overnight,
 - [x] BOT-1.3 Above the list is "New Bot", a Secondary button with a plus. With no Bot the list is an empty state: "No Bots yet", "A Bot starts a Session on a schedule, and its Report arrives in the Inbox.", with New Bot as its action. (test)
 - [x] BOT-1.4 ↑/↓ and j/k move through the rows; Enter on a selected row expands it, and on an expanded one runs its first button; Esc collapses it; `X` turns the selected Bot off or on. One row is expanded at a time (WORK-1.12, WORK-1.13). (test)
 - [x] BOT-1.5 An expanded row is built as DS-21 says: its state (on or off, its schedule, its next time), its prompt's first three lines with the whole prompt in the tooltip, where and with what it starts (Start directory, Harness, model, Effort, "skips permissions"), and its newest five runs as a count that lists them in place, three at first and the rest behind "Show all" (DS-21.2), each a line with its state and when it started. A run's line opens its Report in the Inbox (INBOX-2.1), or its Session while it's running or waiting on you; before Fleet reports the Session (it's starting, or waits at its Trust prompt), its start. Its actions come last: **Run now** first, and under More: Edit, Turn off or Turn on, and Delete in the danger role. (test)
-- [ ] BOT-1.6 Seen at a 280 px and a 360 px right sidebar, light and dark: seven tabs fit the strip, with the open tab's name whole at 360 px and its icon alone under 352 px, where a cut name would read worse; a row's two lines don't wrap, and an expanded row's actions sit on one line. (manual)
+- [x] BOT-1.6 Seen at a 280 px and a 360 px right sidebar, light and dark: seven tabs fit the strip, with the open tab's name whole at 360 px and its icon alone under 352 px, where a cut name would read worse; a row's two lines don't wrap, and an expanded row's actions sit on one line. (manual)
 
 ### BOT-2 Make, change and delete a Bot
 
@@ -138,3 +138,4 @@ None blocking.
 - 2026-11-26: From the same review, the rest. BOT-3.5: a time that came during a run that was over by the next look was run late; it's skipped. BOT-3.4: a run is saved before Fleet is asked, and isn't started when it can't be, since a start the store didn't hold would be made again after a restart. BOT-2.6: a lock that can't be written no longer makes the server the owner; `pnpm dev` is a development server whatever `NODE_ENV` it inherited, and `LOOKOUT_BOTS` naming the default file gives it nothing; a server that stopped while a run was being finished ends nothing. BOT-4.6: whether you opened the Session is asked of the fresh list too. BOT-2.3: a file broken by hand while Lookout runs is no longer written over. BOT-2.2: changes to one Bot are checked in turn. BOT-4.1: two Bots with one name no longer ask Fleet for the same Session name. BOT-4.4: the 2 minutes count from Fleet's Done mark. BOT-1.5, BOT-4.3: a run with no Session yet names its start, so its line and its Report open where a Trust prompt is answered. Not taken: keeping more than the newest 500 runs in a different order (a run going is never the one dropped, by design).
 - 2026-11-26: Built: `shared/bots.ts`, `server/bots.ts` with its routes and its wiring, the tab (`BotsPanel.tsx`, `BotDialog.tsx`, `lib/bots.ts`) and the launcher's fields shared with the dialog (`LaunchFields.tsx`, `lib/launch-fields.ts`). In Progress.
 - 2026-11-27: BOT-1.6: the open tab hides its name by the sidebar's width as the tab strip is given it, not by a container query on the column, which broke the header line (SIDE-8.3). A tab that shows its icon alone is the same 28 px square open or not, with its count on the icon's corner.
+- 2026-11-27: A Bot ran against the real Fleet for the first time, on its schedule: it started on time, finished in under five minutes, its Report held the Markdown file it wrote, and Lookout ended its Session. BOT-1.6 ticked: Dario looked at the Bots tab on 4747 the same day. Every requirement is ticked, so the status is Done.
