@@ -92,13 +92,15 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Page**: An Output that opens as a page in a browser tab: an HTML file or an Artifact. The Library's "Pages" chip shows both.
 
-**People**: The Place that lists the Persons in your Vault and shows one Person's page: their Goals, their 1on1 notes and their other notes. On the rail after Sessions once it's built. See the PEOPLE spec.
+**People**: The Place that lists the Persons in your Vault and shows one Person's page: their Goals, their 1on1 notes and their other notes. On the rail after Sessions. See the PEOPLE spec.
 
-**Person**: Someone you manage, as your Vault holds them: one folder directly inside the Vault's people folder, named for them, with their 1on1 notes in `1on1s/` and their Goals in `Goals/`. Lookout keeps nothing of its own about a Person ([0018](decisions/0018-peoples-data-lives-in-your-vault.md)).
+**People folder**: The folder inside the Vault folder that holds a folder per Person, `Team` unless Settings names another. See PEOPLE-3.2.
+
+**Person**: Someone you manage, as your Vault holds them: one folder directly inside the Vault's People folder, named for them, with their 1on1 notes in `1on1s/` and their Goals in `Goals/`. Lookout keeps nothing of its own about a Person ([0018](decisions/0018-peoples-data-lives-in-your-vault.md)).
 
 **Ping**: A thread in a Watched channel with a message that mentions you, written by someone else. *Open* until you write in the thread after its latest mention (*answered*) or dismiss it (*dismissed*); a later mention opens it again. *Waiting* when it asks for your answer and says it will go on without one. Lookout reads Pings through `tb-slack` and never writes to Slack. See the PING spec.
 
-**Place**: One of the top-level parts of Lookout, switched on the rail at the window's left edge: the Inbox and Sessions, later People (PEOPLE). A place owns the left column and the main pane; the right sidebar is the same in every place ([0017](decisions/0017-one-app-for-both-roles.md)). See the NAV spec.
+**Place**: One of the top-level parts of Lookout, switched on the rail at the window's left edge: the Inbox, Sessions and People (PEOPLE). A place owns the left column and the main pane; the right sidebar is the same in every place ([0017](decisions/0017-one-app-for-both-roles.md)). See the NAV spec.
 
 **PR**: An open GitHub pull request in a `productiveio/*` repo that you opened, or that is a Review request to you, as `tb-pr` lists it.
 

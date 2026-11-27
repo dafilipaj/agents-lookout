@@ -13,7 +13,7 @@ import { Tabs } from '@/components/ui/tabs';
 import { ActionIcon, actionWord } from '@/lib/actions';
 import { useCopy } from '@/lib/copy';
 import { type SessionAction, documentShown, outputType, reportTitle, sessionAction, whenWords } from '@/lib/inbox';
-import { OUTPUT_ICON, TYPE_LABEL, canOpenOutput, openOutput } from '@/lib/outputs';
+import { OUTPUT_ICON, TYPE_LABEL, canOpenOutput, openActionOfOutput, openOutput } from '@/lib/outputs';
 import { routePath } from '@/lib/router';
 import { cn } from '@/lib/utils';
 import type { InboxChoice } from './InboxList';
@@ -96,6 +96,9 @@ export function ReportView(props: ReportViewProps) {
   }
   return <OneReport {...props} run={run} />;
 }
+
+/** INBOX-2.8, PEOPLE-4.5: Open's action for a Report's document: Obsidian for a note of the Vault, else the plain "Open". */
+const openWord = (item: OutputItem) => (openActionOfOutput(item) === 'open-obsidian' ? 'open-obsidian' : 'open-external');
 
 interface Read {
   detail: ReportDetail | null;
@@ -228,9 +231,10 @@ function OneReport({ run, doc, bots, sessions, load, loadText, onDoc, onMark, on
             )}
             {/* INBOX-2.8: a Report with no document to open has no Open. */}
             {shown && canOpenOutput(shown) && (
-              <Button variant="quiet" size="default" title="Open (O)" onClick={open} data-action="open">
-                <ActionIcon id="open-external" />
-                {actionWord('open-external')}
+              // PEOPLE-4.5: a note of the Vault opens in Obsidian, and the button says so; anything else reads "Open", as before.
+              <Button variant="quiet" size="default" title={`${actionWord(openWord(shown))} (O)`} onClick={open} data-action="open">
+                <ActionIcon id={openWord(shown)} />
+                {actionWord(openWord(shown))}
               </Button>
             )}
             {/* BOT-2.6: disabled on a second server, which says why where the pointer still reaches. */}

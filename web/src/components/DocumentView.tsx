@@ -8,7 +8,7 @@ import { IconButton } from '@/components/ui/icon-button';
 import { Loading } from '@/components/ui/loading';
 import { ActionIcon, actionWord } from '@/lib/actions';
 import { useCopy } from '@/lib/copy';
-import { OUTPUT_ICON, TYPE_LABEL, openFile, showsInLookout } from '@/lib/outputs';
+import { OUTPUT_ICON, TYPE_LABEL, openActionOf, openFile, showsInLookout } from '@/lib/outputs';
 import { DOCUMENT_COLUMN, DocumentFile, type FileShown, type LoadText } from './DocumentFile';
 import { PlainView } from './Shell';
 
@@ -50,10 +50,11 @@ export function DocumentView({ path, load, loadText, onBack, keyboardEnabled }: 
   const how: FileShown | null = !doc ? null : !doc.exists ? { as: 'gone' } : doc.type !== 'pdf' && showsInLookout(doc.type) ? { as: IN_PLACE[doc.type], path: doc.path, version: 0 } : null;
   const canOpen = !!doc?.exists;
   const open = () => {
-    if (doc?.exists) openFile(doc.path, doc.type);
+    if (doc?.exists) openFile(doc.path, doc.type, doc.vault);
   };
   const Icon = doc ? OUTPUT_ICON[doc.type] : null;
-  const openAction = doc?.type === 'markdown' ? 'open-vscode' : 'open-external';
+  // DOC-2.5: where Open goes; PEOPLE-4.5: a note of the Vault to Obsidian.
+  const openAction = openActionOf(doc?.type, doc?.vault);
 
   // DOC-2.4, 2.5: Esc and O, from the window as a Report's keys are, with the same guards.
   const latest = useRef({ enabled: keyboardEnabled, open, onBack });

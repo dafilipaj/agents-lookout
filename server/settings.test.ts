@@ -19,7 +19,7 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }));
 describe('SettingsStore', () => {
   it('starts from defaults when there is no file', async () => {
     const store = new SettingsStore(file);
-    expect(await store.load()).toEqual({ idleThresholdHours: 4, startDirectories: ['~/Projects/work'], lastLaunch: null, productiveEmail: null, recommendWithJev: false, undoSend: true, vaultFolder: null, privateFolders: [] });
+    expect(await store.load()).toEqual({ idleThresholdHours: 4, startDirectories: ['~/Projects/work'], lastLaunch: null, productiveEmail: null, recommendWithJev: false, undoSend: true, vaultFolder: null, privateFolders: [], peopleFolder: 'Team' });
   });
 
   it('SIDE-7.2: a saved value is written to the file and survives a restart', async () => {
@@ -216,6 +216,21 @@ describe('PEOPLE-1, PEOPLE-2: the Vault folder and Private folders', () => {
     // Empty, or null, clears it.
     expect((await s.update({ vaultFolder: '  ' })).vaultFolder).toBeNull();
     expect((await new SettingsStore(file).load()).vaultFolder).toBeNull();
+  });
+
+  it('PEOPLE-3.2: the people folder is a folder inside the Vault, Team by default and again when the field is emptied; a full path, a `*` and a part that could leave the Vault are refused', async () => {
+    const s = await store();
+    expect(s.get().peopleFolder).toBe('Team');
+    expect((await s.update({ peopleFolder: ' Work/People/ ' })).peopleFolder).toBe('Work/People');
+    expect(JSON.parse(readFileSync(file, 'utf8')).peopleFolder).toBe('Work/People');
+    for (const bad of ['/Users/me/notes/Team', '~/notes/Team', '~', '../Team', 'Work/../../Team', './Team', 'Work//Team', 'Team/*', 'a\nb', 'x'.repeat(301), 7, ['Team']]) {
+      expect(() => s.update({ peopleFolder: bad }), String(bad)).toThrow('The People folder is a folder inside the Vault, such as Team or Work/Team.');
+    }
+    expect(s.get().peopleFolder).toBe('Work/People');
+    // Emptied, it is the default again; a stored one the rule refuses reads as the default.
+    expect((await s.update({ peopleFolder: '  ' })).peopleFolder).toBe('Team');
+    writeFileSync(file, JSON.stringify({ version: 1, peopleFolder: '../elsewhere' }));
+    expect((await new SettingsStore(file).load()).peopleFolder).toBe('Team');
   });
 
   it('PEOPLE-2.2: an entry the rule refuses is refused whole, with its words, and the saved list stays', async () => {

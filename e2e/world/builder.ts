@@ -282,6 +282,8 @@ export interface WorldSpec {
   settings: Partial<Pick<Settings, 'idleThresholdHours' | 'startDirectories' | 'lastLaunch' | 'productiveEmail'>>;
   /** TOPIC: Topics in `~/.lookout/topics.db` before Lookout starts, in this order, each with its members. */
   topics: TopicDecl[];
+  /** PEOPLE: the Vault's notes under HOME, with the settings pointed at them; none unless declared. */
+  vault: VaultDecl | null;
   /** INBOX: Reports in `~/.lookout/bots.json` before Lookout starts: Bot runs that already ended. */
   reports: ReportDecl[];
 }
@@ -305,6 +307,19 @@ export interface ReportDecl {
   archived?: boolean;
   /** When it arrived (ISO); now when absent. */
   arrivedAt?: string;
+}
+
+/**
+ * PEOPLE: the World's Vault: a folder of notes under its HOME, as a notes app would keep them, and
+ * Lookout's settings pointed at it. Invented people and notes only.
+ */
+export interface VaultDecl {
+  /** The Vault folder, relative to the World's HOME; `vault` when absent. */
+  folder?: string;
+  /** The people folder inside it, when it isn't `Team`. */
+  peopleFolder?: string;
+  /** Each note by its path inside the Vault folder, with its text. */
+  notes: Record<string, string>;
 }
 
 /** TOPIC-8: one Topic the World's store holds; invented titles and refs only. */
@@ -450,6 +465,11 @@ export class WorldBuilder {
     return this.next({ topics: [...this.spec.topics, ...structuredClone(topics)] });
   }
 
+  /** PEOPLE: a Vault of notes under HOME, set as the Vault folder in Lookout's settings. */
+  vault(decl: VaultDecl): WorldBuilder {
+    return this.next({ vault: checkVault(decl) });
+  }
+
   /** INBOX: Reports the store already holds when Lookout starts. */
   reports(reports: ReportDecl[]): WorldBuilder {
     return this.next({ reports: [...this.spec.reports, ...structuredClone(reports)] });
@@ -481,8 +501,23 @@ export function world(): WorldBuilder {
     usage: null,
     settings: {},
     topics: [],
+    vault: null,
     reports: [],
   });
+}
+
+/** A path inside the World's HOME or its Vault: relative, no `.` or `..` part, nothing that leaves it. */
+const isInside = (path: string) => path !== '' && !path.startsWith('/') && !path.startsWith('~') && !/[\0\n\r]/.test(path) && path.split('/').every((part) => part !== '' && part !== '.' && part !== '..');
+
+export function checkVault(decl: VaultDecl): VaultDecl {
+  const vault = structuredClone(decl);
+  if (vault.folder !== undefined && !isInside(vault.folder)) refuse('vault', `its folder must be a path inside the World's HOME, got ${JSON.stringify(vault.folder)}`);
+  if (vault.peopleFolder !== undefined && !isInside(vault.peopleFolder)) refuse('vault', `its people folder must be a path inside the Vault, got ${JSON.stringify(vault.peopleFolder)}`);
+  for (const [path, text] of Object.entries(vault.notes)) {
+    if (!isInside(path)) refuse('vault', `a note's path must be inside the Vault, got ${JSON.stringify(path)}`);
+    if (typeof text !== 'string') refuse('vault', `the note ${path} needs its text`);
+  }
+  return vault;
 }
 
 function unique<T>(xs: T[]): T[] {

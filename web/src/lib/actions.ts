@@ -13,6 +13,7 @@ import {
   FileText,
   FolderInput,
   Forward,
+  Gem,
   History,
   Layers,
   type LucideIcon,
@@ -48,6 +49,8 @@ export const ACTIONS = {
   /** Leaving Lookout: GitHub, Fantastic, a file in its app, a URL. */
   'open-external': { word: 'Open', icon: ExternalLink },
   'open-vscode': { word: 'Open in VS Code', icon: Code },
+  /** PEOPLE-4.5: a note of the Vault, in the notes app where its links work. */
+  'open-obsidian': { word: 'Open in Obsidian', icon: Gem },
   resume: { word: 'Resume', icon: History },
   show: { word: 'Show', icon: Eye },
   start: { word: 'Start Session', icon: Play },

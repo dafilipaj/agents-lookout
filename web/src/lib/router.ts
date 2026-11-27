@@ -1,4 +1,5 @@
 import type { PlainSource } from '@shared/plain.ts';
+import { isPersonName } from '@shared/people.ts';
 import type { Harness } from '@shared/types.ts';
 import { useCallback, useSyncExternalStore } from 'react';
 
@@ -23,10 +24,12 @@ export type Route =
   | { name: 'plain'; session: string; checkout: string; path: string }
   /** PLAIN-5: a Module of a PR, by its repo (in `productiveio`) and number. */
   | { name: 'plain-pr'; repo: string; number: number; path: string }
-  /** DOC-1.1: a file in the Document view, by its absolute path; `session` when it was opened from that Session's chat. */
-  | { name: 'doc'; path: string; session?: string }
+  /** DOC-1.1: a file in the Document view, by its absolute path; `session` when it was opened from that Session's chat, `person` from that Person's page (PEOPLE-4.4). */
+  | { name: 'doc'; path: string; session?: string; person?: string }
   /** NAV-2.2, INBOX-2.1: the Inbox, with the open Report's run and, past its first, the open document (INBOX-2.3). */
-  | { name: 'inbox'; id?: string; doc?: number };
+  | { name: 'inbox'; id?: string; doc?: number }
+  /** PEOPLE-3.1: People, with the Person whose page shows: their folder's name. */
+  | { name: 'people'; person?: string };
 
 /** PLAIN-1.1, PLAIN-5: the Spec view's route for a Module of this source. */
 export function plainRoute(source: PlainSource, path: string): Route {
@@ -51,6 +54,27 @@ export function parseRoute(pathname: string): Route {
     if (!inbox[1]) return { name: 'inbox' };
     const doc = /^[1-9][0-9]{0,2}$/.test(inbox[2] ?? '') ? Number(inbox[2]) : 1;
     return doc > 1 ? { name: 'inbox', id: inbox[1], doc } : { name: 'inbox', id: inbox[1] };
+  }
+  // PEOPLE-4.4: a note opened from a Person's page, at that Person's path; an odd name or path is People's start.
+  const note = /^\/people\/([^/]+)\/doc\/([^/]+)\/?$/.exec(pathname);
+  if (note) {
+    try {
+      const person = decodeURIComponent(note[1]!);
+      const path = decodeURIComponent(note[2]!);
+      return isPersonName(person) && isDocumentPath(path) ? { name: 'doc', path, person } : { name: 'people' };
+    } catch {
+      return { name: 'people' };
+    }
+  }
+  // PEOPLE-3.1: People; a name no Person's folder could have is the list alone.
+  const people = /^\/people(?:\/([^/]*))?\/?$/.exec(pathname);
+  if (people) {
+    try {
+      const person = people[1] ? decodeURIComponent(people[1]) : '';
+      return person && isPersonName(person) ? { name: 'people', person } : { name: 'people' };
+    } catch {
+      return { name: 'people' };
+    }
   }
   // SIDE-7.6: any other sub-page is General.
   const settings = /^\/settings(?:\/([^/]*))?\/?$/.exec(pathname);
@@ -127,6 +151,8 @@ export function routePath(route: Route): string {
       return '/';
     case 'inbox':
       return route.id ? `/inbox/${route.id}${route.doc && route.doc > 1 ? `/${route.doc}` : ''}` : '/inbox';
+    case 'people':
+      return route.person ? `/people/${encodeURIComponent(route.person)}` : '/people';
     case 'settings':
       return route.section ? `/settings/${route.section}` : '/settings';
     case 'topics':
@@ -138,7 +164,7 @@ export function routePath(route: Route): string {
     case 'session':
       return `/s/${encodeURIComponent(route.id)}`;
     case 'doc':
-      return `${route.session ? `/s/${encodeURIComponent(route.session)}` : ''}/doc/${encodeURIComponent(route.path)}`;
+      return `${route.session ? `/s/${encodeURIComponent(route.session)}` : route.person ? `/people/${encodeURIComponent(route.person)}` : ''}/doc/${encodeURIComponent(route.path)}`;
     case 'past':
       return `/h/${route.harness}/${encodeURIComponent(route.id)}`;
     case 'launch':

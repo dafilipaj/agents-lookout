@@ -22,6 +22,8 @@ export interface Settings {
   vaultFolder: string | null;
   /** PEOPLE-2: folders whose files Lookout never lists or shows: paths inside the Vault folder, or full paths. */
   privateFolders: string[];
+  /** PEOPLE-3.2: the folder inside the Vault folder that holds a folder per Person. */
+  peopleFolder: string;
 }
 
 /**
@@ -127,6 +129,27 @@ export function parsePrivateFolders(value: unknown, field = 'privateFolders'): s
   return [...new Set(entries)];
 }
 
+/** PEOPLE-3.2: the people folder until one is saved, and what an empty field goes back to. */
+export const DEFAULT_PEOPLE_FOLDER = 'Team';
+/** PEOPLE-3.2: why a people folder is refused. */
+export const PEOPLE_FOLDER_ERROR = 'The People folder is a folder inside the Vault, such as Team or Work/Team.';
+const MAX_PEOPLE_FOLDER = 300;
+
+/**
+ * PEOPLE-3.2: the people folder, a path inside the Vault folder, as typed but for the slashes at its
+ * end. Empty (or null) is the default again. Refused: a full path, more than one line, a `*`, and an
+ * empty, `.` or `..` part, which could name a folder outside the Vault.
+ */
+export function parsePeopleFolder(value: unknown, field = 'peopleFolder'): string {
+  if (value === null || (typeof value === 'string' && value.trim() === '')) return DEFAULT_PEOPLE_FOLDER;
+  if (typeof value !== 'string') throw new SettingsError(field, PEOPLE_FOLDER_ERROR);
+  const folder = value.trim().replace(/\/+$/, '');
+  if (folder.length > MAX_PEOPLE_FOLDER || /[\0\n\r*]/.test(folder) || folder.startsWith('/') || folder.startsWith('~') || folder.split('/').some((part) => part === '' || part === '.' || part === '..')) {
+    throw new SettingsError(field, PEOPLE_FOLDER_ERROR);
+  }
+  return folder;
+}
+
 const fields: { [K in keyof Settings]: Field<Settings[K]> } = {
   idleThresholdHours: {
     default: 4,
@@ -207,6 +230,9 @@ const fields: { [K in keyof Settings]: Field<Settings[K]> } = {
       if (!Array.isArray(value)) return [];
       return [...new Set(value.map(parsePrivateFolder).filter((e): e is string => e !== null))];
     },
+  },  peopleFolder: {
+    default: DEFAULT_PEOPLE_FOLDER,
+    parse: parsePeopleFolder,
   },
 };
 

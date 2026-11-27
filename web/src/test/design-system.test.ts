@@ -396,6 +396,8 @@ const FAMILIES: Record<string, Family> = {
       'web/src/components/SessionView.tsx': { why: 'keyboard focus, the focused composer, the resize handle while dragged and the attachment drop target (VIEW-9.2)', uses: ['bg-primary-soft', 'bg-ring', 'border-primary', 'border-ring', 'ring-ring', 'ring-ring/25', 'text-primary'] },
       'web/src/components/Sidebar.tsx': { why: 'keyboard focus and the focused filter', uses: ['border-ring', 'ring-ring/30', 'ring-ring/50'] },
       'web/src/components/InboxList.tsx': { why: "keyboard focus on the Inbox's list and its focused filter, as the Session sidebar's (INBOX-1.3)", uses: ['border-ring', 'ring-ring/30', 'ring-ring/50'] },
+      'web/src/components/PeopleList.tsx': { why: "keyboard focus on People's list and its focused filter, as the Inbox's (PEOPLE-3.5)", uses: ['border-ring', 'ring-ring/30', 'ring-ring/50'] },
+      'web/src/components/PersonView.tsx': { why: "keyboard focus on a note's row of a Person's page, which is a link (PEOPLE-4.4)", uses: ['ring-ring/50'] },
       'web/src/components/DocumentFile.tsx': { why: "keyboard focus on a document's text, a Report's or the Document view's, which takes it so the arrow keys scroll it (INBOX-5.1, DOC-2.2)", uses: ['ring-ring/50'] },
       'web/src/components/StatusMenu.tsx': { why: 'keyboard focus on the menu', uses: ['ring-ring'] },
       'web/src/components/ChangesButton.tsx': { why: "keyboard focus on the status line's count of changed files (DIFF-1.3)", uses: ['ring-ring'] },
@@ -1751,11 +1753,11 @@ describe('details popovers', () => {
     expect(handBars(SOURCES[DETAILS] ?? '', DETAILS).map((f) => f.split(' ').slice(1).join(' '))).toEqual(['bar Meter']);
   });
 
-  it('DS-19.3: only lib/time.ts formats an age, and only as formatAge', () => {
+  it('DS-19.3: only lib/time.ts formats an age: formatAge, and formatDayAge for a day with no time of day', () => {
     const found = Object.entries(SOURCES)
       .filter(([path]) => /\.tsx?$/.test(path))
       .flatMap(([path, text]) => ageFormatters(text, path).map((f) => `${path} ${f.split(' ')[1]}`));
-    expect(found).toEqual(['web/src/lib/time.ts formatAge']);
+    expect(found).toEqual(['web/src/lib/time.ts formatAge', 'web/src/lib/time.ts formatDayAge']);
   });
 });
 

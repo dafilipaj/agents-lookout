@@ -52,6 +52,12 @@ const PROBES: Record<string, (user: UserEvent, press: Press) => Promise<void>> =
     await pressKey(user, press);
     expect(window.location.pathname).toBe('/s/a');
   },
+  // PEOPLE-3.1: `3` shows People from a Session.
+  async 'place-people'(user, press) {
+    fresh('/s/a');
+    await pressKey(user, press);
+    expect(window.location.pathname).toBe('/people');
+  },
   async move(user, press) {
     // With nothing selected, down goes to the first row and up to the last.
     fresh('/');
@@ -198,6 +204,9 @@ const ELSEWHERE: Record<string, { file: string; criteria: string[] }[]> = {
   'inbox-archive': [{ file: 'Inbox.test.tsx', criteria: ['INBOX-4.1'] }],
   'inbox-open': [{ file: 'Inbox.test.tsx', criteria: ['INBOX-2.8'] }],
   'inbox-session': [{ file: 'Inbox.test.tsx', criteria: ['INBOX-2.7'] }],
+  'people-move': [{ file: 'People.test.tsx', criteria: ['PEOPLE-3.5'] }],
+  'people-jump': [{ file: 'People.test.tsx', criteria: ['PEOPLE-3.5'] }],
+  'people-filter': [{ file: 'People.test.tsx', criteria: ['PEOPLE-3.5'] }],
   start: [{ file: 'Launcher.test.tsx', criteria: ['LAUNCH-3.3'] }],
   'commands-move': [{ file: 'Commands.test.tsx', criteria: ['VIEW-15.7'] }],
   'commands-pick': [{ file: 'Commands.test.tsx', criteria: ['VIEW-15.7', 'VIEW-15.8', 'LAUNCH-8.3'] }],

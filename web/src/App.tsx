@@ -23,6 +23,8 @@ import { PlaceRail } from '@/components/PlaceRail';
 import { InboxList, type InboxChoice } from '@/components/InboxList';
 import { DocumentView } from '@/components/DocumentView';
 import { ReportView } from '@/components/ReportView';
+import { PeopleList } from '@/components/PeopleList';
+import { PersonView } from '@/components/PersonView';
 import { BotsPanel } from '@/components/BotsPanel';
 import { StartingView } from '@/components/StartingView';
 import { WorkPanel } from '@/components/WorkPanel';
@@ -65,7 +67,8 @@ import { shownEffort } from '@/lib/effort-switch';
 import { type ModelTarget, shownModel } from '@/lib/model-switch';
 import { SWITCH_RUNNING, type SwitchState, type SwitchWhat, restartedWhy, switchFailure, switchKey } from '@/lib/status-switch';
 import { canGoBack, parseRoute, routePath, specHash, useRoute, type Route } from '@/lib/router';
-import { type Place, loadPlace, ownsRoute, placeOfRoute, savePlace } from '@/lib/places';
+import { PLACE_START, type Place, loadPlace, ownsRoute, placeOfRoute, savePlace } from '@/lib/places';
+import { useVaultRead } from '@/lib/people';
 import { HARNESS_NAME } from '@/lib/sessions';
 import type { SetupSessionTarget } from '@/lib/setup';
 import { cn } from '@/lib/utils';
@@ -315,7 +318,7 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
   if (place !== lastPlace) setLastPlace(place);
   useEffect(() => savePlace(place), [place]);
   // NAV-2.4: where each place was left in this page load.
-  const placeLeftAt = useRef<Record<Place, Route | null>>({ inbox: null, sessions: null });
+  const placeLeftAt = useRef<Record<Place, Route | null>>({ inbox: null, sessions: null, people: null });
   useEffect(() => {
     if (ownsRoute(route)) placeLeftAt.current[place] = route;
   }, [route, place]);
@@ -336,7 +339,8 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
             : left.name === 'launch'
               ? latestLaunches.current.some((l) => l.id === left.id)
               : true);
-      navigate(left && still ? left : to === 'inbox' ? { name: 'inbox' } : { name: 'home' });
+      // PEOPLE-3.1: a Person's page is still theirs; one whose folder is gone says so itself (PEOPLE-4.6).
+      navigate(left && still ? left : PLACE_START[to]);
     },
     [navigate, runs, state.sessions, state.aliases],
   );
@@ -595,8 +599,8 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
       if (e.isComposing || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
       const key = e.key.toLowerCase();
       const tab = ({ h: 'history', w: 'work', l: 'library', t: 'topics', b: 'bots', p: 'servers', u: 'setup' } as const)[key as 'h' | 'w' | 'l' | 't' | 'b' | 'p' | 'u'];
-      // NAV-4.1: `1` and `2` show a place, as its button does.
-      const to = ({ '1': 'inbox', '2': 'sessions' } as const)[key as '1' | '2'];
+      // NAV-4.1, PEOPLE-3.1: `1`, `2` and `3` show a place, as its button does.
+      const to = ({ '1': 'inbox', '2': 'sessions', '3': 'people' } as const)[key as '1' | '2' | '3'];
       if (!tab && !to) return;
       if (modalOpen || isTextField(e.target) || e.shiftKey) return;
       e.preventDefault();
@@ -1010,6 +1014,12 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
   const [librarySessions, setLibrarySessions] = useState<{ label: string; keys: string[] } | null>(null);
   // PEOPLE-2.6: what is private, as one value the Library reads again on.
   const privacyKey = useMemo(() => JSON.stringify([state.settings.vaultFolder, state.settings.privateFolders]), [state.settings.vaultFolder, state.settings.privateFolders]);
+  // PEOPLE-3.4: the people of the Vault are read when People shows, on focus after 30 s, and after a change of the Vault's settings.
+  const vaultKey = useMemo(() => `${privacyKey}\n${state.settings.peopleFolder}`, [privacyKey, state.settings.peopleFolder]);
+  const loadPeople = useCallback(() => client.people(), [client]);
+  const loadPerson = useCallback((name: string) => client.person(name), [client]);
+  // Not before the server's first answer: the settings it is read under aren't known until then.
+  const people = useVaultRead(loadPeople, place === 'people' && state.loaded, vaultKey);
   const moreOutputs = useCallback(
     (topic: Topic) => {
       const keys = topic.members.flatMap((m) => (m.kind === 'session' ? [`${m.ref.harness}:${m.ref.sessionId}`] : []));
@@ -1526,19 +1536,31 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
         />
         <Sidebar
           place={place}
-          inbox={
-            <InboxList
-              bots={state.bots}
-              loaded={state.loaded}
-              selectedId={route.name === 'inbox' ? (route.id ?? null) : null}
-              now={now}
-              onSelect={(id, how) => navigate({ name: 'inbox', id }, { replace: how === 'replace' })}
-              view={inboxChoice}
-              onView={setInboxChoice}
-              onOpenBots={() => showTab('bots', true)}
-              keyboardEnabled={!modalOpen && place === 'inbox'}
-              onShown={setInboxShown}
-            />
+          list={
+            place === 'people' ? (
+              // PEOPLE-3.2: People's list; it stays beside a note opened from a Person's page (PEOPLE-4.4).
+              <PeopleList
+                read={people}
+                // PEOPLE-4.4: the Person stays the selected row while a note of theirs is open.
+                selected={route.name === 'people' || route.name === 'doc' ? (route.person ?? null) : null}
+                now={now}
+                onSelect={(person, how) => navigate({ name: 'people', person }, { replace: how === 'replace' })}
+                keyboardEnabled={!modalOpen}
+              />
+            ) : (
+              <InboxList
+                bots={state.bots}
+                loaded={state.loaded}
+                selectedId={route.name === 'inbox' ? (route.id ?? null) : null}
+                now={now}
+                onSelect={(id, how) => navigate({ name: 'inbox', id }, { replace: how === 'replace' })}
+                view={inboxChoice}
+                onView={setInboxChoice}
+                onOpenBots={() => showTab('bots', true)}
+                keyboardEnabled={!modalOpen && place === 'inbox'}
+                onShown={setInboxShown}
+              />
+            )
           }
           sessions={sessions}
           fleet={state.fleet}
@@ -1611,6 +1633,18 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
                 onOpenStart={openStart}
                 onShowBot={showBot}
                 keyboardEnabled={!modalOpen}
+              />
+            ) : route.name === 'people' ? (
+              <PersonView
+                name={route.person ?? null}
+                people={people}
+                load={loadPerson}
+                vaultKey={vaultKey}
+                ready={state.loaded}
+                now={now}
+                onOpenSettings={() => navigate({ name: 'settings', section: 'vault' })}
+                onOpenNote={(path) => navigate({ name: 'doc', path, person: route.person })}
+                onSpelling={(person) => navigate({ name: 'people', person }, { replace: true })}
               />
             ) : route.name === 'topics' ? (
               <TopicGraph
@@ -1718,8 +1752,8 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
                 path={route.path}
                 load={loadDocument}
                 loadText={loadDocumentText}
-                // DOC-2.4: to where it was opened from; with nothing before it in this tab, to its Session, else the place you were in.
-                onBack={() => (canGoBack() ? window.history.back() : route.session ? navigate({ name: 'session', id: route.session }) : showPlace(place))}
+                // DOC-2.4: to where it was opened from; with nothing before it in this tab, to its Session or its Person's page, else the place you were in.
+                onBack={() => (canGoBack() ? window.history.back() : route.session ? navigate({ name: 'session', id: route.session }) : route.person ? navigate({ name: 'people', person: route.person }) : showPlace(place))}
                 keyboardEnabled={!modalOpen}
               />
             ) : route.name === 'past' ? (

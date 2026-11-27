@@ -162,24 +162,54 @@ export class PrivateFolders {
   /** PEOPLE-2.3: whether a file is private: on its path as written, then on its physical path. */
   async covers(path: string): Promise<boolean> {
     if (!this.any || !isAbsolute(path)) return false;
-    return this.under(path, () => this.match);
-  }
-
-  /** PEOPLE-2.9: whether a file lies in the Vault folder, by the same two paths; never with no Vault folder set. */
-  async inVault(path: string): Promise<boolean> {
-    if (this.vault.length === 0 || !isAbsolute(path)) return false;
-    return this.under(path, () => this.inside);
-  }
-
-  private async under(path: string, matcher: () => (path: string) => boolean): Promise<boolean> {
-    const written = normalize(path);
-    if (matcher()(written)) return true;
-    await this.current();
-    if (matcher()(written)) return true;
-    const real = await this.resolve(written);
     // A disk too slow to say where a file really is: private until it answers, never shown on a guess.
-    if (real === SLOW) return true;
-    return real !== null && real !== written && matcher()(real);
+    return this.under(path, () => this.match, true);
+  }
+
+  /**
+   * PEOPLE-3.2, 4.3: whether a folder is private: one an entry matches, or one inside it, so a file
+   * directly in it would be private. Asked by where such a file would be, on the same two paths. The
+   * disk is asked where the folder itself is, never about an entry of it: one that is a link would
+   * answer for the place it points to. `slow`: the disk didn't say in time, which is private to an
+   * asker that would otherwise show something (it is truthy), and "unread" to one that can say so.
+   */
+  async coversFolder(path: string): Promise<boolean | 'slow'> {
+    if (!this.any || !isAbsolute(path)) return false;
+    const met = await this.meets(path, () => this.match, '_');
+    return met === SLOW ? 'slow' : met;
+  }
+
+  /**
+   * PEOPLE-2.9, 4.5: whether a file lies in the Vault folder, by the same two paths; never with no
+   * Vault folder set. `whenSlow` is the answer while the disk is too slow to say where the file really
+   * is: true where a wrong "no" would show a name (PEOPLE-2.9), false where "yes" only offers Obsidian
+   * (PEOPLE-4.5).
+   */
+  async inVault(path: string, whenSlow = true): Promise<boolean> {
+    if (this.vault.length === 0 || !isAbsolute(path)) return false;
+    return this.under(path, () => this.inside, whenSlow);
+  }
+
+  /** `meets`, with a disk too slow to say answered as the asker chose. */
+  private async under(path: string, matcher: () => (path: string) => boolean, whenSlow: boolean): Promise<boolean> {
+    const met = await this.meets(path, matcher);
+    return met === SLOW ? whenSlow : met;
+  }
+
+  /**
+   * Whether `matcher` meets a path as written, or its physical path; SLOW when the disk doesn't say in
+   * time where that is. `child`: the question is about an entry of that name directly in the path,
+   * which need not exist, so only the path itself is resolved.
+   */
+  private async meets(path: string, matcher: () => (path: string) => boolean, child = ''): Promise<boolean | typeof SLOW> {
+    const written = normalize(path);
+    const asked = (at: string) => (child ? join(at, child) : at);
+    if (matcher()(asked(written))) return true;
+    await this.current();
+    if (matcher()(asked(written))) return true;
+    const real = await this.resolve(written);
+    if (real === SLOW) return SLOW;
+    return real !== null && real !== written && matcher()(asked(real));
   }
 
   /** A file's physical path, remembered for a minute; a slow answer isn't kept, so the next ask tries the disk again. */

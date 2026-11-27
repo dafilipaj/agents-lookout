@@ -6,7 +6,7 @@ import { chmod, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises
 import { request } from 'node:http';
 import { type Server, createServer } from 'node:net';
 import { homedir } from 'node:os';
-import { delimiter, join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { FakeControl, readViolations } from '../fakes/control.ts';
 import type { FakeViolation } from '../fakes/index.ts';
@@ -655,7 +655,17 @@ export async function startWorld(spec: WorldSpec, opts: StartOptions = {}): Prom
     );
 
     // Lookout's own settings file (TEST-1.1).
-    await writeFile(settingsPath, JSON.stringify({ version: 1, ...spec.settings }, null, 2) + '\n', { mode: 0o600 });
+    // PEOPLE: the Vault's notes, written as a notes app would leave them, and the settings that point at it.
+    const vaultFolder = spec.vault ? (spec.vault.folder ?? 'vault') : null;
+    if (spec.vault && vaultFolder) {
+      await mkdir(join(home, vaultFolder), { recursive: true });
+      for (const [path, text] of Object.entries(spec.vault.notes)) {
+        await mkdir(dirname(join(home, vaultFolder, path)), { recursive: true });
+        await writeFile(join(home, vaultFolder, path), text);
+      }
+    }
+    const vaultSettings = spec.vault && vaultFolder ? { vaultFolder: `~/${vaultFolder}`, ...(spec.vault.peopleFolder ? { peopleFolder: spec.vault.peopleFolder } : {}) } : {};
+    await writeFile(settingsPath, JSON.stringify({ version: 1, ...spec.settings, ...vaultSettings }, null, 2) + '\n', { mode: 0o600 });
     // TOPIC: the declared Topics, written through Lookout's own store, as the server would.
     if (spec.topics.length) {
       const store = new TopicStore(join(home, '.lookout', 'topics.db'));

@@ -1096,8 +1096,8 @@ describe('one view switch', () => {
     await user.keyboard('{ArrowLeft}{ArrowLeft}');
     expect(chosen()).toBe('Clean');
     act(() => (document.activeElement as HTMLElement).blur());
-    // `1` and `2` are the places' keys now (NAV-4.1), so they aren't tried here.
-    await user.keyboard('c345');
+    // `1`, `2` and `3` are the places' keys now (NAV-4.1, PEOPLE-3.1), so they aren't tried here.
+    await user.keyboard('c45');
     expect(chosen()).toBe('Clean');
   });
 });

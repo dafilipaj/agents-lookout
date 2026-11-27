@@ -31,7 +31,7 @@ const go = (path: string) =>
 beforeEach(() => window.sessionStorage.clear());
 
 describe('the rail (NAV-1)', () => {
-  it('NAV-1.1: the rail is the first column, 56 px, with Lookout’s mark at 20 px in its header cell and the places under it, Inbox then Sessions', () => {
+  it('NAV-1.1: the rail is the first column, 56 px, with Lookout’s mark at 20 px in its header cell and the places under it, Inbox, Sessions, then People', () => {
     open('/s/a');
     expect(document.querySelector('[data-shell]')!.firstElementChild).toBe(rail());
     expect(rail()).toHaveClass('w-14');
@@ -39,7 +39,7 @@ describe('the rail (NAV-1)', () => {
     const mark = header.querySelector('[data-slot="lookout-mark"]')!;
     expect(mark).toHaveClass('size-5');
     expect(mark).toHaveAttribute('aria-hidden', 'true');
-    expect(within(screen.getByRole('navigation', { name: 'Places' })).getAllByRole('button').map((b) => b.textContent)).toEqual(['Inbox', 'Sessions']);
+    expect(within(screen.getByRole('navigation', { name: 'Places' })).getAllByRole('button').map((b) => b.textContent)).toEqual(['Inbox', 'Sessions', 'People']);
   });
 
   it('NAV-1.2: a place’s button shows its icon over its name, the current one has aria-current and the neutral wash, and its tooltip names its key', () => {
@@ -278,13 +278,18 @@ describe('keys (NAV-4)', () => {
     expect(window.location.pathname).toBe('/s/b');
   });
 
-  it('NAV-4.3: the keys’ edge sits on the left column in either place, and focus on a rail button counts as the list’s', async () => {
+  it('NAV-4.3: the keys’ edge sits on the left column in every place, and focus on a rail button counts as the list’s', async () => {
     const user = userEvent.setup();
     open('/s/a');
     expect(leftColumn().querySelector('[data-keys-edge="left"]')).not.toBeNull();
     await user.click(place('Inbox'));
     expect(place('Inbox')).toHaveFocus();
     expect(leftColumn()).toHaveAttribute('data-place', 'inbox');
+    expect(leftColumn().querySelector('[data-keys-edge="left"]')).not.toBeNull();
+    expect(document.querySelectorAll('[data-keys-edge]')).toHaveLength(1);
+    await user.click(place('People'));
+    expect(place('People')).toHaveFocus();
+    expect(leftColumn()).toHaveAttribute('data-place', 'people');
     expect(leftColumn().querySelector('[data-keys-edge="left"]')).not.toBeNull();
     expect(document.querySelectorAll('[data-keys-edge]')).toHaveLength(1);
   });

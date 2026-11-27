@@ -15,7 +15,7 @@ import { IconButton } from '@/components/ui/icon-button';
 import { Kbd } from '@/components/ui/kbd';
 import { linkedPrs, nameSuffixes } from '@/lib/names';
 import { filterRow, queryWords, type RowMatch, sessionWork } from '@/lib/filter';
-import type { Place } from '@/lib/places';
+import { PLACE_LABEL, type Place } from '@/lib/places';
 import { isLongIdle, sessionOptionId } from '@/lib/sessions';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
@@ -43,13 +43,13 @@ export interface SidebarProps {
   onOpenSettings(): void;
   settingsOpen: boolean;
   /**
-   * NAV-2: the place that shows. In the Inbox this column holds `inbox`, the Inbox's list, in its
-   * header and body cells, and the Sessions' own are hidden, not unmounted, so the filter, the
-   * hover-freeze and the scroll are there when you come back (NAV-2.6). Sessions when absent.
+   * NAV-2: the place that shows. In the Inbox and in People this column holds `list`, the place's
+   * own list, in its header and body cells, and the Sessions' own are hidden, not unmounted, so the
+   * filter, the hover-freeze and the scroll are there when you come back (NAV-2.6). Sessions when absent.
    */
   place?: Place;
-  /** NAV-2.2: the Inbox's header and body cells. */
-  inbox?: ReactNode;
+  /** NAV-2.2, PEOPLE-3.2: the header and body cells of the list of a place other than Sessions. */
+  list?: ReactNode;
   /** LAUNCH-1.1: the "+" button. */
   onNewSession(): void;
   /** LAUNCH-4: starts in flight, shown above the Sessions. */
@@ -391,7 +391,7 @@ export function Sidebar(props: SidebarProps) {
 
   return (
     <aside
-      aria-label={inSessions ? 'Session sidebar' : 'Inbox'}
+      aria-label={inSessions ? 'Session sidebar' : PLACE_LABEL[props.place ?? 'sessions']}
       className={cn(SHELL_COLUMN, 'relative w-[280px] border-r border-sidebar-border bg-sidebar text-sidebar-foreground')}
       data-shell-column="left"
       data-place={props.place ?? 'sessions'}
@@ -469,8 +469,8 @@ export function Sidebar(props: SidebarProps) {
           {body}
         </div>
       </ShellCell>
-      {/* NAV-2.2: the Inbox's list, in this column's header and body cells. */}
-      {!inSessions && props.inbox}
+      {/* NAV-2.2, PEOPLE-3.2: the Inbox's list, or People's, in this column's header and body cells. */}
+      {!inSessions && props.list}
       {/* SIDE-8.1: the usage panel sits in the dock row, so its top line is the composer's. DockRest,
           stacked under it, keeps the row at the resting composer's height in every view. */}
       <ShellCell row="dock" className="grid items-start border-sidebar-border *:col-start-1 *:row-start-1">

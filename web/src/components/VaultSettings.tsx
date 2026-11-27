@@ -1,5 +1,5 @@
 import { PRIVATE_FOLDER_ERROR, isFullPath, parsePrivateFolder } from '@shared/private-folders.ts';
-import { PRIVATE_NEEDS_VAULT, type Settings, type SettingsView } from '@shared/settings.ts';
+import { DEFAULT_PEOPLE_FOLDER, PRIVATE_NEEDS_VAULT, type Settings, type SettingsView } from '@shared/settings.ts';
 import { EyeOff, X } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
@@ -18,13 +18,14 @@ const message = (err: unknown) => (err instanceof Error ? err.message : 'Saving 
 /** PEOPLE-2.10: said under the list while it holds a path inside the Vault and no Vault folder is set. */
 export const PRIVATE_IDLE = 'No Vault folder is set, so the entries that aren’t full paths hide nothing.';
 
-/** PEOPLE-1, PEOPLE-2: Settings' Vault section: where the Vault is, and the folders Lookout never lists or shows. */
+/** PEOPLE-1, PEOPLE-2, PEOPLE-3.2: Settings' Vault section: where the Vault is, the folders Lookout never lists or shows, and the folder that holds the people. */
 export function VaultSection({ settings, save }: Props) {
   return (
     <div className="max-w-2xl">
       <p className="text-body text-muted-foreground">Your notes stay where they are: Lookout reads the Vault and never writes to it.</p>
       <VaultFolder settings={settings} save={save} />
       <PrivateFolders settings={settings} save={save} />
+      <PeopleFolder settings={settings} save={save} />
     </div>
   );
 }
@@ -173,5 +174,65 @@ function PrivateFolders({ settings, save }: Props) {
       {error && <Alert layout="inline" title={error} className="mt-2" />}
       {idle && <Alert tone="info" layout="inline" title={PRIVATE_IDLE} className="mt-2" />}
     </section>
+  );
+}
+
+/**
+ * PEOPLE-3.2: the people folder, a folder inside the Vault folder with a folder per Person. An
+ * empty field is `Team` again. The server says why it refuses one; the saved folder stays.
+ */
+function PeopleFolder({ settings, save }: Props) {
+  // What's typed; null while it shows the saved folder, so a change from another tab shows.
+  const [draft, setDraft] = useState<string | null>(null);
+  const [state, setState] = useState<{ kind: 'idle' | 'saving' } | { kind: 'saved'; folder: string } | { kind: 'error'; message: string }>({ kind: 'idle' });
+  const value = draft ?? settings.peopleFolder;
+  const done = state.kind === 'saved' && state.folder === settings.peopleFolder ? 'Saved' : null;
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    const folder = value.trim().replace(/\/+$/, '') || DEFAULT_PEOPLE_FOLDER;
+    setState({ kind: 'saving' });
+    try {
+      await save({ peopleFolder: folder });
+      setDraft(null);
+      setState({ kind: 'saved', folder });
+    } catch (err) {
+      setState({ kind: 'error', message: message(err) });
+    }
+  };
+
+  return (
+    <form onSubmit={submit} noValidate className="mt-4 rounded-lg border border-border bg-card p-4">
+      <Label htmlFor="people-folder" className="text-body">
+        People folder
+      </Label>
+      <p id="people-folder-help" className="mt-1 text-meta text-muted-foreground">
+        The folder inside the Vault that holds a folder for each person: People lists them. Leave it empty for <code className="font-mono">{DEFAULT_PEOPLE_FOLDER}</code>.
+      </p>
+      <div className="mt-3 flex items-center gap-2">
+        <Input
+          id="people-folder"
+          type="text"
+          spellCheck={false}
+          autoComplete="off"
+          placeholder={DEFAULT_PEOPLE_FOLDER}
+          aria-describedby="people-folder-help"
+          aria-invalid={state.kind === 'error'}
+          className="h-8 min-w-0 flex-1 font-mono text-body"
+          value={value}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            setState({ kind: 'idle' });
+          }}
+        />
+        <Button variant="primary" size="form" type="submit" disabled={state.kind === 'saving' || draft === null}>
+          Save
+        </Button>
+        <span role="status" className="ml-1 text-meta text-muted-foreground">
+          {done}
+        </span>
+      </div>
+      {state.kind === 'error' && <Alert layout="inline" title={state.message} className="mt-2" />}
+    </form>
   );
 }

@@ -20,9 +20,22 @@ export const documentOf = (item: OutputItem): string | null => (item.kind === 'f
 /** DOC-1.2: Open file on an Artifact's row: its source file, when the Document view shows it. */
 export const sourceDocumentOf = (item: OutputItem): string | null => (item.source?.exists && showsInLookout(item.source.type) ? item.source.path : null);
 
-/** DOC-2.5, INBOX-2.8: leaving Lookout with a file: Markdown in VS Code; anything else in a new browser tab, through Lookout's own file route (LIB-3.3). */
-export function openFile(path: string, type: OutputType) {
-  if (type === 'markdown') window.open(vscodeHref(path, null, null), '_self');
+/** PEOPLE-4.5: a note's link into Obsidian, by its absolute path: Obsidian finds the Vault that holds it. */
+export const obsidianHref = (path: string): string => `obsidian://open?path=${encodeURIComponent(path)}`;
+/**
+ * DOC-2.5, INBOX-2.8: what Open is for a file, by where it goes: a Markdown file of the Vault to
+ * Obsidian (PEOPLE-4.5), any other Markdown file to VS Code, anything else to a browser tab.
+ */
+export const openActionOf = (type: OutputType | null | undefined, vault = false): 'open-obsidian' | 'open-vscode' | 'open-external' => (type !== 'markdown' ? 'open-external' : vault ? 'open-obsidian' : 'open-vscode');
+/** INBOX-2.8: Open for an Output: a file's by its Type and where it is, an Artifact's or a Share's its URL. */
+export const openActionOfOutput = (item: Pick<OutputItem, 'kind' | 'type' | 'vault'>) => (item.kind === 'file' ? openActionOf(item.type, item.vault) : 'open-external');
+
+/**
+ * DOC-2.5, INBOX-2.8: leaving Lookout with a file: Markdown in VS Code, or in Obsidian when it is the
+ * Vault's (PEOPLE-4.5); anything else in a new browser tab, through Lookout's own file route (LIB-3.3).
+ */
+export function openFile(path: string, type: OutputType, vault = false) {
+  if (type === 'markdown') window.open(vault ? obsidianHref(path) : vscodeHref(path, null, null), '_self');
   else window.open(`/api/library/file?${new URLSearchParams({ path })}`, '_blank', 'noopener,noreferrer');
 }
 /**
@@ -34,6 +47,6 @@ export const framedFileUrl = (path: string): string => `/api/library/file?${new 
 export const canOpenOutput = (item: OutputItem): boolean => (item.kind === 'file' ? item.exists && !!item.path && !!item.type : !!item.url);
 /** INBOX-2.8, LIB-3.3: leaving Lookout with an Output: a file that's there (`openFile`), or an Artifact's or Share's URL. */
 export function openOutput(item: OutputItem) {
-  if (item.kind === 'file') { if (item.exists && item.path && item.type) openFile(item.path, item.type); }
+  if (item.kind === 'file') { if (item.exists && item.path && item.type) openFile(item.path, item.type, item.vault); }
   else if (item.url) window.open(item.url, '_blank', 'noopener,noreferrer');
 }

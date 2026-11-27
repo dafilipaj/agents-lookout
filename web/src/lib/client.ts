@@ -2,6 +2,7 @@ import type { AwakeMode, AwakeSnapshot } from '@shared/awake.ts';
 import type { BotInput, BotRun, BotView, ReportDetail, ReportMark } from '@shared/bots.ts';
 import type { DocumentAnswer, LibraryPage, LibraryQuery } from '@shared/library.ts';
 import type { PathAnswer } from '@shared/files.ts';
+import type { PeopleAnswer, PersonAnswer } from '@shared/people.ts';
 import type { StopResult, StopTarget } from '@shared/ports.ts';
 import type { PlainAnswer, PlainExamplesAnswer, PlainPrFiles, PlainSimpleAnswer, PlainSource } from '@shared/plain.ts';
 import type { Settings, SettingsView } from '@shared/settings.ts';
@@ -62,6 +63,10 @@ export interface LookoutClient {
   document(path: string): Promise<DocumentAnswer>;
   /** DOC-3.2: a listed Markdown file's text, at most its first megabyte. */
   documentText(path: string): Promise<{ text: string; truncated: boolean }>;
+  /** PEOPLE-3.2: the Persons of the Vault, or why there are none. */
+  people(): Promise<PeopleAnswer>;
+  /** PEOPLE-4.2, 4.3: one Person's notes by name. */
+  person(name: string): Promise<PersonAnswer>;
   /** VIEW-5.12: renames the Session through Fleet: the Harness's own `/rename`, only while it's Idle. */
   renameSession(sessionId: string, title: string): Promise<RenameResult>;
   /**
@@ -562,6 +567,8 @@ export function createHttpClient(): LookoutClient {
     reportText: (path) => fileText(`/api/inbox/text?${new URLSearchParams({ path })}`),
     document: (path) => call<DocumentAnswer>(() => fetch(`/api/doc?${new URLSearchParams({ path })}`), 'Reading the file'),
     documentText: (path) => fileText(`/api/library/text?${new URLSearchParams({ path })}`),
+    people: () => call<PeopleAnswer>(() => fetch('/api/people'), 'Reading your Vault'),
+    person: (name) => call<PersonAnswer>(() => fetch(`/api/people/${encodeURIComponent(name)}`), 'Reading your Vault'),
     setAwake: (mode, replace = false) => call<AwakeSnapshot>(() => send('POST', '/api/awake', replace ? { mode, replace } : { mode }), 'Changing keep-awake'),
     renameSession: (sessionId, title) =>
       call<RenameResult>(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/rename`, { title }), 'Renaming'),

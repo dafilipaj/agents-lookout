@@ -17,7 +17,7 @@ afterEach(() => {
 
 // Invented paths throughout: the repo is public.
 const NOTES = '/Users/me/harbor/output/tide notes.md';
-const doc = (over: Partial<DocumentAnswer> = {}): DocumentAnswer => ({ path: NOTES, display: '~/harbor/output/tide notes.md', type: 'markdown', exists: true, ...over });
+const doc = (over: Partial<DocumentAnswer> = {}): DocumentAnswer => ({ path: NOTES, display: '~/harbor/output/tide notes.md', type: 'markdown', exists: true, vault: false, ...over });
 const view = (over: Partial<Parameters<typeof DocumentView>[0]> = {}) => {
   const props = {
     path: NOTES,

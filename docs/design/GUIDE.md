@@ -116,13 +116,15 @@ A row of the right sidebar's lists (Work, History, Library, Topics, Bots, Setup)
 
 ### A list in the left column that drives the main pane
 
-The list of a place (NAV): the Session sidebar's, and the Inbox's (`InboxList.tsx`, INBOX-1). Selecting a row shows it in the main pane; the right sidebar's lists expand in place instead, because the main pane isn't theirs.
+The list of a place (NAV): the Session sidebar's, the Inbox's (`InboxList.tsx`, INBOX-1) and People's (`PeopleList.tsx`, PEOPLE-3). Selecting a row shows it in the main pane; the right sidebar's lists expand in place instead, because the main pane isn't theirs.
 
 - **Use** the column's header cell for the filter (its `/` hint as the Session filter's) and its body for the list: a `Segmented` (`surface="sidebar"`, `fill`) when the list shows a few ways, then one `listbox` grouped by day (`byDay`, `dayLabel`), its rows the right sidebar's (`data-slot="row"`).
 - The keys are the window's, as the Session sidebar's: ↑/↓ and j/k select and show, ⌘1–9 jump, `/` filters. They stand down while a dialog is open, in a text field, with focus in the right sidebar, and while another place shows (NAV-4.2).
 - **A Report's row (INBOX-1.2):** the Library's row with SIDE-13's unread mark. Its 16 px icon says what it holds; a failed run's is the triangle in `destructive`, drawn once, with "failed" as its word; "waiting on you" is in `needs-you-text`. Everything else is quiet.
+- **A Person's row (PEOPLE-3.3):** no leading icon, as a Bot's row has none: the name in `body` medium, then one quiet line in `meta` ("1on1 3d ago"), with `--row-inset` at 8 px so the hairline starts where the names do. People's list has no `Segmented` and no day groups: it is one list, A to Z.
+- **What the place needs and doesn't have** (no Vault folder, no People folder, no Person yet): an `EmptyState` in the main pane, and its title alone in the column. Where Settings is the way out (the first two) the way there is its action ("Vault settings"); where it isn't, its hint says what to do. A folder the server can't read is a failure, so an error `Alert` (PEOPLE-3.6).
 - **Don't:** expand a row in place here; give the list a second selected state; colour an unread mark.
-- **Guard:** the colour guard's rows for `InboxList.tsx`. Its look is INBOX-1.6.
+- **Guard:** the colour guard's rows for `InboxList.tsx` and `PeopleList.tsx`. Their looks are INBOX-1.6 and PEOPLE-3.8.
 
 ### A document shown in place
 
@@ -131,9 +133,19 @@ A file read in the main pane: what a Report holds (`ReportView.tsx`, INBOX-2.4),
 - **Use** `Markdown` (`reading`) in the chat's column for text, inside a focusable `role="region"` with `data-scroll-keys`, so the arrow keys scroll it. A page is an `iframe` that fills the pane on white, since a page brings its own colours, with the file route's `frame=1` URL (`framedFileUrl`, `lib/outputs.ts`), the same `sandbox` the route sends, and the document's title as its `title` (INBOX-2.9).
 - What only a browser tab can show (a PDF, a Share, an Artifact without its source file) is a bordered card: its title, its Type, where it is, and one Primary "Open".
 - Several documents are `Tabs` under the header, and only the open one is drawn.
-- The Document view's header is Back (the quiet button Settings has), the file's name with its Type's icon, its Type word and folder under it, then Open and More; Open's icon says it leaves Lookout (DS-18.6). A row that opens a file here uses `open`, the icon for staying inside (`documentOf`, `lib/outputs.ts`).
+- The Document view's header is Back (the quiet button Settings has), the file's name with its Type's icon, its Type word and folder under it, then Open and More; Open's icon and word say where it goes (DS-18.6): `openActionOf` (`lib/outputs.ts`) picks "Open in Obsidian" for a Markdown file of the Vault (PEOPLE-4.5), "Open in VS Code" for any other, and "Open" for a browser tab. A row that opens a file here uses `open`, the icon for staying inside (`documentOf`, `lib/outputs.ts`).
 - **Don't:** frame a page without the sandbox; frame another origin; read a file the server didn't list (DOC-3.1); open a Markdown file, a page or an image in VS Code or a tab from a row when the Document view shows it.
 - **Guard:** INBOX-2.9's tests, in the server and the view, and DOC-3.1's for what the server reads. Their looks are INBOX-2.11 and DOC-2.7.
+
+### A page that lists documents
+
+A main-pane page whose rows open documents: a Person's page (`PersonView.tsx`, PEOPLE-4).
+
+- **Use** a `PlainView` with a two-line header, and the chat's column (`DOCUMENT_COLUMN`) for its sections, each under a `SectionLabel` with how many it holds at its right.
+- A row is a real link to the document's own path in the Document view (`routePath`), so ⌘-click opens a new browser tab and a plain click or Enter shows it here: a 14 px Type icon in `muted-foreground`, what names the document in `body` (a 1on1 note's date, medium; else the note's name), what else its name says in `muted-foreground`, and an age at the right, `tabular-nums`. The row is the action: no button on it.
+- An empty section says what would fill it in one `meta` line; it is never left out, so the page's order stays the same for every Person.
+- **Don't:** preview a note in its row or read one to draw the page: the list comes from names alone (PEOPLE-3.4).
+- **Guard:** PEOPLE-4.4's test (a row is a link to the note's path). Its look is PEOPLE-4.7.
 
 ### A form that sets up a start
 
@@ -189,11 +201,11 @@ Context usage, a usage limit, memory and CPU load, a PR's age.
 
 ### A place on the rail
 
-One of Lookout's top-level places, on the rail at the window's left edge: the Inbox, Sessions, later People (NAV, [0017](../decisions/0017-one-app-for-both-roles.md)).
+One of Lookout's top-level places, on the rail at the window's left edge: the Inbox, Sessions and People (NAV, PEOPLE-3, [0017](../decisions/0017-one-app-for-both-roles.md)).
 
 - **Use** `PlaceButton`, `RailCount` and `RailMark` (`ui/place-rail.tsx`, DS-24), put together in `PlaceRail.tsx`. A new place is an entry of `PLACES` in `lib/places.ts` with its name and its key, its icon in `PlaceRail.tsx`, and its routes in `placeOfRoute`.
-- A place owns the left column and the main pane, nothing else: its list goes into the left column's header and body cells (the Inbox's through `Sidebar`'s `inbox`), and the right sidebar, the launcher and the dock are the same everywhere.
-- The current place is where you are: `aria-current="page"` on the neutral wash, as a selected row. What waits in a place is a `RailCount` on its icon: neutral for what is new (unread Reports), Needs you's amber only for the Sessions that Need you (NAV-3.2).
+- A place owns the left column and the main pane, nothing else: its list goes into the left column's header and body cells (the Inbox's and People's through `Sidebar`'s `list`), and the right sidebar, the launcher and the dock are the same everywhere.
+- The current place is where you are: `aria-current="page"` on the neutral wash, as a selected row. What waits in a place is a `RailCount` on its icon: neutral for what is new (unread Reports), Needs you's amber only for the Sessions that Need you (NAV-3.2). A place where nothing waits has no count (People, PEOPLE-3.1).
 - The rail's top holds places and nothing else; what isn't a place (Settings, Keyboard shortcuts) is an `IconButton` at its bottom.
 - **Do:** add a place only when it has a page; give it the next digit as its key.
 - **Don't:** colour the current place Primary; count something new in amber; give a place a right sidebar of its own.
@@ -203,7 +215,7 @@ One of Lookout's top-level places, on the rail at the window's left edge: the In
 
 What sits in the header row of the main pane: a Session's, a Report's, a document's, a Topic's, Settings'.
 
-- **Use** `PaneHeader`, or `PlainView`'s `header` for a view with no dock. The header row is 60 px in every view (SIDE-8.4): room for a `title` line with one line of facts under it in `meta` (`ReportView.tsx`, `DocumentView.tsx`, `TopicView.tsx`), and a one-line header (`SessionView.tsx`, `SettingsPage.tsx`) is centred in it, so the header line and the rail's buttons stay where they are from view to view.
+- **Use** `PaneHeader`, or `PlainView`'s `header` for a view with no dock. The header row is 60 px in every view (SIDE-8.4): room for a `title` line with one line of facts under it in `meta` (`ReportView.tsx`, `DocumentView.tsx`, `TopicView.tsx`, `PersonView.tsx`), and a one-line header (`SessionView.tsx`, `SettingsPage.tsx`) is centred in it, so the header line and the rail's buttons stay where they are from view to view.
 - **Do:** keep a new header to two lines: the title, and at most one line under it, cut to fit (`truncate`), with the actions at the right.
 - **Don't:** add a third line or taller padding to a header: the row grows for all four columns, and the line moves when you switch views. An archived Topic's closing line is the one header that does it.
 - **Guard:** SIDE-8.4, a Behaviour test that measures the header line under a one-line header, a Topic view and a Report.
@@ -233,8 +245,9 @@ A tab that drops its name, a header that folds its facts: something inside a col
 
 - **Use** `formatAge` (`lib/time.ts`): `12s`, `5m`, `3h`, `2d`, and `useNow` or `useClock` so it keeps time.
 - **Rule:** in a row's column, the age alone, `tabular-nums`, in the row's quiet colour (`5m`); in a sentence or as a reading's age, `5m ago`; a stale reading, `stale · 5m` in `info-text`.
+- **A day with no time of day** (the date in a note's name, PEOPLE-3.3): `formatDayAge` with the days since it: `today`, `3d ago`, and `in 4d` for a day still to come; in a row's column `3d`. `formatAge` would call a note dated today "14h" old.
 - **Don't:** write another age formatter, or "just now": a reading a few seconds old says `12s ago`.
-- **Guard:** DS-19.3 (no function or variable named `format…Age…` or `…Ago` outside `lib/time.ts`).
+- **Guard:** DS-19.3 (no function or variable named `format…Age…` or `…Ago` outside `lib/time.ts`, and only those two in it).
 
 ### A keyboard shortcut
 

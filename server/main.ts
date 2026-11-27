@@ -17,6 +17,7 @@ import { renameSession } from './renamer.ts';
 import { run, runLog } from './exec.ts';
 import { guardRejections } from './crash-guard.ts';
 import { checkSessionPaths } from './files.ts';
+import { People } from './people.ts';
 import { PrivateFolders } from './private-folders.ts';
 import { fetchFleetList, resolveFleetBin } from './fleet.ts';
 import { GitCache, readGitLocation, readGlobalGitEmail } from './git.ts';
@@ -256,7 +257,15 @@ const closer: CloserOptions = {
 const privateFolders = new PrivateFolders({ home: env.HOME });
 void privateFolders.set(settings.get());
 settings.onChange((s) => void privateFolders.set(s));
-const library = new Library({ runner: run, bin: () => resolveTbSessionBin(env), env, toolVersion: () => tools.version('tb-session'), onRead: (items, pruned) => topics.libraryRead(items, pruned), isPrivate: (path) => privateFolders.covers(path), inVault: (path) => privateFolders.inVault(path) });
+const library = new Library({ runner: run, bin: () => resolveTbSessionBin(env), env, toolVersion: () => tools.version('tb-session'), onRead: (items, pruned) => topics.libraryRead(items, pruned), isPrivate: (path) => privateFolders.covers(path), inVault: (path, whenSlow) => privateFolders.inVault(path, whenSlow) });
+// PEOPLE-3, PEOPLE-4: the people in the Vault, read from its folder and file names at each ask. A note a Person's
+// page names is listed for the Document view, which still asks the Private folders at every read.
+const people = new People({
+  settings: () => settings.get(),
+  home: env.HOME,
+  isPrivateFolder: (path) => privateFolders.coversFolder(path),
+  allow: (path) => library.files.allow(path),
+});
 // BOT, INBOX: the Bots, their schedule and their runs, in `~/.lookout/bots.json` (or the file `LOOKOUT_BOTS` names).
 // The server holding the store's lock looks for due Bots, with no tab open; a second one only shows them (BOT-2.6).
 const bots = new Bots({
@@ -506,6 +515,8 @@ const app = createApp({
   // VIEW-1.18: a Session's file links, resolved against the cwd of its last listed row.
   files: { check: (id, body) => checkSessionPaths({ lookup: (sid) => monitor.get(sid), isPrivate: (path) => privateFolders.covers(path) }, id, body) },
   library,
+  people,
+  inVault: (path, whenSlow) => privateFolders.inVault(path, whenSlow),
   bots,
   history: {
     find: (q) => history.find(q),

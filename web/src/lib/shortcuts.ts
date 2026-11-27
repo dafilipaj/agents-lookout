@@ -8,12 +8,13 @@
 import type { ActionId } from '@/lib/actions';
 import { type RightTab, TAB_LABEL } from '@/lib/right-sidebar';
 
-export type ShortcutGroupId = 'places' | 'sessions' | 'inbox' | 'session' | 'panels' | 'composer' | 'app';
+export type ShortcutGroupId = 'places' | 'sessions' | 'inbox' | 'people' | 'session' | 'panels' | 'composer' | 'app';
 
 export const SHORTCUT_GROUPS: readonly { id: ShortcutGroupId; title: string }[] = [
   { id: 'places', title: 'Places' },
   { id: 'sessions', title: 'Sessions list' },
   { id: 'inbox', title: 'Inbox' },
+  { id: 'people', title: 'People' },
   { id: 'session', title: 'The selected Session' },
   { id: 'panels', title: 'Panels' },
   { id: 'composer', title: 'Composer' },
@@ -64,6 +65,15 @@ export const SHORTCUTS: readonly Shortcut[] = [
     label: 'Show Sessions',
     note: 'Not in a text field. It opens where you left it.',
     press: [{ key: '2' }],
+    global: true,
+  },
+  {
+    id: 'place-people',
+    group: 'places',
+    keys: ['3'],
+    label: 'Show People',
+    note: 'Not in a text field. It opens where you left it.',
+    press: [{ key: '3' }],
     global: true,
   },
   {
@@ -161,6 +171,30 @@ export const SHORTCUTS: readonly Shortcut[] = [
     keys: ['S'],
     label: 'Open, resume or show the Session that wrote it',
     press: [{ key: 's' }],
+  },
+  {
+    id: 'people-move',
+    group: 'people',
+    keys: ['↑', '↓'],
+    alt: ['j', 'k'],
+    label: 'Move through the people',
+    note: 'In People, not in a text field.',
+    press: [{ key: 'ArrowDown' }, { key: 'ArrowUp' }, { key: 'j' }, { key: 'k' }],
+  },
+  {
+    id: 'people-jump',
+    group: 'people',
+    keys: ['⌘', '1–9'],
+    label: 'Jump to a person',
+    press: [{ key: '1', meta: true }],
+  },
+  {
+    id: 'people-filter',
+    group: 'people',
+    keys: ['/'],
+    label: 'Filter people',
+    note: 'Esc clears the filter.',
+    press: [{ key: '/' }],
   },
   {
     id: 'composer-focus',
@@ -414,7 +448,7 @@ export const emptyViewShortcuts = (view: 'select' | 'none'): Shortcut[] => SHORT
  * (or nothing focused), the composer, the rest of the Session (its chat rail and the preview's
  * handle apart), a panel's search box, list or other field, and the closed right sidebar's rail.
  */
-export type HintAt = 'sessions' | 'inbox' | 'composer' | 'commands' | 'session' | 'rail' | 'preview' | 'search' | 'list' | 'field' | 'panels';
+export type HintAt = 'sessions' | 'inbox' | 'people' | 'composer' | 'commands' | 'session' | 'rail' | 'preview' | 'search' | 'list' | 'field' | 'panels';
 
 /** One key of the hint line: an entry of the list (`id`), all its keys or the ones named, and its word or two. Without an entry, words saying what typing does. */
 export interface HintKey {
@@ -448,6 +482,8 @@ export function hint(at: HintAt, panel?: RightTab): { name: string; keys: HintKe
       return { name: 'Sessions', keys: [{ id: 'move', label: 'move' }, { id: 'needs-you', label: 'next that needs you' }, { id: 'filter', label: 'filter' }, WRITE] };
     case 'inbox':
       return { name: 'Inbox', keys: [{ id: 'inbox-move', label: 'move' }, { id: 'inbox-archive', label: 'archive' }, { id: 'inbox-filter', label: 'filter' }] };
+    case 'people':
+      return { name: 'People', keys: [{ id: 'people-move', label: 'move' }, { id: 'people-jump', label: 'jump to a person' }, { id: 'people-filter', label: 'filter' }] };
     case 'composer':
       return { name: 'Composer', keys: [{ id: 'send', label: 'send' }, { id: 'new-line', label: 'new line' }, { id: 'composer-leave', label: 'leave' }] };
     case 'commands':

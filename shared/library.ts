@@ -51,6 +51,8 @@ export interface OutputItem {
   sourceDisplay: string | null;
   version: number | null;
   sessions: OutputSession[];
+  /** PEOPLE-4.5: a Markdown file under the Vault folder, which Open takes to Obsidian; absent for any other. */
+  vault?: boolean;
 }
 export type LibraryPage =
   | { state: 'not-installed'; installCommand: string }
@@ -77,6 +79,8 @@ export interface DocumentAnswer {
   display: string;
   type: OutputType;
   exists: boolean;
+  /** PEOPLE-4.5: the file is under the Vault folder, so a Markdown one opens in Obsidian. */
+  vault: boolean;
 }
 /** DOC-3.1: what the server answers for a path it won't read. */
 export const DOCUMENT_UNAVAILABLE = "Lookout can't show this file.";

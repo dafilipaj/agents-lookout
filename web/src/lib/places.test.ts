@@ -42,7 +42,10 @@ describe('places and their paths', () => {
     expect(loadPlace()).toBe('sessions');
     savePlace('inbox');
     expect(loadPlace()).toBe('inbox');
-    window.sessionStorage.setItem('lookout.place', 'people');
+    // PEOPLE-3.1: People is a place a reload keeps.
+    savePlace('people');
+    expect(loadPlace()).toBe('people');
+    window.sessionStorage.setItem('lookout.place', 'elsewhere');
     expect(loadPlace()).toBe('sessions');
     // It's this tab's: what another tab kept for the whole browser isn't read.
     window.sessionStorage.clear();

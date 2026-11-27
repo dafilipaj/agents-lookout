@@ -1,4 +1,4 @@
-import { Inbox, Keyboard, MessagesSquare, Settings as SettingsIcon } from 'lucide-react';
+import { Inbox, Keyboard, MessagesSquare, Settings as SettingsIcon, Users } from 'lucide-react';
 import type { ComponentType } from 'react';
 import { IconButton } from '@/components/ui/icon-button';
 import { PlaceButton, RailMark } from '@/components/ui/place-rail';
@@ -6,7 +6,7 @@ import { PLACES, PLACE_KEY, PLACE_LABEL, type Place } from '@/lib/places';
 import { cn } from '@/lib/utils';
 import { SHELL_COLUMN, ShellCell } from './Shell';
 
-const PLACE_ICON: Record<Place, ComponentType<{ className?: string }>> = { inbox: Inbox, sessions: MessagesSquare };
+const PLACE_ICON: Record<Place, ComponentType<{ className?: string }>> = { inbox: Inbox, sessions: MessagesSquare, people: Users };
 
 export interface PlaceRailProps {
   /** NAV-1.2: the place that shows. */
@@ -34,6 +34,8 @@ export function PlaceRail({ place, onPlace, unread, needsYou, settingsOpen, onOp
   const waiting: Record<Place, { count: number; words: string; tone: 'neutral' | 'needs-you' }> = {
     inbox: { count: unread, words: `${unread} unread`, tone: 'neutral' },
     sessions: { count: needsYou, words: needsYou === 1 ? '1 needs you' : `${needsYou} need you`, tone: 'needs-you' },
+    // PEOPLE-3.1: nothing waits in People, so it has no count.
+    people: { count: 0, words: '', tone: 'neutral' },
   };
   return (
     <div className={cn(SHELL_COLUMN, 'relative w-14 border-r border-sidebar-border bg-sidebar text-sidebar-foreground')} data-shell-column="rail" data-place={place} data-testid="place-rail">

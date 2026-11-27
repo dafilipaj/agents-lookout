@@ -19,6 +19,10 @@ export interface KeysPlace {
 export const SESSIONS: KeysPlace = { column: 'left', at: 'sessions' };
 /** NAV-4.3: the Inbox's list, while the Inbox is the place. */
 export const INBOX: KeysPlace = { column: 'left', at: 'inbox' };
+/** PEOPLE-3.5: People's list, while People is the place. */
+export const PEOPLE: KeysPlace = { column: 'left', at: 'people' };
+/** The list that has the keys in the left column, by the place its `data-place` names. */
+const listOf = (place: string | undefined): KeysPlace => (place === 'inbox' ? INBOX : place === 'people' ? PEOPLE : SESSIONS);
 
 const isTab = (s: string | undefined): s is RightTab => (RIGHT_TABS as readonly string[]).includes(s ?? '');
 
@@ -50,13 +54,13 @@ function panelPlace(el: Element): 'search' | 'list' | 'field' {
  */
 export function placeOf(el: Element | null): KeysPlace | null {
   // The page itself is the list's of the place that shows (SIDE-11.2, NAV-4.3).
-  if (!el || el === el.ownerDocument.body || el === el.ownerDocument.documentElement) return el?.ownerDocument.querySelector('[data-shell-column="left"][data-place="inbox"]') ? INBOX : SESSIONS;
+  if (!el || el === el.ownerDocument.body || el === el.ownerDocument.documentElement) return listOf(el?.ownerDocument.querySelector<HTMLElement>('[data-shell-column="left"]')?.dataset.place);
   const column = el.closest<HTMLElement>('[data-shell-column]');
   switch (column?.dataset.shellColumn) {
     // NAV-4.3: focus on the rail counts as the place's list's, in either place.
     case 'rail':
     case 'left':
-      return column?.dataset.place === 'inbox' ? INBOX : SESSIONS;
+      return listOf(column?.dataset.place);
     case 'main':
       if (el.matches('[data-composer]')) return { column: 'main', at: 'composer' };
       if (el.closest('[data-testid="chat-rail"]')) return { column: 'main', at: 'rail' };

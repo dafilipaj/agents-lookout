@@ -63,7 +63,7 @@ interface LibraryOptions {
   /** PEOPLE-2.4: whether a file is under a Private folder (PrivateFolders.covers); nothing is private without it. */
   isPrivate?: (path: string) => Promise<boolean>;
   /** PEOPLE-2.9: whether a file lies in the Vault folder (PrivateFolders.inVault); none does without it. */
-  inVault?: (path: string) => Promise<boolean>;
+  inVault?: (path: string, whenSlow: boolean) => Promise<boolean>;
 }
 interface Read { id: string; at: number; headless: boolean; items: OutputItem[]; projects: string[] }
 /** Why there's no read: tb-session isn't there, or is too old for `events` (TOOLS-2.5). */
@@ -210,7 +210,9 @@ export class Library {
       for (const [p, t] of this.titles) if (Date.now() - t.seen > 3_600_000) this.titles.delete(p);
       // PEOPLE-2.9: a note moved or renamed in the notes app leaves no gone row behind under its old name.
       const moved = new Set<OutputItem>();
-      if (this.opts.inVault) await mapLimit(found.filter((i) => i.kind === 'file' && !i.exists), 16, async (i) => { if (await this.opts.inVault!(i.path!)) moved.add(i); });
+      // PEOPLE-4.5: and a Markdown file that is there says it is the Vault's, so Open takes it to Obsidian. A disk
+      // too slow to say hides a gone row (its name may be a moved note's) and offers Obsidian for no file.
+      if (this.opts.inVault) await mapLimit(found.filter((i) => i.kind === 'file' && (!i.exists || i.type === 'markdown')), 16, async (i) => { if (!(await this.opts.inVault!(i.path!, !i.exists))) return; if (i.exists) i.vault = true; else moved.add(i); });
       const items = moved.size === 0 ? found : found.filter((i) => !moved.has(i));
       items.sort((a, b) => b.updatedAt - a.updatedAt || a.kind.localeCompare(b.kind) || a.key.localeCompare(b.key));
       // PEOPLE-2.6: what is private changed while this was read: its answer is the old rule's, so it is read again.

@@ -11,6 +11,17 @@ export function formatAge(ms: number): string {
   return `${Math.floor(h / 24)}d`;
 }
 
+/**
+ * PEOPLE-3.3, 4.2: the age of a day with no time of day, such as the date in a note's name, from how
+ * many days ago it was: `today`, `3d ago`, and `in 4d` for a day still to come. `column`: in a row's
+ * column the age stands alone (`3d`), as `formatAge`'s does.
+ */
+export function formatDayAge(days: number, where: 'sentence' | 'column' = 'sentence'): string {
+  if (days === 0) return 'today';
+  if (days < 0) return `in ${-days}d`;
+  return where === 'column' ? `${days}d` : `${days}d ago`;
+}
+
 /** LIB-2.1, HIST-2.12: a day heading in the browser's local time: "Today", "Yesterday", then the date. */
 export function dayLabel(at: number, now: number): string {
   const date = new Date(at);

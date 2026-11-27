@@ -106,6 +106,9 @@ interface RenderOptions {
   reportText?: LookoutClient['reportText'];
   document?: LookoutClient['document'];
   documentText?: LookoutClient['documentText'];
+  /** PEOPLE-3, PEOPLE-4: the fake server's Vault; no Vault folder unless a test gives one. */
+  people?: LookoutClient['people'];
+  person?: LookoutClient['person'];
   renameSession?: LookoutClient['renameSession'];
   switchModel?: LookoutClient['switchModel'];
   switchEffort?: LookoutClient['switchEffort'];
@@ -242,6 +245,8 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
     reportText: vi.fn(options.reportText ?? (async () => ({ text: '', truncated: false }))),
     document: vi.fn(options.document ?? (async () => { throw new SaveError("Lookout can't show this file.", null, 404); })),
     documentText: vi.fn(options.documentText ?? (async () => ({ text: '', truncated: false }))),
+    people: vi.fn(options.people ?? (async () => ({ state: 'no-vault' as const }))),
+    person: vi.fn(options.person ?? (async () => ({ state: 'no-vault' as const }))),
     renameSession: vi.fn(options.renameSession ?? (async () => ({ result: 'renamed' as const }))),
     switchModel: vi.fn(options.switchModel ?? (async (_id: string, req: { model: string }) => ({ model: req.model, confirmed: false }))),
     switchEffort: vi.fn(options.switchEffort ?? (async (_id: string, req: { effort: string }) => ({ effort: req.effort, confirmed: false, saved: req.effort !== 'max' }))),

@@ -213,6 +213,61 @@ describe('PEOPLE-2: which files are private', () => {
     expect(changed.mock.calls.length).toBeGreaterThan(told);
   });
 
+  it('PEOPLE-3.2: a folder is private when an entry matches it or a folder above it, and never for an entry that matches a folder inside it', async () => {
+    const dir = await home();
+    const folders = new PrivateFolders({ home: dir });
+    await folders.set({ vaultFolder: '~/notes', privateFolders: ['Team/*/Reviews', 'Team/Cycle *'] });
+    expect(await folders.coversFolder(join(dir, 'notes/Team/Tomo/Reviews'))).toBe(true);
+    expect(await folders.coversFolder(join(dir, 'notes/Team/Tomo/Reviews/2026'))).toBe(true);
+    expect(await folders.coversFolder(join(dir, 'notes/Team/Cycle autumn'))).toBe(true);
+    // The Person's own folder holds a private one; it isn't private itself.
+    expect(await folders.coversFolder(join(dir, 'notes/Team/Tomo'))).toBe(false);
+    expect(await folders.coversFolder(join(dir, 'notes/Team/Tomo/1on1s'))).toBe(false);
+    expect(await folders.coversFolder(join(dir, 'notes/Team'))).toBe(false);
+    // A folder that isn't there yet is answered by where it would be.
+    expect(await folders.coversFolder(join(dir, 'notes/Team/Ines/Reviews'))).toBe(true);
+    // Through a link to the Vault, the folder is the same one.
+    await symlink(join(dir, 'notes'), join(dir, 'linked'));
+    expect(await folders.coversFolder(join(dir, 'linked/Team/Tomo/Reviews'))).toBe(true);
+    expect(await folders.coversFolder(join(dir, 'linked/Team/Tomo'))).toBe(false);
+  });
+
+  it('PEOPLE-3.2: whether a folder is private is asked of the folder itself, so a link named `_` inside it can’t answer for where it points', async () => {
+    const dir = await home();
+    await mkdir(join(dir, 'real/Team/Secret'), { recursive: true });
+    await mkdir(join(dir, 'elsewhere'), { recursive: true });
+    await symlink(join(dir, 'real'), join(dir, 'linked'));
+    await symlink(join(dir, 'elsewhere'), join(dir, 'real/Team/Secret/_'));
+    const folders = new PrivateFolders({ home: dir });
+    // Named by where it really is, so only the folder's physical path meets the entry.
+    await folders.set({ vaultFolder: null, privateFolders: [join(dir, 'real/Team/Secret')] });
+    expect(await folders.coversFolder(join(dir, 'linked/Team/Secret'))).toBe(true);
+    expect(await folders.coversFolder(join(dir, 'linked/Team'))).toBe(false);
+  });
+
+  it('PEOPLE-3.2: a disk too slow to say where a folder really is answers `slow` for it, which hides as private does; a folder an entry meets as written needs no disk', async () => {
+    const dir = await home();
+    const never = new Promise<string>(() => {});
+    const slow = new PrivateFolders({ home: dir, timeoutMs: 20, realpath: () => never });
+    await slow.set({ vaultFolder: '~/notes', privateFolders: ['Team/*/Reviews'] });
+    expect(await slow.coversFolder(join(dir, 'notes/Team/Tomo/Reviews'))).toBe(true);
+    expect(await slow.coversFolder(join(dir, 'notes/Team/Tomo/1on1s'))).toBe('slow');
+    // With no Private folder nothing is asked of the disk, and nothing is private.
+    await slow.set({ vaultFolder: '~/notes', privateFolders: [] });
+    expect(await slow.coversFolder(join(dir, 'notes/Team/Tomo/1on1s'))).toBe(false);
+  });
+
+  it('PEOPLE-4.5: a disk too slow to say where a file really is answers as the asker chose: in the Vault where a no would show a name, outside it where a yes only offers Obsidian', async () => {
+    const dir = await home();
+    const never = new Promise<string>(() => {});
+    const slow = new PrivateFolders({ home: dir, timeoutMs: 20, realpath: () => never });
+    await slow.set({ vaultFolder: '~/notes', privateFolders: [] });
+    // By its path as written no disk is asked.
+    expect(await slow.inVault(join(dir, 'notes/Team/Tomo/Tomo.md'), false)).toBe(true);
+    expect(await slow.inVault(join(dir, 'elsewhere/report.md'))).toBe(true);
+    expect(await slow.inVault(join(dir, 'elsewhere/report.md'), false)).toBe(false);
+  });
+
   it('PEOPLE-2.9: a file is in the Vault by its path as recorded or its physical path, a gone one too, and none is while no Vault folder is set', async () => {
     const dir = await home();
     await symlink(join(dir, 'notes'), join(dir, 'vault'));

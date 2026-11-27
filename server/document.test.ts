@@ -13,6 +13,8 @@ import { RELIST_EVERY_MS, describeDocument } from './document.ts';
 import { checkSessionPaths } from './files.ts';
 import { Library } from './library.ts';
 import { OutputFiles } from './output-files.ts';
+import { People } from './people.ts';
+import { PrivateFolders } from './private-folders.ts';
 
 const TOKEN = 'test-token';
 
@@ -42,8 +44,9 @@ async function listening(a: App): Promise<App> {
   return a;
 }
 const ours = () => ({ origin: `http://127.0.0.1:${port}` });
-function app(library: Library, cwd: string) {
+function app(library: Library, cwd: string, extra: Partial<AppOptions> = {}) {
   return createApp({
+    ...extra,
     attachmentsDir: join(tmpdir(), `lookout-unused-attachments-${randomUUID()}`),
     library, guard: { allowedHosts: hosts, allowedOrigins: origins, token: TOKEN },
     monitor: { snapshot: () => ({ sessions: [], fleet: { state: 'ok' } }), watch: () => () => {} },
@@ -89,7 +92,7 @@ it('DOC-3.1: the server answers a file’s Type and whether it exists only for a
   // The path check, a POST with the token, lists what it answers as a file and is a document.
   const answers = JSON.parse((await check(a, 'live', ['docs/notes.md', map, 'docs/rates.ts', 'docs/none.md'])).body).paths as PathAnswer[];
   expect(answers.map((p) => p.exists)).toEqual([true, true, true, false]);
-  expect(JSON.parse((await doc(a, notes)).body)).toEqual({ path: notes, display: notes, type: 'markdown', exists: true });
+  expect(JSON.parse((await doc(a, notes)).body)).toEqual({ path: notes, display: notes, type: 'markdown', exists: true, vault: false });
   expect(JSON.parse((await doc(a, map)).body)).toMatchObject({ path: map, type: 'html', exists: true });
   // Code is not a document, and a file nobody asked about stays closed.
   expect((await doc(a, code)).status).toBe(404);
@@ -110,9 +113,91 @@ it('DOC-3.1: the path is shown with the home directory as ~', async () => {
   const notes = join(dir, 'repo/docs/notes.md');
   files.allow(notes);
   const find = vi.fn();
-  expect(await describeDocument({ files, find }, notes, { home: join(dir, 'repo') })).toEqual({ path: notes, display: '~/docs/notes.md', type: 'markdown', exists: true });
+  expect(await describeDocument({ files, find }, notes, { home: join(dir, 'repo') })).toEqual({ path: notes, display: '~/docs/notes.md', type: 'markdown', exists: true, vault: false });
   expect(await describeDocument({ files, find }, notes, { home: join(dir, 'rep') })).toMatchObject({ display: notes });
   expect(find).not.toHaveBeenCalled();
+});
+
+it('PEOPLE-4.4: the Document view’s routes read a note a Person’s page named, in Obsidian’s Vault, and never one in a Private folder or outside the people folder; a restart reads the Person’s folder again', async () => {
+  // Invented notes: a 1on1, a review in a Private folder, a 1on1 in a `1on1s` folder that is private, and a note outside the people folder.
+  const vault = join(dir, 'vault');
+  const talk = join(vault, 'Team/Ines/1on1s/Ines 1on1 2026-11-24.md'), review = join(vault, 'Team/Ines/Reviews/autumn.md'), week = join(vault, 'Reports/week.md');
+  const hidden = join(vault, 'Team/Tomo/1on1s/Tomo 1on1 2026-11-18.md');
+  for (const [path, body] of [[talk, '# Ines 1on1\n\nOn track.\n'], [review, '# Review\n'], [week, '# Week\n'], [hidden, '# Tomo 1on1\n']] as const) {
+    await mkdir(join(path, '..'), { recursive: true });
+    await writeFile(path, body);
+  }
+  // A server as `main.ts` puts it together: the People reader lists into the Library's files, which ask the Private folders at every read.
+  const serve = async () => {
+    const privateFolders = new PrivateFolders({ home: dir });
+    await privateFolders.set({ vaultFolder: '~/vault', privateFolders: ['Team/*/Reviews', 'Team/Tomo/1on1s'] });
+    const library = new Library({ runner: async () => JSON.stringify({ total_results: 0, results: [] }), bin: () => 'tb-session', isPrivate: (path) => privateFolders.covers(path) });
+    const people = new People({ settings: () => ({ vaultFolder: '~/vault', peopleFolder: 'Team' }), home: dir, isPrivateFolder: (path) => privateFolders.coversFolder(path), allow: (path) => library.files.allow(path) });
+    return listening(app(library, dir, { people, inVault: (path, whenSlow) => privateFolders.inVault(path, whenSlow) }));
+  };
+  const a = await serve();
+  expect(JSON.parse((await request(a, '/api/people')).body)).toEqual({ state: 'ok', folder: 'Team', people: [{ name: 'Ines', oneOnOnes: 1, last: expect.any(String), next: null }, { name: 'Tomo', oneOnOnes: 0, last: null, next: null }] });
+  // A 1on1s folder that is private: its note is one the page would name, and it names none.
+  const tomo = (await request(a, '/api/people/Tomo')).body;
+  expect(JSON.parse(tomo)).toEqual({ state: 'ok', folder: 'Team', person: { name: 'Tomo', oneOnOnes: [], notes: [] } });
+  expect(tomo).not.toContain('2026-11-18');
+  const page = JSON.parse((await request(a, '/api/people/Ines')).body);
+  expect(page).toMatchObject({ state: 'ok', person: { name: 'Ines', oneOnOnes: [{ path: talk, date: '2026-11-24' }], notes: [] } });
+  expect(JSON.parse((await doc(a, talk)).body)).toMatchObject({ path: talk, type: 'markdown', exists: true, vault: true });
+  expect((await text(a, talk)).body).toBe('# Ines 1on1\n\nOn track.\n');
+  // The page never named these: a note in a Private folder, and one outside the people folder.
+  for (const path of [review, week, hidden]) {
+    expect((await doc(a, path)).status, path).toBe(404);
+    expect((await text(a, path)).status, path).toBe(404);
+  }
+  expect(JSON.parse((await request(a, '/api/people/Nobody')).body)).toEqual({ state: 'gone', folder: 'Team', name: 'Nobody' });
+  expect((await request(a, '/api/people/%E0%A4%A')).status).toBe(400);
+
+  // A restart: nothing is listed, and the note's own path still shows it.
+  const b = await serve();
+  expect(JSON.parse((await doc(b, talk)).body)).toMatchObject({ path: talk, exists: true, vault: true });
+  expect((await text(b, talk)).status).toBe(200);
+  expect((await doc(b, review)).status).toBe(404);
+  expect((await doc(b, hidden)).status).toBe(404);
+  // A server without the People reader has no such route.
+  expect((await request(await listening(app(emptyLibrary(), dir)), '/api/people')).status).toBe(404);
+});
+
+it('PEOPLE-4.5: a document’s answer says whether the file is under the Vault folder, and a question that fails says it isn’t', async () => {
+  const files = new OutputFiles();
+  const notes = join(dir, 'repo/docs/notes.md'), map = join(dir, 'repo/docs/map.html');
+  files.allow(notes);
+  files.allow(map);
+  const find = vi.fn(async () => ({ state: 'ok' }) as never);
+  const inVault = vi.fn(async (path: string, _whenSlow: boolean) => path.endsWith('.md'));
+  expect(await describeDocument({ files, find }, notes, { inVault })).toMatchObject({ path: notes, vault: true });
+  expect(await describeDocument({ files, find }, map, { inVault })).toMatchObject({ path: map, vault: false });
+  // A disk too slow to say is "no" here: the answer only chooses where Open goes.
+  expect(inVault.mock.calls.every(([, whenSlow]) => whenSlow === false)).toBe(true);
+  expect(await describeDocument({ files, find }, notes, { inVault: async () => { throw new Error('slow disk'); } })).toMatchObject({ vault: false });
+  // A path the server won't read is asked nothing about.
+  inVault.mockClear();
+  expect(await describeDocument({ files, find }, join(dir, 'repo/docs/secret.md'), { inVault, now: 0 })).toBeNull();
+  expect(inVault).not.toHaveBeenCalled();
+});
+
+it('PEOPLE-4.4: after a restart, a note inside the people folder is listed by reading its Person’s folder, with no read of the Library', async () => {
+  const files = new OutputFiles();
+  const notes = join(dir, 'repo/docs/notes.md'), map = join(dir, 'repo/docs/map.html');
+  const find = vi.fn(async () => ({ state: 'ok' }) as never);
+  // The Person's folder holds the note: reading it lists it.
+  const relistPerson = vi.fn(async (path: string) => { if (path !== notes) return false; files.allow(notes); return true; });
+  expect(await describeDocument({ files, find }, notes, { relistPerson, now: 0 })).toMatchObject({ path: notes, exists: true });
+  expect(relistPerson).toHaveBeenCalledWith(notes);
+  expect(find).not.toHaveBeenCalled();
+  // A path no Person's folder holds goes on to the Library's read, as before (DOC-3.3).
+  expect(await describeDocument({ files, find }, map, { relistPerson, now: 0 })).toBeNull();
+  expect(find).toHaveBeenCalledTimes(1);
+  // A listed path asks neither, and a path that could never be a document isn't looked for.
+  relistPerson.mockClear();
+  expect(await describeDocument({ files, find }, notes, { relistPerson, now: 0 })).not.toBeNull();
+  expect(await describeDocument({ files, find }, join(dir, 'repo/docs/rates.ts'), { relistPerson, now: 0 })).toBeNull();
+  expect(relistPerson).not.toHaveBeenCalled();
 });
 
 it('DOC-3.2: the text route reads only a listed Markdown file, at most its first megabyte as whole characters, and never a symlink in its place; a page comes from the file route', async () => {

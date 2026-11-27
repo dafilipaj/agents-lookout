@@ -1,5 +1,5 @@
 import { PRIVATE_FOLDER_ERROR } from '@shared/private-folders.ts';
-import { PRIVATE_NEEDS_VAULT } from '@shared/settings.ts';
+import { PEOPLE_FOLDER_ERROR, PRIVATE_NEEDS_VAULT } from '@shared/settings.ts';
 import { PRIVATE_IDLE } from '@/components/VaultSettings';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -130,6 +130,50 @@ it('PEOPLE-2.6: a change of the Private folders reads the Library again at once,
   await waitFor(() => expect(library.mock.calls.length).toBeGreaterThan(before));
 });
 
+it('PEOPLE-3.2: the third card sets the people folder: Team by default, saved with Save, Team again when emptied, and what the server refuses said in its words', async () => {
+  const user = userEvent.setup();
+  const app = renderApp('/settings/vault');
+  app.snapshot([], { state: 'ok' }, settings({ vaultFolder: '~/Documents/notes' }));
+  const field = screen.getByLabelText('People folder');
+  const card = field.closest('form')!;
+  // After the Vault folder and the Private folders.
+  expect(vaultCard().compareDocumentPosition(privateCard()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(privateCard().compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(field).toHaveValue('Team');
+  expect(card).toHaveTextContent('holds a folder for each person');
+  expect(within(card).getByRole('button', { name: 'Save' })).toBeDisabled();
+
+  await user.clear(field);
+  await user.type(field, 'Work/People/');
+  await user.click(within(card).getByRole('button', { name: 'Save' }));
+  expect(app.saveSettings).toHaveBeenLastCalledWith({ peopleFolder: 'Work/People' });
+  await waitFor(() => expect(within(card).getByRole('status')).toHaveTextContent('Saved'));
+  expect(field).toHaveValue('Work/People');
+
+  // Emptied, it is Team again.
+  await user.clear(field);
+  await user.click(within(card).getByRole('button', { name: 'Save' }));
+  expect(app.saveSettings).toHaveBeenLastCalledWith({ peopleFolder: 'Team' });
+  await waitFor(() => expect(field).toHaveValue('Team'));
+});
+
+it('PEOPLE-3.2: a people folder the server refuses is said in its words, and the saved one stays', async () => {
+  const user = userEvent.setup();
+  const saveSettings = vi.fn(async () => {
+    throw new SaveError(PEOPLE_FOLDER_ERROR, 'peopleFolder', 400);
+  });
+  const app = renderApp('/settings/vault', { saveSettings });
+  app.snapshot([], { state: 'ok' }, settings({ vaultFolder: '~/Documents/notes', peopleFolder: 'Crew' }));
+  const field = screen.getByLabelText('People folder');
+  const card = field.closest('form')!;
+  await user.clear(field);
+  await user.type(field, '../elsewhere');
+  await user.click(within(card).getByRole('button', { name: 'Save' }));
+  expect(await within(card).findByRole('alert')).toHaveTextContent(PEOPLE_FOLDER_ERROR);
+  expect(field).toHaveAttribute('aria-invalid', 'true');
+  expect(within(card).getByRole('status')).toBeEmptyDOMElement();
+});
+
 it('PEOPLE-2.10: with a path inside the Vault and no Vault folder, as only a settings file edited by hand leaves it, the card says those entries hide nothing', () => {
   const app = renderApp('/settings/vault');
   app.snapshot([], { state: 'ok' }, settings({ vaultFolder: null, privateFolders: ['Team/*/Reviews', '/srv/private'] }));
@@ -149,7 +193,7 @@ it('PEOPLE-2.6: an open Document view asks the server again when what is private
   let hidden = false;
   const answer = vi.fn(async () => {
     if (hidden) throw new SaveError("Lookout can't show this file.", null, 404);
-    return { path: review, display: '~/notes/Team/Tomo/Reviews/q3.md', type: 'markdown' as const, exists: true };
+    return { path: review, display: '~/notes/Team/Tomo/Reviews/q3.md', type: 'markdown' as const, exists: true, vault: true };
   });
   const app = renderApp(routePath({ name: 'doc', path: review }), { document: answer, documentText: async () => ({ text: '# Q3 review\n\nKeep this off the screen.', truncated: false }) });
   app.snapshot([], { state: 'ok' }, settings({ vaultFolder: '~/notes' }));

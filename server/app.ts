@@ -20,6 +20,7 @@ import { type Library } from './library.ts';
 import { LibraryError, parseLibraryQuery } from './library.ts';
 import { FRAMED_OUTPUT_CSP, OUTPUT_HEADERS } from './output-files.ts';
 import { describeDocument } from './document.ts';
+import type { People } from './people.ts';
 import { documentType } from './documents.ts';
 import { Avatars } from './avatars.ts';
 import { PathsError } from './files.ts';
@@ -146,6 +147,10 @@ export interface AppOptions {
   };
   /** LIB: read-only Outputs and the paths learned from CLI answers. */
   library: Pick<Library, 'find' | 'indexing' | 'files'>;
+  /** PEOPLE-3, PEOPLE-4: the people in the Vault; optional, so a server without it has no `/api/people` (404). */
+  people?: Pick<People, 'list' | 'person' | 'relist'>;
+  /** PEOPLE-4.5: whether a file is under the Vault folder, said with a document's answer; none is without it. */
+  inVault?(path: string, whenSlow: boolean): Promise<boolean>;
   /** BOT, INBOX: the Bots, their runs and the Reports they arrive as; optional, so a server without it has no `/api/bots` or `/api/inbox` (404). */
   bots?: Pick<Bots, 'snapshot' | 'create' | 'update' | 'remove' | 'runNow' | 'detail' | 'mark' | 'text'>;
   /** WORK: Tasks through tb-prod and PRs through tb-pr, read only while a tab has Work open. */
@@ -434,7 +439,7 @@ export function createApp(opts: AppOptions): LookoutApp {
     if (route === 'GET /api/library/status') return json(res, 200, { indexing: opts.library.indexing });
     // DOC-3.1: a file for the Document view: its Type and whether it's there; nothing about a path the server didn't list.
     if (route === 'GET /api/doc') {
-      const doc = await describeDocument(opts.library, url.searchParams.get('path') ?? '');
+      const doc = await describeDocument(opts.library, url.searchParams.get('path') ?? '', { inVault: opts.inVault, relistPerson: opts.people ? (path) => opts.people!.relist(path) : undefined });
       return doc ? json(res, 200, doc) : json(res, 404, { error: DOCUMENT_UNAVAILABLE });
     }
     // DOC-3.2: a listed Markdown file's text, at most its first megabyte, and whether it was cut.
@@ -446,6 +451,19 @@ export function createApp(opts: AppOptions): LookoutApp {
         ...(file.truncated ? { 'x-lookout-truncated': '1' } : {}),
       });
       return void res.end(file.body);
+    }
+    // PEOPLE-3.2: the Persons of the Vault, or why there are none; read from folder and file names at each ask (PEOPLE-3.4).
+    if (route === 'GET /api/people' && opts.people) return json(res, 200, await opts.people.list());
+    // PEOPLE-4.2, 4.3: one Person's notes by name; they are listed for the Document view (PEOPLE-4.4).
+    const personMatch = opts.people && req.method === 'GET' ? /^\/api\/people\/([^/]{1,1024})$/.exec(url.pathname) : null;
+    if (personMatch) {
+      let name: string;
+      try {
+        name = decodeURIComponent(personMatch[1]!);
+      } catch {
+        return json(res, 400, { error: 'Not a name.' });
+      }
+      return json(res, 200, await opts.people!.person(name));
     }
     // HIST-2: reads (the guard still checks Host, Origin and Sec-Fetch-Site).
     if (route === 'GET /api/history') {

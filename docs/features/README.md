@@ -31,4 +31,4 @@ One row per feature. Update the status here and in the spec's frontmatter togeth
 | Bots: Sessions that start on a schedule or on Run now, made and watched in a right-sidebar tab, each run followed, ended and reported to the Inbox | BOT | Done | [SPEC](bots/SPEC.md) |
 | Inbox: one Report per Bot run, unread until opened, read in place in the main pane, with its Session a press away | INBOX | Done | [SPEC](inbox/SPEC.md) |
 | Document view: a Markdown file, a page or an image opens in the main pane, from a path in a chat, the Library and a Topic view, instead of VS Code or a browser tab | DOC | In Progress | [SPEC](document-view/SPEC.md) |
-| People: the people you manage, their Goals, 1on1 notes and other notes, read from your Vault; first the Vault's folder in Settings and Private folders that Lookout never lists or shows | PEOPLE | In Progress | [SPEC](people/SPEC.md) |
+| People: the rail's third place, the people you manage with their 1on1 notes and other notes, read from your Vault, with Private folders that Lookout never lists or shows; their Goals next | PEOPLE | In Progress | [SPEC](people/SPEC.md) |

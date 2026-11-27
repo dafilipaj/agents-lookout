@@ -488,15 +488,29 @@ it('PEOPLE-2.6: when what is private changes, no kept read is shown again, a pag
 
 it('PEOPLE-2.9: a file in the Vault folder that no longer exists is no Output, whatever "hide gone" says, and a gone file anywhere else still is', async () => {
   const runner = fake([event('/notes/Team/Tomo/Tomo review Q3.md'), event('/notes/Team/Tomo/1on1s/2026-11-24.md'), event('/work/old-report.md'), event('/work/report.md')]);
-  const inVault = vi.fn(async (p: string) => p.startsWith('/notes/'));
+  const inVault = vi.fn(async (p: string, _whenSlow: boolean) => p.startsWith('/notes/'));
   const lib = new Library({ ...options(runner), realpath: async (p) => p, stat: async (p) => ({ isFile: () => !p.includes('review Q3') && !p.includes('old-report') }), inVault });
   const all = await lib.find(query('types=markdown&hideGone=0')); if (all.state !== 'ok') throw new Error('missing');
   // The note moved in the notes app leaves no row under its old name; the gone report outside the Vault keeps its own.
   expect(all.items.map((i) => [i.key, i.exists]).sort()).toEqual([['/notes/Team/Tomo/1on1s/2026-11-24.md', true], ['/work/old-report.md', false], ['/work/report.md', true]]);
   expect(JSON.stringify(all)).not.toContain('review Q3');
   expect(await lib.find(query('types=markdown'))).toMatchObject({ total: 2, hiddenGone: 1 });
-  // Only a file that is gone is asked about.
-  expect(inVault.mock.calls.map(([p]) => p).sort()).toEqual(['/notes/Team/Tomo/Tomo review Q3.md', '/work/old-report.md']);
+  // A gone file is asked about, and a Markdown file for where its Open goes (PEOPLE-4.5).
+  // On a slow disk a gone file counts as the Vault's, so no moved note's name shows; a file that is there doesn't.
+  expect(inVault.mock.calls.map(([p, whenSlow]) => [p, whenSlow]).sort()).toEqual([['/notes/Team/Tomo/1on1s/2026-11-24.md', false], ['/notes/Team/Tomo/Tomo review Q3.md', true], ['/work/old-report.md', true], ['/work/report.md', false]]);
+});
+
+it('PEOPLE-4.5: a Markdown file under the Vault folder says so, and no other Output does', async () => {
+  const runner = fake([event('/notes/Reports/week.md'), event('/notes/Reports/chart.html'), event('/work/report.md')]);
+  const inVault = vi.fn(async (p: string, _whenSlow: boolean) => p.startsWith('/notes/'));
+  const lib = new Library({ ...options(runner), realpath: async (p) => p, inVault });
+  const all = await lib.find(query('types=markdown,pages')); if (all.state !== 'ok') throw new Error('missing');
+  expect(all.items.map((i) => [i.key, i.vault ?? false]).sort()).toEqual([['/notes/Reports/chart.html', false], ['/notes/Reports/week.md', true], ['/work/report.md', false]]);
+  // A page opens in a browser tab wherever it is: only a Markdown file is asked about.
+  expect(inVault.mock.calls.map(([p]) => p).sort()).toEqual(['/notes/Reports/week.md', '/work/report.md']);
+  // Without a Vault to ask about, none says so.
+  const plain = await new Library({ ...options(runner), realpath: async (p) => p }).find(query('types=markdown')); if (plain.state !== 'ok') throw new Error('missing');
+  expect(plain.items.every((i) => i.vault === undefined)).toBe(true);
 });
 
 it('PEOPLE-2.6: a read begun for those who draw from the last one without asking tells them its Outputs, under the new rule', async () => {
