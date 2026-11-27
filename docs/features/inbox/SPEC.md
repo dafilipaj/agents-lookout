@@ -1,7 +1,7 @@
 ---
 title: "Inbox: what your Bots left for you, read in place"
 code: "INBOX"
-status: "In Progress"
+status: "Done"
 created: "2026-11-26"
 updated: "2026-11-27"
 ---
@@ -25,7 +25,7 @@ What a scheduled agent writes has nowhere to arrive. The Library lists every Out
 - [x] INBOX-1.3 The column's header holds a filter, "Filter Reports", which `/` focuses: every word typed must be in the title or the Bot's name, whatever its case; Esc clears it and leaves it. (test)
 - [x] INBOX-1.4 Under the header a `Segmented` shows "Inbox" or "Archived" (INBOX-4); the choice is kept in the browser for this page load only, and a reload shows Inbox. (test)
 - [x] INBOX-1.5 With nothing to list the column says why: "Nothing has arrived", "A Bot's Report arrives here when its run ends.", with a "Bots" action that opens the Bots tab (BOT-1.1); "Nothing matches" under a filter; "Nothing archived" in Archived. Before the server's first answer it's a `Loading`, "Connecting…", as the Session sidebar's. (test)
-- [ ] INBOX-1.6 Seen at 1440 px, light and dark: rows read like the Library's, the unread dot and the semibold title tell unread from read at a glance, and a row's second line doesn't wrap. (manual)
+- [x] INBOX-1.6 Seen at 1440 px, light and dark: rows read like the Library's, the unread dot and the semibold title tell unread from read at a glance, and a row's second line doesn't wrap. (manual)
 
 ### INBOX-2 Read a Report
 
@@ -124,3 +124,4 @@ None blocking.
 - 2026-11-26: Built: the list and the Report's view (`InboxList.tsx`, `ReportView.tsx`, `lib/inbox.ts`), the server's Reports in `server/bots.ts`, the text route and the file route's `frame=1`. In Progress.
 - 2026-11-27: INBOX-2.8 reworded, nothing changed: the Library's Open now shows a file in the Document view (DOC), so a Report's Open says for itself where it goes. The Markdown, page and image branches of INBOX-2.4 are one piece with the Document view's (`DocumentFile.tsx`).
 - 2026-11-27: INBOX-2.11 ticked: Dario looked at a real Report on 4747, the first one a Bot wrote on its schedule. INBOX-1.6, the list's look, is still his to confirm.
+- 2026-11-27: INBOX-1.6 ticked: Dario looked at the Inbox on 4747 ("Inbox looks OK"). Every criterion is ticked: Done. His one nit was the shell's, not the list's: the header row changed height between a Report and a Session, fixed as SIDE-8.4.

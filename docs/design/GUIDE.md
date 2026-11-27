@@ -199,6 +199,15 @@ One of Lookout's top-level places, on the rail at the window's left edge: the In
 - **Don't:** colour the current place Primary; count something new in amber; give a place a right sidebar of its own.
 - **Guard:** DS-13.3 (`aria-current="page"` only in `side-nav.tsx` and `place-rail.tsx`), DS-2.3 (Needs you's amber on the rail only in `place-rail.tsx`), DS-7.4 (the 20 px mark stays in `components/ui/`). Its look is NAV-1.4.
 
+### A main-pane view's header
+
+What sits in the header row of the main pane: a Session's, a Report's, a document's, a Topic's, Settings'.
+
+- **Use** `PaneHeader`, or `PlainView`'s `header` for a view with no dock. The header row is 60 px in every view (SIDE-8.4): room for a `title` line with one line of facts under it in `meta` (`ReportView.tsx`, `DocumentView.tsx`, `TopicView.tsx`), and a one-line header (`SessionView.tsx`, `SettingsPage.tsx`) is centred in it, so the header line and the rail's buttons stay where they are from view to view.
+- **Do:** keep a new header to two lines: the title, and at most one line under it, cut to fit (`truncate`), with the actions at the right.
+- **Don't:** add a third line or taller padding to a header: the row grows for all four columns, and the line moves when you switch views. An archived Topic's closing line is the one header that does it.
+- **Guard:** SIDE-8.4, a Behaviour test that measures the header line under a one-line header, a Topic view and a Report.
+
 ### A piece that changes with its column's width
 
 A tab that drops its name, a header that folds its facts: something inside a column of the shell that shows less when the column is narrow.

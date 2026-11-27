@@ -14,8 +14,13 @@ import { cn } from '@/lib/utils';
  * that, so text that wraps in a narrow main pane can't squeeze the content row (the Session list).
  * At rest it is one height in every view: the Session sidebar's dock cell holds DockRest (an
  * invisible empty composer with its status line), so switching views never moves the dock line.
+ *
+ * The header row is one height in every view too (SIDE-8.4): at least 60 px, which a title with its
+ * facts under it fills (a Report, a document, a Topic) and a one-line header is centred in (a
+ * Session, Settings), so switching views or places moves neither the header line nor the rail's
+ * buttons. Only a header of three lines grows it.
  */
-export const SHELL_GRID = 'grid h-dvh overflow-hidden grid-cols-[auto_auto_minmax(0,1fr)_auto] grid-rows-[minmax(3rem,auto)_minmax(0,1fr)_fit-content(40dvh)]';
+export const SHELL_GRID = 'grid h-dvh overflow-hidden grid-cols-[auto_auto_minmax(0,1fr)_auto] grid-rows-[minmax(3.75rem,auto)_minmax(0,1fr)_fit-content(40dvh)]';
 
 /** A column of the shell: a subgrid over all three rows. */
 export const SHELL_COLUMN = 'row-span-full grid grid-rows-subgrid min-h-0 min-w-0';
@@ -59,9 +64,13 @@ export function ShellCell({ as: Tag = 'div', row, toBottom, className, ...rest }
   );
 }
 
-/** The main pane's header cell, the same for every view (a Session, a past Session, Settings, nothing selected). */
+/**
+ * The main pane's header cell, the same for every view (a Session, a past Session, Settings, nothing selected).
+ * Its 6 px above and below, with the cell's line, leave a two-line header (a 20 px title over a 24 px
+ * line of facts) inside the header row's 60 px (SIDE-8.4); the row's height centres anything shorter.
+ */
 export function PaneHeader({ className, ...rest }: Omit<CellProps, 'row' | 'as' | 'toBottom'>) {
-  return <ShellCell as="header" row="header" className={cn('gap-2.5 px-5 py-2', className)} {...rest} />;
+  return <ShellCell as="header" row="header" className={cn('gap-2.5 px-5 py-1.5', className)} {...rest} />;
 }
 
 /**
