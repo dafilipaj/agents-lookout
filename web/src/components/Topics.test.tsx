@@ -561,6 +561,30 @@ describe('what a member is doing now (TOPIC-4)', () => {
     await waitFor(() => expect(app.client.library).toHaveBeenLastCalledWith(expect.not.objectContaining({ sessions: expect.anything() })));
   });
 
+  it('PEOPLE-2.6: an open Topic view asks for a Library read again when the server forgot its last one, since what is private changed', async () => {
+    const output: OutputItem = {
+      kind: 'file', key: '/o/1.md', type: 'markdown', title: 'Doc 1', path: '/o/1.md', url: null, display: '~/o/1.md', projectPath: null, repo: null, createdAt: NOW, updatedAt: Date.now() - 60_000, events: 1, exists: true,
+      source: null, sourcePath: null, sourceDisplay: null, version: null, sessions: [],
+    };
+    const topics = (outputs: { items: OutputItem[]; total: number } | null, libraryReadAt: number | null) => ({ type: 'topics' as const, topics: { state: 'ok' as const, reason: null, path: '/p', topics: [topic(1, { title: 'Rates', members: [member(SESSION)], outputs })], edges: [], pruned: [], libraryReadAt, recommendations: [], jevAsksToday: 0, jevSetAside: { count: 0, reason: null }, summarizing: [], summaryErrors: {} } });
+    const app = openApp([topic(1, { title: 'Rates', members: [member(SESSION)], outputs: null })]);
+    const user = await openTopics();
+    await openView(user, 'Rates');
+    await waitFor(() => expect(app.client.library).toHaveBeenCalled());
+    app.emit(topics({ items: [output], total: 1 }, Date.now()));
+    await waitFor(() => expect(topicView().querySelectorAll('[data-field="output"]')).toHaveLength(1));
+    const reads = vi.mocked(app.client.library).mock.calls.length;
+
+    // The server's read under the old rule is gone: the lines go, and this view, still open, asks again.
+    app.emit(topics(null, null));
+    await waitFor(() => expect(app.client.library).toHaveBeenCalledTimes(reads + 1));
+    expect(topicView().querySelectorAll('[data-field="output"]')).toHaveLength(0);
+    // The new read's lines show, and nothing more is asked.
+    app.emit(topics({ items: [], total: 0 }, Date.now()));
+    await waitFor(() => expect(within(topicView()).queryByText('Reading the Library…')).toBeNull());
+    expect(app.client.library).toHaveBeenCalledTimes(reads + 1);
+  });
+
   it('TOPIC-4.4: a Library read that fails says why where the Outputs would be, instead of reading forever', async () => {
     openApp([topic(1, { title: 'Rates', members: [member(SESSION)], outputs: null })], work(), { library: async () => ({ state: 'not-installed', installCommand: 'cargo install tb-session' }) });
     const user = await openTopics();

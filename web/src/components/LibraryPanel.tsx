@@ -67,6 +67,8 @@ export interface LibraryPanelProps {
   /** TOPIC-4.4: only the Outputs of a Topic's Sessions, named by the Topic, until cleared. */
   sessionFilter?: { label: string; keys: string[] } | null;
   onClearSessionFilter?(): void;
+  /** PEOPLE-2.6: what is private, as one value: when it changes, the list is read again. */
+  privacyKey?: string;
 }
 type Page = Extract<LibraryPage, { state: 'ok' }>;
 interface Results { pages: Page[]; gen: number; limit?: number }
@@ -83,7 +85,7 @@ function installHint(page: Extract<LibraryPage, { state: 'not-installed' | 'too-
 }
 
 /** LIB: the tab renders the server's held read. It never mines a Transcript or fetches an external URL. */
-export function LibraryPanel({ focusKey, visible, sessions, now, search, status, filter, onFilter, headless, onHeadless, onSession, onDocument, keyboardEnabled, navRef, sessionFilter = null, onClearSessionFilter }: LibraryPanelProps) {
+export function LibraryPanel({ focusKey, visible, sessions, now, search, status, filter, onFilter, headless, onHeadless, onSession, onDocument, keyboardEnabled, navRef, sessionFilter = null, onClearSessionFilter, privacyKey = '' }: LibraryPanelProps) {
   const [query, setQuery] = useState('');
   const topics = useTopics();
   const [results, setResults] = useState<Results | null>(null);
@@ -198,6 +200,13 @@ export function LibraryPanel({ focusKey, visible, sessions, now, search, status,
     const timer = setInterval(() => { if (document.visibilityState === 'visible') refresh.current(); }, 60_000);
     return () => clearInterval(timer);
   }, [visible]);
+  // PEOPLE-2.6: a change of the Private folders, or of the Vault folder, holds from the next read: read now.
+  const previousPrivacy = useRef(privacyKey);
+  useEffect(() => {
+    const changed = previousPrivacy.current !== privacyKey;
+    previousPrivacy.current = privacyKey;
+    if (changed && visible) refresh.current();
+  }, [privacyKey, visible]);
   // A slow first call may be migrating the index. Its status contains no rows or paths.
   useEffect(() => {
     if (!busy && !moreBusy) return;

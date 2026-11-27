@@ -1177,7 +1177,12 @@ function Outputs({ topic, now, readAt, error, onRead, onMore }: { topic: Topic; 
   // Once per view: when the Library hasn't read in the last minute, so Outputs its Sessions wrote
   // since show without opening the Library.
   const asked = useRef(false);
+  const lastRead = useRef(readAt);
   useEffect(() => {
+    // PEOPLE-2.6: the server forgot its last read, since what is private changed: this view asks again,
+    // so a read that fails is said here and the lines never stay on "Reading".
+    if (readAt === null && lastRead.current !== null) asked.current = false;
+    lastRead.current = readAt;
     if (asked.current) return;
     asked.current = true;
     if (readAt === null || Date.now() - readAt >= OUTPUTS_FRESH_MS) onRead();

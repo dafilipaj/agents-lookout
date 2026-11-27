@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { constants } from 'node:fs';
 import { open, realpath, stat as fsStat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, normalize } from 'node:path';
@@ -59,6 +60,10 @@ interface LibraryOptions {
   toolVersion?: () => string | null;
   /** TOPIC-4.4, TOPIC-4.2: each finished read's Outputs, and every Session its events say was pruned (`<harness>:<sessionId>`). */
   onRead?: (items: OutputItem[], pruned: string[]) => void;
+  /** PEOPLE-2.4: whether a file is under a Private folder (PrivateFolders.covers); nothing is private without it. */
+  isPrivate?: (path: string) => Promise<boolean>;
+  /** PEOPLE-2.9: whether a file lies in the Vault folder (PrivateFolders.inVault); none does without it. */
+  inVault?: (path: string) => Promise<boolean>;
 }
 interface Read { id: string; at: number; headless: boolean; items: OutputItem[]; projects: string[] }
 /** Why there's no read: tb-session isn't there, or is too old for `events` (TOOLS-2.5). */
@@ -72,16 +77,24 @@ interface Action {
 
 /** LIB: Transcript facts enter here; selection, grouping, titles and existence belong to Lookout. */
 export class Library {
-  readonly files = new OutputFiles();
+  readonly files: OutputFiles;
   private readonly opts: LibraryOptions;
+  /** PEOPLE-2.6: moves on when what is private changes; a read begun before it is read again. */
+  private epoch = 0;
   private readonly reads: Read[] = [];
   private readonly flights = new Map<boolean, Promise<Read | Unavailable>>();
   private revision: string | null = null;
   private activeIndex = 0;
   private readonly roots = new Map<string, { at: number; root: string | null }>();
   private readonly titles = new Map<string, { mtime: number; size: number; title: string; seen: number }>();
-  constructor(opts: LibraryOptions) { this.opts = opts; }
+  constructor(opts: LibraryOptions) { this.opts = opts; this.files = new OutputFiles((p) => this.isPrivate(p)); }
   get indexing(): boolean { return this.activeIndex > 0; }
+  /** PEOPLE-2.4, 2.5: whether a file is private, for the file routes and a Report's text too. */
+  isPrivate(path: string): Promise<boolean> { return this.opts.isPrivate ? this.opts.isPrivate(path) : Promise.resolve(false); }
+  /** PEOPLE-2.6: what is private changed: no kept read is shown again, and a page of one asks for a new read. */
+  privacyChanged(): void { this.epoch++; this.reads.length = 0; }
+  /** PEOPLE-2.6: a read begun now, for what draws from the last one without asking (a Topic view's Output lines). Its failure is the next ask's to say. */
+  refresh(): void { void this.find({ query: '', page: 1, headless: false, types: [...LIBRARY_TYPES], project: '', hideGone: true }).catch(() => undefined); }
   private get home() { return (this.opts.env ?? process.env).HOME || homedir(); }
   private display(p: string) { return p === this.home || p.startsWith(`${this.home}/`) ? `~${p.slice(this.home.length)}` : p; }
 
@@ -116,6 +129,7 @@ export class Library {
   }
 
   private async read(headless: boolean): Promise<Read | Unavailable> {
+    const epoch = this.epoch;
     const bin = this.opts.bin(), info = await fsStat(bin).catch(() => null);
     // A read that starts while the first read after an upgrade is still running shares its 60 s budget.
     const revision = `${bin}:${info?.mtimeMs ?? ''}:${info?.size ?? ''}`, first = revision !== this.revision || this.activeIndex > 0;
@@ -152,7 +166,10 @@ export class Library {
       if (typeof remote === 'string') return remote;
       if (typeof sessions === 'string') return sessions;
       const metadata = new Map(sessions.map((s) => { const r = object(s); return [`${r.harness}:${r.session_id}`, r] as const; }));
-      const actions = [...files, ...remote].map((r) => this.action(r, metadata)).filter((a): a is Action => a !== null);
+      const every = [...files, ...remote].map((r) => this.action(r, metadata)).filter((a): a is Action => a !== null);
+      // PEOPLE-2.4: a private file is no Output, and neither is an Artifact or a Share made from one: as if never written.
+      const hidden = await this.privateAmong(every.flatMap((a) => [a.path, a.sourcePath]).filter((p): p is string => p !== null));
+      const actions = hidden.size === 0 ? every : every.filter((a) => !(a.path !== null && hidden.has(a.path)) && !(a.sourcePath !== null && hidden.has(a.sourcePath)));
       // LIB-2.11: a copied tool call (contract E6) is credited once.
       const unique = new Map<string, Action>(), anonymous: Action[] = [];
       for (const a of actions) {
@@ -181,17 +198,23 @@ export class Library {
         artifact.source = { path: source.path!, display: source.display, type: source.type!, createdAt: source.createdAt, updatedAt: source.updatedAt, events: source.events, exists: false };
         artifact.sessions = this.touches([...artifact.sessions, ...source.sessions]); folded.add(source.path!);
       }
-      const items = grouped.filter((i) => i.kind !== 'file' || !folded.has(i.path!) && directoriesThere.has(dirname(i.path!)) && !owned.has(i.path!));
-      const paths = [...new Set(items.flatMap((i) => i.kind === 'file' ? [i.path!] : i.source ? [i.source.path] : []))];
+      const found = grouped.filter((i) => i.kind !== 'file' || !folded.has(i.path!) && directoriesThere.has(dirname(i.path!)) && !owned.has(i.path!));
+      const paths = [...new Set(found.flatMap((i) => i.kind === 'file' ? [i.path!] : i.source ? [i.source.path] : []))];
       const stats = new Map<string, FileStat>();
       const exists = await this.check(paths, async (p) => { const s = await (this.opts.stat ?? fsStat)(p); stats.set(p, s); return s; });
-      await mapLimit(items, 8, async (i) => {
+      await mapLimit(found, 8, async (i) => {
         if (i.kind === 'file') { i.exists = exists.has(i.path!); this.files.allow(i.path!); if (i.exists) i.title = await this.title(i.path!, i.type!, stats.get(i.path!)!); }
         if (i.source) { i.source.exists = exists.has(i.source.path); this.files.allow(i.source.path); }
         for (const s of i.sessions) if (!s.blocked && s.projectPath && !directoriesThere.has(s.projectPath)) s.blocked = 'folder-gone';
       });
       for (const [p, t] of this.titles) if (Date.now() - t.seen > 3_600_000) this.titles.delete(p);
+      // PEOPLE-2.9: a note moved or renamed in the notes app leaves no gone row behind under its old name.
+      const moved = new Set<OutputItem>();
+      if (this.opts.inVault) await mapLimit(found.filter((i) => i.kind === 'file' && !i.exists), 16, async (i) => { if (await this.opts.inVault!(i.path!)) moved.add(i); });
+      const items = moved.size === 0 ? found : found.filter((i) => !moved.has(i));
       items.sort((a, b) => b.updatedAt - a.updatedAt || a.kind.localeCompare(b.kind) || a.key.localeCompare(b.key));
+      // PEOPLE-2.6: what is private changed while this was read: its answer is the old rule's, so it is read again.
+      if (epoch !== this.epoch) return await this.read(headless);
       const read = { id: randomUUID(), at: Date.now(), headless, items, projects: [...new Set(actions.flatMap((a) => a.session.projectPath ? [a.session.projectPath] : []))].sort() };
       this.reads.push(read); if (this.reads.length > 3) this.reads.shift();
       this.opts.onRead?.(items, [...new Set(actions.flatMap((a) => a.session.pruned ? [`${a.session.harness}:${a.session.sessionId}`] : []))]);
@@ -229,6 +252,13 @@ export class Library {
       for (const a of answers) if (a.exists) there.add(a.path);
     }
     return there;
+  }
+  /** PEOPLE-2.4: the paths among these that are private, each asked once. */
+  private async privateAmong(paths: string[]): Promise<Set<string>> {
+    const hidden = new Set<string>();
+    if (!this.opts.isPrivate) return hidden;
+    await mapLimit([...new Set(paths)], 16, async (p) => { if (await this.isPrivate(p)) hidden.add(p); });
+    return hidden;
   }
   private directories(paths: string[]) {
     return this.check(paths, async (p) => {
@@ -309,7 +339,8 @@ export class Library {
     const cached = this.titles.get(p);
     if (cached?.mtime === stat.mtimeMs && cached.size === stat.size) { cached.seen = Date.now(); return cached.title; }
     let title = fallback, read = true;
-    const handle = await open(p, 'r').catch(() => null);
+    // PEOPLE-2.3: never through a link: a file swapped for one into a Private folder keeps its name, not the note's heading.
+    const handle = await open(p, constants.O_RDONLY | constants.O_NOFOLLOW).catch(() => null);
     if (handle) {
       try { const buffer = Buffer.alloc(8192); const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0); const text = buffer.subarray(0, bytesRead).toString('utf8'); title = label(type === 'markdown' ? markdownTitle(text) : htmlTitle(text)) ?? fallback; }
       // It opened and won't read (macOS answers EDEADLK for a file iCloud keeps only in the cloud): its basename, uncached, so the next read tries again.

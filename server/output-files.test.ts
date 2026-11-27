@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { IncomingMessage, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -50,4 +50,32 @@ it('LIB-3.3: opaque-origin pages cannot read the API or file route or mutate, ev
       expect(guardRequest(req, guard)).toMatchObject({ ok: false, status: 403 });
     }
   }
+});
+
+it('PEOPLE-2.5: a private file is refused as a path never listed, by every route, one listed before its folder became private included', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'lookout-outputs-')); roots.push(root);
+  let closed = false;
+  const files = new OutputFiles(async (p) => closed && p.startsWith(join(root, 'Reviews')));
+  mkdirSync(join(root, 'Reviews'));
+  const note = join(root, 'Reviews', 'q3.md'), page = join(root, 'Reviews', 'q3.html'), open = join(root, 'notes.md');
+  writeFileSync(note, '# Review\n'); writeFileSync(page, '<h1>Review</h1>'); writeFileSync(open, '# Notes\n');
+  for (const p of [note, page, open]) files.allow(p);
+  // Listed, and not private yet: read as any listed file.
+  expect(await files.describe(note)).toEqual({ path: note, type: 'markdown', exists: true });
+  expect((await files.text(note, 1000))?.body.toString()).toBe('# Review\n');
+  expect((await serve(files, page)).res.statusCode).toBe(200);
+
+  closed = true;
+  expect(await files.describe(note)).toBeNull();
+  expect(await files.text(note, 1000)).toBeNull();
+  const refused = await serve(files, page);
+  expect(refused.res.statusCode).toBe(404);
+  expect(refused.text).toContain('This file is not available.');
+  expect(refused.text).not.toContain('Review</h1>');
+  // The answer is the one an unlisted path gets, word for word.
+  const unlisted = await serve(files, join(root, 'never-listed.html'));
+  expect(refused.text.split('\r\n\r\n')[1]).toBe(unlisted.text.split('\r\n\r\n')[1]);
+  // A file outside the folder is read as before.
+  expect(await files.describe(open)).toEqual({ path: open, type: 'markdown', exists: true });
+  expect((await files.text(open, 1000))?.body.toString()).toBe('# Notes\n');
 });

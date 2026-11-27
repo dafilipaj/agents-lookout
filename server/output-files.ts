@@ -32,6 +32,11 @@ const MEDIA: Record<string, string> = {
 /** LIB-3.3: the paths the server's Library reads listed (file Outputs and Artifact sources), oldest out at 10,000. */
 export class OutputFiles {
   private readonly paths = new Set<string>();
+  /** PEOPLE-2.5: whether a path is private, asked at every read; a listed path that became private is refused as unlisted. */
+  private readonly isPrivate: (path: string) => Promise<boolean>;
+  constructor(isPrivate: (path: string) => Promise<boolean> = async () => false) {
+    this.isPrivate = isPrivate;
+  }
   allow(path: string): void {
     if (!isAbsolute(path) || !isPlainPath(path)) return;
     this.paths.add(normalize(path));
@@ -50,14 +55,14 @@ export class OutputFiles {
   /** DOC-3.1: a listed document's Type and whether it's still a file; null for any other path, and nothing else about it. */
   async describe(path: string): Promise<{ path: string; type: OutputType; exists: boolean } | null> {
     const file = this.listed(path), type = file === null ? null : documentType(file);
-    if (file === null || type === null) return null;
+    if (file === null || type === null || (await this.isPrivate(file))) return null;
     const info = await lstat(file).catch(() => null);
     return { path: file, type, exists: !!info?.isFile() };
   }
   /** DOC-3.2: a listed Markdown file's text, at most `max` bytes of it; null for anything else. */
   async text(path: string, max: number): Promise<{ body: Buffer; truncated: boolean } | null> {
     const file = this.listed(path);
-    return file === null || extname(file).toLowerCase() !== '.md' ? null : readTextFile(file, max);
+    return file === null || extname(file).toLowerCase() !== '.md' || (await this.isPrivate(file)) ? null : readTextFile(file, max);
   }
   /** `framed`: the answer is for a Report's frame in Lookout's own page (INBOX-2.9). */
   async serve(path: string, res: ServerResponse, framed = false): Promise<void> {
@@ -65,7 +70,7 @@ export class OutputFiles {
     if (framed) res.setHeader('content-security-policy', FRAMED_OUTPUT_CSP);
     const fail = (status: number, message: string) => { res.writeHead(status, { 'content-type': 'text/plain; charset=utf-8' }); res.end(message); };
     const normalized = normalize(path), type = MEDIA[extname(normalized).toLowerCase()];
-    if (!isPlainPath(path) || !isAbsolute(path) || !this.paths.has(normalized) || !type) return fail(404, 'This file is not available.');
+    if (!isPlainPath(path) || !isAbsolute(path) || !this.paths.has(normalized) || !type || (await this.isPrivate(normalized))) return fail(404, 'This file is not available.');
     path = normalized;
     // lstat excludes a leaf symlink; NOFOLLOW closes the race with open. NONBLOCK prevents a
     // swapped-in FIFO from hanging the server before the open handle can be checked.

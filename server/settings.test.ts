@@ -1,8 +1,9 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { PRODUCTIVE_EMAIL_ERROR, SettingsError, defaultSettings, parseProductiveEmail } from '../shared/settings.ts';
+import { PRIVATE_FOLDER_ERROR } from '../shared/private-folders.ts';
+import { PRIVATE_NEEDS_VAULT, PRODUCTIVE_EMAIL_ERROR, SettingsError, VAULT_HAS_PRIVATE, defaultSettings, parseProductiveEmail } from '../shared/settings.ts';
 import { SettingsStore, defaultSettingsPath, expandHome } from './settings.ts';
 
 const D = defaultSettings();
@@ -18,7 +19,7 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }));
 describe('SettingsStore', () => {
   it('starts from defaults when there is no file', async () => {
     const store = new SettingsStore(file);
-    expect(await store.load()).toEqual({ idleThresholdHours: 4, startDirectories: ['~/Projects/work'], lastLaunch: null, productiveEmail: null, recommendWithJev: false, undoSend: true });
+    expect(await store.load()).toEqual({ idleThresholdHours: 4, startDirectories: ['~/Projects/work'], lastLaunch: null, productiveEmail: null, recommendWithJev: false, undoSend: true, vaultFolder: null, privateFolders: [] });
   });
 
   it('SIDE-7.2: a saved value is written to the file and survives a restart', async () => {
@@ -186,5 +187,106 @@ describe('SettingsStore', () => {
     expect(defaultSettingsPath({})).toBe(join(homedir(), '.config', 'lookout', 'settings.json'));
     expect(defaultSettingsPath({ XDG_CONFIG_HOME: '/cfg' })).toBe('/cfg/lookout/settings.json');
     expect(defaultSettingsPath({ LOOKOUT_SETTINGS: '/x.json' })).toBe('/x.json');
+  });
+});
+
+describe('PEOPLE-1, PEOPLE-2: the Vault folder and Private folders', () => {
+  const store = async () => {
+    const s = new SettingsStore(file);
+    await s.load();
+    return s;
+  };
+
+  it('PEOPLE-1.2: the Vault folder is a full path on one line and a directory when it is saved; the saved one stays, and `~` is kept as typed', async () => {
+    const s = await store();
+    // Kept as typed: a folder under the home directory, given with `~`.
+    const typed = `~/${dir.startsWith(homedir()) ? dir.slice(homedir().length + 1) : ''}`;
+    const vault = dir.startsWith(homedir()) ? typed : dir;
+    expect((await s.update({ vaultFolder: `${vault}/` })).vaultFolder).toBe(vault);
+    expect(JSON.parse(readFileSync(file, 'utf8')).vaultFolder).toBe(vault);
+
+    for (const bad of ['notes', 'Team/notes', '~other/notes', 'a\nb', 7]) {
+      expect(() => s.update({ vaultFolder: bad }), String(bad)).toThrow('The Vault folder is a full path');
+    }
+    await expect(s.update({ vaultFolder: join(dir, 'missing') })).rejects.toThrow(`Not a directory: ${join(dir, 'missing')}`);
+    writeFileSync(join(dir, 'a-file'), '');
+    await expect(s.update({ vaultFolder: join(dir, 'a-file') })).rejects.toThrow('Not a directory');
+    expect(s.get().vaultFolder).toBe(vault);
+
+    // Empty, or null, clears it.
+    expect((await s.update({ vaultFolder: '  ' })).vaultFolder).toBeNull();
+    expect((await new SettingsStore(file).load()).vaultFolder).toBeNull();
+  });
+
+  it('PEOPLE-2.2: an entry the rule refuses is refused whole, with its words, and the saved list stays', async () => {
+    const s = await store();
+    await s.update({ vaultFolder: dir, privateFolders: ['Team/*/Reviews', ' Team/360 * ', 'Team/*/Reviews/'] });
+    expect(s.get().privateFolders).toEqual(['Team/*/Reviews', 'Team/360 *']);
+
+    for (const bad of [[''], ['Team//Reviews'], ['Team/../x'], ['./Team'], ['Team/**'], ['a\nb'], ['x'.repeat(301)], [7], 'Team']) {
+      expect(() => s.update({ privateFolders: bad }), JSON.stringify(bad).slice(0, 30)).toThrow(bad === 'Team' ? 'Private folders must be a list.' : PRIVATE_FOLDER_ERROR);
+    }
+    await expect(s.update({ privateFolders: Array.from({ length: 51 }, (_, n) => `Team/${n}`) })).rejects.toMatchObject({ field: 'privateFolders', message: 'At most 50 Private folders.' });
+    expect((await s.update({ privateFolders: Array.from({ length: 50 }, (_, n) => `Team/${n}`) })).privateFolders).toHaveLength(50);
+    await s.update({ privateFolders: ['Team/*/Reviews', 'Team/360 *'] });
+    // A full path that names no folder outright would hide everything.
+    for (const all of [['/*'], ['~/*'], ['/*/*']]) expect(() => s.update({ privateFolders: all }), all[0]).toThrow(PRIVATE_FOLDER_ERROR);
+    expect(s.get().privateFolders).toEqual(['Team/*/Reviews', 'Team/360 *']);
+  });
+
+  it('PEOPLE-2.2: a path inside the Vault needs the Vault folder: refused with none set, and the Vault folder cannot be cleared under one', async () => {
+    const s = await store();
+    await expect(s.update({ privateFolders: ['Team/Reviews'] })).rejects.toMatchObject({ field: 'privateFolders', message: PRIVATE_NEEDS_VAULT });
+    // A full path needs no Vault.
+    expect((await s.update({ privateFolders: ['~/notes/private', '/srv/private'] })).privateFolders).toEqual(['~/notes/private', '/srv/private']);
+
+    await s.update({ vaultFolder: dir, privateFolders: ['Team/Reviews', '/srv/private'] });
+    await expect(s.update({ vaultFolder: null })).rejects.toMatchObject({ field: 'vaultFolder', message: VAULT_HAS_PRIVATE });
+    expect(s.get()).toMatchObject({ vaultFolder: dir, privateFolders: ['Team/Reviews', '/srv/private'] });
+    // Both in one change: the list no longer holds a path inside it.
+    expect(await s.update({ vaultFolder: null, privateFolders: ['/srv/private'] })).toMatchObject({ vaultFolder: null, privateFolders: ['/srv/private'] });
+  });
+
+  it('PEOPLE-2.10: a settings file edited by hand keeps every entry it can read: a bad one is left out alone, and a list over 50 is kept whole, to shrink in Settings and never grow', async () => {
+    writeFileSync(join(dir, 'by-hand.json'), JSON.stringify({ vaultFolder: dir, privateFolders: ['Team/*/Reviews', 'Team/../oops', 7, '/srv/private', 'Team/*/Reviews'] }));
+    const s = new SettingsStore(join(dir, 'by-hand.json'));
+    expect((await s.load()).privateFolders).toEqual(['Team/*/Reviews', '/srv/private']);
+
+    const many = Array.from({ length: 53 }, (_, n) => `Team/${n}`);
+    writeFileSync(join(dir, 'long.json'), JSON.stringify({ vaultFolder: dir, privateFolders: many }));
+    const long = new SettingsStore(join(dir, 'long.json'));
+    expect((await long.load()).privateFolders).toEqual(many);
+    await expect(long.update({ privateFolders: [...many, 'Team/one-more'] })).rejects.toThrow('At most 50 Private folders.');
+    expect((await long.update({ privateFolders: many.slice(1) })).privateFolders).toHaveLength(52);
+    await expect(long.update({ privateFolders: many })).rejects.toThrow('At most 50 Private folders.');
+  });
+
+  it("PEOPLE-2.10: a settings file that can't be read leaves the defaults, and its text is kept beside it when a setting is next saved, never written over", async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const path = join(dir, 'broken.json');
+      const typed = `{ "vaultFolder": "${dir}", "privateFolders": ["Team/*/Reviews"], }\n`; // a comma too many
+      writeFileSync(path, typed);
+      const s = new SettingsStore(path);
+      expect((await s.load()).privateFolders).toEqual([]);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("can't be read as settings"));
+      expect(existsSync(`${path}.unreadable`)).toBe(false);
+
+      await s.update({ idleThresholdHours: 6 });
+      expect(readFileSync(`${path}.unreadable`, 'utf8')).toBe(typed);
+      expect(JSON.parse(readFileSync(path, 'utf8'))).toMatchObject({ idleThresholdHours: 6 });
+      // Once: the next save has nothing unreadable to keep.
+      writeFileSync(`${path}.unreadable`, 'kept');
+      await s.update({ idleThresholdHours: 7 });
+      expect(readFileSync(`${path}.unreadable`, 'utf8')).toBe('kept');
+
+      // A file that isn't there is no trouble, and neither is one that reads.
+      warn.mockClear();
+      await new SettingsStore(join(dir, 'none.json')).load();
+      await new SettingsStore(path).load();
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

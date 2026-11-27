@@ -108,6 +108,8 @@ function world(over: { dir?: string; now?: number; settings?: Partial<Settings>;
     /** What the Library, the chat's reader, History and End Session answer. */
     outputs: [] as OutputItem[],
     library: null as (() => Promise<LibraryPage>) | null,
+    /** PEOPLE-2.5: files under this folder are private; none while null. */
+    privatePrefix: null as string | null,
     entries: [] as ChatEntry[],
     history: (async () => PAST) as (id: string) => Promise<HistoryItem>,
     latestFails: false,
@@ -152,7 +154,7 @@ function world(over: { dir?: string; now?: number; settings?: Partial<Settings>;
   const bots: Bots = new Bots({
     path, home: dir, launcher, now: () => now,
     monitor: { watch: () => (w.watches++, () => void w.watches--), get: (id) => w.rows.get(id) ?? null },
-    library: { find: async (q) => (w.finds.push(q), w.order.push('outputs'), w.library ? w.library() : page(w.outputs)) },
+    library: { find: async (q) => (w.finds.push(q), w.order.push('outputs'), w.library ? w.library() : page(w.outputs)), isPrivate: async (path) => w.privatePrefix !== null && path.startsWith(w.privatePrefix) },
     latest: async (id) => {
       w.latest.push(id);
       w.order.push('reply');
@@ -1668,5 +1670,124 @@ describe('Reports', () => {
     for (const path of [unlisted, page47, mislabelled, link, join(folder, 'gone.md'), `${notes}/`, 'reports/tides-47.md', '', `~${notes}`, folder]) {
       expect(await w.bots.text(path), path).toBeNull();
     }
+  });
+
+  it("PEOPLE-2.5: a Report's Markdown file listed before its folder became private is refused as one never listed", async () => {
+    const w = await started();
+    const folder = join(w.dir, 'reviews');
+    mkdirSync(folder);
+    const notes = join(folder, 'q3.md');
+    writeFileSync(notes, '# Q3\n');
+    w.outputs = [output({ key: notes, type: 'markdown', title: 'Q3', path: notes })];
+    await w.bots.detail(w.runId);
+    expect((await w.bots.text(notes))!.body.toString('utf8')).toBe('# Q3\n');
+    w.privatePrefix = folder;
+    expect(await w.bots.text(notes)).toBeNull();
+    w.privatePrefix = null;
+    expect(await w.bots.text(notes)).not.toBeNull();
+  });
+
+  it("PEOPLE-2.6: when what is private changes, a Report named after a file that is private now shows its next document's title, or its Bot's name, counts one fewer, and doesn't arrive again", async () => {
+    const review = output({ key: '/Users/me/notes/Reviews/q3.md', type: 'markdown', title: 'Q3 review', path: '/Users/me/notes/Reviews/q3.md', updatedAt: 9 });
+    const w = await finished([review, output()], [reply('Written.')]);
+    expect(w.run()).toMatchObject({ title: 'Q3 review', holds: { documents: 2, first: { kind: 'file', type: 'markdown' } } });
+    w.bots.mark(w.runId, { read: true });
+    const arrived = w.run().arrivedAt;
+
+    // The folder became private: the Library leaves the review out from now on.
+    w.outputs = [output()];
+    const sent = w.snapshots.length;
+    w.bots.privacyChanged();
+    await w.bots.settled();
+    expect(w.run()).toMatchObject({ title: 'Tide tables, week 47', holds: { documents: 1, reply: true, first: { kind: 'file', type: 'html' } }, arrivedAt: arrived, read: true });
+    expect(w.stored().runs[0]).toMatchObject({ title: 'Tide tables, week 47' });
+    expect(w.snapshots.length).toBeGreaterThan(sent);
+    expect(JSON.stringify(w.snapshots.at(-1))).not.toContain('Q3 review');
+    expect(JSON.stringify(w.stored())).not.toContain('Q3 review');
+
+    // Its only document private: its Bot's own name. Nothing changed: nothing sent.
+    w.outputs = [];
+    w.bots.privacyChanged();
+    await w.bots.settled();
+    expect(w.run()).toMatchObject({ title: 'Tide tables · Nov 23', holds: { documents: 0, reply: true, first: null }, arrivedAt: arrived, read: true });
+    const quiet = w.snapshots.length;
+    w.bots.privacyChanged();
+    await w.bots.settled();
+    expect(w.snapshots.length).toBe(quiet);
+
+    // The Library can't be read. A title whose own file isn't private stands: nothing is wiped on a failed read.
+    const down = await finished([review, output()], [reply('Written.')]);
+    down.library = async () => {
+      throw new Error('down');
+    };
+    down.bots.privacyChanged();
+    await down.bots.settled();
+    expect(down.run()).toMatchObject({ title: 'Q3 review', holds: { documents: 2 } });
+    // One whose own file is private goes all the same, since that is asked of the file's path and needs no read.
+    down.privatePrefix = '/Users/me/notes/Reviews/';
+    down.bots.privacyChanged();
+    await down.bots.settled();
+    expect(down.run()).toMatchObject({ title: 'Tide tables · Nov 23', holds: { documents: 1, first: null } });
+    // Opened once the Library reads again, it is named after its next document.
+    down.library = null;
+    down.outputs = [output()];
+    await down.bots.detail(down.runId);
+    expect(down.run()).toMatchObject({ title: 'Tide tables, week 47', holds: { documents: 1, first: { kind: 'file', type: 'html' } } });
+
+    // When the server starts, the same is asked with no read of the Library at all.
+    const boot = await finished([review]);
+    boot.privatePrefix = '/Users/me/notes/Reviews/';
+    const finds = boot.finds.length;
+    boot.bots.privacyChanged({ reread: false });
+    await boot.bots.settled();
+    expect(boot.finds).toHaveLength(finds);
+    expect(boot.run()).toMatchObject({ title: 'Tide tables · Nov 23' });
+
+    // A run held before its title's file was kept can't be vouched for while the Library can't be read: its Bot's name.
+    const old = await finished([review]);
+    old.bots.stop();
+    const kept = old.stored();
+    delete kept.runs[0]!.titleFrom;
+    writeFileSync(old.path, JSON.stringify(kept));
+    const next = world({ dir: old.dir });
+    expect(next.run()).toMatchObject({ title: 'Q3 review' });
+    next.library = async () => {
+      throw new Error('down');
+    };
+    next.bots.privacyChanged();
+    await next.bots.settled();
+    expect(next.run()).toMatchObject({ title: 'Tide tables · Nov 23' });
+
+    // A run still going has no title from a document yet, and is left as it is.
+    const going = await started();
+    const before = JSON.stringify(going.run());
+    going.bots.privacyChanged();
+    await going.bots.settled();
+    expect(JSON.stringify(going.run())).toBe(before);
+  });
+
+  it('PEOPLE-2.6: a run that finishes while what is private changes arrives under the rule that holds by then, never named after the private file', async () => {
+    const review = output({ key: '/Users/me/notes/Reviews/q3.md', type: 'markdown', title: 'Q3 review', path: '/Users/me/notes/Reviews/q3.md', updatedAt: 9 });
+    const w = await started();
+    w.outputs = [review];
+    w.entries = [reply('Written.')];
+    // The folder is made private while the run's Session is being ended: after its Outputs were read.
+    Object.defineProperty(w, 'fresh', {
+      configurable: true,
+      get: () => {
+        if (w.outputs.length) {
+          w.outputs = [];
+          w.bots.privacyChanged();
+        }
+        return null;
+      },
+    });
+    w.go(4 * MINUTE);
+    w.live(done());
+    await w.bots.settled();
+    expect(w.order.filter((step) => step === 'outputs').length).toBeGreaterThanOrEqual(2);
+    expect(w.run()).toMatchObject({ state: 'finished', title: 'Tide tables · Nov 23', holds: { documents: 0, first: null } });
+    expect(JSON.stringify(w.snapshots)).not.toContain('Q3 review');
+    expect(JSON.stringify(w.stored())).not.toContain('Q3 review');
   });
 });

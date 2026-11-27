@@ -1008,6 +1008,8 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
   }, [client]);
   // TOPIC-4.4: "+N more" opens the Library on the Topic's Sessions.
   const [librarySessions, setLibrarySessions] = useState<{ label: string; keys: string[] } | null>(null);
+  // PEOPLE-2.6: what is private, as one value the Library reads again on.
+  const privacyKey = useMemo(() => JSON.stringify([state.settings.vaultFolder, state.settings.privateFolders]), [state.settings.vaultFolder, state.settings.privateFolders]);
   const moreOutputs = useCallback(
     (topic: Topic) => {
       const keys = topic.members.flatMap((m) => (m.kind === 'session' ? [`${m.ref.harness}:${m.ref.sessionId}`] : []));
@@ -1591,8 +1593,8 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
               />
             ) : route.name === 'inbox' ? (
               <ReportView
-                // One Report's read and scroll never carry over to another's.
-                key={route.id ?? ''}
+                // One Report's read and scroll never carry over to another's; PEOPLE-2.6: nor past a change of what is private.
+                key={`${route.id ?? ''}\n${privacyKey}`}
                 id={route.id ?? null}
                 doc={route.doc ?? 1}
                 bots={state.bots}
@@ -1711,8 +1713,8 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
               />
             ) : route.name === 'doc' ? (
               <DocumentView
-                // One file's read and scroll never carry over to another's.
-                key={route.path}
+                // One file's read and scroll never carry over to another's; PEOPLE-2.6: nor past a change of what is private, so the server is asked again.
+                key={`${route.path}\n${privacyKey}`}
                 path={route.path}
                 load={loadDocument}
                 loadText={loadDocumentText}
@@ -1806,7 +1808,7 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
             onSetupRefresh={() => setSetupRefresh((n) => n + 1)}
             now={now}
             panels={{
-              library: <LibraryPanel focusKey={rightFocus.library} visible={layout.tab === 'library'} sessions={state.sessions} now={now} search={searchLibrary} status={libraryStatus} filter={layout.libraryFilter} onFilter={(libraryFilter) => updateLayout({ libraryFilter })} headless={layout.headless} onHeadless={(headless) => updateLayout({ headless })} onSession={openPast} onDocument={openDocument} keyboardEnabled={!modalOpen} navRef={libraryNav} sessionFilter={librarySessions} onClearSessionFilter={() => setLibrarySessions(null)} />,
+              library: <LibraryPanel focusKey={rightFocus.library} visible={layout.tab === 'library'} sessions={state.sessions} now={now} search={searchLibrary} status={libraryStatus} filter={layout.libraryFilter} onFilter={(libraryFilter) => updateLayout({ libraryFilter })} headless={layout.headless} onHeadless={(headless) => updateLayout({ headless })} onSession={openPast} onDocument={openDocument} keyboardEnabled={!modalOpen} navRef={libraryNav} sessionFilter={librarySessions} onClearSessionFilter={() => setLibrarySessions(null)} privacyKey={privacyKey} />,
               topics: (
                 <TopicsPanel
                   viewedTopic={viewedTopic}

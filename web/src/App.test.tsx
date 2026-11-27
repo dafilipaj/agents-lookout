@@ -149,7 +149,7 @@ describe('settings page', () => {
     expect(defaultSettings().undoSend).toBe(true);
   });
 
-  it('SIDE-7.6: Settings is two sub-pages, General and Tools, in a side nav; the sub-page is in the path, replaced on a switch, kept on a reload; the Settings button closes it from either', async () => {
+  it('SIDE-7.6: Settings is three sub-pages, General, Tools and Vault, in a side nav; the sub-page is in the path, replaced on a switch, kept on a reload; the Settings button closes it from any', async () => {
     const user = userEvent.setup();
     const app = renderApp();
     app.snapshot([]);
@@ -158,6 +158,7 @@ describe('settings page', () => {
     expect(nav.getAllByRole('link').map((l) => [l.textContent, l.getAttribute('href'), l.getAttribute('aria-current')])).toEqual([
       ['General', '/settings/general', 'page'],
       ['Tools', '/settings/tools', null],
+      ['Vault', '/settings/vault', null],
     ]);
     // DS-13.1: the side nav's container query measures the pane, so the container has no padding of its own.
     const pane = screen.getByRole('navigation', { name: 'Settings' }).closest('.\\@container')!;

@@ -1388,6 +1388,19 @@ export class Topics {
     this.changed();
   }
 
+  /**
+   * PEOPLE-2.6: what is private changed, so the last read's Outputs may name a file that is private
+   * now: they go at once, from every tab, and each Topic's Output lines are read again. True when
+   * there was a read to forget, so the caller asks the Library for a new one.
+   */
+  forgetOutputs(): boolean {
+    if (this.outputs === null) return false;
+    this.outputs = null;
+    this.readAt = null;
+    this.changed();
+    return true;
+  }
+
   create(title: string): Topic {
     const id = this.write((s) => s.create(title));
     return this.last.topics.find((t) => t.id === id)!;

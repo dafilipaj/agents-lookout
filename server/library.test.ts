@@ -432,3 +432,80 @@ it('TOPIC-4.2 (support): every read tells the Topics which Sessions its events h
   expect(await lib.find(query())).toMatchObject({ total: 2 });
   expect(pruned.map((p) => [...p].sort())).toEqual([['claude:pruned-dropped', 'claude:pruned-kept']]);
 });
+
+it('PEOPLE-2.4: a private file is no Output, and neither is an Artifact or a Share made from one: left out as if never written, and not counted as gone', async () => {
+  const artifact = (source: string, url: string) => event(source, { kind: 'artifact', key: url, url, title: 'A page', source_path: source });
+  const rows = [event('/notes/Team/Tomo/Reviews/q3.md'), event('/notes/Team/Tomo/Reviews/gone.md'), event('/notes/Team/Tomo/1on1s/2026-11-24.md'), event('/notes/Team/Tomo/Reviews/page.html'), event('/work/report.html')];
+  const remote = [artifact('/notes/Team/Tomo/Reviews/page.html', 'https://example.invalid/private'), artifact('/work/report.html', 'https://example.invalid/public'), event('/x', { kind: 'share', key: 'https://example.invalid/share', url: 'https://example.invalid/share', title: 'A share', source_path: '/notes/Team/Tomo/Reviews/q3.md' })];
+  const runner = vi.fn<Runner>(async (bin, args) => bin === 'git' ? Promise.reject(notRepo()) : answer(args[0] === 'list' ? [] : args.includes('write,edit') ? rows : remote));
+  const isPrivate = vi.fn(async (p: string) => p.startsWith('/notes/Team/Tomo/Reviews/'));
+  const lib = new Library({ ...options(runner), realpath: async (p) => p, stat: async (p) => ({ isFile: () => !p.includes('gone') }), isPrivate });
+  const page = await lib.find(query('types=pages,pdf,markdown,image,share&hideGone=0')); if (page.state !== 'ok') throw new Error('missing');
+  expect(page.items.map((i) => i.key).sort()).toEqual(['/notes/Team/Tomo/1on1s/2026-11-24.md', 'https://example.invalid/public']);
+  expect(JSON.stringify(page)).not.toContain('Reviews');
+  // Hidden as gone are only files that are Outputs: the private one that is gone isn't among them.
+  expect(await lib.find(query('types=pages,pdf,markdown,image,share'))).toMatchObject({ total: 2, hiddenGone: 0 });
+  // Each path is asked once a read, however many rows name it.
+  expect(isPrivate.mock.calls.filter(([p]) => p === '/notes/Team/Tomo/Reviews/q3.md')).toHaveLength(1);
+  // The file routes never list one, so its path is refused there too.
+  expect(await lib.files.describe('/notes/Team/Tomo/Reviews/q3.md')).toBeNull();
+  expect(await lib.files.describe('/notes/Team/Tomo/1on1s/2026-11-24.md')).toMatchObject({ type: 'markdown' });
+});
+
+it('PEOPLE-2.6: when what is private changes, no kept read is shown again, a page of one asks for a new read, and a read under way is read again', async () => {
+  const rows = [...Array.from({ length: 60 }, (_, n) => event(`/work/report-${n}.pdf`)), event('/notes/Reviews/q3.pdf')];
+  let hidden = false;
+  let hold: Promise<void> | null = null;
+  const runner = vi.fn<Runner>(async (bin, args) => {
+    if (bin === 'git') throw notRepo();
+    if (hold && args.includes('write,edit')) await hold;
+    return answer(args[0] === 'list' ? [] : args.includes('write,edit') ? rows : []);
+  });
+  const lib = new Library({ ...options(runner), realpath: async (p) => p, isPrivate: async (p) => hidden && p.startsWith('/notes/Reviews/') });
+  const first = await lib.find(query()); if (first.state !== 'ok') throw new Error('missing');
+  expect(first.total).toBe(61);
+
+  hidden = true; lib.privacyChanged();
+  // A page of the read made under the old rule isn't served: the panel reads again.
+  expect(await lib.find(query(`page=2&readId=${first.readId}`))).toEqual({ state: 'read-again' });
+  // And the next read is made at once, not taken from the two seconds a read is kept for.
+  const calls = runner.mock.calls.length;
+  const second = await lib.find(query()); if (second.state !== 'ok') throw new Error('missing');
+  expect(runner.mock.calls.length).toBeGreaterThan(calls);
+  expect(second.total).toBe(60);
+
+  // A read under way when the rule changes answers with the new rule.
+  hidden = false; lib.privacyChanged();
+  let release!: () => void;
+  hold = new Promise<void>((r) => { release = r; });
+  const pending = lib.find(query());
+  await vi.waitFor(() => expect(runner.mock.calls.filter(([, a]) => a.includes('write,edit')).length).toBeGreaterThanOrEqual(3));
+  hidden = true; lib.privacyChanged();
+  hold = null; release();
+  const third = await pending; if (third.state !== 'ok') throw new Error('missing');
+  expect(third.total).toBe(60);
+});
+
+it('PEOPLE-2.9: a file in the Vault folder that no longer exists is no Output, whatever "hide gone" says, and a gone file anywhere else still is', async () => {
+  const runner = fake([event('/notes/Team/Tomo/Tomo review Q3.md'), event('/notes/Team/Tomo/1on1s/2026-11-24.md'), event('/work/old-report.md'), event('/work/report.md')]);
+  const inVault = vi.fn(async (p: string) => p.startsWith('/notes/'));
+  const lib = new Library({ ...options(runner), realpath: async (p) => p, stat: async (p) => ({ isFile: () => !p.includes('review Q3') && !p.includes('old-report') }), inVault });
+  const all = await lib.find(query('types=markdown&hideGone=0')); if (all.state !== 'ok') throw new Error('missing');
+  // The note moved in the notes app leaves no row under its old name; the gone report outside the Vault keeps its own.
+  expect(all.items.map((i) => [i.key, i.exists]).sort()).toEqual([['/notes/Team/Tomo/1on1s/2026-11-24.md', true], ['/work/old-report.md', false], ['/work/report.md', true]]);
+  expect(JSON.stringify(all)).not.toContain('review Q3');
+  expect(await lib.find(query('types=markdown'))).toMatchObject({ total: 2, hiddenGone: 1 });
+  // Only a file that is gone is asked about.
+  expect(inVault.mock.calls.map(([p]) => p).sort()).toEqual(['/notes/Team/Tomo/Tomo review Q3.md', '/work/old-report.md']);
+});
+
+it('PEOPLE-2.6: a read begun for those who draw from the last one without asking tells them its Outputs, under the new rule', async () => {
+  let hidden = false;
+  const runner = fake([event('/notes/Reviews/q3.md'), event('/work/report.md')]);
+  const reads: string[][] = [];
+  const lib = new Library({ ...options(runner), realpath: async (p) => p, isPrivate: async (p) => hidden && p.startsWith('/notes/Reviews/'), onRead: (items) => reads.push(items.map((i) => i.key).sort()) });
+  await lib.find(query());
+  hidden = true; lib.privacyChanged(); lib.refresh();
+  await vi.waitFor(() => expect(reads).toHaveLength(2));
+  expect(reads).toEqual([['/notes/Reviews/q3.md', '/work/report.md'], ['/work/report.md']]);
+});

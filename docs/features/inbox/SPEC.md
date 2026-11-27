@@ -125,3 +125,4 @@ None blocking.
 - 2026-11-27: INBOX-2.8 reworded, nothing changed: the Library's Open now shows a file in the Document view (DOC), so a Report's Open says for itself where it goes. The Markdown, page and image branches of INBOX-2.4 are one piece with the Document view's (`DocumentFile.tsx`).
 - 2026-11-27: INBOX-2.11 ticked: Dario looked at a real Report on 4747, the first one a Bot wrote on its schedule. INBOX-1.6, the list's look, is still his to confirm.
 - 2026-11-27: INBOX-1.6 ticked: Dario looked at the Inbox on 4747 ("Inbox looks OK"). Every criterion is ticked: Done. His one nit was the shell's, not the list's: the header row changed height between a Report and a Session, fixed as SIDE-8.4.
+- 2026-11-27: A Report's documents leave out a file under a Private folder, and its text route refuses one (PEOPLE-2.4, PEOPLE-2.5); no criterion here changes, since both follow from the Library's read and the listed-path rule.

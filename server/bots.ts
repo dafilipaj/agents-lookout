@@ -91,6 +91,12 @@ interface StoredRun extends BotRun {
   procStart: string | null;
   /** INBOX: the Library couldn't be read when it arrived, so its title and what it holds are read when it's opened. */
   holdsPending: boolean;
+  /**
+   * PEOPLE-2.6: the file its title was read from, so the title can be taken back without the Library
+   * when that file turns private; null when the title is its own name, or a document's with no file.
+   * Absent on a run held before this was kept.
+   */
+  titleFrom?: string | null;
 }
 
 interface Fields {
@@ -121,7 +127,8 @@ export interface BotsOptions {
   /** BOT-4.7: Fleet's list is read while a run is going (`watch`), and a Session's row as last listed (`get`). */
   monitor: { watch(): () => void; get(sessionId: string): SessionRow | null };
   /** INBOX: the Outputs a run's Session touched (LIB's `sessions` filter). */
-  library: { find(q: LibraryQuery): Promise<LibraryPage> };
+  /** `isPrivate` (PEOPLE-2.5): asked before a Report's Markdown file is read; nothing is private without it. */
+  library: { find(q: LibraryQuery): Promise<LibraryPage>; isPrivate?(path: string): Promise<boolean> };
   /** INBOX: a live Session's latest chat entries, through the chat feed's reader; its last reply is read from them. */
   latest(sessionId: string): Promise<ChatPage>;
   /**
@@ -238,6 +245,12 @@ export class Bots {
   private lockWritten = false;
   private handle: unknown = null;
   private stopped = false;
+  /** PEOPLE-2.6: the Reports are being read again after a change of what is private, and whether another came meanwhile. */
+  private reholding = false;
+  private reholdAgain = false;
+  private rereadWanted = false;
+  /** PEOPLE-2.6: moves on with each such change; Outputs read for a run before it are read again before they name it. */
+  private privacyEpoch = 0;
   /** BOT-4.7: the read of Fleet's list held while a run is in flight. */
   private unwatch: (() => void) | null = null;
   /** BOT-2.2: the change to a Bot being checked and saved; the next one waits for it. */
@@ -504,7 +517,15 @@ export class Bots {
    */
   async detail(runId: string): Promise<ReportDetail> {
     const run = this.run(runId);
-    const [outputs, session] = await Promise.all([this.outputs(run), this.session(run)]);
+    const read = () => Promise.all([this.outputs(run), this.session(run)]);
+    let epoch = this.privacyEpoch;
+    let answer = await read();
+    // PEOPLE-2.6: what is private changed while it was read: read again, so nothing of the old rule is shown or held.
+    while (epoch !== this.privacyEpoch) {
+      epoch = this.privacyEpoch;
+      answer = await read();
+    }
+    const [outputs, session] = answer;
     const failed = typeof outputs === 'string';
     // INBOX: the Library failed as it arrived: its title and what it holds come from this read.
     if (!failed && run.holdsPending && !inFlight(run) && this.owner && this.unreadable === null) {
@@ -512,6 +533,68 @@ export class Bots {
       this.changed();
     }
     return { run: publicRun(run), reply: run.reply, outputs: failed ? [] : outputs.items, outputsError: failed ? outputs : null, session };
+  }
+
+  /**
+   * PEOPLE-2.4, 2.6: what is private changed. A Report's title and what it holds were read when it
+   * arrived, so they are looked at again, in two steps. First what needs no read: a title whose own
+   * file is private now goes back to the Bot's name at once. Then, unless `reread` is false, each is
+   * read again from the Library, which gives the next document's title and the counts; a Library that
+   * can't be read leaves them, since the first step already vouched for the title (only a run held
+   * before its title's file was kept falls back to the Bot's name). No Report arrives again for it,
+   * and a change that comes while this runs is one more pass.
+   */
+  privacyChanged(opts: { reread?: boolean } = {}): void {
+    this.privacyEpoch++;
+    if (opts.reread !== false) this.rereadWanted = true;
+    if (this.reholding) {
+      this.reholdAgain = true;
+      return;
+    }
+    this.reholding = true;
+    const held = (run: StoredRun) => run.arrivedAt !== null && !inFlight(run) && run.sessionId !== null && this.mine(run) && !this.concluding.has(run.id);
+    const state = (run: StoredRun) => JSON.stringify([run.title, run.holds, run.holdsPending, run.titleFrom]);
+    this.track(
+      (async () => {
+        do {
+          this.reholdAgain = false;
+          const reread = this.rereadWanted;
+          this.rereadWanted = false;
+          let changed = false;
+          for (const run of [...this.runs]) {
+            if (!held(run) || !run.titleFrom) continue;
+            const hidden = (await this.opts.library.isPrivate?.(run.titleFrom)) ?? false;
+            if (!hidden || !held(run)) continue;
+            this.unname(run);
+            changed = true;
+          }
+          if (changed) this.changed();
+          changed = false;
+          for (const run of reread ? [...this.runs] : []) {
+            if (!held(run)) continue;
+            const was = state(run);
+            const outputs = await this.outputs(run);
+            if (!held(run)) continue;
+            if (typeof outputs !== 'string') this.hold(run, outputs);
+            else if (run.titleFrom === undefined && run.title !== run.name) this.unname(run);
+            if (state(run) !== was) changed = true;
+          }
+          if (changed) this.changed();
+        } while (this.reholdAgain);
+      })()
+        .catch(() => this.log('reading the Reports again failed'))
+        .finally(() => {
+          this.reholding = false;
+        }),
+    );
+  }
+
+  /** PEOPLE-2.6: the Report's title is its own name again, and what it holds is read when it's next opened or read. */
+  private unname(run: StoredRun): void {
+    run.title = run.name;
+    run.titleFrom = null;
+    if (run.holds) run.holds = { ...run.holds, documents: Math.max(0, run.holds.documents - 1), first: null };
+    run.holdsPending = true;
   }
 
   /** INBOX-3.1, 3.2, 4.1: read or unread, archived or back in the Inbox. Archiving also marks it read. */
@@ -545,6 +628,8 @@ export class Bots {
     if (!isAbsolute(path) || !isPlainPath(path)) return null;
     const file = normalize(path);
     if (extname(file).toLowerCase() !== '.md' || !this.texts.has(file)) return null;
+    // PEOPLE-2.5: a file listed for a Report before its folder became private is refused as unlisted.
+    if (await this.opts.library.isPrivate?.(file)) return null;
     return readTextFile(file, REPORT_TEXT_MAX);
   }
 
@@ -846,12 +931,20 @@ export class Bots {
     // When it came to rest, for how long it took; now for one that ended by itself.
     const endedAt = run.idleSince ?? this.now();
     const reply = this.row(run) ? await this.lastReply(run) : null;
-    const outputs = await this.outputs(run);
+    let epoch = this.privacyEpoch;
+    let outputs = await this.outputs(run);
     // BOT-2.6: this server stopped, or gave the Bots up, while those were read: the run is the next
     // owner's to finish, and its Session theirs to end.
     if (!this.mine(run)) return;
     const session = failure === null ? await this.endSession(run) : null;
     if (!this.mine(run)) return;
+    // PEOPLE-2.6: what is private changed while its Session was ended: its Outputs are read again, so it
+    // never arrives named after a file that is private by now.
+    while (epoch !== this.privacyEpoch) {
+      epoch = this.privacyEpoch;
+      outputs = await this.outputs(run);
+      if (!this.mine(run)) return;
+    }
     run.state = failure === null ? 'finished' : 'failed';
     run.failure = failure;
     run.endedAt = endedAt;
@@ -875,6 +968,7 @@ export class Bots {
     const failed = typeof outputs === 'string';
     const first = failed ? undefined : outputs.items[0];
     run.title = first?.title || run.name;
+    run.titleFrom = first?.title ? (first.path ?? first.sourcePath ?? null) : null;
     run.holds = { documents: failed ? 0 : outputs.total, reply: run.reply !== null, first: first ? { kind: first.kind, type: first.type } : null };
     run.holdsPending = failed;
   }
@@ -1295,5 +1389,6 @@ function parseRun(v: unknown): StoredRun | null {
     pid: typeof r.pid === 'number' && Number.isSafeInteger(r.pid) && r.pid > 0 ? r.pid : null,
     procStart: typeof r.procStart === 'string' && r.procStart.length <= 40 ? r.procStart : null,
     holdsPending: r.holdsPending === true,
+    ...(r.titleFrom === null || (typeof r.titleFrom === 'string' && r.titleFrom.length <= 4096) ? { titleFrom: r.titleFrom as string | null } : {}),
   };
 }

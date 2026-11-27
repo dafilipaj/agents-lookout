@@ -17,6 +17,7 @@ import { renameSession } from './renamer.ts';
 import { run, runLog } from './exec.ts';
 import { guardRejections } from './crash-guard.ts';
 import { checkSessionPaths } from './files.ts';
+import { PrivateFolders } from './private-folders.ts';
 import { fetchFleetList, resolveFleetBin } from './fleet.ts';
 import { GitCache, readGitLocation, readGlobalGitEmail } from './git.ts';
 import { History, resolveTbSessionBin, resumePast } from './history.ts';
@@ -250,7 +251,12 @@ const closer: CloserOptions = {
   refresh: () => monitor.pollNow(),
 };
 // LIB: the Library, read by its panel, by Topics and by a Bot's run for what its Session produced (INBOX).
-const library = new Library({ runner: run, bin: () => resolveTbSessionBin(env), env, toolVersion: () => tools.version('tb-session'), onRead: (items, pruned) => topics.libraryRead(items, pruned) });
+// PEOPLE-2: the Private folders in Settings, asked at every read of a document. A change of them, or of the
+// Vault folder, holds at once: the Library's kept reads are dropped, and its next one leaves private files out.
+const privateFolders = new PrivateFolders({ home: env.HOME });
+void privateFolders.set(settings.get());
+settings.onChange((s) => void privateFolders.set(s));
+const library = new Library({ runner: run, bin: () => resolveTbSessionBin(env), env, toolVersion: () => tools.version('tb-session'), onRead: (items, pruned) => topics.libraryRead(items, pruned), isPrivate: (path) => privateFolders.covers(path), inVault: (path) => privateFolders.inVault(path) });
 // BOT, INBOX: the Bots, their schedule and their runs, in `~/.lookout/bots.json` (or the file `LOOKOUT_BOTS` names).
 // The server holding the store's lock looks for due Bots, with no tab open; a second one only shows them (BOT-2.6).
 const bots = new Bots({
@@ -364,6 +370,15 @@ const topics = new Topics({
   open: () => new TopicStore(topicsPath),
   exists: () => existsSync(topicsPath),
   onChange: (t) => app.broadcast({ type: 'topics', topics: t }),
+});
+
+// PEOPLE-2.6: what is private changed, by a save in Settings or by the disk saying where a folder really
+// is. Whatever was drawn from a read under the old rule goes: the Library's kept reads, every Topic's
+// Output lines (read again here, since no view asks), and each Report's title and what it holds.
+privateFolders.onChange(() => {
+  library.privacyChanged();
+  if (topics.forgetOutputs()) library.refresh();
+  bots.privacyChanged();
 });
 
 // TOPIC-5.2: a Session started for a Topic is added to it once Fleet reports it.
@@ -489,7 +504,7 @@ const app = createApp({
     end: (id, target) => endSession(closer, id, target),
   },
   // VIEW-1.18: a Session's file links, resolved against the cwd of its last listed row.
-  files: { check: (id, body) => checkSessionPaths({ lookup: (sid) => monitor.get(sid) }, id, body) },
+  files: { check: (id, body) => checkSessionPaths({ lookup: (sid) => monitor.get(sid), isPrivate: (path) => privateFolders.covers(path) }, id, body) },
   library,
   bots,
   history: {
@@ -510,6 +525,9 @@ void tools.start();
 // BOT-2.6, BOT-3.2, BOT-4.7: the store's lock is taken, the store read, the runs a server before this one left
 // going picked up, and the 30 s look begins.
 bots.start();
+// PEOPLE-2.6: a Report named while this server was stopped, or by another one, after a file that is private
+// by now: its title is taken back from the file's own path. No read of the Library at start.
+bots.privacyChanged({ reread: false });
 // AWAKE-1.3: the saved mode comes back; an Amphetamine call may wait on macOS, so not before listening.
 void awake.start();
 

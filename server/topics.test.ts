@@ -390,6 +390,29 @@ describe('TOPIC-4.4 and TOPIC-8.3 the view', () => {
     expect(topics.view().pruned).toEqual(['claude:pruned-one', 'codex:dropped-output']);
   });
 
+  it("PEOPLE-2.6: when what is private changes, every Topic's Output lines go at once, to every tab, until the Library is read again", () => {
+    const path = tempPath();
+    const views: TopicsView[] = [];
+    const topics = new Topics({ path, open: () => new TopicStore(path), onChange: (v) => views.push(v) });
+    const t = topics.create('A');
+    topics.addMember(t.id, SESSION);
+    // Nothing was read yet: nothing to forget, and no read to ask for.
+    expect(topics.forgetOutputs()).toBe(false);
+    const mine = { sessionId: SESSION.ref.sessionId, harness: 'claude' as const };
+    topics.libraryRead([output('review', 100, [mine]), output('notes', 90, [mine])]);
+    expect(topics.view().topics[0]!.outputs!.total).toBe(2);
+
+    const sent = views.length;
+    expect(topics.forgetOutputs()).toBe(true);
+    expect(views.length).toBe(sent + 1);
+    expect(topics.view().topics[0]!.outputs).toBeNull();
+    expect(topics.view().libraryReadAt).toBeNull();
+    expect(JSON.stringify(topics.view())).not.toContain('review');
+    // The read made under the new rule draws them again.
+    topics.libraryRead([output('notes', 90, [mine])]);
+    expect(topics.view().topics[0]!.outputs!.items.map((i) => i.key)).toEqual(['notes']);
+  });
+
   it('TOPIC-8.1: nothing is made on disk until the first change', () => {
     const path = tempPath();
     const topics = new Topics({ path, open: () => new TopicStore(path), exists: () => existsSync(path), onChange: () => {} });

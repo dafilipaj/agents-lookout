@@ -34,7 +34,7 @@ export function plainRoute(source: PlainSource, path: string): Route {
 }
 
 /** SIDE-7.6: Settings' sub-pages, in the side nav's order. */
-export const SETTINGS_SECTIONS = ['general', 'tools'] as const;
+export const SETTINGS_SECTIONS = ['general', 'tools', 'vault'] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 
 /** TOPIC-10.7: a Topic view's tabs, in their order. */
@@ -54,7 +54,7 @@ export function parseRoute(pathname: string): Route {
   }
   // SIDE-7.6: any other sub-page is General.
   const settings = /^\/settings(?:\/([^/]*))?\/?$/.exec(pathname);
-  if (settings) return settings[1] === 'general' || settings[1] === 'tools' ? { name: 'settings', section: settings[1] } : { name: 'settings' };
+  if (settings) return (SETTINGS_SECTIONS as readonly string[]).includes(settings[1] ?? '') ? { name: 'settings', section: settings[1] as SettingsSection } : { name: 'settings' };
   if (pathname === '/topics' || pathname === '/topics/') return { name: 'topics' };
   if (pathname === '/topics/suggest' || pathname === '/topics/suggest/') return { name: 'suggest' };
   // TOPIC-10.8: any other tab is Overview.

@@ -1,4 +1,5 @@
 import { EFFORT_LEVEL } from './model.ts';
+import { MAX_PRIVATE_FOLDERS, PRIVATE_FOLDER_ERROR, isFullPath, parsePrivateFolder } from './private-folders.ts';
 
 /**
  * Lookout's settings, stored by the server (SIDE-7, LAUNCH-2). Each field has a default and a
@@ -17,6 +18,10 @@ export interface Settings {
   recommendWithJev: boolean;
   /** VIEW-3.9, SIDE-7.7: a sent message waits 3 s in the composer, so it can be taken back. */
   undoSend: boolean;
+  /** PEOPLE-1: where the Vault is, as typed (`~` kept); null until one is set. */
+  vaultFolder: string | null;
+  /** PEOPLE-2: folders whose files Lookout never lists or shows: paths inside the Vault folder, or full paths. */
+  privateFolders: string[];
 }
 
 /**
@@ -57,6 +62,8 @@ interface Field<T> {
   clientWritable?: boolean;
   /** Returns the parsed value, or throws a SettingsError. */
   parse(value: unknown, field: string): T;
+  /** Reads a stored value when one bad part mustn't cost the rest; `parse` when absent. */
+  stored?(value: unknown): T;
 }
 
 const MAX_IDLE_HOURS = 24 * 30;
@@ -94,6 +101,30 @@ export function parseProductiveEmail(value: unknown, field = 'productiveEmail'):
     throw new SettingsError(field, PRODUCTIVE_EMAIL_ERROR);
   }
   return email;
+}
+
+/** PEOPLE-1.2: the Vault folder, a full path as a Start directory is; empty (or null) clears it. */
+export function parseVaultFolder(value: unknown, field = 'vaultFolder'): string | null {
+  if (value === null || (typeof value === 'string' && value.trim() === '')) return null;
+  try {
+    return parseStartDirectory(value, field);
+  } catch {
+    throw new SettingsError(field, 'The Vault folder is a full path, such as ~/Documents/notes or /Users/me/notes.');
+  }
+}
+
+/**
+ * PEOPLE-2.1, 2.2: the list of Private folders, each entry as parsePrivateFolder leaves it, without
+ * repeats. How long it may be is checked against the saved list (checkVaultSettings).
+ */
+export function parsePrivateFolders(value: unknown, field = 'privateFolders'): string[] {
+  if (!Array.isArray(value)) throw new SettingsError(field, 'Private folders must be a list.');
+  const entries = value.map((v) => {
+    const entry = parsePrivateFolder(v);
+    if (entry === null) throw new SettingsError(field, PRIVATE_FOLDER_ERROR);
+    return entry;
+  });
+  return [...new Set(entries)];
 }
 
 const fields: { [K in keyof Settings]: Field<Settings[K]> } = {
@@ -163,7 +194,41 @@ const fields: { [K in keyof Settings]: Field<Settings[K]> } = {
       return value;
     },
   },
+  vaultFolder: {
+    default: null,
+    parse: parseVaultFolder,
+  },
+  privateFolders: {
+    default: [],
+    parse: parsePrivateFolders,
+    // PEOPLE-2.10: a file edited by hand keeps every entry it can read: a bad one costs only itself, and a
+    // list over the limit isn't cut, since either would show files that were private.
+    stored(value) {
+      if (!Array.isArray(value)) return [];
+      return [...new Set(value.map(parsePrivateFolder).filter((e): e is string => e !== null))];
+    },
+  },
 };
+
+/** PEOPLE-2.2: a path inside the Vault needs a Vault folder. */
+export const PRIVATE_NEEDS_VAULT = 'Set the Vault folder first, or give a full path.';
+/** PEOPLE-2.2: the Vault folder can't be cleared under a Private folder that is a path inside it. */
+export const VAULT_HAS_PRIVATE = 'Remove the Private folders inside it first.';
+
+/**
+ * PEOPLE-2.2: what a change would leave is refused when a Private folder is a path inside the Vault
+ * and there is no Vault folder: such an entry would hide nothing while reading as if it did. And
+ * PEOPLE-2.1: the list is at most 50 long; one already longer (a file edited by hand, PEOPLE-2.10)
+ * may shrink, never grow.
+ */
+export function checkVaultSettings(next: Pick<Settings, 'vaultFolder' | 'privateFolders'>, patch: Partial<Settings>, saved: Pick<Settings, 'privateFolders'>): void {
+  if (patch.privateFolders !== undefined && next.privateFolders.length > Math.max(MAX_PRIVATE_FOLDERS, saved.privateFolders.length)) {
+    throw new SettingsError('privateFolders', `At most ${MAX_PRIVATE_FOLDERS} Private folders.`);
+  }
+  if (next.vaultFolder !== null || next.privateFolders.every(isFullPath)) return;
+  if (patch.privateFolders !== undefined) throw new SettingsError('privateFolders', PRIVATE_NEEDS_VAULT);
+  throw new SettingsError('vaultFolder', VAULT_HAS_PRIVATE);
+}
 
 const keys = Object.keys(fields) as (keyof Settings)[];
 
@@ -178,7 +243,8 @@ export function settingsFromStored(raw: unknown): Settings {
   for (const k of keys) {
     if (!(k in raw)) continue;
     try {
-      out[k] = fields[k].parse(raw[k], k);
+      const field = fields[k] as Field<unknown>;
+      out[k] = field.stored ? field.stored(raw[k]) : field.parse(raw[k], k);
     } catch {
       // keep the default
     }

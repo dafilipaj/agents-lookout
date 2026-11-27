@@ -20,6 +20,8 @@ export interface PathsOptions {
   /** `fs.stat`; tests pass their own. Only ever asked whether a path is a file. */
   stat?: (path: string) => Promise<{ isFile(): boolean }>;
   timeoutMs?: number;
+  /** PEOPLE-2.5: whether a file is under a Private folder; one that is, is answered "not a file". */
+  isPrivate?: (path: string) => Promise<boolean>;
 }
 
 /** VIEW-1.18: `{ paths: [...] }`, 1–100 strings. Anything else is refused whole. */
@@ -48,7 +50,7 @@ export function isPlainPath(p: string): boolean {
  * it is, its absolute path: relative ones against the Session's cwd, `..` and `.` resolved. Only
  * `stat` touches the disk: nothing is opened or read, and no command runs.
  */
-export async function checkPaths(cwd: string | null, paths: readonly string[], opts: Pick<PathsOptions, 'stat' | 'timeoutMs'> = {}): Promise<PathAnswer[]> {
+export async function checkPaths(cwd: string | null, paths: readonly string[], opts: Pick<PathsOptions, 'stat' | 'timeoutMs' | 'isPrivate'> = {}): Promise<PathAnswer[]> {
   const stat = opts.stat ?? fsStat;
   const base = cwd !== null && isAbsolute(cwd) && isPlainPath(cwd) ? cwd : null;
   let timer: NodeJS.Timeout | undefined;
@@ -65,6 +67,8 @@ export async function checkPaths(cwd: string | null, paths: readonly string[], o
       ),
       timeout,
     ]);
+    // PEOPLE-2.5: a private file's path is no link: answered as any path that isn't a file, with nothing else about it.
+    if (file && opts.isPrivate && (await Promise.race([opts.isPrivate(absolute), timeout.then(() => true)]))) return { path, exists: false, absolute: null };
     return file ? { path, exists: true, absolute } : { path, exists: false, absolute: null };
   };
   try {

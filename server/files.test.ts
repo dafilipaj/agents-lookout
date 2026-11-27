@@ -95,4 +95,25 @@ describe('the path check (VIEW-1.18)', () => {
     expect(await checkSessionPaths({ lookup }, 'live', { paths: ['README.md'] })).toEqual([{ path: 'README.md', exists: true, absolute: join(repo, 'README.md') }]);
     await expect(checkSessionPaths({ lookup }, 'ended', { paths: ['README.md'] })).rejects.toMatchObject({ status: 404 });
   });
+  it('PEOPLE-2.5: a private file is answered "not a file", with nothing else about it, so its path in a chat is no link', async () => {
+    mkdirSync(join(repo, 'Reviews'));
+    writeFileSync(join(repo, 'Reviews', 'q3.md'), '# Review\n');
+    const isPrivate = vi.fn(async (p: string) => p.startsWith(join(repo, 'Reviews')));
+    const answers = await checkPaths(repo, ['Reviews/q3.md', join(repo, 'Reviews', 'q3.md'), 'README.md', 'nope.md'], { isPrivate });
+    expect(answers).toEqual([
+      { path: 'Reviews/q3.md', exists: false, absolute: null },
+      { path: join(repo, 'Reviews', 'q3.md'), exists: false, absolute: null },
+      { path: 'README.md', exists: true, absolute: join(repo, 'README.md') },
+      { path: 'nope.md', exists: false, absolute: null },
+    ]);
+    // Only a path that is a file is asked about: the answer for one that isn't says nothing of what is private.
+    expect(isPrivate.mock.calls.map(([p]) => p).sort()).toEqual([join(repo, 'README.md'), join(repo, 'Reviews', 'q3.md'), join(repo, 'Reviews', 'q3.md')].sort());
+
+    // The rule too slow to answer inside the batch's deadline: not a file, never a link on a guess.
+    const never = vi.fn(() => new Promise<boolean>(() => {}));
+    const slow = await checkPaths(repo, ['README.md'], { isPrivate: never, timeoutMs: 300 });
+    expect(slow).toEqual([{ path: 'README.md', exists: false, absolute: null }]);
+    // The rule was asked, so it was the rule that ran out of time and not the disk.
+    expect(never).toHaveBeenCalledWith(join(repo, 'README.md'));
+  });
 });

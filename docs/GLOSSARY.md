@@ -52,6 +52,8 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Finding**: A structural problem Lookout reports in a repo, of one kind: a *Cycle* (files that import each other in a circle), a *Hub* (a file that many files import and that imports many itself), a *God file* (a large file imported from many Areas) or a *Hotspot* (a large file that changes often). Against the repo a week earlier it's new, growing, steady, shrinking or gone. One you mark as *Known* stays quiet until it grows. See ARCH-2 and ARCH-3.9.
 
+**Goal**: One thing a Person set out to reach in a quarter: a top-level checklist item, open or reached, in that quarter's note in the Person's `Goals` folder. You write and tick it in the notes app; Lookout only reads it. See the PEOPLE spec.
+
 **Handover**: What a Session writes, when you hand off its work (HAND), for a new Session to carry on with: all of its work, or a piece you name. It's written to the new Session, not as a summary: the goal, where things stand, the files and links it needs, what's settled and what was ruled out, the scope and the first move. It becomes the new Session's first prompt, and the two Sessions are linked: the new one is *Continued from* the old, the old *Continued in* the new. Once ready, it waits on the Hand off button until a Session starts from it, you keep it in a Topic, or you discard it (HAND-6). Started in a Topic, or kept in one without a start, it's kept in that Topic, and the newest one of all the work goes to the next Session started from it (TOPIC-15).
 
 **Harness**: The agent CLI a Session runs: Claude Code or Codex. (Fleet also knows pi; not a goal for Lookout.)
@@ -90,13 +92,19 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 
 **Page**: An Output that opens as a page in a browser tab: an HTML file or an Artifact. The Library's "Pages" chip shows both.
 
+**People**: The Place that lists the Persons in your Vault and shows one Person's page: their Goals, their 1on1 notes and their other notes. On the rail after Sessions once it's built. See the PEOPLE spec.
+
+**Person**: Someone you manage, as your Vault holds them: one folder directly inside the Vault's people folder, named for them, with their 1on1 notes in `1on1s/` and their Goals in `Goals/`. Lookout keeps nothing of its own about a Person ([0018](decisions/0018-peoples-data-lives-in-your-vault.md)).
+
 **Ping**: A thread in a Watched channel with a message that mentions you, written by someone else. *Open* until you write in the thread after its latest mention (*answered*) or dismiss it (*dismissed*); a later mention opens it again. *Waiting* when it asks for your answer and says it will go on without one. Lookout reads Pings through `tb-slack` and never writes to Slack. See the PING spec.
 
-**Place**: One of the top-level parts of Lookout, switched on the rail at the window's left edge: the Inbox and Sessions, later People. A place owns the left column and the main pane; the right sidebar is the same in every place ([0017](decisions/0017-one-app-for-both-roles.md)). See the NAV spec.
+**Place**: One of the top-level parts of Lookout, switched on the rail at the window's left edge: the Inbox and Sessions, later People (PEOPLE). A place owns the left column and the main pane; the right sidebar is the same in every place ([0017](decisions/0017-one-app-for-both-roles.md)). See the NAV spec.
 
 **PR**: An open GitHub pull request in a `productiveio/*` repo that you opened, or that is a Review request to you, as `tb-pr` lists it.
 
 **Pressure**: macOS's memory pressure level, `kern.memorystatus_vm_pressure_level`: normal (1), warn (2) or critical (4). Read by the Memory overview; critical forces its red.
+
+**Private folder**: A folder listed in Settings whose files Lookout never lists and never shows: no file under it is an Output, and the Document view refuses it. It names a folder, never a file, and it doesn't change what a Session's own chat shows. See PEOPLE-2.
 
 **Process tree**: A process and every descendant of it, by parent pid, as one `ps` listing shows them at that instant. A Session's is rooted at its Harness process (Fleet's `pid`): the Harness, its MCP servers, the shells and test runners it started. Lookout's is rooted at its server. See the MEM spec.
 
@@ -155,6 +163,8 @@ Each concept is defined once, here. Specs use these terms capitalized and with e
 **Turn**: What a Session does for one prompt of yours: from that prompt, sent from Lookout or typed in its terminal, until your next one. Work the Session picks up on its own in between, such as a reply to a Subagent's result, belongs to the same Turn, and Idle doesn't end it. A tool's result, a task notification, another Session's message and a slash command the Harness handles itself (`/effort`) aren't prompts. Fleet finds where the current one starts (SIDE-9). Not Codex's own "turn" (`task_started` to `task_complete`), which ends whenever the agent stops.
 
 **Unread**: An Idle Session that went Idle after you last saw it in Lookout, until you open it again. Only a Session you've opened in Lookout can be Unread. Its row shows a dot and a semibold title and sits above the Busy rows, and the tab title adds a dot. Not a Status. See SIDE-13.
+
+**Vault**: The folder of Markdown notes, set in Settings, that you keep in Obsidian: where your people's notes and meeting notes live. Lookout reads it by its folders and file names and never writes to it ([0018](decisions/0018-peoples-data-lives-in-your-vault.md)).
 
 **Warning**: Something Lookout finds wrong with a live Session by a rule of its own, never by a model and never from what the Session says: its memory running away (MEM-4.1), or work its Evidence doesn't back (EVID-5.6). A Session's Warnings show as one chip on its row, the most urgent first (SIDE-15). A Warning isn't a Status and changes none: the Status stays the Harness's word.
 

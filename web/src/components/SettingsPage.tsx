@@ -16,6 +16,7 @@ import { SETTINGS_SECTIONS, type SettingsSection, routePath } from '@/lib/router
 import { JevSetAside } from './Recommendations';
 import { PlainView } from './Shell';
 import { ToolsSection } from './ToolsSection';
+import { VaultSection } from './VaultSettings';
 
 interface Props {
   settings: SettingsView;
@@ -38,7 +39,7 @@ interface Props {
   recommend?(action: RecommendationAction): Promise<unknown>;
 }
 
-const SECTION_LABEL: Record<SettingsSection, string> = { general: 'General', tools: 'Tools' };
+const SECTION_LABEL: Record<SettingsSection, string> = { general: 'General', tools: 'Tools', vault: 'Vault' };
 
 /**
  * SIDE-7.1, SIDE-7.6: the Settings page, in two sub-pages: General, the settings, and Tools, the
@@ -76,6 +77,9 @@ export function SettingsPage({ settings, save, onBack, section, onSection, tools
             {section === 'tools' ? (
               // TOOLS-1.4: the list is read when this sub-page opens.
               <ToolsSection tools={tools} now={now} load={loadTools} refresh={refreshTools} />
+            ) : section === 'vault' ? (
+              // PEOPLE-1, PEOPLE-2: where the Vault is, and the folders Lookout never lists or shows.
+              <VaultSection settings={settings} save={save} />
             ) : (
               <General settings={settings} save={save} jev={jev} jevAsksToday={jevAsksToday} jevSetAside={jevSetAside} recommend={recommend} />
             )}
