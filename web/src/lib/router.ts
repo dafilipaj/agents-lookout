@@ -23,6 +23,8 @@ export type Route =
   | { name: 'plain'; session: string; checkout: string; path: string }
   /** PLAIN-5: a Module of a PR, by its repo (in `productiveio`) and number. */
   | { name: 'plain-pr'; repo: string; number: number; path: string }
+  /** DOC-1.1: a file in the Document view, by its absolute path; `session` when it was opened from that Session's chat. */
+  | { name: 'doc'; path: string; session?: string }
   /** NAV-2.2, INBOX-2.1: the Inbox, with the open Report's run and, past its first, the open document (INBOX-2.3). */
   | { name: 'inbox'; id?: string; doc?: number };
 
@@ -38,6 +40,9 @@ export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 /** TOPIC-10.7: a Topic view's tabs, in their order. */
 export const TOPIC_TABS = ['overview', 'members', 'activity'] as const;
 export type TopicTab = (typeof TOPIC_TABS)[number];
+
+/** VIEW-1.18's plain path, absolute: no control or invisible character, no `~`, no `:`, at most 1,024 characters. */
+const isDocumentPath = (path: string) => path.startsWith('/') && path.length <= 1024 && !/[\p{Cc}\p{Cf}~:]/u.test(path);
 
 export function parseRoute(pathname: string): Route {
   // NAV-2.2: the Inbox; INBOX-2.3: a document past the first is `/<n>`, from 2 up; anything else is the first.
@@ -94,6 +99,17 @@ export function parseRoute(pathname: string): Route {
       return { name: 'home' };
     }
   }
+  // DOC-1.1: the file's path is one encoded segment; one that isn't absolute and plain is the start page.
+  const doc = /^(?:\/s\/([^/]+))?\/doc\/([^/]+)\/?$/.exec(pathname);
+  if (doc) {
+    try {
+      const path = decodeURIComponent(doc[2]!);
+      if (!isDocumentPath(path)) return { name: 'home' };
+      return doc[1] ? { name: 'doc', path, session: decodeURIComponent(doc[1]) } : { name: 'doc', path };
+    } catch {
+      return { name: 'home' };
+    }
+  }
   const m = /^\/s\/([^/]+)\/?$/.exec(pathname);
   if (m?.[1]) {
     try {
@@ -121,6 +137,8 @@ export function routePath(route: Route): string {
       return `/topics/${encodeURIComponent(route.id)}${route.tab && route.tab !== 'overview' ? `/${route.tab}` : ''}`;
     case 'session':
       return `/s/${encodeURIComponent(route.id)}`;
+    case 'doc':
+      return `${route.session ? `/s/${encodeURIComponent(route.session)}` : ''}/doc/${encodeURIComponent(route.path)}`;
     case 'past':
       return `/h/${route.harness}/${encodeURIComponent(route.id)}`;
     case 'launch':
@@ -150,16 +168,28 @@ const getPath = () => window.location.pathname;
 
 export type Navigate = (route: Route, opts?: { replace?: boolean; hash?: string }) => void;
 
+const depth = (): number => {
+  const i = (window.history.state as { i?: unknown } | null)?.i;
+  return typeof i === 'number' && i > 0 ? i : 0;
+};
+/** DOC-2.4: whether the entry before this one in the tab's history is Lookout's own, so going back stays in Lookout. */
+export const canGoBack = (): boolean => depth() > 0;
+
+/** Goes to a route from anywhere: what `useRoute`'s navigate does. A link in the chat has no App to ask (DOC-1.4). */
+export const navigateTo: Navigate = (route, opts) => {
+  const to = routePath(route);
+  if (to === window.location.pathname) return;
+  // PLAIN-7.2: a place in the page, which the path never carries.
+  const next = opts?.hash ? `${to}#${opts.hash}` : to;
+  // DOC-2.4: each entry knows how many of Lookout's own came before it in this tab, so a view can go back to one.
+  const before = depth();
+  if (opts?.replace) window.history.replaceState(before > 0 ? { i: before } : null, '', next);
+  else window.history.pushState({ i: before + 1 }, '', next);
+  window.dispatchEvent(new Event(NAVIGATE));
+};
+
 export function useRoute(): [Route, Navigate] {
   const path = useSyncExternalStore(subscribe, getPath);
-  const navigate = useCallback<Navigate>((route, opts) => {
-    const to = routePath(route);
-    if (to === window.location.pathname) return;
-    // PLAIN-7.2: a place in the page, which the path never carries.
-    const next = opts?.hash ? `${to}#${opts.hash}` : to;
-    if (opts?.replace) window.history.replaceState(null, '', next);
-    else window.history.pushState(null, '', next);
-    window.dispatchEvent(new Event(NAVIGATE));
-  }, []);
+  const navigate = useCallback<Navigate>((route, opts) => navigateTo(route, opts), []);
   return [parseRoute(path), navigate];
 }

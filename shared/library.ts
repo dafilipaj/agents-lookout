@@ -58,3 +58,25 @@ export type LibraryPage =
   | { state: 'too-old'; reason: string; installCommand: string }
   | { state: 'read-again' }
   | { state: 'ok'; items: OutputItem[]; readId: string; total: number; nextPage: number; hasMore: boolean; projects: string[]; hiddenGone: number; unfilteredEmpty: boolean };
+
+/** LIB-2.10, EVID-7.1: the document Types by extension, lower case. */
+export const DOCUMENT_TYPES: Readonly<Record<string, OutputType>> = { md: 'markdown', html: 'html', htm: 'html', pdf: 'pdf', png: 'image', jpg: 'image', jpeg: 'image', gif: 'image', svg: 'image', webp: 'image' };
+/** LIB-2.10: a path's document Type by its file name's extension, case-insensitively; null when it isn't one (a dotfile has none). */
+export function documentTypeOf(path: string): OutputType | null {
+  const name = path.slice(path.lastIndexOf('/') + 1), dot = name.lastIndexOf('.');
+  const ext = dot > 0 ? name.slice(dot + 1).toLowerCase() : '';
+  return Object.hasOwn(DOCUMENT_TYPES, ext) ? DOCUMENT_TYPES[ext]! : null;
+}
+/** DOC-1.1: the Types the Document view shows. A PDF needs a browser tab: the frame's sandbox can't show one. */
+export const IN_LOOKOUT_TYPES: readonly OutputType[] = ['markdown', 'html', 'image'];
+
+/** DOC-3.1: what the server says of a file the Document view asks for: its Type, and whether it still exists. */
+export interface DocumentAnswer {
+  path: string;
+  /** The path with the home directory as `~`, as the Library shows one (LIB-2.2). */
+  display: string;
+  type: OutputType;
+  exists: boolean;
+}
+/** DOC-3.1: what the server answers for a path it won't read. */
+export const DOCUMENT_UNAVAILABLE = "Lookout can't show this file.";

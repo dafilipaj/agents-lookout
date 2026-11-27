@@ -1,14 +1,12 @@
 import { realpathSync } from 'node:fs';
-import { extname, join } from 'node:path';
-import type { OutputType } from '../shared/library.ts';
+import { join } from 'node:path';
+import { DOCUMENT_TYPES, type OutputType, documentTypeOf } from '../shared/library.ts';
 
-/** LIB-2.10, EVID-7.1: the document Types by extension, lower case. */
-export const DOCUMENT_TYPES: Readonly<Record<string, OutputType>> = { md: 'markdown', html: 'html', htm: 'html', pdf: 'pdf', png: 'image', jpg: 'image', jpeg: 'image', gif: 'image', svg: 'image', webp: 'image' };
+export { DOCUMENT_TYPES };
 
 /** LIB-2.10, EVID-7.1: a path's document Type by its extension, case-insensitively; null when it isn't one. */
 export function documentType(path: string): OutputType | null {
-  const ext = extname(path).slice(1).toLowerCase();
-  return Object.hasOwn(DOCUMENT_TYPES, ext) ? DOCUMENT_TYPES[ext]! : null;
+  return documentTypeOf(path);
 }
 
 /** LIB-2.10, DIFF-2.9: the Harness homes, in your home folder. */

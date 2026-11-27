@@ -141,7 +141,7 @@ it('LIB-2.5: arrows and j/k move without acting and collapse, Enter expands then
   fireEvent.keyDown(list, { key: 'j' }); expect(rows()[0]).toHaveAttribute('aria-expanded', 'false');
   fireEvent.keyDown(list, { key: 'Enter' }); fireEvent.keyDown(list, { key: 'Enter' });
   expect(rows()[1]).toHaveAttribute('aria-expanded', 'true'); expect(browser).not.toHaveBeenCalled();
-  fireEvent.keyDown(list, { key: 'ArrowUp' }); fireEvent.keyDown(list, { key: 'Enter' }); fireEvent.keyDown(list, { key: 'Enter' }); expect(browser).toHaveBeenCalledTimes(1);
+  fireEvent.keyDown(list, { key: 'ArrowUp' }); fireEvent.keyDown(list, { key: 'Enter' }); fireEvent.keyDown(list, { key: 'Enter' }); expect(window.location.pathname).toBe('/doc/%2Freport.html'); expect(browser).not.toHaveBeenCalled(); // DOC-1.2: a page opens in Lookout
   fireEvent.keyDown(screen.getByRole('tab', { name: 'Library' }), { key: 'ArrowLeft' }); expect(screen.getByRole('tab', { name: 'Work' })).toHaveFocus();
   browser.mockRestore();
 });
@@ -221,12 +221,30 @@ it('DS-21.3: an expanded Output shows nothing twice and keeps rare facts out of 
   const menu = await openMore(r, userEvent.setup());
   expect(within(menu).getAllByRole('menuitem').map((i) => i.textContent)).toEqual(expect.arrayContaining([expect.stringContaining('Copy link'), expect.stringContaining('Show source file')]));
 });
-it('LIB-3.3: Open uses the file route, Markdown uses VS Code, external URLs use no referrer, and a folded existing source has Open file', async () => {
+it('LIB-3.3: Open shows a page and a Markdown file in the Document view, a PDF uses the file route, external URLs use no referrer, and a folded existing source has Open file', async () => {
   const browser = vi.spyOn(window, 'open').mockImplementation(() => null);
-  const app = renderApp('/', { library: async () => ok([output(), output({ key: 'md', path: '/a b.md', type: 'markdown' }), output({ key: 'artifact', kind: 'artifact', url: 'https://example.invalid/page', source: { path: '/a.html', display: '/a.html', type: 'html', exists: true, createdAt: NOW, updatedAt: NOW, events: 1 } })]) }); await open(app);
-  fireEvent.click(await within(panel()).findByRole('option', { name: /Harbor report HTML/ })); fireEvent.click(within(rows()[0]!).getByRole('button', { name: 'Open' })); expect(browser).toHaveBeenLastCalledWith('/api/library/file?path=%2Freport.html', '_blank', 'noopener,noreferrer');
-  fireEvent.click(rows()[1]!); fireEvent.click(within(rows()[1]!).getByRole('button', { name: 'Open' })); expect(browser).toHaveBeenLastCalledWith('vscode://file/a%20b.md', '_self');
-  fireEvent.click(rows()[2]!); fireEvent.click(within(rows()[2]!).getByRole('button', { name: 'Open' })); expect(browser).toHaveBeenLastCalledWith('https://example.invalid/page', '_blank', 'noopener,noreferrer'); expect(within(await openMore(rows()[2]!, userEvent.setup())).getByRole('menuitem', { name: 'Open file' })).toBeVisible(); browser.mockRestore();
+  const app = renderApp('/', { library: async () => ok([output(), output({ key: 'md', path: '/a b.md', type: 'markdown' }), output({ key: 'pdf', title: 'Harbor print', path: '/report.pdf', type: 'pdf' }), output({ key: 'artifact', kind: 'artifact', url: 'https://example.invalid/page', source: { path: '/a.html', display: '/a.html', type: 'html', exists: true, createdAt: NOW, updatedAt: NOW, events: 1 } })]) }); await open(app);
+  fireEvent.click(await within(panel()).findByRole('option', { name: /Harbor report HTML/ })); fireEvent.click(within(rows()[0]!).getByRole('button', { name: 'Open' })); expect(window.location.pathname).toBe('/doc/%2Freport.html');
+  fireEvent.click(rows()[1]!); fireEvent.click(within(rows()[1]!).getByRole('button', { name: 'Open' })); expect(window.location.pathname).toBe('/doc/%2Fa%20b.md'); expect(browser).not.toHaveBeenCalled();
+  fireEvent.click(rows()[2]!); fireEvent.click(within(rows()[2]!).getByRole('button', { name: 'Open' })); expect(browser).toHaveBeenLastCalledWith('/api/library/file?path=%2Freport.pdf', '_blank', 'noopener,noreferrer');
+  fireEvent.click(rows()[3]!); fireEvent.click(within(rows()[3]!).getByRole('button', { name: 'Open' })); expect(browser).toHaveBeenLastCalledWith('https://example.invalid/page', '_blank', 'noopener,noreferrer'); expect(within(await openMore(rows()[3]!, userEvent.setup())).getByRole('menuitem', { name: 'Open file' })).toBeVisible(); browser.mockRestore();
+});
+it('DOC-1.2: the Library’s Open, O and Open file show a Markdown file, a page or an image in the Document view; a PDF opens a browser tab and an Artifact its URL', async () => {
+  const browser = vi.spyOn(window, 'open').mockImplementation(() => null);
+  const src = { path: '/src/page.html', display: '/src/page.html', type: 'html' as const, exists: true, createdAt: NOW, updatedAt: NOW, events: 1 };
+  const app = renderApp('/', { library: async () => ok([output({ key: 'img', title: 'Harbor shot', path: '/shot.png', type: 'image' }), output({ key: 'md', title: 'Harbor notes', path: '/notes.md', type: 'markdown' }), output({ key: 'pdf', title: 'Harbor print', path: '/print.pdf', type: 'pdf' }), output({ key: 'artifact', kind: 'artifact', title: 'Harbor page', url: 'https://example.invalid/page', source: src })]) }); await open(app);
+  const list = await within(panel()).findByRole('listbox'); list.focus();
+  // O on the selected row, and the row's Open: the image and the Markdown file show in Lookout, with the icon of opening inside it.
+  fireEvent.keyDown(list, { key: 'o' }); expect(window.location.pathname).toBe('/doc/%2Fshot.png');
+  fireEvent.click(rows()[1]!); fireEvent.click(within(rows()[1]!).getByRole('button', { name: 'Open' })); expect(window.location.pathname).toBe('/doc/%2Fnotes.md');
+  expect(browser).not.toHaveBeenCalled();
+  // A PDF and an Artifact leave Lookout, as before.
+  fireEvent.click(rows()[2]!); fireEvent.click(within(rows()[2]!).getByRole('button', { name: 'Open' })); expect(browser).toHaveBeenLastCalledWith('/api/library/file?path=%2Fprint.pdf', '_blank', 'noopener,noreferrer');
+  fireEvent.click(rows()[3]!); fireEvent.click(within(rows()[3]!).getByRole('button', { name: 'Open' })); expect(browser).toHaveBeenLastCalledWith('https://example.invalid/page', '_blank', 'noopener,noreferrer');
+  expect(window.location.pathname).toBe('/doc/%2Fnotes.md');
+  // Open file on the Artifact's row: its source page, in Lookout.
+  pickMoreNow(rows()[3]!, 'open-file'); expect(window.location.pathname).toBe('/doc/%2Fsrc%2Fpage.html'); expect(browser).toHaveBeenCalledTimes(2);
+  browser.mockRestore();
 });
 it('LIB-3.4: Copy link, under More, copies an absolute path, and the row reports success for 2 seconds or refusal', async () => {
   const write = vi.fn(async () => {}); Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: write } });
@@ -249,9 +267,9 @@ it('LIB-3.5: Session lines select live Sessions, resume through History’s Star
 });
 it('LIB-3.7: O/C/S act once per press on collapsed selected rows, ignore modifiers and modal state, and expose the screen-reader key hint', async () => {
   const browser = vi.spyOn(window, 'open').mockImplementation(() => null), write = vi.fn(async () => {}); Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: write } });
-  const app = renderApp('/', { library: async () => ok([output()]) }); await open(app); const list = await within(panel()).findByRole('listbox'); list.focus();
+  const app = renderApp('/', { library: async () => ok([output({ path: '/report.pdf', type: 'pdf' })]) }); await open(app); const list = await within(panel()).findByRole('listbox'); list.focus();
   fireEvent.keyDown(list, { key: 'O', repeat: true }); fireEvent.keyDown(list, { key: 'o', ctrlKey: true }); expect(browser).not.toHaveBeenCalled();
-  fireEvent.keyDown(list, { key: 'O' }); expect(browser).toHaveBeenCalledTimes(1); fireEvent.keyDown(list, { key: 'C' }); await waitFor(() => expect(write).toHaveBeenCalledWith('/report.html'));
+  fireEvent.keyDown(list, { key: 'O' }); expect(browser).toHaveBeenCalledTimes(1); fireEvent.keyDown(list, { key: 'C' }); await waitFor(() => expect(write).toHaveBeenCalledWith('/report.pdf'));
   expect(document.getElementById(rows()[0]!.getAttribute('aria-describedby')!.split(' ')[0]!)).toHaveTextContent('O opens it, C copies its link, S opens its Session');
   fireEvent.click(screen.getByRole('button', { name: 'New Session' }));
   expect(screen.getByRole('dialog')).toBeVisible();

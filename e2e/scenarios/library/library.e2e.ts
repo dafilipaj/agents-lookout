@@ -134,7 +134,9 @@ scenario('LIB-2.9: complete-read stats give exact hidden counts and full pages; 
 
 scenario('LIB-3.3: HTML opens from a listed route with scripts, opaque storage and API isolation, no opener, and sandbox headers on errors', world().outputs([{ kind: 'file', path: 'output/sandbox.html', title: 'Sandbox report', contents: '<!doctype html><title>Sandbox report</title><script>window.scriptRan=true</script>' }]), async ({ page, world: w }) => {
   await open(page); const row = rows(page).first(); await row.click();
-  const popup = page.waitForEvent('popup'); await library(page).getByRole('listbox').press('o'); const report = await popup; await report.waitForLoadState();
+  // DOC-1.2: Open shows the page in Lookout; the Document view's own Open is the browser tab.
+  await library(page).getByRole('listbox').press('o'); await expect(page.locator('[data-shell-column="main"]').getByRole('heading', { name: 'sandbox.html' })).toBeVisible();
+  const popup = page.waitForEvent('popup'); await page.locator('[data-shell-column="main"]').getByRole('button', { name: 'Open', exact: true }).click(); const report = await popup; await report.waitForLoadState();
   expect(await report.evaluate(() => (window as unknown as { scriptRan: boolean }).scriptRan)).toBe(true);
   expect(await report.evaluate(() => { try { localStorage.getItem('lookout.right'); return 'read'; } catch { return 'blocked'; } })).toBe('blocked');
   expect(await report.evaluate(async () => { try { return await (await fetch('/api/bootstrap')).text(); } catch { return 'blocked'; } })).toBe('blocked');

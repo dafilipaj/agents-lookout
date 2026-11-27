@@ -1,12 +1,15 @@
 import { Fragment, type ReactNode, useContext, useEffect, useMemo, useSyncExternalStore } from 'react';
 import { SessionFilesContext, parsePath, pathParts, vscodeHref } from '@/lib/files';
 import { LINK_CLASS, linkify } from '@/lib/links';
+import { isDocumentPath } from '@/lib/outputs';
+import { type Route, navigateTo, routePath } from '@/lib/router';
 
 const noSubscribe = () => () => {};
 
 /**
  * VIEW-1.17: a path, as written. Plain text until the server says it's a file, then a link that opens
- * it in VS Code on a plain click (no new tab: Chrome hands the link over and the page stays). It
+ * it in VS Code on a plain click (no new tab: Chrome hands the link over and the page stays), or in
+ * the Document view when it's a document (DOC-1.4). It
  * subscribes to its own answer, so an answer re-renders only the paths it names.
  */
 export function FilePath({ text }: { text: string }) {
@@ -18,6 +21,25 @@ export function FilePath({ text }: { text: string }) {
     if (store && path) store.want(path);
   }, [store, path]);
   if (!ref || !absolute) return text;
+  // DOC-1.4: a Markdown file, a page or an image opens in Lookout, at its Session's path. A real link, so ⌘-click opens a tab.
+  if (store && isDocumentPath(absolute)) {
+    const route: Route = { name: 'doc', path: absolute, session: store.sessionId };
+    return (
+      <a
+        href={routePath(route)}
+        title="Open in Lookout"
+        className={LINK_CLASS}
+        dir="ltr"
+        onClick={(e) => {
+          if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+          e.preventDefault();
+          navigateTo(route);
+        }}
+      >
+        {text}
+      </a>
+    );
+  }
   return (
     <a href={vscodeHref(absolute, ref.line, ref.col)} title="Open in VS Code" className={LINK_CLASS} dir="ltr">
       {text}

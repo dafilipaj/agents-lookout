@@ -33,8 +33,8 @@ const IMG_COUNTS = new Map([
   ['web/src/components/ui/avatar.tsx', 1],
   // PLAIN-11.9, 11.10, 13.5: a card's picture, the dialog's, and a proof shot whole or cropped.
   ['web/src/components/SpecView.tsx', 4],
-  // INBOX-2.4: a Report whose document is an image shows it in place, at its own size.
-  ['web/src/components/ReportView.tsx', 1],
+  // INBOX-2.4, DOC-2.2: a document that is an image shows in place, at its own size: a Report's and the Document view's.
+  ['web/src/components/DocumentFile.tsx', 1],
 ]);
 const IMG_FILES = new Set(IMG_COUNTS.keys());
 

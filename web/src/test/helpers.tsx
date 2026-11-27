@@ -104,6 +104,8 @@ interface RenderOptions {
   report?: LookoutClient['report'];
   markReport?: LookoutClient['markReport'];
   reportText?: LookoutClient['reportText'];
+  document?: LookoutClient['document'];
+  documentText?: LookoutClient['documentText'];
   renameSession?: LookoutClient['renameSession'];
   switchModel?: LookoutClient['switchModel'];
   switchEffort?: LookoutClient['switchEffort'];
@@ -238,6 +240,8 @@ export function renderApp(path = '/', options: RenderOptions = {}) {
     report: vi.fn(options.report ?? (async () => { throw new SaveError('That Report is gone.', null, 404); })),
     markReport: vi.fn(options.markReport ?? (async () => { throw new SaveError('That Report is gone.', null, 404); })),
     reportText: vi.fn(options.reportText ?? (async () => ({ text: '', truncated: false }))),
+    document: vi.fn(options.document ?? (async () => { throw new SaveError("Lookout can't show this file.", null, 404); })),
+    documentText: vi.fn(options.documentText ?? (async () => ({ text: '', truncated: false }))),
     renameSession: vi.fn(options.renameSession ?? (async () => ({ result: 'renamed' as const }))),
     switchModel: vi.fn(options.switchModel ?? (async (_id: string, req: { model: string }) => ({ model: req.model, confirmed: false }))),
     switchEffort: vi.fn(options.switchEffort ?? (async (_id: string, req: { effort: string }) => ({ effort: req.effort, confirmed: false, saved: req.effort !== 'max' }))),

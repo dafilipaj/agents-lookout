@@ -21,6 +21,7 @@ import { KeysEdge, SHELL_COLUMN, SHELL_GRID } from '@/components/Shell';
 import { Sidebar } from '@/components/Sidebar';
 import { PlaceRail } from '@/components/PlaceRail';
 import { InboxList, type InboxChoice } from '@/components/InboxList';
+import { DocumentView } from '@/components/DocumentView';
 import { ReportView } from '@/components/ReportView';
 import { BotsPanel } from '@/components/BotsPanel';
 import { StartingView } from '@/components/StartingView';
@@ -63,7 +64,7 @@ import type { HandoffControls } from '@/components/SessionView';
 import { shownEffort } from '@/lib/effort-switch';
 import { type ModelTarget, shownModel } from '@/lib/model-switch';
 import { SWITCH_RUNNING, type SwitchState, type SwitchWhat, restartedWhy, switchFailure, switchKey } from '@/lib/status-switch';
-import { parseRoute, routePath, specHash, useRoute, type Route } from '@/lib/router';
+import { canGoBack, parseRoute, routePath, specHash, useRoute, type Route } from '@/lib/router';
 import { type Place, loadPlace, ownsRoute, placeOfRoute, savePlace } from '@/lib/places';
 import { HARNESS_NAME } from '@/lib/sessions';
 import type { SetupSessionTarget } from '@/lib/setup';
@@ -134,6 +135,8 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
   const now = useNow(1000);
   const sessions = useMemo(() => [...state.sessions.values()], [state.sessions]);
   const selectedId = route.name === 'session' ? route.id : null;
+  // DOC-2.6: a document opened from a Session's chat keeps that Session the selected row, and nothing else of a selection.
+  const docSession = route.name === 'doc' ? (route.session ?? null) : null;
   const selectedLaunchId = route.name === 'launch' ? route.id : null;
 
   // SIDE-13: Unread. Only this tab knows what it shows; the server keeps when you last saw each
@@ -832,6 +835,17 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
   // INBOX-2: one Report and its Markdown, read from the server.
   const loadReport = useCallback((runId: string) => client.report(runId), [client]);
   const loadReportText = useCallback((path: string) => client.reportText(path), [client]);
+  // DOC-3.3: after a restart nothing is listed, so a document at a Session's path has the path check list it again first.
+  const loadDocument = useCallback(
+    async (path: string) => {
+      if (docSession) await client.checkPaths(docSession, [path]).catch(() => undefined);
+      return client.document(path);
+    },
+    [client, docSession],
+  );
+  const loadDocumentText = useCallback((path: string) => client.documentText(path), [client]);
+  // DOC-1.2: from the Library, a file shows in the main pane over the place you're in.
+  const openDocument = useCallback((path: string) => navigate({ name: 'doc', path }), [navigate]);
   const markReport = useCallback((runId: string, mark: ReportMark) => client.markReport(runId, mark), [client]);
   // INBOX-4.1: the Inbox's rows as they show, filter and all (InboxList keeps it).
   const inboxShown = useRef<readonly string[]>([]);
@@ -1531,7 +1545,7 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
           outdated={outdated}
           onReload={reload}
           idleThresholdHours={state.settings.idleThresholdHours}
-          selectedId={selectedId}
+          selectedId={selectedId ?? docSession}
           now={now}
           onSelect={onSelect}
           settingsOpen={route.name === 'settings'}
@@ -1695,6 +1709,17 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
                   navigate(to, { hash: at ? specHash(at) : undefined });
                 }}
               />
+            ) : route.name === 'doc' ? (
+              <DocumentView
+                // One file's read and scroll never carry over to another's.
+                key={route.path}
+                path={route.path}
+                load={loadDocument}
+                loadText={loadDocumentText}
+                // DOC-2.4: to where it was opened from; with nothing before it in this tab, to its Session, else the place you were in.
+                onBack={() => (canGoBack() ? window.history.back() : route.session ? navigate({ name: 'session', id: route.session }) : showPlace(place))}
+                keyboardEnabled={!modalOpen}
+              />
             ) : route.name === 'past' ? (
               <PastSessionView harness={route.harness} sessionId={route.id} now={now} load={loadPast} sessions={state.sessions} onOpenLink={openLink} />
             ) : route.name === 'launch' ? (
@@ -1781,7 +1806,7 @@ export function App({ client, pageBuild = PAGE_BUILD, reload = reloadPage }: { c
             onSetupRefresh={() => setSetupRefresh((n) => n + 1)}
             now={now}
             panels={{
-              library: <LibraryPanel focusKey={rightFocus.library} visible={layout.tab === 'library'} sessions={state.sessions} now={now} search={searchLibrary} status={libraryStatus} filter={layout.libraryFilter} onFilter={(libraryFilter) => updateLayout({ libraryFilter })} headless={layout.headless} onHeadless={(headless) => updateLayout({ headless })} onSession={openPast} keyboardEnabled={!modalOpen} navRef={libraryNav} sessionFilter={librarySessions} onClearSessionFilter={() => setLibrarySessions(null)} />,
+              library: <LibraryPanel focusKey={rightFocus.library} visible={layout.tab === 'library'} sessions={state.sessions} now={now} search={searchLibrary} status={libraryStatus} filter={layout.libraryFilter} onFilter={(libraryFilter) => updateLayout({ libraryFilter })} headless={layout.headless} onHeadless={(headless) => updateLayout({ headless })} onSession={openPast} onDocument={openDocument} keyboardEnabled={!modalOpen} navRef={libraryNav} sessionFilter={librarySessions} onClearSessionFilter={() => setLibrarySessions(null)} />,
               topics: (
                 <TopicsPanel
                   viewedTopic={viewedTopic}

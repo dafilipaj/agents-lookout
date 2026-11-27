@@ -23,7 +23,7 @@ import { byDay, formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { SEARCH_DEBOUNCE_MS } from './HistoryPanel';
 import { outputSessionMembers, useAddToTopicItem, useTopics, useTopicLinks } from '@/lib/topics';
-import { CHIP_ICON, OUTPUT_ICON, TYPE_LABEL, openFile, openOutput } from '@/lib/outputs';
+import { CHIP_ICON, OUTPUT_ICON, TYPE_LABEL, documentOf, openFile, openOutput, sourceDocumentOf } from '@/lib/outputs';
 import { vscodeHref } from '@/lib/files';
 
 const FILTER_LABEL: Record<LibraryType, string> = { pages: 'Pages', pdf: 'PDF', markdown: 'Markdown', image: 'Image', share: 'Share' };
@@ -60,6 +60,8 @@ export interface LibraryPanelProps {
   headless: boolean;
   onHeadless(value: boolean): void;
   onSession(item: HistoryItem, live: boolean): Promise<void>;
+  /** DOC-1.2: shows a file in the Document view. */
+  onDocument(path: string): void;
   keyboardEnabled: boolean;
   navRef?: Ref<PanelNav>;
   /** TOPIC-4.4: only the Outputs of a Topic's Sessions, named by the Topic, until cleared. */
@@ -81,7 +83,7 @@ function installHint(page: Extract<LibraryPage, { state: 'not-installed' | 'too-
 }
 
 /** LIB: the tab renders the server's held read. It never mines a Transcript or fetches an external URL. */
-export function LibraryPanel({ focusKey, visible, sessions, now, search, status, filter, onFilter, headless, onHeadless, onSession, keyboardEnabled, navRef, sessionFilter = null, onClearSessionFilter }: LibraryPanelProps) {
+export function LibraryPanel({ focusKey, visible, sessions, now, search, status, filter, onFilter, headless, onHeadless, onSession, onDocument, keyboardEnabled, navRef, sessionFilter = null, onClearSessionFilter }: LibraryPanelProps) {
   const [query, setQuery] = useState('');
   const topics = useTopics();
   const [results, setResults] = useState<Results | null>(null);
@@ -325,7 +327,7 @@ export function LibraryPanel({ focusKey, visible, sessions, now, search, status,
             {/* LIB-2.1: each day a group of the listbox, named by its heading (DS-17). */}
             {byDay(items, (item) => item.updatedAt, now).map((run, d) => <div key={run.key} role="group" aria-labelledby={`library-day-${d}`} className="flex flex-col">
               <div role="presentation" className="px-2 py-1.5 text-caption font-medium text-muted-foreground"><span id={`library-day-${d}`}>{run.label}</span></div>
-              {run.rows.map(({ item, index: n }) => <OutputRow key={key(item)} item={item} now={now} query={q} active={n === index} expanded={expanded === key(item)} sessions={sessions} enabled={!opening && keyboardEnabled} onSession={(s) => void session(s)} onRow={(e) => { settle(e); setActive(key(item)); setExpanded(key(item)); list.current?.focus(); }} onHover={(el) => { hoveredRow.current = el; setHovered(el ? key(item) : null); }} register={(a) => { if (a) actions.current.set(key(item), a); else actions.current.delete(key(item)); }} />)}
+              {run.rows.map(({ item, index: n }) => <OutputRow key={key(item)} item={item} now={now} query={q} active={n === index} expanded={expanded === key(item)} sessions={sessions} enabled={!opening && keyboardEnabled} onSession={(s) => void session(s)} onDocument={onDocument} onRow={(e) => { settle(e); setActive(key(item)); setExpanded(key(item)); list.current?.focus(); }} onHover={(el) => { hoveredRow.current = el; setHovered(el ? key(item) : null); }} register={(a) => { if (a) actions.current.set(key(item), a); else actions.current.delete(key(item)); }} />)}
             </div>)}
           </RowSettling>
         </div>
@@ -341,13 +343,15 @@ function Hit({ text, query }: { text: string; query: string }) {
 }
 interface RowProps {
   item: OutputItem; now: number; query: string; active: boolean; expanded: boolean; sessions: ReadonlyMap<string, SessionRow>; enabled: boolean;
-  onSession(s: OutputSession): void; onRow(e: { detail: number }): void; onHover(row: HTMLElement | null): void; register(actions: Actions | null): void;
+  onSession(s: OutputSession): void; onDocument(path: string): void; onRow(e: { detail: number }): void; onHover(row: HTMLElement | null): void; register(actions: Actions | null): void;
 }
-function OutputRow({ item, now, query, active, expanded, sessions, enabled, onSession, onRow, onHover, register }: RowProps) {
+function OutputRow({ item, now, query, active, expanded, sessions, enabled, onSession, onDocument, onRow, onHover, register }: RowProps) {
   const copy = useCopy(item.kind === 'file' ? item.path! : item.url!);
   const addToTopic = useAddToTopicItem(outputSessionMembers(item.sessions), item.title, enabled);
   const sorted = [...item.sessions].sort((a, b) => (b.lastActiveAt ?? 0) - (a.lastActiveAt ?? 0));
-  const open = () => { if (enabled) openOutput(item); }, openSession = () => { if (enabled && sorted[0] && !sorted[0].pruned) onSession(sorted[0]); };
+  // DOC-1.2: a Markdown file, a page or an image shows in Lookout; anything else leaves it (LIB-3.3).
+  const doc = documentOf(item), sourceDoc = sourceDocumentOf(item);
+  const open = () => { if (!enabled) return; if (doc) onDocument(doc); else openOutput(item); }, openSession = () => { if (enabled && sorted[0] && !sorted[0].pruned) onSession(sorted[0]); };
   useEffect(() => { register({ open, copy: () => { if (enabled) void copy.copy(); }, session: openSession }); return () => register(null); });
   const t = item.kind === 'file' ? item.type! : item.kind, Icon = OUTPUT_ICON[t], id = `library-${encodeURIComponent(key(item))}`;
   const gone = item.kind === 'file' && !item.exists, live = sorted.some((s) => isLive(s, sessions));
@@ -424,9 +428,9 @@ function OutputRow({ item, now, query, active, expanded, sessions, enabled, onSe
         // DS-16: Open is what Enter runs; a gone file's row has only More.
         <RowActions
           name={item.title}
-          primary={gone ? null : { 'data-action': 'open', action: 'open-external', tip: 'Open (O)', enabled, onPress: open }}
+          primary={gone ? null : { 'data-action': 'open', action: doc ? 'open' : 'open-external', tip: 'Open (O)', enabled, onPress: open }}
           more={[
-            item.kind === 'artifact' && item.source?.exists && { id: 'open-file', action: 'open-external', label: 'Open file', group: 'open', enabled, onSelect: () => openFile(item.source!.path, item.source!.type) },
+            item.kind === 'artifact' && item.source?.exists && { id: 'open-file', action: sourceDoc ? 'open' : 'open-external', label: 'Open file', group: 'open', enabled, onSelect: () => (sourceDoc ? onDocument(sourceDoc) : openFile(item.source!.path, item.source!.type)) },
             { id: 'copy', action: 'copy', label: 'Copy link', group: 'open', shortcut: 'C', enabled, onSelect: () => void copy.copy() },
             // DS-21.3: the source file's path left the row; this shows the file in VS Code (VIEW-1.17).
             item.source?.exists && item.source.type !== 'markdown' && { id: 'show-source', action: 'open-vscode', label: 'Show source file', group: 'open', enabled, onSelect: () => window.open(vscodeHref(item.source!.path, null, null), '_self') },

@@ -30,3 +30,4 @@ One row per feature. Update the status here and in the spec's frontmatter togeth
 | Places: a rail at the window's left edge switches between the Inbox and Sessions, each owning the left column and the main pane, with one right sidebar ([0017](../decisions/0017-one-app-for-both-roles.md)) | NAV | In Progress | [SPEC](places/SPEC.md) |
 | Bots: Sessions that start on a schedule or on Run now, made and watched in a right-sidebar tab, each run followed, ended and reported to the Inbox | BOT | In Progress | [SPEC](bots/SPEC.md) |
 | Inbox: one Report per Bot run, unread until opened, read in place in the main pane, with its Session a press away | INBOX | In Progress | [SPEC](inbox/SPEC.md) |
+| Document view: a Markdown file, a page or an image opens in the main pane, from a path in a chat, the Library and a Topic view, instead of VS Code or a browser tab | DOC | In Progress | [SPEC](document-view/SPEC.md) |

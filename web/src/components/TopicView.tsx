@@ -19,11 +19,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { ActionIcon, type ActionId, actionWord } from '@/lib/actions';
 import { STATUS_LABEL } from '@/lib/sessions';
 import { OUTCOME_WORD, SUMMARY_STATE_WORD, edgesOf, liveRow, looksDone, memberCounts, orderSessions, orderWorkMembers, prState, sharedLabel, sharedPairs, taskState, topicMarker } from '@/lib/topics';
-import type { TopicTab } from '@/lib/router';
+import { type TopicTab, navigateTo } from '@/lib/router';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { HarnessIcon } from './HarnessIcon';
-import { OUTPUT_ICON, TYPE_LABEL, openOutput } from '@/lib/outputs';
+import { OUTPUT_ICON, TYPE_LABEL, documentOf, openOutput } from '@/lib/outputs';
 import { type ArchivePatch, ArchiveDialog } from './ArchiveDialog';
 import { Markdown } from './Markdown';
 import { Recommendations } from './Recommendations';
@@ -1216,6 +1216,8 @@ function OutputLine({ item, now }: { item: OutputItem; now: number }) {
   const t = item.kind === 'file' ? item.type! : item.kind;
   const Icon = OUTPUT_ICON[t];
   const gone = item.kind === 'file' && !item.exists;
+  // DOC-1.3: a Markdown file, a page or an image shows in Lookout; anything else leaves it (LIB-3.3).
+  const doc = documentOf(item);
   return (
     <div className="flex min-w-0 items-center gap-1.5" data-field="output">
       <Icon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
@@ -1226,8 +1228,8 @@ function OutputLine({ item, now }: { item: OutputItem; now: number }) {
       {gone ? (
         <Chip>gone</Chip>
       ) : (
-        <Button type="button" variant="secondary" size="line" aria-label={`Open ${item.title}, ${TYPE_LABEL[t]}`} onClick={() => openOutput(item)}>
-          <ActionIcon id="open-external" />
+        <Button type="button" variant="secondary" size="line" aria-label={`Open ${item.title}, ${TYPE_LABEL[t]}`} onClick={() => (doc ? navigateTo({ name: 'doc', path: doc }) : openOutput(item))}>
+          <ActionIcon id={doc ? 'open' : 'open-external'} />
           Open
         </Button>
       )}

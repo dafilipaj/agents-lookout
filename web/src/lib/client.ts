@@ -1,6 +1,6 @@
 import type { AwakeMode, AwakeSnapshot } from '@shared/awake.ts';
 import type { BotInput, BotRun, BotView, ReportDetail, ReportMark } from '@shared/bots.ts';
-import type { LibraryPage, LibraryQuery } from '@shared/library.ts';
+import type { DocumentAnswer, LibraryPage, LibraryQuery } from '@shared/library.ts';
 import type { PathAnswer } from '@shared/files.ts';
 import type { StopResult, StopTarget } from '@shared/ports.ts';
 import type { PlainAnswer, PlainExamplesAnswer, PlainPrFiles, PlainSimpleAnswer, PlainSource } from '@shared/plain.ts';
@@ -58,6 +58,10 @@ export interface LookoutClient {
   markReport(runId: string, mark: ReportMark): Promise<BotRun>;
   /** INBOX-2.4: a Markdown Report's text, at most its first megabyte, and whether it was cut. */
   reportText(path: string): Promise<{ text: string; truncated: boolean }>;
+  /** DOC-3.1: a file for the Document view: its Type and whether it's there. Refused for a path the server didn't list. */
+  document(path: string): Promise<DocumentAnswer>;
+  /** DOC-3.2: a listed Markdown file's text, at most its first megabyte. */
+  documentText(path: string): Promise<{ text: string; truncated: boolean }>;
   /** VIEW-5.12: renames the Session through Fleet: the Harness's own `/rename`, only while it's Idle. */
   renameSession(sessionId: string, title: string): Promise<RenameResult>;
   /**
@@ -267,6 +271,20 @@ export function createHttpClient(): LookoutClient {
   };
 
   /** Runs a request and returns its JSON, or throws a SaveError with the server's reason. */
+  /** INBOX-2.4, DOC-3.2: a file's text from one of the two text routes, and whether it was cut. */
+  const fileText = async (url: string): Promise<{ text: string; truncated: boolean }> => {
+    let res: Response;
+    try {
+      res = await fetch(url);
+    } catch {
+      throw new SaveError("Couldn't reach the Lookout server.", null, null, { lost: true });
+    }
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new SaveError(body.error ?? `Reading the file failed (${res.status}).`, null, res.status);
+    }
+    return { text: await res.text(), truncated: res.headers.get('x-lookout-truncated') === '1' };
+  };
   const call = async <T,>(request: () => Promise<Response>, what: string): Promise<T> => {
     let res: Response;
     try {
@@ -541,19 +559,9 @@ export function createHttpClient(): LookoutClient {
     runBot: async (id) => (await call<{ run: BotRun }>(() => send('POST', `/api/bots/${encodeURIComponent(id)}/run`), 'Starting the run')).run,
     report: (runId) => call<ReportDetail>(() => fetch(`/api/inbox/${encodeURIComponent(runId)}`), 'Reading the Report'),
     markReport: async (runId, mark) => (await call<{ run: BotRun }>(() => send('PUT', `/api/inbox/${encodeURIComponent(runId)}`, mark), 'Saving')).run,
-    reportText: async (path) => {
-      let res: Response;
-      try {
-        res = await fetch(`/api/inbox/text?${new URLSearchParams({ path })}`);
-      } catch {
-        throw new SaveError("Couldn't reach the Lookout server.", null, null, { lost: true });
-      }
-      if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new SaveError(body.error ?? `Reading the file failed (${res.status}).`, null, res.status);
-      }
-      return { text: await res.text(), truncated: res.headers.get('x-lookout-truncated') === '1' };
-    },
+    reportText: (path) => fileText(`/api/inbox/text?${new URLSearchParams({ path })}`),
+    document: (path) => call<DocumentAnswer>(() => fetch(`/api/doc?${new URLSearchParams({ path })}`), 'Reading the file'),
+    documentText: (path) => fileText(`/api/library/text?${new URLSearchParams({ path })}`),
     setAwake: (mode, replace = false) => call<AwakeSnapshot>(() => send('POST', '/api/awake', replace ? { mode, replace } : { mode }), 'Changing keep-awake'),
     renameSession: (sessionId, title) =>
       call<RenameResult>(() => send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/rename`, { title }), 'Renaming'),

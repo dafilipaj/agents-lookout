@@ -22,6 +22,8 @@ export const FILE_EXTENSIONS = [
   'graphql', 'gql', 'proto', 'prisma', 'tf', 'tfvars', 'hcl', 'nix',
   // logs and patches
   'log', 'diff', 'patch',
+  // images, which the Document view shows (DOC-1.4); `svg` is with the web's
+  'png', 'jpg', 'jpeg', 'gif', 'webp',
 ];
 
 /**
@@ -113,7 +115,8 @@ export class FileStore {
   private asking = false;
   /** When the newest answer came. */
   private lastAnswer: number | null = null;
-  private readonly sessionId: string;
+  /** The Session whose chat these paths are in: where a document it links to opens (DOC-1.4). */
+  readonly sessionId: string;
   private readonly check: CheckPaths;
 
   constructor(sessionId: string, check: CheckPaths) {

@@ -396,7 +396,7 @@ const FAMILIES: Record<string, Family> = {
       'web/src/components/SessionView.tsx': { why: 'keyboard focus, the focused composer, the resize handle while dragged and the attachment drop target (VIEW-9.2)', uses: ['bg-primary-soft', 'bg-ring', 'border-primary', 'border-ring', 'ring-ring', 'ring-ring/25', 'text-primary'] },
       'web/src/components/Sidebar.tsx': { why: 'keyboard focus and the focused filter', uses: ['border-ring', 'ring-ring/30', 'ring-ring/50'] },
       'web/src/components/InboxList.tsx': { why: "keyboard focus on the Inbox's list and its focused filter, as the Session sidebar's (INBOX-1.3)", uses: ['border-ring', 'ring-ring/30', 'ring-ring/50'] },
-      'web/src/components/ReportView.tsx': { why: "keyboard focus on a Report's text, which takes it so the arrow keys scroll it (INBOX-5.1)", uses: ['ring-ring/50'] },
+      'web/src/components/DocumentFile.tsx': { why: "keyboard focus on a document's text, a Report's or the Document view's, which takes it so the arrow keys scroll it (INBOX-5.1, DOC-2.2)", uses: ['ring-ring/50'] },
       'web/src/components/StatusMenu.tsx': { why: 'keyboard focus on the menu', uses: ['ring-ring'] },
       'web/src/components/ChangesButton.tsx': { why: "keyboard focus on the status line's count of changed files (DIFF-1.3)", uses: ['ring-ring'] },
       'web/src/components/ui/checkbox.tsx': { why: 'keyboard focus on the checkbox', uses: ['outline-ring'] },

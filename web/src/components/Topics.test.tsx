@@ -502,6 +502,25 @@ describe('what a member is doing now (TOPIC-4)', () => {
     await waitFor(() => expect(app.client.watchWork).toHaveBeenLastCalledWith('tab-1', false));
   });
 
+  it('DOC-1.3: a Topic view’s Output line shows a Markdown file in the Document view, and a PDF still opens a browser tab', async () => {
+    const output = (name: string, type: 'markdown' | 'pdf'): OutputItem => ({
+      kind: 'file', key: `/o/${name}`, type, title: name, path: `/o/${name}`, url: null, display: `~/o/${name}`, projectPath: null, repo: null, createdAt: NOW, updatedAt: Date.now() - 60_000, events: 1, exists: true,
+      source: null, sourcePath: null, sourceDisplay: null, version: null, sessions: [],
+    });
+    openApp([topic(1, { title: 'Rates', members: [member(SESSION)], outputs: { items: [output('print.pdf', 'pdf'), output('notes.md', 'markdown')], total: 2 } })]);
+    const user = await openTopics();
+    await openView(user, 'Rates', 'Members');
+    const outputs = topicView().querySelector<HTMLElement>('[data-field="outputs"]')!;
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    await user.click(within(outputs).getByRole('button', { name: 'Open print.pdf, PDF' }));
+    expect(open).toHaveBeenCalledWith('/api/library/file?path=%2Fo%2Fprint.pdf', '_blank', 'noopener,noreferrer');
+    expect(window.location.pathname).toMatch(/^\/topics\//);
+    await user.click(within(outputs).getByRole('button', { name: 'Open notes.md, Markdown' }));
+    expect(window.location.pathname).toBe('/doc/%2Fo%2Fnotes.md');
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(await screen.findByRole('heading', { name: 'notes.md' })).toBeVisible();
+  });
+
   it('TOPIC-4.4: the Topic view lists its Sessions’ Outputs with an Open button, "+N more" opening the Library on those Sessions; opening it asks for a Library read when none ran in the last minute', async () => {
     const output = (n: number): OutputItem => ({
       kind: 'file', key: `/o/${n}.md`, type: 'markdown', title: `Doc ${n}`, path: `/o/${n}.md`, url: null, display: `~/o/${n}.md`, projectPath: null, repo: null, createdAt: NOW, updatedAt: Date.now() - n * 3_600_000 - 60_000, events: 1, exists: true,
@@ -528,9 +547,7 @@ describe('what a member is doing now (TOPIC-4)', () => {
     await waitFor(() => expect(app.client.library).toHaveBeenCalledTimes(reads + 1));
     const outputs = topicView().querySelector<HTMLElement>('[data-field="outputs"]')!;
     expect([...outputs.querySelectorAll('[data-field="output"]')].map((o) => o.textContent)).toEqual(["Doc 11hOpen", "Doc 22hOpen"]);
-    const open = vi.spyOn(window, 'open').mockReturnValue(null);
-    await user.click(within(outputs).getByRole('button', { name: 'Open Doc 1, Markdown' }));
-    expect(open).toHaveBeenCalledWith(expect.stringMatching(/^vscode:/), '_self');
+    expect(within(outputs).getByRole('button', { name: 'Open Doc 1, Markdown' })).toBeVisible();
     // A text filter left in the Library, and its default types, would hide them: both give way.
     await user.keyboard('l');
     await user.type(screen.getByRole('searchbox', { name: 'Filter Outputs' }), 'zzz');

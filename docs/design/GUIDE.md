@@ -126,13 +126,14 @@ The list of a place (NAV): the Session sidebar's, and the Inbox's (`InboxList.ts
 
 ### A document shown in place
 
-What a Report holds, in the main pane (`ReportView.tsx`, INBOX-2.4).
+A file read in the main pane: what a Report holds (`ReportView.tsx`, INBOX-2.4), and any Markdown file, page or image opened from the Library, a Topic view or a path in the chat (`DocumentView.tsx`, DOC-2). Both draw it with `DocumentFile` (`DocumentFile.tsx`).
 
 - **Use** `Markdown` (`reading`) in the chat's column for text, inside a focusable `role="region"` with `data-scroll-keys`, so the arrow keys scroll it. A page is an `iframe` that fills the pane on white, since a page brings its own colours, with the file route's `frame=1` URL (`framedFileUrl`, `lib/outputs.ts`), the same `sandbox` the route sends, and the document's title as its `title` (INBOX-2.9).
 - What only a browser tab can show (a PDF, a Share, an Artifact without its source file) is a bordered card: its title, its Type, where it is, and one Primary "Open".
 - Several documents are `Tabs` under the header, and only the open one is drawn.
-- **Don't:** frame a page without the sandbox; frame another origin; read a file the Library didn't list.
-- **Guard:** INBOX-2.9's tests, in the server and the view. Its look is INBOX-2.11.
+- The Document view's header is Back (the quiet button Settings has), the file's name with its Type's icon, its Type word and folder under it, then Open and More; Open's icon says it leaves Lookout (DS-18.6). A row that opens a file here uses `open`, the icon for staying inside (`documentOf`, `lib/outputs.ts`).
+- **Don't:** frame a page without the sandbox; frame another origin; read a file the server didn't list (DOC-3.1); open a Markdown file, a page or an image in VS Code or a tab from a row when the Document view shows it.
+- **Guard:** INBOX-2.9's tests, in the server and the view, and DOC-3.1's for what the server reads. Their looks are INBOX-2.11 and DOC-2.7.
 
 ### A form that sets up a start
 

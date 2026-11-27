@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { constants, linkSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, unlinkSync, watch, writeFileSync } from 'node:fs';
-import { lstat, open } from 'node:fs/promises';
+import { linkSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, unlinkSync, watch, writeFileSync } from 'node:fs';
 import { homedir, uptime } from 'node:os';
 import { basename, dirname, extname, isAbsolute, join, normalize, resolve } from 'node:path';
 import { isAtWork } from '../shared/awake.ts';
@@ -13,6 +12,7 @@ import { LIBRARY_TYPES, type LibraryPage, type LibraryQuery, type OutputItem, ty
 import type { LaunchHarness } from '../shared/settings.ts';
 import type { ChatPage, EndResult, EndTarget, HistoryItem, LaunchView, SessionRow, Status } from '../shared/types.ts';
 import { isPlainPath } from './files.ts';
+import { readTextFile } from './output-files.ts';
 import { SESSION_ID } from './history.ts';
 import { LaunchError, MAX_NAME } from './launcher.ts';
 import { LibraryError } from './library.ts';
@@ -545,24 +545,7 @@ export class Bots {
     if (!isAbsolute(path) || !isPlainPath(path)) return null;
     const file = normalize(path);
     if (extname(file).toLowerCase() !== '.md' || !this.texts.has(file)) return null;
-    // As the file route: lstat leaves out a leaf symlink, NOFOLLOW closes the race with open, and
-    // NONBLOCK keeps a swapped-in FIFO from hanging the server before the handle is checked.
-    const info = await lstat(file).catch(() => null);
-    if (!info?.isFile()) return null;
-    const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK).catch(() => null);
-    if (!handle) return null;
-    try {
-      const opened = await handle.stat();
-      if (!opened.isFile()) return null;
-      const buffer = Buffer.alloc(Math.min(opened.size, REPORT_TEXT_MAX));
-      const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
-      const truncated = opened.size > REPORT_TEXT_MAX;
-      return { body: truncated ? wholeCharacters(buffer.subarray(0, bytesRead)) : buffer.subarray(0, bytesRead), truncated };
-    } catch {
-      return null;
-    } finally {
-      await handle.close().catch(() => undefined);
-    }
+    return readTextFile(file, REPORT_TEXT_MAX);
   }
 
   /**
@@ -1222,16 +1205,6 @@ function replaced(run: StoredRun, row: SessionRow): boolean {
 function sameProcess(run: StoredRun, row: SessionRow): boolean {
   if (run.pid === null || row.pid !== run.pid || row.harness !== run.harness) return false;
   return run.procStart === null || row.procStart === null || row.procStart === run.procStart;
-}
-
-/** INBOX-2.4: a cut that split a character drops it, so the text ends on a whole one. */
-function wholeCharacters(bytes: Buffer): Buffer {
-  let lead = bytes.length - 1;
-  while (lead >= 0 && bytes.length - lead < 4 && (bytes[lead]! & 0xc0) === 0x80) lead--;
-  if (lead < 0) return bytes;
-  const first = bytes[lead]!;
-  const length = first >= 0xf0 ? 4 : first >= 0xe0 ? 3 : first >= 0xc0 ? 2 : 1;
-  return bytes.length - lead < length ? bytes.subarray(0, lead) : bytes;
 }
 
 const record = (v: unknown): Record<string, unknown> | null => (typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null);

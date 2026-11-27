@@ -551,24 +551,24 @@ describe('file links (VIEW-1.17)', () => {
   it('VIEW-1.17: a path in your prompt, a slash command, a reply’s prose and inline code, and a tool-call line opens in VS Code once the server finds the file', async () => {
     const checkPaths = knows({
       'src/rates.ts': `${ROOT}/src/rates.ts`,
-      'README.md': '/Users/me/My Projects/acme-app/README.md',
+      'NOTES.txt': '/Users/me/My Projects/acme-app/NOTES.txt',
       [`${ROOT}/app/deal.rb`]: `${ROOT}/app/deal.rb`,
     });
     const { reset } = open('a', {}, { checkPaths });
-    const prompt = 'Fix src/rates.ts:12 and keep README.md current.';
+    const prompt = 'Fix src/rates.ts:12 and keep NOTES.txt current.';
     reset([
       you(prompt),
       { kind: 'command', cursor: c(), ts: null, text: '/review src/rates.ts' },
-      agent('Rounding is in `src/rates.ts:12:5`; see **README.md**. The file src/gone.ts is missing.\n\n```\nsrc/rates.ts\n```'),
+      agent('Rounding is in `src/rates.ts:12:5`; see **NOTES.txt**. The file src/gone.ts is missing.\n\n```\nsrc/rates.ts\n```'),
       tool('Read', `${ROOT}/app/deal.rb`),
     ]);
     await waitFor(() => expect(vscode()).toHaveLength(6));
-    expect(vscode(document.querySelector('[data-kind="user"]')!)).toEqual([`vscode://file${ROOT}/src/rates.ts:12`, 'vscode://file/Users/me/My%20Projects/acme-app/README.md']);
+    expect(vscode(document.querySelector('[data-kind="user"]')!)).toEqual([`vscode://file${ROOT}/src/rates.ts:12`, 'vscode://file/Users/me/My%20Projects/acme-app/NOTES.txt']);
     expect(vscode(document.querySelector('[data-kind="command"]')!)).toEqual([`vscode://file${ROOT}/src/rates.ts`]);
     const reply = document.querySelector('[data-kind="assistant"]')!;
-    expect(vscode(reply)).toEqual([`vscode://file${ROOT}/src/rates.ts:12:5`, 'vscode://file/Users/me/My%20Projects/acme-app/README.md']);
+    expect(vscode(reply)).toEqual([`vscode://file${ROOT}/src/rates.ts:12:5`, 'vscode://file/Users/me/My%20Projects/acme-app/NOTES.txt']);
     expect(reply.querySelector('code a')).toHaveTextContent('src/rates.ts:12:5');
-    expect(reply.querySelector('strong a')).toHaveTextContent('README.md');
+    expect(reply.querySelector('strong a')).toHaveTextContent('NOTES.txt');
     expect(reply.querySelector('pre a')).toBeNull(); // a code block's paths stay text
     expect(reply).toHaveTextContent('The file src/gone.ts is missing.');
     expect(vscode(document.querySelector('[data-kind="tool_call"]')!)).toEqual([`vscode://file${ROOT}/app/deal.rb`]);
@@ -580,7 +580,32 @@ describe('file links (VIEW-1.17)', () => {
     // One request for every path the chat shows, each asked once.
     expect(checkPaths).toHaveBeenCalledTimes(1);
     expect(checkPaths.mock.calls[0]![0]).toBe('a');
-    expect([...checkPaths.mock.calls[0]![1]].sort()).toEqual([`${ROOT}/app/deal.rb`, 'README.md', 'src/gone.ts', 'src/rates.ts']);
+    expect([...checkPaths.mock.calls[0]![1]].sort()).toEqual([`${ROOT}/app/deal.rb`, 'NOTES.txt', 'src/gone.ts', 'src/rates.ts']);
+  });
+
+  it('DOC-1.4: a path to a Markdown file, a page or an image opens the Document view at its Session’s path on a plain click; ⌘-click is the browser’s, and any other file still opens VS Code', async () => {
+    const checkPaths = knows({ 'docs/notes.md': `${ROOT}/docs/notes.md`, 'out/map.html': `${ROOT}/out/map.html`, 'out/shot.png': `${ROOT}/out/shot.png`, 'src/rates.ts': `${ROOT}/src/rates.ts` });
+    const { reset } = open('a', {}, { checkPaths });
+    reset([agent('See docs/notes.md:12, out/map.html, out/shot.png, out/print.pdf and src/rates.ts.')]);
+    await waitFor(() => expect(document.querySelectorAll('[data-kind="assistant"] a')).toHaveLength(4));
+    const reply = document.querySelector<HTMLElement>('[data-kind="assistant"]')!;
+    const href = (name: string) => within(reply).getByRole('link', { name }).getAttribute('href');
+    const at = (file: string) => `/s/a/doc/${encodeURIComponent(`${ROOT}/${file}`)}`;
+    // The line of a Markdown link is dropped: a rendered file has none.
+    expect([href('docs/notes.md:12'), href('out/map.html'), href('out/shot.png')]).toEqual([at('docs/notes.md'), at('out/map.html'), at('out/shot.png')]);
+    for (const name of ['docs/notes.md:12', 'out/map.html', 'out/shot.png']) expect(within(reply).getByRole('link', { name })).toHaveAttribute('title', 'Open in Lookout');
+    // Code leaves for VS Code, as before; a PDF's path is no link (VIEW-1.17).
+    expect(vscode(reply)).toEqual([`vscode://file${ROOT}/src/rates.ts`]);
+    expect(reply).toHaveTextContent('out/print.pdf');
+    expect(within(reply).getByRole('link', { name: 'src/rates.ts' })).toHaveAttribute('title', 'Open in VS Code');
+
+    const link = within(reply).getByRole('link', { name: 'docs/notes.md:12' });
+    // ⌘-click and a middle click are left to the browser, which opens the link's own path in a tab.
+    expect(fireEvent.click(link, { metaKey: true })).toBe(true);
+    expect(fireEvent.click(link, { button: 1 })).toBe(true);
+    expect(window.location.pathname).toBe('/s/a');
+    expect(fireEvent.click(link)).toBe(false);
+    expect(window.location.pathname).toBe(at('docs/notes.md'));
   });
 
   it('VIEW-1.17: :line and :line:col go into the link; a range opens at its first line', () => {
@@ -639,14 +664,14 @@ describe('file links (VIEW-1.17)', () => {
   });
 
   it('VIEW-1.17: never inside an address that isn’t linked either: a bare IPv6 host GFM leaves as text in prose, or one that doesn’t parse', async () => {
-    const checkPaths = knows({ 'README.md': `${ROOT}/README.md`, 'src/a.ts': `${ROOT}/src/a.ts` });
+    const checkPaths = knows({ 'NOTES.txt': `${ROOT}/NOTES.txt`, 'src/a.ts': `${ROOT}/src/a.ts` });
     const { reset } = open('a', {}, { checkPaths });
-    const prompt = 'Open http://[bad/?file=README.md, then README.md';
+    const prompt = 'Open http://[bad/?file=NOTES.txt, then NOTES.txt';
     // Emphasis, strikethrough and code cut an address GFM doesn't link (an IPv6 host, a host with
     // `_`) into several nodes: it still runs on to the next space. So does one that starts in code
     // right after a word, where the text as it reads has no address start.
-    const split = 'Served at https://[::1]:8080/?f=*x*README.md, http://my_host.dev/a~~b~~src/a.ts, http://my_host.dev/a`x`src/a.ts and https://[::1]:8080/?f=`README.md`, Run`https://[::1]:8080/?f=`README.md; then src/a.ts.';
-    reset([you(prompt), agent(`Served at https://[::1]:8080/?file=README.md; \`https://[::1]:8080/?file=README.md\`; edit README.md.\n\n${split}`)]);
+    const split = 'Served at https://[::1]:8080/?f=*x*NOTES.txt, http://my_host.dev/a~~b~~src/a.ts, http://my_host.dev/a`x`src/a.ts and https://[::1]:8080/?f=`NOTES.txt`, Run`https://[::1]:8080/?f=`NOTES.txt; then src/a.ts.';
+    reset([you(prompt), agent(`Served at https://[::1]:8080/?file=NOTES.txt; \`https://[::1]:8080/?file=NOTES.txt\`; edit NOTES.txt.\n\n${split}`)]);
     await waitFor(() => expect(vscode()).toHaveLength(3));
     const yours = document.querySelector('[data-kind="user"]')!;
     expect(yours.querySelectorAll('a')).toHaveLength(1); // the address doesn't parse: no web link either
@@ -654,12 +679,12 @@ describe('file links (VIEW-1.17)', () => {
     expect(yours.lastElementChild!.textContent).toBe(prompt);
     const reply = document.querySelector('[data-kind="assistant"]')!;
     // The code links the part of the address it holds, as code does.
-    expect([...reply.querySelectorAll('a')].map((a) => a.getAttribute('href'))).toEqual(['https://[::1]:8080/?file=README.md', `vscode://file${ROOT}/README.md`, 'https://[::1]:8080/?f=', `vscode://file${ROOT}/src/a.ts`]);
+    expect([...reply.querySelectorAll('a')].map((a) => a.getAttribute('href'))).toEqual(['https://[::1]:8080/?file=NOTES.txt', `vscode://file${ROOT}/NOTES.txt`, 'https://[::1]:8080/?f=', `vscode://file${ROOT}/src/a.ts`]);
     expect(reply.querySelector('a[href^="vscode:"]')!.previousSibling!.textContent).toBe('; edit ');
     expect(reply.querySelectorAll('a[href^="vscode:"]')[1]!.previousSibling!.textContent).toBe('; then ');
-    expect(reply).toHaveTextContent('Served at https://[::1]:8080/?file=README.md;');
+    expect(reply).toHaveTextContent('Served at https://[::1]:8080/?file=NOTES.txt;');
     expect([...reply.querySelectorAll('p')].at(-1)!.textContent).toBe(split.replace(/[*`]|~~/g, ''));
-    expect(checkPaths.mock.calls.flatMap((call) => call[1]).sort()).toEqual(['README.md', 'src/a.ts']);
+    expect(checkPaths.mock.calls.flatMap((call) => call[1]).sort()).toEqual(['NOTES.txt', 'src/a.ts']);
   });
 
   it('VIEW-1.17: a past Session’s chat has no file links, and asks nothing', async () => {

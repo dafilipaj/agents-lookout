@@ -6,6 +6,8 @@ import { handoverText } from '../shared/handoff.ts';
 import { type Settings, SettingsError, type SettingsView } from '../shared/settings.ts';
 import type { AnswerRequest, AnswerResult, ChatPage, EffortSwitchRequest, EffortSwitchResult, EndResult, EndTarget, EscStatus, Harness, HarnessOption, HistoryDetail, HistoryPage, HistoryPeek, LaunchView, ModelSwitchRequest, ModelSwitchResult, RenameResult, ResumeResult, ServerEvent } from '../shared/types.ts';
 import type { PathAnswer } from '../shared/files.ts';
+import { REPORT_TEXT_MAX } from '../shared/bots.ts';
+import { DOCUMENT_UNAVAILABLE } from '../shared/library.ts';
 import type { ToolsSnapshot } from '../shared/tools.ts';
 import type { UsageSnapshot } from '../shared/usage.ts';
 import type { WorkSnapshot } from '../shared/work.ts';
@@ -17,6 +19,8 @@ import { EndError, parseEndTarget } from './closer.ts';
 import { type Library } from './library.ts';
 import { LibraryError, parseLibraryQuery } from './library.ts';
 import { FRAMED_OUTPUT_CSP, OUTPUT_HEADERS } from './output-files.ts';
+import { describeDocument } from './document.ts';
+import { documentType } from './documents.ts';
 import { Avatars } from './avatars.ts';
 import { PathsError } from './files.ts';
 import { PlainError, type Plain } from './plain.ts';
@@ -428,6 +432,21 @@ export function createApp(opts: AppOptions): LookoutApp {
     }
     if (route === 'GET /api/library') return historyCall(res, () => opts.library.find(parseLibraryQuery(url.searchParams)));
     if (route === 'GET /api/library/status') return json(res, 200, { indexing: opts.library.indexing });
+    // DOC-3.1: a file for the Document view: its Type and whether it's there; nothing about a path the server didn't list.
+    if (route === 'GET /api/doc') {
+      const doc = await describeDocument(opts.library, url.searchParams.get('path') ?? '');
+      return doc ? json(res, 200, doc) : json(res, 404, { error: DOCUMENT_UNAVAILABLE });
+    }
+    // DOC-3.2: a listed Markdown file's text, at most its first megabyte, and whether it was cut.
+    if (route === 'GET /api/library/text') {
+      const file = await opts.library.files.text(url.searchParams.get('path') ?? '', REPORT_TEXT_MAX);
+      if (!file) return json(res, 404, { error: DOCUMENT_UNAVAILABLE });
+      res.writeHead(200, {
+        ...SECURITY_HEADERS, 'content-type': 'text/plain; charset=utf-8', 'content-length': file.body.length, 'cache-control': 'no-store',
+        ...(file.truncated ? { 'x-lookout-truncated': '1' } : {}),
+      });
+      return void res.end(file.body);
+    }
     // HIST-2: reads (the guard still checks Host, Origin and Sec-Fetch-Site).
     if (route === 'GET /api/history') {
       return historyCall(res, () => opts.history.find(parseFindQuery(url.searchParams)));
@@ -882,7 +901,10 @@ export function createApp(opts: AppOptions): LookoutApp {
       const body = await readJson(req, res, MAX_PATHS_BODY, null);
       if (body === NO_BODY) return;
       try {
-        return json(res, 200, { paths: await opts.files.check(sessionId, body) });
+        const answers = await opts.files.check(sessionId, body);
+        // DOC-3.1: a document it answers as a file is listed for the routes that read one; the check itself still returns no contents.
+        for (const a of answers) if (a.exists && a.absolute && documentType(a.absolute)) opts.library.files.allow(a.absolute);
+        return json(res, 200, { paths: answers });
       } catch (err) {
         if (err instanceof PathsError) return json(res, err.status, { error: err.message });
         throw err;

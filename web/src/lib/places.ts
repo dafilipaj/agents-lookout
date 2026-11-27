@@ -9,8 +9,8 @@ export const PLACE_KEY: Record<Place, string> = { inbox: '1', sessions: '2' };
 
 /**
  * NAV-2.1 to 2.3: the place a route belongs to. The Inbox's routes are the Inbox's; Settings, the
- * Topics graph, a Topic view and the Suggest view belong to none, so the place before them stays;
- * everything else is Sessions'.
+ * Topics graph, a Topic view, the Suggest view and a document not opened from a Session (DOC-2.6)
+ * belong to none, so the place before them stays; everything else is Sessions'.
  */
 export function placeOfRoute(route: Route, last: Place): Place {
   switch (route.name) {
@@ -21,6 +21,9 @@ export function placeOfRoute(route: Route, last: Place): Place {
     case 'topic':
     case 'suggest':
       return last;
+    // DOC-2.6: a document opened from a Session's chat is Sessions'; any other keeps the place before it.
+    case 'doc':
+      return route.session ? 'sessions' : last;
     default:
       return 'sessions';
   }
